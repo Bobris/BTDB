@@ -1,0 +1,15 @@
+*~
+bin
+obj
+*.user
+*.suo
+*.bak
+*.sln.cache
+_ReSharper*
+Reports
+*/build
+*/test-results
+*.pidb
+*.usertasks
+*.userprefs
+*.origtest-resultsdist

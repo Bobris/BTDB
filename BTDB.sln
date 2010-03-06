@@ -1,0 +1,35 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB", "BTDB\BTDB.csproj", "{4B16680A-547C-495F-8BB2-8DA239E34194}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDBTest", "BTDBTest\BTDBTest.csproj", "{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{472959C2-B845-42D0-B7CD-CE053198F518}"
+	ProjectSection(SolutionItems) = preProject
+		BTDB.vsmdi = BTDB.vsmdi
+		Local.testsettings = Local.testsettings
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(TestCaseManagementSettings) = postSolution
+		CategoryFile = BTDB.vsmdi
+	EndGlobalSection
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4B16680A-547C-495F-8BB2-8DA239E34194}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B16680A-547C-495F-8BB2-8DA239E34194}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B16680A-547C-495F-8BB2-8DA239E34194}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B16680A-547C-495F-8BB2-8DA239E34194}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
