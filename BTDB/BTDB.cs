@@ -318,6 +318,7 @@ namespace BTDB
 
         public FindKeyResult FindKey(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy)
         {
+            if (keyLen<0) throw new ArgumentOutOfRangeException("keyLen");
             if (strategy == FindKeyStrategy.Create) UpgradeToWriteTransaction();
             BTDBSecPtr rootBTree = _readLink != null ? _readLink.RootBTree : _owner._newState.RootBTree;
             if (rootBTree.Ptr==0)
@@ -329,10 +330,10 @@ namespace BTDB
                         newRootBTreeSector.Length = 1 + 4 + keyLen%BTDB.AllocationGranularity +
                                                     (keyLen >= BTDB.AllocationGranularity ? BTDB.PtrDownSize : 0) + 8;
                         newRootBTreeSector.Data[0] = 1;
-
+                        PackUnpack.PackUInt32(newRootBTreeSector.Data,1,(uint)keyLen);
                         Array.Copy(keyBuf, keyOfs + keyLen & ~(BTDB.AllocationGranularity - 1), newRootBTreeSector.Data,
                                    5, keyLen%BTDB.AllocationGranularity);
-                        _owner._newState.RootBTree = _owner.AllocateSector(newRootBTreeSector);
+                        _owner._newState.RootBTree.Ptr = _owner.AllocateSector(newRootBTreeSector);
                         _owner._newState.RootBTreeLevels = 1;
                         return FindKeyResult.Created;
                     case FindKeyStrategy.ExactMatch:
@@ -509,6 +510,9 @@ namespace BTDB
                 Array.Copy(oldData, _data, Math.Min(oldData.Length, value));
             }
         }
+
+        internal BTDBSector Parent { get; set; }
+        internal int IndexInParent { get; set; }
     }
 
     public class BTDB : ILowLevelDB
@@ -1002,6 +1006,15 @@ namespace BTDB
                 _commitNeeded = false;
                 _newState.TransactionCounter++;
             }
+        }
+
+        internal ulong AllocateSector(BTDBSector newSector)
+        {
+            // TODO Allocation
+            newSector.MakeDirty();
+            Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
+            _sectorCache.TryAdd(newSector.Position, new Lazy<BTDBSector>(() => newSector));
+            return newSector.Position;
         }
     }
 }
