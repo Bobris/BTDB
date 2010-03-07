@@ -9,8 +9,8 @@
     <ProjectGuid>{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>TestProject1</RootNamespace>
-    <AssemblyName>TestProject1</AssemblyName>
+    <RootNamespace>BTDBTest</RootNamespace>
+    <AssemblyName>BTDBTest</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{3AC096D0-A1C2-E12C-1390-A8335801FDAB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -45,6 +45,7 @@
     </CodeAnalysisDependentAssemblyPaths>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BTDBTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PtrLenListTest.cs" />
   </ItemGroup>

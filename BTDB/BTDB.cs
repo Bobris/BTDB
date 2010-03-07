@@ -280,11 +280,15 @@ namespace BTDB
         private readonly BTDB _owner;
         // if this is null then this transaction is writing kind
         private ReadTrLink _readLink;
+        private BTDBSector _currentKeySector;
+        private int _currentKeyIndex;
 
         internal Transaction(BTDB aOwner,ReadTrLink readLink)
         {
             _owner = aOwner;
             _readLink = readLink;
+            _currentKeySector = null;
+            _currentKeyIndex = -1;
         }
 
         public void Dispose()
@@ -308,11 +312,18 @@ namespace BTDB
 
         public bool FindPreviousKey()
         {
+            if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
+            if (_currentKeyIndex>0)
+            {
+                _currentKeyIndex--;
+                return true;
+            }
             throw new NotImplementedException();
         }
 
         public bool FindNextKey()
         {
+            if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
             throw new NotImplementedException();
         }
 
@@ -326,36 +337,74 @@ namespace BTDB
                 switch (strategy)
                 {
                     case FindKeyStrategy.Create:
-                        var newRootBTreeSector = new BTDBSector();
-                        newRootBTreeSector.Length = 1 + 4 + keyLen%BTDB.AllocationGranularity +
-                                                    (keyLen >= BTDB.AllocationGranularity ? BTDB.PtrDownSize : 0) + 8;
+                        var newRootBTreeSector = _owner.NewSector();
+                        newRootBTreeSector.Length = 1 + 4 + 8 + keyLen % BTDB.AllocationGranularity +
+                                                    (keyLen >= BTDB.AllocationGranularity ? BTDB.PtrDownSize : 0) ;
                         newRootBTreeSector.Data[0] = 1;
                         PackUnpack.PackUInt32(newRootBTreeSector.Data,1,(uint)keyLen);
                         Array.Copy(keyBuf, keyOfs + keyLen & ~(BTDB.AllocationGranularity - 1), newRootBTreeSector.Data,
                                    5, keyLen%BTDB.AllocationGranularity);
-                        _owner._newState.RootBTree.Ptr = _owner.AllocateSector(newRootBTreeSector);
+                        _owner._newState.RootBTree.Ptr = newRootBTreeSector.Position;
                         _owner._newState.RootBTreeLevels = 1;
+                        _owner.PublishSector(newRootBTreeSector);
+                        _currentKeySector = newRootBTreeSector;
+                        _currentKeyIndex = 0;
                         return FindKeyResult.Created;
                     case FindKeyStrategy.ExactMatch:
                     case FindKeyStrategy.PreferPrevious:
                     case FindKeyStrategy.PreferNext:
                     case FindKeyStrategy.OnlyPrevious:
                     case FindKeyStrategy.OnlyNext:
+                        _currentKeySector = null;
+                        _currentKeyIndex = -1;
                         return FindKeyResult.NotFound;
                     default:
                         throw new ArgumentOutOfRangeException("strategy");
                 }
             }
+            throw new NotImplementedException();
         }
 
         public int GetKeySize()
         {
-            throw new NotImplementedException();
+            if (_currentKeyIndex < 0) return -1;
+            int skip = _currentKeyIndex;
+            int p = 1;
+            var data = _currentKeySector.Data;
+            while (true)
+            {
+                uint kl = PackUnpack.UnpackUInt32(data, p);
+                if (skip == 0) return (int)kl;
+                p += 4;
+                ulong vl = PackUnpack.UnpackUInt64(data, p);
+                p += 8;
+                p += (int) (kl%BTDB.AllocationGranularity);
+                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int) (vl%BTDB.AllocationGranularity);
+                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                skip--;
+            }
         }
 
         public long GetValueSize()
         {
-            throw new NotImplementedException();
+            if (_currentKeyIndex < 0) return -1;
+            int skip = _currentKeyIndex;
+            int p = 1;
+            var data = _currentKeySector.Data;
+            while (true)
+            {
+                uint kl = PackUnpack.UnpackUInt32(data, p);
+                p += 4;
+                ulong vl = PackUnpack.UnpackUInt64(data, p);
+                if (skip == 0) return (long)vl;
+                p += 8;
+                p += (int)(kl % BTDB.AllocationGranularity);
+                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int)(vl % BTDB.AllocationGranularity);
+                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                skip--;
+            }
         }
 
         public long CountRange(byte[] key1Buf, int key1Ofs, int key1Len, bool key1Open, byte[] key2Buf, int key2Ofs, int key2Len, bool key2Open)
@@ -370,6 +419,39 @@ namespace BTDB
 
         public void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs)
         {
+            if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
+            int skip = _currentKeyIndex;
+            int p = 1;
+            var data = _currentKeySector.Data;
+            uint kl;
+            while (true)
+            {
+                kl = PackUnpack.UnpackUInt32(data, p);
+                if (skip == 0) break;
+                p += 4;
+                ulong vl = PackUnpack.UnpackUInt64(data, p);
+                p += 8;
+                p += (int)(kl % BTDB.AllocationGranularity);
+                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int)(vl % BTDB.AllocationGranularity);
+                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                skip--;
+            }
+            p += 12;
+            if (ofs >= kl)
+            {
+                len = 0;
+                buf = null;
+                bufOfs = 0;
+                return;
+            }
+            if (ofs >= kl - kl % BTDB.AllocationGranularity)
+            {
+                buf = data;
+                bufOfs = ofs%BTDB.AllocationGranularity;
+                len = (int)(kl % BTDB.AllocationGranularity) - bufOfs;
+                return;
+            }
             throw new NotImplementedException();
         }
 
@@ -546,6 +628,7 @@ namespace BTDB
         private Transaction _writeTr;
         private bool _commitNeeded;
         private bool _currentTrCommited;
+        private ulong _unallocatedCounter;
 
         internal BTDBSector TryGetSector(ulong position)
         {
@@ -1005,16 +1088,24 @@ namespace BTDB
                 _currentTrCommited = false;
                 _commitNeeded = false;
                 _newState.TransactionCounter++;
+                _unallocatedCounter = 1;
             }
         }
 
-        internal ulong AllocateSector(BTDBSector newSector)
+        internal void PublishSector(BTDBSector newSector)
         {
-            // TODO Allocation
-            newSector.MakeDirty();
             Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
             _sectorCache.TryAdd(newSector.Position, new Lazy<BTDBSector>(() => newSector));
-            return newSector.Position;
+        }
+
+        internal BTDBSector NewSector()
+        {
+            var result = new BTDBSector();
+            result.MakeDirty();
+            result.Position = _unallocatedCounter;
+            _unallocatedCounter++;
+            if (_unallocatedCounter % AllocationGranularity == 0) _unallocatedCounter++;
+            return result;
         }
     }
 }
