@@ -17,7 +17,7 @@ namespace BTDBTest
         {
             using(var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             {
-                using (ILowLevelDB db = new BTDB.BTDB())
+                using (ILowLevelDB db = new LowLevelDB())
                 {
                     Assert.IsTrue(db.Open(stream, false));
                 }
@@ -28,11 +28,11 @@ namespace BTDBTest
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             {
-                using (ILowLevelDB db = new BTDB.BTDB())
+                using (ILowLevelDB db = new LowLevelDB())
                 {
                     Assert.IsTrue(db.Open(stream, false));
                 }
-                using (ILowLevelDB db = new BTDB.BTDB())
+                using (ILowLevelDB db = new LowLevelDB())
                 {
                     Assert.IsFalse(db.Open(stream, false));
                 }

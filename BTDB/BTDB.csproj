@@ -43,7 +43,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BTDB.cs" />
+    <Compile Include="LowLevelDB.cs" />
     <Compile Include="ILowLevelObjectDB.cs" />
     <Compile Include="IStream.cs" />
     <Compile Include="PackUnpack.cs" />

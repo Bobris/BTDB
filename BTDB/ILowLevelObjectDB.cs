@@ -21,13 +21,6 @@ namespace BTDB
         Created
     }
 
-    public enum EraseStrategy
-    {
-        JustErase,
-        MovePrevious,
-        MoveNext,
-    }
-
     public interface ILowLevelDBTransaction : IDisposable
     {
         /// <summary>

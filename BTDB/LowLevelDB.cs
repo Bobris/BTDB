@@ -244,7 +244,7 @@ namespace BTDB
 
     internal struct BTDBSecPtr
     {
-        internal ulong Ptr;
+        internal long Ptr;
         internal uint Checksum;
     }
 
@@ -277,13 +277,13 @@ namespace BTDB
 
     internal class Transaction : ILowLevelDBTransaction
     {
-        private readonly BTDB _owner;
+        private readonly LowLevelDB _owner;
         // if this is null then this transaction is writing kind
         private ReadTrLink _readLink;
         private BTDBSector _currentKeySector;
         private int _currentKeyIndex;
 
-        internal Transaction(BTDB aOwner,ReadTrLink readLink)
+        internal Transaction(LowLevelDB aOwner,ReadTrLink readLink)
         {
             _owner = aOwner;
             _readLink = readLink;
@@ -338,12 +338,12 @@ namespace BTDB
                 {
                     case FindKeyStrategy.Create:
                         var newRootBTreeSector = _owner.NewSector();
-                        newRootBTreeSector.Length = 1 + 4 + 8 + keyLen % BTDB.AllocationGranularity +
-                                                    (keyLen >= BTDB.AllocationGranularity ? BTDB.PtrDownSize : 0) ;
+                        newRootBTreeSector.Length = 1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
+                                                    (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0) ;
                         newRootBTreeSector.Data[0] = 1;
                         PackUnpack.PackUInt32(newRootBTreeSector.Data,1,(uint)keyLen);
-                        Array.Copy(keyBuf, keyOfs + keyLen & ~(BTDB.AllocationGranularity - 1), newRootBTreeSector.Data,
-                                   5, keyLen%BTDB.AllocationGranularity);
+                        Array.Copy(keyBuf, keyOfs + keyLen & ~(LowLevelDB.AllocationGranularity - 1), newRootBTreeSector.Data,
+                                   5, keyLen%LowLevelDB.AllocationGranularity);
                         _owner._newState.RootBTree.Ptr = newRootBTreeSector.Position;
                         _owner._newState.RootBTreeLevels = 1;
                         _owner.PublishSector(newRootBTreeSector);
@@ -378,10 +378,10 @@ namespace BTDB
                 p += 4;
                 ulong vl = PackUnpack.UnpackUInt64(data, p);
                 p += 8;
-                p += (int) (kl%BTDB.AllocationGranularity);
-                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
-                p += (int) (vl%BTDB.AllocationGranularity);
-                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int) (kl%LowLevelDB.AllocationGranularity);
+                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
+                p += (int) (vl%LowLevelDB.AllocationGranularity);
+                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
                 skip--;
             }
         }
@@ -399,10 +399,10 @@ namespace BTDB
                 ulong vl = PackUnpack.UnpackUInt64(data, p);
                 if (skip == 0) return (long)vl;
                 p += 8;
-                p += (int)(kl % BTDB.AllocationGranularity);
-                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
-                p += (int)(vl % BTDB.AllocationGranularity);
-                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int)(kl % LowLevelDB.AllocationGranularity);
+                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
+                p += (int)(vl % LowLevelDB.AllocationGranularity);
+                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
                 skip--;
             }
         }
@@ -431,10 +431,10 @@ namespace BTDB
                 p += 4;
                 ulong vl = PackUnpack.UnpackUInt64(data, p);
                 p += 8;
-                p += (int)(kl % BTDB.AllocationGranularity);
-                if (kl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
-                p += (int)(vl % BTDB.AllocationGranularity);
-                if (vl >= BTDB.AllocationGranularity) p += BTDB.PtrDownSize;
+                p += (int)(kl % LowLevelDB.AllocationGranularity);
+                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
+                p += (int)(vl % LowLevelDB.AllocationGranularity);
+                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
                 skip--;
             }
             p += 12;
@@ -445,11 +445,11 @@ namespace BTDB
                 bufOfs = 0;
                 return;
             }
-            if (ofs >= kl - kl % BTDB.AllocationGranularity)
+            if (ofs >= kl - kl % LowLevelDB.AllocationGranularity)
             {
                 buf = data;
-                bufOfs = ofs%BTDB.AllocationGranularity;
-                len = (int)(kl % BTDB.AllocationGranularity) - bufOfs;
+                bufOfs = p + ofs%LowLevelDB.AllocationGranularity;
+                len = (int)(kl % LowLevelDB.AllocationGranularity) - bufOfs;
                 return;
             }
             throw new NotImplementedException();
@@ -531,7 +531,7 @@ namespace BTDB
 
     internal class BTDBSector
     {
-        private ulong _position;
+        private long _position;
         private bool _dirty;
         private byte[] _data;
 
@@ -552,10 +552,10 @@ namespace BTDB
 
         internal bool Allocated
         {
-            get { return _position%BTDB.AllocationGranularity == 0; }
+            get { return _position>0; }
         }
 
-        internal ulong Position
+        internal long Position
         {
             get { return _position; }
             set { _position = value; }
@@ -575,8 +575,8 @@ namespace BTDB
             }
             set
             {
-                Debug.Assert(value >= 0 && value <= BTDB.MaxSectorSize);
-                Debug.Assert(value % BTDB.AllocationGranularity == 0);
+                Debug.Assert(value >= 0 && value <= LowLevelDB.MaxSectorSize);
+                Debug.Assert(value % LowLevelDB.AllocationGranularity == 0);
                 if (value == 0)
                 {
                     _data = null;
@@ -594,10 +594,9 @@ namespace BTDB
         }
 
         internal BTDBSector Parent { get; set; }
-        internal int IndexInParent { get; set; }
     }
 
-    public class BTDB : ILowLevelDB
+    public class LowLevelDB : ILowLevelDB
     {
         internal const int FirstRootOffset = 128;
         internal const int RootSize = 64;
@@ -613,7 +612,7 @@ namespace BTDB
         private IStream _stream;
         private bool _disposeStream;
 
-        private readonly ConcurrentDictionary<ulong, Lazy<BTDBSector>> _sectorCache = new ConcurrentDictionary<ulong, Lazy<BTDBSector>>();
+        private readonly ConcurrentDictionary<long, Lazy<BTDBSector>> _sectorCache = new ConcurrentDictionary<long, Lazy<BTDBSector>>();
         private readonly byte[] _headerData = new byte[TotalHeaderSize];
         private BTDBState _currentState = new BTDBState();
         internal BTDBState _newState = new BTDBState();
@@ -628,9 +627,9 @@ namespace BTDB
         private Transaction _writeTr;
         private bool _commitNeeded;
         private bool _currentTrCommited;
-        private ulong _unallocatedCounter;
+        private long _unallocatedCounter;
 
-        internal BTDBSector TryGetSector(ulong position)
+        internal BTDBSector TryGetSector(long position)
         {
             Lazy<BTDBSector> res;
             if (_sectorCache.TryGetValue(position, out res))
@@ -640,21 +639,21 @@ namespace BTDB
             return null;
         }
 
-        internal BTDBSector ReadSector(ulong positionWithSize, uint checksum)
+        internal BTDBSector ReadSector(long positionWithSize, uint checksum)
         {
-            return ReadSector(positionWithSize & MaskOfPosition, (int) (positionWithSize & 0xFF) + 1, checksum);
+            return ReadSector(positionWithSize & MaskOfPosition, (int) (positionWithSize & 0xFF)+1, checksum);
         }
 
-        internal BTDBSector ReadSector(ulong position, int size, uint checksum)
+        internal BTDBSector ReadSector(long position, int size, uint checksum)
         {
-            Debug.Assert(position != 0);
+            Debug.Assert(position > 0);
             Debug.Assert(size > 0);
             Debug.Assert(size <= MaxSectorSize/AllocationGranularity);
             size = size * AllocationGranularity;
             var lazy = new Lazy<BTDBSector>(() =>
             {
                 var res = new BTDBSector { Position = position, Length = size };
-                if (_stream.Read(res.Data, 0, size, position) != size)
+                if (_stream.Read(res.Data, 0, size, (ulong)position) != size)
                 {
                     throw new BTDBException("Data reading error");
                 }
@@ -767,14 +766,16 @@ namespace BTDB
 
         internal void StoreStateToHeaderBuffer(BTDBState state)
         {
+            Debug.Assert(state.RootBTree.Ptr >= 0);
+            Debug.Assert(state.RootAllocPage.Ptr >= 0);
             int o = (int) state.Position;
-            PackUnpack.PackUInt64(_headerData, o, state.RootBTree.Ptr);
+            PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootBTree.Ptr);
             o += 8;
             PackUnpack.PackUInt32(_headerData, o, state.RootBTree.Checksum);
             o += 4;
             PackUnpack.PackUInt32(_headerData, o, state.RootBTreeLevels);
             o += 4;
-            PackUnpack.PackUInt64(_headerData, o, state.RootAllocPage.Ptr);
+            PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootAllocPage.Ptr);
             o += 8;
             PackUnpack.PackUInt32(_headerData, o, state.RootAllocPage.Checksum);
             o += 4;
@@ -799,13 +800,15 @@ namespace BTDB
             {
                 return false;
             }
-            state.RootBTree.Ptr = PackUnpack.UnpackUInt64(_headerData, o);
+            state.RootBTree.Ptr = (long)PackUnpack.UnpackUInt64(_headerData, o);
+            if (state.RootBTree.Ptr < 0) return false;
             o += 8;
             state.RootBTree.Checksum = PackUnpack.UnpackUInt32(_headerData, o);
             o += 4;
             state.RootBTreeLevels = PackUnpack.UnpackUInt32(_headerData, o);
             o += 4;
-            state.RootAllocPage.Ptr = PackUnpack.UnpackUInt64(_headerData, o);
+            state.RootAllocPage.Ptr = (long)PackUnpack.UnpackUInt64(_headerData, o);
+            if (state.RootAllocPage.Ptr < 0) return false;
             o += 8;
             state.RootAllocPage.Checksum = PackUnpack.UnpackUInt32(_headerData, o);
             o += 4;
@@ -1088,7 +1091,7 @@ namespace BTDB
                 _currentTrCommited = false;
                 _commitNeeded = false;
                 _newState.TransactionCounter++;
-                _unallocatedCounter = 1;
+                _unallocatedCounter = 0;
             }
         }
 
@@ -1102,9 +1105,8 @@ namespace BTDB
         {
             var result = new BTDBSector();
             result.MakeDirty();
+            _unallocatedCounter--;
             result.Position = _unallocatedCounter;
-            _unallocatedCounter++;
-            if (_unallocatedCounter % AllocationGranularity == 0) _unallocatedCounter++;
             return result;
         }
     }
