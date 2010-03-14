@@ -43,6 +43,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BitArrayManipulation.cs" />
+    <Compile Include="Checksum.cs" />
     <Compile Include="LowLevelDB.cs" />
     <Compile Include="ILowLevelObjectDB.cs" />
     <Compile Include="IStream.cs" />

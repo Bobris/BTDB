@@ -8,6 +8,8 @@ namespace BTDBTest
     [TestClass]
     public class BTDBTest
     {
+        private byte[] _key1 = new byte[] { 1,2,3 };
+
         private static void Nothing(string s)
         {
         }
@@ -38,6 +40,21 @@ namespace BTDBTest
                 }
             }
         }
+        [TestMethod]
+        public void FirstTransaction()
+        {
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr=db.StartTransaction())
+                {
+                    Assert.AreEqual(FindKeyResult.Created,tr.FindKey(_key1,0,_key1.Length,FindKeyStrategy.Create));
+                    tr.Commit();
+                }
+            }
+        }
+
     }
 }
 

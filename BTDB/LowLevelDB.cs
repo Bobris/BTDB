@@ -1,7 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
 
 namespace BTDB
@@ -29,213 +27,13 @@ namespace BTDB
      *    4 - Checksum
      */
 
-    internal static class BTDBUtils
-    {
-        internal static long CalcDeltaObjIdsOnLevel(int aLevel)
-        {
-            return ((long) 1) << (5*(aLevel - 1));
-        }
-    }
-
-
-    public static class Checksum
-    {
-        public static uint CalcFletcher(byte[] data, uint position, uint length)
-        {
-            Debug.Assert((length & 1) == 0);
-            length >>= 1;
-            uint sum1 = 0xffff;
-            uint sum2 = 0xffff;
-            while (length > 0)
-            {
-                uint tlen = length > 360 ? 360 : length;
-                length -= tlen;
-                do
-                {
-                    sum1 += (uint) (data[position] + data[position + 1]*256);
-                    position += 2;
-                    sum2 += sum1;
-                } while (--tlen > 0);
-                sum1 = (sum1 & 0xffff) + (sum1 >> 16);
-                sum2 = (sum2 & 0xffff) + (sum2 >> 16);
-            }
-            // Second reduction step to reduce sums to 16 bits
-            sum1 = (sum1 & 0xffff) + (sum1 >> 16);
-            sum2 = (sum2 & 0xffff) + (sum2 >> 16);
-            return sum2 << 16 | sum1;
-        }
-    }
-
-    internal class BitArrayManipulation
-    {
-        private static readonly byte[] FirstHoleSize = new byte[]
-            {
-                8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0,
-                2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1,
-                0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0,
-                1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2,
-                0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
-                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1,
-                0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0,
-                1, 0, 3, 0, 1, 0, 2, 0, 1, 0
-            };
-
-        private static readonly byte[] LastHoleSize = new byte[]
-            {
-                8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2,
-                2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
-                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            };
-
-        private static readonly byte[] MaxHoleSize = new byte[]
-            {
-                8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 3, 3,
-                2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 6, 5, 4, 4, 3, 3, 3,
-                3, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2,
-                1, 1, 2, 1, 1, 1, 4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 7, 6, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 3,
-                3, 3, 3, 4, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 1, 1, 2, 1, 1, 1,
-                4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 6, 5, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2,
-                2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 1, 1, 2, 1, 1, 1, 4, 3, 2, 2, 2, 1,
-                1, 1, 3, 2, 1, 1, 2, 1, 1, 0
-            };
-
-        private static readonly byte[] MaxHoleOffset = new byte[]
-            {
-                0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 0, 1, 5, 5, 5, 5, 5, 5, 0, 5, 5, 5, 5, 5, 5, 5, 0, 1, 2, 2,
-                0, 3, 3, 3, 0, 1, 6, 6, 0, 6, 6, 6, 0, 1, 2, 2, 0, 6, 6, 6, 0, 1, 6, 6, 0, 6, 6, 6, 0, 1, 2, 2, 3, 3, 3,
-                3, 0, 1, 4, 4, 0, 4, 4, 4, 0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1,
-                0, 2, 0, 1, 0, 4, 0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 2, 2, 3, 3, 3, 3, 0, 4, 4, 4, 4,
-                4, 4, 4, 0, 1, 2, 2, 0, 5, 5, 5, 0, 1, 5, 5, 0, 5, 5, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1, 0, 2, 0, 1, 0, 4,
-                0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 2, 2, 3, 3, 3, 3, 0, 1, 4, 4, 0, 4, 4, 4, 0, 1, 2,
-                2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 2, 2, 0, 1,
-                0, 3, 0, 1, 0, 2, 0, 1, 0, 0
-            };
-
-        internal static int IndexOfFirstHole(byte[] data, int size)
-        {
-            int pos = 0;
-            int sizetill = 0;
-            int laststart = 0;
-            while (pos < data.Length)
-            {
-                byte b = data[pos];
-                pos++;
-                if (b == 255)
-                {
-                    if (sizetill >= size) return laststart;
-                    sizetill = 0;
-                    laststart = pos * 8;
-                }
-                else if (b == 0)
-                {
-                    sizetill += 8;
-                }
-                else
-                {
-                    sizetill += FirstHoleSize[b];
-                    if (sizetill >= size) return laststart;
-                    if (MaxHoleSize[b] >= size) return pos*8 + MaxHoleOffset[b] - 8;
-                    sizetill = LastHoleSize[b];
-                    laststart = pos*8 - sizetill;
-                }
-            }
-            if (sizetill >= size) return laststart;
-            return -1;
-        }
-
-        internal static void SetBits(byte[] data, int position, int size)
-        {
-            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length*8);
-            byte startMask = (byte) ~(255 >> (8 - (position & 7)));
-            int startBytePos = position/8;
-            byte endMask = (byte) (255 >> (7 - ((position + size - 1) & 7)));
-            int endBytePos = (position + size - 1)/8;
-            if (startBytePos == endBytePos)
-            {
-                data[startBytePos] |= (byte) (startMask & endMask);
-            }
-            else
-            {
-                data[startBytePos] |= startMask;
-                startBytePos++;
-                while (startBytePos < endBytePos)
-                {
-                    data[startBytePos] = 255;
-                    startBytePos++;
-                }
-                data[endBytePos] |= endMask;
-            }
-        }
-
-        internal static void UnsetBits(byte[] data, int position, int size)
-        {
-            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length*8);
-            byte startMask = (byte) ~(255 >> (8 - (position & 7)));
-            int startBytePos = position/8;
-            byte endMask = (byte) (255 >> (7 - ((position + size - 1) & 7)));
-            int endBytePos = (position + size - 1)/8;
-            if (startBytePos == endBytePos)
-            {
-                data[startBytePos] &= (byte) ~(startMask & endMask);
-            }
-            else
-            {
-                data[startBytePos] &= (byte) ~startMask;
-                startBytePos++;
-                while (startBytePos < endBytePos)
-                {
-                    data[startBytePos] = 0;
-                    startBytePos++;
-                }
-                data[endBytePos] &= (byte) ~endMask;
-            }
-        }
-
-        internal static int SizeOfBiggestHoleUpTo255(byte[] data)
-        {
-            int pos = 0;
-            int sizetill = 0;
-            int sizemax = 0;
-            while (pos < data.Length)
-            {
-                byte b = data[pos];
-                pos++;
-                if (b == 255)
-                {
-                    if (sizetill > sizemax) sizemax = sizetill;
-                    sizetill = 0;
-                }
-                else if (b == 0)
-                {
-                    sizetill += 8;
-                    if (sizetill > 255) break;
-                }
-                else
-                {
-                    sizetill += FirstHoleSize[b];
-                    if (sizetill > sizemax) sizemax = sizetill;
-                    if (MaxHoleSize[b] > sizemax) sizemax = MaxHoleSize[b];
-                    sizetill = LastHoleSize[b];
-                }
-            }
-            if (sizetill > sizemax) sizemax = sizetill;
-            if (sizemax > 255) sizemax = 255;
-            return sizemax;
-        }
-    }
-
     internal class BTDBState
     {
         internal BTDBSecPtr RootBTree;
         internal uint RootBTreeLevels;
         internal BTDBSecPtr RootAllocPage;
         internal uint RootAllocPageLevels;
-        internal ulong WantedDatabaseLength;
+        internal long WantedDatabaseLength;
         internal ulong TransactionCounter;
         internal ulong TransactionLogPtr;
         internal uint TransactionAllocSize;
@@ -594,6 +392,8 @@ namespace BTDB
         }
 
         internal BTDBSector Parent { get; set; }
+        internal BTDBSector NextLink { get; set; }
+        internal BTDBSector PrevLink { get; set; }
     }
 
     public class LowLevelDB : ILowLevelDB
@@ -604,7 +404,7 @@ namespace BTDB
         internal const int SecondRootOffset = FirstRootOffset + RootSize;
         internal const int TotalHeaderSize = SecondRootOffset + RootSize;
         internal const int AllocationGranularity = 256;
-        internal const ulong MaskOfPosition = 0xFFFFFFFFFFFFFF00ul;
+        internal const long MaskOfPosition = 0x7FFFFFFFFFFFFF00L;
         internal const int MaxSectorSize = 256 * AllocationGranularity;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
@@ -628,6 +428,10 @@ namespace BTDB
         private bool _commitNeeded;
         private bool _currentTrCommited;
         private long _unallocatedCounter;
+        private BTDBSector _unallocatedSectorHeadLink;
+        private BTDBSector _unallocatedSectorTailLink;
+        private BTDBSector _dirtySectorHeadLink;
+        private BTDBSector _dirtySectorTailLink;
 
         internal BTDBSector TryGetSector(long position)
         {
@@ -768,6 +572,7 @@ namespace BTDB
         {
             Debug.Assert(state.RootBTree.Ptr >= 0);
             Debug.Assert(state.RootAllocPage.Ptr >= 0);
+            Debug.Assert(state.WantedDatabaseLength >= 0);
             int o = (int) state.Position;
             PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootBTree.Ptr);
             o += 8;
@@ -781,7 +586,7 @@ namespace BTDB
             o += 4;
             PackUnpack.PackUInt32(_headerData, o, state.RootAllocPageLevels);
             o += 4;
-            PackUnpack.PackUInt64(_headerData, o, state.WantedDatabaseLength);
+            PackUnpack.PackInt64(_headerData, o, state.WantedDatabaseLength);
             o += 8;
             PackUnpack.PackUInt64(_headerData, o, state.TransactionCounter);
             o += 8;
@@ -814,7 +619,8 @@ namespace BTDB
             o += 4;
             state.RootAllocPageLevels = PackUnpack.UnpackUInt32(_headerData, o);
             o += 4;
-            state.WantedDatabaseLength = PackUnpack.UnpackUInt64(_headerData, o);
+            state.WantedDatabaseLength = PackUnpack.UnpackInt64(_headerData, o);
+            if (state.WantedDatabaseLength < AllocationGranularity) return false;
             o += 8;
             state.TransactionCounter = PackUnpack.UnpackUInt64(_headerData, o);
             o += 8;
@@ -1032,7 +838,7 @@ namespace BTDB
                         return;
                     }
                     link = _readTrLinkTail;
-                };
+                }
             }
         }
 
@@ -1050,8 +856,16 @@ namespace BTDB
         internal void CommitWriteTransaction()
         {
             Debug.Assert(_writeTr!=null);
-            if (_currentTrCommited) new BTDBException("Only dispose is allowed after commit");
+            if (_currentTrCommited) throw new BTDBException("Only dispose is allowed after commit");
             if (_commitNeeded == false) return;
+            while (_unallocatedSectorHeadLink!=null)
+            {
+                RealSectorAllocate(_unallocatedSectorHeadLink);
+            }
+            while (_dirtySectorHeadLink!=null)
+            {
+                FlushDirtySector(_dirtySectorHeadLink);
+            }
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
             StoreStateToHeaderBuffer(_newState);
             _stream.Flush();
@@ -1059,6 +873,77 @@ namespace BTDB
             TransferNewStateToCurrentState();
             _commitNeeded = false;
             _currentTrCommited = true;
+        }
+
+        private void FlushDirtySector(BTDBSector dirtySector)
+        {
+            _stream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
+            var checksum = Checksum.CalcFletcher(dirtySector.Data, 0, (uint)dirtySector.Length);
+            dirtySector.MakeClean();
+            UnlinkFromDirtySectors(dirtySector);
+        }
+
+        private void RealSectorAllocate(BTDBSector unallocatedSector)
+        {
+            if (_newState.RootAllocPageLevels==0)
+            {
+                unallocatedSector.Position = _newState.WantedDatabaseLength;
+                _newState.WantedDatabaseLength += RoundToAllocationGranularity(unallocatedSector.Length);
+                UnlinkFromUnallocatedSectors(unallocatedSector);
+                LinkToTailOfDirtySectors(unallocatedSector);
+            }
+        }
+
+        private void UnlinkFromUnallocatedSectors(BTDBSector unallocatedSector)
+        {
+            if (unallocatedSector.PrevLink==null)
+            {
+                _unallocatedSectorHeadLink = unallocatedSector.NextLink;
+                if (unallocatedSector.NextLink!=null)
+                {
+                    unallocatedSector.NextLink.PrevLink = null;
+                }
+                else
+                {
+                    _unallocatedSectorTailLink = null;
+                }
+            }
+            else if (unallocatedSector.NextLink==null)
+            {
+                _unallocatedSectorTailLink = unallocatedSector.PrevLink;
+                unallocatedSector.PrevLink.NextLink = null;
+            }
+            else
+            {
+                unallocatedSector.PrevLink.NextLink = unallocatedSector.NextLink;
+                unallocatedSector.NextLink.PrevLink = unallocatedSector.PrevLink;
+            }
+        }
+
+        private void UnlinkFromDirtySectors(BTDBSector dirtySector)
+        {
+            if (dirtySector.PrevLink == null)
+            {
+                _dirtySectorHeadLink = dirtySector.NextLink;
+                if (dirtySector.NextLink != null)
+                {
+                    dirtySector.NextLink.PrevLink = null;
+                }
+                else
+                {
+                    _dirtySectorTailLink = null;
+                }
+            }
+            else if (dirtySector.NextLink == null)
+            {
+                _dirtySectorTailLink = dirtySector.PrevLink;
+                dirtySector.PrevLink.NextLink = null;
+            }
+            else
+            {
+                dirtySector.PrevLink.NextLink = dirtySector.NextLink;
+                dirtySector.NextLink.PrevLink = dirtySector.PrevLink;
+            }
         }
 
         internal void DisposeWriteTransaction()
@@ -1092,13 +977,11 @@ namespace BTDB
                 _commitNeeded = false;
                 _newState.TransactionCounter++;
                 _unallocatedCounter = 0;
+                Debug.Assert(_unallocatedSectorHeadLink != null);
+                Debug.Assert(_unallocatedSectorTailLink != null);
+                Debug.Assert(_dirtySectorHeadLink != null);
+                Debug.Assert(_dirtySectorTailLink != null);
             }
-        }
-
-        internal void PublishSector(BTDBSector newSector)
-        {
-            Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
-            _sectorCache.TryAdd(newSector.Position, new Lazy<BTDBSector>(() => newSector));
         }
 
         internal BTDBSector NewSector()
@@ -1108,6 +991,49 @@ namespace BTDB
             _unallocatedCounter--;
             result.Position = _unallocatedCounter;
             return result;
+        }
+
+        internal void PublishSector(BTDBSector newSector)
+        {
+            Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
+            _sectorCache.TryAdd(newSector.Position, new Lazy<BTDBSector>(() => newSector));
+            _commitNeeded = true;
+            LinkToTailOfUnallocatedSectors(newSector);
+        }
+
+        private void LinkToTailOfUnallocatedSectors(BTDBSector newSector)
+        {
+            newSector.PrevLink = _unallocatedSectorTailLink;
+            if (_unallocatedSectorTailLink!=null)
+            {
+                _unallocatedSectorTailLink.NextLink = newSector;
+            }
+            else
+            {
+                _unallocatedSectorHeadLink = newSector;
+            }
+            _unallocatedSectorTailLink = newSector;
+        }
+
+        private void LinkToTailOfDirtySectors(BTDBSector dirtizeSector)
+        {
+            dirtizeSector.NextLink = null;
+            dirtizeSector.PrevLink = _dirtySectorTailLink;
+            if (_dirtySectorTailLink != null)
+            {
+                _dirtySectorTailLink.NextLink = dirtizeSector;
+            }
+            else
+            {
+                _dirtySectorHeadLink = dirtizeSector;
+            }
+            _dirtySectorTailLink = dirtizeSector;
+        }
+
+        internal static long RoundToAllocationGranularity(long value)
+        {
+            Debug.Assert(value>0);
+            return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);
         }
     }
 }
