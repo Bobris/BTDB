@@ -265,6 +265,29 @@ namespace BTDB
             }
         }
 
+        public bool Contains(ulong position)
+        {
+            uint l = 0, r = _size;
+            while (l < r)
+            {
+                uint m = (l + r) / 2;
+                var cur = _list[m];
+                if (position < cur.Key)
+                {
+                    r = m;
+                }
+                else if (cur.Key + cur.Value <= position)
+                {
+                    l = m + 1;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private KeyValuePair<ulong, ulong>[] _list;
         private uint _size;
     }

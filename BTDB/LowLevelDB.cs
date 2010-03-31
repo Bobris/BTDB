@@ -27,11 +27,11 @@ namespace BTDB
      *    4 - Checksum
      */
 
-    internal class BTDBState
+    internal class State
     {
-        internal BTDBSecPtr RootBTree;
+        internal SectorPtr RootBTree;
         internal uint RootBTreeLevels;
-        internal BTDBSecPtr RootAllocPage;
+        internal SectorPtr RootAllocPage;
         internal uint RootAllocPageLevels;
         internal long WantedDatabaseLength;
         internal ulong TransactionCounter;
@@ -40,7 +40,7 @@ namespace BTDB
         internal uint Position;
     }
 
-    internal struct BTDBSecPtr
+    internal struct SectorPtr
     {
         internal long Ptr;
         internal uint Checksum;
@@ -49,7 +49,8 @@ namespace BTDB
     [Serializable]
     public class BTDBException : Exception
     {
-        public BTDBException(string aMessage) : base(aMessage)
+        public BTDBException(string aMessage)
+            : base(aMessage)
         {
         }
     }
@@ -70,7 +71,7 @@ namespace BTDB
         internal ReadTrLink Next;
         internal ulong TransactionNumber;
         internal int ReadTrRunningCount;
-        internal BTDBSecPtr RootBTree;
+        internal SectorPtr RootBTree;
     }
 
     internal class Transaction : ILowLevelDBTransaction
@@ -78,10 +79,10 @@ namespace BTDB
         private readonly LowLevelDB _owner;
         // if this is null then this transaction is writing kind
         private ReadTrLink _readLink;
-        private BTDBSector _currentKeySector;
+        private Sector _currentKeySector;
         private int _currentKeyIndex;
 
-        internal Transaction(LowLevelDB aOwner,ReadTrLink readLink)
+        internal Transaction(LowLevelDB aOwner, ReadTrLink readLink)
         {
             _owner = aOwner;
             _readLink = readLink;
@@ -91,7 +92,7 @@ namespace BTDB
 
         public void Dispose()
         {
-            if (_readLink!=null)
+            if (_readLink != null)
             {
                 _owner.DisposeReadTransaction(_readLink);
             }
@@ -111,7 +112,7 @@ namespace BTDB
         public bool FindPreviousKey()
         {
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
-            if (_currentKeyIndex>0)
+            if (_currentKeyIndex > 0)
             {
                 _currentKeyIndex--;
                 return true;
@@ -127,21 +128,22 @@ namespace BTDB
 
         public FindKeyResult FindKey(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy)
         {
-            if (keyLen<0) throw new ArgumentOutOfRangeException("keyLen");
+            if (keyLen < 0) throw new ArgumentOutOfRangeException("keyLen");
             if (strategy == FindKeyStrategy.Create) UpgradeToWriteTransaction();
-            BTDBSecPtr rootBTree = _readLink != null ? _readLink.RootBTree : _owner._newState.RootBTree;
-            if (rootBTree.Ptr==0)
+            SectorPtr rootBTree = _readLink != null ? _readLink.RootBTree : _owner._newState.RootBTree;
+            if (rootBTree.Ptr == 0)
             {
                 switch (strategy)
                 {
                     case FindKeyStrategy.Create:
                         var newRootBTreeSector = _owner.NewSector();
-                        newRootBTreeSector.Length = 1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
-                                                    (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0) ;
+                        newRootBTreeSector.Type = SectorType.BTreeChild;
+                        newRootBTreeSector.Length = LowLevelDB.RoundToAllocationGranularity(1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
+                                                    (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0));
                         newRootBTreeSector.Data[0] = 1;
-                        PackUnpack.PackUInt32(newRootBTreeSector.Data,1,(uint)keyLen);
+                        PackUnpack.PackUInt32(newRootBTreeSector.Data, 1, (uint)keyLen);
                         Array.Copy(keyBuf, keyOfs + keyLen & ~(LowLevelDB.AllocationGranularity - 1), newRootBTreeSector.Data,
-                                   5, keyLen%LowLevelDB.AllocationGranularity);
+                                   5, keyLen % LowLevelDB.AllocationGranularity);
                         _owner._newState.RootBTree.Ptr = newRootBTreeSector.Position;
                         _owner._newState.RootBTreeLevels = 1;
                         _owner.PublishSector(newRootBTreeSector);
@@ -176,9 +178,9 @@ namespace BTDB
                 p += 4;
                 ulong vl = PackUnpack.UnpackUInt64(data, p);
                 p += 8;
-                p += (int) (kl%LowLevelDB.AllocationGranularity);
+                p += (int)(kl % LowLevelDB.AllocationGranularity);
                 if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                p += (int) (vl%LowLevelDB.AllocationGranularity);
+                p += (int)(vl % LowLevelDB.AllocationGranularity);
                 if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
                 skip--;
             }
@@ -246,7 +248,7 @@ namespace BTDB
             if (ofs >= kl - kl % LowLevelDB.AllocationGranularity)
             {
                 buf = data;
-                bufOfs = p + ofs%LowLevelDB.AllocationGranularity;
+                bufOfs = p + ofs % LowLevelDB.AllocationGranularity;
                 len = (int)(kl % LowLevelDB.AllocationGranularity) - bufOfs;
                 return;
             }
@@ -327,36 +329,29 @@ namespace BTDB
         }
     }
 
-    internal class BTDBSector
+    internal enum SectorType
     {
-        private long _position;
-        private bool _dirty;
-        private byte[] _data;
+        BTreeParent,
+        BTreeChild,
+        AllocParent,
+        AllocChild,
+        DataParent,
+        DataChild,
+    }
 
-        internal bool Dirty
-        {
-            get { return _dirty; }
-        }
-
-        internal void MakeDirty()
-        {
-            _dirty = true;
-        }
-
-        internal void MakeClean()
-        {
-            _dirty = false;
-        }
+    internal class Sector
+    {
+        internal SectorType Type { get; set; }
+        internal long Position { get; set; }
+        internal bool InTransaction { get; set; }
+        internal bool Dirty { get; set; }
+        internal Sector Parent { get; set; }
+        internal Sector NextLink { get; set; }
+        internal Sector PrevLink { get; set; }
 
         internal bool Allocated
         {
-            get { return _position>0; }
-        }
-
-        internal long Position
-        {
-            get { return _position; }
-            set { _position = value; }
+            get { return Position > 0; }
         }
 
         internal byte[] Data
@@ -390,10 +385,7 @@ namespace BTDB
                 Array.Copy(oldData, _data, Math.Min(oldData.Length, value));
             }
         }
-
-        internal BTDBSector Parent { get; set; }
-        internal BTDBSector NextLink { get; set; }
-        internal BTDBSector PrevLink { get; set; }
+        private byte[] _data;
     }
 
     public class LowLevelDB : ILowLevelDB
@@ -412,10 +404,10 @@ namespace BTDB
         private IStream _stream;
         private bool _disposeStream;
 
-        private readonly ConcurrentDictionary<long, Lazy<BTDBSector>> _sectorCache = new ConcurrentDictionary<long, Lazy<BTDBSector>>();
+        private readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
         private readonly byte[] _headerData = new byte[TotalHeaderSize];
-        private BTDBState _currentState = new BTDBState();
-        internal BTDBState _newState = new BTDBState();
+        private State _currentState = new State();
+        internal State _newState = new State();
         private readonly PtrLenList _spaceAllocatedInTransaction = new PtrLenList();
         private readonly PtrLenList _spaceDeallocatedInTransaction = new PtrLenList();
         private readonly PtrLenList _spaceTemporaryNotReusable = new PtrLenList();
@@ -428,14 +420,14 @@ namespace BTDB
         private bool _commitNeeded;
         private bool _currentTrCommited;
         private long _unallocatedCounter;
-        private BTDBSector _unallocatedSectorHeadLink;
-        private BTDBSector _unallocatedSectorTailLink;
-        private BTDBSector _dirtySectorHeadLink;
-        private BTDBSector _dirtySectorTailLink;
+        private Sector _unallocatedSectorHeadLink;
+        private Sector _unallocatedSectorTailLink;
+        private Sector _dirtySectorHeadLink;
+        private Sector _dirtySectorTailLink;
 
-        internal BTDBSector TryGetSector(long position)
+        internal Sector TryGetSector(long position)
         {
-            Lazy<BTDBSector> res;
+            Lazy<Sector> res;
             if (_sectorCache.TryGetValue(position, out res))
             {
                 return res.Value;
@@ -443,20 +435,24 @@ namespace BTDB
             return null;
         }
 
-        internal BTDBSector ReadSector(long positionWithSize, uint checksum)
+        internal Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
         {
-            return ReadSector(positionWithSize & MaskOfPosition, (int) (positionWithSize & 0xFF)+1, checksum);
+            return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & 0xFF) + 1, checksum, inWriteTransaction);
         }
 
-        internal BTDBSector ReadSector(long position, int size, uint checksum)
+        internal Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction)
         {
             Debug.Assert(position > 0);
             Debug.Assert(size > 0);
-            Debug.Assert(size <= MaxSectorSize/AllocationGranularity);
+            Debug.Assert(size <= MaxSectorSize / AllocationGranularity);
             size = size * AllocationGranularity;
-            var lazy = new Lazy<BTDBSector>(() =>
+            var lazy = new Lazy<Sector>(() =>
             {
-                var res = new BTDBSector { Position = position, Length = size };
+                var res = new Sector { Position = position, Length = size };
+                if (inWriteTransaction)
+                {
+                    res.InTransaction = _spaceAllocatedInTransaction.Contains((ulong)position);
+                }
                 if (_stream.Read(res.Data, 0, size, (ulong)position) != size)
                 {
                     throw new BTDBException("Data reading error");
@@ -474,16 +470,16 @@ namespace BTDB
         private void InitEmptyDB()
         {
             Array.Clear(_headerData, 0, TotalHeaderSize);
-            _headerData[0] = (byte) 'B';
-            _headerData[1] = (byte) 'T';
-            _headerData[2] = (byte) 'D';
-            _headerData[3] = (byte) 'B';
-            _headerData[4] = (byte) '1';
-            _headerData[5] = (byte) '0';
-            _headerData[6] = (byte) '0';
-            _headerData[7] = (byte) '0';
-            _currentState = new BTDBState();
-            _newState = new BTDBState();
+            _headerData[0] = (byte)'B';
+            _headerData[1] = (byte)'T';
+            _headerData[2] = (byte)'D';
+            _headerData[3] = (byte)'B';
+            _headerData[4] = (byte)'1';
+            _headerData[5] = (byte)'0';
+            _headerData[6] = (byte)'0';
+            _headerData[7] = (byte)'0';
+            _currentState = new State();
+            _newState = new State();
             _newState.WantedDatabaseLength = TotalHeaderSize;
             _newState.TransactionCounter = 1;
             _currentState.Position = FirstRootOffset;
@@ -513,9 +509,9 @@ namespace BTDB
                     throw new BTDBException("Too short header");
                 }
             }
-            if (_headerData[0] != (byte) 'B' || _headerData[1] != (byte) 'T' || _headerData[2] != (byte) 'D'
-                || _headerData[3] != (byte) 'B' || _headerData[4] != (byte) '1' || _headerData[5] != (byte) '0'
-                || _headerData[6] != (byte) '0' || _headerData[7] != (byte) '0')
+            if (_headerData[0] != (byte)'B' || _headerData[1] != (byte)'T' || _headerData[2] != (byte)'D'
+                || _headerData[3] != (byte)'B' || _headerData[4] != (byte)'1' || _headerData[5] != (byte)'0'
+                || _headerData[6] != (byte)'0' || _headerData[7] != (byte)'0')
             {
                 throw new BTDBException("Wrong header");
             }
@@ -540,7 +536,7 @@ namespace BTDB
                 }
             }
             TransferNewStateToCurrentState();
-            if (_currentState.TransactionAllocSize>0)
+            if (_currentState.TransactionAllocSize > 0)
             {
                 // TODO restore TransactionLog
                 throw new BTDBException("TransactionLog is not supported");
@@ -568,12 +564,12 @@ namespace BTDB
             SwapCurrentAndNewState();
         }
 
-        internal void StoreStateToHeaderBuffer(BTDBState state)
+        internal void StoreStateToHeaderBuffer(State state)
         {
             Debug.Assert(state.RootBTree.Ptr >= 0);
             Debug.Assert(state.RootAllocPage.Ptr >= 0);
             Debug.Assert(state.WantedDatabaseLength >= 0);
-            int o = (int) state.Position;
+            int o = (int)state.Position;
             PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootBTree.Ptr);
             o += 8;
             PackUnpack.PackUInt32(_headerData, o, state.RootBTree.Checksum);
@@ -597,9 +593,9 @@ namespace BTDB
             PackUnpack.PackUInt32(_headerData, o, Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum));
         }
 
-        internal bool RetrieveStateFromHeaderBuffer(BTDBState state)
+        internal bool RetrieveStateFromHeaderBuffer(State state)
         {
-            int o = (int) state.Position;
+            int o = (int)state.Position;
             if (Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum) !=
                 PackUnpack.UnpackUInt32(_headerData, o + RootSizeWithoutChecksum))
             {
@@ -630,136 +626,6 @@ namespace BTDB
             return true;
         }
 
-        /*
-        internal void commit(bool aInDBClose)
-        {
-            Debug.Assert(mWriteTrRunning);
-            if (mCommitNeeded == false)
-                return;
-            mMadeTransactionAfterOpen = true;
-            if ((_newState._RootObj._Ptr & 1) != 0)
-            {
-                allocSectorsRecursively(ref _newState._RootObj._Ptr);
-            }
-            while (moreSpaceToReuse())
-            {
-            }
-            if (!mSpaceToReuse.Empty)
-            {
-                mInCommitDeallocing = true;
-                PtrLenList originalReuse = mSpaceToReuse.clone();
-                foreach (var space in originalReuse)
-                {
-                    // mSpaceToReuse could be made only smaller in this method
-                    dealloc(space.Key, space.Value);
-                }
-                if (aInDBClose)
-                {
-                    var alsoRemove = new PtrLenList();
-                    while (!mSpaceToRemove.Empty)
-                    {
-                        PtrLenList prepareRemove = mSpaceToRemove.cloneAndClear();
-                        alsoRemove.mergeInPlace(prepareRemove);
-                        foreach (var space in prepareRemove)
-                        {
-                            // mSpaceToReuse could be made only smaller in this method
-                            dealloc(space.Key, space.Value);
-                        }
-                    }
-                    foreach (var space in alsoRemove)
-                    {
-                        dealloc2(space.Key, space.Value);
-                    }
-                }
-                foreach (var space in mSpaceToReuse)
-                {
-                    dealloc2(space.Key, space.Value);
-                }
-                mSpaceToReuse.clear();
-                mInCommitDeallocing = false;
-            }
-            flushDirty();
-            foreach(BTDBSector sec in _sectorCache.Values)
-            {
-                Debug.Assert(sec.mReferenceCount == 0);
-            }
-            if (!mSpaceToRemove.Empty)
-            {
-                mReadTrLinkHead.mSpaceToRemove = mSpaceToRemove.cloneAndClear();
-            }
-            StoreStateToHeaderBuffer(_newState);
-            _stream.flush();
-            _stream.write(_headerData, (int) _newState._Position, RootSize, _newState._Position);
-            TransferNewStateToCurrentState();
-            mCommitNeeded = false;
-        }
-
-        void flushDirty()
-        {
-            var Dirty = new BTDBSector[1];
-            while (mDirtySectors.Count > 0)
-            {
-                mDirtySectors.CopyTo(Dirty, 0, 1);
-                BTDBSector d = TryGetSector(Dirty[0].position);
-                try
-                {
-                    _stream.write(d.Data, 0, d.Length, d.position);
-                    uint checksum = CheckSum.calcFletcher(d.Data, 0, (uint) d.Length);
-                    BTDBSector p = d.parentInSuperTransaction;
-                    if (p != null)
-                    {
-                        p.setChecksum(d.indexInParent, checksum);
-                    }
-                    else
-                    {
-                        if (d.indexInParent == cParentIndexOfAllocRoot)
-                        {
-                            _newState._RootAllocPage._Checksum = checksum;
-                        }
-                        else
-                        {
-                            _newState._RootObj._Checksum = checksum;
-                        }
-                    }
-                    d.MakeClean();
-                    d.parentInSuperTransaction = null;
-                    d.indexInParent = -1;
-                    if (p != null) derefSector(p);
-                }
-                finally
-                {
-                    derefSector(d);
-                }
-            }
-        }
-
-        void allocSectorsRecursively(ref ulong aSecPtr)
-        {
-            BTDBSector sec = TryGetSector(aSecPtr);
-            try
-            {
-                Debug.Assert(sec != null);
-                int len = sec.Length/PtrDownSize;
-                for (int i = 0; i < len; i++)
-                {
-                    uint flag = sec.getFlags(i);
-                    if (BTDBPackUnpack.unpackLevel(flag) <= 0) continue;
-                    ulong secptr = sec.getPtr(i);
-                    if ((secptr & 1) == 0) continue;
-                    allocSectorsRecursively(ref secptr);
-                    sec.setPtr(i, secptr);
-                }
-                aSecPtr = alloc(sec.Length/AllocationGranularity);
-                setSectorPos(sec, aSecPtr);
-            }
-            finally
-            {
-                derefSector(sec);
-            }
-        }
-
-        }*/
-
         internal void DisposeReadTransaction(ReadTrLink link)
         {
             DereferenceReadLink(link);
@@ -768,7 +634,7 @@ namespace BTDB
         public ILowLevelDBTransaction StartTransaction()
         {
             ReadTrLink link;
-            lock(_readLinkLock)
+            lock (_readLinkLock)
             {
                 if (_readTrLinkHead == null || _readTrLinkHead.TransactionNumber != _currentState.TransactionCounter)
                 {
@@ -791,7 +657,7 @@ namespace BTDB
                 }
                 else
                 {
-                    link=_readTrLinkHead;
+                    link = _readTrLinkHead;
                     link.ReadTrRunningCount++;
                 }
             }
@@ -815,7 +681,7 @@ namespace BTDB
                 while (true)
                 {
                     if (link.ReadTrRunningCount > 0) return;
-                    if (link.SpaceToReuse!=null)
+                    if (link.SpaceToReuse != null)
                     {
                         if (_spaceSoonReusable == null) _spaceSoonReusable = link.SpaceToReuse;
                         else
@@ -831,12 +697,12 @@ namespace BTDB
                         }
                     }
                     _readTrLinkTail = link.Next;
-                    _readTrLinkTail.Prev = null;
                     if (_readTrLinkHead == link)
                     {
                         _readTrLinkHead = null;
                         return;
                     }
+                    _readTrLinkTail.Prev = null;
                     link = _readTrLinkTail;
                 }
             }
@@ -844,25 +710,25 @@ namespace BTDB
 
         public void Dispose()
         {
-            Debug.Assert(_writeTr==null);
+            Debug.Assert(_writeTr == null);
             if (_disposeStream)
             {
                 var disposable = _stream as IDisposable;
-                if (disposable!=null) disposable.Dispose();
+                if (disposable != null) disposable.Dispose();
             }
             _stream = null;
         }
 
         internal void CommitWriteTransaction()
         {
-            Debug.Assert(_writeTr!=null);
+            Debug.Assert(_writeTr != null);
             if (_currentTrCommited) throw new BTDBException("Only dispose is allowed after commit");
             if (_commitNeeded == false) return;
-            while (_unallocatedSectorHeadLink!=null)
+            while (_unallocatedSectorHeadLink != null)
             {
                 RealSectorAllocate(_unallocatedSectorHeadLink);
             }
-            while (_dirtySectorHeadLink!=null)
+            while (_dirtySectorHeadLink != null)
             {
                 FlushDirtySector(_dirtySectorHeadLink);
             }
@@ -875,31 +741,168 @@ namespace BTDB
             _currentTrCommited = true;
         }
 
-        private void FlushDirtySector(BTDBSector dirtySector)
+        private void FlushDirtySector(Sector dirtySector)
         {
             _stream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
             var checksum = Checksum.CalcFletcher(dirtySector.Data, 0, (uint)dirtySector.Length);
-            dirtySector.MakeClean();
+            long ptr = dirtySector.Position;
+            switch (dirtySector.Type)
+            {
+                case SectorType.BTreeParent:
+                case SectorType.BTreeChild:
+                case SectorType.DataParent:
+                case SectorType.DataChild:
+                    ptr += dirtySector.Length / AllocationGranularity - 1;
+                    break;
+                case SectorType.AllocParent:
+                    {
+                        int m = 0;
+                        for (int i = 0; i < dirtySector.Length / PtrDownSize; i++)
+                        {
+                            int c = (int) PackUnpack.UnpackUInt64(dirtySector.Data, i*PtrDownSize) &
+                                    (AllocationGranularity - 1);
+                            if (m < c)
+                            {
+                                m = c;
+                                if (m == 255) break;
+                            }
+                        }
+                        ptr += m;
+                        break;
+                    }
+                case SectorType.AllocChild:
+                    ptr += BitArrayManipulation.SizeOfBiggestHoleUpTo255(dirtySector.Data);
+                    break;
+                default:
+                    throw new InvalidOperationException();
+            }
+            if (dirtySector.Parent == null)
+            {
+                switch (dirtySector.Type)
+                {
+                    case SectorType.BTreeParent:
+                    case SectorType.BTreeChild:
+                        {
+                            _newState.RootBTree.Checksum = checksum;
+                            _newState.RootBTree.Ptr = ptr;
+                            break;
+                        }
+                    case SectorType.AllocChild:
+                    case SectorType.AllocParent:
+                        {
+                            _newState.RootAllocPage.Checksum = checksum;
+                            _newState.RootAllocPage.Ptr = ptr;
+                            break;
+                        }
+                    default:
+                        throw new InvalidOperationException();
+                }
+            }
+            else
+            {
+                int ofs = FindOfsInParent(dirtySector, dirtySector.Parent);
+                dirtySector.Parent = DirtizeSector(dirtySector.Parent);
+                PackUnpack.PackInt64(dirtySector.Parent.Data, ofs, ptr);
+                PackUnpack.PackUInt32(dirtySector.Parent.Data, ofs + 8, checksum);
+            }
+            dirtySector.Dirty = false;
             UnlinkFromDirtySectors(dirtySector);
         }
 
-        private void RealSectorAllocate(BTDBSector unallocatedSector)
+        private Sector DirtizeSector(Sector sector)
         {
-            if (_newState.RootAllocPageLevels==0)
+            if (sector.Dirty) return sector;
+            if (sector.InTransaction == false)
             {
-                unallocatedSector.Position = _newState.WantedDatabaseLength;
-                _newState.WantedDatabaseLength += RoundToAllocationGranularity(unallocatedSector.Length);
-                UnlinkFromUnallocatedSectors(unallocatedSector);
-                LinkToTailOfDirtySectors(unallocatedSector);
+                var newParent = sector.Parent;
+                if (newParent != null)
+                {
+                    newParent = DirtizeSector(newParent);
+                }
+                var clone = NewSector();
+                clone.Length = sector.Length;
+                Array.Copy(sector.Data, clone.Data, clone.Length);
+                clone.Parent = newParent;
+                PublishSector(clone);
+                if (newParent == null)
+                {
+                    if ((_newState.RootBTree.Ptr & MaskOfPosition) == sector.Position)
+                    {
+                        _newState.RootBTree.Ptr = clone.Position; // Length encoding is not needed as it is temporary anyway
+                    }
+                    else
+                    {
+                        Debug.Assert((_newState.RootAllocPage.Ptr & MaskOfPosition) == sector.Position);
+                        _newState.RootAllocPage.Ptr = clone.Position; // Max free space encoding is not needed as it is temporary anyway
+                    }
+                }
+                else
+                {
+                    int ofs = FindOfsInParent(sector, newParent);
+                    PackUnpack.PackInt64(newParent.Data, ofs, clone.Position);
+                }
+                return clone;
             }
+            sector.Dirty = true;
+            LinkToTailOfDirtySectors(sector);
+            return sector;
         }
 
-        private void UnlinkFromUnallocatedSectors(BTDBSector unallocatedSector)
+        private int FindOfsInParent(Sector sector, Sector where)
         {
-            if (unallocatedSector.PrevLink==null)
+            throw new NotImplementedException();
+        }
+
+        private void RealSectorAllocate(Sector unallocatedSector)
+        {
+            if (_newState.RootAllocPageLevels == 0)
+            {
+                int ofsInParent = -1;
+                if (unallocatedSector.Parent != null)
+                {
+                    unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent);
+                    ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
+                }
+                unallocatedSector.Position = _newState.WantedDatabaseLength;
+                _newState.WantedDatabaseLength += unallocatedSector.Length;
+                _spaceAllocatedInTransaction.TryInclude((ulong)unallocatedSector.Position, (ulong)unallocatedSector.Length);
+                UnlinkFromUnallocatedSectors(unallocatedSector);
+                LinkToTailOfDirtySectors(unallocatedSector);
+                if (unallocatedSector.Parent != null)
+                {
+                    PackUnpack.PackUInt64(unallocatedSector.Parent.Data, ofsInParent, (ulong)unallocatedSector.Position);
+                }
+                else
+                {
+                    switch (unallocatedSector.Type)
+                    {
+                        case SectorType.BTreeParent:
+                        case SectorType.BTreeChild:
+                            {
+                                _newState.RootBTree.Ptr = unallocatedSector.Position;
+                                break;
+                            }
+                        case SectorType.AllocChild:
+                        case SectorType.AllocParent:
+                            {
+                                _newState.RootAllocPage.Ptr = unallocatedSector.Position;
+                                break;
+                            }
+                        default:
+                            throw new InvalidOperationException();
+                    }
+                }
+                return;
+            }
+            throw new NotImplementedException();
+        }
+
+        private void UnlinkFromUnallocatedSectors(Sector unallocatedSector)
+        {
+            if (unallocatedSector.PrevLink == null)
             {
                 _unallocatedSectorHeadLink = unallocatedSector.NextLink;
-                if (unallocatedSector.NextLink!=null)
+                if (unallocatedSector.NextLink != null)
                 {
                     unallocatedSector.NextLink.PrevLink = null;
                 }
@@ -908,7 +911,7 @@ namespace BTDB
                     _unallocatedSectorTailLink = null;
                 }
             }
-            else if (unallocatedSector.NextLink==null)
+            else if (unallocatedSector.NextLink == null)
             {
                 _unallocatedSectorTailLink = unallocatedSector.PrevLink;
                 unallocatedSector.PrevLink.NextLink = null;
@@ -920,7 +923,7 @@ namespace BTDB
             }
         }
 
-        private void UnlinkFromDirtySectors(BTDBSector dirtySector)
+        private void UnlinkFromDirtySectors(Sector dirtySector)
         {
             if (dirtySector.PrevLink == null)
             {
@@ -965,11 +968,11 @@ namespace BTDB
             DereferenceReadLink(_readTrLinkHead);
         }
 
-        internal void UpgradeTransactionToWriteOne(Transaction transaction,ReadTrLink link)
+        internal void UpgradeTransactionToWriteOne(Transaction transaction, ReadTrLink link)
         {
             lock (_readLinkLock)
             {
-                if (_writeTr!=null) throw new BTDBTransactionRetryException("Write transaction already running");
+                if (_writeTr != null) throw new BTDBTransactionRetryException("Write transaction already running");
                 if (link != _readTrLinkHead)
                     throw new BTDBTransactionRetryException("Newer write transaction already finished");
                 _writeTr = transaction;
@@ -977,34 +980,35 @@ namespace BTDB
                 _commitNeeded = false;
                 _newState.TransactionCounter++;
                 _unallocatedCounter = 0;
-                Debug.Assert(_unallocatedSectorHeadLink != null);
-                Debug.Assert(_unallocatedSectorTailLink != null);
-                Debug.Assert(_dirtySectorHeadLink != null);
-                Debug.Assert(_dirtySectorTailLink != null);
+                Debug.Assert(_unallocatedSectorHeadLink == null);
+                Debug.Assert(_unallocatedSectorTailLink == null);
+                Debug.Assert(_dirtySectorHeadLink == null);
+                Debug.Assert(_dirtySectorTailLink == null);
             }
         }
 
-        internal BTDBSector NewSector()
+        internal Sector NewSector()
         {
-            var result = new BTDBSector();
-            result.MakeDirty();
+            var result = new Sector();
+            result.Dirty = true;
+            result.InTransaction = true;
             _unallocatedCounter--;
-            result.Position = _unallocatedCounter;
+            result.Position = _unallocatedCounter * AllocationGranularity;
             return result;
         }
 
-        internal void PublishSector(BTDBSector newSector)
+        internal void PublishSector(Sector newSector)
         {
             Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
-            _sectorCache.TryAdd(newSector.Position, new Lazy<BTDBSector>(() => newSector));
+            _sectorCache.TryAdd(newSector.Position, new Lazy<Sector>(() => newSector));
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
         }
 
-        private void LinkToTailOfUnallocatedSectors(BTDBSector newSector)
+        private void LinkToTailOfUnallocatedSectors(Sector newSector)
         {
             newSector.PrevLink = _unallocatedSectorTailLink;
-            if (_unallocatedSectorTailLink!=null)
+            if (_unallocatedSectorTailLink != null)
             {
                 _unallocatedSectorTailLink.NextLink = newSector;
             }
@@ -1015,7 +1019,7 @@ namespace BTDB
             _unallocatedSectorTailLink = newSector;
         }
 
-        private void LinkToTailOfDirtySectors(BTDBSector dirtizeSector)
+        private void LinkToTailOfDirtySectors(Sector dirtizeSector)
         {
             dirtizeSector.NextLink = null;
             dirtizeSector.PrevLink = _dirtySectorTailLink;
@@ -1030,9 +1034,9 @@ namespace BTDB
             _dirtySectorTailLink = dirtizeSector;
         }
 
-        internal static long RoundToAllocationGranularity(long value)
+        internal static int RoundToAllocationGranularity(int value)
         {
-            Debug.Assert(value>0);
+            Debug.Assert(value > 0);
             return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);
         }
     }

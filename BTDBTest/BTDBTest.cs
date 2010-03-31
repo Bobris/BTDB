@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using BTDB;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -43,7 +44,7 @@ namespace BTDBTest
         [TestMethod]
         public void FirstTransaction()
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, (s)=>Debug.WriteLine(s)))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);
