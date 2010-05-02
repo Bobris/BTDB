@@ -8,7 +8,7 @@ obj
 _ReSharper*
 Reports
 */build
-*/test-results
+TestResults
 *.pidb
 *.usertasks
 *.userprefs
