@@ -61,23 +61,23 @@ namespace BTDB
             {
                 byte b = data[pos];
                 pos++;
-                if (b == 255)
+                switch (b)
                 {
-                    if (sizetill >= size) return laststart;
-                    sizetill = 0;
-                    laststart = pos * 8;
-                }
-                else if (b == 0)
-                {
-                    sizetill += 8;
-                }
-                else
-                {
-                    sizetill += FirstHoleSize[b];
-                    if (sizetill >= size) return laststart;
-                    if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
-                    sizetill = LastHoleSize[b];
-                    laststart = pos * 8 - sizetill;
+                    case 255:
+                        if (sizetill >= size) return laststart;
+                        sizetill = 0;
+                        laststart = pos * 8;
+                        break;
+                    case 0:
+                        sizetill += 8;
+                        break;
+                    default:
+                        sizetill += FirstHoleSize[b];
+                        if (sizetill >= size) return laststart;
+                        if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
+                        sizetill = LastHoleSize[b];
+                        laststart = pos * 8 - sizetill;
+                        break;
                 }
             }
             if (sizetill >= size) return laststart;
