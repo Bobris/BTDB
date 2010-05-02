@@ -1,6 +1,6 @@
 ﻿using System.Text;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using BTDB;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace BTDBTest
 {
@@ -17,12 +17,14 @@ namespace BTDBTest
             if (sb.Length > 0) sb.Length--;
             return sb.ToString();
         }
+
         [TestMethod]
         public void NewListIsEmpty()
         {
             var l = new PtrLenList();
             Assert.IsTrue(l.Empty);
         }
+
         [TestMethod]
         public void EmptyIncludeIsNoop()
         {
@@ -30,6 +32,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(0, 0));
             Assert.IsTrue(l.Empty);
         }
+
         [TestMethod]
         public void AfterIncludeIsNonEmpty()
         {
@@ -37,6 +40,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(0, 1));
             Assert.IsFalse(l.Empty);
         }
+
         [TestMethod]
         public void EmptyExcludeIsNoop()
         {
@@ -45,6 +49,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryExclude(1, 0));
             Assert.AreEqual("0-2", Str(l));
         }
+
         [TestMethod]
         public void DoubleIncludeFails()
         {
@@ -52,12 +57,14 @@ namespace BTDBTest
             l.TryInclude(0, 1);
             Assert.IsFalse(l.TryInclude(0, 1));
         }
+
         [TestMethod]
         public void OnEmptyExcludeFails()
         {
             var l = new PtrLenList();
             Assert.IsFalse(l.TryExclude(0, 1));
         }
+
         [TestMethod]
         public void IncludeAndExcludeMakesEmpty()
         {
@@ -66,6 +73,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryExclude(0, 1));
             Assert.IsTrue(l.Empty);
         }
+
         [TestMethod]
         public void TwoConnectedIncludesMerge()
         {
@@ -83,6 +91,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(2, 1));
             Assert.AreEqual("0-1;2-3", Str(l));
         }
+
         [TestMethod]
         public void ThreeIncludesMerge()
         {
@@ -92,6 +101,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(1, 1));
             Assert.AreEqual("0-3", Str(l));
         }
+
         [TestMethod]
         public void ThreeMergeOverlaping1()
         {
@@ -101,6 +111,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(1, 3));
             Assert.AreEqual("0-6", Str(l));
         }
+
         [TestMethod]
         public void ThreeMergeOverlaping2()
         {
@@ -110,6 +121,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(2, 3));
             Assert.AreEqual("0-6", Str(l));
         }
+
         [TestMethod]
         public void ThreeMergeOverlaping3()
         {
@@ -119,6 +131,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(1, 4));
             Assert.AreEqual("0-6", Str(l));
         }
+
         [TestMethod]
         public void InsertAtBeginingWithoutMerge()
         {
@@ -128,6 +141,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(0, 2));
             Assert.AreEqual("0-2;4-6;8-10", Str(l));
         }
+
         [TestMethod]
         public void InsertAtBeginingWithMerge()
         {
@@ -137,6 +151,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryInclude(0, 4));
             Assert.AreEqual("0-6;8-10", Str(l));
         }
+
         [TestMethod]
         public void InsertBeforeLastWithMerge()
         {
@@ -146,6 +161,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(4, 5));
             Assert.AreEqual("0-2;4-10", Str(l));
         }
+
         [TestMethod]
         public void ALotsOfIncludes()
         {
@@ -157,6 +173,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(5, 390));
             Assert.AreEqual("0-2;4-395;396-398", Str(l));
         }
+
         [TestMethod]
         public void ALotsOfIncludes2()
         {
@@ -168,6 +185,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(7, 388));
             Assert.AreEqual("0-2;4-6;7-395;396-398", Str(l));
         }
+
         [TestMethod]
         public void ExcludeFromStart()
         {
@@ -176,6 +194,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryExclude(0, 2));
             Assert.AreEqual("2-4", Str(l));
         }
+
         [TestMethod]
         public void ExcludeFromStartOverlap()
         {
@@ -184,6 +203,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(0, 2));
             Assert.AreEqual("2-4", Str(l));
         }
+
         [TestMethod]
         public void ExcludeFromEnd()
         {
@@ -192,6 +212,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryExclude(2, 2));
             Assert.AreEqual("0-2", Str(l));
         }
+
         [TestMethod]
         public void ExcludeFromEndOverlap()
         {
@@ -200,6 +221,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(2, 2));
             Assert.AreEqual("0-2", Str(l));
         }
+
         [TestMethod]
         public void ExcludeSplitRange()
         {
@@ -208,6 +230,7 @@ namespace BTDBTest
             Assert.IsTrue(l.TryExclude(3, 2));
             Assert.AreEqual("0-3;5-10", Str(l));
         }
+
         [TestMethod]
         public void SpanExclude()
         {
@@ -219,6 +242,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(5, 30));
             Assert.AreEqual("0-2;4-5;36-38", Str(l));
         }
+
         [TestMethod]
         public void SpanExclude2()
         {
@@ -230,6 +254,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(24, 10));
             Assert.AreEqual("0-2;4-6;8-10;12-14;16-18;20-22;36-38", Str(l));
         }
+
         [TestMethod]
         public void SpanExclude3()
         {
@@ -241,6 +266,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(24, 20));
             Assert.AreEqual("0-2;4-6;8-10;12-14;16-18;20-22", Str(l));
         }
+
         [TestMethod]
         public void SpanExclude4()
         {
@@ -252,6 +278,7 @@ namespace BTDBTest
             Assert.IsFalse(l.TryExclude(16, 17));
             Assert.AreEqual("0-2;4-6;8-10;12-14;33-34;36-38", Str(l));
         }
+
         [TestMethod]
         public void AfterClearIsEmpty()
         {
@@ -260,15 +287,18 @@ namespace BTDBTest
             l.Clear();
             Assert.IsTrue(l.Empty);
         }
+
         [TestMethod]
         public void CloneIsEqual()
         {
             var l = new PtrLenList();
-            l.TryInclude(0, 1); l.TryInclude(10, 11);
+            l.TryInclude(0, 1);
+            l.TryInclude(10, 11);
             var l2 = l.Clone();
             Assert.AreEqual("0-1;10-21", Str(l2));
             Assert.AreEqual("0-1;10-21", Str(l));
         }
+
         [TestMethod]
         public void EmptyCloneIsEmpty()
         {
@@ -276,15 +306,18 @@ namespace BTDBTest
             var l2 = l.Clone();
             Assert.IsTrue(l2.Empty);
         }
+
         [TestMethod]
         public void CloneAndClearWorks()
         {
             var l = new PtrLenList();
-            l.TryInclude(0, 1); l.TryInclude(10, 11);
+            l.TryInclude(0, 1);
+            l.TryInclude(10, 11);
             var l2 = l.CloneAndClear();
             Assert.AreEqual("0-1;10-21", Str(l2));
             Assert.IsTrue(l.Empty);
         }
+
         [TestMethod]
         public void EmptyCloneAndClearIsEmpty()
         {
@@ -292,6 +325,7 @@ namespace BTDBTest
             var l2 = l.CloneAndClear();
             Assert.IsTrue(l2.Empty);
         }
+
         [TestMethod]
         public void TryFindAndRemoveWholeRange()
         {
@@ -301,9 +335,9 @@ namespace BTDBTest
             l.TryInclude(15, 10);
             ulong pos;
             Assert.IsFalse(l.TryFindLenAndRemove(15, out pos));
-            Assert.AreEqual("0-2;5-10;15-25",Str(l));
+            Assert.AreEqual("0-2;5-10;15-25", Str(l));
             Assert.IsTrue(l.TryFindLenAndRemove(5, out pos));
-            Assert.AreEqual(5ul,pos);
+            Assert.AreEqual(5ul, pos);
             Assert.AreEqual("0-2;15-25", Str(l));
             Assert.IsTrue(l.TryFindLenAndRemove(10, out pos));
             Assert.AreEqual(15ul, pos);
@@ -312,6 +346,7 @@ namespace BTDBTest
             Assert.AreEqual(0ul, pos);
             Assert.AreEqual("", Str(l));
         }
+
         [TestMethod]
         public void TryFindAndRemovePartRange()
         {
@@ -330,6 +365,5 @@ namespace BTDBTest
             Assert.AreEqual(0ul, pos);
             Assert.AreEqual("1-2;8-10;18-25", Str(l));
         }
-
     }
 }

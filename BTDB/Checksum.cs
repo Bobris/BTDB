@@ -16,13 +16,15 @@ namespace BTDB
                 length -= tlen;
                 do
                 {
-                    sum1 += (uint) (data[position] + data[position + 1]*256);
+                    sum1 += (uint)(data[position] + data[position + 1] * 256);
                     position += 2;
                     sum2 += sum1;
-                } while (--tlen > 0);
+                }
+                while (--tlen > 0);
                 sum1 = (sum1 & 0xffff) + (sum1 >> 16);
                 sum2 = (sum2 & 0xffff) + (sum2 >> 16);
             }
+
             // Second reduction step to reduce sums to 16 bits
             sum1 = (sum1 & 0xffff) + (sum1 >> 16);
             sum2 = (sum2 & 0xffff) + (sum2 >> 16);

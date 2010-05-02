@@ -18,18 +18,18 @@ namespace BTDB
             Log("LoggingStream created Stream:{0} Dispose:{1}", _stream.ToString(), _dispose);
         }
 
-        private void Log(string aWhat, params object[] aParams)
+        private void Log(string what, params object[] parameters)
         {
-            _logAction(string.Format(CultureInfo.InvariantCulture, aWhat, aParams));
+            _logAction(string.Format(CultureInfo.InvariantCulture, what, parameters));
         }
 
         public int Read(byte[] data, int offset, int size, ulong pos)
         {
-            int res=_stream.Read(data, offset, size, pos);
+            int res = _stream.Read(data, offset, size, pos);
             Log("read size:{2}/{0} pos:{1} datalen:{3} dataofs:{4}", size, pos, res, data.Length, offset);
-            int i=0;
-            int j=0;
-            var sb=new StringBuilder(8+16*3);
+            int i = 0;
+            int j = 0;
+            var sb = new StringBuilder(8 + 16 * 3);
             while (i < res)
             {
                 if (j == 16)
@@ -40,7 +40,7 @@ namespace BTDB
                 }
                 if (j == 0)
                 {
-                    sb.AppendFormat("{0:X8}", pos+(uint)i);
+                    sb.AppendFormat("{0:X8}", pos + (uint) i);
                 }
                 sb.AppendFormat(" {0:X2}", data[offset + i]);
                 j++;
@@ -69,7 +69,7 @@ namespace BTDB
                 }
                 if (j == 0)
                 {
-                    sb.AppendFormat("{0:X8}", pos+(uint)i);
+                    sb.AppendFormat("{0:X8}", pos + (uint) i);
                 }
                 sb.AppendFormat(" {0:X2}", data[offset + i]);
                 j++;
@@ -85,7 +85,7 @@ namespace BTDB
             }
             catch (Exception ex)
             {
-                Log("Exception in write:{0}",ex.ToString());
+                Log("Exception in write:{0}", ex.ToString());
                 throw;
             }
         }
@@ -103,12 +103,12 @@ namespace BTDB
             return res;
         }
 
-        public void SetSize(ulong aSize)
+        public void SetSize(ulong size)
         {
-            Log("setting stream size:{0}", aSize);
+            Log("setting stream size:{0}", size);
             try
             {
-                _stream.SetSize(aSize);
+                _stream.SetSize(size);
             }
             catch (Exception ex)
             {
@@ -128,75 +128,6 @@ namespace BTDB
                     disp.Dispose();
                 }
                 _stream = null;
-            }
-        }
-    }
-
-    class StreamProxy : IStream, IDisposable
-    {
-        private readonly System.IO.Stream _stream;
-        private readonly object _lock = new object();
-        private readonly bool _dispose;
-        public StreamProxy(string fileName)
-        {
-            if (string.IsNullOrEmpty(fileName)) throw new ArgumentOutOfRangeException("fileName");
-            _stream = new System.IO.FileStream(fileName, System.IO.FileMode.OpenOrCreate);
-            _dispose = true;
-        }
-        public StreamProxy(System.IO.Stream stream, bool dispose)
-        {
-            if (stream == null) throw new ArgumentNullException("stream");
-            _stream = stream;
-            _dispose = dispose;
-        }
-
-        public int Read(byte[] data, int offset, int size, ulong pos)
-        {
-            lock (_lock)
-            {
-                _stream.Position = (long)pos;
-                return _stream.Read(data, offset, size);
-            }
-        }
-
-        public void Write(byte[] data, int offset, int size, ulong pos)
-        {
-            lock (_lock)
-            {
-                _stream.Position = (long)pos;
-                _stream.Write(data, offset, size);
-            }
-        }
-
-        public void Flush()
-        {
-            lock (_lock)
-            {
-                _stream.Flush();
-            }
-        }
-
-        public ulong GetSize()
-        {
-            lock (_lock)
-            {
-                return (ulong)_stream.Length;
-            }
-        }
-
-        public void SetSize(ulong aSize)
-        {
-            lock (_lock)
-            {
-                _stream.SetLength((long)aSize);
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_dispose)
-            {
-                _stream.Dispose();
             }
         }
     }

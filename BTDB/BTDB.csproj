@@ -44,14 +44,17 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BitArrayManipulation.cs" />
+    <Compile Include="BTDBException.cs" />
+    <Compile Include="BTDBTransactionRetryException.cs" />
     <Compile Include="Checksum.cs" />
+    <Compile Include="LoggingStream.cs" />
     <Compile Include="LowLevelDB.cs" />
     <Compile Include="ILowLevelObjectDB.cs" />
     <Compile Include="IStream.cs" />
     <Compile Include="PackUnpack.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PtrLenList.cs" />
-    <Compile Include="StreamImpl.cs" />
+    <Compile Include="StreamProxy.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

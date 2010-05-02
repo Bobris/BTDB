@@ -11,7 +11,10 @@ namespace BTDB
             _size = 0;
         }
 
-        public bool Empty { get { return _size == 0; } }
+        public bool Empty
+        {
+            get { return _size == 0; }
+        }
 
         public bool TryExclude(ulong excludePos, ulong excludeLen)
         {
@@ -50,7 +53,7 @@ namespace BTDB
                         {
                             r++;
                         }
-                        cur = _list[r-1];
+                        cur = _list[r - 1];
                         if (excludePos + excludeLen < cur.Key + cur.Value)
                         {
                             r--;
@@ -99,17 +102,17 @@ namespace BTDB
             return false;
         }
 
-        public bool TryFindLenAndRemove(ulong findLength,out ulong foundOnPosition)
+        public bool TryFindLenAndRemove(ulong findLength, out ulong foundOnPosition)
         {
             for (int i = 0; i < _size; i++)
             {
                 ulong len = _list[i].Value;
                 if (findLength > len) continue;
                 foundOnPosition = _list[i].Key;
-                if (findLength==len)
+                if (findLength == len)
                 {
                     _size--;
-                    Array.Copy(_list, i + 1, _list, i, _size - i); 
+                    Array.Copy(_list, i + 1, _list, i, _size - i);
                 }
                 else
                 {
@@ -121,17 +124,17 @@ namespace BTDB
             return false;
         }
 
-        internal bool TryInclude(ulong includePos, ulong includeLen)
+        public bool TryInclude(ulong includePos, ulong includeLen)
         {
             if (includeLen == 0) return true;
-            if (_list==null)
+            if (_list == null)
             {
-                _list = new KeyValuePair<ulong,ulong>[4];
+                _list = new KeyValuePair<ulong, ulong>[4];
                 _size = 1;
-                _list[0]=new KeyValuePair<ulong,ulong>(includePos,includeLen);
+                _list[0] = new KeyValuePair<ulong, ulong>(includePos, includeLen);
                 return true;
             }
-            uint l=0,r=_size;
+            uint l = 0, r = _size;
             KeyValuePair<ulong, ulong> cur;
             while (l < r)
             {
@@ -205,20 +208,13 @@ namespace BTDB
             return false;
         }
 
-        private void GrowIfNeeded()
-        {
-            if (_size==_list.Length)
-            {
-                Array.Resize(ref _list,(int)_size*2);
-            }
-        }
-
-        internal PtrLenList MergeIntoNew(PtrLenList mergeWith)
+        public PtrLenList MergeIntoNew(PtrLenList mergeWith)
         {
             if (mergeWith == null || mergeWith.Empty) return Clone();
             if (Empty) return mergeWith.Clone();
+
             // TODO: optimize this
-            var result=Clone();
+            var result = Clone();
             foreach (var range in mergeWith)
             {
                 result.TryInclude(range.Key, range.Value);
@@ -226,14 +222,14 @@ namespace BTDB
             return result;
         }
 
-        internal void Clear()
+        public void Clear()
         {
             _size = 0;
         }
 
-        public IEnumerator<KeyValuePair<ulong,ulong>> GetEnumerator()
+        public IEnumerator<KeyValuePair<ulong, ulong>> GetEnumerator()
         {
-            for(int i=0;i<_size;i++)
+            for (int i = 0; i < _size; i++)
             {
                 yield return _list[i];
             }
@@ -286,6 +282,14 @@ namespace BTDB
                 }
             }
             return false;
+        }
+
+        private void GrowIfNeeded()
+        {
+            if (_size == _list.Length)
+            {
+                Array.Resize(ref _list, (int)_size * 2);
+            }
         }
 
         private KeyValuePair<ulong, ulong>[] _list;

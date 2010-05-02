@@ -1,6 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace BTDB
 {
@@ -46,24 +46,6 @@ namespace BTDB
         internal uint Checksum;
     }
 
-    [Serializable]
-    public class BTDBException : Exception
-    {
-        public BTDBException(string aMessage)
-            : base(aMessage)
-        {
-        }
-    }
-
-    [Serializable]
-    public class BTDBTransactionRetryException : Exception
-    {
-        public BTDBTransactionRetryException(string aMessage)
-            : base(aMessage)
-        {
-        }
-    }
-
     internal class ReadTrLink
     {
         internal PtrLenList SpaceToReuse;
@@ -77,14 +59,15 @@ namespace BTDB
     internal class Transaction : ILowLevelDBTransaction
     {
         private readonly LowLevelDB _owner;
+
         // if this is null then this transaction is writing kind
         private ReadTrLink _readLink;
         private Sector _currentKeySector;
         private int _currentKeyIndex;
 
-        internal Transaction(LowLevelDB aOwner, ReadTrLink readLink)
+        internal Transaction(LowLevelDB owner, ReadTrLink readLink)
         {
-            _owner = aOwner;
+            _owner = owner;
             _readLink = readLink;
             _currentKeySector = null;
             _currentKeyIndex = -1;
@@ -342,11 +325,17 @@ namespace BTDB
     internal class Sector
     {
         internal SectorType Type { get; set; }
+
         internal long Position { get; set; }
+
         internal bool InTransaction { get; set; }
+
         internal bool Dirty { get; set; }
+
         internal Sector Parent { get; set; }
+
         internal Sector NextLink { get; set; }
+
         internal Sector PrevLink { get; set; }
 
         internal bool Allocated
@@ -366,6 +355,7 @@ namespace BTDB
                 if (_data == null) return 0;
                 return _data.Length;
             }
+
             set
             {
                 Debug.Assert(value >= 0 && value <= LowLevelDB.MaxSectorSize);
@@ -385,6 +375,7 @@ namespace BTDB
                 Array.Copy(oldData, _data, Math.Min(oldData.Length, value));
             }
         }
+
         private byte[] _data;
     }
 
@@ -401,29 +392,29 @@ namespace BTDB
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
 
-        private IStream _stream;
-        private bool _disposeStream;
+        IStream _stream;
+        bool _disposeStream;
 
-        private readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
-        private readonly byte[] _headerData = new byte[TotalHeaderSize];
-        private State _currentState = new State();
+        readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
+        readonly byte[] _headerData = new byte[TotalHeaderSize];
+        State _currentState = new State();
         internal State _newState = new State();
-        private readonly PtrLenList _spaceAllocatedInTransaction = new PtrLenList();
-        private readonly PtrLenList _spaceDeallocatedInTransaction = new PtrLenList();
-        private readonly PtrLenList _spaceTemporaryNotReusable = new PtrLenList();
-        volatile private PtrLenList _spaceSoonReusable;
-        private readonly object _spaceSoonReusableLock = new object();
-        private ReadTrLink _readTrLinkTail;
-        private ReadTrLink _readTrLinkHead;
-        private readonly object _readLinkLock = new object();
-        private Transaction _writeTr;
-        private bool _commitNeeded;
-        private bool _currentTrCommited;
-        private long _unallocatedCounter;
-        private Sector _unallocatedSectorHeadLink;
-        private Sector _unallocatedSectorTailLink;
-        private Sector _dirtySectorHeadLink;
-        private Sector _dirtySectorTailLink;
+        readonly PtrLenList _spaceAllocatedInTransaction = new PtrLenList();
+        readonly PtrLenList _spaceDeallocatedInTransaction = new PtrLenList();
+        readonly PtrLenList _spaceTemporaryNotReusable = new PtrLenList();
+        volatile PtrLenList _spaceSoonReusable;
+        readonly object _spaceSoonReusableLock = new object();
+        ReadTrLink _readTrLinkTail;
+        ReadTrLink _readTrLinkHead;
+        readonly object _readLinkLock = new object();
+        Transaction _writeTr;
+        bool _commitNeeded;
+        bool _currentTrCommited;
+        long _unallocatedCounter;
+        Sector _unallocatedSectorHeadLink;
+        Sector _unallocatedSectorTailLink;
+        Sector _dirtySectorHeadLink;
+        Sector _dirtySectorTailLink;
 
         internal Sector TryGetSector(long position)
         {
@@ -989,9 +980,7 @@ namespace BTDB
 
         internal Sector NewSector()
         {
-            var result = new Sector();
-            result.Dirty = true;
-            result.InTransaction = true;
+            var result = new Sector {Dirty = true, InTransaction = true};
             _unallocatedCounter--;
             result.Position = _unallocatedCounter * AllocationGranularity;
             return result;

@@ -2,7 +2,7 @@
 
 namespace BTDB
 {
-    internal class BitArrayManipulation
+    internal static class BitArrayManipulation
     {
         private static readonly byte[] FirstHoleSize = new byte[]
                                                            {
@@ -75,9 +75,9 @@ namespace BTDB
                 {
                     sizetill += FirstHoleSize[b];
                     if (sizetill >= size) return laststart;
-                    if (MaxHoleSize[b] >= size) return pos*8 + MaxHoleOffset[b] - 8;
+                    if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
                     sizetill = LastHoleSize[b];
-                    laststart = pos*8 - sizetill;
+                    laststart = pos * 8 - sizetill;
                 }
             }
             if (sizetill >= size) return laststart;
@@ -86,14 +86,14 @@ namespace BTDB
 
         internal static void SetBits(byte[] data, int position, int size)
         {
-            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length*8);
-            byte startMask = (byte) ~(255 >> (8 - (position & 7)));
-            int startBytePos = position/8;
-            byte endMask = (byte) (255 >> (7 - ((position + size - 1) & 7)));
-            int endBytePos = (position + size - 1)/8;
+            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length * 8);
+            var startMask = (byte)~(255 >> (8 - (position & 7)));
+            int startBytePos = position / 8;
+            var endMask = (byte)(255 >> (7 - ((position + size - 1) & 7)));
+            int endBytePos = (position + size - 1) / 8;
             if (startBytePos == endBytePos)
             {
-                data[startBytePos] |= (byte) (startMask & endMask);
+                data[startBytePos] |= (byte)(startMask & endMask);
             }
             else
             {
@@ -110,25 +110,25 @@ namespace BTDB
 
         internal static void UnsetBits(byte[] data, int position, int size)
         {
-            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length*8);
-            byte startMask = (byte) ~(255 >> (8 - (position & 7)));
-            int startBytePos = position/8;
-            byte endMask = (byte) (255 >> (7 - ((position + size - 1) & 7)));
-            int endBytePos = (position + size - 1)/8;
+            Debug.Assert(position >= 0 && size > 0 && position + size <= data.Length * 8);
+            var startMask = (byte)~(255 >> (8 - (position & 7)));
+            int startBytePos = position / 8;
+            var endMask = (byte)(255 >> (7 - ((position + size - 1) & 7)));
+            int endBytePos = (position + size - 1) / 8;
             if (startBytePos == endBytePos)
             {
-                data[startBytePos] &= (byte) ~(startMask & endMask);
+                data[startBytePos] &= (byte)~(startMask & endMask);
             }
             else
             {
-                data[startBytePos] &= (byte) ~startMask;
+                data[startBytePos] &= (byte)~startMask;
                 startBytePos++;
                 while (startBytePos < endBytePos)
                 {
                     data[startBytePos] = 0;
                     startBytePos++;
                 }
-                data[endBytePos] &= (byte) ~endMask;
+                data[endBytePos] &= (byte)~endMask;
             }
         }
 
