@@ -56,14 +56,96 @@ namespace BTDB
         internal SectorPtr RootBTree;
     }
 
+    internal struct BTreeChildIterator
+    {
+        internal void Init(byte[] data)
+        {
+            _data = data;
+            _count = data[0];
+            MoveFirst();
+        }
+
+        internal void MoveFirst()
+        {
+            _ofs = 1;
+            _pos = 0;
+            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
+            _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
+        }
+
+        internal bool MoveNext()
+        {
+            if (_pos + 1 >= _count) return false;
+            _pos++;
+            _ofs += 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity) + (int)(_valueLen%LowLevelDB.AllocationGranularity);
+            if (_keyLen >= LowLevelDB.AllocationGranularity) _ofs += LowLevelDB.PtrDownSize;
+            if (_valueLen >= LowLevelDB.AllocationGranularity) _ofs += LowLevelDB.PtrDownSize;
+            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
+            _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
+            return true;
+        }
+
+        internal void MoveTo(int pos)
+        {
+            Debug.Assert(pos>=0);
+            Debug.Assert(pos<_count);
+            if (pos<_pos) MoveFirst();
+            while (_pos < pos) MoveNext();
+        }
+
+        internal int KeyLen
+        {
+            get { return _keyLen; }
+        }
+
+        internal long ValueLen
+        {
+            get { return _valueLen; }
+        }
+
+        internal int KeyOffset
+        {
+            get { return _ofs+4+8; }
+        }
+
+        internal int ValueOffset
+        {
+            get
+            {
+                return _ofs + 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity) +
+                       ((_keyLen >= LowLevelDB.AllocationGranularity) ? LowLevelDB.PtrDownSize : 0);
+            }
+        }
+
+        internal SectorPtr KeySectorPtr
+        {
+            get
+            {
+                if (_keyLen<LowLevelDB.AllocationGranularity) throw new InvalidOperationException();
+                var sectorPtr = new SectorPtr();
+                int ofs = _ofs + 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity);
+                sectorPtr.Ptr = PackUnpack.UnpackInt64(_data, ofs);
+                sectorPtr.Checksum = PackUnpack.UnpackUInt32(_data, ofs + 8);
+                return sectorPtr;
+            }
+        }
+
+        byte[] _data;
+        int _count;
+        int _ofs;
+        int _pos;
+        int _keyLen;
+        long _valueLen;
+    }
+
     internal class Transaction : ILowLevelDBTransaction
     {
-        private readonly LowLevelDB _owner;
+        readonly LowLevelDB _owner;
 
         // if this is null then this transaction is writing kind
-        private ReadTrLink _readLink;
-        private Sector _currentKeySector;
-        private int _currentKeyIndex;
+        ReadTrLink _readLink;
+        Sector _currentKeySector;
+        int _currentKeyIndex;
 
         internal Transaction(LowLevelDB owner, ReadTrLink readLink)
         {
@@ -119,14 +201,7 @@ namespace BTDB
                 switch (strategy)
                 {
                     case FindKeyStrategy.Create:
-                        var newRootBTreeSector = _owner.NewSector();
-                        newRootBTreeSector.Type = SectorType.BTreeChild;
-                        newRootBTreeSector.Length = LowLevelDB.RoundToAllocationGranularity(1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
-                                                    (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0));
-                        newRootBTreeSector.Data[0] = 1;
-                        PackUnpack.PackUInt32(newRootBTreeSector.Data, 1, (uint)keyLen);
-                        Array.Copy(keyBuf, keyOfs + keyLen & ~(LowLevelDB.AllocationGranularity - 1), newRootBTreeSector.Data,
-                                   5, keyLen % LowLevelDB.AllocationGranularity);
+                        Sector newRootBTreeSector = CreateBTreeChildWith1Key(keyBuf, keyOfs, keyLen);
                         _owner._newState.RootBTree.Ptr = newRootBTreeSector.Position;
                         _owner._newState.RootBTreeLevels = 1;
                         _owner.PublishSector(newRootBTreeSector);
@@ -145,7 +220,30 @@ namespace BTDB
                         throw new ArgumentOutOfRangeException("strategy");
                 }
             }
+            Sector sector = _owner.TryGetSector(rootBTree.Ptr);
+            if (sector==null)
+            {
+                sector = _owner.ReadSector(rootBTree.Ptr, rootBTree.Checksum, _readLink == null);
+                sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
+            }
+
             throw new NotImplementedException();
+        }
+
+        private Sector CreateBTreeChildWith1Key(byte[] keyBuf, int keyOfs, int keyLen)
+        {
+            var newRootBTreeSector = _owner.NewSector();
+            newRootBTreeSector.Type = SectorType.BTreeChild;
+            newRootBTreeSector.Length = LowLevelDB.RoundToAllocationGranularity(1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
+                                                                                (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0));
+            newRootBTreeSector.Data[0] = 1;
+            PackUnpack.PackUInt32(newRootBTreeSector.Data, 1, (uint)keyLen);
+            Array.Copy(keyBuf,
+                       keyOfs + keyLen & ~(LowLevelDB.AllocationGranularity - 1),
+                       newRootBTreeSector.Data,
+                       1+4+8,
+                       keyLen % LowLevelDB.AllocationGranularity);
+            return newRootBTreeSector;
         }
 
         public int GetKeySize()
@@ -416,10 +514,10 @@ namespace BTDB
         Sector _dirtySectorHeadLink;
         Sector _dirtySectorTailLink;
 
-        internal Sector TryGetSector(long position)
+        internal Sector TryGetSector(long positionWithSize)
         {
             Lazy<Sector> res;
-            if (_sectorCache.TryGetValue(position, out res))
+            if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
             {
                 return res.Value;
             }
@@ -750,7 +848,7 @@ namespace BTDB
                         int m = 0;
                         for (int i = 0; i < dirtySector.Length / PtrDownSize; i++)
                         {
-                            int c = (int) PackUnpack.UnpackUInt64(dirtySector.Data, i*PtrDownSize) &
+                            int c = (int)PackUnpack.UnpackUInt64(dirtySector.Data, i * PtrDownSize) &
                                     (AllocationGranularity - 1);
                             if (m < c)
                             {
@@ -980,7 +1078,7 @@ namespace BTDB
 
         internal Sector NewSector()
         {
-            var result = new Sector {Dirty = true, InTransaction = true};
+            var result = new Sector { Dirty = true, InTransaction = true };
             _unallocatedCounter--;
             result.Position = _unallocatedCounter * AllocationGranularity;
             return result;
