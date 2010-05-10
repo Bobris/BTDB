@@ -44,6 +44,20 @@ namespace BTDB
     {
         internal long Ptr;
         internal uint Checksum;
+
+        internal static void Pack(byte[] data, int offset, SectorPtr value)
+        {
+            PackUnpack.PackInt64(data, offset, value.Ptr);
+            PackUnpack.PackUInt32(data, offset + 8, value.Checksum);
+        }
+
+        internal static SectorPtr Unpack(byte[] data, int offset)
+        {
+            SectorPtr result;
+            result.Ptr = PackUnpack.UnpackInt64(data, offset);
+            result.Checksum = PackUnpack.UnpackUInt32(data, offset + 8);
+            return result;
+        }
     }
 
     internal class ReadTrLink
@@ -58,10 +72,31 @@ namespace BTDB
 
     internal struct BTreeChildIterator
     {
+        internal const int MaxKeyLenInline = LowLevelDB.AllocationGranularity + 12;
+        internal const int MaxValueLenInline = LowLevelDB.AllocationGranularity + 12;
+
+        internal static int CalcKeyLenInline(int keyLen)
+        {
+            if (keyLen <= MaxKeyLenInline) return keyLen;
+            return keyLen -
+                   ((keyLen - MaxKeyLenInline) / LowLevelDB.AllocationGranularity + 1) * LowLevelDB.AllocationGranularity;
+        }
+
+        internal static int CalcValueLenInline(long valueLen)
+        {
+            if (valueLen <= MaxValueLenInline) return (int)valueLen;
+            return
+                (int)
+                (valueLen -
+                 ((valueLen - MaxValueLenInline) / LowLevelDB.AllocationGranularity + 1) * LowLevelDB.AllocationGranularity);
+        }
+
         internal void Init(byte[] data)
         {
             _data = data;
             _count = data[0];
+            Debug.Assert(_count < 128);
+            _totalLength = 0;
             MoveFirst();
         }
 
@@ -69,6 +104,11 @@ namespace BTDB
         {
             _ofs = 1;
             _pos = 0;
+            LoadEntry();
+        }
+
+        void LoadEntry()
+        {
             _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
             _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
         }
@@ -77,19 +117,16 @@ namespace BTDB
         {
             if (_pos + 1 >= _count) return false;
             _pos++;
-            _ofs += 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity) + (int)(_valueLen%LowLevelDB.AllocationGranularity);
-            if (_keyLen >= LowLevelDB.AllocationGranularity) _ofs += LowLevelDB.PtrDownSize;
-            if (_valueLen >= LowLevelDB.AllocationGranularity) _ofs += LowLevelDB.PtrDownSize;
-            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
-            _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
+            _ofs += SizeOfCurrentEntry;
+            LoadEntry();
             return true;
         }
 
         internal void MoveTo(int pos)
         {
-            Debug.Assert(pos>=0);
-            Debug.Assert(pos<_count);
-            if (pos<_pos) MoveFirst();
+            Debug.Assert(pos >= 0);
+            Debug.Assert(pos < _count);
+            if (pos < _pos) MoveFirst();
             while (_pos < pos) MoveNext();
         }
 
@@ -105,15 +142,24 @@ namespace BTDB
 
         internal int KeyOffset
         {
-            get { return _ofs+4+8; }
+            get { return _ofs + 4 + 8; }
+        }
+
+        internal int KeyLenInline
+        {
+            get { return CalcKeyLenInline(_keyLen); }
+        }
+
+        internal int ValueLenInline
+        {
+            get { return CalcValueLenInline(_valueLen); }
         }
 
         internal int ValueOffset
         {
             get
             {
-                return _ofs + 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity) +
-                       ((_keyLen >= LowLevelDB.AllocationGranularity) ? LowLevelDB.PtrDownSize : 0);
+                return _ofs + 4 + 8 + KeyLenInline + ((_keyLen > MaxKeyLenInline) ? LowLevelDB.PtrDownSize : 0);
             }
         }
 
@@ -121,21 +167,55 @@ namespace BTDB
         {
             get
             {
-                if (_keyLen<LowLevelDB.AllocationGranularity) throw new InvalidOperationException();
-                var sectorPtr = new SectorPtr();
-                int ofs = _ofs + 4 + 8 + (_keyLen%LowLevelDB.AllocationGranularity);
-                sectorPtr.Ptr = PackUnpack.UnpackInt64(_data, ofs);
-                sectorPtr.Checksum = PackUnpack.UnpackUInt32(_data, ofs + 8);
-                return sectorPtr;
+                if (_keyLen <= MaxKeyLenInline) throw new InvalidOperationException();
+                return SectorPtr.Unpack(_data, KeyOffset + KeyLenInline);
             }
         }
 
+        internal SectorPtr ValueSectorPtr
+        {
+            get
+            {
+                if (_valueLen <= MaxValueLenInline) throw new InvalidOperationException();
+                return SectorPtr.Unpack(_data, ValueOffset + ValueLenInline);
+            }
+        }
+
+        internal int TotalLength
+        {
+            get
+            {
+                if (_totalLength > 0) return _totalLength;
+                var backupOfs = _ofs;
+                for (int i = _pos + 1; i < _count; i++)
+                {
+                    _ofs += SizeOfCurrentEntry;
+                    LoadEntry();
+                }
+                _totalLength = _ofs + SizeOfCurrentEntry;
+                _ofs = backupOfs;
+                return _totalLength;
+            }
+        }
+
+        internal int SizeOfCurrentEntry
+        {
+            get
+            {
+                int result = 4 + 8 + KeyLenInline + ValueLenInline;
+                if (_keyLen > MaxKeyLenInline) result += LowLevelDB.PtrDownSize;
+                if (_valueLen > MaxValueLenInline) result += LowLevelDB.PtrDownSize;
+                return result;
+            }
+        }
+
+        long _valueLen;
         byte[] _data;
         int _count;
         int _ofs;
         int _pos;
         int _keyLen;
-        long _valueLen;
+        int _totalLength;
     }
 
     internal class Transaction : ILowLevelDBTransaction
@@ -221,7 +301,7 @@ namespace BTDB
                 }
             }
             Sector sector = _owner.TryGetSector(rootBTree.Ptr);
-            if (sector==null)
+            if (sector == null)
             {
                 sector = _owner.ReadSector(rootBTree.Ptr, rootBTree.Checksum, _readLink == null);
                 sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
@@ -234,58 +314,53 @@ namespace BTDB
         {
             var newRootBTreeSector = _owner.NewSector();
             newRootBTreeSector.Type = SectorType.BTreeChild;
-            newRootBTreeSector.Length = LowLevelDB.RoundToAllocationGranularity(1 + 4 + 8 + keyLen % LowLevelDB.AllocationGranularity +
-                                                                                (keyLen >= LowLevelDB.AllocationGranularity ? LowLevelDB.PtrDownSize : 0));
+            int keyLenInline = BTreeChildIterator.CalcKeyLenInline(keyLen);
+            newRootBTreeSector.SetLengthWithRound(1 + 4 + 8 + keyLenInline +
+                                                  (keyLen > BTreeChildIterator.MaxKeyLenInline
+                                                       ? LowLevelDB.PtrDownSize
+                                                       : 0));
             newRootBTreeSector.Data[0] = 1;
             PackUnpack.PackUInt32(newRootBTreeSector.Data, 1, (uint)keyLen);
-            Array.Copy(keyBuf,
-                       keyOfs + keyLen & ~(LowLevelDB.AllocationGranularity - 1),
-                       newRootBTreeSector.Data,
-                       1+4+8,
-                       keyLen % LowLevelDB.AllocationGranularity);
+            Array.Copy(keyBuf, keyOfs, newRootBTreeSector.Data, 1 + 4 + 8, keyLenInline);
+            if (keyLen > BTreeChildIterator.MaxKeyLenInline)
+            {
+                SectorPtr keySecPtr = CreateContentSector(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, null);
+                SectorPtr.Pack(newRootBTreeSector.Data, 1 + 4 + 8 + keyLenInline, keySecPtr);
+            }
             return newRootBTreeSector;
+        }
+
+        SectorPtr CreateContentSector(byte[] buf, int ofs, int len, Sector parent)
+        {
+            if (len <= LowLevelDB.MaxSectorSize)
+            {
+                var newSector = _owner.NewSector();
+                newSector.Type = SectorType.DataChild;
+                newSector.SetLengthWithRound(len);
+                newSector.Parent = parent;
+                if (buf != null) Array.Copy(buf, ofs, newSector.Data, 0, len);
+                _owner.PublishSector(newSector);
+                return newSector.ToPtrWithLen();
+            }
+            throw new NotImplementedException();
         }
 
         public int GetKeySize()
         {
             if (_currentKeyIndex < 0) return -1;
-            int skip = _currentKeyIndex;
-            int p = 1;
-            var data = _currentKeySector.Data;
-            while (true)
-            {
-                uint kl = PackUnpack.UnpackUInt32(data, p);
-                if (skip == 0) return (int)kl;
-                p += 4;
-                ulong vl = PackUnpack.UnpackUInt64(data, p);
-                p += 8;
-                p += (int)(kl % LowLevelDB.AllocationGranularity);
-                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                p += (int)(vl % LowLevelDB.AllocationGranularity);
-                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                skip--;
-            }
+            var iter = new BTreeChildIterator();
+            iter.Init(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndex);
+            return iter.KeyLen;
         }
 
         public long GetValueSize()
         {
             if (_currentKeyIndex < 0) return -1;
-            int skip = _currentKeyIndex;
-            int p = 1;
-            var data = _currentKeySector.Data;
-            while (true)
-            {
-                uint kl = PackUnpack.UnpackUInt32(data, p);
-                p += 4;
-                ulong vl = PackUnpack.UnpackUInt64(data, p);
-                if (skip == 0) return (long)vl;
-                p += 8;
-                p += (int)(kl % LowLevelDB.AllocationGranularity);
-                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                p += (int)(vl % LowLevelDB.AllocationGranularity);
-                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                skip--;
-            }
+            var iter = new BTreeChildIterator();
+            iter.Init(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndex);
+            return iter.ValueLen;
         }
 
         public long CountRange(byte[] key1Buf, int key1Ofs, int key1Len, bool key1Open, byte[] key2Buf, int key2Ofs, int key2Len, bool key2Open)
@@ -301,36 +376,21 @@ namespace BTDB
         public void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs)
         {
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
-            int skip = _currentKeyIndex;
-            int p = 1;
-            var data = _currentKeySector.Data;
-            uint kl;
-            while (true)
-            {
-                kl = PackUnpack.UnpackUInt32(data, p);
-                if (skip == 0) break;
-                p += 4;
-                ulong vl = PackUnpack.UnpackUInt64(data, p);
-                p += 8;
-                p += (int)(kl % LowLevelDB.AllocationGranularity);
-                if (kl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                p += (int)(vl % LowLevelDB.AllocationGranularity);
-                if (vl >= LowLevelDB.AllocationGranularity) p += LowLevelDB.PtrDownSize;
-                skip--;
-            }
-            p += 12;
-            if (ofs >= kl)
+            var iter = new BTreeChildIterator();
+            iter.Init(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndex);
+            if (ofs >= iter.KeyLen)
             {
                 len = 0;
                 buf = null;
                 bufOfs = 0;
                 return;
             }
-            if (ofs >= kl - kl % LowLevelDB.AllocationGranularity)
+            if (ofs < iter.KeyLenInline)
             {
-                buf = data;
-                bufOfs = p + ofs % LowLevelDB.AllocationGranularity;
-                len = (int)(kl % LowLevelDB.AllocationGranularity) - bufOfs;
+                len = iter.KeyLenInline - ofs;
+                buf = _currentKeySector.Data;
+                bufOfs = iter.KeyOffset + ofs;
                 return;
             }
             throw new NotImplementedException();
@@ -341,14 +401,14 @@ namespace BTDB
             int pos = 0;
             while (len > 0)
             {
-                byte[] lBuf;
-                int lBufOfs;
-                int lOutLen;
-                PeekKey(ofs, out lOutLen, out lBuf, out lBufOfs);
-                if (lOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
-                Array.Copy(lBuf, lBufOfs, buf, pos, lOutLen);
-                pos += lOutLen;
-                len -= lOutLen;
+                byte[] localBuf;
+                int localBufOfs;
+                int localOutLen;
+                PeekKey(ofs, out localOutLen, out localBuf, out localBufOfs);
+                if (localOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
+                Array.Copy(localBuf, localBufOfs, buf, pos, localOutLen);
+                pos += localOutLen;
+                len -= localOutLen;
             }
         }
 
@@ -362,14 +422,14 @@ namespace BTDB
             int pos = 0;
             while (len > 0)
             {
-                byte[] lBuf;
-                int lBufOfs;
-                int lOutLen;
-                PeekValue(ofs, out lOutLen, out lBuf, out lBufOfs);
-                if (lOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
-                Array.Copy(lBuf, lBufOfs, buf, pos, lOutLen);
-                pos += lOutLen;
-                len -= lOutLen;
+                byte[] localBuf;
+                int localBufOfs;
+                int localOutLen;
+                PeekValue(ofs, out localOutLen, out localBuf, out localBufOfs);
+                if (localOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
+                Array.Copy(localBuf, localBufOfs, buf, pos, localOutLen);
+                pos += localOutLen;
+                len -= localOutLen;
             }
         }
 
@@ -474,6 +534,24 @@ namespace BTDB
             }
         }
 
+        internal void SetLengthWithRound(int length)
+        {
+            Length = LowLevelDB.RoundToAllocationGranularity(length);
+        }
+
+        internal SectorPtr ToPtrWithLen()
+        {
+            SectorPtr result;
+            result.Ptr = Position;
+            result.Checksum = 0;
+            if (Position > 0)
+            {
+                result.Ptr += Length / LowLevelDB.AllocationGranularity - 1;
+                if (Dirty==false) result.Checksum = Checksum.CalcFletcher(Data, 0, (uint)Length);
+            }
+            return result;
+        }
+
         private byte[] _data;
     }
 
@@ -526,6 +604,7 @@ namespace BTDB
 
         internal Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
         {
+            Debug.Assert(positionWithSize > 0);
             return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & 0xFF) + 1, checksum, inWriteTransaction);
         }
 
