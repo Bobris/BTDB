@@ -17,7 +17,7 @@ namespace BTDB
      *   32PB in 5th level
      * 8192PB in 6th level max is 7 levels
      * 
-     * Root: 128(Header)+64*2=160
+     * Root: 128(Header)+64*2=256
      *   16 - B+Tree (8 ofs+4 check+4 levels)
      *   16 - Free Space Tree (8 ofs+4 check+4 levels)
      *    8 - Wanted Size
@@ -75,29 +75,28 @@ namespace BTDB
         internal const int MaxKeyLenInline = LowLevelDB.AllocationGranularity + 12;
         internal const int MaxValueLenInline = LowLevelDB.AllocationGranularity + 12;
 
-        internal static int CalcKeyLenInline(int keyLen)
-        {
-            if (keyLen <= MaxKeyLenInline) return keyLen;
-            return keyLen -
-                   ((keyLen - MaxKeyLenInline) / LowLevelDB.AllocationGranularity + 1) * LowLevelDB.AllocationGranularity;
-        }
-
-        internal static int CalcValueLenInline(long valueLen)
-        {
-            if (valueLen <= MaxValueLenInline) return (int)valueLen;
-            return
-                (int)
-                (valueLen -
-                 ((valueLen - MaxValueLenInline) / LowLevelDB.AllocationGranularity + 1) * LowLevelDB.AllocationGranularity);
-        }
-
-        internal void Init(byte[] data)
+        internal BTreeChildIterator(byte[] data)
         {
             _data = data;
             _count = data[0];
             Debug.Assert(_count < 128);
             _totalLength = 0;
-            MoveFirst();
+            _ofs = 1;
+            _pos = 0;
+            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
+            _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
+        }
+
+        internal static int CalcKeyLenInline(int keyLen)
+        {
+            if (keyLen <= MaxKeyLenInline) return keyLen;
+            return keyLen - LowLevelDB.RoundToAllocationGranularity(keyLen - MaxKeyLenInline);
+        }
+
+        internal static int CalcValueLenInline(long valueLen)
+        {
+            if (valueLen <= MaxValueLenInline) return (int)valueLen;
+            return (int)(valueLen - LowLevelDB.RoundToAllocationGranularity(valueLen - MaxValueLenInline));
         }
 
         internal void MoveFirst()
@@ -209,9 +208,42 @@ namespace BTDB
             }
         }
 
+        internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Func<byte[], int, int, SectorPtr, int, int> compare)
+        {
+            int l = 0;
+            int r = _count;
+            while (l < r)
+            {
+                int m = (l + r) / 2;
+                MoveTo(m);
+                int keyLenInline = KeyLenInline;
+                int result = BitArrayManipulation.CompareByteArray(keyBuf,
+                                                                 keyOfs,
+                                                                 Math.Min(keyLen, keyLenInline),
+                                                                 _data,
+                                                                 KeyOffset,
+                                                                 keyLenInline);
+                if (result == 0)
+                {
+                    if (keyLen <= MaxKeyLenInline) return m * 2 + 1;
+                    result = compare(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, KeySectorPtr, _keyLen - keyLenInline);
+                    if (result == 0) return m * 2 + 1;
+                }
+                if (result < 0)
+                {
+                    r = m;
+                }
+                else
+                {
+                    l = m + 1;
+                }
+            }
+            return l * 2;
+        }
+
         long _valueLen;
-        byte[] _data;
-        int _count;
+        readonly byte[] _data;
+        readonly int _count;
         int _ofs;
         int _pos;
         int _keyLen;
@@ -306,7 +338,22 @@ namespace BTDB
                 sector = _owner.ReadSector(rootBTree.Ptr, rootBTree.Checksum, _readLink == null);
                 sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
             }
+            if (sector.Type == SectorType.BTreeChild)
+            {
+                var iter = new BTreeChildIterator(sector.Data);
+                int bindex = iter.BinarySearch(keyBuf, keyOfs, keyLen, SectorDataCompare);
+            }
+            throw new NotImplementedException();
+        }
 
+        int SectorDataCompare(byte[] buf, int ofs, int len, SectorPtr sectorPtr, int dataLen)
+        {
+            Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
+            if (sector == null)
+            {
+                sector = _owner.ReadSector(sectorPtr.Ptr, sectorPtr.Checksum, _readLink == null);
+                sector.Type = dataLen > sector.Length ? SectorType.DataParent : SectorType.DataChild;
+            }
             throw new NotImplementedException();
         }
 
@@ -348,8 +395,7 @@ namespace BTDB
         public int GetKeySize()
         {
             if (_currentKeyIndex < 0) return -1;
-            var iter = new BTreeChildIterator();
-            iter.Init(_currentKeySector.Data);
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
             iter.MoveTo(_currentKeyIndex);
             return iter.KeyLen;
         }
@@ -357,8 +403,7 @@ namespace BTDB
         public long GetValueSize()
         {
             if (_currentKeyIndex < 0) return -1;
-            var iter = new BTreeChildIterator();
-            iter.Init(_currentKeySector.Data);
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
             iter.MoveTo(_currentKeyIndex);
             return iter.ValueLen;
         }
@@ -376,8 +421,7 @@ namespace BTDB
         public void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs)
         {
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
-            var iter = new BTreeChildIterator();
-            iter.Init(_currentKeySector.Data);
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
             iter.MoveTo(_currentKeyIndex);
             if (ofs >= iter.KeyLen)
             {
@@ -547,7 +591,7 @@ namespace BTDB
             if (Position > 0)
             {
                 result.Ptr += Length / LowLevelDB.AllocationGranularity - 1;
-                if (Dirty==false) result.Checksum = Checksum.CalcFletcher(Data, 0, (uint)Length);
+                if (Dirty == false) result.Checksum = Checksum.CalcFletcher(Data, 0, (uint)Length);
             }
             return result;
         }
@@ -1201,6 +1245,12 @@ namespace BTDB
         }
 
         internal static int RoundToAllocationGranularity(int value)
+        {
+            Debug.Assert(value > 0);
+            return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);
+        }
+
+        internal static long RoundToAllocationGranularity(long value)
         {
             Debug.Assert(value > 0);
             return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);

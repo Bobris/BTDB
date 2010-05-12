@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 
 namespace BTDB
 {
@@ -162,6 +163,19 @@ namespace BTDB
             if (sizetill > sizemax) sizemax = sizetill;
             if (sizemax > 255) sizemax = 255;
             return sizemax;
+        }
+
+        internal static int CompareByteArray(byte[] a1, int o1, int l1, byte[] a2, int o2, int l2)
+        {
+            int commonLength = Math.Min(l1, l2);
+            for (int i = 0; i < commonLength; i++)
+            {
+                if (a1[i] < a2[i]) return -1;
+                if (a1[i] > a2[i]) return 1;
+            }
+            if (l1 < l2) return -1;
+            if (l1 > l2) return 1;
+            return 0;
         }
     }
 }
