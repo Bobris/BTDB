@@ -208,6 +208,11 @@ namespace BTDB
             }
         }
 
+        internal int Count
+        {
+            get { return _count; }
+        }
+
         internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Func<byte[], int, int, SectorPtr, int, int> compare)
         {
             int l = 0;
@@ -325,9 +330,7 @@ namespace BTDB
                     case FindKeyStrategy.PreferNext:
                     case FindKeyStrategy.OnlyPrevious:
                     case FindKeyStrategy.OnlyNext:
-                        _currentKeySector = null;
-                        _currentKeyIndex = -1;
-                        return FindKeyResult.NotFound;
+                        return FindKeyNotFound();
                     default:
                         throw new ArgumentOutOfRangeException("strategy");
                 }
@@ -342,8 +345,77 @@ namespace BTDB
             {
                 var iter = new BTreeChildIterator(sector.Data);
                 int bindex = iter.BinarySearch(keyBuf, keyOfs, keyLen, SectorDataCompare);
+                _currentKeySector = sector;
+                _currentKeyIndex = bindex / 2;
+                if ((bindex & 1) != 0)
+                {
+                    return FindKeyResult.FoundExact;
+                }
+                switch (strategy)
+                {
+                    case FindKeyStrategy.Create:
+                        break;
+                    case FindKeyStrategy.ExactMatch:
+                        return FindKeyNotFound();
+                    case FindKeyStrategy.OnlyNext:
+                        if (_currentKeyIndex < iter.Count)
+                        {
+                            return FindKeyResult.FoundNext;
+                        }
+                        _currentKeyIndex--;
+                        if (FindNextKey())
+                        {
+                            return FindKeyResult.FoundNext;
+                        }
+                        return FindKeyNotFound();
+                    case FindKeyStrategy.PreferNext:
+                        if (_currentKeyIndex < iter.Count)
+                        {
+                            return FindKeyResult.FoundNext;
+                        }
+                        _currentKeyIndex--;
+                        if (FindNextKey())
+                        {
+                            return FindKeyResult.FoundNext;
+                        }
+                        return FindKeyResult.FoundPrevious;
+                    case FindKeyStrategy.OnlyPrevious:
+                        if (_currentKeyIndex > 0)
+                        {
+                            _currentKeyIndex--;
+                            return FindKeyResult.FoundPrevious;
+                        }
+                        if (FindPreviousKey())
+                        {
+                            return FindKeyResult.FoundPrevious;
+                        }
+                        return FindKeyNotFound();
+                    case FindKeyStrategy.PreferPrevious:
+                        if (_currentKeyIndex > 0)
+                        {
+                            _currentKeyIndex--;
+                            return FindKeyResult.FoundPrevious;
+                        }
+                        if (FindPreviousKey())
+                        {
+                            return FindKeyResult.FoundPrevious;
+                        }
+                        return FindKeyResult.FoundNext;
+                    default:
+                        throw new ArgumentOutOfRangeException("strategy");
+                }
+
+                throw new NotImplementedException();
+                return FindKeyResult.Created;
             }
             throw new NotImplementedException();
+        }
+
+        FindKeyResult FindKeyNotFound()
+        {
+            _currentKeySector = null;
+            _currentKeyIndex = -1;
+            return FindKeyResult.NotFound;
         }
 
         int SectorDataCompare(byte[] buf, int ofs, int len, SectorPtr sectorPtr, int dataLen)
@@ -353,6 +425,15 @@ namespace BTDB
             {
                 sector = _owner.ReadSector(sectorPtr.Ptr, sectorPtr.Checksum, _readLink == null);
                 sector.Type = dataLen > sector.Length ? SectorType.DataParent : SectorType.DataChild;
+            }
+            if (sector.Type==SectorType.DataChild)
+            {
+                return BitArrayManipulation.CompareByteArray(buf,
+                                                             ofs,
+                                                             dataLen > sector.Length && len > sector.Length ? sector.Length : len,
+                                                             sector.Data, 
+                                                             0, 
+                                                             sector.Length);
             }
             throw new NotImplementedException();
         }
