@@ -99,6 +99,12 @@ namespace BTDB
             return (int)(valueLen - LowLevelDB.RoundToAllocationGranularity(valueLen - MaxValueLenInline));
         }
 
+        internal static int CalcEntrySize(int keyLen)
+        {
+            return 4 + 8 + CalcKeyLenInline(keyLen) +
+                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
+        }
+
         internal void MoveFirst()
         {
             _ofs = 1;
@@ -116,7 +122,7 @@ namespace BTDB
         {
             if (_pos + 1 >= _count) return false;
             _pos++;
-            _ofs += SizeOfCurrentEntry;
+            _ofs += CurrentEntrySize;
             LoadEntry();
             return true;
         }
@@ -180,6 +186,13 @@ namespace BTDB
             }
         }
 
+        internal int OffsetOfIndex(int index)
+        {
+            if (index == _count) return TotalLength;
+            MoveTo(index);
+            return _ofs;
+        }
+
         internal int TotalLength
         {
             get
@@ -188,16 +201,17 @@ namespace BTDB
                 var backupOfs = _ofs;
                 for (int i = _pos + 1; i < _count; i++)
                 {
-                    _ofs += SizeOfCurrentEntry;
+                    _ofs += CurrentEntrySize;
                     LoadEntry();
                 }
-                _totalLength = _ofs + SizeOfCurrentEntry;
+                _totalLength = _ofs + CurrentEntrySize;
                 _ofs = backupOfs;
+                LoadEntry();
                 return _totalLength;
             }
         }
 
-        internal int SizeOfCurrentEntry
+        internal int CurrentEntrySize
         {
             get
             {
@@ -211,6 +225,16 @@ namespace BTDB
         internal int Count
         {
             get { return _count; }
+        }
+
+        public int Index
+        {
+            get { return _pos; }
+        }
+
+        public byte[] Data
+        {
+            get { return _data; }
         }
 
         internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Func<byte[], int, int, SectorPtr, int, int> compare)
@@ -404,8 +428,20 @@ namespace BTDB
                     default:
                         throw new ArgumentOutOfRangeException("strategy");
                 }
-
-                throw new NotImplementedException();
+                int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(keyLen);
+                if (iter.TotalLength+additionalLengthNeeded<=4096 && iter.Count<127)
+                {
+                    Sector newSector = _owner.resizeSector(sector, iter.TotalLength + additionalLengthNeeded);
+                    newSector.Data[0] = (byte)(iter.Count + 1);
+                    int insertOfs=iter.OffsetOfIndex(_currentKeyIndex);
+                    Array.Copy(iter.Data, 1, newSector.Data, 1, insertOfs - 1);
+                    SetBTreeChildKeyData(newSector.Data, keyBuf, keyOfs, keyLen, insertOfs);
+                    Array.Copy(iter.Data, insertOfs, newSector.Data, insertOfs+additionalLengthNeeded, iter.TotalLength-insertOfs);
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
                 return FindKeyResult.Created;
             }
             throw new NotImplementedException();
@@ -438,24 +474,27 @@ namespace BTDB
             throw new NotImplementedException();
         }
 
-        private Sector CreateBTreeChildWith1Key(byte[] keyBuf, int keyOfs, int keyLen)
+        Sector CreateBTreeChildWith1Key(byte[] keyBuf, int keyOfs, int keyLen)
         {
             var newRootBTreeSector = _owner.NewSector();
             newRootBTreeSector.Type = SectorType.BTreeChild;
+            newRootBTreeSector.SetLengthWithRound(1 + BTreeChildIterator.CalcEntrySize(keyLen));
+            byte[] sectorData = newRootBTreeSector.Data;
+            sectorData[0] = 1;
+            SetBTreeChildKeyData(sectorData, keyBuf, keyOfs, keyLen, 1);
+            return newRootBTreeSector;
+        }
+
+        void SetBTreeChildKeyData(byte[] sectorData, byte[] keyBuf, int keyOfs, int keyLen, int sectorDataOfs)
+        {
             int keyLenInline = BTreeChildIterator.CalcKeyLenInline(keyLen);
-            newRootBTreeSector.SetLengthWithRound(1 + 4 + 8 + keyLenInline +
-                                                  (keyLen > BTreeChildIterator.MaxKeyLenInline
-                                                       ? LowLevelDB.PtrDownSize
-                                                       : 0));
-            newRootBTreeSector.Data[0] = 1;
-            PackUnpack.PackUInt32(newRootBTreeSector.Data, 1, (uint)keyLen);
-            Array.Copy(keyBuf, keyOfs, newRootBTreeSector.Data, 1 + 4 + 8, keyLenInline);
+            PackUnpack.PackUInt32(sectorData, sectorDataOfs, (uint)keyLen);
+            Array.Copy(keyBuf, keyOfs, sectorData, sectorDataOfs + 4 + 8, keyLenInline);
             if (keyLen > BTreeChildIterator.MaxKeyLenInline)
             {
                 SectorPtr keySecPtr = CreateContentSector(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, null);
-                SectorPtr.Pack(newRootBTreeSector.Data, 1 + 4 + 8 + keyLenInline, keySecPtr);
+                SectorPtr.Pack(sectorData, sectorDataOfs + 4 + 8 + keyLenInline, keySecPtr);
             }
-            return newRootBTreeSector;
         }
 
         SectorPtr CreateContentSector(byte[] buf, int ofs, int len, Sector parent)
