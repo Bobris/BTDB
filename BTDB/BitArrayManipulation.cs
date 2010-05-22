@@ -170,8 +170,8 @@ namespace BTDB
             int commonLength = Math.Min(l1, l2);
             for (int i = 0; i < commonLength; i++)
             {
-                if (a1[i] < a2[i]) return -1;
-                if (a1[i] > a2[i]) return 1;
+                if (a1[o1+i] < a2[o2+i]) return -1;
+                if (a1[o1+i] > a2[o2+i]) return 1;
             }
             if (l1 < l2) return -1;
             if (l1 > l2) return 1;

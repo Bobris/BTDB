@@ -19,6 +19,7 @@ namespace BTDBTest
                 }
             }
         }
+
         [TestMethod]
         public void OpenEmptyDatabase()
         {
@@ -34,10 +35,11 @@ namespace BTDBTest
                 }
             }
         }
+
         [TestMethod]
         public void FirstTransaction()
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);
@@ -49,7 +51,28 @@ namespace BTDBTest
             }
         }
 
+        [TestMethod]
+        public void MoreComplexTransaction()
+        {
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.AreEqual(FindKeyResult.Created, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create));
+                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create));
+                    Assert.AreEqual(FindKeyResult.NotFound, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.ExactMatch));
+                    Assert.AreEqual(FindKeyResult.Created, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.Create));
+                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.ExactMatch));
+                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.ExactMatch));
+                    tr.Commit();
+                }
+            }
+        }
+
         private readonly byte[] _key1 = new byte[] { 1, 2, 3 };
+        private readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         
         private static void Nothing(string s)
         {

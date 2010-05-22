@@ -431,7 +431,7 @@ namespace BTDB
                 int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(keyLen);
                 if (iter.TotalLength+additionalLengthNeeded<=4096 && iter.Count<127)
                 {
-                    Sector newSector = _owner.resizeSector(sector, iter.TotalLength + additionalLengthNeeded);
+                    Sector newSector = _owner.ResizeSector(sector, iter.TotalLength + additionalLengthNeeded);
                     newSector.Data[0] = (byte)(iter.Count + 1);
                     int insertOfs=iter.OffsetOfIndex(_currentKeyIndex);
                     Array.Copy(iter.Data, 1, newSector.Data, 1, insertOfs - 1);
@@ -727,7 +727,7 @@ namespace BTDB
         internal const int SecondRootOffset = FirstRootOffset + RootSize;
         internal const int TotalHeaderSize = SecondRootOffset + RootSize;
         internal const int AllocationGranularity = 256;
-        internal const long MaskOfPosition = 0x7FFFFFFFFFFFFF00L;
+        internal const long MaskOfPosition = -256; // 0xFFFFFFFFFFFFFF00
         internal const int MaxSectorSize = 256 * AllocationGranularity;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
@@ -1153,6 +1153,7 @@ namespace BTDB
                 }
                 var clone = NewSector();
                 clone.Length = sector.Length;
+                clone.Type = sector.Type;
                 Array.Copy(sector.Data, clone.Data, clone.Length);
                 clone.Parent = newParent;
                 PublishSector(clone);
@@ -1178,6 +1179,54 @@ namespace BTDB
             sector.Dirty = true;
             LinkToTailOfDirtySectors(sector);
             return sector;
+        }
+
+        internal Sector ResizeSector(Sector sector, int newLength)
+        {
+            newLength = RoundToAllocationGranularity(newLength);
+            if (sector.Length == newLength) return DirtizeSector(sector);
+            if (sector.InTransaction)
+            {
+                if (!sector.Allocated)
+                {
+                    sector.Length = newLength;
+                    return sector;
+                }
+                if (sector.Dirty)
+                {
+                    UnlinkFromDirtySectors(sector);
+                }
+                Lazy<Sector> forget;
+                _sectorCache.TryRemove(sector.Position, out forget);
+            }
+            var newParent = sector.Parent;
+            if (newParent != null)
+            {
+                newParent = DirtizeSector(newParent);
+            }
+            var clone = NewSector();
+            clone.Length = newLength;
+            clone.Type = sector.Type;
+            clone.Parent = newParent;
+            PublishSector(clone);
+            if (newParent == null)
+            {
+                if ((_newState.RootBTree.Ptr & MaskOfPosition) == sector.Position)
+                {
+                    _newState.RootBTree.Ptr = clone.Position; // Length encoding is not needed as it is temporary anyway
+                }
+                else
+                {
+                    Debug.Assert((_newState.RootAllocPage.Ptr & MaskOfPosition) == sector.Position);
+                    _newState.RootAllocPage.Ptr = clone.Position; // Max free space encoding is not needed as it is temporary anyway
+                }
+            }
+            else
+            {
+                int ofs = FindOfsInParent(sector, newParent);
+                PackUnpack.PackInt64(newParent.Data, ofs, clone.Position);
+            }
+            return clone;
         }
 
         private int FindOfsInParent(Sector sector, Sector where)
