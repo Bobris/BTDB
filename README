@@ -1,0 +1,15 @@
+In first phase of this project this should be Key Value store written in C# without using any native code.
+It has ACID properties. Is easily embedable. One storage is just one file/stream.
+At one time there could be multiple read only transactions and one write transaction.
+
+Limits:
+Maximum Key length is limited by 31bits (2GB)
+Maximum value length is limited by 63bits (8EB = 8 Exa Bytes).
+Total pairs count is limited by 63bits.
+Total size of database file is limited by 63bits (8EB).
+
+These limits are in design, currently project is not that far that these could be tested.
+
+Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.html
+
+Please is you find it usefull, write me e-mail so I know that it is used.
