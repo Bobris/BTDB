@@ -254,7 +254,12 @@ namespace BTDB
                                                                  keyLenInline);
                 if (result == 0)
                 {
-                    if (keyLen <= MaxKeyLenInline) return m * 2 + 1;
+                    if (keyLen <= MaxKeyLenInline)
+                    {
+                        if (keyLen == keyLenInline) return m * 2 + 1;
+                        l = m + 1;
+                        continue;
+                    }
                     result = compare(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, KeySectorPtr, _keyLen - keyLenInline);
                     if (result == 0) return m * 2 + 1;
                 }
