@@ -1,14 +1,14 @@
 ﻿using System.Diagnostics;
 using System.IO;
 using BTDB;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NUnit.Framework;
 
 namespace BTDBTest
 {
-    [TestClass]
+    [TestFixture]
     public class BTDBTest
     {
-        [TestMethod]
+        [Test]
         public void CreateEmptyDatabase()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
@@ -20,7 +20,7 @@ namespace BTDBTest
             }
         }
 
-        [TestMethod]
+        [Test]
         public void OpenEmptyDatabase()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
@@ -36,7 +36,7 @@ namespace BTDBTest
             }
         }
 
-        [TestMethod]
+        [Test]
         public void FirstTransaction()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
@@ -51,7 +51,7 @@ namespace BTDBTest
             }
         }
 
-        [TestMethod]
+        [Test]
         public void MoreComplexTransaction()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
@@ -72,7 +72,7 @@ namespace BTDBTest
             }
         }
 
-        [TestMethod]
+        [Test]
         public void CommitWorks()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))
@@ -97,7 +97,7 @@ namespace BTDBTest
             }
         }
 
-        [TestMethod]
+        [Test]
         public void RollbackWorks()
         {
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))

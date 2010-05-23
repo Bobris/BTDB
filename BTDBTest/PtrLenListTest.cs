@@ -1,10 +1,10 @@
 ﻿using System.Text;
 using BTDB;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NUnit.Framework;
 
 namespace BTDBTest
 {
-    [TestClass]
+    [TestFixture]
     public class PtrLenListTest
     {
         private static string Str(PtrLenList l)
@@ -18,14 +18,14 @@ namespace BTDBTest
             return sb.ToString();
         }
 
-        [TestMethod]
+        [Test]
         public void NewListIsEmpty()
         {
             var l = new PtrLenList();
             Assert.IsTrue(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void EmptyIncludeIsNoop()
         {
             var l = new PtrLenList();
@@ -33,7 +33,7 @@ namespace BTDBTest
             Assert.IsTrue(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void AfterIncludeIsNonEmpty()
         {
             var l = new PtrLenList();
@@ -41,7 +41,7 @@ namespace BTDBTest
             Assert.IsFalse(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void EmptyExcludeIsNoop()
         {
             var l = new PtrLenList();
@@ -50,7 +50,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void DoubleIncludeFails()
         {
             var l = new PtrLenList();
@@ -58,14 +58,14 @@ namespace BTDBTest
             Assert.IsFalse(l.TryInclude(0, 1));
         }
 
-        [TestMethod]
+        [Test]
         public void OnEmptyExcludeFails()
         {
             var l = new PtrLenList();
             Assert.IsFalse(l.TryExclude(0, 1));
         }
 
-        [TestMethod]
+        [Test]
         public void IncludeAndExcludeMakesEmpty()
         {
             var l = new PtrLenList();
@@ -74,7 +74,7 @@ namespace BTDBTest
             Assert.IsTrue(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void TwoConnectedIncludesMerge()
         {
             var l = new PtrLenList();
@@ -83,7 +83,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void TwoDisconnectedIncludesMerge()
         {
             var l = new PtrLenList();
@@ -92,7 +92,7 @@ namespace BTDBTest
             Assert.AreEqual("0-1;2-3", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ThreeIncludesMerge()
         {
             var l = new PtrLenList();
@@ -102,7 +102,7 @@ namespace BTDBTest
             Assert.AreEqual("0-3", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ThreeMergeOverlaping1()
         {
             var l = new PtrLenList();
@@ -112,7 +112,7 @@ namespace BTDBTest
             Assert.AreEqual("0-6", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ThreeMergeOverlaping2()
         {
             var l = new PtrLenList();
@@ -122,7 +122,7 @@ namespace BTDBTest
             Assert.AreEqual("0-6", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ThreeMergeOverlaping3()
         {
             var l = new PtrLenList();
@@ -132,7 +132,7 @@ namespace BTDBTest
             Assert.AreEqual("0-6", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void InsertAtBeginingWithoutMerge()
         {
             var l = new PtrLenList();
@@ -142,7 +142,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-6;8-10", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void InsertAtBeginingWithMerge()
         {
             var l = new PtrLenList();
@@ -152,7 +152,7 @@ namespace BTDBTest
             Assert.AreEqual("0-6;8-10", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void InsertBeforeLastWithMerge()
         {
             var l = new PtrLenList();
@@ -162,7 +162,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-10", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ALotsOfIncludes()
         {
             var l = new PtrLenList();
@@ -174,7 +174,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-395;396-398", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ALotsOfIncludes2()
         {
             var l = new PtrLenList();
@@ -186,7 +186,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-6;7-395;396-398", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ExcludeFromStart()
         {
             var l = new PtrLenList();
@@ -195,7 +195,7 @@ namespace BTDBTest
             Assert.AreEqual("2-4", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ExcludeFromStartOverlap()
         {
             var l = new PtrLenList();
@@ -204,7 +204,7 @@ namespace BTDBTest
             Assert.AreEqual("2-4", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ExcludeFromEnd()
         {
             var l = new PtrLenList();
@@ -213,7 +213,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ExcludeFromEndOverlap()
         {
             var l = new PtrLenList();
@@ -222,7 +222,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void ExcludeSplitRange()
         {
             var l = new PtrLenList();
@@ -231,7 +231,7 @@ namespace BTDBTest
             Assert.AreEqual("0-3;5-10", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void SpanExclude()
         {
             var l = new PtrLenList();
@@ -243,7 +243,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-5;36-38", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void SpanExclude2()
         {
             var l = new PtrLenList();
@@ -255,7 +255,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-6;8-10;12-14;16-18;20-22;36-38", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void SpanExclude3()
         {
             var l = new PtrLenList();
@@ -267,7 +267,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-6;8-10;12-14;16-18;20-22", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void SpanExclude4()
         {
             var l = new PtrLenList();
@@ -279,7 +279,7 @@ namespace BTDBTest
             Assert.AreEqual("0-2;4-6;8-10;12-14;33-34;36-38", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void AfterClearIsEmpty()
         {
             var l = new PtrLenList();
@@ -288,7 +288,7 @@ namespace BTDBTest
             Assert.IsTrue(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void CloneIsEqual()
         {
             var l = new PtrLenList();
@@ -299,7 +299,7 @@ namespace BTDBTest
             Assert.AreEqual("0-1;10-21", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void EmptyCloneIsEmpty()
         {
             var l = new PtrLenList();
@@ -307,7 +307,7 @@ namespace BTDBTest
             Assert.IsTrue(l2.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void CloneAndClearWorks()
         {
             var l = new PtrLenList();
@@ -318,7 +318,7 @@ namespace BTDBTest
             Assert.IsTrue(l.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void EmptyCloneAndClearIsEmpty()
         {
             var l = new PtrLenList();
@@ -326,7 +326,7 @@ namespace BTDBTest
             Assert.IsTrue(l2.Empty);
         }
 
-        [TestMethod]
+        [Test]
         public void TryFindAndRemoveWholeRange()
         {
             var l = new PtrLenList();
@@ -347,7 +347,7 @@ namespace BTDBTest
             Assert.AreEqual("", Str(l));
         }
 
-        [TestMethod]
+        [Test]
         public void TryFindAndRemovePartRange()
         {
             var l = new PtrLenList();
