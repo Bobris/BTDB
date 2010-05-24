@@ -226,7 +226,7 @@ namespace BTDB
                     newSector.Data[0] = (byte)(iter.Count + 1);
                     int insertOfs=iter.OffsetOfIndex(_currentKeyIndex);
                     Array.Copy(iter.Data, 1, newSector.Data, 1, insertOfs - 1);
-                    SetBTreeChildKeyData(newSector.Data, keyBuf, keyOfs, keyLen, insertOfs);
+                    SetBTreeChildKeyData(newSector, keyBuf, keyOfs, keyLen, insertOfs);
                     Array.Copy(iter.Data, insertOfs, newSector.Data, insertOfs+additionalLengthNeeded, iter.TotalLength-insertOfs);
                 }
                 else
@@ -270,20 +270,20 @@ namespace BTDB
             var newRootBTreeSector = _owner.NewSector();
             newRootBTreeSector.Type = SectorType.BTreeChild;
             newRootBTreeSector.SetLengthWithRound(1 + BTreeChildIterator.CalcEntrySize(keyLen));
-            byte[] sectorData = newRootBTreeSector.Data;
-            sectorData[0] = 1;
-            SetBTreeChildKeyData(sectorData, keyBuf, keyOfs, keyLen, 1);
+            newRootBTreeSector.Data[0] = 1;
+            SetBTreeChildKeyData(newRootBTreeSector, keyBuf, keyOfs, keyLen, 1);
             return newRootBTreeSector;
         }
 
-        void SetBTreeChildKeyData(byte[] sectorData, byte[] keyBuf, int keyOfs, int keyLen, int sectorDataOfs)
+        void SetBTreeChildKeyData(Sector inSector, byte[] keyBuf, int keyOfs, int keyLen, int sectorDataOfs)
         {
+            byte[] sectorData = inSector.Data;
             int keyLenInline = BTreeChildIterator.CalcKeyLenInline(keyLen);
             PackUnpack.PackUInt32(sectorData, sectorDataOfs, (uint)keyLen);
             Array.Copy(keyBuf, keyOfs, sectorData, sectorDataOfs + 4 + 8, keyLenInline);
             if (keyLen > BTreeChildIterator.MaxKeyLenInline)
             {
-                SectorPtr keySecPtr = CreateContentSector(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, null);
+                SectorPtr keySecPtr = CreateContentSector(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, inSector);
                 SectorPtr.Pack(sectorData, sectorDataOfs + 4 + 8 + keyLenInline, keySecPtr);
             }
         }
@@ -353,7 +353,6 @@ namespace BTDB
 
         public void ReadKey(int ofs, int len, byte[] buf, int bufOfs)
         {
-            int pos = 0;
             while (len > 0)
             {
                 byte[] localBuf;
@@ -361,8 +360,9 @@ namespace BTDB
                 int localOutLen;
                 PeekKey(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, pos, localOutLen);
-                pos += localOutLen;
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, localOutLen);
+                ofs += localOutLen;
+                bufOfs += localOutLen;
                 len -= localOutLen;
             }
         }
@@ -374,7 +374,6 @@ namespace BTDB
 
         public void ReadValue(long ofs, int len, byte[] buf, int bufOfs)
         {
-            int pos = 0;
             while (len > 0)
             {
                 byte[] localBuf;
@@ -382,8 +381,9 @@ namespace BTDB
                 int localOutLen;
                 PeekValue(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, pos, localOutLen);
-                pos += localOutLen;
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, localOutLen);
+                ofs += localOutLen;
+                bufOfs += localOutLen;
                 len -= localOutLen;
             }
         }
@@ -1022,6 +1022,32 @@ namespace BTDB
 
         private int FindOfsInParent(Sector sector, Sector where)
         {
+            switch(where.Type)
+            {
+                case SectorType.BTreeParent:
+                    break;
+                case SectorType.BTreeChild:
+                    var iter = new BTreeChildIterator(where.Data);
+                    do
+                    {
+                        if ((iter.KeySectorPos & LowLevelDB.MaskOfPosition) == sector.Position)
+                            return iter.KeySectorPtrOffset;
+                        if ((iter.ValueSectorPos & LowLevelDB.MaskOfPosition) == sector.Position)
+                            return iter.ValueSectorPtrOffset;
+                    } 
+                    while (iter.MoveNext());
+                    throw new BTDBException("Cannot FindOfsInParrent");
+                case SectorType.AllocParent:
+                    break;
+                case SectorType.AllocChild:
+                    break;
+                case SectorType.DataParent:
+                    break;
+                case SectorType.DataChild:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
             throw new NotImplementedException();
         }
 

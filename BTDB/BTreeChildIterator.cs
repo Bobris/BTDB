@@ -101,12 +101,48 @@ namespace BTDB
             }
         }
 
+        internal bool HasKeySectorPtr
+        {
+            get { return _keyLen>MaxKeyLenInline; }
+        }
+
+        internal int KeySectorPtrOffset
+        {
+            get { return KeyOffset + KeyLenInline; }
+        }
+
+        internal long KeySectorPos
+        {
+            get
+            {
+                return HasKeySectorPtr ? PackUnpack.UnpackInt64(_data, KeySectorPtrOffset) : 0;
+            }
+        }
+
         internal SectorPtr KeySectorPtr
         {
             get
             {
-                if (_keyLen <= MaxKeyLenInline) throw new InvalidOperationException();
-                return SectorPtr.Unpack(_data, KeyOffset + KeyLenInline);
+                if (!HasKeySectorPtr) throw new InvalidOperationException();
+                return SectorPtr.Unpack(_data, KeySectorPtrOffset);
+            }
+        }
+
+        internal bool HasValueSectorPtr
+        {
+            get { return _valueLen > MaxValueLenInline; }
+        }
+
+        internal int ValueSectorPtrOffset
+        {
+            get { return ValueOffset + ValueLenInline; }
+        }
+
+        internal long ValueSectorPos
+        {
+            get
+            {
+                return HasValueSectorPtr ? PackUnpack.UnpackInt64(_data, ValueSectorPtrOffset) : 0;
             }
         }
 
@@ -114,8 +150,8 @@ namespace BTDB
         {
             get
             {
-                if (_valueLen <= MaxValueLenInline) throw new InvalidOperationException();
-                return SectorPtr.Unpack(_data, ValueOffset + ValueLenInline);
+                if (!HasValueSectorPtr) throw new InvalidOperationException();
+                return SectorPtr.Unpack(_data, ValueSectorPtrOffset);
             }
         }
 

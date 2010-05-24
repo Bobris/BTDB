@@ -107,6 +107,7 @@ namespace BTDBTest
                 using (var tr1 = db.StartTransaction())
                 {
                     tr1.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create);
+                    // Rollback because of missing commit
                 }
                 using (var tr2 = db.StartTransaction())
                 {
@@ -116,12 +117,42 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void BiggerKey([Range(269, 300)] int keyLength)
+        {
+            var key = new byte[keyLength];
+            var buf = new byte[keyLength];
+            for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.FindKey(key, 0, key.Length, FindKeyStrategy.Create);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.AreEqual(FindKeyResult.FoundExact,
+                                    tr2.FindKey(key, 0, keyLength, FindKeyStrategy.ExactMatch));
+                    tr2.ReadKey(0, keyLength, buf, 0);
+                    Assert.AreEqual(key, buf);
+                }
+            }
+        }
+
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
-        readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-        
+        readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+
         private static void Nothing(string s)
         {
+        }
+
+        private static void LogDebug(string s)
+        {
+            Debug.WriteLine(s);
         }
     }
 }
