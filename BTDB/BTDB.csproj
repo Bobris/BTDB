@@ -46,6 +46,7 @@
     <Compile Include="BitArrayManipulation.cs" />
     <Compile Include="BTDBException.cs" />
     <Compile Include="BTDBTransactionRetryException.cs" />
+    <Compile Include="BTreeChildIterator.cs" />
     <Compile Include="Checksum.cs" />
     <Compile Include="LoggingStream.cs" />
     <Compile Include="LowLevelDB.cs" />
