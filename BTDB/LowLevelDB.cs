@@ -101,7 +101,7 @@ namespace BTDB
 
         private void UpgradeToWriteTransaction()
         {
-            if (_readLink == null) return;
+            if (IsWriteTransaction()) return;
             _owner.UpgradeTransactionToWriteOne(this, _readLink);
             _readLink = null;
         }
@@ -153,7 +153,7 @@ namespace BTDB
             Sector sector = _owner.TryGetSector(rootBTree.Ptr);
             if (sector == null)
             {
-                sector = _owner.ReadSector(rootBTree.Ptr, rootBTree.Checksum, _readLink == null);
+                sector = _owner.ReadSector(rootBTree, IsWriteTransaction());
                 sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
             }
             if (sector.Type == SectorType.BTreeChild)
@@ -220,14 +220,14 @@ namespace BTDB
                         throw new ArgumentOutOfRangeException("strategy");
                 }
                 int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(keyLen);
-                if (iter.TotalLength+additionalLengthNeeded<=4096 && iter.Count<127)
+                if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 127)
                 {
                     Sector newSector = _owner.ResizeSector(sector, iter.TotalLength + additionalLengthNeeded);
                     newSector.Data[0] = (byte)(iter.Count + 1);
-                    int insertOfs=iter.OffsetOfIndex(_currentKeyIndex);
+                    int insertOfs = iter.OffsetOfIndex(_currentKeyIndex);
                     Array.Copy(iter.Data, 1, newSector.Data, 1, insertOfs - 1);
                     SetBTreeChildKeyData(newSector, keyBuf, keyOfs, keyLen, insertOfs);
-                    Array.Copy(iter.Data, insertOfs, newSector.Data, insertOfs+additionalLengthNeeded, iter.TotalLength-insertOfs);
+                    Array.Copy(iter.Data, insertOfs, newSector.Data, insertOfs + additionalLengthNeeded, iter.TotalLength - insertOfs);
                 }
                 else
                 {
@@ -250,16 +250,16 @@ namespace BTDB
             Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
-                sector = _owner.ReadSector(sectorPtr.Ptr, sectorPtr.Checksum, _readLink == null);
+                sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
                 sector.Type = dataLen > sector.Length ? SectorType.DataParent : SectorType.DataChild;
             }
-            if (sector.Type==SectorType.DataChild)
+            if (sector.Type == SectorType.DataChild)
             {
                 return BitArrayManipulation.CompareByteArray(buf,
                                                              ofs,
                                                              dataLen > sector.Length && len > sector.Length ? sector.Length : len,
-                                                             sector.Data, 
-                                                             0, 
+                                                             sector.Data,
+                                                             0,
                                                              sector.Length);
             }
             throw new NotImplementedException();
@@ -290,17 +290,36 @@ namespace BTDB
 
         SectorPtr CreateContentSector(byte[] buf, int ofs, int len, Sector parent)
         {
-            if (len <= LowLevelDB.MaxSectorSize)
+            if (len <= LowLevelDB.MaxLeafDataSectorSize)
             {
-                var newSector = _owner.NewSector();
-                newSector.Type = SectorType.DataChild;
-                newSector.SetLengthWithRound(len);
-                newSector.Parent = parent;
-                if (buf != null) Array.Copy(buf, ofs, newSector.Data, 0, len);
-                _owner.PublishSector(newSector);
-                return newSector.ToPtrWithLen();
+                var newLeafSector = _owner.NewSector();
+                newLeafSector.Type = SectorType.DataChild;
+                newLeafSector.SetLengthWithRound(len);
+                newLeafSector.Parent = parent;
+                if (buf != null) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
+                _owner.PublishSector(newLeafSector);
+                return newLeafSector.ToPtrWithLen();
             }
-            throw new NotImplementedException();
+            int leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
+            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
+            int currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
+                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
+            int bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            var newSector = _owner.NewSector();
+            newSector.Type = SectorType.DataParent;
+            int downPtrCount = (leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors;
+            newSector.SetLengthWithRound(downPtrCount);
+            newSector.Parent = parent;
+            for (int i = 0; i < downPtrCount; i++)
+            {
+                SectorPtr sectorPtr = CreateContentSector(buf, ofs, Math.Min(len, bytesInDownLevel), newSector);
+                SectorPtr.Pack(newSector.Data, i * LowLevelDB.PtrDownSize, sectorPtr);
+                ofs += bytesInDownLevel;
+                len -= bytesInDownLevel;
+            }
+            _owner.PublishSector(newSector);
+            return newSector.ToPtrWithLen();
         }
 
         public int GetKeySize()
@@ -348,7 +367,28 @@ namespace BTDB
                 bufOfs = iter.KeyOffset + ofs;
                 return;
             }
+            ofs -= iter.KeyLenInline;
+            SectorPtr dataSectorPtr = iter.KeySectorPtr;
+            int dataLen = iter.KeyLen - iter.KeyLenInline;
+            if (dataLen <= LowLevelDB.MaxLeafDataSectorSize)
+            {
+                Sector dataSector = _owner.TryGetSector(dataSectorPtr.Ptr);
+                if (dataSector == null)
+                {
+                    dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
+                    dataSector.Type = SectorType.DataChild;
+                }
+                buf = dataSector.Data;
+                bufOfs = ofs;
+                len = dataSector.Length - ofs;
+                return;
+            }
             throw new NotImplementedException();
+        }
+
+        bool IsWriteTransaction()
+        {
+            return _readLink == null;
         }
 
         public void ReadKey(int ofs, int len, byte[] buf, int bufOfs)
@@ -520,6 +560,7 @@ namespace BTDB
         internal const int AllocationGranularity = 256;
         internal const long MaskOfPosition = -256; // 0xFFFFFFFFFFFFFF00
         internal const int MaxSectorSize = 256 * AllocationGranularity;
+        internal const int MaxLeafDataSectorSize = 4096;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
 
@@ -557,7 +598,12 @@ namespace BTDB
             return null;
         }
 
-        internal Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
+        internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction)
+        {
+            return ReadSector(sectorPtr.Ptr, sectorPtr.Checksum, inWriteTransaction);
+        }
+
+        Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
         {
             Debug.Assert(positionWithSize > 0);
             return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & 0xFF) + 1, checksum, inWriteTransaction);
@@ -1022,7 +1068,7 @@ namespace BTDB
 
         private int FindOfsInParent(Sector sector, Sector where)
         {
-            switch(where.Type)
+            switch (where.Type)
             {
                 case SectorType.BTreeParent:
                     break;
@@ -1034,17 +1080,21 @@ namespace BTDB
                             return iter.KeySectorPtrOffset;
                         if ((iter.ValueSectorPos & LowLevelDB.MaskOfPosition) == sector.Position)
                             return iter.ValueSectorPtrOffset;
-                    } 
+                    }
                     while (iter.MoveNext());
                     throw new BTDBException("Cannot FindOfsInParrent");
                 case SectorType.AllocParent:
-                    break;
-                case SectorType.AllocChild:
-                    break;
                 case SectorType.DataParent:
-                    break;
+                    for (int i = 0; i < where.Length / PtrDownSize; i++)
+                    {
+                        if ((PackUnpack.UnpackInt64(where.Data, i * PtrDownSize) & LowLevelDB.MaskOfPosition) == sector.Position)
+                            return i * PtrDownSize;
+                    }
+                    throw new BTDBException("Cannot FindOfsInParrent");
                 case SectorType.DataChild:
-                    break;
+                    throw new BTDBException("DataChild cannot be parent");
+                case SectorType.AllocChild:
+                    throw new BTDBException("AllocChild cannot be parent");
                 default:
                     throw new ArgumentOutOfRangeException();
             }

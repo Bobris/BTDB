@@ -118,7 +118,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void BiggerKey([Range(269, 300)] int keyLength)
+        public void BiggerKey([Values(4365, 1, 268, 269, 270, 4364, 4366, 5000)] int keyLength)
         {
             var key = new byte[keyLength];
             var buf = new byte[keyLength];
