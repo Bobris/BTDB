@@ -100,7 +100,7 @@ namespace BTDBTest
         [Test]
         public void RollbackWorks()
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);
@@ -118,27 +118,30 @@ namespace BTDBTest
         }
 
         [Test]
-        public void BiggerKey([Values(4365, 1, 268, 269, 270, 4364, 4366, 5000)] int keyLength)
+        public void BiggerKey([Values(0, 1, 268, 269, 270, 4364, 4365, 4366, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];
             var buf = new byte[keyLength];
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
             using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
-            using (ILowLevelDB db = new LowLevelDB())
             {
-                db.Open(stream, false);
-                using (var tr1 = db.StartTransaction())
+                using (ILowLevelDB db = new LowLevelDB())
                 {
-                    tr1.FindKey(key, 0, key.Length, FindKeyStrategy.Create);
-                    tr1.Commit();
+                    db.Open(stream, false);
+                    using (var tr1 = db.StartTransaction())
+                    {
+                        tr1.FindKey(key, 0, key.Length, FindKeyStrategy.Create);
+                        tr1.Commit();
+                    }
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.AreEqual(FindKeyResult.FoundExact,
+                                        tr2.FindKey(key, 0, keyLength, FindKeyStrategy.ExactMatch));
+                        tr2.ReadKey(0, keyLength, buf, 0);
+                        Assert.AreEqual(key, buf);
+                    }
                 }
-                using (var tr2 = db.StartTransaction())
-                {
-                    Assert.AreEqual(FindKeyResult.FoundExact,
-                                    tr2.FindKey(key, 0, keyLength, FindKeyStrategy.ExactMatch));
-                    tr2.ReadKey(0, keyLength, buf, 0);
-                    Assert.AreEqual(key, buf);
-                }
+                Debug.WriteLine("KeySize:{0,7} DataBaseSize:{1,7}", keyLength, stream.GetSize());
             }
         }
 
@@ -146,11 +149,11 @@ namespace BTDBTest
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
 
-        private static void Nothing(string s)
+        static void Nothing(string s)
         {
         }
 
-        private static void LogDebug(string s)
+        static void LogDebug(string s)
         {
             Debug.WriteLine(s);
         }
