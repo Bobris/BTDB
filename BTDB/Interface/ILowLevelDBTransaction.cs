@@ -2,25 +2,6 @@
 
 namespace BTDB
 {
-    public enum FindKeyStrategy
-    {
-        Create,
-        ExactMatch,
-        PreferPrevious,
-        PreferNext,
-        OnlyPrevious,
-        OnlyNext
-    }
-
-    public enum FindKeyResult
-    {
-        NotFound,
-        FoundExact,
-        FoundPrevious,
-        FoundNext,
-        Created
-    }
-
     public interface ILowLevelDBTransaction : IDisposable
     {
         /// <summary>
@@ -125,12 +106,5 @@ namespace BTDB
         /// You should call this as last method in using scope if you don't want to rollback transaction.
         /// </summary>
         void Commit();
-    }
-
-    public interface ILowLevelDB: IDisposable
-    {
-        bool Open(IStream stream, bool dispose);
-
-        ILowLevelDBTransaction StartTransaction();
     }
 }

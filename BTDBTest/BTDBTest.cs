@@ -45,7 +45,7 @@ namespace BTDBTest
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.AreEqual(FindKeyResult.Created, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create));
+                    Assert.AreEqual(true, tr.CreateKey(_key1));
                     tr.Commit();
                 }
             }
@@ -60,13 +60,13 @@ namespace BTDBTest
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.AreEqual(FindKeyResult.Created, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create));
-                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create));
-                    Assert.AreEqual(FindKeyResult.NotFound, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.ExactMatch));
-                    Assert.AreEqual(FindKeyResult.Created, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.Create));
-                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.ExactMatch));
-                    Assert.AreEqual(FindKeyResult.FoundExact, tr.FindKey(_key2, 0, _key2.Length, FindKeyStrategy.ExactMatch));
-                    Assert.AreEqual(FindKeyResult.NotFound, tr.FindKey(_key3, 0, _key3.Length, FindKeyStrategy.ExactMatch));
+                    Assert.AreEqual(true, tr.CreateKey(_key1));
+                    Assert.AreEqual(false, tr.CreateKey(_key1));
+                    Assert.AreEqual(false, tr.FindExactKey(_key2));
+                    Assert.AreEqual(true, tr.CreateKey(_key2));
+                    Assert.AreEqual(true, tr.FindExactKey(_key1));
+                    Assert.AreEqual(true, tr.FindExactKey(_key2));
+                    Assert.AreEqual(false, tr.FindExactKey(_key3));
                     tr.Commit();
                 }
             }
@@ -75,24 +75,22 @@ namespace BTDBTest
         [Test]
         public void CommitWorks()
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, s => Debug.WriteLine(s)))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create);
+                    tr1.CreateKey(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
-                        Assert.AreEqual(FindKeyResult.NotFound,
-                                        tr2.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.ExactMatch));
+                        Assert.AreEqual(false, tr2.FindExactKey(_key1));
                     }
                     tr1.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
                 {
-                    Assert.AreEqual(FindKeyResult.FoundExact,
-                                    tr3.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.ExactMatch));
+                    Assert.AreEqual(true, tr3.FindExactKey(_key1));
                 }
             }
         }
@@ -106,13 +104,12 @@ namespace BTDBTest
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.Create);
+                    tr1.CreateKey(_key1);
                     // Rollback because of missing commit
                 }
                 using (var tr2 = db.StartTransaction())
                 {
-                    Assert.AreEqual(FindKeyResult.NotFound,
-                                    tr2.FindKey(_key1, 0, _key1.Length, FindKeyStrategy.ExactMatch));
+                    Assert.AreEqual(false, tr2.FindExactKey(_key1));
                 }
             }
         }
@@ -130,18 +127,47 @@ namespace BTDBTest
                     db.Open(stream, false);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.FindKey(key, 0, key.Length, FindKeyStrategy.Create);
+                        tr1.CreateKey(key);
                         tr1.Commit();
                     }
                     using (var tr2 = db.StartTransaction())
                     {
-                        Assert.AreEqual(FindKeyResult.FoundExact,
-                                        tr2.FindKey(key, 0, keyLength, FindKeyStrategy.ExactMatch));
+                        Assert.AreEqual(true, tr2.FindExactKey(key));
                         tr2.ReadKey(0, keyLength, buf, 0);
                         Assert.AreEqual(key, buf);
                     }
                 }
                 Debug.WriteLine("KeySize:{0,7} DataBaseSize:{1,7}", keyLength, stream.GetSize());
+            }
+        }
+
+
+        [Test]
+        public void TwoTransactions()
+        {
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, LogDebug))
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    tr2.CreateKey(_key2);
+                    Assert.AreEqual(true, tr2.FindExactKey(_key1));
+                    Assert.AreEqual(true, tr2.FindExactKey(_key2));
+                    Assert.AreEqual(false, tr2.FindExactKey(_key3));
+                    tr2.Commit();
+                }
+                using (var tr3 = db.StartTransaction())
+                {
+                    Assert.AreEqual(true, tr3.FindExactKey(_key1));
+                    Assert.AreEqual(true, tr3.FindExactKey(_key2));
+                    Assert.AreEqual(false, tr3.FindExactKey(_key3));
+                }
             }
         }
 

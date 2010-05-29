@@ -43,19 +43,24 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BitArrayManipulation.cs" />
-    <Compile Include="BTDBException.cs" />
-    <Compile Include="BTDBTransactionRetryException.cs" />
-    <Compile Include="BTreeChildIterator.cs" />
-    <Compile Include="Checksum.cs" />
-    <Compile Include="LoggingStream.cs" />
-    <Compile Include="LowLevelDB.cs" />
-    <Compile Include="ILowLevelObjectDB.cs" />
-    <Compile Include="IStream.cs" />
-    <Compile Include="PackUnpack.cs" />
+    <Compile Include="Implementation\BitArrayManipulation.cs" />
+    <Compile Include="Interface\BTDBException.cs" />
+    <Compile Include="Interface\BTDBTransactionRetryException.cs" />
+    <Compile Include="Implementation\BTreeChildIterator.cs" />
+    <Compile Include="PublicHelpers\Checksum.cs" />
+    <Compile Include="PublicHelpers\ExtensionMethods.cs" />
+    <Compile Include="Interface\FindKeyResult.cs" />
+    <Compile Include="Interface\FindKeyStrategy.cs" />
+    <Compile Include="Interface\ILowLevelDBTransaction.cs" />
+    <Compile Include="PublicHelpers\LoggingStream.cs" />
+    <Compile Include="Implementation\LowLevelDB.cs" />
+    <Compile Include="Interface\ILowLevelDB.cs" />
+    <Compile Include="Interface\IStream.cs" />
+    <Compile Include="PublicHelpers\PackUnpack.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="PtrLenList.cs" />
-    <Compile Include="StreamProxy.cs" />
+    <Compile Include="PublicHelpers\PtrLenList.cs" />
+    <Compile Include="PublicHelpers\StreamProxy.cs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -5,7 +5,7 @@ namespace BTDB
 {
     internal static class BitArrayManipulation
     {
-        private static readonly byte[] FirstHoleSize = new byte[]
+        static readonly byte[] FirstHoleSize = new byte[]
                                                            {
                                                                8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0,
                                                                2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1,
@@ -17,7 +17,7 @@ namespace BTDB
                                                                1, 0, 3, 0, 1, 0, 2, 0, 1, 0
                                                            };
 
-        private static readonly byte[] LastHoleSize = new byte[]
+        static readonly byte[] LastHoleSize = new byte[]
                                                           {
                                                               8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2,
                                                               2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
@@ -29,7 +29,7 @@ namespace BTDB
                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                                                           };
 
-        private static readonly byte[] MaxHoleSize = new byte[]
+        static readonly byte[] MaxHoleSize = new byte[]
                                                          {
                                                              8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 4, 3, 3,
                                                              2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 6, 5, 4, 4, 3, 3, 3,
@@ -41,7 +41,7 @@ namespace BTDB
                                                              1, 1, 3, 2, 1, 1, 2, 1, 1, 0
                                                          };
 
-        private static readonly byte[] MaxHoleOffset = new byte[]
+        static readonly byte[] MaxHoleOffset = new byte[]
                                                            {
                                                                0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 0, 1, 5, 5, 5, 5, 5, 5, 0, 5, 5, 5, 5, 5, 5, 5, 0, 1, 2, 2,
                                                                0, 3, 3, 3, 0, 1, 6, 6, 0, 6, 6, 6, 0, 1, 2, 2, 0, 6, 6, 6, 0, 1, 6, 6, 0, 6, 6, 6, 0, 1, 2, 2, 3, 3, 3,
@@ -53,7 +53,7 @@ namespace BTDB
                                                                0, 3, 0, 1, 0, 2, 0, 1, 0, 0
                                                            };
 
-        internal static int IndexOfFirstHole(byte[] data, int size)
+        static int IndexOfFirstHole(byte[] data, int size)
         {
             int pos = 0;
             int sizetill = 0;
@@ -170,8 +170,8 @@ namespace BTDB
             int commonLength = Math.Min(l1, l2);
             for (int i = 0; i < commonLength; i++)
             {
-                if (a1[o1+i] < a2[o2+i]) return -1;
-                if (a1[o1+i] > a2[o2+i]) return 1;
+                if (a1[o1 + i] < a2[o2 + i]) return -1;
+                if (a1[o1 + i] > a2[o2 + i]) return 1;
             }
             if (l1 < l2) return -1;
             if (l1 > l2) return 1;
