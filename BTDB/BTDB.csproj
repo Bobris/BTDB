@@ -44,6 +44,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Implementation\BitArrayManipulation.cs" />
+    <Compile Include="Implementation\LowLevelDBTransaction.cs" />
+    <Compile Include="Implementation\Sector.cs" />
+    <Compile Include="Implementation\SectorPtr.cs" />
+    <Compile Include="Implementation\SectorType.cs" />
     <Compile Include="Interface\BTDBException.cs" />
     <Compile Include="Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="Implementation\BTreeChildIterator.cs" />

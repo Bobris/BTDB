@@ -141,7 +141,6 @@ namespace BTDBTest
             }
         }
 
-
         [Test]
         public void TwoTransactions()
         {
