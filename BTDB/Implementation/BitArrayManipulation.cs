@@ -53,7 +53,7 @@ namespace BTDB
                                                                0, 3, 0, 1, 0, 2, 0, 1, 0, 0
                                                            };
 
-        static int IndexOfFirstHole(byte[] data, int size)
+        internal static int IndexOfFirstHole(byte[] data, int size)
         {
             int pos = 0;
             int sizetill = 0;

@@ -60,6 +60,7 @@ namespace BTDB
         const long MaskOfPosition = -256; // 0xFFFFFFFFFFFFFF00
         internal const int MaxSectorSize = 256 * AllocationGranularity;
         internal const int MaxLeafDataSectorSize = 4096;
+        const int MaxLeafAllocSectorGrans = 4096 * 8;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
 
@@ -602,11 +603,108 @@ namespace BTDB
                     UnlinkFromInTransactionSectors(sector);
                 }
                 _spaceAllocatedInTransaction.TryExclude((ulong)sector.Position, (ulong)sector.Length);
-                throw new NotImplementedException();
             }
-            _spaceDeallocatedInTransaction.TryInclude((ulong)sector.Position, (ulong)sector.Length);
-            _spaceUsedByReadOnlyTransactions.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+            else
+            {
+                _spaceDeallocatedInTransaction.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+                _spaceUsedByReadOnlyTransactions.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+            }
+            if (_newState.RootAllocPageLevels == 0)
+            {
+                CreateInitialAllocPages();
+            }
+            long startGran = sector.Position / AllocationGranularity;
+            int grans = sector.Length / AllocationGranularity;
+            long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
+            UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans);
+        }
+
+        void UnsetBitsInAlloc(long startGran, int grans, ref SectorPtr sectorPtr, uint level, long totalGrans)
+        {
+            Sector sector = TryGetSector(sectorPtr.Ptr);
+            if (level == 1)
+            {
+                if (sector == null)
+                {
+                    sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
+                                        RoundToAllocationGranularity(((int)totalGrans + 7) / 8),
+                                        sectorPtr.Checksum,
+                                        true);
+                }
+                sector = DirtizeSector(sector);
+                BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
+                if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                {
+                    sectorPtr.Ptr = sector.Position | 255;
+                }
+                else
+                {
+                    sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
+                }
+                return;
+            }
             throw new NotImplementedException();
+        }
+
+        void CreateInitialAllocPages()
+        {
+            long grans = _newState.WantedDatabaseLength / AllocationGranularity;
+            long leafSectors = grans / MaxLeafAllocSectorGrans;
+            if (grans % MaxLeafAllocSectorGrans != 0) leafSectors++;
+            uint levels = 1;
+            if (leafSectors > 1)
+            {
+                long currentLevelLeafSectors = 1;
+                levels = 2;
+                while (currentLevelLeafSectors * MaxChildren < leafSectors)
+                {
+                    currentLevelLeafSectors *= MaxChildren;
+                    levels++;
+                }
+            }
+            _newState.RootAllocPage = CreateFullAllocationSector(grans, levels, null);
+            _newState.RootAllocPageLevels = levels;
+        }
+
+        SectorPtr CreateFullAllocationSector(long grans, uint levels, Sector parent)
+        {
+            if (levels == 1)
+            {
+                var newLeafSector = NewSector();
+                newLeafSector.Type = SectorType.AllocChild;
+                newLeafSector.SetLengthWithRound(((int)grans + 7) / 8);
+                newLeafSector.Parent = parent;
+                BitArrayManipulation.SetBits(newLeafSector.Data, 0, (int)grans);
+                PublishSector(newLeafSector);
+                return newLeafSector.ToPtrWithLen();
+            }
+
+            long currentLevelLeafSectors = Pow(MaxChildren, levels - 1);
+            long gransInDownLevel = currentLevelLeafSectors * MaxLeafAllocSectorGrans;
+            var newSector = NewSector();
+            newSector.Type = SectorType.AllocParent;
+            var downPtrCount = (int)((grans + gransInDownLevel - 1) / gransInDownLevel);
+            newSector.SetLengthWithRound(downPtrCount * PtrDownSize);
+            newSector.Parent = parent;
+            for (int i = 0; i < downPtrCount; i++)
+            {
+                SectorPtr sectorPtr = CreateFullAllocationSector(Math.Min(grans, gransInDownLevel), levels - 1, newSector);
+                SectorPtr.Pack(newSector.Data, i * PtrDownSize, sectorPtr);
+                grans -= gransInDownLevel;
+            }
+            PublishSector(newSector);
+            return newSector.ToPtrWithLen();
+        }
+
+        static long Pow(long x, uint y)
+        {
+            long result = (y % 2 != 0) ? x : 1;
+            while ((y >>= 1) != 0)
+            {
+                x = x * x;
+                if (y % 2 != 0) result *= x;
+            }
+            return result;
         }
 
         static int FindOfsInParent(Sector sector, Sector where)
@@ -672,11 +770,52 @@ namespace BTDB
 
         long AllocateSpace(int size)
         {
+            Debug.Assert(size > 0);
+            Debug.Assert(size % AllocationGranularity == 0);
+            int grans = size / AllocationGranularity;
+            Debug.Assert(grans < 256);
             if (_newState.RootAllocPageLevels == 0)
             {
                 long result = _newState.WantedDatabaseLength;
                 _newState.WantedDatabaseLength += size;
                 return result;
+            }
+            long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
+            long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans);
+            if (posInGrans < 0) throw new BTDBException("Cannot allocate more space");
+            if (posInGrans + grans >= totalGrans)
+            {
+                _newState.WantedDatabaseLength = (posInGrans + grans) * AllocationGranularity;
+            }
+            return posInGrans * AllocationGranularity;
+        }
+
+        long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, uint level, long totalGrans)
+        {
+            Sector sector = TryGetSector(sectorPtr.Ptr);
+            if (level == 1)
+            {
+                if (sector == null)
+                {
+                    sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
+                                        RoundToAllocationGranularity(((int)totalGrans + 7) / 8),
+                                        sectorPtr.Checksum,
+                                        true);
+                }
+                throw new NotImplementedException();
+                int startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans);
+                if (startGran < 0) return -1;
+                sector = DirtizeSector(sector);
+                BitArrayManipulation.SetBits(sector.Data, startGran, grans);
+                if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                {
+                    sectorPtr.Ptr = sector.Position | 255;
+                }
+                else
+                {
+                    sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
+                }
+                return startGran;
             }
             throw new NotImplementedException();
         }
