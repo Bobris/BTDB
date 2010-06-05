@@ -261,6 +261,15 @@ namespace BTDB
             }
         }
 
+        internal void UnmergeInPlace(PtrLenList unmergeWith)
+        {
+            if (unmergeWith == null) return;
+            foreach (KeyValuePair<ulong, ulong> range in unmergeWith)
+            {
+                TryExclude(range.Key, range.Value);
+            }
+        }
+
         public bool Contains(ulong position)
         {
             uint l = 0, r = _size;
@@ -293,6 +302,7 @@ namespace BTDB
         }
 
         private KeyValuePair<ulong, ulong>[] _list;
+
         private uint _size;
     }
 }

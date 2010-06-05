@@ -365,5 +365,19 @@ namespace BTDBTest
             Assert.AreEqual(0ul, pos);
             Assert.AreEqual("1-2;8-10;18-25", Str(l));
         }
+
+        [Test]
+        public void UnmergeInPlaceWorks()
+        {
+            var l1 = new PtrLenList();
+            l1.TryInclude(0, 2);
+            l1.TryInclude(5, 5);
+            l1.TryInclude(15, 10);
+            var l2 = new PtrLenList();
+            l2.TryInclude(6, 3);
+            l2.TryInclude(15, 10);
+            l1.UnmergeInPlace(l2);
+            Assert.AreEqual("0-2;5-6;9-10", Str(l1));
+        }
     }
 }

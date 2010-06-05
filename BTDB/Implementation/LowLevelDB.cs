@@ -50,7 +50,7 @@ namespace BTDB
             internal int ReadTrRunningCount;
             internal SectorPtr RootBTree;
         }
-        
+
         const int FirstRootOffset = 128;
         const int RootSize = 64;
         const int RootSizeWithoutChecksum = RootSize - 4;
@@ -72,6 +72,7 @@ namespace BTDB
         State _newState = new State();
         readonly PtrLenList _spaceAllocatedInTransaction = new PtrLenList();
         readonly PtrLenList _spaceDeallocatedInTransaction = new PtrLenList();
+        readonly PtrLenList _spaceUsedByReadOnlyTransactions = new PtrLenList();
         volatile PtrLenList _spaceSoonReusable;
         readonly object _spaceSoonReusableLock = new object();
         ReadTrLink _readTrLinkTail;
@@ -152,7 +153,7 @@ namespace BTDB
             _headerData[5] = (byte)'0';
             _headerData[6] = (byte)'0';
             _headerData[7] = (byte)'0';
-            _currentState = new State {Position = FirstRootOffset};
+            _currentState = new State { Position = FirstRootOffset };
             _newState = new State
                             {
                                 Position = SecondRootOffset,
@@ -406,6 +407,7 @@ namespace BTDB
                 DetransactionalizeSector(_inTransactionSectorHeadLink);
             }
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
+            _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
             _stream.Flush();
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
@@ -505,23 +507,8 @@ namespace BTDB
                 Array.Copy(sector.Data, clone.Data, clone.Length);
                 clone.Parent = newParent;
                 PublishSector(clone);
-                if (newParent == null)
-                {
-                    if ((_newState.RootBTree.Ptr & MaskOfPosition) == sector.Position)
-                    {
-                        _newState.RootBTree.Ptr = clone.Position; // Length encoding is not needed as it is temporary anyway
-                    }
-                    else
-                    {
-                        Debug.Assert((_newState.RootAllocPage.Ptr & MaskOfPosition) == sector.Position);
-                        _newState.RootAllocPage.Ptr = clone.Position; // Max free space encoding is not needed as it is temporary anyway
-                    }
-                }
-                else
-                {
-                    int ofs = FindOfsInParent(sector, newParent);
-                    PackUnpack.PackInt64(newParent.Data, ofs, clone.Position);
-                }
+                DeallocateSector(sector);
+                UpdatePositionOfSector(clone, sector, newParent);
                 return clone;
             }
             sector.Dirty = true;
@@ -558,24 +545,68 @@ namespace BTDB
             clone.Type = sector.Type;
             clone.Parent = newParent;
             PublishSector(clone);
-            if (newParent == null)
+            DeallocateSector(sector);
+            UpdatePositionOfSector(clone, sector, newParent);
+            return clone;
+        }
+
+        void UpdatePositionOfSector(Sector newSector, Sector oldSector, Sector inParent)
+        {
+            if (inParent == null)
             {
-                if ((_newState.RootBTree.Ptr & MaskOfPosition) == sector.Position)
-                {
-                    _newState.RootBTree.Ptr = clone.Position; // Length encoding is not needed as it is temporary anyway
-                }
-                else
-                {
-                    Debug.Assert((_newState.RootAllocPage.Ptr & MaskOfPosition) == sector.Position);
-                    _newState.RootAllocPage.Ptr = clone.Position; // Max free space encoding is not needed as it is temporary anyway
-                }
+                UpdatePostitionOfRootSector(newSector);
             }
             else
             {
-                int ofs = FindOfsInParent(sector, newParent);
-                PackUnpack.PackInt64(newParent.Data, ofs, clone.Position);
+                int ofs = FindOfsInParent(oldSector, inParent);
+                PackUnpack.PackInt64(inParent.Data, ofs, newSector.Position);
             }
-            return clone;
+        }
+
+        void UpdatePostitionOfRootSector(Sector rootSector)
+        {
+            switch (rootSector.Type)
+            {
+                case SectorType.BTreeParent:
+                case SectorType.BTreeChild:
+                    {
+                        _newState.RootBTree.Ptr = rootSector.Position; // Length encoding is not needed as it is temporary anyway
+                        break;
+                    }
+                case SectorType.AllocChild:
+                case SectorType.AllocParent:
+                    {
+                        _newState.RootAllocPage.Ptr = rootSector.Position; // Max free space encoding is not needed as it is temporary anyway
+                        break;
+                    }
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
+        void DeallocateSector(Sector sector)
+        {
+            if (sector.InTransaction)
+            {
+                if (!sector.Allocated)
+                {
+                    UnlinkFromUnallocatedSectors(sector);
+                    return;
+                }
+                if (sector.Dirty)
+                {
+                    UnlinkFromDirtySectors(sector);
+                }
+                else
+                {
+                    UnlinkFromInTransactionSectors(sector);
+                }
+                _spaceAllocatedInTransaction.TryExclude((ulong)sector.Position, (ulong)sector.Length);
+                throw new NotImplementedException();
+            }
+            _spaceDeallocatedInTransaction.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+            _spaceUsedByReadOnlyTransactions.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+            throw new NotImplementedException();
         }
 
         static int FindOfsInParent(Sector sector, Sector where)
@@ -613,49 +644,39 @@ namespace BTDB
             throw new NotImplementedException();
         }
 
-        private void RealSectorAllocate(Sector unallocatedSector)
+        void RealSectorAllocate(Sector unallocatedSector)
+        {
+            int ofsInParent = -1;
+            if (unallocatedSector.Parent != null)
+            {
+                unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent);
+                ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
+            }
+            long newPosition = AllocateSpace(unallocatedSector.Length);
+            Lazy<Sector> lazyTemp;
+            _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
+            unallocatedSector.Position = newPosition;
+            _sectorCache.TryAdd(newPosition, lazyTemp);
+            _spaceAllocatedInTransaction.TryInclude((ulong)newPosition, (ulong)unallocatedSector.Length);
+            UnlinkFromUnallocatedSectors(unallocatedSector);
+            LinkToTailOfDirtySectors(unallocatedSector);
+            if (unallocatedSector.Parent != null)
+            {
+                PackUnpack.PackUInt64(unallocatedSector.Parent.Data, ofsInParent, (ulong)newPosition);
+            }
+            else
+            {
+                UpdatePostitionOfRootSector(unallocatedSector);
+            }
+        }
+
+        long AllocateSpace(int size)
         {
             if (_newState.RootAllocPageLevels == 0)
             {
-                int ofsInParent = -1;
-                if (unallocatedSector.Parent != null)
-                {
-                    unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent);
-                    ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
-                }
-                Lazy<Sector> lazyTemp;
-                _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
-                unallocatedSector.Position = _newState.WantedDatabaseLength;
-                _sectorCache.TryAdd(unallocatedSector.Position, lazyTemp);
-                _newState.WantedDatabaseLength += unallocatedSector.Length;
-                _spaceAllocatedInTransaction.TryInclude((ulong)unallocatedSector.Position, (ulong)unallocatedSector.Length);
-                UnlinkFromUnallocatedSectors(unallocatedSector);
-                LinkToTailOfDirtySectors(unallocatedSector);
-                if (unallocatedSector.Parent != null)
-                {
-                    PackUnpack.PackUInt64(unallocatedSector.Parent.Data, ofsInParent, (ulong)unallocatedSector.Position);
-                }
-                else
-                {
-                    switch (unallocatedSector.Type)
-                    {
-                        case SectorType.BTreeParent:
-                        case SectorType.BTreeChild:
-                            {
-                                _newState.RootBTree.Ptr = unallocatedSector.Position;
-                                break;
-                            }
-                        case SectorType.AllocChild:
-                        case SectorType.AllocParent:
-                            {
-                                _newState.RootAllocPage.Ptr = unallocatedSector.Position;
-                                break;
-                            }
-                        default:
-                            throw new InvalidOperationException();
-                    }
-                }
-                return;
+                long result = _newState.WantedDatabaseLength;
+                _newState.WantedDatabaseLength += size;
+                return result;
             }
             throw new NotImplementedException();
         }
@@ -748,6 +769,9 @@ namespace BTDB
                     SwapCurrentAndNewState();
                     TransferNewStateToCurrentState();
                     _commitNeeded = false;
+                    _spaceUsedByReadOnlyTransactions.UnmergeInPlace(_spaceDeallocatedInTransaction);
+                    _spaceAllocatedInTransaction.Clear();
+                    _spaceDeallocatedInTransaction.Clear();
                 }
             }
             finally
@@ -775,6 +799,8 @@ namespace BTDB
                 Debug.Assert(_dirtySectorTailLink == null);
                 Debug.Assert(_inTransactionSectorHeadLink == null);
                 Debug.Assert(_inTransactionSectorTailLink == null);
+                Debug.Assert(_spaceAllocatedInTransaction.Empty);
+                Debug.Assert(_spaceDeallocatedInTransaction.Empty);
             }
         }
 
@@ -790,8 +816,8 @@ namespace BTDB
         {
             Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
             var lazy = new Lazy<Sector>(() => newSector);
-            
-            // Imidietly to evaulate helps display value in debugger
+
+            // Immediately to evaluate helps display value in debugger
 #pragma warning disable 168
             var forget = lazy.Value;
 #pragma warning restore 168
