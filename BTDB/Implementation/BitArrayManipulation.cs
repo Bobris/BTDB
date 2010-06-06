@@ -53,14 +53,16 @@ namespace BTDB
                                                                0, 3, 0, 1, 0, 2, 0, 1, 0, 0
                                                            };
 
-        internal static int IndexOfFirstHole(byte[] data, int size)
+        internal static int IndexOfFirstHole(byte[] data, int size, int startOffset)
         {
-            int pos = 0;
+            int pos = startOffset / 8;
+            var firstByteFill = (byte)(255 >> (8 - (startOffset & 7)));
             int sizetill = 0;
             int laststart = 0;
             while (pos < data.Length)
             {
-                byte b = data[pos];
+                var b = (byte)(data[pos] | firstByteFill);
+                firstByteFill = 0;
                 pos++;
                 switch (b)
                 {

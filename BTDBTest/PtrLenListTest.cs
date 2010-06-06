@@ -379,5 +379,18 @@ namespace BTDBTest
             l1.UnmergeInPlace(l2);
             Assert.AreEqual("0-2;5-6;9-10", Str(l1));
         }
+
+        [Test]
+        public void FindFreeSizeAfterWorks()
+        {
+            var l1 = new PtrLenList();
+            l1.TryInclude(0, 2);
+            l1.TryInclude(5, 5);
+            l1.TryInclude(15, 10);
+            Assert.AreEqual(25, l1.FindFreeSizeAfter(1, 6));
+            Assert.AreEqual(10, l1.FindFreeSizeAfter(1, 4));
+            Assert.AreEqual(2, l1.FindFreeSizeAfter(1, 3));
+            Assert.AreEqual(12, l1.FindFreeSizeAfter(12, 1));
+        }
     }
 }

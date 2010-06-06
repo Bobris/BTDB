@@ -144,7 +144,7 @@ namespace BTDBTest
         [Test]
         public void TwoTransactions()
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, LogDebug))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);

@@ -16,6 +16,40 @@ namespace BTDB
             get { return _size == 0; }
         }
 
+        public ulong FindFreeSizeAfter(ulong pos, ulong len)
+        {
+            if (len == 0) return pos;
+            uint l = 0, r = _size;
+            KeyValuePair<ulong, ulong> cur;
+            while (l < r)
+            {
+                uint m = (l + r)/2;
+                cur = _list[m];
+                if (pos < cur.Key)
+                {
+                    r = m;
+                }
+                else if (cur.Key + cur.Value <= pos)
+                {
+                    l = m + 1;
+                }
+                else
+                {
+                    pos = cur.Key + cur.Value;
+                    l = m + 1;
+                    break;
+                }
+            }
+            while (l < _size)
+            {
+                cur = _list[l];
+                if (pos + len <= cur.Key) return pos;
+                pos = cur.Key + cur.Value;
+                l++;
+            }
+            return pos;
+        }
+
         public bool TryExclude(ulong excludePos, ulong excludeLen)
         {
             if (excludeLen == 0) return true;

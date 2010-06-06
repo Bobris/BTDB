@@ -781,7 +781,7 @@ namespace BTDB
                 return result;
             }
             long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
-            long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans);
+            long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans, 0);
             if (posInGrans < 0) throw new BTDBException("Cannot allocate more space");
             if (posInGrans + grans >= totalGrans)
             {
@@ -790,7 +790,7 @@ namespace BTDB
             return posInGrans * AllocationGranularity;
         }
 
-        long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, uint level, long totalGrans)
+        long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, uint level, long totalGrans, ulong startInBytes)
         {
             Sector sector = TryGetSector(sectorPtr.Ptr);
             if (level == 1)
@@ -802,9 +802,19 @@ namespace BTDB
                                         sectorPtr.Checksum,
                                         true);
                 }
-                throw new NotImplementedException();
-                int startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans);
-                if (startGran < 0) return -1;
+                int startGranSearch = 0;
+                int startGran;
+                while (true)
+                {
+                    startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans, startGranSearch);
+                    if (startGran < 0) return -1;
+                    ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
+                    ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
+                    if (checkStartInBytes == foundFreeInBytes) break;
+                    ulong newStartGranSearch = (foundFreeInBytes - startInBytes) / AllocationGranularity;
+                    if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
+                    startGranSearch = (int)newStartGranSearch;
+                }
                 sector = DirtizeSector(sector);
                 BitArrayManipulation.SetBits(sector.Data, startGran, grans);
                 if (sector.Length < MaxLeafAllocSectorGrans / 8)
