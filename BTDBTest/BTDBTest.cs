@@ -170,6 +170,34 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void MultipleTransactions([Values(10)] int transactionCount)
+        {
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, LogDebug))
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                byte[] key = new byte[1];
+                for (int i = 0; i < transactionCount; i++)
+                {
+                    key[0] = (byte)i;
+                    using (var tr1 = db.StartTransaction())
+                    {
+                        tr1.CreateKey(key);
+                        tr1.Commit();
+                    }
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    for (int i = 0; i < transactionCount; i++)
+                    {
+                        key[0] = (byte) i;
+                        Assert.AreEqual(true, tr2.FindExactKey(key));
+                    }
+                }
+            }
+        }
+
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };

@@ -335,8 +335,7 @@ namespace BTDB
             }
         }
 
-        private KeyValuePair<ulong, ulong>[] _list;
-
-        private uint _size;
+        KeyValuePair<ulong, ulong>[] _list;
+        uint _size;
     }
 }

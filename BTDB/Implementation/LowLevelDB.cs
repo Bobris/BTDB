@@ -508,8 +508,8 @@ namespace BTDB
                 Array.Copy(sector.Data, clone.Data, clone.Length);
                 clone.Parent = newParent;
                 PublishSector(clone);
-                DeallocateSector(sector);
                 UpdatePositionOfSector(clone, sector, newParent);
+                DeallocateSector(sector);
                 return clone;
             }
             sector.Dirty = true;
@@ -546,8 +546,8 @@ namespace BTDB
             clone.Type = sector.Type;
             clone.Parent = newParent;
             PublishSector(clone);
-            DeallocateSector(sector);
             UpdatePositionOfSector(clone, sector, newParent);
+            DeallocateSector(sector);
             return clone;
         }
 
@@ -754,6 +754,8 @@ namespace BTDB
             Lazy<Sector> lazyTemp;
             _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
             unallocatedSector.Position = newPosition;
+            Lazy<Sector> forgetTemp;
+            _sectorCache.TryRemove(newPosition, out forgetTemp);
             _sectorCache.TryAdd(newPosition, lazyTemp);
             _spaceAllocatedInTransaction.TryInclude((ulong)newPosition, (ulong)unallocatedSector.Length);
             UnlinkFromUnallocatedSectors(unallocatedSector);
@@ -779,6 +781,16 @@ namespace BTDB
                 long result = _newState.WantedDatabaseLength;
                 _newState.WantedDatabaseLength += size;
                 return result;
+            }
+            if (_spaceSoonReusable!=null)
+            {
+                PtrLenList reuse;
+                lock (_spaceSoonReusableLock)
+                {
+                    reuse = _spaceSoonReusable;
+                    _spaceSoonReusable = null;
+                }
+                _spaceUsedByReadOnlyTransactions.UnmergeInPlace(reuse);
             }
             long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
             long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans, 0);
