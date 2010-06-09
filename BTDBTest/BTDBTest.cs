@@ -171,9 +171,9 @@ namespace BTDBTest
         }
 
         [Test]
-        public void MultipleTransactions([Values(10)] int transactionCount)
+        public void MultipleTransactions([Values(100)] int transactionCount)
         {
-            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, LogDebug))
+            using (var stream = new LoggingStream(new StreamProxy(new MemoryStream(), true), true, Nothing))
             using (ILowLevelDB db = new LowLevelDB())
             {
                 db.Open(stream, false);

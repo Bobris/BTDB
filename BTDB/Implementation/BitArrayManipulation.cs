@@ -58,7 +58,7 @@ namespace BTDB
             int pos = startOffset / 8;
             var firstByteFill = (byte)(255 >> (8 - (startOffset & 7)));
             int sizetill = 0;
-            int laststart = 0;
+            int laststart = pos*8;
             while (pos < data.Length)
             {
                 var b = (byte)(data[pos] | firstByteFill);
