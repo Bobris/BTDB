@@ -16,5 +16,14 @@ namespace BTDB
         {
             return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch)==FindKeyResult.FoundExact;
         }
+
+        public static byte[] ReadKey(this ILowLevelDBTransaction transaction)
+        {
+            int keySize = transaction.GetKeySize();
+            if (keySize < 0) return null;
+            byte[] result = new byte[keySize];
+            transaction.ReadKey(0, keySize, result, 0);
+            return result;
+        }
     }
 }

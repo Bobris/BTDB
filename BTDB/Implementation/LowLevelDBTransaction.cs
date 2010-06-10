@@ -46,6 +46,10 @@ namespace BTDB
                 _currentKeyIndex--;
                 return true;
             }
+            if (_currentKeySector.Parent==null)
+            {
+                return false;
+            }
             throw new NotImplementedException();
         }
 

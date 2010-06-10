@@ -1,6 +1,8 @@
-﻿namespace BTDB
+﻿using System;
+
+namespace BTDB
 {
-    public interface IStream
+    public interface IStream : IDisposable
     {
         int Read(byte[] data, int offset, int size, ulong position);
 
