@@ -63,7 +63,7 @@ namespace BTDB
         {
             if (keyLen < 0) throw new ArgumentOutOfRangeException("keyLen");
             if (strategy == FindKeyStrategy.Create) UpgradeToWriteTransaction();
-            SectorPtr rootBTree = _readLink != null ? _readLink.RootBTree : _owner.NewState.RootBTree;
+            SectorPtr rootBTree = IsWriteTransaction() ? _owner.NewState.RootBTree : _readLink.RootBTree;
             if (rootBTree.Ptr == 0)
             {
                 switch (strategy)
@@ -72,6 +72,7 @@ namespace BTDB
                         Sector newRootBTreeSector = CreateBTreeChildWith1Key(keyBuf, keyOfs, keyLen);
                         _owner.NewState.RootBTree.Ptr = newRootBTreeSector.Position;
                         _owner.NewState.RootBTreeLevels = 1;
+                        _owner.NewState.KeyValuePairCount = 1;
                         _owner.PublishSector(newRootBTreeSector);
                         _currentKeySector = newRootBTreeSector;
                         _currentKeyIndex = 0;
@@ -102,58 +103,9 @@ namespace BTDB
                 {
                     return FindKeyResult.FoundExact;
                 }
-                switch (strategy)
+                if (strategy!=FindKeyStrategy.Create)
                 {
-                    case FindKeyStrategy.Create:
-                        break;
-                    case FindKeyStrategy.ExactMatch:
-                        return FindKeyNotFound();
-                    case FindKeyStrategy.OnlyNext:
-                        if (_currentKeyIndex < iter.Count)
-                        {
-                            return FindKeyResult.FoundNext;
-                        }
-                        _currentKeyIndex--;
-                        if (FindNextKey())
-                        {
-                            return FindKeyResult.FoundNext;
-                        }
-                        return FindKeyNotFound();
-                    case FindKeyStrategy.PreferNext:
-                        if (_currentKeyIndex < iter.Count)
-                        {
-                            return FindKeyResult.FoundNext;
-                        }
-                        _currentKeyIndex--;
-                        if (FindNextKey())
-                        {
-                            return FindKeyResult.FoundNext;
-                        }
-                        return FindKeyResult.FoundPrevious;
-                    case FindKeyStrategy.OnlyPrevious:
-                        if (_currentKeyIndex > 0)
-                        {
-                            _currentKeyIndex--;
-                            return FindKeyResult.FoundPrevious;
-                        }
-                        if (FindPreviousKey())
-                        {
-                            return FindKeyResult.FoundPrevious;
-                        }
-                        return FindKeyNotFound();
-                    case FindKeyStrategy.PreferPrevious:
-                        if (_currentKeyIndex > 0)
-                        {
-                            _currentKeyIndex--;
-                            return FindKeyResult.FoundPrevious;
-                        }
-                        if (FindPreviousKey())
-                        {
-                            return FindKeyResult.FoundPrevious;
-                        }
-                        return FindKeyResult.FoundNext;
-                    default:
-                        throw new ArgumentOutOfRangeException("strategy");
+                    return FindKeyNoncreateStrategy(strategy, iter);
                 }
                 int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(keyLen);
                 if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 127)
@@ -169,9 +121,49 @@ namespace BTDB
                 {
                     throw new NotImplementedException();
                 }
+                _owner.NewState.KeyValuePairCount++;
                 return FindKeyResult.Created;
             }
             throw new NotImplementedException();
+        }
+
+        FindKeyResult FindKeyNoncreateStrategy(FindKeyStrategy strategy, BTreeChildIterator iter)
+        {
+            switch (strategy)
+            {
+                case FindKeyStrategy.ExactMatch:
+                    return FindKeyNotFound();
+                case FindKeyStrategy.OnlyNext:
+                    if (_currentKeyIndex < iter.Count)
+                    {
+                        return FindKeyResult.FoundNext;
+                    }
+                    _currentKeyIndex--;
+                    return FindNextKey() ? FindKeyResult.FoundNext : FindKeyNotFound();
+                case FindKeyStrategy.PreferNext:
+                    if (_currentKeyIndex < iter.Count)
+                    {
+                        return FindKeyResult.FoundNext;
+                    }
+                    _currentKeyIndex--;
+                    return FindNextKey() ? FindKeyResult.FoundNext : FindKeyResult.FoundPrevious;
+                case FindKeyStrategy.OnlyPrevious:
+                    if (_currentKeyIndex > 0)
+                    {
+                        _currentKeyIndex--;
+                        return FindKeyResult.FoundPrevious;
+                    }
+                    return FindPreviousKey() ? FindKeyResult.FoundPrevious : FindKeyNotFound();
+                case FindKeyStrategy.PreferPrevious:
+                    if (_currentKeyIndex > 0)
+                    {
+                        _currentKeyIndex--;
+                        return FindKeyResult.FoundPrevious;
+                    }
+                    return FindPreviousKey() ? FindKeyResult.FoundPrevious : FindKeyResult.FoundNext;
+                default:
+                    throw new ArgumentOutOfRangeException("strategy");
+            }
         }
 
         FindKeyResult FindKeyNotFound()
@@ -447,6 +439,11 @@ namespace BTDB
         {
             if (_readLink != null) return; // It is read only transaction nothing to commit
             _owner.CommitWriteTransaction();
+        }
+
+        public LowLevelDBStats CalculateStats()
+        {
+            return _owner.CalculateStats(_readLink);
         }
     }
 }

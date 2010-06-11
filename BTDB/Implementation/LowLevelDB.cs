@@ -17,11 +17,13 @@ namespace BTDB
      *   32PB in 5th level
      *    8EB in 6th level
      * 
-     * Root: 128(Header)+64*2=256
+     * Root: 96(Header)+80*2=256
      *   16 - B+Tree (8 ofs+4 check+4 levels)
      *   16 - Free Space Tree (8 ofs+4 check+4 levels)
-     *    8 - Wanted Size
+     *    8 - Count of key/value pairs stored
+     *    8 - Used Size - including first 256 bytes of header and includes paddings to allocation granularity
      *    8 - Transaction Number
+     *    8 - Wanted Size - size of database stream could be trimmed to this size
      *    8 - Transaction Log Position
      *    4 - Transaction Log Allocated Size
      *    4 - Checksum
@@ -35,8 +37,10 @@ namespace BTDB
             internal uint RootBTreeLevels;
             internal SectorPtr RootAllocPage;
             internal uint RootAllocPageLevels;
-            internal long WantedDatabaseLength;
+            internal ulong KeyValuePairCount;
+            internal ulong UsedSize;
             internal ulong TransactionCounter;
+            internal ulong WantedDatabaseLength;
             internal ulong TransactionLogPtr;
             internal uint TransactionAllocSize;
             internal uint Position;
@@ -49,10 +53,13 @@ namespace BTDB
             internal ulong TransactionNumber;
             internal int ReadTrRunningCount;
             internal SectorPtr RootBTree;
+            internal ulong KeyValuePairCount;
+            internal ulong UsedSize;
+            internal ulong WantedDatabaseLength;
         }
 
-        const int FirstRootOffset = 128;
-        const int RootSize = 64;
+        const int FirstRootOffset = 96;
+        const int RootSize = 80;
         const int RootSizeWithoutChecksum = RootSize - 4;
         const int SecondRootOffset = FirstRootOffset + RootSize;
         const int TotalHeaderSize = SecondRootOffset + RootSize;
@@ -159,6 +166,7 @@ namespace BTDB
                             {
                                 Position = SecondRootOffset,
                                 WantedDatabaseLength = TotalHeaderSize,
+                                UsedSize = TotalHeaderSize,
                                 TransactionCounter = 1
                             };
             StoreStateToHeaderBuffer(_newState);
@@ -234,6 +242,8 @@ namespace BTDB
             _currentState.RootBTreeLevels = _newState.RootBTreeLevels;
             _currentState.RootAllocPage = _newState.RootAllocPage;
             _currentState.RootAllocPageLevels = _newState.RootAllocPageLevels;
+            _currentState.KeyValuePairCount = _newState.KeyValuePairCount;
+            _currentState.UsedSize = _newState.UsedSize;
             _currentState.TransactionCounter = _newState.TransactionCounter;
             _currentState.TransactionLogPtr = _newState.TransactionLogPtr;
             _currentState.TransactionAllocSize = _newState.TransactionAllocSize;
@@ -259,9 +269,13 @@ namespace BTDB
             o += 4;
             PackUnpack.PackUInt32(_headerData, o, state.RootAllocPageLevels);
             o += 4;
-            PackUnpack.PackInt64(_headerData, o, state.WantedDatabaseLength);
+            PackUnpack.PackUInt64(_headerData, o, state.KeyValuePairCount);
+            o += 8;
+            PackUnpack.PackUInt64(_headerData, o, state.UsedSize);
             o += 8;
             PackUnpack.PackUInt64(_headerData, o, state.TransactionCounter);
+            o += 8;
+            PackUnpack.PackUInt64(_headerData, o, state.WantedDatabaseLength);
             o += 8;
             PackUnpack.PackUInt64(_headerData, o, state.TransactionLogPtr);
             o += 8;
@@ -292,10 +306,15 @@ namespace BTDB
             o += 4;
             state.RootAllocPageLevels = PackUnpack.UnpackUInt32(_headerData, o);
             o += 4;
-            state.WantedDatabaseLength = PackUnpack.UnpackInt64(_headerData, o);
-            if (state.WantedDatabaseLength < AllocationGranularity) return false;
+            state.KeyValuePairCount = PackUnpack.UnpackUInt64(_headerData, o);
+            o += 8;
+            state.UsedSize = PackUnpack.UnpackUInt64(_headerData, o);
+            if (state.UsedSize < AllocationGranularity) return false;
             o += 8;
             state.TransactionCounter = PackUnpack.UnpackUInt64(_headerData, o);
+            o += 8;
+            state.WantedDatabaseLength = PackUnpack.UnpackUInt64(_headerData, o);
+            if (state.WantedDatabaseLength < AllocationGranularity) return false;
             o += 8;
             state.TransactionLogPtr = PackUnpack.UnpackUInt64(_headerData, o);
             o += 8;
@@ -319,7 +338,10 @@ namespace BTDB
                                       {
                                           TransactionNumber = _currentState.TransactionCounter,
                                           ReadTrRunningCount = 1,
-                                          RootBTree = _currentState.RootBTree
+                                          RootBTree = _currentState.RootBTree,
+                                          KeyValuePairCount = _currentState.KeyValuePairCount,
+                                          UsedSize = _currentState.UsedSize,
+                                          WantedDatabaseLength = _currentState.WantedDatabaseLength
                                       };
                     if (_readTrLinkHead != null)
                     {
@@ -615,8 +637,9 @@ namespace BTDB
             }
             long startGran = sector.Position / AllocationGranularity;
             int grans = sector.Length / AllocationGranularity;
-            long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
+            var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
             UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans);
+            _newState.UsedSize -= (ulong)sector.Length;
         }
 
         void UnsetBitsInAlloc(long startGran, int grans, ref SectorPtr sectorPtr, uint level, long totalGrans)
@@ -648,7 +671,7 @@ namespace BTDB
 
         void CreateInitialAllocPages()
         {
-            long grans = _newState.WantedDatabaseLength / AllocationGranularity;
+            var grans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
             long leafSectors = grans / MaxLeafAllocSectorGrans;
             if (grans % MaxLeafAllocSectorGrans != 0) leafSectors++;
             uint levels = 1;
@@ -778,11 +801,12 @@ namespace BTDB
             Debug.Assert(grans < 256);
             if (_newState.RootAllocPageLevels == 0)
             {
-                long result = _newState.WantedDatabaseLength;
-                _newState.WantedDatabaseLength += size;
+                var result = (long)_newState.WantedDatabaseLength;
+                _newState.WantedDatabaseLength += (ulong)size;
+                _newState.UsedSize += (ulong)size;
                 return result;
             }
-            if (_spaceSoonReusable!=null)
+            if (_spaceSoonReusable != null)
             {
                 PtrLenList reuse;
                 lock (_spaceSoonReusableLock)
@@ -792,13 +816,14 @@ namespace BTDB
                 }
                 _spaceUsedByReadOnlyTransactions.UnmergeInPlace(reuse);
             }
-            long totalGrans = _newState.WantedDatabaseLength / AllocationGranularity;
+            var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
             long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans, 0);
             if (posInGrans < 0) throw new BTDBException("Cannot allocate more space");
             if (posInGrans + grans >= totalGrans)
             {
-                _newState.WantedDatabaseLength = (posInGrans + grans) * AllocationGranularity;
+                _newState.WantedDatabaseLength = (ulong)(posInGrans + grans) * AllocationGranularity;
             }
+            _newState.UsedSize += (ulong)size;
             return posInGrans * AllocationGranularity;
         }
 
@@ -1042,6 +1067,29 @@ namespace BTDB
         {
             Debug.Assert(value > 0);
             return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);
+        }
+
+        internal LowLevelDBStats CalculateStats(ReadTrLink readLink)
+        {
+            var result = new LowLevelDBStats
+                             {
+                                 DatabaseStreamSize = _stream.GetSize()
+                             };
+            if (readLink!=null)
+            {
+                result.TransactionNumber = readLink.TransactionNumber;
+                result.KeyValuePairCount = readLink.KeyValuePairCount;
+                result.ReallyUsedSize = readLink.UsedSize;
+                result.WastedSize = readLink.WantedDatabaseLength - readLink.UsedSize;
+            }
+            else
+            {
+                result.TransactionNumber = _newState.TransactionCounter;
+                result.KeyValuePairCount = _newState.KeyValuePairCount;
+                result.ReallyUsedSize = _newState.UsedSize;
+                result.WastedSize = _newState.WantedDatabaseLength - _newState.UsedSize;
+            }
+            return result;
         }
     }
 }

@@ -106,5 +106,11 @@ namespace BTDB
         /// You should call this as last method in using scope if you don't want to rollback transaction.
         /// </summary>
         void Commit();
+
+        /// <summary>
+        /// Calculates statistics 
+        /// </summary>
+        /// <returns>DTO with usefull statistic about current Transaction and LowLevelDB</returns>
+        LowLevelDBStats CalculateStats();
     }
 }

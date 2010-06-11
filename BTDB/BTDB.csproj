@@ -51,6 +51,7 @@
     <Compile Include="Interface\BTDBException.cs" />
     <Compile Include="Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="Implementation\BTreeChildIterator.cs" />
+    <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="PublicHelpers\Checksum.cs" />
     <Compile Include="PublicHelpers\ExtensionMethods.cs" />
     <Compile Include="Interface\FindKeyResult.cs" />

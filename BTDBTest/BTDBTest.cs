@@ -135,6 +135,7 @@ namespace BTDBTest
                         Assert.True(tr2.FindExactKey(key));
                         tr2.ReadKey(0, keyLength, buf, 0);
                         Assert.AreEqual(key, buf);
+                        Debug.WriteLine(tr2.CalculateStats().ToString());
                     }
                 }
                 Debug.WriteLine("KeySize:{0,7} DataBaseSize:{1,7}", keyLength, stream.GetSize());
@@ -194,6 +195,7 @@ namespace BTDBTest
                         key[0] = (byte) i;
                         Assert.True(tr2.FindExactKey(key));
                     }
+                    Debug.WriteLine(tr2.CalculateStats().ToString());
                 }
             }
         }
