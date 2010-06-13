@@ -21,8 +21,18 @@ namespace BTDB
         {
             int keySize = transaction.GetKeySize();
             if (keySize < 0) return null;
-            byte[] result = new byte[keySize];
+            var result = new byte[keySize];
             transaction.ReadKey(0, keySize, result, 0);
+            return result;
+        }
+
+        public static byte[] ReadValue(this ILowLevelDBTransaction transaction)
+        {
+            long valueSize = transaction.GetValueSize();
+            if (valueSize < 0) return null;
+            if ((int)valueSize!=valueSize) throw new BTDBException("Value is bigger then 2GB does not fit in byte[]");
+            var result = new byte[valueSize];
+            transaction.ReadValue(0, (int)valueSize, result, 0);
             return result;
         }
     }
