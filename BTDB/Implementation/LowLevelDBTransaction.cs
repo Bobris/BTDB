@@ -467,9 +467,47 @@ namespace BTDB
 
         public void WriteValue(long ofs, int len, byte[] buf, int bufOfs)
         {
+            if (len<0) throw new ArgumentOutOfRangeException("len");
+            if (ofs<0) throw new ArgumentOutOfRangeException("ofs");
+            if (len == 0) return;
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
             UpgradeToWriteTransaction();
             if (ofs + len > GetValueSize()) SetValueSize(ofs + len);
+            InternalWriteValue(ofs, len, buf, bufOfs);
+        }
+
+        void InternalWriteValue(long ofs, int len, byte[] buf, int bufOfs)
+        {
+            _currentKeySector = _owner.DirtizeSector(_currentKeySector);
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndex);
+            var valueLen = iter.ValueLen;
+            var valueLenInline = iter.ValueLenInline;
+            if (ofs + len > valueLen - valueLenInline)
+            {
+                var inlineEnd = (int)(ofs + len - (valueLen - valueLenInline));
+                var inlineStart = 0;
+                if (ofs > valueLen - valueLenInline)
+                {
+                    inlineStart = (int)(ofs - (valueLen - valueLenInline));
+                }
+                if (buf != null)
+                {
+                    var inlineBufOfs = bufOfs + (int)(ofs - (valueLen - valueLenInline + inlineStart));
+                    Array.Copy(buf, inlineBufOfs, iter.Data, iter.ValueOffset + inlineStart, inlineEnd - inlineStart);
+                }
+                else
+                {
+                    Array.Clear(iter.Data, iter.ValueOffset + inlineStart, inlineEnd - inlineStart);
+                }
+                len -= inlineEnd - inlineStart;
+                if (len == 0) return;
+            }
+            iter.ValueSectorPtr = RecursiveWriteValue(iter.ValueSectorPtr, valueLen, ofs, len, buf, bufOfs);
+        }
+
+        SectorPtr RecursiveWriteValue(SectorPtr sectorPtr, long valueLen, long ofs, int len, byte[] buf, int bufOfs)
+        {
             throw new NotImplementedException();
         }
 

@@ -514,7 +514,7 @@ namespace BTDB
             LinkToTailOfInTransactionSectors(dirtySector);
         }
 
-        private Sector DirtizeSector(Sector sector)
+        internal Sector DirtizeSector(Sector sector)
         {
             if (sector.Dirty) return sector;
             if (sector.InTransaction == false)

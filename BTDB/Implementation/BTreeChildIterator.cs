@@ -153,6 +153,11 @@ namespace BTDB
                 if (!HasValueSectorPtr) throw new InvalidOperationException();
                 return SectorPtr.Unpack(_data, ValueSectorPtrOffset);
             }
+            set
+            {
+                if (!HasValueSectorPtr) throw new InvalidOperationException();
+                SectorPtr.Pack(_data, ValueSectorPtrOffset, value);
+            }
         }
 
         internal int OffsetOfIndex(int index)
