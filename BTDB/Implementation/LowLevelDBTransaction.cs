@@ -467,8 +467,8 @@ namespace BTDB
 
         public void WriteValue(long ofs, int len, byte[] buf, int bufOfs)
         {
-            if (len<0) throw new ArgumentOutOfRangeException("len");
-            if (ofs<0) throw new ArgumentOutOfRangeException("ofs");
+            if (len < 0) throw new ArgumentOutOfRangeException("len");
+            if (ofs < 0) throw new ArgumentOutOfRangeException("ofs");
             if (len == 0) return;
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
             UpgradeToWriteTransaction();
@@ -508,13 +508,105 @@ namespace BTDB
 
         SectorPtr RecursiveWriteValue(SectorPtr sectorPtr, long valueLen, long ofs, int len, byte[] buf, int bufOfs)
         {
-            throw new NotImplementedException();
+            if (ofs < 0) throw new ArgumentOutOfRangeException("ofs");
+            if (ofs + len > valueLen) throw new ArgumentOutOfRangeException("ofs");
+            Sector dataSector = _owner.TryGetSector(sectorPtr.Ptr);
+            if (valueLen <= LowLevelDB.MaxLeafDataSectorSize)
+            {
+                if (dataSector == null)
+                {
+                    dataSector = _owner.ReadSector(sectorPtr, true);
+                    dataSector.Type = SectorType.DataChild;
+                }
+                Debug.Assert(valueLen <= dataSector.Length);
+                dataSector = _owner.DirtizeSector(dataSector);
+                if (buf != null)
+                {
+                    Array.Copy(buf, bufOfs, dataSector.Data, (int)ofs, len);
+                }
+                else
+                {
+                    Array.Clear(dataSector.Data, (int)ofs, len);
+                }
+                return dataSector.ToPtrWithLen();
+            }
+            if (dataSector == null)
+            {
+                dataSector = _owner.ReadSector(sectorPtr, true);
+                dataSector.Type = SectorType.DataParent;
+            }
+            dataSector = _owner.DirtizeSector(dataSector);
+            long leafSectors = valueLen / LowLevelDB.MaxLeafDataSectorSize;
+            if (valueLen % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
+            long currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
+                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
+            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            var downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            var i = (int)(ofs / bytesInDownLevel);
+            while (i < downPtrCount)
+            {
+                long newofs = ofs - i * bytesInDownLevel;
+                if (newofs + len <= 0) break;
+                long downValueLen;
+                if (i < downPtrCount - 1)
+                {
+                    downValueLen = bytesInDownLevel;
+                }
+                else
+                {
+                    downValueLen = valueLen % bytesInDownLevel;
+                    if (downValueLen == 0) downValueLen = bytesInDownLevel;
+                }
+                SectorPtr downSectorPtr = SectorPtr.Unpack(dataSector.Data, i * LowLevelDB.PtrDownSize);
+                int newBufOfs = bufOfs;
+                int newlen = len;
+                if (newofs < 0)
+                {
+                    newlen += (int)newofs;
+                    newBufOfs += (int)newofs;
+                    newofs = 0;
+                }
+                if (downValueLen - newofs < newlen)
+                {
+                    newlen = (int)(downValueLen - newofs);
+                }
+                downSectorPtr = RecursiveWriteValue(downSectorPtr, downValueLen, newofs, newlen, buf, newBufOfs);
+                SectorPtr.Pack(dataSector.Data, i * LowLevelDB.PtrDownSize, downSectorPtr);
+                i++;
+            }
+            return dataSector.ToPtrWithLen();
         }
 
         public void SetValueSize(long newSize)
         {
+            if (newSize < 0) throw new ArgumentOutOfRangeException("newSize");
+            if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndex);
+            long oldSize = iter.ValueLen;
+            if (oldSize == newSize) return;
             UpgradeToWriteTransaction();
+            int oldInlineSize = BTreeChildIterator.CalcValueLenInline(oldSize);
+            int newInlineSize = BTreeChildIterator.CalcValueLenInline(newSize);
+            var newEndContent = new byte[oldInlineSize > newInlineSize && newSize > oldSize ? newInlineSize + LowLevelDB.AllocationGranularity : newInlineSize];
+            long newEndContentOfs = newSize - newEndContent.Length;
+            ReadValue(newEndContentOfs, (int)Math.Min(newEndContent.Length, oldSize - newEndContentOfs), newEndContent, 0);
+            _currentKeySector = _owner.ResizeSector(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, newSize));
+            iter.ResizeValue(_currentKeySector.Data, newSize);
+            if (oldSize < newSize)
+            {
+                if (oldSize == oldInlineSize)
+                {
+
+                }
+            }
+            else
+            {
+
+            }
             throw new NotImplementedException();
+            InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
         }
 
         public void EraseCurrent()

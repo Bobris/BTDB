@@ -38,6 +38,14 @@ namespace BTDB
                    (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
         }
 
+        internal static int CalcEntrySize(int keyLen, long valueLen)
+        {
+            return 4 + 8 + CalcKeyLenInline(keyLen) +
+                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0) +
+                   CalcValueLenInline(valueLen) +
+                   (valueLen > MaxValueLenInline ? LowLevelDB.PtrDownSize : 0);
+        }
+
         internal void MoveFirst()
         {
             _ofs = 1;
@@ -103,7 +111,7 @@ namespace BTDB
 
         internal bool HasKeySectorPtr
         {
-            get { return _keyLen>MaxKeyLenInline; }
+            get { return _keyLen > MaxKeyLenInline; }
         }
 
         internal int KeySectorPtrOffset
@@ -211,6 +219,11 @@ namespace BTDB
             get { return _data; }
         }
 
+        public int EntryOffset
+        {
+            get { return _ofs; }
+        }
+
         internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Func<byte[], int, int, SectorPtr, int, int> compare)
         {
             int l = 0;
@@ -256,5 +269,14 @@ namespace BTDB
         int _pos;
         int _keyLen;
         int _totalLength;
+
+        internal void ResizeValue(byte[] newData, long newSize)
+        {
+            // preserves all before current item including current sizes + key
+            Array.Copy(Data, 0, newData, 0, ValueOffset);
+            // preserves all after current item
+            Array.Copy(Data, EntryOffset + CurrentEntrySize, newData, EntryOffset + CalcEntrySize(KeyLen, newSize), TotalLength - EntryOffset - CurrentEntrySize);
+            PackUnpack.PackUInt64(newData, EntryOffset + 4, (ulong)newSize);
+        }
     }
 }
