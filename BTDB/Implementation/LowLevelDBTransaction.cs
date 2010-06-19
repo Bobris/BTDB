@@ -115,8 +115,8 @@ namespace BTDB
                     newSector.Data[0] = (byte)(iter.Count + 1);
                     int insertOfs = iter.OffsetOfIndex(_currentKeyIndex);
                     Array.Copy(iter.Data, 1, newSector.Data, 1, insertOfs - 1);
-                    SetBTreeChildKeyData(newSector, keyBuf, keyOfs, keyLen, insertOfs);
                     Array.Copy(iter.Data, insertOfs, newSector.Data, insertOfs + additionalLengthNeeded, iter.TotalLength - insertOfs);
+                    SetBTreeChildKeyData(newSector, keyBuf, keyOfs, keyLen, insertOfs);
                 }
                 else
                 {
@@ -311,7 +311,7 @@ namespace BTDB
             Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
             if (len <= LowLevelDB.MaxLeafDataSectorSize)
             {
-                if (sector==null)
+                if (sector == null)
                 {
                     sector = _owner.ReadSector(sectorPtr, true);
                     sector.Type = SectorType.DataChild;
@@ -443,7 +443,7 @@ namespace BTDB
                 int localOutLen;
                 PeekKey(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, localOutLen);
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len,localOutLen));
                 ofs += localOutLen;
                 bufOfs += localOutLen;
                 len -= localOutLen;
@@ -523,7 +523,7 @@ namespace BTDB
                 int localOutLen;
                 PeekValue(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, localOutLen);
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len,localOutLen));
                 ofs += localOutLen;
                 bufOfs += localOutLen;
                 len -= localOutLen;
@@ -558,7 +558,7 @@ namespace BTDB
                 }
                 if (buf != null)
                 {
-                    var inlineBufOfs = bufOfs + (int)(ofs - (valueLen - valueLenInline + inlineStart));
+                    var inlineBufOfs = bufOfs + (int)(valueLen - valueLenInline + inlineStart - ofs);
                     Array.Copy(buf, inlineBufOfs, iter.Data, iter.ValueOffset + inlineStart, inlineEnd - inlineStart);
                 }
                 else
@@ -568,7 +568,7 @@ namespace BTDB
                 len -= inlineEnd - inlineStart;
                 if (len == 0) return;
             }
-            iter.ValueSectorPtr = RecursiveWriteValue(iter.ValueSectorPtr, valueLen, ofs, len, buf, bufOfs);
+            iter.ValueSectorPtr = RecursiveWriteValue(iter.ValueSectorPtr, valueLen - valueLenInline, ofs, len, buf, bufOfs);
         }
 
         SectorPtr RecursiveWriteValue(SectorPtr sectorPtr, long valueLen, long ofs, int len, byte[] buf, int bufOfs)
@@ -629,7 +629,7 @@ namespace BTDB
                 if (newofs < 0)
                 {
                     newlen += (int)newofs;
-                    newBufOfs += (int)newofs;
+                    newBufOfs -= (int)newofs;
                     newofs = 0;
                 }
                 if (downValueLen - newofs < newlen)
@@ -655,34 +655,47 @@ namespace BTDB
             int oldInlineSize = BTreeChildIterator.CalcValueLenInline(oldSize);
             int newInlineSize = BTreeChildIterator.CalcValueLenInline(newSize);
             var newEndContent = new byte[oldInlineSize > newInlineSize && newSize > oldSize ? newInlineSize + LowLevelDB.AllocationGranularity : newInlineSize];
+            byte[] oldEndContent = null;
             long newEndContentOfs = newSize - newEndContent.Length;
-            ReadValue(newEndContentOfs, (int)Math.Min(newEndContent.Length, oldSize - newEndContentOfs), newEndContent, 0);
-            _currentKeySector = _owner.ResizeSector(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, newSize));
-            iter.ResizeValue(_currentKeySector.Data, newSize);
-            if (oldSize < newSize)
+            if (oldSize - newEndContentOfs < 0)
             {
-                if (oldSize == oldInlineSize)
-                {
-                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                   CreateContentSector(newSize - newInlineSize, _currentKeySector));
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
+                oldEndContent = new byte[oldInlineSize];
+                ReadValue(oldSize - oldInlineSize, oldInlineSize, oldEndContent, 0);
             }
             else
             {
-                if (newSize == newInlineSize)
+                ReadValue(newEndContentOfs, (int)Math.Min(newEndContent.Length, oldSize - newEndContentOfs), newEndContent, 0);
+            }
+            _currentKeySector = _owner.ResizeSector(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, newSize));
+            iter.ResizeValue(_currentKeySector.Data, newSize);
+            if (oldSize != oldInlineSize || newSize != newInlineSize)
+            {
+                if (oldSize < newSize)
                 {
-                    DeleteContentSector(iter.ValueSectorPtr, oldSize - oldInlineSize);
+                    if (oldSize == oldInlineSize)
+                    {
+                        SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
+                                       CreateContentSector(newSize - newInlineSize, _currentKeySector));
+                    }
+                    else if (oldSize - oldInlineSize != newSize - newInlineSize)
+                    {
+                        throw new NotImplementedException();
+                    }
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    if (newSize == newInlineSize)
+                    {
+                        DeleteContentSector(iter.ValueSectorPtr, oldSize - oldInlineSize);
+                    }
+                    else if (oldSize - oldInlineSize != newSize - newInlineSize)
+                    {
+                        throw new NotImplementedException();
+                    }
                 }
             }
-            InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
+            if (newEndContent.Length > 0) InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
+            if (oldEndContent != null && oldEndContent.Length > 0) InternalWriteValue(oldSize - oldInlineSize, oldInlineSize, oldEndContent, 0);
         }
 
         public void EraseCurrent()

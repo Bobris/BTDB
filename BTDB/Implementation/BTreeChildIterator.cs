@@ -275,7 +275,16 @@ namespace BTDB
             // preserves all before current item including current sizes + key
             Array.Copy(Data, 0, newData, 0, ValueOffset);
             // preserves all after current item
-            Array.Copy(Data, EntryOffset + CurrentEntrySize, newData, EntryOffset + CalcEntrySize(KeyLen, newSize), TotalLength - EntryOffset - CurrentEntrySize);
+            int withValuePtr = 0;
+            if (HasValueSectorPtr && newSize > MaxValueLenInline)
+            {
+                withValuePtr = LowLevelDB.PtrDownSize;
+            }
+            Array.Copy(Data,
+                       EntryOffset + CurrentEntrySize - withValuePtr,
+                       newData,
+                       EntryOffset + CalcEntrySize(KeyLen, newSize) - withValuePtr,
+                       TotalLength - EntryOffset - CurrentEntrySize + withValuePtr);
             PackUnpack.PackUInt64(newData, EntryOffset + 4, (ulong)newSize);
         }
     }
