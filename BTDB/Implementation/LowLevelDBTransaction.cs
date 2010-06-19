@@ -274,6 +274,71 @@ namespace BTDB
             return newSector.ToPtrWithLen();
         }
 
+        SectorPtr CreateContentSector(long len, Sector parent)
+        {
+            if (len <= LowLevelDB.MaxLeafDataSectorSize)
+            {
+                var newLeafSector = _owner.NewSector();
+                newLeafSector.Type = SectorType.DataChild;
+                newLeafSector.SetLengthWithRound((int)len);
+                newLeafSector.Parent = parent;
+                _owner.PublishSector(newLeafSector);
+                return newLeafSector.ToPtrWithLen();
+            }
+            long leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
+            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
+            long currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
+                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
+            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            var newSector = _owner.NewSector();
+            newSector.Type = SectorType.DataParent;
+            int downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            newSector.SetLengthWithRound(downPtrCount * LowLevelDB.PtrDownSize);
+            newSector.Parent = parent;
+            for (int i = 0; i < downPtrCount; i++)
+            {
+                SectorPtr sectorPtr = CreateContentSector(Math.Min(len, bytesInDownLevel), newSector);
+                SectorPtr.Pack(newSector.Data, i * LowLevelDB.PtrDownSize, sectorPtr);
+                len -= bytesInDownLevel;
+            }
+            _owner.PublishSector(newSector);
+            return newSector.ToPtrWithLen();
+        }
+
+        void DeleteContentSector(SectorPtr sectorPtr, long len)
+        {
+            Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
+            if (len <= LowLevelDB.MaxLeafDataSectorSize)
+            {
+                if (sector==null)
+                {
+                    sector = _owner.ReadSector(sectorPtr, true);
+                    sector.Type = SectorType.DataChild;
+                }
+                _owner.DeallocateSector(sector);
+                return;
+            }
+            long leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
+            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
+            long currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
+                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
+            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            if (sector == null)
+            {
+                sector = _owner.ReadSector(sectorPtr, true);
+                sector.Type = SectorType.DataParent;
+            }
+            int downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            for (int i = 0; i < downPtrCount; i++)
+            {
+                var downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
+                DeleteContentSector(downSectorPtr, Math.Min(len, bytesInDownLevel));
+                len -= bytesInDownLevel;
+            }
+        }
+
         public int GetKeySize()
         {
             if (_currentKeyIndex < 0) return -1;
@@ -598,14 +663,25 @@ namespace BTDB
             {
                 if (oldSize == oldInlineSize)
                 {
-
+                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
+                                   CreateContentSector(newSize - newInlineSize, _currentKeySector));
+                }
+                else
+                {
+                    throw new NotImplementedException();
                 }
             }
             else
             {
-
+                if (newSize == newInlineSize)
+                {
+                    DeleteContentSector(iter.ValueSectorPtr, oldSize - oldInlineSize);
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
             }
-            throw new NotImplementedException();
             InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
         }
 

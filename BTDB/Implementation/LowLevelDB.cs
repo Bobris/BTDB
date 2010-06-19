@@ -178,6 +178,7 @@ namespace BTDB
 
         public bool Open(IStream stream, bool dispose)
         {
+            if (stream == null) throw new ArgumentNullException("stream");
             _stream = stream;
             _disposeStream = dispose;
             _spaceSoonReusable = null;
@@ -607,7 +608,7 @@ namespace BTDB
             }
         }
 
-        void DeallocateSector(Sector sector)
+        internal void DeallocateSector(Sector sector)
         {
             if (sector.InTransaction)
             {
