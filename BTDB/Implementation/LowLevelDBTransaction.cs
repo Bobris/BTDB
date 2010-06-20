@@ -191,13 +191,8 @@ namespace BTDB
                                                              0,
                                                              sector.Length);
             }
-            int leafSectors = dataLen / LowLevelDB.MaxLeafDataSectorSize;
-            if (dataLen % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            int currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-            int bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
-            int downPtrCount = (leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors;
+            int downPtrCount;
+            int bytesInDownLevel = (int)GetBytesInDownLevel(dataLen, out downPtrCount);
             int i;
             SectorPtr downSectorPtr;
             for (i = 0; i < downPtrCount - 1; i++)
@@ -252,15 +247,10 @@ namespace BTDB
                 _owner.PublishSector(newLeafSector);
                 return newLeafSector.ToPtrWithLen();
             }
-            int leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
-            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            int currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-            int bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            int downPtrCount;
+            int bytesInDownLevel = (int)GetBytesInDownLevel(len, out downPtrCount);
             var newSector = _owner.NewSector();
             newSector.Type = SectorType.DataParent;
-            int downPtrCount = (leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors;
             newSector.SetLengthWithRound(downPtrCount * LowLevelDB.PtrDownSize);
             newSector.Parent = parent;
             for (int i = 0; i < downPtrCount; i++)
@@ -285,15 +275,10 @@ namespace BTDB
                 _owner.PublishSector(newLeafSector);
                 return newLeafSector.ToPtrWithLen();
             }
-            long leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
-            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            long currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            int downPtrCount;
+            long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
             var newSector = _owner.NewSector();
             newSector.Type = SectorType.DataParent;
-            int downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
             newSector.SetLengthWithRound(downPtrCount * LowLevelDB.PtrDownSize);
             newSector.Parent = parent;
             for (int i = 0; i < downPtrCount; i++)
@@ -319,18 +304,13 @@ namespace BTDB
                 _owner.DeallocateSector(sector);
                 return;
             }
-            long leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
-            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            long currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            int downPtrCount;
+            long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
             if (sector == null)
             {
                 sector = _owner.ReadSector(sectorPtr, true);
                 sector.Type = SectorType.DataParent;
             }
-            int downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
             for (int i = 0; i < downPtrCount; i++)
             {
                 var downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
@@ -407,13 +387,8 @@ namespace BTDB
                     dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                     dataSector.Type = SectorType.DataParent;
                 }
-                int leafSectors = dataLen / LowLevelDB.MaxLeafDataSectorSize;
-                if (dataLen % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-                int currentLevelLeafSectors = 1;
-                while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                    currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-                int bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
-                int downPtrCount = (leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors;
+                int downPtrCount;
+                int bytesInDownLevel = (int)GetBytesInDownLevel(dataLen, out downPtrCount);
                 int i = ofs / bytesInDownLevel;
                 ofs = ofs % bytesInDownLevel;
                 dataSectorPtr = SectorPtr.Unpack(dataSector.Data, i * LowLevelDB.PtrDownSize);
@@ -443,7 +418,7 @@ namespace BTDB
                 int localOutLen;
                 PeekKey(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len,localOutLen));
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len, localOutLen));
                 ofs += localOutLen;
                 bufOfs += localOutLen;
                 len -= localOutLen;
@@ -492,13 +467,8 @@ namespace BTDB
                     dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                     dataSector.Type = SectorType.DataParent;
                 }
-                long leafSectors = dataLen / LowLevelDB.MaxLeafDataSectorSize;
-                if (dataLen % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-                long currentLevelLeafSectors = 1;
-                while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                    currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-                long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
-                var downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+                int downPtrCount;
+                long bytesInDownLevel = GetBytesInDownLevel(dataLen, out downPtrCount);
                 var i = (int)(ofs / bytesInDownLevel);
                 ofs = ofs % bytesInDownLevel;
                 dataSectorPtr = SectorPtr.Unpack(dataSector.Data, i * LowLevelDB.PtrDownSize);
@@ -523,7 +493,7 @@ namespace BTDB
                 int localOutLen;
                 PeekValue(ofs, out localOutLen, out localBuf, out localBufOfs);
                 if (localOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len,localOutLen));
+                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len, localOutLen));
                 ofs += localOutLen;
                 bufOfs += localOutLen;
                 len -= localOutLen;
@@ -601,13 +571,8 @@ namespace BTDB
                 dataSector.Type = SectorType.DataParent;
             }
             dataSector = _owner.DirtizeSector(dataSector);
-            long leafSectors = valueLen / LowLevelDB.MaxLeafDataSectorSize;
-            if (valueLen % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            long currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
-            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
-            var downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            int downPtrCount;
+            long bytesInDownLevel = GetBytesInDownLevel(valueLen, out downPtrCount);
             var i = (int)(ofs / bytesInDownLevel);
             while (i < downPtrCount)
             {
@@ -641,6 +606,18 @@ namespace BTDB
                 i++;
             }
             return dataSector.ToPtrWithLen();
+        }
+
+        static long GetBytesInDownLevel(long len, out int downPtrCount)
+        {
+            long leafSectors = len / LowLevelDB.MaxLeafDataSectorSize;
+            if (len % LowLevelDB.MaxLeafDataSectorSize != 0) leafSectors++;
+            long currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * LowLevelDB.MaxChildren < leafSectors)
+                currentLevelLeafSectors *= LowLevelDB.MaxChildren;
+            long bytesInDownLevel = currentLevelLeafSectors * LowLevelDB.MaxLeafDataSectorSize;
+            downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            return bytesInDownLevel;
         }
 
         public void SetValueSize(long newSize)
