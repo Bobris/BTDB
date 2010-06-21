@@ -636,10 +636,10 @@ namespace BTDB
             UpgradeToWriteTransaction();
             int oldInlineSize = BTreeChildIterator.CalcValueLenInline(oldSize);
             int newInlineSize = BTreeChildIterator.CalcValueLenInline(newSize);
-            var newEndContent = new byte[oldInlineSize > newInlineSize && newSize > oldSize ? newInlineSize + LowLevelDB.AllocationGranularity : newInlineSize];
+            var newEndContent = new byte[newInlineSize];
             byte[] oldEndContent = null;
             long newEndContentOfs = newSize - newEndContent.Length;
-            if (oldSize - newEndContentOfs < 0)
+            if (oldSize < newSize)
             {
                 oldEndContent = new byte[oldInlineSize];
                 ReadValue(oldSize - oldInlineSize, oldInlineSize, oldEndContent, 0);
