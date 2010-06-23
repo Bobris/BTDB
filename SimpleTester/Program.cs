@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace SimpleTester
 {
@@ -6,16 +7,14 @@ namespace SimpleTester
     {
         static void Main(string[] args)
         {
+            var random = new Random();
             var btdbTest = new BTDBTest.LowLevelDBTest();
-            btdbTest.ValueStoreWorks(256, 512);
-            for (int i = 0; i < 60000;i++ )
+            for (int i = 0; i < 1000; i++)
             {
-                Console.WriteLine(i);
-                for(int j=0;j<i;j++)
-                {
-                    btdbTest.ValueStoreWorks(j, i);
-                    btdbTest.ValueStoreWorks(i, j);
-                }
+                int l1 = random.Next(500000);
+                int l2 = random.Next(500000);
+                Console.WriteLine("{0}: {1}->{2}",i,l1,l2);
+                btdbTest.ValueStoreWorks(l1, l2);
             }
         }
     }
