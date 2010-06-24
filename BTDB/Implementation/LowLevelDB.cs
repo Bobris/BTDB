@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace BTDB
@@ -89,6 +90,8 @@ namespace BTDB
         LowLevelDBTransaction _writeTr;
         bool _commitNeeded;
         bool _currentTrCommited;
+        bool _inSpaceAllocation;
+        readonly List<Sector> _postbonedDeallocateSectors = new List<Sector>();
         long _unallocatedCounter;
         Sector _unallocatedSectorHeadLink;
         Sector _unallocatedSectorTailLink;
@@ -543,7 +546,7 @@ namespace BTDB
         private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent)
         {
             newLength = RoundToAllocationGranularity(newLength);
-            if (sector.Length == newLength) return DirtizeSector(sector, newParent);
+            if (sector.Length == newLength && (aUpdatePositionInParent || sector.InTransaction)) return DirtizeSector(sector, newParent);
             if (sector.InTransaction)
             {
                 if (!sector.Allocated)
@@ -619,6 +622,11 @@ namespace BTDB
 
         internal void DeallocateSector(Sector sector)
         {
+            if (_inSpaceAllocation)
+            {
+                _postbonedDeallocateSectors.Add(sector);
+                return;
+            }
             if (sector.InTransaction)
             {
                 if (!sector.Allocated)
@@ -826,15 +834,28 @@ namespace BTDB
                 }
                 _spaceUsedByReadOnlyTransactions.UnmergeInPlace(reuse);
             }
-            var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
-            long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans, 0);
-            if (posInGrans < 0) throw new BTDBException("Cannot allocate more space");
-            if (posInGrans + grans >= totalGrans)
+            _inSpaceAllocation = true;
+            try
             {
-                _newState.WantedDatabaseLength = (ulong)(posInGrans + grans) * AllocationGranularity;
+                var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
+                long posInGrans = AllocBitsInAlloc(grans, ref _newState.RootAllocPage, _newState.RootAllocPageLevels, totalGrans, 0);
+                if (posInGrans < 0) throw new BTDBException("Cannot allocate more space");
+                if (posInGrans + grans >= totalGrans)
+                {
+                    _newState.WantedDatabaseLength = (ulong)(posInGrans + grans) * AllocationGranularity;
+                }
+                _newState.UsedSize += (ulong)size;
+                return posInGrans * AllocationGranularity;
             }
-            _newState.UsedSize += (ulong)size;
-            return posInGrans * AllocationGranularity;
+            finally
+            {
+                _inSpaceAllocation = false;
+                foreach (var postbonedDeallocateSector in _postbonedDeallocateSectors)
+                {
+                    DeallocateSector(postbonedDeallocateSector);
+                }
+                _postbonedDeallocateSectors.Clear();
+            }
         }
 
         long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, uint level, long totalGrans, ulong startInBytes)
@@ -854,7 +875,18 @@ namespace BTDB
                 while (true)
                 {
                     startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans, startGranSearch);
-                    if (startGran < 0) return -1;
+                    if (startGran < 0)
+                    {
+                        if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                        {
+                            var oldData = sector.Data;
+                            sector = ResizeSectorNoUpdatePosition(sector, sector.Length + AllocationGranularity, sector.Parent);
+                            Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
+                            sectorPtr.Ptr = sector.Position | 255;
+                            continue;
+                        }
+                        return -1;
+                    }
                     ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
                     ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
                     if (checkStartInBytes == foundFreeInBytes) break;
@@ -1085,7 +1117,7 @@ namespace BTDB
                              {
                                  DatabaseStreamSize = _stream.GetSize()
                              };
-            if (readLink!=null)
+            if (readLink != null)
             {
                 result.TransactionNumber = readLink.TransactionNumber;
                 result.KeyValuePairCount = readLink.KeyValuePairCount;

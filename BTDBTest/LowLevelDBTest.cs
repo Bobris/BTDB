@@ -226,8 +226,8 @@ namespace BTDBTest
         }
 
         [Test]
-        public void ValueStoreWorks([Values(0, 1, 268, 269, 270, 4364, 4365, 4366)] int firstLength,
-            [Values(0, 1, 268, 269, 270, 4364, 4365, 4366)] int secondLength)
+        public void ValueStoreWorks([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012)] int firstLength,
+            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012)] int secondLength)
         {
             var valbuf = new byte[firstLength];
             new Random(0).NextBytes(valbuf);
