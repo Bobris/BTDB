@@ -65,7 +65,7 @@ namespace BTDB
         const int SecondRootOffset = FirstRootOffset + RootSize;
         const int TotalHeaderSize = SecondRootOffset + RootSize;
         internal const int AllocationGranularity = 256;
-        const long MaskOfPosition = -256; // 0xFFFFFFFFFFFFFF00
+        internal const long MaskOfPosition = -256; // 0xFFFFFFFFFFFFFF00
         internal const int MaxSectorSize = 256 * AllocationGranularity;
         internal const int MaxLeafDataSectorSize = 4096;
         const int MaxLeafAllocSectorGrans = 4096 * 8;
@@ -753,18 +753,33 @@ namespace BTDB
             switch (where.Type)
             {
                 case SectorType.BTreeParent:
-                    break;
-                case SectorType.BTreeChild:
-                    var iter = new BTreeChildIterator(where.Data);
-                    do
                     {
-                        if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
-                            return iter.KeySectorPtrOffset;
-                        if ((iter.ValueSectorPos & MaskOfPosition) == sector.Position)
-                            return iter.ValueSectorPtrOffset;
+                        var iter = new BTreeParentIterator(where.Data);
+                        if ((iter.FirstChildSectorPos & MaskOfPosition) == sector.Position)
+                            return BTreeParentIterator.FirstChildSectorPtrOffset;
+                        do
+                        {
+                            if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
+                                return iter.KeySectorPtrOffset;
+                            if ((iter.ChildSectorPos & MaskOfPosition) == sector.Position)
+                                return iter.ChildSectorPtrOffset;
+                        }
+                        while (iter.MoveNext());
+                        throw new BTDBException("Cannot FindOfsInParent");
                     }
-                    while (iter.MoveNext());
-                    throw new BTDBException("Cannot FindOfsInParrent");
+                case SectorType.BTreeChild:
+                    {
+                        var iter = new BTreeChildIterator(where.Data);
+                        do
+                        {
+                            if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
+                                return iter.KeySectorPtrOffset;
+                            if ((iter.ValueSectorPos & MaskOfPosition) == sector.Position)
+                                return iter.ValueSectorPtrOffset;
+                        }
+                        while (iter.MoveNext());
+                        throw new BTDBException("Cannot FindOfsInParent");
+                    }
                 case SectorType.AllocParent:
                 case SectorType.DataParent:
                     for (int i = 0; i < where.Length / PtrDownSize; i++)
@@ -772,7 +787,7 @@ namespace BTDB
                         if ((PackUnpack.UnpackInt64(where.Data, i * PtrDownSize) & MaskOfPosition) == sector.Position)
                             return i * PtrDownSize;
                     }
-                    throw new BTDBException("Cannot FindOfsInParrent");
+                    throw new BTDBException("Cannot FindOfsInParent");
                 case SectorType.DataChild:
                     throw new BTDBException("DataChild cannot be parent");
                 case SectorType.AllocChild:
@@ -780,7 +795,6 @@ namespace BTDB
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-            throw new NotImplementedException();
         }
 
         void RealSectorAllocate(Sector unallocatedSector)

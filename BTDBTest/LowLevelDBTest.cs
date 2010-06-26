@@ -186,6 +186,11 @@ namespace BTDBTest
                     using (var tr1 = db.StartTransaction())
                     {
                         tr1.CreateKey(key);
+                        for (int j = 0; j < i; j++)
+                        {
+                            key[0] = (byte)j;
+                            Assert.True(tr1.FindExactKey(key));
+                        }
                         tr1.Commit();
                     }
                 }
