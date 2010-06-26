@@ -123,7 +123,7 @@ namespace BTDB
                 Array.Copy(iter.Data, 1, sector.Data, 1, insertOfs - 1);
                 Array.Copy(iter.Data, insertOfs, sector.Data, insertOfs + additionalLengthNeeded, iter.TotalLength - insertOfs);
                 SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, insertOfs);
-                while (sector.Parent!=null)
+                while (sector.Parent != null)
                 {
                     Sector parentSector = sector.Parent;
                     Debug.Assert(parentSector.Dirty);
@@ -158,10 +158,10 @@ namespace BTDB
                 rightSector.Data[0] = (byte)(iter.Count - splitIndex + (beforeNew ? 1 : 0));
                 Sector leftSector = _owner.ResizeSectorWithUpdatePosition(sector, currentPos, sector.Parent);
                 leftSector.Data[0] = (byte)(splitIndex + (beforeNew ? 0 : 1));
+                int newItemPos = iter.OffsetOfIndex(_currentKeyIndex);
                 if (beforeNew)
                 {
                     Array.Copy(iter.Data, 1, leftSector.Data, 1, currentPos - 1);
-                    int newItemPos = iter.OffsetOfIndex(_currentKeyIndex);
                     Array.Copy(iter.Data, currentPos, rightSector.Data, 1, newItemPos - currentPos);
                     int rightPos = 1 + newItemPos - currentPos;
                     SetBTreeChildKeyData(rightSector, keyBuf, keyOfs, keyLen, rightPos);
@@ -172,7 +172,14 @@ namespace BTDB
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    Array.Copy(iter.Data, 1, leftSector.Data, 1, newItemPos - 1);
+                    int leftPos = newItemPos;
+                    SetBTreeChildKeyData(leftSector, keyBuf, keyOfs, keyLen, leftPos);
+                    leftPos += additionalLengthNeeded;
+                    Array.Copy(iter.Data, newItemPos, leftSector.Data, leftPos, currentPos - leftPos);
+                    Array.Copy(iter.Data, currentPos - additionalLengthNeeded, rightSector.Data, 1,
+                               iter.TotalLength + additionalLengthNeeded - currentPos);
+                    _currentKeySector = leftSector;
                 }
                 _owner.PublishSector(rightSector);
                 if (leftSector.Parent == null)

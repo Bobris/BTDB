@@ -173,7 +173,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void MultipleTransactions([Values(100)] int transactionCount)
+        public void MultipleTransactions([Values(150)] int transactionCount)
         {
             using (var stream = CreateTestStream())
             using (ILowLevelDB db = new LowLevelDB())
@@ -194,14 +194,30 @@ namespace BTDBTest
                         tr1.Commit();
                     }
                 }
-                using (var tr2 = db.StartTransaction())
+            }
+        }
+
+        [Test]
+        public void MultipleTransactions2([Values(150)] int transactionCount)
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                var key = new byte[1];
+                for (int i = 0; i < transactionCount; i++)
                 {
-                    for (int i = 0; i < transactionCount; i++)
+                    key[0] = (byte)(transactionCount-i);
+                    using (var tr1 = db.StartTransaction())
                     {
-                        key[0] = (byte)i;
-                        Assert.True(tr2.FindExactKey(key));
+                        tr1.CreateKey(key);
+                        for (int j = 0; j < i; j++)
+                        {
+                            key[0] = (byte)(transactionCount - j);
+                            Assert.True(tr1.FindExactKey(key));
+                        }
+                        tr1.Commit();
                     }
-                    Debug.WriteLine(tr2.CalculateStats().ToString());
                 }
             }
         }
