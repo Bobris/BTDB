@@ -39,6 +39,12 @@ namespace BTDB
             _readLink = null;
         }
 
+        public void InvalidateCurrentKey()
+        {
+            _currentKeyIndex = -1;
+            _currentKeySector = null;
+        }
+
         public bool FindPreviousKey()
         {
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
@@ -64,29 +70,10 @@ namespace BTDB
         {
             if (keyLen < 0) throw new ArgumentOutOfRangeException("keyLen");
             if (strategy == FindKeyStrategy.Create) UpgradeToWriteTransaction();
-            SectorPtr rootBTree = IsWriteTransaction() ? _owner.NewState.RootBTree : _readLink.RootBTree;
+            var rootBTree = GetRootBTreeSectorPtr();
             if (rootBTree.Ptr == 0)
             {
-                switch (strategy)
-                {
-                    case FindKeyStrategy.Create:
-                        Sector newRootBTreeSector = CreateBTreeChildWith1Key(keyBuf, keyOfs, keyLen);
-                        _owner.NewState.RootBTree.Ptr = newRootBTreeSector.Position;
-                        _owner.NewState.RootBTreeLevels = 1;
-                        _owner.NewState.KeyValuePairCount = 1;
-                        _owner.PublishSector(newRootBTreeSector);
-                        _currentKeySector = newRootBTreeSector;
-                        _currentKeyIndex = 0;
-                        return FindKeyResult.Created;
-                    case FindKeyStrategy.ExactMatch:
-                    case FindKeyStrategy.PreferPrevious:
-                    case FindKeyStrategy.PreferNext:
-                    case FindKeyStrategy.OnlyPrevious:
-                    case FindKeyStrategy.OnlyNext:
-                        return FindKeyNotFound();
-                    default:
-                        throw new ArgumentOutOfRangeException("strategy");
-                }
+                return FindKeyInEmptyBTree(keyBuf, keyOfs, keyLen, strategy);
             }
             Sector sector;
             while (true)
@@ -123,13 +110,7 @@ namespace BTDB
                 Array.Copy(iter.Data, 1, sector.Data, 1, insertOfs - 1);
                 Array.Copy(iter.Data, insertOfs, sector.Data, insertOfs + additionalLengthNeeded, iter.TotalLength - insertOfs);
                 SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, insertOfs);
-                while (sector.Parent != null)
-                {
-                    Sector parentSector = sector.Parent;
-                    Debug.Assert(parentSector.Dirty);
-                    BTreeParentIterator.ModifyChildCount(parentSector.Data, sector.Position, 1);
-                    sector = parentSector;
-                }
+                IncrementChildCountInBTreeParents(sector);
             }
             else
             {
@@ -184,37 +165,115 @@ namespace BTDB
                 _owner.PublishSector(rightSector);
                 if (leftSector.Parent == null)
                 {
-                    Sector parentSector = _owner.NewSector();
-                    parentSector.Type = SectorType.BTreeParent;
-                    iter = new BTreeChildIterator(rightSector.Data);
-                    int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
-                    parentSector.SetLengthWithRound(BTreeParentIterator.HeaderSize + BTreeParentIterator.CalcEntrySize(iter.KeyLen));
-                    parentSector.Data[0] = 128 + 1;
-                    int ofs = 1;
-                    SectorPtr.Pack(parentSector.Data, ofs, leftSector.ToPtrWithLen());
-                    ofs += LowLevelDB.PtrDownSize;
-                    PackUnpack.PackUInt64(parentSector.Data, ofs, leftSector.Data[0]);
-                    ofs += 8;
-                    PackUnpack.PackUInt32(parentSector.Data, ofs, (uint)iter.KeyLen);
-                    ofs += 4;
-                    Array.Copy(iter.Data, iter.KeyOffset, parentSector.Data, ofs, keyLenInSector);
-                    ofs += keyLenInSector;
-                    SectorPtr.Pack(parentSector.Data, ofs, rightSector.ToPtrWithLen());
-                    ofs += LowLevelDB.PtrDownSize;
-                    PackUnpack.PackUInt64(parentSector.Data, ofs, rightSector.Data[0]);
-                    _owner.NewState.RootBTree.Ptr = parentSector.Position;
-                    _owner.NewState.RootBTreeLevels++;
-                    leftSector.Parent = parentSector;
-                    rightSector.Parent = parentSector;
-                    _owner.PublishSector(parentSector);
+                    CreateBTreeParentFromTwoLeafs(rightSector, leftSector);
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    iter = new BTreeChildIterator(rightSector.Data);
+                    int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
+                    var parentSector = leftSector.Parent;
+                    var iterParent = new BTreeParentIterator(parentSector.Data);
+                    additionalLengthNeeded = BTreeParentIterator.CalcEntrySize(iter.KeyLen);
+                    if (iterParent.TotalLength + additionalLengthNeeded <= 4096 && iterParent.Count < 127)
+                    {
+                        int index = iterParent.FindChildByPos(leftSector.Position);
+                        parentSector = _owner.ResizeSectorWithUpdatePosition(parentSector,
+                                                                             iterParent.TotalLength +
+                                                                             additionalLengthNeeded,
+                                                                             parentSector.Parent);
+                        parentSector.Data[0] = (byte)(128 + iterParent.Count + 1);
+                        int splitOfs = iterParent.OffsetOfIndex(index);
+                        int ofs = splitOfs + additionalLengthNeeded;
+                        Array.Copy(iterParent.Data, splitOfs, parentSector.Data, ofs, iterParent.TotalLength - splitOfs);
+                        ofs = splitOfs;
+                        Array.Copy(iterParent.Data,1,parentSector.Data,1,ofs-1-8);
+                        PackUnpack.PackUInt64(parentSector.Data,ofs-8,leftSector.Data[0]);
+                        PackUnpack.PackInt32(parentSector.Data,ofs,iter.KeyLen);
+                        ofs += 4;
+                        Array.Copy(iter.Data,iter.KeyOffset,parentSector.Data,ofs,keyLenInSector);
+                        ofs += keyLenInSector;
+                        SectorPtr.Pack(parentSector.Data,ofs,rightSector.ToPtrWithLen());
+                        ofs += LowLevelDB.PtrDownSize;
+                        PackUnpack.PackUInt64(parentSector.Data, ofs, rightSector.Data[0]);
+                        leftSector.Parent = parentSector;
+                        rightSector.Parent = parentSector;
+                        IncrementChildCountInBTreeParents(parentSector);
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
                 }
             }
             _owner.NewState.KeyValuePairCount++;
             return FindKeyResult.Created;
+        }
+
+        static void IncrementChildCountInBTreeParents(Sector sector)
+        {
+            while (sector.Parent != null)
+            {
+                Sector parentSector = sector.Parent;
+                Debug.Assert(parentSector.Dirty);
+                BTreeParentIterator.ModifyChildCount(parentSector.Data, sector.Position, 1);
+                sector = parentSector;
+            }
+        }
+
+        FindKeyResult FindKeyInEmptyBTree(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy)
+        {
+            switch (strategy)
+            {
+                case FindKeyStrategy.Create:
+                    Sector newRootBTreeSector = CreateBTreeChildWith1Key(keyBuf, keyOfs, keyLen);
+                    _owner.NewState.RootBTree.Ptr = newRootBTreeSector.Position;
+                    _owner.NewState.RootBTreeLevels = 1;
+                    _owner.NewState.KeyValuePairCount = 1;
+                    _owner.PublishSector(newRootBTreeSector);
+                    _currentKeySector = newRootBTreeSector;
+                    _currentKeyIndex = 0;
+                    return FindKeyResult.Created;
+                case FindKeyStrategy.ExactMatch:
+                case FindKeyStrategy.PreferPrevious:
+                case FindKeyStrategy.PreferNext:
+                case FindKeyStrategy.OnlyPrevious:
+                case FindKeyStrategy.OnlyNext:
+                    return FindKeyNotFound();
+                default:
+                    throw new ArgumentOutOfRangeException("strategy");
+            }
+        }
+
+        SectorPtr GetRootBTreeSectorPtr()
+        {
+            return IsWriteTransaction() ? _owner.NewState.RootBTree : _readLink.RootBTree;
+        }
+
+        void CreateBTreeParentFromTwoLeafs(Sector rightSector, Sector leftSector)
+        {
+            Sector parentSector = _owner.NewSector();
+            parentSector.Type = SectorType.BTreeParent;
+            var iter = new BTreeChildIterator(rightSector.Data);
+            int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
+            parentSector.SetLengthWithRound(BTreeParentIterator.HeaderSize + BTreeParentIterator.CalcEntrySize(iter.KeyLen));
+            parentSector.Data[0] = 128 + 1;
+            int ofs = 1;
+            SectorPtr.Pack(parentSector.Data, ofs, leftSector.ToPtrWithLen());
+            ofs += LowLevelDB.PtrDownSize;
+            PackUnpack.PackUInt64(parentSector.Data, ofs, leftSector.Data[0]);
+            ofs += 8;
+            PackUnpack.PackUInt32(parentSector.Data, ofs, (uint)iter.KeyLen);
+            ofs += 4;
+            Array.Copy(iter.Data, iter.KeyOffset, parentSector.Data, ofs, keyLenInSector);
+            ofs += keyLenInSector;
+            SectorPtr.Pack(parentSector.Data, ofs, rightSector.ToPtrWithLen());
+            ofs += LowLevelDB.PtrDownSize;
+            PackUnpack.PackUInt64(parentSector.Data, ofs, rightSector.Data[0]);
+            _owner.NewState.RootBTree.Ptr = parentSector.Position;
+            _owner.NewState.RootBTreeLevels++;
+            leftSector.Parent = parentSector;
+            rightSector.Parent = parentSector;
+            _owner.PublishSector(parentSector);
         }
 
         FindKeyResult FindKeyNoncreateStrategy(FindKeyStrategy strategy, BTreeChildIterator iter)

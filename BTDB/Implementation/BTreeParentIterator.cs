@@ -282,5 +282,22 @@ namespace BTDB
             } while (iterParent.MoveNext());
             throw new BTDBException("ModifyChildCount child not found");
         }
+
+        internal int FindChildByPos(long position)
+        {
+            if ((FirstChildSectorPos & LowLevelDB.MaskOfPosition) == position)
+            {
+                return 0;
+            }
+            MoveFirst();
+            do
+            {
+                if ((ChildSectorPos & LowLevelDB.MaskOfPosition) == position)
+                {
+                    return Index + 1;
+                }
+            } while (MoveNext());
+            throw new BTDBException("FindChildByPos child not found");
+        }
     }
 }

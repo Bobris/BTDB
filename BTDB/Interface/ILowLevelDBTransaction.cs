@@ -5,6 +5,11 @@ namespace BTDB
     public interface ILowLevelDBTransaction : IDisposable
     {
         /// <summary>
+        /// Actual key pointer will be set to invalid state. It is good for sonner releasing memory.
+        /// </summary>
+        void InvalidateCurrentKey();
+
+        /// <summary>
         /// Move actual key pointer to previus key from current Position
         /// </summary>
         /// <returns>true if there was such previous key, else Position will not move</returns>
