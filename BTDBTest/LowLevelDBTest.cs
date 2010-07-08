@@ -119,7 +119,6 @@ namespace BTDBTest
         public void BiggerKey([Values(0, 1, 268, 269, 270, 4364, 4365, 4366, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];
-            var buf = new byte[keyLength];
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
             using (var stream = CreateTestStream())
             {
@@ -134,7 +133,7 @@ namespace BTDBTest
                     using (var tr2 = db.StartTransaction())
                     {
                         Assert.True(tr2.FindExactKey(key));
-                        tr2.ReadKey(0, keyLength, buf, 0);
+                        var buf=tr2.ReadKey();
                         Assert.AreEqual(key, buf);
                         Debug.WriteLine(tr2.CalculateStats().ToString());
                     }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -34,6 +35,20 @@ namespace BTDB
             var result = new byte[valueSize];
             transaction.ReadValue(0, (int)valueSize, result, 0);
             return result;
+        }
+
+        public static bool Remove<TKey,TValue>(this ConcurrentDictionary<TKey,TValue> dict, TKey key)
+        {
+            TValue val;
+            return dict.TryRemove(key, out val);
+        }
+
+        public static Lazy<T> Force<T>(this Lazy<T> lazy)
+        {
+#pragma warning disable 168
+            var ignored = lazy.Value;
+#pragma warning restore 168
+            return lazy;
         }
     }
 }

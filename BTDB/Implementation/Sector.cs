@@ -13,6 +13,8 @@ namespace BTDB
 
         internal bool Dirty { get; set; }
 
+        internal bool Fresh { get; set; }
+
         internal Sector Parent { get; set; }
 
         internal Sector NextLink { get; set; }

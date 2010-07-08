@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 
 namespace BTDB
 {
@@ -76,6 +77,9 @@ namespace BTDB
         bool _disposeStream;
 
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
+        ConcurrentDictionary<long, bool> _freshSectors = new ConcurrentDictionary<long, bool>();
+        ConcurrentDictionary<long, bool> _stinkingSectors = new ConcurrentDictionary<long, bool>();
+        readonly ReaderWriterLockSlim _freshnessLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         readonly byte[] _headerData = new byte[TotalHeaderSize];
         State _currentState = new State();
         State _newState = new State();
@@ -99,6 +103,9 @@ namespace BTDB
         Sector _dirtySectorTailLink;
         Sector _inTransactionSectorHeadLink;
         Sector _inTransactionSectorTailLink;
+        int _unallocatedSectorCount;
+        int _dirtySectorCount;
+        int _inTransactionSectorCount;
 
         internal State NewState
         {
@@ -134,10 +141,21 @@ namespace BTDB
             size = size * AllocationGranularity;
             var lazy = new Lazy<Sector>(() =>
             {
-                var res = new Sector { Position = position, Length = size };
+                var res = new Sector { Position = position, Length = size, Fresh = true };
+                _freshnessLock.EnterReadLock();
+                try
+                {
+                    _freshSectors.TryAdd(position,true);
+                }
+                finally
+                {
+                    _freshnessLock.ExitReadLock();
+                }
                 if (inWriteTransaction)
                 {
                     res.InTransaction = _spaceAllocatedInTransaction.Contains((ulong)position);
+                    if (res.InTransaction)
+                        LinkToTailOfInTransactionSectors(res);
                 }
                 if (_stream.Read(res.Data, 0, size, (ulong)position) != size)
                 {
@@ -558,8 +576,23 @@ namespace BTDB
                 {
                     UnlinkFromDirtySectors(sector);
                 }
-                Lazy<Sector> forget;
-                _sectorCache.TryRemove(sector.Position, out forget);
+                _freshnessLock.EnterReadLock();
+                try
+                {
+                    if (sector.Fresh)
+                    {
+                        _freshSectors.Remove(sector.Position);
+                    }
+                    else
+                    {
+                        _stinkingSectors.Remove(sector.Position);
+                    }
+                }
+                finally
+                {
+                    _freshnessLock.ExitReadLock();
+                }
+                _sectorCache.Remove(sector.Position);
             }
             if (newParent != null)
             {
@@ -925,6 +958,7 @@ namespace BTDB
 
         void UnlinkFromUnallocatedSectors(Sector unallocatedSector)
         {
+            _unallocatedSectorCount--;
             if (unallocatedSector.PrevLink == null)
             {
                 _unallocatedSectorHeadLink = unallocatedSector.NextLink;
@@ -951,6 +985,7 @@ namespace BTDB
 
         void UnlinkFromDirtySectors(Sector dirtySector)
         {
+            _dirtySectorCount--;
             if (dirtySector.PrevLink == null)
             {
                 _dirtySectorHeadLink = dirtySector.NextLink;
@@ -977,6 +1012,7 @@ namespace BTDB
 
         void UnlinkFromInTransactionSectors(Sector inTransactionSector)
         {
+            _inTransactionSectorCount--;
             if (inTransactionSector.PrevLink == null)
             {
                 _inTransactionSectorHeadLink = inTransactionSector.NextLink;
@@ -1057,20 +1093,26 @@ namespace BTDB
         internal void PublishSector(Sector newSector)
         {
             Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
-            var lazy = new Lazy<Sector>(() => newSector);
-
-            // Immediately to evaluate helps display value in debugger
-#pragma warning disable 168
-            var forget = lazy.Value;
-#pragma warning restore 168
+            var lazy = new Lazy<Sector>(() => newSector).Force();
 
             _sectorCache.TryAdd(newSector.Position, lazy);
             _commitNeeded = true;
+            newSector.Fresh = false;
+            _freshnessLock.EnterReadLock();
+            try
+            {
+                _stinkingSectors.TryAdd(newSector.Position,false);
+            }
+            finally
+            {
+                _freshnessLock.ExitReadLock();
+            }
             LinkToTailOfUnallocatedSectors(newSector);
         }
 
         void LinkToTailOfUnallocatedSectors(Sector newSector)
         {
+            _unallocatedSectorCount++;
             newSector.PrevLink = _unallocatedSectorTailLink;
             if (_unallocatedSectorTailLink != null)
             {
@@ -1085,6 +1127,7 @@ namespace BTDB
 
         void LinkToTailOfDirtySectors(Sector dirtizeSector)
         {
+            _dirtySectorCount++;
             dirtizeSector.NextLink = null;
             dirtizeSector.PrevLink = _dirtySectorTailLink;
             if (_dirtySectorTailLink != null)
@@ -1100,6 +1143,7 @@ namespace BTDB
 
         void LinkToTailOfInTransactionSectors(Sector inTransactionSector)
         {
+            _inTransactionSectorCount++;
             inTransactionSector.NextLink = null;
             inTransactionSector.PrevLink = _inTransactionSectorTailLink;
             if (_inTransactionSectorTailLink != null)
