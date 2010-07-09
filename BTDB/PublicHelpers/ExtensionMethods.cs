@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace BTDB
 {
@@ -50,5 +51,69 @@ namespace BTDB
 #pragma warning restore 168
             return lazy;
         }
+
+        public static ReadLockHelper ReadLock(this ReaderWriterLockSlim readerWriterLock)
+        {
+            return new ReadLockHelper(readerWriterLock);
+        }
+
+        public static UpgradeableReadLockHelper UpgradableReadLock(this ReaderWriterLockSlim readerWriterLock)
+        {
+            return new UpgradeableReadLockHelper(readerWriterLock);
+        }
+
+        public static WriteLockHelper WriteLock(this ReaderWriterLockSlim readerWriterLock)
+        {
+            return new WriteLockHelper(readerWriterLock);
+        }
+
+        internal struct ReadLockHelper : IDisposable
+        {
+            readonly ReaderWriterLockSlim _readerWriterLock;
+
+            public ReadLockHelper(ReaderWriterLockSlim readerWriterLock)
+            {
+                readerWriterLock.EnterReadLock();
+                _readerWriterLock = readerWriterLock;
+            }
+
+            public void Dispose()
+            {
+                _readerWriterLock.ExitReadLock();
+            }
+        }
+
+        internal struct UpgradeableReadLockHelper : IDisposable
+        {
+            readonly ReaderWriterLockSlim _readerWriterLock;
+
+            public UpgradeableReadLockHelper(ReaderWriterLockSlim readerWriterLock)
+            {
+                readerWriterLock.EnterUpgradeableReadLock();
+                _readerWriterLock = readerWriterLock;
+            }
+
+            public void Dispose()
+            {
+                _readerWriterLock.ExitUpgradeableReadLock();
+            }
+        }
+
+        internal struct WriteLockHelper : IDisposable
+        {
+            readonly ReaderWriterLockSlim _readerWriterLock;
+
+            public WriteLockHelper(ReaderWriterLockSlim readerWriterLock)
+            {
+                readerWriterLock.EnterWriteLock();
+                _readerWriterLock = readerWriterLock;
+            }
+
+            public void Dispose()
+            {
+                _readerWriterLock.ExitWriteLock();
+            }
+        }
+
     }
 }

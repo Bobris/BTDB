@@ -8,7 +8,7 @@ namespace SimpleTester
         static void Main(string[] args)
         {
             var btdbTest = new BTDBTest.LowLevelDBTest();
-            btdbTest.BiggerKey(100000000);
+            btdbTest.MultipleTransactions2(300);
         }
     }
 }

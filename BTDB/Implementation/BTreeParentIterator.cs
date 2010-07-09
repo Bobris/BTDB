@@ -215,7 +215,7 @@ namespace BTDB
             set { PackUnpack.PackInt64(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize, value); }
         }
 
-        internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Func<byte[], int, int, SectorPtr, int, int> compare)
+        internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Sector parent, Func<byte[], int, int, SectorPtr, int, Sector, int> compare)
         {
             int l = 0;
             int r = _count;
@@ -238,7 +238,7 @@ namespace BTDB
                         l = m + 1;
                         continue;
                     }
-                    result = compare(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, KeySectorPtr, _keyLen - keyLenInline);
+                    result = compare(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, KeySectorPtr, _keyLen - keyLenInline, parent);
                     if (result == 0) return m * 2 + 1;
                 }
                 if (result < 0)
