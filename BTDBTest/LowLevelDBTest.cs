@@ -133,7 +133,7 @@ namespace BTDBTest
                     using (var tr2 = db.StartTransaction())
                     {
                         Assert.True(tr2.FindExactKey(key));
-                        var buf=tr2.ReadKey();
+                        var buf = tr2.ReadKey();
                         Assert.AreEqual(key, buf);
                         Debug.WriteLine(tr2.CalculateStats().ToString());
                     }
@@ -172,7 +172,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void MultipleTransactions([Values(300)] int transactionCount)
+        public void MultipleTransactions([Values(1000)] int transactionCount)
         {
             using (var stream = CreateTestStream())
             using (ILowLevelDB db = new LowLevelDB())
@@ -186,11 +186,14 @@ namespace BTDBTest
                     using (var tr1 = db.StartTransaction())
                     {
                         tr1.CreateKey(key);
-                        for (int j = 0; j < i; j++)
+                        if (i % 100 == 0 || i == transactionCount - 1) 
                         {
-                            key[0] = (byte)(j / 256);
-                            key[1] = (byte)(j % 256);
-                            Assert.True(tr1.FindExactKey(key));
+                            for (int j = 0; j < i; j++)
+                            {
+                                key[0] = (byte)(j / 256);
+                                key[1] = (byte)(j % 256);
+                                Assert.True(tr1.FindExactKey(key));
+                            }
                         }
                         tr1.Commit();
                     }
@@ -199,7 +202,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void MultipleTransactions2([Values(300)] int transactionCount)
+        public void MultipleTransactions2([Values(1000)] int transactionCount)
         {
             using (var stream = CreateTestStream())
             using (ILowLevelDB db = new LowLevelDB())
@@ -213,11 +216,14 @@ namespace BTDBTest
                     using (var tr1 = db.StartTransaction())
                     {
                         tr1.CreateKey(key);
-                        for (int j = 0; j < i; j++)
+                        if (i % 100 == 0 || i == transactionCount - 1)
                         {
-                            key[0] = (byte)((transactionCount - j) / 256);
-                            key[1] = (byte)((transactionCount - j) % 256);
-                            Assert.True(tr1.FindExactKey(key));
+                            for (int j = 0; j < i; j++)
+                            {
+                                key[0] = (byte)((transactionCount - j) / 256);
+                                key[1] = (byte)((transactionCount - j) % 256);
+                                Assert.True(tr1.FindExactKey(key));
+                            }
                         }
                         tr1.Commit();
                     }

@@ -105,7 +105,7 @@ namespace BTDB
                 return FindKeyNoncreateStrategy(strategy, iter);
             }
             int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(keyLen);
-            if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 127)
+            if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 126)
             {
                 sector = _owner.ResizeSectorWithUpdatePosition(sector, iter.TotalLength + additionalLengthNeeded, sector.Parent);
                 sector.Data[0] = (byte)(iter.Count + 1);
@@ -187,90 +187,63 @@ namespace BTDB
             var iter = new BTreeParentIterator(parentSector.Data);
             int additionalLengthNeeded = BTreeParentIterator.CalcEntrySize(middleKeyLen);
             int leftIndexInParent = iter.FindChildByPos(leftSector.Position);
-            if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 127)
+            byte[] mergedData;
+            if (iter.TotalLength + additionalLengthNeeded <= 4096 && iter.Count < 126)
             {
                 parentSector = _owner.ResizeSectorWithUpdatePosition(parentSector,
                                                                      iter.TotalLength +
                                                                      additionalLengthNeeded,
                                                                      parentSector.Parent);
-                parentSector.Data[0] = (byte)(128 + iter.Count + 1);
-                int splitOfs = iter.OffsetOfIndex(leftIndexInParent);
-                int ofs = splitOfs + additionalLengthNeeded;
-                Array.Copy(iter.Data, splitOfs, parentSector.Data, ofs, iter.TotalLength - splitOfs);
-                ofs = splitOfs;
-                Array.Copy(iter.Data, 1, parentSector.Data, 1, ofs - 1 - 8);
-                PackUnpack.PackUInt64(parentSector.Data, ofs - 8, leftSector.Data[0]);
-                PackUnpack.PackInt32(parentSector.Data, ofs, middleKeyLen);
-                ofs += 4;
-                Array.Copy(middleKeyData, middleKeyOfs, parentSector.Data, ofs, middleKeyLenInSector);
-                ofs += middleKeyLenInSector;
-                SectorPtr.Pack(parentSector.Data, ofs, rightSector.ToPtrWithLen());
-                ofs += LowLevelDB.PtrDownSize;
-                PackUnpack.PackUInt64(parentSector.Data, ofs, rightSector.Data[0]);
+                mergedData = parentSector.Data;
+            }
+            else
+            {
+                mergedData = new byte[iter.TotalLength + additionalLengthNeeded];
+            }
+            mergedData[0] = (byte)(128 + iter.Count + 1);
+            int splitOfs = iter.OffsetOfIndex(leftIndexInParent);
+            int ofs = splitOfs + additionalLengthNeeded;
+            Array.Copy(iter.Data, splitOfs, mergedData, ofs, iter.TotalLength - splitOfs);
+            ofs = splitOfs;
+            Array.Copy(iter.Data, 1, mergedData, 1, ofs - 1 - 8);
+            PackUnpack.PackUInt64(mergedData, ofs - 8, CalcKeysInSector(leftSector));
+            PackUnpack.PackInt32(mergedData, ofs, middleKeyLen);
+            ofs += 4;
+            Array.Copy(middleKeyData, middleKeyOfs, mergedData, ofs, middleKeyLenInSector);
+            ofs += middleKeyLenInSector;
+            SectorPtr.Pack(mergedData, ofs, rightSector.ToPtrWithLen());
+            ofs += LowLevelDB.PtrDownSize;
+            PackUnpack.PackUInt64(mergedData, ofs, CalcKeysInSector(rightSector));
+            if (mergedData == parentSector.Data)
+            {
                 leftSector.Parent = parentSector;
                 rightSector.Parent = parentSector;
                 IncrementChildCountInBTreeParents(parentSector);
             }
             else
             {
-                int middleoffset = (iter.TotalLength + additionalLengthNeeded) / 2;
+                iter = new BTreeParentIterator(mergedData);
+                var leftSectorChildIndex = iter.FindChildByPos(leftSector.Position);
+                int middleoffset = mergedData.Length / 2;
                 iter.MoveFirst();
-                bool beforeNew = true;
                 int splitIndex = 0;
                 int currentPos = BTreeParentIterator.HeaderSize;
                 while (currentPos < middleoffset)
                 {
-                    if (beforeNew && splitIndex == leftIndexInParent)
-                    {
-                        beforeNew = false;
-                        currentPos += additionalLengthNeeded;
-                    }
-                    else
-                    {
-                        currentPos += iter.CurrentEntrySize;
-                        splitIndex++;
-                        iter.MoveNext();
-                    }
+                    currentPos += iter.CurrentEntrySize;
+                    splitIndex++;
+                    iter.MoveNext();
                 }
                 Sector rightParentSector = _owner.NewSector();
                 rightParentSector.Type = SectorType.BTreeParent;
-                rightParentSector.SetLengthWithRound(1 + iter.TotalLength + additionalLengthNeeded - currentPos);
-                rightParentSector.Data[0] = (byte)(128 + iter.Count - splitIndex + (beforeNew ? 1 : 0));
+                rightParentSector.SetLengthWithRound(1 + mergedData.Length - iter.ChildSectorPtrOffset);
+                rightParentSector.Data[0] = (byte)(128 + iter.Count - splitIndex - 1);
                 Sector leftParentSector = _owner.ResizeSectorWithUpdatePosition(parentSector, currentPos, parentSector.Parent);
-                leftParentSector.Data[0] = (byte)(128 + splitIndex + (beforeNew ? 0 : 1));
-                iter.MoveTo(leftIndexInParent);
-                int newItemPos = iter.EntryOffset;
-                if (beforeNew)
-                {
-                    Array.Copy(iter.Data, 1, leftParentSector.Data, 1, currentPos - 1);
-                    Array.Copy(iter.Data, currentPos, rightParentSector.Data, 1, newItemPos - currentPos);
-                    int rightPos = 1 + newItemPos - currentPos;
-                    PackUnpack.PackInt32(rightParentSector.Data, rightPos, middleKeyLen);
-                    rightPos += 4;
-                    Array.Copy(middleKeyData, middleKeyOfs, rightParentSector.Data, rightPos, middleKeyLenInSector);
-                    rightPos += middleKeyLenInSector;
-                    SectorPtr.Pack(rightParentSector.Data, rightPos, rightSector.ToPtrWithLen());
-                    rightPos += LowLevelDB.PtrDownSize;
-                    PackUnpack.PackUInt64(rightParentSector.Data, rightPos, CalcKeysInSector(rightSector));
-                    rightPos += 8;
-                    Array.Copy(iter.Data, newItemPos, rightParentSector.Data, rightPos, iter.TotalLength - newItemPos);
-                }
-                else
-                {
-                    Array.Copy(iter.Data, 1, leftParentSector.Data, 1, newItemPos - 1);
-                    int leftPos = newItemPos;
-                    PackUnpack.PackInt32(leftParentSector.Data, leftPos, middleKeyLen);
-                    leftPos += 4;
-                    Array.Copy(middleKeyData, middleKeyOfs, leftParentSector.Data, leftPos, middleKeyLenInSector);
-                    leftPos += middleKeyLenInSector;
-                    SectorPtr.Pack(leftParentSector.Data, leftPos, rightSector.ToPtrWithLen());
-                    leftPos += LowLevelDB.PtrDownSize;
-                    PackUnpack.PackUInt64(leftParentSector.Data, leftPos, CalcKeysInSector(rightSector));
-                    leftPos += 8;
-                    Array.Copy(iter.Data, newItemPos, leftParentSector.Data, leftPos, currentPos - leftPos);
-                    Array.Copy(iter.Data, currentPos - additionalLengthNeeded, rightParentSector.Data, 1,
-                               iter.TotalLength + additionalLengthNeeded - currentPos);
-                }
+                leftParentSector.Data[0] = (byte)(128 + splitIndex);
+                leftSector.Parent = leftSectorChildIndex > splitIndex ? rightParentSector : leftParentSector;
+                rightSector.Parent = leftSectorChildIndex + 1 > splitIndex ? rightParentSector : leftParentSector;
+                Array.Copy(mergedData, 1, leftParentSector.Data, 1, currentPos - 1);
+                Array.Copy(mergedData, iter.ChildSectorPtrOffset, rightParentSector.Data, 1, mergedData.Length - iter.ChildSectorPtrOffset);
                 _owner.PublishSector(rightParentSector);
                 int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
                 if (leftParentSector.Parent == null)
