@@ -843,7 +843,7 @@ namespace BTDB
             return result;
         }
 
-        static int FindOfsInParent(Sector sector, Sector where)
+        internal static int FindOfsInParent(Sector sector, Sector where)
         {
             switch (where.Type)
             {

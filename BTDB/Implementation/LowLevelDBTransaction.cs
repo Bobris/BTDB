@@ -109,7 +109,7 @@ namespace BTDB
                         return true;
                     }
                     iter = new BTreeParentIterator(sector.Data);
-                    childSectorPtr = iter.GetChildSectorPtr(iter.Count);
+                    childSectorPtr = iter.GetChildSectorPtr(0);
                 }
             }
             return false;
@@ -278,7 +278,6 @@ namespace BTDB
             else
             {
                 iter = new BTreeParentIterator(mergedData);
-                var leftSectorChildIndex = iter.FindChildByPos(leftSector.Position);
                 int middleoffset = mergedData.Length / 2;
                 iter.MoveFirst();
                 int splitIndex = 0;
@@ -295,11 +294,12 @@ namespace BTDB
                 rightParentSector.Data[0] = (byte)(128 + iter.Count - splitIndex - 1);
                 Sector leftParentSector = _owner.ResizeSectorWithUpdatePosition(parentSector, currentPos, parentSector.Parent);
                 leftParentSector.Data[0] = (byte)(128 + splitIndex);
-                leftSector.Parent = leftSectorChildIndex > splitIndex ? rightParentSector : leftParentSector;
-                rightSector.Parent = leftSectorChildIndex + 1 > splitIndex ? rightParentSector : leftParentSector;
+                leftSector.Parent = leftParentSector;
+                rightSector.Parent = leftParentSector;
                 Array.Copy(mergedData, 1, leftParentSector.Data, 1, currentPos - 1);
                 Array.Copy(mergedData, iter.ChildSectorPtrOffset, rightParentSector.Data, 1, mergedData.Length - iter.ChildSectorPtrOffset);
                 _owner.PublishSector(rightParentSector);
+                FixChildrenParentPointers(rightParentSector);
                 int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
                 if (leftParentSector.Parent == null)
                 {
@@ -308,6 +308,21 @@ namespace BTDB
                 else
                 {
                     AddToBTreeParent(leftParentSector, rightParentSector, iter.Data, iter.KeyLen, iter.KeyOffset, keyLenInSector);
+                }
+            }
+        }
+
+        void FixChildrenParentPointers(Sector parent)
+        {
+            Debug.Assert(parent.Type==SectorType.BTreeParent);
+            var iter = new BTreeParentIterator(parent.Data);
+            for (int i = 0; i <= iter.Count;i++ )
+            {
+                var childSectorPtr = iter.GetChildSectorPtr(i);
+                var sector = _owner.TryGetSector(childSectorPtr.Ptr);
+                if (sector!=null && sector.InTransaction)
+                {
+                    sector.Parent = parent;
                 }
             }
         }

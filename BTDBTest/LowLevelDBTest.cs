@@ -289,7 +289,7 @@ namespace BTDBTest
                 var key = new byte[2];
                 using (var tr = db.StartTransaction())
                 {
-                    for (int i = 0; i < 5000; i++)
+                    for (int i = 0; i < 10000; i++)
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
@@ -300,12 +300,12 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.FindExactKey(key);
-                    for (int i = 1; i < 5000; i++)
+                    for (int i = 1; i < 10000; i++)
                     {
                         Assert.True(tr.FindPreviousKey());
                     }
                     Assert.False(tr.FindPreviousKey());
-                    for (int i = 1; i < 5000; i++)
+                    for (int i = 1; i < 10000; i++)
                     {
                         Assert.True(tr.FindNextKey());
                     }
