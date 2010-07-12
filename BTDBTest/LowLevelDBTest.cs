@@ -186,7 +186,7 @@ namespace BTDBTest
                     using (var tr1 = db.StartTransaction())
                     {
                         tr1.CreateKey(key);
-                        if (i % 100 == 0 || i == transactionCount - 1) 
+                        if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
                             {
@@ -251,6 +251,65 @@ namespace BTDBTest
                     Assert.True(tr2.FindPreviousKey());
                     Assert.AreEqual(_key1, tr2.ReadKey());
                     Assert.False(tr2.FindPreviousKey());
+                }
+            }
+        }
+
+        [Test]
+        public void SimpleFindNextKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    tr1.CreateKey(_key2);
+                    tr1.CreateKey(_key3);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.True(tr2.FindExactKey(_key3));
+                    Assert.True(tr2.FindNextKey());
+                    Assert.AreEqual(_key2, tr2.ReadKey());
+                    Assert.False(tr2.FindNextKey());
+                }
+            }
+        }
+
+        [Test]
+        public void AdvancedFindPreviousAndNextKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                var key = new byte[2];
+                using (var tr = db.StartTransaction())
+                {
+                    for (int i = 0; i < 5000; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        tr.CreateKey(key);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    tr.FindExactKey(key);
+                    for (int i = 1; i < 5000; i++)
+                    {
+                        Assert.True(tr.FindPreviousKey());
+                    }
+                    Assert.False(tr.FindPreviousKey());
+                    for (int i = 1; i < 5000; i++)
+                    {
+                        Assert.True(tr.FindNextKey());
+                    }
+                    Assert.False(tr.FindNextKey());
                 }
             }
         }

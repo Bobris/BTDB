@@ -53,17 +53,66 @@ namespace BTDB
                 _currentKeyIndex--;
                 return true;
             }
-            if (_currentKeySector.Parent == null)
+            var sector = _currentKeySector;
+            while (sector.Parent != null)
             {
-                return false;
+                var iter = new BTreeParentIterator(sector.Parent.Data);
+                var childByPos = iter.FindChildByPos(sector.Position);
+                if (childByPos==0)
+                {
+                    sector = sector.Parent;
+                    continue;
+                }
+                var childSectorPtr = iter.GetChildSectorPtr(childByPos-1);
+                while (true)
+                {
+                    sector = LoadBTreeSector(childSectorPtr, sector);
+                    if (sector.Type == SectorType.BTreeChild)
+                    {
+                        _currentKeySector = sector;
+                        _currentKeyIndex = sector.Data[0] - 1;
+                        return true;
+                    }
+                    iter = new BTreeParentIterator(sector.Data);
+                    childSectorPtr = iter.GetChildSectorPtr(iter.Count);
+                }
             }
-            throw new NotImplementedException();
+            return false;
         }
 
         public bool FindNextKey()
         {
             if (_currentKeyIndex < 0) throw new BTDBException("Current Key is invalid");
-            throw new NotImplementedException();
+            if (_currentKeyIndex+1 < _currentKeySector.Data[0])
+            {
+                _currentKeyIndex++;
+                return true;
+            }
+            var sector = _currentKeySector;
+            while (sector.Parent != null)
+            {
+                var iter = new BTreeParentIterator(sector.Parent.Data);
+                var childByPos = iter.FindChildByPos(sector.Position);
+                if (childByPos == iter.Count)
+                {
+                    sector = sector.Parent;
+                    continue;
+                }
+                var childSectorPtr = iter.GetChildSectorPtr(childByPos + 1);
+                while (true)
+                {
+                    sector = LoadBTreeSector(childSectorPtr, sector);
+                    if (sector.Type == SectorType.BTreeChild)
+                    {
+                        _currentKeySector = sector;
+                        _currentKeyIndex = 0;
+                        return true;
+                    }
+                    iter = new BTreeParentIterator(sector.Data);
+                    childSectorPtr = iter.GetChildSectorPtr(iter.Count);
+                }
+            }
+            return false;
         }
 
         public FindKeyResult FindKey(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy)
@@ -79,13 +128,7 @@ namespace BTDB
             Sector parentOfSector = null;
             while (true)
             {
-                sector = _owner.TryGetSector(rootBTree.Ptr);
-                if (sector == null)
-                {
-                    sector = _owner.ReadSector(rootBTree, IsWriteTransaction());
-                    sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
-                    sector.Parent = parentOfSector;
-                }
+                sector = LoadBTreeSector(rootBTree, parentOfSector);
                 if (sector.Type == SectorType.BTreeChild) break;
                 var iterParent = new BTreeParentIterator(sector.Data);
                 int bindexParent = iterParent.BinarySearch(keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
@@ -179,6 +222,18 @@ namespace BTDB
             }
             _owner.NewState.KeyValuePairCount++;
             return FindKeyResult.Created;
+        }
+
+        Sector LoadBTreeSector(SectorPtr sectorPtr, Sector parent)
+        {
+            Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
+            if (sector == null)
+            {
+                sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
+                sector.Type = (sector.Data[0] & 0x80) != 0 ? SectorType.BTreeParent : SectorType.BTreeChild;
+                sector.Parent = parent;
+            }
+            return sector;
         }
 
         void AddToBTreeParent(Sector leftSector, Sector rightSector, byte[] middleKeyData, int middleKeyLen, int middleKeyOfs, int middleKeyLenInSector)
