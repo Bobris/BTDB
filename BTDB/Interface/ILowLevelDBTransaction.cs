@@ -5,14 +5,34 @@ namespace BTDB
     public interface ILowLevelDBTransaction : IDisposable
     {
         /// <summary>
-        /// Actual key pointer will be set to invalid state. It is good for sonner releasing memory.
+        /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key
+        /// </summary>
+        /// <param name="prefix">Prefix data</param>
+        /// <param name="prefixOfs">Offset to data where actual prefix starts</param>
+        /// <param name="prefixLen">Length of prefix</param>
+        void SetKeyPrefix(byte[] prefix, int prefixOfs, int prefixLen);
+
+        /// <summary>
+        /// Actual key pointer will be set to invalid state. It is good for soonner releasing memory.
         /// </summary>
         void InvalidateCurrentKey();
 
         /// <summary>
+        /// Move actual key pointer to first key in current prefix.
+        /// </summary>
+        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
+        bool FindFirstKey();
+
+        /// <summary>
+        /// Move actual key pointer to last key in current prefix.
+        /// </summary>
+        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
+        bool FindLastKey();
+
+        /// <summary>
         /// Move actual key pointer to previus key from current Position
         /// </summary>
-        /// <returns>true if there was such previous key, else Position will not move</returns>
+        /// <returns>true if there was such previous key in curent prefix, else Position will not move</returns>
         bool FindPreviousKey();
 
         /// <summary>
@@ -22,7 +42,7 @@ namespace BTDB
         bool FindNextKey();
 
         /// <summary>
-        /// Main function for seeking to keys or even creating
+        /// Main function for seeking to keys or even creating. It automaticaly preppend current prefix to key.
         /// </summary>
         /// <param name="keyBuf">Key Data in this buffer</param>
         /// <param name="keyOfs">Key Data starts on this offset in buffer</param>
@@ -32,7 +52,19 @@ namespace BTDB
         FindKeyResult FindKey(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy);
 
         /// <summary>
-        /// Find out current key Length.
+        /// In current prefix will calculate number of key value pairs
+        /// </summary>
+        /// <returns>count</returns>
+        long GetKeyValueCount();
+
+        /// <summary>
+        /// Gets index of current key in current prefix
+        /// </summary>
+        /// <returns>-1 if current Key is invalid</returns>
+        long GetKeyIndex();
+
+        /// <summary>
+        /// Find out current key Length minus length of current prefix
         /// </summary>
         /// <returns>-1 if current key does not exist</returns>
         int GetKeySize();
@@ -43,12 +75,8 @@ namespace BTDB
         /// <returns>-1 if current key does not exist</returns>
         long GetValueSize();
 
-        long CountRange(byte[] key1Buf, int key1Ofs, int key1Len, bool key1Open, byte[] key2Buf, int key2Ofs, int key2Len, bool key2Open);
-
-        long CountPrefix(byte[] prefix, int prefixOfs, int prefixLen);
-
         /// <summary>
-        /// Sligtly lowlevel function to read Data of keys without need to allocate your own buffer.
+        /// Sligtly lowlevel function to read Data of keys without need to allocate your own buffer. It skips current key prefix.
         /// </summary>
         /// <param name="ofs">Byte offset into value Data where you want to start reading</param>
         /// <param name="len">How many bytes available to read</param>
@@ -57,7 +85,7 @@ namespace BTDB
         void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs);
 
         /// <summary>
-        /// Read key content into provided byte array. Throws exception if not enough bytes available.
+        /// Read key content into provided byte array. Throws exception if not enough bytes available. It skips current key prefix.
         /// </summary>
         /// <param name="ofs">Byte offset into key Data where you want to start reading</param>
         /// <param name="len">How many bytes to read</param>
@@ -100,20 +128,30 @@ namespace BTDB
 
         /// <summary>
         /// Remove current key and value. Current key will be invalidated.
+        /// It is same as calling EraseRange(GetKeyIndex(),GetKeyIndex()).
         /// </summary>
         void EraseCurrent();
 
-        void EraseRange(byte[] key1Buf, int key1Ofs, int key1Len, bool key1Open, byte[] key2Buf, int key2Ofs, int key2Len, bool key2Open);
-
-        void ErasePrefix(byte[] prefix, int prefixOfs, int prefixLen);
+        /// <summary>
+        /// Remove all keys in current prefix.
+        /// It is same as calling EraseRange(0,long.MaxValue).
+        /// </summary>
+        void EraseAll();
 
         /// <summary>
-        /// You should call this as last method in using scope if you don't want to rollback transaction.
+        /// This will remove keys in range of key indexes. It will erase only keys in current prefix, even you specify indexes outside of range. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
+        /// </summary>
+        /// <param name="firstKeyIndex">zero based index relative to current prefix where to start erase (inclusive)</param>
+        /// <param name="lastKeyIndex">zero based index relative to current prefix where to finish erase (inclusive)</param>
+        void EraseRange(long firstKeyIndex, long lastKeyIndex);
+
+        /// <summary>
+        /// You should call this as last method in using scope if you don't want to rollback transaction. After this method only Dispose() is allowed.
         /// </summary>
         void Commit();
 
         /// <summary>
-        /// Calculates statistics 
+        /// Calculates statistics. It is global, not relative to current prefix.
         /// </summary>
         /// <returns>DTO with usefull statistic about current Transaction and LowLevelDB</returns>
         LowLevelDBStats CalculateStats();
