@@ -264,6 +264,19 @@ namespace BTDB
             return ChildSectorPtr;
         }
 
+        internal SectorPtr GetChildSectorPtr(int index, ref long keyIndex)
+        {
+            if (index == 0) return FirstChildSectorPtr;
+            keyIndex += FirstChildKeyCount;
+            MoveFirst();
+            while (_pos < index - 1)
+            {
+                keyIndex += ChildKeyCount;
+                MoveNext();
+            }
+            return ChildSectorPtr;
+        }
+
         internal static void ModifyChildCount(byte[] parentData, long childPos, long delta)
         {
             var iterParent = new BTreeParentIterator(parentData);
