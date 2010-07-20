@@ -137,7 +137,7 @@ namespace BTDB
         internal long ChildKeyCount
         {
             get { return PackUnpack.UnpackInt64(_data, ChildKeyCountOffset); }
-            set { PackUnpack.PackInt64(_data,ChildKeyCountOffset,value); }
+            set { PackUnpack.PackInt64(_data, ChildKeyCountOffset, value); }
         }
 
         internal int OffsetOfIndex(int index)
@@ -215,7 +215,7 @@ namespace BTDB
             set { PackUnpack.PackInt64(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize, value); }
         }
 
-        internal int BinarySearch(byte[] keyBuf, int keyOfs, int keyLen, Sector parent, Func<byte[], int, int, SectorPtr, int, Sector, int> compare)
+        internal int BinarySearch(byte[] prefix, byte[] keyBuf, int keyOfs, int keyLen, Sector parent, Func<int, byte[], int, int, SectorPtr, int, Sector, int> compare)
         {
             int l = 0;
             int r = _count;
@@ -224,22 +224,34 @@ namespace BTDB
                 int m = (l + r) / 2;
                 MoveTo(m);
                 int keyLenInline = KeyLenInline;
-                int result = BitArrayManipulation.CompareByteArray(keyBuf,
-                                                                   keyOfs,
-                                                                   Math.Min(keyLen, keyLenInline),
-                                                                   _data,
-                                                                   KeyOffset,
-                                                                   keyLenInline);
+                var compareLen = Math.Min(prefix.Length, keyLenInline);
+                int result = BitArrayManipulation.CompareByteArray(prefix, 0, compareLen,
+                                                                   _data, KeyOffset,
+                                                                   compareLen);
                 if (result == 0)
                 {
-                    if (keyLen <= BTreeChildIterator.MaxKeyLenInline)
+                    result = BitArrayManipulation.CompareByteArray(keyBuf,
+                                                                   keyOfs,
+                                                                   Math.Min(keyLen, keyLenInline - compareLen),
+                                                                   _data,
+                                                                   KeyOffset + compareLen,
+                                                                   keyLenInline - compareLen);
+                    if (result == 0)
                     {
-                        if (keyLen == keyLenInline) return m * 2 + 1;
-                        l = m + 1;
-                        continue;
+                        if (prefix.Length + keyLen <= BTreeChildIterator.MaxKeyLenInline)
+                        {
+                            if (prefix.Length + keyLen == keyLenInline) return m * 2 + 1;
+                            l = m + 1;
+                            continue;
+                        }
+                        result = compare(keyLenInline, keyBuf, keyOfs, keyLen, KeySectorPtr, _keyLen - keyLenInline, parent);
+                        if (result == 0)
+                        {
+                            if (_keyLen == prefix.Length + keyLen) return m * 2 + 1;
+                            l = m + 1;
+                            continue;
+                        }
                     }
-                    result = compare(keyBuf, keyOfs + keyLenInline, keyLen - keyLenInline, KeySectorPtr, _keyLen - keyLenInline, parent);
-                    if (result == 0) return m * 2 + 1;
                 }
                 if (result < 0)
                 {
@@ -280,7 +292,7 @@ namespace BTDB
         internal static void ModifyChildCount(byte[] parentData, long childPos, long delta)
         {
             var iterParent = new BTreeParentIterator(parentData);
-            if ((iterParent.FirstChildSectorPos & LowLevelDB.MaskOfPosition)==childPos)
+            if ((iterParent.FirstChildSectorPos & LowLevelDB.MaskOfPosition) == childPos)
             {
                 iterParent.FirstChildKeyCount = iterParent.FirstChildKeyCount + delta;
                 return;

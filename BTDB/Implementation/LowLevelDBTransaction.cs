@@ -84,14 +84,22 @@ namespace BTDB
 
         public bool FindFirstKey()
         {
-            if (_prefixKeyCount == 0) return false;
+            if (_prefixKeyCount == 0)
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
             FindKey(EmptyByteArray, 0, 0, FindKeyStrategy.OnlyNext);
             return true;
         }
 
         public bool FindLastKey()
         {
-            if (_prefixKeyCount == 0) return false;
+            if (_prefixKeyCount == 0)
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
             throw new NotImplementedException();
         }
 
@@ -225,12 +233,12 @@ namespace BTDB
                 sector = LoadBTreeSector(rootBTree, parentOfSector);
                 if (sector.Type == SectorType.BTreeChild) break;
                 var iterParent = new BTreeParentIterator(sector.Data);
-                int bindexParent = iterParent.BinarySearch(keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
+                int bindexParent = iterParent.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
                 rootBTree = iterParent.GetChildSectorPtr((bindexParent + 1) / 2, ref keyIndex);
                 parentOfSector = sector;
             }
             var iter = new BTreeChildIterator(sector.Data);
-            int bindex = iter.BinarySearch(keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
+            int bindex = iter.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
             _currentKeySector = sector;
             _currentKeyIndexInLeaf = bindex / 2;
             _currentKeyIndex = keyIndex + _currentKeyIndexInLeaf;
@@ -323,7 +331,20 @@ namespace BTDB
         public long GetKeyValueCount()
         {
             if (_prefixKeyCount != -1) return _prefixKeyCount;
-            throw new NotImplementedException();
+            var backupSector = _currentKeySector;
+            var backupIndex = _currentKeyIndex;
+            var backupIndexInLeaf = _currentKeyIndexInLeaf;
+            try
+            {
+                FindLastKey();
+                return _prefixKeyCount;
+            }
+            finally
+            {
+                _currentKeySector = backupSector;
+                _currentKeyIndex = backupIndex;
+                _currentKeyIndexInLeaf = backupIndexInLeaf;
+            }
         }
 
         public long GetKeyIndex()
@@ -599,7 +620,7 @@ namespace BTDB
             return FindKeyResult.NotFound;
         }
 
-        int SectorDataCompare(byte[] buf, int ofs, int len, SectorPtr sectorPtr, int dataLen, Sector parent)
+        int SectorDataCompare(int startOfs, byte[] buf, int ofs, int len, SectorPtr sectorPtr, int dataLen, Sector parent)
         {
             Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
             if (sector == null)
@@ -610,12 +631,23 @@ namespace BTDB
             }
             if (sector.Type == SectorType.DataChild)
             {
+                int dataOfs = 0;
+                if (startOfs < _prefix.Length)
+                {
+                    int compareLen = Math.Min(_prefix.Length - startOfs, sector.Length);
+                    int res = BitArrayManipulation.CompareByteArray(_prefix, startOfs, compareLen, sector.Data, dataOfs,
+                                                                    compareLen);
+                    if (res != 0) return res;
+                    startOfs += compareLen;
+                    dataOfs += compareLen;
+                }
+                startOfs -= _prefix.Length;
                 return BitArrayManipulation.CompareByteArray(buf,
-                                                             ofs,
-                                                             dataLen > sector.Length && len > sector.Length ? sector.Length : len,
+                                                             ofs + startOfs,
+                                                             Math.Min(len - startOfs, sector.Length - dataOfs),
                                                              sector.Data,
-                                                             0,
-                                                             sector.Length);
+                                                             dataOfs,
+                                                             sector.Length - dataOfs);
             }
             int downPtrCount;
             var bytesInDownLevel = (int)GetBytesInDownLevel(dataLen, out downPtrCount);
@@ -624,19 +656,19 @@ namespace BTDB
             for (i = 0; i < downPtrCount - 1; i++)
             {
                 downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
-                int res = SectorDataCompare(buf,
+                int res = SectorDataCompare(startOfs,
+                                            buf,
                                             ofs,
-                                            Math.Min(len, bytesInDownLevel),
+                                            len,
                                             downSectorPtr,
                                             Math.Min(dataLen, bytesInDownLevel),
                                             sector);
                 if (res != 0) return res;
-                ofs += bytesInDownLevel;
-                len -= bytesInDownLevel;
+                startOfs += bytesInDownLevel;
                 dataLen -= bytesInDownLevel;
             }
             downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
-            return SectorDataCompare(buf, ofs, len, downSectorPtr, dataLen, sector);
+            return SectorDataCompare(startOfs, buf, ofs, len, downSectorPtr, dataLen, sector);
         }
 
         void SetBTreeChildKeyData(Sector inSector, byte[] keyBuf, int keyOfs, int keyLen, int sectorDataOfs)
@@ -663,10 +695,10 @@ namespace BTDB
             {
                 var newLeafSector = _owner.NewSector();
                 newLeafSector.Type = SectorType.DataChild;
-                newLeafSector.SetLengthWithRound(len);
+                newLeafSector.SetLengthWithRound(len + len2);
                 newLeafSector.Parent = parent;
-                Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
-                Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
+                if (len>0) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
+                if (len2>0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
                 _owner.PublishSector(newLeafSector);
                 return newLeafSector.ToPtrWithLen();
             }
@@ -684,7 +716,8 @@ namespace BTDB
                 SectorPtr.Pack(newSector.Data, i * LowLevelDB.PtrDownSize, sectorPtr);
                 ofs += usedLen;
                 ofs2 += usedLen2;
-                len -= bytesInDownLevel;
+                len -= usedLen;
+                len2 -= usedLen2;
             }
             _owner.PublishSector(newSector);
             return newSector.ToPtrWithLen();
