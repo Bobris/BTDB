@@ -23,6 +23,7 @@ namespace BTDB
             _readLink = readLink;
             _currentKeySector = null;
             _currentKeyIndexInLeaf = -1;
+            _currentKeyIndex = -1;
             _prefix = EmptyByteArray;
             _prefixKeyStart = 0;
             _prefixKeyCount = (long)_readLink.KeyValuePairCount;
@@ -100,7 +101,9 @@ namespace BTDB
                 InvalidateCurrentKey();
                 return false;
             }
-            throw new NotImplementedException();
+            FindKey(EmptyByteArray, -1, 0, FindKeyStrategy.OnlyPrevious);
+            _prefixKeyCount = _currentKeyIndex - _prefixKeyStart + 1;
+            return true;
         }
 
         public bool FindPreviousKey()
@@ -639,8 +642,10 @@ namespace BTDB
                                                                     compareLen);
                     if (res != 0) return res;
                     startOfs += compareLen;
+                    if (startOfs < _prefix.Length) return 0;
                     dataOfs += compareLen;
                 }
+                if (ofs == -1) return 1;
                 startOfs -= _prefix.Length;
                 return BitArrayManipulation.CompareByteArray(buf,
                                                              ofs + startOfs,
@@ -697,8 +702,8 @@ namespace BTDB
                 newLeafSector.Type = SectorType.DataChild;
                 newLeafSector.SetLengthWithRound(len + len2);
                 newLeafSector.Parent = parent;
-                if (len>0) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
-                if (len2>0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
+                if (len > 0) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
+                if (len2 > 0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
                 _owner.PublishSector(newLeafSector);
                 return newLeafSector.ToPtrWithLen();
             }

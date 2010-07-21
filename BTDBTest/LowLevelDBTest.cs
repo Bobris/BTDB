@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using BTDB;
 using NUnit.Framework;
 
@@ -287,9 +288,10 @@ namespace BTDBTest
             {
                 db.Open(stream, false);
                 var key = new byte[2];
+                const int keysCreated = 10000;
                 using (var tr = db.StartTransaction())
                 {
-                    for (int i = 0; i < 10000; i++)
+                    for (int i = 0; i < keysCreated; i++)
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
@@ -299,17 +301,23 @@ namespace BTDBTest
                 }
                 using (var tr = db.StartTransaction())
                 {
+                    Assert.AreEqual(-1, tr.GetKeyIndex());
                     tr.FindExactKey(key);
-                    for (int i = 1; i < 10000; i++)
+                    Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
+                    for (int i = 1; i < keysCreated; i++)
                     {
                         Assert.True(tr.FindPreviousKey());
+                        Assert.AreEqual(keysCreated - 1 - i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindPreviousKey());
-                    for (int i = 1; i < 10000; i++)
+                    Assert.AreEqual(0, tr.GetKeyIndex());
+                    for (int i = 1; i < keysCreated; i++)
                     {
                         Assert.True(tr.FindNextKey());
+                        Assert.AreEqual(i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindNextKey());
+                    Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
                 }
             }
         }
@@ -356,7 +364,70 @@ namespace BTDBTest
                     }
                 }
             }
+        }
 
+        [Test]
+        public void FindFirstKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.False(tr.FindFirstKey());
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.CreateKey(_key3);
+                    Assert.True(tr.FindFirstKey());
+                    Assert.AreEqual(_key1, tr.ReadKey());
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
+        public void FindLastKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.False(tr.FindLastKey());
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.CreateKey(_key3);
+                    Assert.True(tr.FindLastKey());
+                    Assert.AreEqual(_key2, tr.ReadKey());
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
+        public void SimplePrefixWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.CreateKey(_key3);
+                    Assert.AreEqual(3, tr.GetKeyValueCount());
+                    tr.SetKeyPrefix(_key1, 0, 3);
+                    Assert.AreEqual(2, tr.GetKeyValueCount());
+                    tr.FindFirstKey();
+                    Assert.AreEqual(new byte[0], tr.ReadKey());
+                    tr.FindLastKey();
+                    Assert.AreEqual(_key3.Skip(3).ToArray(),tr.ReadKey());
+                    tr.Commit();
+                }
+            }
         }
 
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };

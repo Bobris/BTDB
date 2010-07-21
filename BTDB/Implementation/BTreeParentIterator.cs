@@ -230,12 +230,22 @@ namespace BTDB
                                                                    compareLen);
                 if (result == 0)
                 {
-                    result = BitArrayManipulation.CompareByteArray(keyBuf,
-                                                                   keyOfs,
-                                                                   Math.Min(keyLen, keyLenInline - compareLen),
-                                                                   _data,
-                                                                   KeyOffset + compareLen,
-                                                                   keyLenInline - compareLen);
+                    if (keyLenInline>compareLen)
+                    {
+                        if (keyOfs==-1)
+                        {
+                            result = 1;
+                        }
+                        else
+                        {
+                            result = BitArrayManipulation.CompareByteArray(keyBuf,
+                                                                           keyOfs,
+                                                                           Math.Min(keyLen, keyLenInline - compareLen),
+                                                                           _data,
+                                                                           KeyOffset + compareLen,
+                                                                           keyLenInline - compareLen);
+                        }
+                    }
                     if (result == 0)
                     {
                         if (prefix.Length + keyLen <= BTreeChildIterator.MaxKeyLenInline)
