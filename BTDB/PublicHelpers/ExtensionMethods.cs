@@ -38,7 +38,7 @@ namespace BTDB
             return result;
         }
 
-        public static bool Remove<TKey,TValue>(this ConcurrentDictionary<TKey,TValue> dict, TKey key)
+        public static bool TryRemove<TKey,TValue>(this ConcurrentDictionary<TKey,TValue> dict, TKey key)
         {
             TValue val;
             return dict.TryRemove(key, out val);

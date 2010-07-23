@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 
 namespace BTDB
@@ -77,9 +78,10 @@ namespace BTDB
         bool _disposeStream;
 
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
-        readonly ConcurrentDictionary<long, bool> _freshSectors = new ConcurrentDictionary<long, bool>();
-        readonly ConcurrentDictionary<long, bool> _stinkingSectors = new ConcurrentDictionary<long, bool>();
-        readonly ReaderWriterLockSlim _freshnessLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        int _currentCacheTime;
+        readonly ReaderWriterLockSlim  _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
+        bool _runningCacheCompaction;
+        bool _runningInTransactionCacheCompaction;
         readonly byte[] _headerData = new byte[TotalHeaderSize];
         State _currentState = new State();
         State _newState = new State();
@@ -95,7 +97,7 @@ namespace BTDB
         bool _commitNeeded;
         bool _currentTrCommited;
         bool _inSpaceAllocation;
-        readonly List<Sector> _postbonedDeallocateSectors = new List<Sector>();
+        readonly List<Sector> _postponedDeallocateSectors = new List<Sector>();
         long _unallocatedCounter;
         Sector _unallocatedSectorHeadLink;
         Sector _unallocatedSectorTailLink;
@@ -115,24 +117,17 @@ namespace BTDB
         internal Sector TryGetSector(long positionWithSize)
         {
             Lazy<Sector> res;
-            if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
+            using (_cacheCompactionLock.ReadLock())
             {
-                var sector = res.Value;
-                if (sector.Fresh == false)
+                if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
                 {
-                    using (_freshnessLock.ReadLock())
-                    {
-                        if (sector.Fresh == false)
-                        {
-                            _freshSectors.TryAdd(sector.Position, true);
-                            _stinkingSectors.Remove(sector.Position);
-                            sector.Fresh = true;
-                        }
-                    }
+                    var sector = res.Value;
+                    UpdateLastAccess(sector);
+                    sector.Lock();
+                    return sector;
                 }
-                return sector;
+                return null;
             }
-            return null;
         }
 
         internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction)
@@ -151,14 +146,11 @@ namespace BTDB
             Debug.Assert(position > 0);
             Debug.Assert(size > 0);
             Debug.Assert(size <= MaxSectorSize / AllocationGranularity);
+            TruncateSectorCache(inWriteTransaction);
             size = size * AllocationGranularity;
             var lazy = new Lazy<Sector>(() =>
             {
-                var res = new Sector { Position = position, Length = size, Fresh = true };
-                using (_freshnessLock.ReadLock())
-                {
-                    _freshSectors.TryAdd(position, true);
-                }
+                var res = new Sector { Position = position, Length = size, LastAccessTime = -1 };
                 if (inWriteTransaction)
                 {
                     res.InTransaction = _spaceAllocatedInTransaction.Contains((ulong)position);
@@ -175,63 +167,76 @@ namespace BTDB
                 }
                 return res;
             });
-            lazy = _sectorCache.GetOrAdd(position, lazy);
-            TruncateSectorCache();
-            return lazy.Value;
+            Sector result;
+            using (_cacheCompactionLock.ReadLock())
+            {
+                var lazy2 = _sectorCache.GetOrAdd(position, lazy);
+                result = lazy2.Value;
+                UpdateLastAccess(result);
+                result.Lock();
+            }
+            return result;
         }
 
-        void TruncateSectorCache()
+        void TruncateSectorCache(bool inWriteTransaction)
         {
-            var readSectorCount = _sectorCache.Count - _inTransactionSectorCount - _dirtySectorCount - _unallocatedSectorCount;
-            if (readSectorCount < 10) return;
-            var toFree = new Dictionary<long, Sector>();
-            using (_freshnessLock.UpgradableReadLock())
+            if (_runningInTransactionCacheCompaction) return;
+            if (_sectorCache.Count < 40) return;
+            bool compacting = false;
+            bool runningCompactingSet = false;
+            try
             {
-                foreach (var stinking in _stinkingSectors)
+                if (inWriteTransaction)
                 {
-                    Lazy<Sector> stinkingSector;
-                    if (_sectorCache.TryGetValue(stinking.Key, out stinkingSector))
-                    {
-                        if (stinkingSector.Value.InTransaction==false)
-                            toFree.Add(stinking.Key, stinkingSector.Value);
-                    }
+                    _cacheCompactionLock.EnterUpgradeableReadLock();
+                    compacting = true;
                 }
-                foreach (var fresh in _freshSectors)
+                else
                 {
-                    Lazy<Sector> freshSector;
-                    if (_sectorCache.TryGetValue(fresh.Key, out freshSector))
-                    {
-                        var parent = freshSector.Value.Parent;
-                        while (parent != null)
-                        {
-                            toFree.Remove(parent.Position);
-                            parent = parent.Parent;
-                        }
-                    }
-
+                    compacting = _cacheCompactionLock.TryEnterUpgradeableReadLock(0);
                 }
-                using (_freshnessLock.WriteLock())
+                if (compacting == false) return;
+                if (_runningCacheCompaction) return;
+                _runningCacheCompaction = true;
+                _runningInTransactionCacheCompaction = inWriteTransaction;
+                runningCompactingSet = true;
+                var sectors = new List<KeyValuePair<Sector,int>>();
+                foreach (var pair in _sectorCache)
                 {
-                    foreach (var freePos in toFree)
-                    {
-                        var freeSector = freePos.Value;
-                        if (_stinkingSectors.Remove(freeSector.Position))
-                        {
-                            _sectorCache.Remove(freeSector.Position);
-                        }
-                    }
-                    foreach (var freshSectorPos in _freshSectors)
-                    {
-                        Lazy<Sector> freshLazySector;
-                        if (_sectorCache.TryGetValue(freshSectorPos.Key, out freshLazySector))
-                        {
-                            var sector = freshLazySector.Value;
-                            sector.Fresh = false;
-                            _stinkingSectors.TryAdd(sector.Position, false);
-                        }
-                    }
-                    _freshSectors.Clear();
+                    var sector = pair.Value.Value;
+                    if (sector.Locked) continue;
+                    if (!inWriteTransaction && sector.InTransaction) continue;
+                    sectors.Add(new KeyValuePair<Sector, int>(sector,0));
                 }
+                if (sectors.Count==0) return;
+                sectors.Sort((a,b) => a.Key.LastAccessTime-b.Key.LastAccessTime);
+                for (int i = 0; i < sectors.Count; i++)
+                {
+                    var sector = sectors[i].Key;
+                    int price = i;
+                    sectors[i] = new KeyValuePair<Sector, int>(sector,price);
+                }
+                sectors.Sort((a,b) => a.Value-b.Value);
+                using (_cacheCompactionLock.WriteLock())
+                {
+                    foreach (var pair in sectors.Take(_sectorCache.Count / 2))
+                    {
+                        var sector = pair.Key;
+                        if (sector.Locked) continue;
+                        if (!sector.Allocated) RealSectorAllocate(sector);
+                        if (sector.Dirty) FlushDirtySector(sector);
+                        _sectorCache.TryRemove(sector.Position);
+                    } 
+                }
+            }
+            finally
+            {
+                if (runningCompactingSet) 
+                {
+                    _runningCacheCompaction = false;
+                    _runningInTransactionCacheCompaction = false; 
+                }
+                if (compacting) _cacheCompactionLock.ExitUpgradeableReadLock();
             }
         }
 
@@ -490,6 +495,10 @@ namespace BTDB
         public void Dispose()
         {
             Debug.Assert(_writeTr == null);
+            foreach (var item in _sectorCache)
+            {
+                Debug.Assert(item.Value.Value.Locked == false);
+            }
             if (_disposeStream)
             {
                 var disposable = _stream as IDisposable;
@@ -503,19 +512,22 @@ namespace BTDB
             Debug.Assert(_writeTr != null);
             if (_currentTrCommited) throw new BTDBException("Only dispose is allowed after commit");
             if (_commitNeeded == false) return;
-            while (_unallocatedSectorHeadLink != null)
+            using (_cacheCompactionLock.UpgradableReadLock())
             {
-                RealSectorAllocate(_unallocatedSectorHeadLink);
-            }
-            while (_dirtySectorHeadLink != null)
-            {
-                FlushDirtySector(_dirtySectorHeadLink);
+                while (_unallocatedSectorHeadLink != null)
+                {
+                    RealSectorAllocate(_unallocatedSectorHeadLink);
+                }
+                while (_dirtySectorHeadLink != null)
+                {
+                    FlushDirtySector(_dirtySectorHeadLink);
+                }
             }
             while (_inTransactionSectorHeadLink != null)
             {
                 DetransactionalizeSector(_inTransactionSectorHeadLink);
             }
-            TruncateSectorCache();
+            TruncateSectorCache(true);
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
@@ -618,6 +630,7 @@ namespace BTDB
                 PublishSector(clone);
                 UpdatePositionOfSector(clone, sector, newParent);
                 DeallocateSector(sector);
+                sector.Unlock();
                 return clone;
             }
             sector.Dirty = true;
@@ -641,18 +654,7 @@ namespace BTDB
                 {
                     UnlinkFromDirtySectors(sector);
                 }
-                using (_freshnessLock.ReadLock())
-                {
-                    if (sector.Fresh)
-                    {
-                        _freshSectors.Remove(sector.Position);
-                    }
-                    else
-                    {
-                        _stinkingSectors.Remove(sector.Position);
-                    }
-                }
-                _sectorCache.Remove(sector.Position);
+                _sectorCache.TryRemove(sector.Position);
             }
             if (newParent != null)
             {
@@ -666,6 +668,7 @@ namespace BTDB
             if (aUpdatePositionInParent)
                 UpdatePositionOfSector(clone, sector, newParent);
             DeallocateSector(sector);
+            sector.Unlock();
             return clone;
         }
 
@@ -717,7 +720,7 @@ namespace BTDB
         {
             if (_inSpaceAllocation)
             {
-                _postbonedDeallocateSectors.Add(sector);
+                _postponedDeallocateSectors.Add(sector);
                 return;
             }
             if (sector.InTransaction)
@@ -756,30 +759,37 @@ namespace BTDB
         void UnsetBitsInAlloc(long startGran, int grans, ref SectorPtr sectorPtr, uint level, long totalGrans, Sector parent)
         {
             Sector sector = TryGetSector(sectorPtr.Ptr);
-            if (level == 1)
+            try
             {
-                if (sector == null)
+                if (level == 1)
                 {
-                    sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
-                                        RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
-                                        sectorPtr.Checksum,
-                                        true);
-                    sector.Type = SectorType.AllocChild;
-                    sector.Parent = parent;
+                    if (sector == null)
+                    {
+                        sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
+                                            RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
+                                            sectorPtr.Checksum,
+                                            true);
+                        sector.Type = SectorType.AllocChild;
+                        sector.Parent = parent;
+                    }
+                    sector = DirtizeSector(sector, sector.Parent);
+                    BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
+                    if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                    {
+                        sectorPtr.Ptr = sector.Position | 255;
+                    }
+                    else
+                    {
+                        sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
+                    }
+                    return;
                 }
-                sector = DirtizeSector(sector, sector.Parent);
-                BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
-                if (sector.Length < MaxLeafAllocSectorGrans / 8)
-                {
-                    sectorPtr.Ptr = sector.Position | 255;
-                }
-                else
-                {
-                    sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
-                }
-                return;
+                throw new NotImplementedException();
             }
-            throw new NotImplementedException();
+            finally
+            {
+                if (sector!=null) sector.Unlock();
+            }
         }
 
         void CreateInitialAllocPages()
@@ -901,24 +911,11 @@ namespace BTDB
                 ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
             }
             long newPosition = AllocateSpace(unallocatedSector.Length);
-            using (_freshnessLock.ReadLock())
-            {
-                Lazy<Sector> lazyTemp;
-                _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
-                if (unallocatedSector.Fresh)
-                {
-                    _freshSectors.Remove(unallocatedSector.Position);
-                    _freshSectors.TryAdd(newPosition, true);
-                }
-                else
-                {
-                    _stinkingSectors.Remove(unallocatedSector.Position);
-                    _stinkingSectors.TryAdd(newPosition, false);
-                }
-                unallocatedSector.Position = newPosition;
-                _sectorCache.Remove(newPosition);
-                _sectorCache.TryAdd(newPosition, lazyTemp);
-            }
+            Lazy<Sector> lazyTemp;
+            _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
+            unallocatedSector.Position = newPosition;
+            _sectorCache.TryRemove(newPosition);
+            _sectorCache.TryAdd(newPosition, lazyTemp);
             _spaceAllocatedInTransaction.TryInclude((ulong)newPosition, (ulong)unallocatedSector.Length);
             UnlinkFromUnallocatedSectors(unallocatedSector);
             LinkToTailOfDirtySectors(unallocatedSector);
@@ -971,63 +968,70 @@ namespace BTDB
             finally
             {
                 _inSpaceAllocation = false;
-                foreach (var postbonedDeallocateSector in _postbonedDeallocateSectors)
+                foreach (var postbonedDeallocateSector in _postponedDeallocateSectors)
                 {
                     DeallocateSector(postbonedDeallocateSector);
                 }
-                _postbonedDeallocateSectors.Clear();
+                _postponedDeallocateSectors.Clear();
             }
         }
 
         long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, uint level, long totalGrans, ulong startInBytes, Sector parent)
         {
             Sector sector = TryGetSector(sectorPtr.Ptr);
-            if (level == 1)
+            try
             {
-                if (sector == null)
+                if (level == 1)
                 {
-                    sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
-                                        RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
-                                        sectorPtr.Checksum,
-                                        true);
-                    sector.Type = SectorType.AllocChild;
-                    sector.Parent = parent;
-                }
-                int startGranSearch = 0;
-                int startGran;
-                while (true)
-                {
-                    startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans, startGranSearch);
-                    if (startGran < 0)
+                    if (sector == null)
                     {
-                        if (sector.Length < MaxLeafAllocSectorGrans / 8)
-                        {
-                            var oldData = sector.Data;
-                            sector = ResizeSectorNoUpdatePosition(sector, sector.Length + AllocationGranularity, sector.Parent);
-                            Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
-                            sectorPtr.Ptr = sector.Position | 255;
-                            continue;
-                        }
-                        return -1;
+                        sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
+                                            RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
+                                            sectorPtr.Checksum,
+                                            true);
+                        sector.Type = SectorType.AllocChild;
+                        sector.Parent = parent;
                     }
-                    ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
-                    ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
-                    if (checkStartInBytes == foundFreeInBytes) break;
-                    ulong newStartGranSearch = (foundFreeInBytes - startInBytes) / AllocationGranularity;
-                    if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
-                    startGranSearch = (int)newStartGranSearch;
+                    int startGranSearch = 0;
+                    int startGran;
+                    while (true)
+                    {
+                        startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans, startGranSearch);
+                        if (startGran < 0)
+                        {
+                            if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                            {
+                                var oldData = sector.Data;
+                                sector = ResizeSectorNoUpdatePosition(sector, sector.Length + AllocationGranularity, sector.Parent);
+                                Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
+                                sectorPtr.Ptr = sector.Position | 255;
+                                continue;
+                            }
+                            return -1;
+                        }
+                        ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
+                        ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
+                        if (checkStartInBytes == foundFreeInBytes) break;
+                        ulong newStartGranSearch = (foundFreeInBytes - startInBytes) / AllocationGranularity;
+                        if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
+                        startGranSearch = (int)newStartGranSearch;
+                    }
+                    sector = DirtizeSector(sector, sector.Parent);
+                    BitArrayManipulation.SetBits(sector.Data, startGran, grans);
+                    if (sector.Length < MaxLeafAllocSectorGrans / 8)
+                    {
+                        sectorPtr.Ptr = sector.Position | 255;
+                    }
+                    else
+                    {
+                        sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
+                    }
+                    return startGran;
                 }
-                sector = DirtizeSector(sector, sector.Parent);
-                BitArrayManipulation.SetBits(sector.Data, startGran, grans);
-                if (sector.Length < MaxLeafAllocSectorGrans / 8)
-                {
-                    sectorPtr.Ptr = sector.Position | 255;
-                }
-                else
-                {
-                    sectorPtr.Ptr = sector.Position | (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(sector.Data);
-                }
-                return startGran;
+            }
+            finally
+            {
+                if (sector!=null) sector.Unlock();
             }
             throw new NotImplementedException();
         }
@@ -1160,7 +1164,7 @@ namespace BTDB
 
         internal Sector NewSector()
         {
-            var result = new Sector { Dirty = true, InTransaction = true };
+            var result = new Sector { Dirty = true, InTransaction = true, LastAccessTime = -1 };
             _unallocatedCounter--;
             result.Position = _unallocatedCounter * AllocationGranularity;
             return result;
@@ -1171,14 +1175,22 @@ namespace BTDB
             Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
             var lazy = new Lazy<Sector>(() => newSector).Force();
 
+            UpdateLastAccess(newSector);
+            newSector.Lock();
             _sectorCache.TryAdd(newSector.Position, lazy);
             _commitNeeded = true;
-            newSector.Fresh = false;
-            using (_freshnessLock.ReadLock())
-            {
-                _stinkingSectors.TryAdd(newSector.Position, false);
-            }
             LinkToTailOfUnallocatedSectors(newSector);
+            TruncateSectorCache(true);
+        }
+
+        internal void UpdateLastAccess(Sector sector)
+        {
+            if (sector.LastAccessTime == _currentCacheTime) return;
+            sector.LastAccessTime = Interlocked.Increment(ref _currentCacheTime);
+            while (sector.LastAccessTime == -1)
+            {
+                sector.LastAccessTime = Interlocked.Increment(ref _currentCacheTime);
+            }
         }
 
         void LinkToTailOfUnallocatedSectors(Sector newSector)

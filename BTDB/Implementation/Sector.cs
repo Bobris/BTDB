@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading;
 
 namespace BTDB
 {
@@ -13,13 +14,51 @@ namespace BTDB
 
         internal bool Dirty { get; set; }
 
-        internal bool Fresh { get; set; }
+        internal int LastAccessTime { get; set; }
 
         internal Sector Parent { get; set; }
 
         internal Sector NextLink { get; set; }
 
         internal Sector PrevLink { get; set; }
+
+        internal bool Locked
+        {
+            get { return _lockCount > 0; }
+        }
+
+        internal void Lock()
+        {
+            Interlocked.Increment(ref _lockCount);
+        }
+
+        public void RecLock()
+        {
+            Lock();
+            Sector s = this;
+            while (s.Parent != null)
+            {
+                s = s.Parent;
+                s.Lock();
+            }
+        }
+
+        internal void Unlock()
+        {
+            Interlocked.Decrement(ref _lockCount);
+            Debug.Assert(_lockCount>=0);
+        }
+
+        public void RecUnlock()
+        {
+            Unlock();
+            Sector s = this;
+            while (s.Parent!=null)
+            {
+                s = s.Parent;
+                s.Unlock();
+            }
+        }
 
         internal bool Allocated
         {
@@ -77,6 +116,7 @@ namespace BTDB
             return result;
         }
 
-        private byte[] _data;
+        byte[] _data;
+        int _lockCount = 0;
     }
 }
