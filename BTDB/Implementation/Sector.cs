@@ -14,6 +14,8 @@ namespace BTDB
 
         internal bool Dirty { get; set; }
 
+        internal bool Deleted { get; set; }
+
         internal int LastAccessTime { get; set; }
 
         internal Sector Parent { get; set; }
@@ -30,6 +32,7 @@ namespace BTDB
         internal void Lock()
         {
             Interlocked.Increment(ref _lockCount);
+            Console.WriteLine("Lock {0} - {1}",Position,_lockCount);
         }
 
         public void RecLock()
@@ -45,8 +48,9 @@ namespace BTDB
 
         internal void Unlock()
         {
+            Console.WriteLine("Unlock {0} - {1}", Position, _lockCount);
             Interlocked.Decrement(ref _lockCount);
-            Debug.Assert(_lockCount>=0);
+            Debug.Assert(_lockCount >= 0);
         }
 
         public void RecUnlock()

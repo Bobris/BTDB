@@ -181,7 +181,12 @@ namespace BTDB
         void TruncateSectorCache(bool inWriteTransaction)
         {
             if (_runningInTransactionCacheCompaction) return;
-            if (_sectorCache.Count < 40) return;
+            if (_sectorCache.Count < 1) return;
+            if (inWriteTransaction)
+            {
+                if (_inSpaceAllocation)
+                    inWriteTransaction = false;
+            }
             bool compacting = false;
             bool runningCompactingSet = false;
             try
@@ -219,12 +224,18 @@ namespace BTDB
                 sectors.Sort((a,b) => a.Value-b.Value);
                 using (_cacheCompactionLock.WriteLock())
                 {
-                    foreach (var pair in sectors.Take(_sectorCache.Count / 2))
+                    foreach (var pair in sectors.Take(_sectorCache.Count))
                     {
                         var sector = pair.Key;
                         if (sector.Locked) continue;
-                        if (!sector.Allocated) RealSectorAllocate(sector);
-                        if (sector.Dirty) FlushDirtySector(sector);
+                        if (!sector.Deleted)
+                        {
+                            if (!sector.Allocated) RealSectorAllocate(sector);
+                            Debug.Assert(sector.Deleted == false);
+                            if (sector.Dirty) FlushDirtySector(sector);
+                            Debug.Assert(sector.Deleted == false);
+                            if (sector.InTransaction) UnlinkFromInTransactionSectors(sector);
+                        }
                         _sectorCache.TryRemove(sector.Position);
                     } 
                 }
@@ -725,6 +736,7 @@ namespace BTDB
             }
             if (sector.InTransaction)
             {
+                sector.Deleted = true;
                 if (!sector.Allocated)
                 {
                     UnlinkFromUnallocatedSectors(sector);
@@ -822,6 +834,7 @@ namespace BTDB
                 newLeafSector.Parent = parent;
                 BitArrayManipulation.SetBits(newLeafSector.Data, 0, (int)grans);
                 PublishSector(newLeafSector);
+                newLeafSector.Unlock();
                 return newLeafSector.ToPtrWithLen();
             }
 
@@ -839,6 +852,7 @@ namespace BTDB
                 grans -= gransInDownLevel;
             }
             PublishSector(newSector);
+            newSector.Unlock();
             return newSector.ToPtrWithLen();
         }
 
@@ -952,6 +966,7 @@ namespace BTDB
                 }
                 _spaceUsedByReadOnlyTransactions.UnmergeInPlace(reuse);
             }
+            Debug.Assert(_inSpaceAllocation == false);
             _inSpaceAllocation = true;
             try
             {
