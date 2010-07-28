@@ -218,10 +218,10 @@ namespace BTDB
                 for (int i = 0; i < sectors.Count; i++)
                 {
                     var sector = sectors[i].Key;
-                    int price = i;
+                    int price = sector.Deepness * 65536 - i;
                     sectors[i] = new KeyValuePair<Sector, int>(sector,price);
                 }
-                sectors.Sort((a,b) => a.Value-b.Value);
+                sectors.Sort((a,b) => b.Value-a.Value);
                 using (_cacheCompactionLock.WriteLock())
                 {
                     foreach (var pair in sectors.Take(_sectorCache.Count))

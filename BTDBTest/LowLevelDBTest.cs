@@ -288,11 +288,12 @@ namespace BTDBTest
             {
                 db.Open(stream, false);
                 var key = new byte[2];
-                const int keysCreated = 10000;
+                const int keysCreated = 10;
                 using (var tr = db.StartTransaction())
                 {
                     for (int i = 0; i < keysCreated; i++)
                     {
+                        Console.WriteLine(i);
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         tr.CreateKey(key);
@@ -306,6 +307,7 @@ namespace BTDBTest
                     Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
                     for (int i = 1; i < keysCreated; i++)
                     {
+                        Console.WriteLine(keysCreated - 1 - i);
                         Assert.True(tr.FindPreviousKey());
                         Assert.AreEqual(keysCreated - 1 - i, tr.GetKeyIndex());
                     }

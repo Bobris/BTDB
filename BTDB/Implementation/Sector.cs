@@ -29,10 +29,25 @@ namespace BTDB
             get { return _lockCount > 0; }
         }
 
+        internal int Deepness
+        {
+            get
+            {
+                int result = 0;
+                var t = this;
+                while (t != null)
+                {
+                    result++;
+                    t = t.Parent;
+                }
+                return result;
+            }
+        }
+
         internal void Lock()
         {
             Interlocked.Increment(ref _lockCount);
-            Console.WriteLine("Lock {0} - {1}",Position,_lockCount);
+            Console.WriteLine("Lock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
         }
 
         public void RecLock()
@@ -48,7 +63,7 @@ namespace BTDB
 
         internal void Unlock()
         {
-            Console.WriteLine("Unlock {0} - {1}", Position, _lockCount);
+            Console.WriteLine("Unlock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
             Interlocked.Decrement(ref _lockCount);
             Debug.Assert(_lockCount >= 0);
         }
@@ -57,7 +72,7 @@ namespace BTDB
         {
             Unlock();
             Sector s = this;
-            while (s.Parent!=null)
+            while (s.Parent != null)
             {
                 s = s.Parent;
                 s.Unlock();
