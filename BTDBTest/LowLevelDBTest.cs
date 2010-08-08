@@ -288,12 +288,11 @@ namespace BTDBTest
             {
                 db.Open(stream, false);
                 var key = new byte[2];
-                const int keysCreated = 10;
+                const int keysCreated = 10000;
                 using (var tr = db.StartTransaction())
                 {
                     for (int i = 0; i < keysCreated; i++)
                     {
-                        Console.WriteLine(i);
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         tr.CreateKey(key);

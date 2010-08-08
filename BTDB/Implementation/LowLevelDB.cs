@@ -224,7 +224,7 @@ namespace BTDB
                 sectors.Sort((a,b) => b.Value-a.Value);
                 using (_cacheCompactionLock.WriteLock())
                 {
-                    foreach (var pair in sectors.Take(_sectorCache.Count))
+                    foreach (var pair in sectors.Take(_sectorCache.Count/8))
                     {
                         var sector = pair.Key;
                         if (sector.Locked) continue;
@@ -615,7 +615,7 @@ namespace BTDB
             else
             {
                 int ofs = FindOfsInParent(dirtySector, dirtySector.Parent);
-                dirtySector.Parent = DirtizeSector(dirtySector.Parent, dirtySector.Parent.Parent);
+                dirtySector.Parent = DirtizeSector(dirtySector.Parent, dirtySector.Parent.Parent, null);
                 PackUnpack.PackInt64(dirtySector.Parent.Data, ofs, ptr);
                 PackUnpack.PackUInt32(dirtySector.Parent.Data, ofs + 8, checksum);
             }
@@ -624,14 +624,14 @@ namespace BTDB
             LinkToTailOfInTransactionSectors(dirtySector);
         }
 
-        internal Sector DirtizeSector(Sector sector, Sector newParent)
+        internal Sector DirtizeSector(Sector sector, Sector newParent, List<Sector> unlockStack)
         {
             if (sector.Dirty) return sector;
             if (sector.InTransaction == false)
             {
                 if (newParent != null)
                 {
-                    newParent = DirtizeSector(newParent, newParent.Parent);
+                    newParent = DirtizeSector(newParent, newParent.Parent, unlockStack);
                 }
                 var clone = NewSector();
                 clone.Length = sector.Length;
@@ -642,6 +642,7 @@ namespace BTDB
                 UpdatePositionOfSector(clone, sector, newParent);
                 DeallocateSector(sector);
                 sector.Unlock();
+                UpdateCurrentParents(sector, clone, unlockStack);
                 return clone;
             }
             sector.Dirty = true;
@@ -650,10 +651,10 @@ namespace BTDB
             return sector;
         }
 
-        private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent)
+        private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent, List<Sector> unlockStack)
         {
             newLength = RoundToAllocationGranularity(newLength);
-            if (sector.Length == newLength && (aUpdatePositionInParent || sector.InTransaction)) return DirtizeSector(sector, newParent);
+            if (sector.Length == newLength && (aUpdatePositionInParent || sector.InTransaction)) return DirtizeSector(sector, newParent, unlockStack);
             if (sector.InTransaction)
             {
                 if (!sector.Allocated)
@@ -669,7 +670,7 @@ namespace BTDB
             }
             if (newParent != null)
             {
-                newParent = DirtizeSector(newParent, newParent.Parent);
+                newParent = DirtizeSector(newParent, newParent.Parent, unlockStack);
             }
             var clone = NewSector();
             clone.Length = newLength;
@@ -680,17 +681,31 @@ namespace BTDB
                 UpdatePositionOfSector(clone, sector, newParent);
             DeallocateSector(sector);
             sector.Unlock();
+            UpdateCurrentParents(sector, clone, unlockStack);
             return clone;
         }
 
-        internal Sector ResizeSectorWithUpdatePosition(Sector sector, int newLength, Sector newParent)
+        static void UpdateCurrentParents(Sector oldSector, Sector newSector, List<Sector> unlockStack)
         {
-            return ResizeSector(sector, newLength, newParent, true);
+            if (oldSector.Parent == null && unlockStack==null) return;
+            for (int i = 0; i < unlockStack.Count; i++)
+            {
+                if (unlockStack[i] == oldSector)
+                {
+                    unlockStack[i] = newSector;
+                    return;
+                }
+            }
         }
 
-        internal Sector ResizeSectorNoUpdatePosition(Sector sector, int newLength, Sector newParent)
+        internal Sector ResizeSectorWithUpdatePosition(Sector sector, int newLength, Sector newParent, List<Sector> unlockStack)
         {
-            return ResizeSector(sector, newLength, newParent, false);
+            return ResizeSector(sector, newLength, newParent, true, unlockStack);
+        }
+
+        internal Sector ResizeSectorNoUpdatePosition(Sector sector, int newLength, Sector newParent, List<Sector> unlockStack)
+        {
+            return ResizeSector(sector, newLength, newParent, false, unlockStack);
         }
 
         void UpdatePositionOfSector(Sector newSector, Sector oldSector, Sector inParent)
@@ -784,7 +799,7 @@ namespace BTDB
                         sector.Type = SectorType.AllocChild;
                         sector.Parent = parent;
                     }
-                    sector = DirtizeSector(sector, sector.Parent);
+                    sector = DirtizeSector(sector, sector.Parent, null);
                     BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
                     if (sector.Length < MaxLeafAllocSectorGrans / 8)
                     {
@@ -921,7 +936,7 @@ namespace BTDB
             int ofsInParent = -1;
             if (unallocatedSector.Parent != null)
             {
-                unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent, unallocatedSector.Parent.Parent);
+                unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent, unallocatedSector.Parent.Parent, null);
                 ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
             }
             long newPosition = AllocateSpace(unallocatedSector.Length);
@@ -1017,7 +1032,7 @@ namespace BTDB
                             if (sector.Length < MaxLeafAllocSectorGrans / 8)
                             {
                                 var oldData = sector.Data;
-                                sector = ResizeSectorNoUpdatePosition(sector, sector.Length + AllocationGranularity, sector.Parent);
+                                sector = ResizeSectorNoUpdatePosition(sector, sector.Length + AllocationGranularity, sector.Parent, null);
                                 Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
                                 sectorPtr.Ptr = sector.Position | 255;
                                 continue;
@@ -1031,7 +1046,7 @@ namespace BTDB
                         if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
                         startGranSearch = (int)newStartGranSearch;
                     }
-                    sector = DirtizeSector(sector, sector.Parent);
+                    sector = DirtizeSector(sector, sector.Parent, null);
                     BitArrayManipulation.SetBits(sector.Data, startGran, grans);
                     if (sector.Length < MaxLeafAllocSectorGrans / 8)
                     {
@@ -1195,7 +1210,6 @@ namespace BTDB
             _sectorCache.TryAdd(newSector.Position, lazy);
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            TruncateSectorCache(true);
         }
 
         internal void UpdateLastAccess(Sector sector)

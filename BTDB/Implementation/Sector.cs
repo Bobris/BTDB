@@ -47,36 +47,14 @@ namespace BTDB
         internal void Lock()
         {
             Interlocked.Increment(ref _lockCount);
-            Console.WriteLine("Lock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
-        }
-
-        public void RecLock()
-        {
-            Lock();
-            Sector s = this;
-            while (s.Parent != null)
-            {
-                s = s.Parent;
-                s.Lock();
-            }
+            //Console.WriteLine("Lock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
         }
 
         internal void Unlock()
         {
-            Console.WriteLine("Unlock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
+            //Console.WriteLine("Unlock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
             Interlocked.Decrement(ref _lockCount);
             Debug.Assert(_lockCount >= 0);
-        }
-
-        public void RecUnlock()
-        {
-            Unlock();
-            Sector s = this;
-            while (s.Parent != null)
-            {
-                s = s.Parent;
-                s.Unlock();
-            }
         }
 
         internal bool Allocated
@@ -136,6 +114,6 @@ namespace BTDB
         }
 
         byte[] _data;
-        int _lockCount = 0;
+        int _lockCount;
     }
 }

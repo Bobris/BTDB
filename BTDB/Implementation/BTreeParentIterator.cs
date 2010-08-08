@@ -152,6 +152,11 @@ namespace BTDB
             get
             {
                 if (_totalLength > 0) return _totalLength;
+                if (_count==0)
+                {
+                    _totalLength = HeaderSize;
+                    return _totalLength;
+                }
                 var backupOfs = _ofs;
                 for (int i = _pos + 1; i < _count; i++)
                 {
