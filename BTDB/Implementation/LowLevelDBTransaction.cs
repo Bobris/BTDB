@@ -406,6 +406,7 @@ namespace BTDB
                 }
                 _owner.NewState.KeyValuePairCount++;
                 if (_prefixKeyCount != -1) _prefixKeyCount++;
+                _owner.TruncateSectorCache(true);
                 return FindKeyResult.Created;
             }
             catch
@@ -556,6 +557,14 @@ namespace BTDB
                     if (leftSector.Parent == rightParentSector)
                     {
                         leftParentSector.Unlock();
+                        for (int i = 0; i < _currentKeySectorParents.Count; i++)
+                        {
+                            if (_currentKeySectorParents[i] == leftParentSector)
+                            {
+                                _currentKeySectorParents[i] = rightParentSector;
+                                break;
+                            }
+                        } 
                     }
                     if (rightSector.Parent == leftParentSector)
                     {

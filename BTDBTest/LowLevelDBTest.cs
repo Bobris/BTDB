@@ -306,7 +306,6 @@ namespace BTDBTest
                     Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
                     for (int i = 1; i < keysCreated; i++)
                     {
-                        Console.WriteLine(keysCreated - 1 - i);
                         Assert.True(tr.FindPreviousKey());
                         Assert.AreEqual(keysCreated - 1 - i, tr.GetKeyIndex());
                     }

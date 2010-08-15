@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -178,10 +179,10 @@ namespace BTDB
             return result;
         }
 
-        void TruncateSectorCache(bool inWriteTransaction)
+        internal void TruncateSectorCache(bool inWriteTransaction)
         {
             if (_runningInTransactionCacheCompaction) return;
-            if (_sectorCache.Count < 1) return;
+            if (_sectorCache.Count < 100) return;
             if (inWriteTransaction)
             {
                 if (_inSpaceAllocation)
@@ -224,7 +225,7 @@ namespace BTDB
                 sectors.Sort((a,b) => b.Value-a.Value);
                 using (_cacheCompactionLock.WriteLock())
                 {
-                    foreach (var pair in sectors.Take(_sectorCache.Count/8))
+                    foreach (var pair in sectors.Take(_sectorCache.Count/2))
                     {
                         var sector = pair.Key;
                         if (sector.Locked) continue;
@@ -687,7 +688,7 @@ namespace BTDB
 
         static void UpdateCurrentParents(Sector oldSector, Sector newSector, List<Sector> unlockStack)
         {
-            if (oldSector.Parent == null && unlockStack==null) return;
+            if (unlockStack==null) return;
             for (int i = 0; i < unlockStack.Count; i++)
             {
                 if (unlockStack[i] == oldSector)
@@ -1302,6 +1303,45 @@ namespace BTDB
                 result.WastedSize = _newState.WantedDatabaseLength - _newState.UsedSize;
             }
             return result;
+        }
+
+        void SectorCacheToGraph()
+        {
+            using (var ws = new StreamWriter("graph.gv"))
+            {
+                ws.WriteLine("digraph G {");
+                foreach (var lazy in _sectorCache.Values)
+                {
+                    var sector = lazy.Value;
+                    WriteSectorNodeId(ws, sector);
+                    ws.Write("[label=\"{0}\\n\"{1}]", sector.Position, sector.Locked?",style=filled,color=red":"");
+                    ws.WriteLine(";");
+                }
+                foreach (var lazy in _sectorCache.Values)
+                {
+                    var sector = lazy.Value;
+                    if (sector.Parent!=null)
+                    {
+                        WriteSectorNodeId(ws, sector.Parent);
+                        ws.Write(" -> ");
+                        WriteSectorNodeId(ws, sector);
+                        ws.WriteLine(";");
+                    }
+                }
+                ws.WriteLine("}");
+            }
+        }
+
+        static void WriteSectorNodeId(StreamWriter ws, Sector sector)
+        {
+            if (sector.Position<0)
+            {
+                ws.Write("U{0}",-sector.Position);
+            }
+            else
+            {
+                ws.Write("A{0}", sector.Position);
+            }
         }
     }
 }
