@@ -1211,6 +1211,7 @@ namespace BTDB
             _sectorCache.TryAdd(newSector.Position, lazy);
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
+            Debug.Assert(_sectorCache.Count<200);
         }
 
         internal void UpdateLastAccess(Sector sector)

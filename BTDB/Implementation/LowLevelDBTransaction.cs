@@ -849,6 +849,7 @@ namespace BTDB
                 if (len2 > 0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
                 _owner.PublishSector(newLeafSector);
                 newLeafSector.Unlock();
+                _owner.TruncateSectorCache(true);
                 return newLeafSector.ToPtrWithLen();
             }
             int downPtrCount;
@@ -870,6 +871,7 @@ namespace BTDB
             }
             _owner.PublishSector(newSector);
             newSector.Unlock();
+            _owner.TruncateSectorCache(true);
             return newSector.ToPtrWithLen();
         }
 
@@ -883,6 +885,7 @@ namespace BTDB
                 newLeafSector.Parent = parent;
                 _owner.PublishSector(newLeafSector);
                 newLeafSector.Unlock();
+                _owner.TruncateSectorCache(true);
                 return newLeafSector.ToPtrWithLen();
             }
             int downPtrCount;
@@ -899,6 +902,7 @@ namespace BTDB
             }
             _owner.PublishSector(newSector);
             newSector.Unlock();
+            _owner.TruncateSectorCache(true);
             return newSector.ToPtrWithLen();
         }
 
