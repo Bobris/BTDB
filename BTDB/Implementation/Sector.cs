@@ -100,16 +100,36 @@ namespace BTDB
             Length = LowLevelDB.RoundToAllocationGranularity(length);
         }
 
-        internal SectorPtr ToPtrWithLen()
+        internal SectorPtr ToSectorPtr()
         {
             SectorPtr result;
             result.Ptr = Position;
-            result.Checksum = 0;
-            if (Position > 0)
+            if (Type == SectorType.AllocChild)
             {
-                result.Ptr += Length / LowLevelDB.AllocationGranularity - 1;
-                if (Dirty == false) result.Checksum = Checksum.CalcFletcher(Data, 0, (uint)Length);
+                if (Length < LowLevelDB.MaxLeafAllocSectorGrans / 8)
+                    result.Ptr |= 255;
+                else
+                    result.Ptr |= BitArrayManipulation.SizeOfBiggestHoleUpTo255(Data);
             }
+            else if (Type == SectorType.AllocParent)
+            {
+                if (Length < LowLevelDB.MaxChildren * LowLevelDB.PtrDownSize)
+                    result.Ptr |= 255;
+                else
+                {
+                    int res = 0;
+                    for (int i = 0; i < LowLevelDB.MaxChildren; i++)
+                    {
+                        res = Math.Max(res, Data[i * LowLevelDB.PtrDownSize]);
+                    }
+                    result.Ptr |= res;
+                }
+            }
+            else if (Position > 0)
+            {
+                result.Ptr |= Length / LowLevelDB.AllocationGranularity - 1;
+            }
+            result.Checksum = Dirty ? 0 : Checksum.CalcFletcher(Data, 0, (uint)Length);
             return result;
         }
 
