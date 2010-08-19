@@ -8,7 +8,7 @@ namespace SimpleTester
         static void Main(string[] args)
         {
             var btdbTest = new BTDBTest.LowLevelDBTest();
-            btdbTest.ValueStoreWorks(10000000,0);
+            btdbTest.ValueStoreWorks(10000000, 100000000);
         }
     }
 }

@@ -106,10 +106,10 @@ namespace BTDB
             result.Ptr = Position;
             if (Type == SectorType.AllocChild)
             {
-                if (Length < LowLevelDB.MaxLeafAllocSectorGrans / 8)
+                if (Length < LowLevelDB.MaxLeafAllocSectorSize)
                     result.Ptr |= 255;
                 else
-                    result.Ptr |= BitArrayManipulation.SizeOfBiggestHoleUpTo255(Data);
+                    result.Ptr |= (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(Data);
             }
             else if (Type == SectorType.AllocParent)
             {
@@ -117,7 +117,7 @@ namespace BTDB
                     result.Ptr |= 255;
                 else
                 {
-                    int res = 0;
+                    uint res = 0;
                     for (int i = 0; i < LowLevelDB.MaxChildren; i++)
                     {
                         res = Math.Max(res, Data[i * LowLevelDB.PtrDownSize]);
@@ -127,7 +127,7 @@ namespace BTDB
             }
             else if (Position > 0)
             {
-                result.Ptr |= Length / LowLevelDB.AllocationGranularity - 1;
+                result.Ptr |= (uint) (Length / LowLevelDB.AllocationGranularity - 1);
             }
             result.Checksum = Dirty ? 0 : Checksum.CalcFletcher(Data, 0, (uint)Length);
             return result;
