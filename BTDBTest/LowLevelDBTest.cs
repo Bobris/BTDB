@@ -430,6 +430,28 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void SimpleEraseCurrentWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.CreateKey(_key3);
+                    tr.EraseCurrent();
+                    Assert.True(tr.FindFirstKey());
+                    Assert.AreEqual(_key1, tr.ReadKey());
+                    Assert.True(tr.FindNextKey());
+                    Assert.AreEqual(_key2, tr.ReadKey());
+                    Assert.False(tr.FindNextKey());
+                }
+            }
+        }
+
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
