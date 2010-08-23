@@ -291,10 +291,14 @@ namespace BTDB
             return ChildSectorPtr;
         }
 
-        internal SectorPtr GetChildSectorPtr(int index, ref long keyIndex)
+        internal SectorPtr GetChildSectorPtr(int index, out long keyIndex)
         {
-            if (index == 0) return FirstChildSectorPtr;
-            keyIndex += FirstChildKeyCount;
+            if (index == 0)
+            {
+                keyIndex = 0;
+                return FirstChildSectorPtr;
+            }
+            keyIndex = FirstChildKeyCount;
             MoveFirst();
             while (_pos < index - 1)
             {

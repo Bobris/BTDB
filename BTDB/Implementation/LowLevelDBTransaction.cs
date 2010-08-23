@@ -284,7 +284,7 @@ namespace BTDB
                     if (sector.Type == SectorType.BTreeChild) break;
                     var iterParent = new BTreeParentIterator(sector.Data);
                     int bindexParent = iterParent.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
-                    rootBTree = iterParent.GetChildSectorPtr((bindexParent + 1) / 2, ref keyIndex);
+                    rootBTree = iterParent.GetChildSectorPtr((bindexParent + 1) / 2, out keyIndex);
                 }
                 var iter = new BTreeChildIterator(sector.Data);
                 int bindex = iter.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
@@ -1490,13 +1490,34 @@ namespace BTDB
                     if (iter.HasValueSectorPtr)
                         DeleteContentSector(iter.ValueSectorPtr, iter.ValueLen - iter.ValueLenInline, sector);
                 } while (iter.MoveNext());
-                _owner.DeallocateSector(sector);
-                sector = null;
             }
             else
             {
-                throw new NotImplementedException();
+                var iter = new BTreeParentIterator(sector.Data);
+                for (int i = 0; i <= iter.Count; i++)
+                {
+                    var childSectorPtr = iter.GetChildSectorPtr(i);
+                    Sector childSector = _owner.TryGetSector(childSectorPtr.Ptr);
+                    try
+                    {
+                        if (childSector==null)
+                        {
+                            childSector = _owner.ReadSector(childSectorPtr, true);
+                            childSector.Parent = sector;
+                            childSector.Type = childSector.Data[0] >= 128
+                                                   ? SectorType.BTreeParent
+                                                   : SectorType.BTreeChild;
+                        }
+                        EraseCompletely(ref childSector);
+                    }
+                    finally
+                    {
+                        if (childSector!=null) childSector.Unlock();
+                    }
+                }
             }
+            _owner.DeallocateSector(sector);
+            sector = null;
         }
 
         void EraseCommonParent(ref Sector sector, long leftmostKeyIndex, long firstKeyIndex, long lastKeyIndex)
@@ -1509,7 +1530,15 @@ namespace BTDB
             var iter = new BTreeChildIterator(sector.Data);
             iter.MoveTo((int)(firstKeyIndex - leftmostKeyIndex));
             var eraseFromOfs = iter.EntryOffset;
-            iter.MoveTo((int)(lastKeyIndex - leftmostKeyIndex));
+            while (true)
+            {
+                if (iter.HasKeySectorPtr)
+                    DeleteContentSector(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, sector);
+                if (iter.HasValueSectorPtr)
+                    DeleteContentSector(iter.ValueSectorPtr, iter.ValueLen - iter.ValueLenInline, sector);
+                if (iter.Index == (int) (lastKeyIndex - leftmostKeyIndex)) break;
+                iter.MoveNext();
+            }
             var eraseToOfs = iter.EntryOffset + iter.CurrentEntrySize;
             var originalLength = iter.TotalLength;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
