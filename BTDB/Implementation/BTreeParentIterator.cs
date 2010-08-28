@@ -142,6 +142,7 @@ namespace BTDB
 
         internal int OffsetOfIndex(int index)
         {
+            if (index == -1) return FirstChildSectorPtrOffset;
             if (index == _count) return TotalLength;
             MoveTo(index);
             return _ofs;
