@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -424,7 +425,7 @@ namespace BTDBTest
                     tr.FindFirstKey();
                     Assert.AreEqual(new byte[0], tr.ReadKey());
                     tr.FindLastKey();
-                    Assert.AreEqual(_key3.Skip(3).ToArray(),tr.ReadKey());
+                    Assert.AreEqual(_key3.Skip(3).ToArray(), tr.ReadKey());
                     tr.Commit();
                 }
             }
@@ -448,10 +449,62 @@ namespace BTDBTest
                     Assert.True(tr.FindNextKey());
                     Assert.AreEqual(_key2, tr.ReadKey());
                     Assert.False(tr.FindNextKey());
+                    Assert.AreEqual(2, tr.CalculateStats().KeyValuePairCount);
                 }
             }
         }
 
+        [Test, TestCaseSource("EraseRangeSource")]
+        public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                var key = new byte[2];
+                using (var tr = db.StartTransaction())
+                {
+                    for (int i = 0; i < createKeys; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        tr.CreateKey(key);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    tr.EraseRange(removeStart, removeStart + removeCount - 1);
+                    Assert.AreEqual(createKeys - removeCount, tr.GetKeyValueCount());
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.AreEqual(createKeys - removeCount, tr.GetKeyValueCount());
+                    for (int i = 0; i < createKeys; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        if (i >= removeStart && i < removeStart + removeCount)
+                        {
+                            Assert.False(tr.FindExactKey(key));
+                        }
+                        else
+                        {
+                            Assert.True(tr.FindExactKey(key));
+                        }
+                    }
+                }
+            }
+        }
+
+        static IEnumerable<int[]> EraseRangeSource()
+        {
+            for (int i = 1; i < 100; i++)
+            {
+                yield return new[] { i, 0, 1 };
+            }
+        }
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };

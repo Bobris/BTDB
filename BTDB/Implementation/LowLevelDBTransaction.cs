@@ -1461,6 +1461,7 @@ namespace BTDB
             {
                 if (sector != null) sector.Unlock();
             }
+            _owner.NewState.KeyValuePairCount -= (ulong)(lastKeyIndex - firstKeyIndex + 1);
             if (sector == null)
             {
                 _owner.NewState.RootBTree.Ptr = 0;
