@@ -355,13 +355,16 @@ namespace BTDBTest
                     Assert.True(tr3.FindExactKey(_key2));
                     Assert.True(tr3.FindExactKey(_key3));
                     var valbuf2 = tr3.ReadValue();
-                    for (int i = 0; i < Math.Min(firstLength, secondLength); i++)
+                    var commonLength = Math.Min(firstLength, secondLength);
+                    for (int i = 0; i < commonLength; i++)
                     {
-                        Assert.AreEqual(valbuf[i], valbuf2[i]);
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
                     }
-                    for (int i = Math.Min(firstLength, secondLength); i < secondLength; i++)
+                    for (int i = commonLength; i < secondLength; i++)
                     {
-                        Assert.AreEqual(0, valbuf2[i]);
+                        if (valbuf2[i] != 0)
+                            Assert.AreEqual(0, valbuf2[i]);
                     }
                 }
             }

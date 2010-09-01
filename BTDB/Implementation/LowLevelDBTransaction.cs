@@ -284,7 +284,7 @@ namespace BTDB
                     if (sector.Type == SectorType.BTreeChild) break;
                     var iterParent = new BTreeParentIterator(sector.Data);
                     int bindexParent = iterParent.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
-                    rootBTree = iterParent.GetChildSectorPtr((bindexParent + 1) / 2, out keyIndex);
+                    rootBTree = iterParent.GetChildSectorPtr((bindexParent + 1) / 2, ref keyIndex);
                 }
                 var iter = new BTreeChildIterator(sector.Data);
                 int bindex = iter.BinarySearch(_prefix, keyBuf, keyOfs, keyLen, sector, SectorDataCompare);
@@ -937,6 +937,7 @@ namespace BTDB
                     DeleteContentSector(downSectorPtr, Math.Min(len, bytesInDownLevel), sector);
                     len -= bytesInDownLevel;
                 }
+                _owner.DeallocateSector(sector);
             }
             finally
             {
@@ -1505,6 +1506,7 @@ namespace BTDB
                 }
             }
             _owner.DeallocateSector(sector);
+            sector.Unlock();
             sector = null;
         }
 
