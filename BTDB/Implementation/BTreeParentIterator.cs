@@ -106,7 +106,7 @@ namespace BTDB
 
         internal int ChildSectorPtrOffset
         {
-            get { return KeyOffset + KeyLenInline; }
+            get { return KeyOffset + KeyLenInline + (HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0); }
         }
 
         internal long ChildSectorPos
