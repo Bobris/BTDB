@@ -1561,7 +1561,8 @@ namespace BTDB
                 firstKeyIndex -= iter.FirstChildKeyCount;
                 lastKeyIndex -= iter.FirstChildKeyCount;
             }
-            for (int i = 1; i <= iter.Count; i++,iter.MoveNext())
+            int originalLength;
+            for (int i = 1; i <= iter.Count; i++, iter.MoveNext())
             {
                 if (lastKeyIndex < 0) break;
                 var childKeyCount = iter.ChildKeyCount;
@@ -1596,7 +1597,18 @@ namespace BTDB
                             int ofs;
                             int len;
                             ExtractFirstKey(childSector, out data, out ofs, out len);
-                            throw new NotImplementedException();
+                            // structure of data is keylen/4, valuelen/8, inlinekey/var, [downptr/12]
+                            originalLength = iter.TotalLength;
+                            sector = _owner.ResizeSectorNoUpdatePosition(sector,
+                                                                         originalLength - oldKeyStorageLen + len - 8,
+                                                                         sector.Parent,
+                                                                         null);
+                            Array.Copy(iter.Data, 0, sector.Data, 0, iter.EntryOffset);
+                            Array.Copy(data, ofs, sector.Data, iter.EntryOffset, 4);
+                            Array.Copy(data, ofs + 12, sector.Data, iter.EntryOffset + 4, len - 12);
+                            Array.Copy(iter.Data, iter.ChildSectorPtrOffset, sector.Data, iter.EntryOffset + len - 8, originalLength - iter.ChildSectorPtrOffset);
+                            iter = new BTreeParentIterator(sector.Data);
+                            iter.MoveTo(i - 1);
                         }
                         lastKeyIndex -= childKeyCount;
                         firstKeyIndex = 0;
@@ -1610,7 +1622,7 @@ namespace BTDB
             if (!firstChildErasedCompletely.HasValue) return;
             var eraseFromOfs = iter.OffsetOfIndex(firstChildErasedCompletely.Value);
             var eraseToOfs = iter.OffsetOfIndex(lastChildErasedCompletely.Value);
-            var originalLength = iter.TotalLength;
+            originalLength = iter.TotalLength;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
                                                          originalLength - eraseToOfs + eraseFromOfs,
                                                          sector.Parent,
@@ -1622,7 +1634,27 @@ namespace BTDB
 
         void ExtractFirstKey(Sector sector, out byte[] data, out int ofs, out int len)
         {
-            throw new NotImplementedException();
+            if (sector.Type == SectorType.BTreeChild)
+            {
+                var iter = new BTreeChildIterator(sector.Data);
+                data = iter.Data;
+                ofs = iter.EntryOffset;
+                len = iter.ValueOffset - ofs;
+                return;
+            }
+            else
+            {
+                var iter = new BTreeParentIterator(sector.Data);
+                var childSector = GetBTreeSector(iter.FirstChildSectorPtr, sector);
+                try
+                {
+                    ExtractFirstKey(childSector, out data, out ofs, out len);
+                }
+                finally
+                {
+                    childSector.Unlock();
+                }
+            }
         }
 
         Sector GetBTreeSector(SectorPtr childSectorPtr, Sector parent)
