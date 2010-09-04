@@ -1538,7 +1538,7 @@ namespace BTDB
                     {
                         EraseCompletely(ref childSector);
                         firstChildErasedCompletely = 0;
-                        lastChildErasedCompletely = 0;
+                        lastChildErasedCompletely = 1;
                         lastKeyIndex -= iter.FirstChildKeyCount;
                     }
                     else
@@ -1580,7 +1580,7 @@ namespace BTDB
                     {
                         EraseCompletely(ref childSector);
                         if (!firstChildErasedCompletely.HasValue) firstChildErasedCompletely = i;
-                        lastChildErasedCompletely = i;
+                        lastChildErasedCompletely = i + 1;
                         lastKeyIndex -= childKeyCount;
                     }
                     else
@@ -1620,14 +1620,16 @@ namespace BTDB
                 }
             }
             if (!firstChildErasedCompletely.HasValue) return;
-            var eraseFromOfs = iter.OffsetOfIndex(firstChildErasedCompletely.Value);
-            var eraseToOfs = iter.OffsetOfIndex(lastChildErasedCompletely.Value);
             originalLength = iter.TotalLength;
+            var eraseFromOfs = iter.OffsetOfIndex(firstChildErasedCompletely.Value) - LowLevelDB.PtrDownSize - 8;
+            int eraseToOfs = lastChildErasedCompletely.Value - 1 == iter.Count
+                                 ? originalLength
+                                 : iter.OffsetOfIndex(lastChildErasedCompletely.Value) - LowLevelDB.PtrDownSize - 8;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
                                                          originalLength - eraseToOfs + eraseFromOfs,
                                                          sector.Parent,
                                                          null);
-            sector.Data[0] = (byte)(128 + iter.Count - 1 - (lastChildErasedCompletely.Value - firstChildErasedCompletely.Value));
+            sector.Data[0] = (byte)(128 + iter.Count - (lastChildErasedCompletely.Value - firstChildErasedCompletely.Value));
             Array.Copy(iter.Data, 1, sector.Data, 1, eraseFromOfs - 1);
             Array.Copy(iter.Data, eraseToOfs, sector.Data, eraseFromOfs, originalLength - eraseToOfs);
         }

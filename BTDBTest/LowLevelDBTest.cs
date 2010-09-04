@@ -509,8 +509,13 @@ namespace BTDBTest
                 yield return new[] { i, 0, 1 };
                 yield return new[] { i, i - 1, 1 };
                 yield return new[] { i, i / 2, 1 };
+                yield return new[] { i, i / 2, i / 4 };
                 yield return new[] { i, i / 4, 1 };
+                yield return new[] { i, i / 4, i / 2 };
+                yield return new[] { i, i - i / 2, i / 2 };
+                yield return new[] { i, 0, i / 2 };
                 yield return new[] { i, 3 * i / 4, 1 };
+                yield return new[] { i, 0, i };
             }
         }
 

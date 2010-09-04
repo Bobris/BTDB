@@ -8,7 +8,16 @@ namespace SimpleTester
         static void Main(string[] args)
         {
             var btdbTest = new BTDBTest.LowLevelDBTest();
-            btdbTest.AdvancedEraseRangeWorks(1000,64,1);
+            for (int i = 10000; i <= 10000; i++)
+            {
+                Parallel.For(1, i + 1, j =>
+                                           {
+                                               for (int k = 0; k <= i - j; k++)
+                                               {
+                                                   btdbTest.AdvancedEraseRangeWorks(i, k, j);
+                                               }
+                                           });
+            }
         }
     }
 }
