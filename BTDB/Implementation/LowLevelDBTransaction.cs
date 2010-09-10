@@ -1456,6 +1456,7 @@ namespace BTDB
                 else
                 {
                     ErasePartially(ref sector, firstKeyIndex, lastKeyIndex);
+                    SimplifySingleSubChild(ref sector);
                 }
             }
             finally
@@ -1472,6 +1473,23 @@ namespace BTDB
             else
             {
                 _owner.NewState.RootBTree = sector.ToSectorPtr();
+            }
+        }
+
+        void SimplifySingleSubChild(ref Sector sector)
+        {
+            while (sector.Type==SectorType.BTreeParent)
+            {
+                var iter = new BTreeParentIterator(sector.Data);
+                if (iter.Count > 0) break;
+                var sectorPtr = iter.FirstChildSectorPtr;
+                _owner.DeallocateSector(sector);
+                sector.Unlock();
+// ReSharper disable RedundantAssignment
+                sector = null;
+// ReSharper restore RedundantAssignment
+                sector = GetBTreeSector(sectorPtr, null);
+                _owner.NewState.RootBTreeLevels--;
             }
         }
 

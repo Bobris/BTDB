@@ -504,7 +504,7 @@ namespace BTDBTest
         static IEnumerable<int[]> EraseRangeSource()
         {
             yield return new[] { 1, 0, 1 };
-            for (int i = 1001; i < 10000; i += 100)
+            for (int i = 1001; i < 10000; i += 1000)
             {
                 yield return new[] { i, 0, 1 };
                 yield return new[] { i, i - 1, 1 };
