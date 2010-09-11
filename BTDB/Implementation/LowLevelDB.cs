@@ -34,7 +34,7 @@ namespace BTDB
      *    4 - Checksum
      */
 
-    public class LowLevelDB : ILowLevelDB
+    public sealed class LowLevelDB : ILowLevelDB
     {
         internal class State
         {
@@ -79,6 +79,7 @@ namespace BTDB
         IStream _stream;
         bool _disposeStream;
 
+        ITweaks _tweaks = new DefaultTweaks();
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
         int _currentCacheTime;
         readonly ReaderWriterLockSlim _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
@@ -277,6 +278,12 @@ namespace BTDB
             StoreStateToHeaderBuffer(_newState);
             _stream.Write(_headerData, 0, TotalHeaderSize, 0);
             _stream.Flush();
+        }
+
+        public ITweaks Tweaks
+        {
+            get { return _tweaks; }
+            set { _tweaks = value; }
         }
 
         public bool Open(IStream stream, bool dispose)

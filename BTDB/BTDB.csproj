@@ -50,6 +50,8 @@
     <Compile Include="Interface\BTDBException.cs" />
     <Compile Include="Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="Implementation\BTreeChildIterator.cs" />
+    <Compile Include="Implementation\DefaultTweaks.cs" />
+    <Compile Include="Interface\ITweaks.cs" />
     <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="PublicHelpers\Checksum.cs" />
     <Compile Include="PublicHelpers\ExtensionMethods.cs" />

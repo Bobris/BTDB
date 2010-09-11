@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace BTDB
 {
-    internal class Sector
+    internal sealed class Sector
     {
         internal SectorType Type { get; set; }
 
