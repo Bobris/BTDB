@@ -75,6 +75,7 @@ namespace BTDB
         const int MaxLeafAllocSectorGrans = MaxLeafAllocSectorSize * 8;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
+        internal const int MaskOfGranLength = 0xFF;
 
         IStream _stream;
         bool _disposeStream;
@@ -141,7 +142,7 @@ namespace BTDB
         Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
         {
             Debug.Assert(positionWithSize > 0);
-            return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & 0xFF) + 1, checksum, inWriteTransaction);
+            return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & MaskOfGranLength) + 1, checksum, inWriteTransaction);
         }
 
         Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction)
