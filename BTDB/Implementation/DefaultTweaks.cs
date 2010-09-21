@@ -34,5 +34,19 @@ namespace BTDB
             }
             return ShouldMergeResult.NoMerge;
         }
+
+        public bool ShouldMerge2BTreeChild(int leftCount, int leftLength, int rightCount, int rightLength)
+        {
+            if (leftCount + rightCount >= 126) return false;
+            if (leftLength + rightLength - 1 > 4096) return false;
+            return true;
+        }
+
+        public bool ShouldMerge2BTreeParent(int leftCount, int leftLength, int rightCount, int rightLength, int keyStorageLength)
+        {
+            if (leftCount + rightCount >= 126) return false;
+            if (leftLength + rightLength - 1 + keyStorageLength > 4096) return false;
+            return true;
+        }
     }
 }

@@ -1647,30 +1647,34 @@ namespace BTDB
             }
             if (firstChildErasedCompletely.HasValue)
             {
-                var originalLength = iter.TotalLength;
-                var eraseFromOfs = iter.OffsetOfIndex(firstChildErasedCompletely.Value) - LowLevelDB.PtrDownSize - 8;
-                var eraseToOfs = lastChildErasedCompletely.Value - 1 == iter.Count
-                                     ? originalLength
-                                     : iter.OffsetOfIndex(lastChildErasedCompletely.Value) - LowLevelDB.PtrDownSize - 8;
-                sector = _owner.ResizeSectorNoUpdatePosition(sector,
-                                                             originalLength - eraseToOfs + eraseFromOfs,
-                                                             sector.Parent,
-                                                             null);
-                sector.Data[0] =
-                    (byte)(128 + iter.Count - (lastChildErasedCompletely.Value - firstChildErasedCompletely.Value));
-                Array.Copy(iter.Data, 1, sector.Data, 1, eraseFromOfs - 1);
-                Array.Copy(iter.Data, eraseToOfs, sector.Data, eraseFromOfs, originalLength - eraseToOfs);
+                InternalBTreeParentEraseRange(ref sector, ref iter, firstChildErasedCompletely.Value, lastChildErasedCompletely.Value);
             }
             SimplifyBTree(ref sector, firstChildErasedPartialy ?? 0);
+        }
+
+        void InternalBTreeParentEraseRange(ref Sector sector, ref BTreeParentIterator iter, int firstIndexToErase, int lastIndexToErase)
+        {
+            var originalLength = iter.TotalLength;
+            var eraseFromOfs = iter.OffsetOfIndex(firstIndexToErase) - LowLevelDB.PtrDownSize - 8;
+            var eraseToOfs = lastIndexToErase - 1 == iter.Count
+                                 ? originalLength
+                                 : iter.OffsetOfIndex(lastIndexToErase) - LowLevelDB.PtrDownSize - 8;
+            sector = _owner.ResizeSectorNoUpdatePosition(sector,
+                                                         originalLength - eraseToOfs + eraseFromOfs,
+                                                         sector.Parent,
+                                                         null);
+            sector.Data[0] =
+                (byte)(128 + iter.Count - (lastIndexToErase - firstIndexToErase));
+            Array.Copy(iter.Data, 1, sector.Data, 1, eraseFromOfs - 1);
+            Array.Copy(iter.Data, eraseToOfs, sector.Data, eraseFromOfs, originalLength - eraseToOfs);
         }
 
         void SimplifyBTree(ref Sector sector, int mergeAroundIndex)
         {
             var iter = new BTreeParentIterator(sector.Data);
-            if (iter.Count == 0)
+            if (iter.Count == 0 || mergeAroundIndex > iter.Count)
                 return;
-            var childSectorPtr = iter.GetChildSectorPtr(mergeAroundIndex);
-            var lenCurrent = ApproximateLengthOfBTreeChild(childSectorPtr);
+            var lenCurrent = ApproximateLengthOfBTreeChild(iter.GetChildSectorPtr(mergeAroundIndex));
             var lenPrevious = -1;
             if (mergeAroundIndex > 0)
                 lenPrevious = ApproximateLengthOfBTreeChild(iter.GetChildSectorPtr(mergeAroundIndex - 1));
@@ -1680,13 +1684,71 @@ namespace BTDB
             ShouldMergeResult result = _owner.Tweaks.ShouldMergeBTreeParent(lenPrevious, lenCurrent, lenNext);
             if (result == ShouldMergeResult.NoMerge)
                 return;
+            if (result == ShouldMergeResult.MergeWithPrevious)
+                mergeAroundIndex--;
+            long mergedPairs, tempPairs;
+            var leftSectorPtr = iter.GetChildSectorPtrWithKeyCount(mergeAroundIndex, out mergedPairs);
+            var rightSectorPtr = iter.GetChildSectorPtrWithKeyCount(mergeAroundIndex + 1, out tempPairs);
+            mergedPairs += tempPairs;
+            Sector leftSector = null;
+            Sector rightSector = null;
+            Sector mergedSector = null;
+            try
+            {
+                leftSector = GetBTreeSector(leftSectorPtr, sector);
+                rightSector = GetBTreeSector(rightSectorPtr, sector);
+                Debug.Assert(leftSector.Type == rightSector.Type);
+                iter.MoveTo(mergeAroundIndex);
+                var entryOffset = iter.EntryOffset;
+                if (leftSector.Type == SectorType.BTreeChild)
+                {
+                    var leftIter = new BTreeChildIterator(leftSector.Data);
+                    var rightIter = new BTreeChildIterator(rightSector.Data);
+                    if (!_owner.Tweaks.ShouldMerge2BTreeChild(leftIter.Count, leftIter.TotalLength, rightIter.Count,
+                                                         rightIter.TotalLength))
+                        return;
+                    mergedSector = _owner.NewSector();
+                    mergedSector.Type = SectorType.BTreeChild;
+                    mergedSector.Parent = sector;
+                    _owner.PublishSector(mergedSector);
+                    mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - 1);
+                    mergedSector.Data[0] = (byte)(leftIter.Count + rightIter.Count);
+                    Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
+                    Array.Copy(rightIter.Data, 1, mergedSector.Data, leftIter.TotalLength, rightIter.TotalLength - 1);
+                }
+                else
+                {
+                    var keyStorageLen = iter.ChildSectorPtrOffset - entryOffset;
+                    var leftIter = new BTreeParentIterator(leftSector.Data);
+                    var rightIter = new BTreeParentIterator(rightSector.Data);
+                    if (!_owner.Tweaks.ShouldMerge2BTreeParent(leftIter.Count, leftIter.TotalLength, rightIter.Count,
+                                                         rightIter.TotalLength, keyStorageLen))
+                        return;
+                    mergedSector = _owner.NewSector();
+                    mergedSector.Type = SectorType.BTreeParent;
+                    mergedSector.Parent = sector;
+                    _owner.PublishSector(mergedSector);
 
-            throw new NotImplementedException();
+                    throw new NotImplementedException();
+                }
+                _owner.DeallocateSector(leftSector);
+                InternalBTreeParentEraseRange(ref sector, ref iter, mergeAroundIndex, mergeAroundIndex + 1);
+                SectorPtr.Pack(sector.Data, entryOffset - 8 - LowLevelDB.PtrDownSize,
+                               mergedSector.ToSectorPtr());
+                PackUnpack.PackInt64(sector.Data, entryOffset - 8, mergedPairs);
+                _owner.DeallocateSector(rightSector);
+            }
+            finally
+            {
+                if (leftSector != null) leftSector.Unlock();
+                if (rightSector != null) rightSector.Unlock();
+                if (mergedSector != null) mergedSector.Unlock();
+            }
         }
 
         int ApproximateLengthOfBTreeChild(SectorPtr childSectorPtr)
         {
-            if (childSectorPtr.Ptr>=0)
+            if (childSectorPtr.Ptr >= 0)
             {
                 return (int)(childSectorPtr.Ptr & LowLevelDB.MaskOfGranLength) * LowLevelDB.AllocationGranularity;
             }
