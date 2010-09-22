@@ -296,7 +296,7 @@ namespace BTDB
                     return FindKeyNoncreateStrategy(strategy, iter);
                 }
                 int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen);
-                if (_owner.Tweaks.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
+                if (iter.Count >= 126 || _owner.Tweaks.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
                 {
                     SplitBTreeChild(keyBuf, keyOfs, keyLen, sector, iter, additionalLengthNeeded);
                 }
@@ -496,7 +496,7 @@ namespace BTDB
             int additionalLengthNeeded = BTreeParentIterator.CalcEntrySize(middleKeyLen);
             int leftIndexInParent = iter.FindChildByPos(leftSector.Position);
             byte[] mergedData;
-            if (!_owner.Tweaks.ShouldSplitBTreeParent(iter.TotalLength, additionalLengthNeeded, iter.Count + 1))
+            if (iter.Count < 125 && !_owner.Tweaks.ShouldSplitBTreeParent(iter.TotalLength, additionalLengthNeeded, iter.Count + 1))
             {
                 parentSector = _owner.ResizeSectorWithUpdatePosition(parentSector,
                                                                      iter.TotalLength + additionalLengthNeeded,
@@ -1686,16 +1686,17 @@ namespace BTDB
                 return;
             if (result == ShouldMergeResult.MergeWithPrevious)
                 mergeAroundIndex--;
-            long mergedPairs, tempPairs;
+            long mergedPairs;
             var leftSectorPtr = iter.GetChildSectorPtrWithKeyCount(mergeAroundIndex, out mergedPairs);
-            var rightSectorPtr = iter.GetChildSectorPtrWithKeyCount(mergeAroundIndex + 1, out tempPairs);
-            mergedPairs += tempPairs;
             Sector leftSector = null;
             Sector rightSector = null;
             Sector mergedSector = null;
             try
             {
                 leftSector = GetBTreeSector(leftSectorPtr, sector);
+                long tempPairs;
+                var rightSectorPtr = iter.GetChildSectorPtrWithKeyCount(mergeAroundIndex + 1, out tempPairs);
+                mergedPairs += tempPairs;
                 rightSector = GetBTreeSector(rightSectorPtr, sector);
                 Debug.Assert(leftSector.Type == rightSector.Type);
                 iter.MoveTo(mergeAroundIndex);
@@ -1704,6 +1705,7 @@ namespace BTDB
                 {
                     var leftIter = new BTreeChildIterator(leftSector.Data);
                     var rightIter = new BTreeChildIterator(rightSector.Data);
+                    if (leftIter.Count + rightIter.Count >= 126) return;
                     if (!_owner.Tweaks.ShouldMerge2BTreeChild(leftIter.Count, leftIter.TotalLength, rightIter.Count,
                                                          rightIter.TotalLength))
                         return;
@@ -1721,6 +1723,7 @@ namespace BTDB
                     var keyStorageLen = iter.ChildSectorPtrOffset - entryOffset;
                     var leftIter = new BTreeParentIterator(leftSector.Data);
                     var rightIter = new BTreeParentIterator(rightSector.Data);
+                    if (leftIter.Count + rightIter.Count >= 126) return;
                     if (!_owner.Tweaks.ShouldMerge2BTreeParent(leftIter.Count, leftIter.TotalLength, rightIter.Count,
                                                          rightIter.TotalLength, keyStorageLen))
                         return;
@@ -1728,8 +1731,12 @@ namespace BTDB
                     mergedSector.Type = SectorType.BTreeParent;
                     mergedSector.Parent = sector;
                     _owner.PublishSector(mergedSector);
-
-                    throw new NotImplementedException();
+                    mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - 1 + keyStorageLen);
+                    mergedSector.Data[0] = (byte)(128 + leftIter.Count + rightIter.Count + 1);
+                    Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
+                    Array.Copy(iter.Data, entryOffset, mergedSector.Data, leftIter.TotalLength, keyStorageLen);
+                    Array.Copy(rightIter.Data, 1, mergedSector.Data, leftIter.TotalLength + keyStorageLen, rightIter.TotalLength - 1);
+                    FixChildrenParentPointers(mergedSector);
                 }
                 _owner.DeallocateSector(leftSector);
                 InternalBTreeParentEraseRange(ref sector, ref iter, mergeAroundIndex, mergeAroundIndex + 1);
