@@ -2,7 +2,7 @@
 
 namespace BTDB
 {
-    public class StreamProxy : IStream, IDisposable
+    public class StreamProxy : IStream
     {
         private readonly System.IO.Stream _stream;
         private readonly object _lock = new object();

@@ -1,13 +1,10 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 
 namespace BTDB
 {
-    static class ExtensionMethods
+    public static class ExtensionMethods
     {
         public static bool CreateKey(this ILowLevelDBTransaction transaction, byte[] keyBuf)
         {
@@ -67,7 +64,7 @@ namespace BTDB
             return new WriteLockHelper(readerWriterLock);
         }
 
-        internal struct ReadLockHelper : IDisposable
+        public struct ReadLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 
@@ -83,7 +80,7 @@ namespace BTDB
             }
         }
 
-        internal struct UpgradeableReadLockHelper : IDisposable
+        public struct UpgradeableReadLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 
@@ -99,7 +96,7 @@ namespace BTDB
             }
         }
 
-        internal struct WriteLockHelper : IDisposable
+        public struct WriteLockHelper : IDisposable
         {
             readonly ReaderWriterLockSlim _readerWriterLock;
 

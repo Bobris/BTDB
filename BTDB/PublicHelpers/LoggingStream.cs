@@ -4,7 +4,7 @@ using System.Text;
 
 namespace BTDB
 {
-    class LoggingStream : IStream, IDisposable
+    public class LoggingStream : IStream
     {
         IStream _stream;
         readonly bool _dispose;
@@ -122,11 +122,7 @@ namespace BTDB
             Log("LoggingStream disposed");
             if (_dispose && _stream != null)
             {
-                var disp = _stream as IDisposable;
-                if (disp != null)
-                {
-                    disp.Dispose();
-                }
+                _stream.Dispose();
                 _stream = null;
             }
         }
