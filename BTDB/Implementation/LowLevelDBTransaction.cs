@@ -841,6 +841,7 @@ namespace BTDB
             int realKeyLen = _prefix.Length + keyLen;
             int keyLenInline = BTreeChildIterator.CalcKeyLenInline(realKeyLen);
             PackUnpack.PackUInt32(sectorData, sectorDataOfs, (uint)realKeyLen);
+            PackUnpack.PackUInt64(sectorData, sectorDataOfs + 4, 0);
             sectorDataOfs += 4 + 8;
             var usedPrefixLen = Math.Min(_prefix.Length, keyLenInline);
             Array.Copy(_prefix, 0, sectorData, sectorDataOfs, usedPrefixLen);
