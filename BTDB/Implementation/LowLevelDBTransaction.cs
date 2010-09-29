@@ -1348,12 +1348,21 @@ namespace BTDB
         SectorPtr ResizeContentSector(SectorPtr oldSectorPtr, long oldSize, Sector parentSector, long newSize)
         {
             Debug.Assert(oldSize != 0 && newSize != 0);
-            if (oldSize == newSize) return oldSectorPtr;
+            Sector sector = null;
+            if (oldSize == newSize)
+            {
+                sector = _owner.TryGetSector(oldSectorPtr.Ptr);
+                if (sector!=null)
+                {
+                    sector.Parent = parentSector;
+                    sector.Unlock();
+                }
+                return oldSectorPtr;
+            }
             int oldDownPtrCount;
             var oldBytesInDownLevel = GetBytesInDownLevel(oldSize, out oldDownPtrCount);
             int newDownPtrCount;
             var newBytesInDownLevel = GetBytesInDownLevel(newSize, out newDownPtrCount);
-            Sector sector = null;
             try
             {
                 if (oldBytesInDownLevel < newBytesInDownLevel)
