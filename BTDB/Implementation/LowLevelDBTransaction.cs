@@ -49,6 +49,13 @@ namespace BTDB
             if (IsWriteTransaction()) return;
             _owner.UpgradeTransactionToWriteOne(this, _readLink);
             _readLink = null;
+            var sector = _currentKeySector;
+            for (int i = _currentKeySectorParents.Count - 1; i >= 0; i--)
+            {
+                var sectorParent = _currentKeySectorParents[i];
+                sector.Parent = sectorParent;
+                sector = sectorParent;
+            }
         }
 
         public void SetKeyPrefix(byte[] prefix, int prefixOfs, int prefixLen)
@@ -1352,7 +1359,7 @@ namespace BTDB
             if (oldSize == newSize)
             {
                 sector = _owner.TryGetSector(oldSectorPtr.Ptr);
-                if (sector!=null)
+                if (sector != null)
                 {
                     sector.Parent = parentSector;
                     sector.Unlock();
