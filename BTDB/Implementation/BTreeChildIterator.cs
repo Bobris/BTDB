@@ -308,6 +308,7 @@ namespace BTDB
                        EntryOffset + CalcEntrySize(KeyLen, newSize) - withValuePtr,
                        TotalLength - EntryOffset - CurrentEntrySize + withValuePtr);
             PackUnpack.PackUInt64(newData, EntryOffset + 4, (ulong)newSize);
+            _valueLen = newSize;
         }
     }
 }

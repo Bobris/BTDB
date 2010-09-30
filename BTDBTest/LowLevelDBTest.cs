@@ -324,7 +324,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void ValueStoreWorks([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
+        public void ValueStoreWorksDifferentTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
             [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
         {
             var valbuf = new byte[firstLength];
@@ -366,6 +366,38 @@ namespace BTDBTest
                         if (valbuf2[i] != 0)
                             Assert.AreEqual(0, valbuf2[i]);
                     }
+                }
+            }
+        }
+
+        [Test]
+        public void ValueStoreWorksSameTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
+            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
+        {
+            var valbuf = new byte[firstLength];
+            new Random(0).NextBytes(valbuf);
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    tr1.WriteValue(0, valbuf.Length, valbuf, 0);
+                    tr1.SetValueSize(secondLength);
+                    var valbuf2 = tr1.ReadValue();
+                    var commonLength = Math.Min(firstLength, secondLength);
+                    for (int i = 0; i < commonLength; i++)
+                    {
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                    }
+                    for (int i = commonLength; i < secondLength; i++)
+                    {
+                        if (valbuf2[i] != 0)
+                            Assert.AreEqual(0, valbuf2[i]);
+                    }
+                    tr1.Commit();
                 }
             }
         }
