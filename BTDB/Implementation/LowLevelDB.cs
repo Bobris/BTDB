@@ -1463,44 +1463,5 @@ namespace BTDB
             }
             return result;
         }
-
-        void SectorCacheToGraph()
-        {
-            using (var ws = new StreamWriter("graph.gv"))
-            {
-                ws.WriteLine("digraph G {");
-                foreach (var lazy in _sectorCache.Values)
-                {
-                    var sector = lazy.Value;
-                    WriteSectorNodeId(ws, sector);
-                    ws.Write("[label=\"{0}\\n\"{1}]", sector.Position, sector.Locked ? ",style=filled,color=red" : "");
-                    ws.WriteLine(";");
-                }
-                foreach (var lazy in _sectorCache.Values)
-                {
-                    var sector = lazy.Value;
-                    if (sector.Parent != null)
-                    {
-                        WriteSectorNodeId(ws, sector.Parent);
-                        ws.Write(" -> ");
-                        WriteSectorNodeId(ws, sector);
-                        ws.WriteLine(";");
-                    }
-                }
-                ws.WriteLine("}");
-            }
-        }
-
-        static void WriteSectorNodeId(StreamWriter ws, Sector sector)
-        {
-            if (sector.Position < 0)
-            {
-                ws.Write("U{0}", -sector.Position);
-            }
-            else
-            {
-                ws.Write("A{0}", sector.Position);
-            }
-        }
     }
 }

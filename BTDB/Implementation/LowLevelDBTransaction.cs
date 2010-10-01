@@ -1788,8 +1788,8 @@ namespace BTDB
                     Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
                     Array.Copy(iter.Data, entryOffset, mergedSector.Data, leftIter.TotalLength, keyStorageLen);
                     Array.Copy(rightIter.Data, 1, mergedSector.Data, leftIter.TotalLength + keyStorageLen, rightIter.TotalLength - 1);
-                    FixChildrenParentPointers(mergedSector);
                 }
+                FixChildrenParentPointers(mergedSector);
                 _owner.DeallocateSector(leftSector);
                 InternalBTreeParentEraseRange(ref sector, ref iter, mergeAroundIndex, mergeAroundIndex + 1);
                 SectorPtr.Pack(sector.Data, entryOffset - 8 - LowLevelDB.PtrDownSize,
