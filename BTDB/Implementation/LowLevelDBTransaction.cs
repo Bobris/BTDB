@@ -215,6 +215,12 @@ namespace BTDB
                     {
                         sector = parent;
                         parent = PopCurrentKeyParent();
+                        if (parent == null)
+                        {
+                            _prefixKeyCount = _currentKeyIndex - _prefixKeyStart + 1;
+                            FindLastKey();
+                            return false;
+                        }
                         continue;
                     }
                     var childSectorPtr = iter.GetChildSectorPtr(childByPos + 1);
@@ -393,6 +399,8 @@ namespace BTDB
                     SetBTreeChildKeyData(leftSector, keyBuf, keyOfs, keyLen, leftPos);
                     newKeySector = leftSector;
                 }
+                FixChildrenParentPointers(leftSector);
+                FixChildrenParentPointers(rightSector);
                 if (leftSector.Parent == null)
                 {
                     CreateBTreeParentFromTwoLeafs(leftSector, rightSector);
@@ -599,20 +607,45 @@ namespace BTDB
 
         void FixChildrenParentPointers(Sector parent)
         {
-            Debug.Assert(parent.Type == SectorType.BTreeParent);
-            var iter = new BTreeParentIterator(parent.Data);
-            for (int i = 0; i <= iter.Count; i++)
+            switch (parent.Type)
             {
-                var childSectorPtr = iter.GetChildSectorPtr(i);
-                var sector = _owner.TryGetSector(childSectorPtr.Ptr);
-                if (sector != null)
-                {
-                    if (sector.InTransaction)
+                case SectorType.BTreeParent:
                     {
-                        sector.Parent = parent;
+                        var iter = new BTreeParentIterator(parent.Data);
+                        for (int i = 0; i <= iter.Count; i++)
+                        {
+                            var childSectorPtr = iter.GetChildSectorPtr(i);
+                            FixChildParentPointer(childSectorPtr, parent);
+                        }
+                        break;
                     }
-                    sector.Unlock();
+                case SectorType.BTreeChild:
+                    {
+                        var iter = new BTreeChildIterator(parent.Data);
+                        do
+                        {
+                            if (iter.HasKeySectorPtr) 
+                                FixChildParentPointer(iter.KeySectorPtr,parent);
+                            if (iter.HasValueSectorPtr)
+                                FixChildParentPointer(iter.ValueSectorPtr,parent);
+                        } while (iter.MoveNext());
+                        break;
+                    }
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
+        void FixChildParentPointer(SectorPtr childSectorPtr, Sector parent)
+        {
+            var sector = _owner.TryGetSector(childSectorPtr.Ptr);
+            if (sector != null)
+            {
+                if (sector.InTransaction)
+                {
+                    sector.Parent = parent;
                 }
+                sector.Unlock();
             }
         }
 
