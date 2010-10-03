@@ -1,4 +1,6 @@
-﻿namespace BTDB
+﻿using System.Collections.Generic;
+
+namespace BTDB
 {
     public interface ITweaks
     {
@@ -8,5 +10,7 @@
         bool ShouldMerge2BTreeChild(int leftCount, int leftLength, int rightCount, int rightLength);
         bool ShouldMerge2BTreeParent(int leftCount, int leftLength, int rightCount, int rightLength,
                                      int keyStorageLength);
+        bool ShouldAttemptCompation(int sectorCacheSize);
+        void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen);
     }
 }

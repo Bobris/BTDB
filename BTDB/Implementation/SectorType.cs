@@ -1,6 +1,6 @@
 ﻿namespace BTDB
 {
-    internal enum SectorType
+    public enum SectorType
     {
         BTreeParent,
         BTreeChild,

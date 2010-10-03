@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -85,7 +84,7 @@ namespace BTDB
         int _currentCacheTime;
         readonly ReaderWriterLockSlim _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
         bool _runningCacheCompaction;
-        bool _runningInTransactionCacheCompaction;
+        bool _runningWriteCacheCompaction;
         readonly byte[] _headerData = new byte[TotalHeaderSize];
         State _currentState = new State();
         State _newState = new State();
@@ -184,8 +183,8 @@ namespace BTDB
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (_runningInTransactionCacheCompaction) return;
-            if (_sectorCache.Count < 100) return;
+            if (!_tweaks.ShouldAttemptCompation(_sectorCache.Count)) return;
+            if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {
                 if (_inSpaceAllocation)
@@ -203,11 +202,11 @@ namespace BTDB
                 else
                 {
                     compacting = _cacheCompactionLock.TryEnterUpgradeableReadLock(0);
+                    if (compacting == false) return;
                 }
-                if (compacting == false) return;
                 if (_runningCacheCompaction) return;
                 _runningCacheCompaction = true;
-                _runningInTransactionCacheCompaction = inWriteTransaction;
+                _runningWriteCacheCompaction = inWriteTransaction;
                 runningCompactingSet = true;
                 var sectors = new List<KeyValuePair<Sector, int>>();
                 foreach (var pair in _sectorCache)
@@ -218,17 +217,11 @@ namespace BTDB
                     sectors.Add(new KeyValuePair<Sector, int>(sector, 0));
                 }
                 if (sectors.Count == 0) return;
-                sectors.Sort((a, b) => a.Key.LastAccessTime - b.Key.LastAccessTime);
-                for (int i = 0; i < sectors.Count; i++)
-                {
-                    var sector = sectors[i].Key;
-                    int price = sector.Deepness * 65536 - i;
-                    sectors[i] = new KeyValuePair<Sector, int>(sector, price);
-                }
-                sectors.Sort((a, b) => b.Value - a.Value);
+                _tweaks.WhichSectorsToRemoveFromCache(sectors);
+                if (sectors.Count == 0) return;
                 using (_cacheCompactionLock.WriteLock())
                 {
-                    foreach (var pair in sectors.Take(_sectorCache.Count / 2))
+                    foreach (var pair in sectors)
                     {
                         var sector = pair.Key;
                         if (sector.Locked) continue;
@@ -249,7 +242,7 @@ namespace BTDB
                 if (runningCompactingSet)
                 {
                     _runningCacheCompaction = false;
-                    _runningInTransactionCacheCompaction = false;
+                    _runningWriteCacheCompaction = false;
                 }
                 if (compacting) _cacheCompactionLock.ExitUpgradeableReadLock();
             }
@@ -654,8 +647,15 @@ namespace BTDB
                 UpdateCurrentParents(sector, clone, unlockStack);
                 return clone;
             }
+            if (!_sectorCache.ContainsKey(sector.Position & MaskOfPosition))
+            {
+                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => sector).Force());
+            }
+            else
+            {
+                UnlinkFromInTransactionSectors(sector);
+            }
             sector.Dirty = true;
-            UnlinkFromInTransactionSectors(sector);
             LinkToTailOfDirtySectors(sector);
             return sector;
         }
@@ -755,6 +755,8 @@ namespace BTDB
         {
             if (_inSpaceAllocation)
             {
+                Debug.Assert(sector.Deleted == false);
+                sector.Deleted = true;
                 _postponedDeallocateSectors.Add(sector);
                 return;
             }
@@ -1227,6 +1229,7 @@ namespace BTDB
 
         void UnlinkFromUnallocatedSectors(Sector unallocatedSector)
         {
+            Debug.Assert(_unallocatedSectorCount > 0);
             _unallocatedSectorCount--;
             if (unallocatedSector.PrevLink == null)
             {
@@ -1254,6 +1257,7 @@ namespace BTDB
 
         void UnlinkFromDirtySectors(Sector dirtySector)
         {
+            Debug.Assert(_dirtySectorCount > 0);
             _dirtySectorCount--;
             if (dirtySector.PrevLink == null)
             {
@@ -1281,6 +1285,7 @@ namespace BTDB
 
         void UnlinkFromInTransactionSectors(Sector inTransactionSector)
         {
+            Debug.Assert(_inTransactionSectorCount > 0);
             _inTransactionSectorCount--;
             if (inTransactionSector.PrevLink == null)
             {

@@ -4,19 +4,19 @@ using System.Threading;
 
 namespace BTDB
 {
-    internal sealed class Sector
+    public sealed class Sector
     {
-        internal SectorType Type { get; set; }
+        public SectorType Type { get; internal set; }
 
         internal long Position { get; set; }
 
-        internal bool InTransaction { get; set; }
+        public bool InTransaction { get; internal set; }
 
-        internal bool Dirty { get; set; }
+        public bool Dirty { get; internal set; }
 
         internal bool Deleted { get; set; }
 
-        internal int LastAccessTime { get; set; }
+        public int LastAccessTime { get; internal set; }
 
         internal Sector Parent { get; set; }
 
@@ -29,7 +29,7 @@ namespace BTDB
             get { return _lockCount > 0; }
         }
 
-        internal int Deepness
+        public int Deepness
         {
             get
             {
@@ -57,7 +57,7 @@ namespace BTDB
             Debug.Assert(_lockCount >= 0);
         }
 
-        internal bool Allocated
+        public bool Allocated
         {
             get { return Position > 0; }
         }
@@ -67,7 +67,7 @@ namespace BTDB
             get { return _data; }
         }
 
-        internal int Length
+        public int Length
         {
             get
             {
@@ -75,7 +75,7 @@ namespace BTDB
                 return _data.Length;
             }
 
-            set
+            internal set
             {
                 Debug.Assert(value >= 0 && value <= LowLevelDB.MaxSectorSize);
                 Debug.Assert(value % LowLevelDB.AllocationGranularity == 0);
