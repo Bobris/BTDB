@@ -647,13 +647,18 @@ namespace BTDB
                 UpdateCurrentParents(sector, clone, unlockStack);
                 return clone;
             }
-            if (!_sectorCache.ContainsKey(sector.Position & MaskOfPosition))
+            Lazy<Sector> lazyActual;
+            if (_sectorCache.TryGetValue(sector.Position,out lazyActual))
             {
-                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => sector).Force());
+                if (!ReferenceEquals(lazyActual.Value,sector))
+                {
+                    return DirtizeSector(lazyActual.Value, newParent, unlockStack);
+                }
+                UnlinkFromInTransactionSectors(sector);
             }
             else
             {
-                UnlinkFromInTransactionSectors(sector);
+                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => sector).Force());
             }
             sector.Dirty = true;
             LinkToTailOfDirtySectors(sector);
@@ -671,11 +676,6 @@ namespace BTDB
                     sector.Length = newLength;
                     return sector;
                 }
-                if (sector.Dirty)
-                {
-                    UnlinkFromDirtySectors(sector);
-                }
-                _sectorCache.TryRemove(sector.Position);
             }
             if (newParent != null)
             {
@@ -763,10 +763,10 @@ namespace BTDB
             if (sector.InTransaction)
             {
                 sector.Deleted = true;
+                _sectorCache.TryRemove(sector.Position);
                 if (!sector.Allocated)
                 {
                     UnlinkFromUnallocatedSectors(sector);
-                    _sectorCache.TryRemove(sector.Position);
                     return;
                 }
                 if (sector.Dirty)
