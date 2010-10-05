@@ -766,6 +766,7 @@ namespace BTDB
                 if (!sector.Allocated)
                 {
                     UnlinkFromUnallocatedSectors(sector);
+                    _sectorCache.TryRemove(sector.Position);
                     return;
                 }
                 if (sector.Dirty)
@@ -1324,7 +1325,23 @@ namespace BTDB
                     _spaceUsedByReadOnlyTransactions.UnmergeInPlace(_spaceDeallocatedInTransaction);
                     _spaceAllocatedInTransaction.Clear();
                     _spaceDeallocatedInTransaction.Clear();
+                    while (_unallocatedSectorHeadLink != null)
+                    {
+                        _sectorCache.TryRemove(_unallocatedSectorHeadLink.Position);
+                        UnlinkFromUnallocatedSectors(_unallocatedSectorHeadLink);
+                    }
+                    while (_dirtySectorHeadLink != null)
+                    {
+                        _sectorCache.TryRemove(_dirtySectorHeadLink.Position);
+                        UnlinkFromDirtySectors(_dirtySectorHeadLink);
+                    }
+                    while (_inTransactionSectorHeadLink != null)
+                    {
+                        _sectorCache.TryRemove(_inTransactionSectorHeadLink.Position);
+                        DetransactionalizeSector(_inTransactionSectorHeadLink);
+                    }
                 }
+                Debug.Assert(_sectorCache.Keys.ToList().Exists(l=>l<0)==false);
             }
             finally
             {
