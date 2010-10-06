@@ -934,6 +934,7 @@ namespace BTDB
             BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
             sectorStack.Push(new InitAllocItem { Sector = newLeafSector, Level = 0 });
             PublishSector(newLeafSector);
+            TruncateSectorCache(true);
         }
 
         static int FindOfsInParent(Sector sector, Sector where)
