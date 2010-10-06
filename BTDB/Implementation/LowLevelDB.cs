@@ -760,39 +760,61 @@ namespace BTDB
                 _postponedDeallocateSectors.Add(sector);
                 return;
             }
-            if (sector.InTransaction)
+            _inSpaceAllocation = true;
+            try
             {
-                sector.Deleted = true;
-                _sectorCache.TryRemove(sector.Position);
-                if (!sector.Allocated)
+                if (sector.InTransaction)
                 {
-                    UnlinkFromUnallocatedSectors(sector);
-                    return;
-                }
-                if (sector.Dirty)
-                {
-                    UnlinkFromDirtySectors(sector);
+                    sector.Deleted = true;
+                    _sectorCache.TryRemove(sector.Position);
+                    if (!sector.Allocated)
+                    {
+                        UnlinkFromUnallocatedSectors(sector);
+                        return;
+                    }
+                    if (sector.Dirty)
+                    {
+                        UnlinkFromDirtySectors(sector);
+                    }
+                    else
+                    {
+                        UnlinkFromInTransactionSectors(sector);
+                    }
+                    _spaceAllocatedInTransaction.TryExclude((ulong) sector.Position, (ulong) sector.Length);
                 }
                 else
                 {
-                    UnlinkFromInTransactionSectors(sector);
+                    _spaceDeallocatedInTransaction.TryInclude((ulong) sector.Position, (ulong) sector.Length);
+                    _spaceUsedByReadOnlyTransactions.TryInclude((ulong) sector.Position, (ulong) sector.Length);
                 }
-                _spaceAllocatedInTransaction.TryExclude((ulong)sector.Position, (ulong)sector.Length);
+                if (_newState.RootAllocPage.Ptr == 0)
+                {
+                    CreateInitialAllocPages();
+                }
+                long startGran = sector.Position/AllocationGranularity;
+                int grans = sector.Length/AllocationGranularity;
+                var totalGrans = (long) (_newState.WantedDatabaseLength/AllocationGranularity);
+                UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, totalGrans, null);
+                _newState.UsedSize -= (ulong) sector.Length;
             }
-            else
+            finally
             {
-                _spaceDeallocatedInTransaction.TryInclude((ulong)sector.Position, (ulong)sector.Length);
-                _spaceUsedByReadOnlyTransactions.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+                FinishPostponedSpaceDeallocation();
             }
-            if (_newState.RootAllocPage.Ptr == 0)
+        }
+
+        void FinishPostponedSpaceDeallocation()
+        {
+            _inSpaceAllocation = false;
+            if (_postponedDeallocateSectors.Count > 0)
             {
-                CreateInitialAllocPages();
+                var postponed = _postponedDeallocateSectors.ToArray();
+                _postponedDeallocateSectors.Clear();
+                foreach (var postbonedDeallocateSector in postponed)
+                {
+                    DeallocateSector(postbonedDeallocateSector);
+                }
             }
-            long startGran = sector.Position / AllocationGranularity;
-            int grans = sector.Length / AllocationGranularity;
-            var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
-            UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, totalGrans, null);
-            _newState.UsedSize -= (ulong)sector.Length;
         }
 
         static long GetGransInDownLevel(long len, out int downPtrCount)
@@ -826,8 +848,8 @@ namespace BTDB
                                             sectorPtr.Checksum,
                                             true);
                         sector.Type = SectorType.AllocChild;
-                        sector.Parent = parent;
                     }
+                    sector.Parent = parent;
                     sector = DirtizeSector(sector, sector.Parent, null);
                     BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
                     sectorPtr = sector.ToSectorPtr();
@@ -842,8 +864,8 @@ namespace BTDB
                                         sectorPtr.Checksum,
                                         true);
                     sector.Type = SectorType.AllocParent;
-                    sector.Parent = parent;
                 }
+                sector.Parent = parent;
                 sector = DirtizeSector(sector, sector.Parent, null);
                 for (var i = (int)(startGran / gransInChild); i < childSectors; i++)
                 {
@@ -1069,12 +1091,7 @@ namespace BTDB
             }
             finally
             {
-                _inSpaceAllocation = false;
-                foreach (var postbonedDeallocateSector in _postponedDeallocateSectors)
-                {
-                    DeallocateSector(postbonedDeallocateSector);
-                }
-                _postponedDeallocateSectors.Clear();
+                FinishPostponedSpaceDeallocation();
             }
         }
 
