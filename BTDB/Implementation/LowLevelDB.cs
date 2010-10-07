@@ -1124,8 +1124,8 @@ namespace BTDB
                                             sectorPtr.Checksum,
                                             true);
                         sector.Type = SectorType.AllocChild;
-                        sector.Parent = parent;
                     }
+                    sector.Parent = parent;
                     int startGranSearch = 0;
                     while (true)
                     {
@@ -1163,8 +1163,8 @@ namespace BTDB
                                         sectorPtr.Checksum,
                                         true);
                     sector.Type = SectorType.AllocParent;
-                    sector.Parent = parent;
                 }
+                sector.Parent = parent;
                 sector = DirtizeSector(sector, sector.Parent, null);
                 sectorPtr = sector.ToSectorPtr();
                 var i = 0;
