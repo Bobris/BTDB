@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using BTDB;
 using NUnit.Framework;
@@ -559,9 +558,9 @@ namespace BTDBTest
         {
             if (log)
             {
-                return new LoggingStream(new StreamProxy(new MemoryStream(), true), true, LogDebug);
+                return new LoggingStream(new ManagedMemoryStream(), true, LogDebug);
             }
-            return new StreamProxy(new MemoryStream(), true);
+            return new ManagedMemoryStream();
         }
 
         static void LogDebug(string s)

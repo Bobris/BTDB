@@ -12,5 +12,6 @@ namespace BTDB
                                      int keyStorageLength);
         bool ShouldAttemptCompation(int sectorCacheSize);
         void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen);
+        void NewSectorAddedToCache(Sector sector, int sectorsInCache);
     }
 }

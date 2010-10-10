@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace BTDB
 {
@@ -50,20 +51,29 @@ namespace BTDB
 
         public bool ShouldAttemptCompation(int sectorCacheSize)
         {
-            return sectorCacheSize >= 100;
+            return sectorCacheSize >= 1800;
         }
 
         public void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen)
         {
-            choosen.Sort((a, b) => a.Key.LastAccessTime - b.Key.LastAccessTime);
+            choosen.Sort((a, b) => a.Key.LastAccessTime < b.Key.LastAccessTime ? -1 : (a.Key.LastAccessTime > b.Key.LastAccessTime ? 1: 0));
             for (int i = 0; i < choosen.Count; i++)
             {
                 var sector = choosen[i].Key;
                 int price = sector.Deepness * 65536 - i;
+                if (sector.Type == SectorType.DataChild || sector.Type==SectorType.DataParent)
+                {
+                    price += 65536*10;
+                }
                 choosen[i] = new KeyValuePair<Sector, int>(sector, price);
             }
             choosen.Sort((a, b) => b.Value - a.Value);
             choosen.RemoveRange(choosen.Count / 2, choosen.Count - choosen.Count / 2);
+        }
+
+        public void NewSectorAddedToCache(Sector sector, int sectorsInCache)
+        {
+            Debug.Assert(sectorsInCache < 2000);
         }
     }
 }

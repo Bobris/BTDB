@@ -81,7 +81,7 @@ namespace BTDB
 
         ITweaks _tweaks = new DefaultTweaks();
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
-        int _currentCacheTime;
+        long _currentCacheTime = 1;
         readonly ReaderWriterLockSlim _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
         bool _runningCacheCompaction;
         bool _runningWriteCacheCompaction;
@@ -111,6 +111,8 @@ namespace BTDB
         int _unallocatedSectorCount;
         int _dirtySectorCount;
         int _inTransactionSectorCount;
+        ulong _totalBytesRead;
+        ulong _totalBytesWritten;
 
         internal State NewState
         {
@@ -153,17 +155,19 @@ namespace BTDB
             size = size * AllocationGranularity;
             var lazy = new Lazy<Sector>(() =>
             {
-                var res = new Sector { Position = position, Length = size, LastAccessTime = -1 };
+                var res = new Sector { Position = position, Length = size, LastAccessTime = 0 };
                 if (inWriteTransaction)
                 {
                     res.InTransaction = _spaceAllocatedInTransaction.Contains((ulong)position);
                     if (res.InTransaction)
                         LinkToTailOfInTransactionSectors(res);
                 }
+                //Console.WriteLine("Reading {0} len:{1}", position, size);
                 if (_stream.Read(res.Data, 0, size, (ulong)position) != size)
                 {
                     throw new BTDBException("Data reading error");
                 }
+                _totalBytesRead += (ulong)size;
                 if (Checksum.CalcFletcher(res.Data, 0, (uint)size) != checksum)
                 {
                     throw new BTDBException("Checksum error");
@@ -270,6 +274,7 @@ namespace BTDB
             StoreStateToHeaderBuffer(_newState);
             TransferNewStateToCurrentState();
             StoreStateToHeaderBuffer(_newState);
+            _totalBytesWritten += TotalHeaderSize;
             _stream.Write(_headerData, 0, TotalHeaderSize, 0);
             _stream.Flush();
         }
@@ -298,6 +303,7 @@ namespace BTDB
                 {
                     throw new BTDBException("Too short header");
                 }
+                _totalBytesRead += TotalHeaderSize;
                 if (_headerData[0] != (byte)'B' || _headerData[1] != (byte)'T' || _headerData[2] != (byte)'D'
                     || _headerData[3] != (byte)'B' || _headerData[4] != (byte)'1' || _headerData[5] != (byte)'0'
                     || _headerData[6] != (byte)'0' || _headerData[7] != (byte)'0')
@@ -545,6 +551,7 @@ namespace BTDB
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
             _stream.Flush();
+            _totalBytesWritten += RootSize;
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
             TransferNewStateToCurrentState();
             _commitNeeded = false;
@@ -559,6 +566,8 @@ namespace BTDB
 
         private void FlushDirtySector(Sector dirtySector)
         {
+            //Console.WriteLine("Writing {0} len:{1}", dirtySector.Position, dirtySector.Length);
+            _totalBytesWritten += (ulong)dirtySector.Length;
             _stream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
             var checksum = Checksum.CalcFletcher(dirtySector.Data, 0, (uint)dirtySector.Length);
             long ptr = dirtySector.Position;
@@ -648,9 +657,9 @@ namespace BTDB
                 return clone;
             }
             Lazy<Sector> lazyActual;
-            if (_sectorCache.TryGetValue(sector.Position,out lazyActual))
+            if (_sectorCache.TryGetValue(sector.Position, out lazyActual))
             {
-                if (!ReferenceEquals(lazyActual.Value,sector))
+                if (!ReferenceEquals(lazyActual.Value, sector))
                 {
                     return DirtizeSector(lazyActual.Value, newParent, unlockStack);
                 }
@@ -780,22 +789,24 @@ namespace BTDB
                     {
                         UnlinkFromInTransactionSectors(sector);
                     }
-                    _spaceAllocatedInTransaction.TryExclude((ulong) sector.Position, (ulong) sector.Length);
+                    _spaceAllocatedInTransaction.TryExclude((ulong)sector.Position, (ulong)sector.Length);
                 }
                 else
                 {
-                    _spaceDeallocatedInTransaction.TryInclude((ulong) sector.Position, (ulong) sector.Length);
-                    _spaceUsedByReadOnlyTransactions.TryInclude((ulong) sector.Position, (ulong) sector.Length);
+                    _spaceDeallocatedInTransaction.TryInclude((ulong)sector.Position, (ulong)sector.Length);
+                    _spaceUsedByReadOnlyTransactions.TryInclude((ulong)sector.Position, (ulong)sector.Length);
                 }
                 if (_newState.RootAllocPage.Ptr == 0)
                 {
+                    _inSpaceAllocation = false;
                     CreateInitialAllocPages();
+                    _inSpaceAllocation = true;
                 }
-                long startGran = sector.Position/AllocationGranularity;
-                int grans = sector.Length/AllocationGranularity;
-                var totalGrans = (long) (_newState.WantedDatabaseLength/AllocationGranularity);
+                long startGran = sector.Position / AllocationGranularity;
+                int grans = sector.Length / AllocationGranularity;
+                var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
                 UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, totalGrans, null);
-                _newState.UsedSize -= (ulong) sector.Length;
+                _newState.UsedSize -= (ulong)sector.Length;
             }
             finally
             {
@@ -1359,7 +1370,7 @@ namespace BTDB
                         DetransactionalizeSector(_inTransactionSectorHeadLink);
                     }
                 }
-                Debug.Assert(_sectorCache.Keys.ToList().Exists(l=>l<0)==false);
+                Debug.Assert(_sectorCache.Keys.ToList().Exists(l => l < 0) == false);
             }
             finally
             {
@@ -1393,7 +1404,7 @@ namespace BTDB
 
         internal Sector NewSector()
         {
-            var result = new Sector { Dirty = true, InTransaction = true, LastAccessTime = -1 };
+            var result = new Sector { Dirty = true, InTransaction = true, LastAccessTime = 0 };
             _unallocatedCounter--;
             result.Position = _unallocatedCounter * AllocationGranularity;
             return result;
@@ -1409,17 +1420,13 @@ namespace BTDB
             _sectorCache.TryAdd(newSector.Position, lazy);
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            Debug.Assert(_sectorCache.Count < 200);
+            _tweaks.NewSectorAddedToCache(newSector, _sectorCache.Count);
         }
 
         internal void UpdateLastAccess(Sector sector)
         {
-            if (sector.LastAccessTime == _currentCacheTime) return;
-            sector.LastAccessTime = Interlocked.Increment(ref _currentCacheTime);
-            while (sector.LastAccessTime == -1)
-            {
-                sector.LastAccessTime = Interlocked.Increment(ref _currentCacheTime);
-            }
+            if (sector.LastAccessTime == (ulong)_currentCacheTime) return;
+            sector.LastAccessTime = (ulong)Interlocked.Increment(ref _currentCacheTime);
         }
 
         void LinkToTailOfUnallocatedSectors(Sector newSector)
@@ -1485,7 +1492,9 @@ namespace BTDB
         {
             var result = new LowLevelDBStats
                              {
-                                 DatabaseStreamSize = _stream.GetSize()
+                                 DatabaseStreamSize = _stream.GetSize(),
+                                 TotalBytesRead = _totalBytesRead,
+                                 TotalBytesWritten = _totalBytesWritten
                              };
             if (readLink != null)
             {

@@ -16,7 +16,7 @@ namespace BTDB
 
         internal bool Deleted { get; set; }
 
-        public int LastAccessTime { get; internal set; }
+        public ulong LastAccessTime { get; internal set; }
 
         internal Sector Parent { get; set; }
 
