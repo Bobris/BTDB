@@ -615,7 +615,7 @@ namespace BTDB
                         for (int i = 0; i <= iter.Count; i++)
                         {
                             var childSectorPtr = iter.GetChildSectorPtr(i);
-                            FixChildParentPointer(childSectorPtr, parent);
+                            _owner.FixChildParentPointer(childSectorPtr, parent);
                         }
                         break;
                     }
@@ -624,28 +624,15 @@ namespace BTDB
                         var iter = new BTreeChildIterator(parent.Data);
                         do
                         {
-                            if (iter.HasKeySectorPtr) 
-                                FixChildParentPointer(iter.KeySectorPtr,parent);
+                            if (iter.HasKeySectorPtr)
+                                _owner.FixChildParentPointer(iter.KeySectorPtr, parent);
                             if (iter.HasValueSectorPtr)
-                                FixChildParentPointer(iter.ValueSectorPtr,parent);
+                                _owner.FixChildParentPointer(iter.ValueSectorPtr, parent);
                         } while (iter.MoveNext());
                         break;
                     }
                 default:
                     throw new InvalidOperationException();
-            }
-        }
-
-        void FixChildParentPointer(SectorPtr childSectorPtr, Sector parent)
-        {
-            var sector = _owner.TryGetSector(childSectorPtr.Ptr);
-            if (sector != null)
-            {
-                if (sector.InTransaction)
-                {
-                    sector.Parent = parent;
-                }
-                sector.Unlock();
             }
         }
 

@@ -1084,12 +1084,7 @@ namespace BTDB
                     newLeafSector.Unlock();
                     PublishSector(newParentSector);
                     newParentSector.Unlock();
-                    var childSector = TryGetSector(_newState.RootAllocPage.Ptr);
-                    if (childSector != null)
-                    {
-                        childSector.Parent = newParentSector;
-                        childSector.Unlock();
-                    }
+                    FixChildParentPointer(_newState.RootAllocPage, newParentSector);
                     _newState.RootAllocPage = newParentSector.ToSectorPtr();
                     posInGrans = gransInChild * childSectors;
                 }
@@ -1240,6 +1235,10 @@ namespace BTDB
                     sector = ResizeSectorNoUpdatePosition(sector, (childSectors + 1) * PtrDownSize, sector.Parent, null);
                     sectorPtr = sector.ToSectorPtr();
                     Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
+                    for (int j = 0; j < childSectors; j++)
+                    {
+                        FixChildParentPointer(SectorPtr.Unpack(sector.Data, j * PtrDownSize), sector);
+                    }
                 }
                 newLeafSector = NewSector();
                 newLeafSector.Type = SectorType.AllocChild;
@@ -1511,6 +1510,19 @@ namespace BTDB
                 result.WastedSize = _newState.WantedDatabaseLength - _newState.UsedSize;
             }
             return result;
+        }
+
+        internal void FixChildParentPointer(SectorPtr childSectorPtr, Sector parent)
+        {
+            var sector = TryGetSector(childSectorPtr.Ptr);
+            if (sector != null)
+            {
+                if (sector.InTransaction)
+                {
+                    sector.Parent = parent;
+                }
+                sector.Unlock();
+            }
         }
     }
 }
