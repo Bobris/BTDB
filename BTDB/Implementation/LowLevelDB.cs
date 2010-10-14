@@ -564,6 +564,13 @@ namespace BTDB
             UnlinkFromInTransactionSectors(sector);
         }
 
+        internal void ForceFlushSector(Sector sector)
+        {
+            if (!sector.InTransaction) return;
+            if (!sector.Allocated) RealSectorAllocate(sector);
+            if (sector.Dirty) FlushDirtySector(sector);
+        }
+
         private void FlushDirtySector(Sector dirtySector)
         {
             //Console.WriteLine("Writing {0} len:{1}", dirtySector.Position, dirtySector.Length);

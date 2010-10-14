@@ -532,7 +532,7 @@ namespace BTDBTest
             }
         }
 
-        static IEnumerable<int[]> EraseRangeSource()
+        public static IEnumerable<int[]> EraseRangeSource()
         {
             yield return new[] { 1, 0, 1 };
             for (int i = 1001; i < 10000; i += 1000)
@@ -547,6 +547,46 @@ namespace BTDBTest
                 yield return new[] { i, 0, i / 2 };
                 yield return new[] { i, 3 * i / 4, 1 };
                 yield return new[] { i, 0, i };
+            }
+        }
+
+        [Test]
+        public void ALotOfLargeKeysWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                for (int i = 0; i < 10; i++)
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int j = 0; j < 10; j++)
+                        {
+                            var key = new byte[5000];
+                            key[0] = (byte)i;
+                            key[key.Length - 1] = (byte)j;
+                            Assert.True(tr.CreateKey(key));
+                            tr.SetValueSize(4000+i*100+j);
+                        }
+                        tr.Commit();
+                    }
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    for (int i = 0; i < 10; i++)
+                    {
+                        for (int j = 0; j < 10; j++)
+                        {
+                            var key = new byte[5000];
+                            key[0] = (byte)i;
+                            key[key.Length - 1] = (byte)j;
+                            Assert.True(tr.FindExactKey(key));
+                            Assert.AreEqual(4000 + i * 100 + j, tr.GetValueSize());
+                        }
+                    }
+                    Debug.WriteLine(tr.CalculateStats().ToString());
+                }
             }
         }
 

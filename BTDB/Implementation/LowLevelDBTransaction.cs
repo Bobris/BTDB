@@ -408,6 +408,7 @@ namespace BTDB
                 else
                 {
                     iter = new BTreeChildIterator(rightSector.Data);
+                    if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, rightSector);
                     int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
                     AddToBTreeParent(leftSector, rightSector, iter.Data, iter.KeyLen, iter.KeyOffset,
                                      keyLenInSector);
@@ -419,6 +420,46 @@ namespace BTDB
             finally
             {
                 if (unlockRightSector) rightSector.Unlock();
+            }
+        }
+
+        void ForceKeyFlush(SectorPtr keySectorPtr, int keySize, Sector parent)
+        {
+            // Because parent of sector could be just one and we are going to point to same sector from 2 places it needs to be forcibly flushed
+            ForceFlushContentSector(keySectorPtr,keySize,parent);
+        }
+
+        void ForceFlushContentSector(SectorPtr sectorPtr, long len, Sector parent)
+        {
+            Sector sector = null;
+            try
+            {
+                sector = _owner.TryGetSector(sectorPtr.Ptr);
+                if (len <= LowLevelDB.MaxLeafDataSectorSize)
+                {
+                    if (sector == null) return;
+                    _owner.ForceFlushSector(sector);
+                    return;
+                }
+                int downPtrCount;
+                long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
+                if (sector == null)
+                {
+                    sector = _owner.ReadSector(sectorPtr, true);
+                    sector.Type = SectorType.DataParent;
+                    sector.Parent = parent;
+                }
+                for (int i = 0; i < downPtrCount; i++)
+                {
+                    var downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
+                    ForceFlushContentSector(downSectorPtr, Math.Min(len, bytesInDownLevel), sector);
+                    len -= bytesInDownLevel;
+                }
+                _owner.ForceFlushSector(sector);
+            }
+            finally
+            {
+                if (sector != null) sector.Unlock();
             }
         }
 
@@ -1837,6 +1878,8 @@ namespace BTDB
                 data = iter.Data;
                 ofs = iter.EntryOffset;
                 len = iter.ValueOffset - ofs;
+                if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, sector);
+                Debug.Assert(data == sector.Data);
                 return;
             }
             else
