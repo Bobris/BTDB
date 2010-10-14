@@ -674,7 +674,8 @@ namespace BTDB
             }
             else
             {
-                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => sector).Force());
+                var localSector = sector;
+                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force());
             }
             sector.Dirty = true;
             LinkToTailOfDirtySectors(sector);
