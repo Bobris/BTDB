@@ -55,14 +55,33 @@ namespace BTDB
 
         internal static int IndexOfFirstHole(byte[] data, int size, int startOffset)
         {
+            Debug.Assert(size > 0);
             int pos = startOffset / 8;
             var firstByteFill = (byte)(255 >> (8 - (startOffset & 7)));
             int sizetill = 0;
-            int laststart = pos*8;
-            while (pos < data.Length)
+            int laststart = pos * 8;
+            int len = data.Length;
+            if (pos >= len) return -1;
+            int b = data[pos] | firstByteFill;
+            pos++;
+            switch (b)
             {
-                var b = (byte)(data[pos] | firstByteFill);
-                firstByteFill = 0;
+                case 255:
+                    laststart += 8;
+                    break;
+                case 0:
+                    sizetill += 8;
+                    break;
+                default:
+                    if (FirstHoleSize[b] >= size) return laststart;
+                    if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
+                    sizetill = LastHoleSize[b];
+                    laststart += 8 - sizetill;
+                    break;
+            }
+            while (pos < len)
+            {
+                b = data[pos];
                 pos++;
                 switch (b)
                 {
@@ -137,22 +156,41 @@ namespace BTDB
 
         internal static int SizeOfBiggestHoleUpTo255(byte[] data)
         {
+            if (data.Length >= 32)
+            {
+                for (int i = data.Length - 32; i < data.Length; i++)
+                {
+                    if (data[i] != 0) goto fastCheckFailed;
+                }
+                return 255;
+            }
+        fastCheckFailed:
             int pos = 0;
             int sizetill = 0;
             int sizemax = 0;
-            while (pos < data.Length)
+            int len = data.Length;
+            int b;
+            while (pos < len)
             {
-                byte b = data[pos];
+                b = data[pos];
                 pos++;
                 if (b == 255)
                 {
                     if (sizetill > sizemax) sizemax = sizetill;
                     sizetill = 0;
+                    while (pos < len)
+                    {
+                        b = data[pos];
+                        pos++;
+                        if (b != 255) goto slower;
+                    }
+                    goto finish;
                 }
-                else if (b == 0)
+            slower:
+                if (b == 0)
                 {
                     sizetill += 8;
-                    if (sizetill > 255) break;
+                    if (sizetill > 255) return 255;
                 }
                 else
                 {
@@ -163,6 +201,7 @@ namespace BTDB
                 }
             }
             if (sizetill > sizemax) sizemax = sizetill;
+        finish:
             if (sizemax > 255) sizemax = 255;
             return sizemax;
         }
