@@ -127,6 +127,14 @@ namespace BTDB
         void SetValueSize(long newSize);
 
         /// <summary>
+        /// Same as SetValueSize(len); WriteValue(0,len,buf,bufOfs);, but faster
+        /// </summary>
+        /// <param name="buf">Buffer with new value data</param>
+        /// <param name="bufOfs">Offset there actual data starts in buf</param>
+        /// <param name="len">New value size</param>
+        void SetValue(byte[] buf, int bufOfs, int len);
+
+        /// <summary>
         /// Remove current key and value. Current key will be invalidated.
         /// It is same as calling EraseRange(GetKeyIndex(),GetKeyIndex()).
         /// </summary>

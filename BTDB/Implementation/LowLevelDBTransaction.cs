@@ -426,7 +426,7 @@ namespace BTDB
         void ForceKeyFlush(SectorPtr keySectorPtr, int keySize, Sector parent)
         {
             // Because parent of sector could be just one and we are going to point to same sector from 2 places it needs to be forcibly flushed
-            ForceFlushContentSector(keySectorPtr,keySize,parent);
+            ForceFlushContentSector(keySectorPtr, keySize, parent);
         }
 
         void ForceFlushContentSector(SectorPtr sectorPtr, long len, Sector parent)
@@ -922,6 +922,11 @@ namespace BTDB
             }
         }
 
+        SectorPtr CreateContentSector(byte[] buf, int ofs, int len, Sector parent)
+        {
+            return CreateContentSector(buf, ofs, len, null, 0, 0, parent);
+        }
+
         SectorPtr CreateContentSector(byte[] buf, int ofs, int len, byte[] buf2, int ofs2, int len2, Sector parent)
         {
             if (len + len2 <= LowLevelDB.MaxLeafDataSectorSize)
@@ -1408,19 +1413,64 @@ namespace BTDB
                 else
                 {
                     SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                   ResizeContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector, newDeepSize));
+                                   ResizeContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector, newDeepSize, null, 0));
                 }
             }
             if (newEndContent.Length > 0) InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
             if (oldEndContent != null && oldEndContent.Length > 0) InternalWriteValue(oldSize - oldInlineSize, oldInlineSize, oldEndContent, 0);
         }
 
-        SectorPtr ResizeContentSector(SectorPtr oldSectorPtr, long oldSize, Sector parentSector, long newSize)
+        public void SetValue(byte[] buf, int bufOfs, int len)
+        {
+            if (len < 0) throw new ArgumentOutOfRangeException("len");
+            if (_currentKeyIndexInLeaf < 0) throw new BTDBException("Current Key is invalid");
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndexInLeaf);
+            long oldSize = iter.ValueLen;
+            if (oldSize == len)
+            {
+                WriteValue(0, len, buf, bufOfs);
+                return;
+            }
+            UpgradeToWriteTransaction();
+            int oldInlineSize = BTreeChildIterator.CalcValueLenInline(oldSize);
+            int newInlineSize = BTreeChildIterator.CalcValueLenInline(len);
+            long oldDeepSize = oldSize - oldInlineSize;
+            int newDeepSize = len - newInlineSize;
+            var oldValueSectorPtr = new SectorPtr();
+            if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
+            _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, len), _currentKeySector.Parent, _currentKeySectorParents);
+            iter.ResizeValue(_currentKeySector.Data, len);
+            Array.Copy(buf, bufOfs + len - newInlineSize, iter.Data, iter.ValueOffset, newInlineSize);
+            if (oldDeepSize != newDeepSize)
+            {
+                if (oldDeepSize == 0)
+                {
+                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
+                                   CreateContentSector(buf, bufOfs, newDeepSize, _currentKeySector));
+                }
+                else if (newDeepSize == 0)
+                {
+                    DeleteContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector);
+                }
+                else
+                {
+                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
+                                   ResizeContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector, newDeepSize, buf, bufOfs));
+                }
+            }
+        }
+
+        SectorPtr ResizeContentSector(SectorPtr oldSectorPtr, long oldSize, Sector parentSector, long newSize, byte[] buf, int bufOfs)
         {
             Debug.Assert(oldSize != 0 && newSize != 0);
             Sector sector = null;
             if (oldSize == newSize)
             {
+                if (buf != null)
+                {
+                    return RecursiveWriteValue(oldSectorPtr, newSize, 0, (int)newSize, buf, bufOfs, parentSector);
+                }
                 sector = _owner.TryGetSector(oldSectorPtr.Ptr);
                 if (sector != null)
                 {
@@ -1442,11 +1492,14 @@ namespace BTDB
                     sector.Parent = parentSector;
                     sector.Type = SectorType.DataParent;
                     _owner.PublishSector(sector);
-                    SectorPtr.Pack(sector.Data, 0, ResizeContentSector(oldSectorPtr, oldSize, sector, newBytesInDownLevel));
+                    SectorPtr.Pack(sector.Data, 0, ResizeContentSector(oldSectorPtr, oldSize, sector, newBytesInDownLevel, buf, bufOfs));
                     for (int i = 1; i < newDownPtrCount; i++)
                     {
                         long downLevelSize = Math.Min(newSize - i * newBytesInDownLevel, newBytesInDownLevel);
-                        SectorPtr.Pack(sector.Data, i * LowLevelDB.PtrDownSize, CreateContentSector(downLevelSize, sector));
+                        SectorPtr.Pack(sector.Data, i * LowLevelDB.PtrDownSize,
+                                       buf != null
+                                           ? CreateContentSector(buf, (int)(bufOfs + i * newBytesInDownLevel), (int)downLevelSize, sector)
+                                           : CreateContentSector(downLevelSize, sector));
                     }
                     return sector.ToSectorPtr();
                 }
@@ -1465,11 +1518,11 @@ namespace BTDB
                         DeleteContentSector(SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize), downLevelSize, sector);
                     }
                     _owner.DeallocateSector(sector);
-                    return ResizeContentSector(SectorPtr.Unpack(sector.Data, 0), oldBytesInDownLevel, parentSector, newSize);
+                    return ResizeContentSector(SectorPtr.Unpack(sector.Data, 0), oldBytesInDownLevel, parentSector, newSize, buf, bufOfs);
                 }
                 if (oldBytesInDownLevel == 1)
                 {
-                    return ResizeContentSectorChild(ref sector, oldSectorPtr, oldDownPtrCount, newDownPtrCount, parentSector);
+                    return ResizeContentSectorChild(ref sector, oldSectorPtr, oldDownPtrCount, newDownPtrCount, parentSector, buf, bufOfs);
                 }
                 sector = _owner.TryGetSector(oldSectorPtr.Ptr);
                 if (sector == null)
@@ -1492,12 +1545,19 @@ namespace BTDB
                 Array.Copy(oldData, 0, sector.Data, 0, (lastCommonPtrCount + 1) * LowLevelDB.PtrDownSize);
                 lastSectorPtr = SectorPtr.Unpack(sector.Data, lastCommonPtrCount * LowLevelDB.PtrDownSize);
                 lastOffset = lastCommonPtrCount * newBytesInDownLevel;
-                lastSectorPtr = ResizeContentSector(lastSectorPtr, Math.Min(oldSize - lastOffset, oldBytesInDownLevel), sector, Math.Min(newSize - lastOffset, newBytesInDownLevel));
+                lastSectorPtr = ResizeContentSector(lastSectorPtr, Math.Min(oldSize - lastOffset, oldBytesInDownLevel), sector, Math.Min(newSize - lastOffset, newBytesInDownLevel), buf, (int)(bufOfs + lastOffset));
                 SectorPtr.Pack(sector.Data, lastCommonPtrCount * LowLevelDB.PtrDownSize, lastSectorPtr);
                 for (int i = oldDownPtrCount; i < newDownPtrCount; i++)
                 {
-                    lastOffset = i * oldBytesInDownLevel;
-                    lastSectorPtr = CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
+                    lastOffset = i * newBytesInDownLevel;
+                    if (buf != null)
+                    {
+                        lastSectorPtr = CreateContentSector(buf, (int)(bufOfs + lastOffset), (int)Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
+                    }
+                    else
+                    {
+                        lastSectorPtr = CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
+                    }
                     SectorPtr.Pack(sector.Data, i * LowLevelDB.PtrDownSize, lastSectorPtr);
                 }
                 return sector.ToSectorPtr();
@@ -1508,7 +1568,7 @@ namespace BTDB
             }
         }
 
-        SectorPtr ResizeContentSectorChild(ref Sector sector, SectorPtr oldSectorPtr, int oldDownPtrCount, int newDownPtrCount, Sector parentSector)
+        SectorPtr ResizeContentSectorChild(ref Sector sector, SectorPtr oldSectorPtr, int oldDownPtrCount, int newDownPtrCount, Sector parentSector, byte[] buf, int bufOfs)
         {
             sector = _owner.TryGetSector(oldSectorPtr.Ptr);
             if (sector == null)
@@ -1519,7 +1579,14 @@ namespace BTDB
             sector.Parent = parentSector;
             byte[] oldData = sector.Data;
             sector = _owner.ResizeSectorNoUpdatePosition(sector, newDownPtrCount, parentSector, null);
-            Array.Copy(oldData, 0, sector.Data, 0, Math.Min(oldDownPtrCount, newDownPtrCount));
+            if (buf == null)
+            {
+                Array.Copy(oldData, 0, sector.Data, 0, Math.Min(oldDownPtrCount, newDownPtrCount));
+            }
+            else
+            {
+                Array.Copy(buf, bufOfs, sector.Data, 0, newDownPtrCount);
+            }
             return sector.ToSectorPtr();
         }
 

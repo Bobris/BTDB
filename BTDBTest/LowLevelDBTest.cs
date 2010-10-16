@@ -323,6 +323,81 @@ namespace BTDBTest
         }
 
         [Test]
+        public void SetValueWorksSameTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
+            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
+        {
+            var valbuf = new byte[secondLength];
+            new Random(0).NextBytes(valbuf);
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    tr1.CreateKey(_key2);
+                    tr1.CreateKey(_key3);
+                    tr1.SetValueSize(firstLength);
+                    tr1.WriteValue(0, valbuf.Length, valbuf, 0);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.True(tr2.FindExactKey(_key1));
+                    Assert.True(tr2.FindExactKey(_key2));
+                    Assert.True(tr2.FindExactKey(_key3));
+                    var valbuf2 = tr2.ReadValue();
+                    for (int i = 0; i < secondLength; i++)
+                    {
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void SetValueWorksDifferentTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
+            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
+        {
+            var valbuf = new byte[secondLength];
+            new Random(0).NextBytes(valbuf);
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    tr1.CreateKey(_key2);
+                    tr1.CreateKey(_key3);
+                    tr1.SetValueSize(firstLength);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.True(tr2.FindExactKey(_key1));
+                    Assert.True(tr2.FindExactKey(_key2));
+                    Assert.True(tr2.FindExactKey(_key3));
+                    tr2.WriteValue(0, valbuf.Length, valbuf, 0);
+                    tr2.Commit();
+                }
+                using (var tr3 = db.StartTransaction())
+                {
+                    Assert.True(tr3.FindExactKey(_key1));
+                    Assert.True(tr3.FindExactKey(_key2));
+                    Assert.True(tr3.FindExactKey(_key3));
+                    var valbuf2 = tr3.ReadValue();
+                    for (int i = 0; i < secondLength; i++)
+                    {
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void ValueStoreWorksDifferentTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
             [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
         {
