@@ -117,6 +117,44 @@ namespace BTDBTest
         }
 
         [Test]
+        public void OnlyOneWrittingTransactionPossible()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(_key1);
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.False(tr2.FindExactKey(_key1));
+                        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(_key2));
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void OnlyOneWrittingTransactionPossible2()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                var tr1 = db.StartTransaction();
+                tr1.CreateKey(_key1);
+                using (var tr2 = db.StartTransaction())
+                {
+                    tr1.Commit();
+                    tr1.Dispose();
+                    Assert.False(tr2.FindExactKey(_key1));
+                    Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(_key2));
+                }
+            }
+        }
+
+        [Test]
         public void BiggerKey([Values(0, 1, 268, 269, 270, 4364, 4365, 4366, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];

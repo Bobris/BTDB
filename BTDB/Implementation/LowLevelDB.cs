@@ -148,9 +148,8 @@ namespace BTDB
 
         Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction)
         {
-            Debug.Assert(position > 0);
-            Debug.Assert(size > 0);
-            Debug.Assert(size <= MaxSectorSize / AllocationGranularity);
+            if (position <= 0) throw new BTDBException("Wrong data in db (negative position)");
+            if (size <= 0 || size > MaxSectorSize / AllocationGranularity) throw new BTDBException("Wrong sector length");
             TruncateSectorCache(inWriteTransaction);
             size = size * AllocationGranularity;
             var lazy = new Lazy<Sector>(() =>
@@ -1391,7 +1390,7 @@ namespace BTDB
             lock (_readLinkLock)
             {
                 if (_writeTr != null) throw new BTDBTransactionRetryException("Write transaction already running");
-                if (link != _readTrLinkHead)
+                if (link.TransactionNumber != _currentState.TransactionCounter)
                     throw new BTDBTransactionRetryException("Newer write transaction already finished");
                 _writeTr = transaction;
                 _currentTrCommited = false;
