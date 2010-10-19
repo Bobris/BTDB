@@ -9,7 +9,7 @@ namespace BTDB
         internal const int MaxValueLenInline = LowLevelDB.AllocationGranularity + 12;
 
         long _valueLen;
-        readonly byte[] _data;
+        byte[] _data;
         readonly int _count;
         int _ofs;
         int _pos;
@@ -308,6 +308,7 @@ namespace BTDB
                        EntryOffset + CalcEntrySize(KeyLen, newSize) - withValuePtr,
                        TotalLength - EntryOffset - CurrentEntrySize + withValuePtr);
             PackUnpack.PackUInt64(newData, EntryOffset + 4, (ulong)newSize);
+            _data = newData;
             _valueLen = newSize;
         }
     }

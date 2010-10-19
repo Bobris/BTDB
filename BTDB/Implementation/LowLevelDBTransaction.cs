@@ -1441,7 +1441,7 @@ namespace BTDB
             if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
             _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, len), _currentKeySector.Parent, _currentKeySectorParents);
             iter.ResizeValue(_currentKeySector.Data, len);
-            Array.Copy(buf, bufOfs + len - newInlineSize, iter.Data, iter.ValueOffset, newInlineSize);
+            Array.Copy(buf, bufOfs + len - newInlineSize, _currentKeySector.Data, iter.ValueOffset, newInlineSize);
             if (oldDeepSize != newDeepSize)
             {
                 if (oldDeepSize == 0)
