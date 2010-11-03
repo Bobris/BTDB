@@ -1376,7 +1376,7 @@ namespace BTDB
                         DetransactionalizeSector(_inTransactionSectorHeadLink);
                     }
                 }
-                Debug.Assert(_sectorCache.Keys.ToList().Exists(l => l < 0) == false);
+                //Debug.Assert(_sectorCache.Keys.ToList().Exists(l => l < 0) == false);
             }
             finally
             {

@@ -376,7 +376,7 @@ namespace BTDBTest
                     tr1.CreateKey(_key2);
                     tr1.CreateKey(_key3);
                     tr1.SetValueSize(firstLength);
-                    tr1.WriteValue(0, valbuf.Length, valbuf, 0);
+                    tr1.SetValue(valbuf, 0, valbuf.Length);
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -417,7 +417,7 @@ namespace BTDBTest
                     Assert.True(tr2.FindExactKey(_key1));
                     Assert.True(tr2.FindExactKey(_key2));
                     Assert.True(tr2.FindExactKey(_key3));
-                    tr2.WriteValue(0, valbuf.Length, valbuf, 0);
+                    tr2.SetValue(valbuf, 0, valbuf.Length);
                     tr2.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
