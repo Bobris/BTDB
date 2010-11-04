@@ -1399,6 +1399,7 @@ namespace BTDB
             if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
             _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, newSize), _currentKeySector.Parent, _currentKeySectorParents);
             iter.ResizeValue(_currentKeySector.Data, newSize);
+            FixChildrenParentPointers(_currentKeySector);
             if (oldDeepSize != newDeepSize)
             {
                 if (oldDeepSize == 0)
@@ -1441,6 +1442,7 @@ namespace BTDB
             if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
             _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, len), _currentKeySector.Parent, _currentKeySectorParents);
             iter.ResizeValue(_currentKeySector.Data, len);
+            FixChildrenParentPointers(_currentKeySector);
             Array.Copy(buf, bufOfs + len - newInlineSize, _currentKeySector.Data, iter.ValueOffset, newInlineSize);
             if (oldDeepSize == 0)
             {
@@ -1551,6 +1553,14 @@ namespace BTDB
                         lastOffset = i * newBytesInDownLevel;
                         lastSectorPtr = RecursiveWriteValue(lastSectorPtr, newBytesInDownLevel, 0, (int)newBytesInDownLevel, buf, (int)(bufOfs + lastOffset), sector);
                         SectorPtr.Pack(sector.Data, i * LowLevelDB.PtrDownSize, lastSectorPtr);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < lastCommonPtrCount; i++)
+                    {
+                        lastSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
+                        _owner.FixChildParentPointer(lastSectorPtr, sector);
                     }
                 }
                 lastSectorPtr = SectorPtr.Unpack(sector.Data, lastCommonPtrCount * LowLevelDB.PtrDownSize);
