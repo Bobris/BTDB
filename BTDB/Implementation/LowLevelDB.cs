@@ -532,14 +532,7 @@ namespace BTDB
             if (_commitNeeded == false) return;
             using (_cacheCompactionLock.UpgradableReadLock())
             {
-                while (_unallocatedSectorHeadLink != null)
-                {
-                    RealSectorAllocate(_unallocatedSectorHeadLink);
-                }
-                while (_dirtySectorHeadLink != null)
-                {
-                    FlushDirtySector(_dirtySectorHeadLink);
-                }
+                AllocateAndFlushSectors();
             }
             while (_inTransactionSectorHeadLink != null)
             {
@@ -555,6 +548,67 @@ namespace BTDB
             TransferNewStateToCurrentState();
             _commitNeeded = false;
             _currentTrCommited = true;
+        }
+
+        void AllocateAndFlushSectors()
+        {
+            AllocateAndFlushSectorsByType(SectorType.DataChild);
+            AllocateAndFlushSectorsByType(SectorType.DataParent);
+            AllocateAndFlushSectorsByType(SectorType.BTreeChild);
+            AllocateAndFlushSectorsByType(SectorType.BTreeParent);
+            while (_unallocatedSectorHeadLink != null)
+            {
+                RealSectorAllocate(_unallocatedSectorHeadLink);
+            }
+            while (_dirtySectorHeadLink != null)
+            {
+                FlushDirtySector(_dirtySectorHeadLink);
+            }
+        }
+
+        void AllocateAndFlushSectorsByType(SectorType sectorType)
+        {
+            for (int d = FindMaxDeepness(sectorType); d > 0; d--)
+            {
+                var s = _unallocatedSectorHeadLink;
+                while (s != null)
+                {
+                    var cs = s;
+                    s = s.NextLink;
+                    if (cs.Type == sectorType && cs.Deepness == d)
+                    {
+                        RealSectorAllocate(cs); FlushDirtySector(cs);
+                    }
+                }
+                s = _dirtySectorHeadLink;
+                while (s != null)
+                {
+                    var cs = s;
+                    s = s.NextLink;
+                    if (cs.Type == sectorType && cs.Deepness == d)
+                    {
+                        FlushDirtySector(cs);
+                    }
+                }
+            }
+        }
+
+        int FindMaxDeepness(SectorType sectorType)
+        {
+            int maxdeep = 0;
+            var s = _unallocatedSectorHeadLink;
+            while (s != null)
+            {
+                if (s.Type == sectorType) maxdeep = Math.Max(maxdeep, s.Deepness);
+                s = s.NextLink;
+            }
+            s = _dirtySectorHeadLink;
+            while (s != null)
+            {
+                if (s.Type == sectorType) maxdeep = Math.Max(maxdeep, s.Deepness);
+                s = s.NextLink;
+            }
+            return maxdeep;
         }
 
         void DetransactionalizeSector(Sector sector)
