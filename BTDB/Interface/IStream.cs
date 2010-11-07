@@ -10,6 +10,8 @@ namespace BTDB
 
         void Flush();
 
+        void HardFlush();
+
         ulong GetSize();
 
         void SetSize(ulong newSize);

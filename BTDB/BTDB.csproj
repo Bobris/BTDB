@@ -51,6 +51,7 @@
     <Compile Include="Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="Implementation\BTreeChildIterator.cs" />
     <Compile Include="Implementation\DefaultTweaks.cs" />
+    <Compile Include="Interface\DurabilityPromiseType.cs" />
     <Compile Include="Interface\ITweaks.cs" />
     <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="Implementation\ManagedMemoryStream.cs" />

@@ -96,6 +96,12 @@ namespace BTDB
             _stream.Flush();
         }
 
+        public void HardFlush()
+        {
+            Log("hard flushing stream");
+            _stream.HardFlush();
+        }
+
         public ulong GetSize()
         {
             ulong res = _stream.GetSize();

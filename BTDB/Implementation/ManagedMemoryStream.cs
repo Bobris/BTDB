@@ -58,6 +58,10 @@ namespace BTDB
         {
         }
 
+        public void HardFlush()
+        {
+        }
+
         public ulong GetSize()
         {
             lock (_lock)

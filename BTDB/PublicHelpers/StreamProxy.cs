@@ -48,6 +48,22 @@ namespace BTDB
             }
         }
 
+        public void HardFlush()
+        {
+            lock (_lock)
+            {
+                var fileStream = _stream as System.IO.FileStream;
+                if (fileStream!=null)
+                {
+                    fileStream.Flush(true);
+                }
+                else
+                {
+                    _stream.Flush();
+                }
+            }
+        }
+
         public ulong GetSize()
         {
             lock (_lock)

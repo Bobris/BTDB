@@ -113,6 +113,7 @@ namespace BTDB
         int _inTransactionSectorCount;
         ulong _totalBytesRead;
         ulong _totalBytesWritten;
+        DurabilityPromiseType _durabilityPromise = DurabilityPromiseType.NearlyDurable;
 
         internal State NewState
         {
@@ -282,6 +283,12 @@ namespace BTDB
         {
             get { return _tweaks; }
             set { _tweaks = value; }
+        }
+
+        public DurabilityPromiseType DurabilityPromise
+        {
+            get { return _durabilityPromise; }
+            set { _durabilityPromise = value; }
         }
 
         public bool Open(IStream stream, bool dispose)
@@ -542,9 +549,16 @@ namespace BTDB
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
-            _stream.Flush();
+            if (_durabilityPromise != DurabilityPromiseType.NotDurable)
+                _stream.HardFlush();
+            else
+                _stream.Flush();
             _totalBytesWritten += RootSize;
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+            if (_durabilityPromise == DurabilityPromiseType.CompletelyDurable) 
+                _stream.HardFlush(); 
+            else
+                _stream.Flush();
             TransferNewStateToCurrentState();
             _commitNeeded = false;
             _currentTrCommited = true;
