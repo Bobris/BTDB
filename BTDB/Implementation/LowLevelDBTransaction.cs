@@ -1570,14 +1570,9 @@ namespace BTDB
                 for (int i = oldDownPtrCount; i < newDownPtrCount; i++)
                 {
                     lastOffset = i * newBytesInDownLevel;
-                    if (buf != null)
-                    {
-                        lastSectorPtr = CreateContentSector(buf, (int)(bufOfs + lastOffset), (int)Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
-                    }
-                    else
-                    {
-                        lastSectorPtr = CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
-                    }
+                    lastSectorPtr = buf != null ?
+                        CreateContentSector(buf, (int)(bufOfs + lastOffset), (int)Math.Min(newSize - lastOffset, newBytesInDownLevel), sector) :
+                        CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
                     SectorPtr.Pack(sector.Data, i * LowLevelDB.PtrDownSize, lastSectorPtr);
                 }
                 return sector.ToSectorPtr();
