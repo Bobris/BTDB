@@ -291,6 +291,17 @@ namespace BTDB
             return l * 2;
         }
 
+        internal long GetChildSectorPos(int index)
+        {
+            if (index == 0) return FirstChildSectorPos;
+            if (index == Index)
+            {
+                return PackUnpack.UnpackInt64(_data, _ofs - 8 - LowLevelDB.PtrDownSize);
+            }
+            MoveTo(index - 1);
+            return ChildSectorPos;
+        }
+
         internal SectorPtr GetChildSectorPtr(int index)
         {
             if (index == 0) return FirstChildSectorPtr;

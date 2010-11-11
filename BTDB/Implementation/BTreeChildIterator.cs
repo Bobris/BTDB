@@ -28,6 +28,11 @@ namespace BTDB
             _valueLen = (long)PackUnpack.UnpackUInt64(_data, _ofs + 4);
         }
 
+        internal static uint CountFromSectorData(byte[] data)
+        {
+            return data[0];
+        }
+
         internal static int CalcKeyLenInline(int keyLen)
         {
             if (keyLen <= MaxKeyLenInline) return keyLen;

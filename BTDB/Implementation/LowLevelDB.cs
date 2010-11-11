@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 
 namespace BTDB
@@ -1159,7 +1158,7 @@ namespace BTDB
                     newLeafSector.Unlock();
                     PublishSector(newParentSector);
                     newParentSector.Unlock();
-                    FixChildParentPointer(_newState.RootAllocPage, newParentSector);
+                    FixChildParentPointer(_newState.RootAllocPage.Ptr, newParentSector);
                     _newState.RootAllocPage = newParentSector.ToSectorPtr();
                     posInGrans = gransInChild * childSectors;
                 }
@@ -1312,7 +1311,7 @@ namespace BTDB
                     Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
                     for (int j = 0; j < childSectors; j++)
                     {
-                        FixChildParentPointer(SectorPtr.Unpack(sector.Data, j * PtrDownSize), sector);
+                        FixChildParentPointer(PackUnpack.UnpackInt64(sector.Data, j * PtrDownSize), sector);
                     }
                 }
                 newLeafSector = NewSector();
@@ -1587,9 +1586,9 @@ namespace BTDB
             return result;
         }
 
-        internal void FixChildParentPointer(SectorPtr childSectorPtr, Sector parent)
+        internal void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
-            var sector = TryGetSector(childSectorPtr.Ptr);
+            var sector = TryGetSector(childSectorPtr);
             if (sector != null)
             {
                 if (sector.InTransaction)

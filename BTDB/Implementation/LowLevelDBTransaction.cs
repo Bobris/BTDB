@@ -655,8 +655,8 @@ namespace BTDB
                         var iter = new BTreeParentIterator(parent.Data);
                         for (int i = 0; i <= iter.Count; i++)
                         {
-                            var childSectorPtr = iter.GetChildSectorPtr(i);
-                            _owner.FixChildParentPointer(childSectorPtr, parent);
+                            var childSectorPos = iter.GetChildSectorPos(i);
+                            _owner.FixChildParentPointer(childSectorPos, parent);
                         }
                         break;
                     }
@@ -666,9 +666,9 @@ namespace BTDB
                         do
                         {
                             if (iter.HasKeySectorPtr)
-                                _owner.FixChildParentPointer(iter.KeySectorPtr, parent);
+                                _owner.FixChildParentPointer(iter.KeySectorPos, parent);
                             if (iter.HasValueSectorPtr)
-                                _owner.FixChildParentPointer(iter.ValueSectorPtr, parent);
+                                _owner.FixChildParentPointer(iter.ValueSectorPos, parent);
                         } while (iter.MoveNext());
                         break;
                     }
@@ -707,7 +707,7 @@ namespace BTDB
         {
             if (sector.Type == SectorType.BTreeChild)
             {
-                return sector.Data[0];
+                return BTreeChildIterator.CountFromSectorData(sector.Data);
             }
             Debug.Assert(sector.Type == SectorType.BTreeParent);
             var iter = new BTreeParentIterator(sector.Data);
@@ -1559,8 +1559,8 @@ namespace BTDB
                 {
                     for (int i = 0; i < lastCommonPtrCount; i++)
                     {
-                        lastSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
-                        _owner.FixChildParentPointer(lastSectorPtr, sector);
+                        var lastSectorPos = PackUnpack.UnpackInt64(sector.Data, i * LowLevelDB.PtrDownSize);
+                        _owner.FixChildParentPointer(lastSectorPos, sector);
                     }
                 }
                 lastSectorPtr = SectorPtr.Unpack(sector.Data, lastCommonPtrCount * LowLevelDB.PtrDownSize);
