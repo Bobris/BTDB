@@ -140,6 +140,11 @@ namespace BTDB
             set { PackUnpack.PackInt64(_data, ChildKeyCountOffset, value); }
         }
 
+        internal void IncrementChildKeyCount()
+        {
+            PackUnpack.IncrementInt64(_data, ChildKeyCountOffset);
+        }
+
         internal int OffsetOfIndex(int index)
         {
             if (index == -1) return FirstChildSectorPtrOffset;
@@ -219,6 +224,11 @@ namespace BTDB
         {
             get { return PackUnpack.UnpackInt64(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize); }
             set { PackUnpack.PackInt64(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize, value); }
+        }
+
+        void IncrementFirstChildKeyCount()
+        {
+            PackUnpack.IncrementInt64(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize);
         }
 
         internal int BinarySearch(byte[] prefix, byte[] keyBuf, int keyOfs, int keyLen, Sector parent, Func<int, byte[], int, int, SectorPtr, int, Sector, int> compare)
@@ -320,19 +330,19 @@ namespace BTDB
             return ChildSectorPtr;
         }
 
-        internal static void ModifyChildCount(byte[] parentData, long childPos, long delta)
+        internal static void IncrementChildCount(byte[] parentData, long childPos)
         {
             var iterParent = new BTreeParentIterator(parentData);
             if ((iterParent.FirstChildSectorPos & LowLevelDB.MaskOfPosition) == childPos)
             {
-                iterParent.FirstChildKeyCount = iterParent.FirstChildKeyCount + delta;
+                iterParent.IncrementFirstChildKeyCount();
                 return;
             }
             do
             {
                 if ((iterParent.ChildSectorPos & LowLevelDB.MaskOfPosition) == childPos)
                 {
-                    iterParent.ChildKeyCount = iterParent.ChildKeyCount + delta;
+                    iterParent.IncrementChildKeyCount();
                     return;
                 }
             } while (iterParent.MoveNext());

@@ -725,7 +725,7 @@ namespace BTDB
             {
                 Sector parentSector = sector.Parent;
                 Debug.Assert(parentSector.Dirty);
-                BTreeParentIterator.ModifyChildCount(parentSector.Data, sector.Position, 1);
+                BTreeParentIterator.IncrementChildCount(parentSector.Data, sector.Position);
                 sector = parentSector;
             }
         }

@@ -71,5 +71,39 @@
         {
             return UnpackUInt32(data, offset) | ((long)UnpackInt32(data, offset + 4) << 32);
         }
+
+        public static void IncrementInt64(byte[] data, int offset)
+        {
+            var b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+            if (b != 0) return;
+            offset++;
+            b = (byte)(data[offset] + 1);
+            data[offset] = b;
+        }
     }
 }
