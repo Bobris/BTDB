@@ -26,6 +26,17 @@ namespace BTDB
             _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
         }
 
+        internal static uint CountFromSectorData(byte[] data)
+        {
+            return (uint)(data[0] - 128);
+        }
+
+        internal static void SetCountToSectorData(byte[] data, int count)
+        {
+            Debug.Assert(count < 128);
+            data[0] = (byte)(128 + count);
+        }
+
         internal static int CalcEntrySize(int keyLen)
         {
             return 4 + BTreeChildIterator.CalcKeyLenInline(keyLen) +
@@ -158,7 +169,7 @@ namespace BTDB
             get
             {
                 if (_totalLength > 0) return _totalLength;
-                if (_count==0)
+                if (_count == 0)
                 {
                     _totalLength = HeaderSize;
                     return _totalLength;
@@ -246,9 +257,9 @@ namespace BTDB
                                                                    compareLen);
                 if (result == 0)
                 {
-                    if (keyLenInline>compareLen)
+                    if (keyLenInline > compareLen)
                     {
-                        if (keyOfs==-1)
+                        if (keyOfs == -1)
                         {
                             result = 1;
                         }
