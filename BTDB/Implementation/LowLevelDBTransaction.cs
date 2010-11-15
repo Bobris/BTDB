@@ -1873,8 +1873,8 @@ namespace BTDB
                     mergedSector = _owner.NewSector();
                     mergedSector.Type = SectorType.BTreeChild;
                     mergedSector.Parent = sector;
-                    _owner.PublishSector(mergedSector);
                     mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - 1);
+                    _owner.PublishSector(mergedSector);
                     BTreeChildIterator.SetCountToSectorData(mergedSector.Data, leftIter.Count + rightIter.Count);
                     Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
                     Array.Copy(rightIter.Data, 1, mergedSector.Data, leftIter.TotalLength, rightIter.TotalLength - 1);
@@ -1891,8 +1891,8 @@ namespace BTDB
                     mergedSector = _owner.NewSector();
                     mergedSector.Type = SectorType.BTreeParent;
                     mergedSector.Parent = sector;
-                    _owner.PublishSector(mergedSector);
                     mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - 1 + keyStorageLen);
+                    _owner.PublishSector(mergedSector);
                     BTreeParentIterator.SetCountToSectorData(mergedSector.Data, leftIter.Count + rightIter.Count + 1);
                     Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
                     Array.Copy(iter.Data, entryOffset, mergedSector.Data, leftIter.TotalLength, keyStorageLen);

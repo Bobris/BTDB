@@ -10,8 +10,8 @@ namespace BTDB
         bool ShouldMerge2BTreeChild(int leftCount, int leftLength, int rightCount, int rightLength);
         bool ShouldMerge2BTreeParent(int leftCount, int leftLength, int rightCount, int rightLength,
                                      int keyStorageLength);
-        bool ShouldAttemptCompation(int sectorCacheSize);
+        bool ShouldAttemptCompation(int sectorsInCache, int bytesInCache);
         void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen);
-        void NewSectorAddedToCache(Sector sector, int sectorsInCache);
+        void NewSectorAddedToCache(Sector sector, int sectorsInCache, int bytesInCache);
     }
 }

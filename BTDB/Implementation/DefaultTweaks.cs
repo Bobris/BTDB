@@ -52,9 +52,9 @@ namespace BTDB
             return true;
         }
 
-        public bool ShouldAttemptCompation(int sectorCacheSize)
+        public bool ShouldAttemptCompation(int sectorsInCache, int bytesInCache)
         {
-            return sectorCacheSize >= 9800;
+            return sectorsInCache >= 9800;
         }
 
         public void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen)
@@ -74,7 +74,7 @@ namespace BTDB
             choosen.RemoveRange(choosen.Count / 2, choosen.Count - choosen.Count / 2);
         }
 
-        public void NewSectorAddedToCache(Sector sector, int sectorsInCache)
+        public void NewSectorAddedToCache(Sector sector, int sectorsInCache, int bytesInCache)
         {
             Debug.Assert(sectorsInCache < 10000);
         }

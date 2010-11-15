@@ -80,6 +80,7 @@ namespace BTDB
 
         ITweaks _tweaks = new DefaultTweaks();
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
+        int _bytesInCache;
         long _currentCacheTime = 1;
         readonly ReaderWriterLockSlim _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
         bool _runningCacheCompaction;
@@ -171,6 +172,7 @@ namespace BTDB
                 {
                     throw new BTDBException("Checksum error");
                 }
+                Interlocked.Add(ref _bytesInCache, size);
                 return res;
             });
             Sector result;
@@ -186,7 +188,7 @@ namespace BTDB
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (!_tweaks.ShouldAttemptCompation(_sectorCache.Count)) return;
+            if (!_tweaks.ShouldAttemptCompation(_sectorCache.Count, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {
@@ -214,7 +216,16 @@ namespace BTDB
                 var sectors = new List<KeyValuePair<Sector, int>>();
                 foreach (var pair in _sectorCache)
                 {
-                    var sector = pair.Value.Value;
+                    Sector sector;
+                    try
+                    {
+                        sector = pair.Value.Value;
+                    }
+                    catch (Exception)
+                    {
+                        _sectorCache.TryRemove(pair.Key);
+                        continue;
+                    }
                     if (sector.Locked) continue;
                     if (!inWriteTransaction && sector.InTransaction) continue;
                     sectors.Add(new KeyValuePair<Sector, int>(sector, 0));
@@ -236,7 +247,7 @@ namespace BTDB
                             Debug.Assert(sector.Deleted == false);
                             if (sector.InTransaction) UnlinkFromInTransactionSectors(sector);
                         }
-                        _sectorCache.TryRemove(sector.Position);
+                        LowLevelRemoveFromSectorCache(sector);
                     }
                 }
             }
@@ -516,13 +527,22 @@ namespace BTDB
             }
         }
 
-        public void Dispose()
+        [Conditional("DEBUG")]
+        void InDebuggerCheckDisposeInvariants()
         {
             Debug.Assert(_writeTr == null);
+            int bytesInCache = 0;
             foreach (var item in _sectorCache)
             {
                 Debug.Assert(item.Value.Value.Locked == false);
+                bytesInCache += item.Value.Value.Length;
             }
+            Debug.Assert(bytesInCache == _bytesInCache);
+        }
+
+        public void Dispose()
+        {
+            InDebuggerCheckDisposeInvariants();
             if (_disposeStream)
             {
                 var disposable = _stream as IDisposable;
@@ -554,8 +574,8 @@ namespace BTDB
                 _stream.Flush();
             _totalBytesWritten += RootSize;
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
-            if (_durabilityPromise == DurabilityPromiseType.CompletelyDurable) 
-                _stream.HardFlush(); 
+            if (_durabilityPromise == DurabilityPromiseType.CompletelyDurable)
+                _stream.HardFlush();
             else
                 _stream.Flush();
             TransferNewStateToCurrentState();
@@ -741,7 +761,10 @@ namespace BTDB
             else
             {
                 var localSector = sector;
-                _sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force());
+                if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force()))
+                {
+                    Interlocked.Add(ref _bytesInCache, localSector.Length);
+                }
             }
             sector.Dirty = true;
             LinkToTailOfDirtySectors(sector);
@@ -756,7 +779,9 @@ namespace BTDB
             {
                 if (!sector.Allocated)
                 {
+                    var oldLength = sector.Length;
                     sector.Length = newLength;
+                    Interlocked.Add(ref _bytesInCache, newLength - oldLength);
                     return sector;
                 }
             }
@@ -849,7 +874,7 @@ namespace BTDB
                 if (sector.InTransaction)
                 {
                     sector.Deleted = true;
-                    _sectorCache.TryRemove(sector.Position);
+                    LowLevelRemoveFromSectorCache(sector);
                     if (!sector.Allocated)
                     {
                         UnlinkFromUnallocatedSectors(sector);
@@ -1105,7 +1130,19 @@ namespace BTDB
             Lazy<Sector> lazyTemp;
             _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
             unallocatedSector.Position = newPosition;
-            _sectorCache.TryRemove(newPosition);
+            Lazy<Sector> lazyRemoved;
+            if (_sectorCache.TryRemove(newPosition, out lazyRemoved))
+            {
+                try
+                {
+                    Interlocked.Add(ref _bytesInCache, -lazyRemoved.Value.Length);
+                }
+// ReSharper disable EmptyGeneralCatchClause
+                catch
+// ReSharper restore EmptyGeneralCatchClause
+                {
+                }
+            }
             _sectorCache.TryAdd(newPosition, lazyTemp);
             _spaceAllocatedInTransaction.TryInclude((ulong)newPosition, (ulong)unallocatedSector.Length);
             UnlinkFromUnallocatedSectors(unallocatedSector);
@@ -1429,17 +1466,17 @@ namespace BTDB
                     _spaceDeallocatedInTransaction.Clear();
                     while (_unallocatedSectorHeadLink != null)
                     {
-                        _sectorCache.TryRemove(_unallocatedSectorHeadLink.Position);
+                        LowLevelRemoveFromSectorCache(_unallocatedSectorHeadLink);
                         UnlinkFromUnallocatedSectors(_unallocatedSectorHeadLink);
                     }
                     while (_dirtySectorHeadLink != null)
                     {
-                        _sectorCache.TryRemove(_dirtySectorHeadLink.Position);
+                        LowLevelRemoveFromSectorCache(_dirtySectorHeadLink);
                         UnlinkFromDirtySectors(_dirtySectorHeadLink);
                     }
                     while (_inTransactionSectorHeadLink != null)
                     {
-                        _sectorCache.TryRemove(_inTransactionSectorHeadLink.Position);
+                        LowLevelRemoveFromSectorCache(_inTransactionSectorHeadLink);
                         DetransactionalizeSector(_inTransactionSectorHeadLink);
                     }
                 }
@@ -1450,6 +1487,14 @@ namespace BTDB
                 _writeTr = null;
             }
             DereferenceReadLink(_readTrLinkHead);
+        }
+
+        void LowLevelRemoveFromSectorCache(Sector sector)
+        {
+            if (_sectorCache.TryRemove(sector.Position))
+            {
+                Interlocked.Add(ref _bytesInCache, -sector.Length);
+            }
         }
 
         internal void UpgradeTransactionToWriteOne(LowLevelDBTransaction transaction, ReadTrLink link)
@@ -1490,10 +1535,17 @@ namespace BTDB
 
             UpdateLastAccess(newSector);
             newSector.Lock();
-            _sectorCache.TryAdd(newSector.Position, lazy);
+            if (_sectorCache.TryAdd(newSector.Position, lazy))
+            {
+                Interlocked.Add(ref _bytesInCache, newSector.Length);
+            }
+            else
+            {
+                Debug.Fail("Republishing already published sector");
+            }
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            _tweaks.NewSectorAddedToCache(newSector, _sectorCache.Count);
+            _tweaks.NewSectorAddedToCache(newSector, _sectorCache.Count, _bytesInCache);
         }
 
         internal void UpdateLastAccess(Sector sector)
