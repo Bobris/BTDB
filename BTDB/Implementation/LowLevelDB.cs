@@ -188,7 +188,7 @@ namespace BTDB
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (!_tweaks.ShouldAttemptCompation(_sectorCache.Count, _bytesInCache)) return;
+            if (!_tweaks.ShouldAttemptCacheCompaction(_sectorCache.Count, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {

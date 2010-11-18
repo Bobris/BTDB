@@ -52,7 +52,7 @@ namespace BTDB
             return true;
         }
 
-        public bool ShouldAttemptCompation(int sectorsInCache, int bytesInCache)
+        public bool ShouldAttemptCacheCompaction(int sectorsInCache, int bytesInCache)
         {
             return sectorsInCache >= 9800;
         }
