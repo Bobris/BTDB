@@ -773,6 +773,7 @@ namespace BTDB
 
         private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent, List<Sector> unlockStack)
         {
+            if (newLength < 0 || newLength > MaxSectorSize) throw new BTDBException("Sector cannot be bigger than MaxSectorSize");
             newLength = RoundToAllocationGranularity(newLength);
             if (sector.Length == newLength && (aUpdatePositionInParent || sector.InTransaction)) return DirtizeSector(sector, newParent, unlockStack);
             if (sector.InTransaction)
@@ -1137,9 +1138,9 @@ namespace BTDB
                 {
                     Interlocked.Add(ref _bytesInCache, -lazyRemoved.Value.Length);
                 }
-// ReSharper disable EmptyGeneralCatchClause
+                // ReSharper disable EmptyGeneralCatchClause
                 catch
-// ReSharper restore EmptyGeneralCatchClause
+                // ReSharper restore EmptyGeneralCatchClause
                 {
                 }
             }

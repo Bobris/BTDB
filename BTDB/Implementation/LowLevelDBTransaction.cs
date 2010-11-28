@@ -308,8 +308,8 @@ namespace BTDB
                 {
                     return FindKeyNoncreateStrategy(strategy, iter);
                 }
-                int additionalLengthNeeded = BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen);
-                if (iter.Count >= 126 || _owner.Tweaks.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
+                int additionalLengthNeeded = BTreeChildIterator.HeaderForEntry + BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen);
+                if (_owner.Tweaks.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
                 {
                     SplitBTreeChild(keyBuf, keyOfs, keyLen, sector, iter, additionalLengthNeeded);
                 }
@@ -318,11 +318,7 @@ namespace BTDB
                     sector = _owner.ResizeSectorWithUpdatePosition(sector, iter.TotalLength + additionalLengthNeeded,
                                                                    sector.Parent, _currentKeySectorParents);
                     _currentKeySector = sector;
-                    BTreeChildIterator.SetCountToSectorData(sector.Data, iter.Count + 1);
-                    int insertOfs = iter.OffsetOfIndex(_currentKeyIndexInLeaf);
-                    Array.Copy(iter.Data, 1, sector.Data, 1, insertOfs - 1);
-                    Array.Copy(iter.Data, insertOfs, sector.Data, insertOfs + additionalLengthNeeded,
-                               iter.TotalLength - insertOfs);
+                    int insertOfs = iter.AddEntry(additionalLengthNeeded, sector.Data, _currentKeyIndexInLeaf);
                     SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, insertOfs);
                     IncrementChildCountInBTreeParents(sector);
                 }
@@ -344,17 +340,17 @@ namespace BTDB
             bool unlockRightSector = false;
             try
             {
-                int middleoffset = (iter.TotalLength + additionalLengthNeeded) / 2;
+                int middleoffset = (iter.TotalLength + iter.FirstOffset + additionalLengthNeeded) / 2;
                 iter.MoveFirst();
                 bool beforeNew = true;
                 int splitIndex = 0;
-                int currentPos = 1;
+                int currentPos = iter.FirstOffset;
                 while (currentPos < middleoffset)
                 {
                     if (beforeNew && splitIndex == _currentKeyIndexInLeaf)
                     {
                         beforeNew = false;
-                        currentPos += additionalLengthNeeded;
+                        currentPos += additionalLengthNeeded - BTreeChildIterator.HeaderForEntry;
                     }
                     else
                     {
@@ -365,40 +361,44 @@ namespace BTDB
                 }
                 rightSector = _owner.NewSector();
                 rightSector.Type = SectorType.BTreeChild;
-                rightSector.SetLengthWithRound(1 + iter.TotalLength + additionalLengthNeeded - currentPos);
-                BTreeChildIterator.SetCountToSectorData(rightSector.Data, iter.Count - splitIndex + (beforeNew ? 1 : 0));
+                int rightCount = iter.Count - splitIndex + (beforeNew ? 1 : 0);
+                rightSector.SetLengthWithRound(BTreeChildIterator.HeaderSize + rightCount * BTreeChildIterator.HeaderForEntry + iter.TotalLength + additionalLengthNeeded - BTreeChildIterator.HeaderForEntry - currentPos);
+                BTreeChildIterator.SetCountToSectorData(rightSector.Data, rightCount);
                 rightSector.Parent = sector.Parent;
                 _owner.PublishSector(rightSector);
                 unlockRightSector = true;
-                Sector leftSector = _owner.ResizeSectorWithUpdatePosition(sector, currentPos, sector.Parent,
+                int leftCount = splitIndex + (beforeNew ? 0 : 1);
+                Sector leftSector = _owner.ResizeSectorWithUpdatePosition(sector, BTreeChildIterator.HeaderSize + leftCount * BTreeChildIterator.HeaderForEntry + currentPos - iter.FirstOffset, sector.Parent,
                                                                           _currentKeySectorParents);
                 _currentKeySector = leftSector;
                 Sector newKeySector;
-                BTreeChildIterator.SetCountToSectorData(leftSector.Data, splitIndex + (beforeNew ? 0 : 1));
+                BTreeChildIterator.SetCountToSectorData(leftSector.Data, leftCount);
                 int newItemPos = iter.OffsetOfIndex(_currentKeyIndexInLeaf);
                 if (beforeNew)
                 {
-                    Array.Copy(iter.Data, 1, leftSector.Data, 1, currentPos - 1);
-                    Array.Copy(iter.Data, currentPos, rightSector.Data, 1, newItemPos - currentPos);
-                    int rightPos = 1 + newItemPos - currentPos;
+                    Array.Copy(iter.Data, iter.FirstOffset, leftSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * leftCount, currentPos - iter.FirstOffset);
+                    Array.Copy(iter.Data, currentPos, rightSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount, newItemPos - currentPos);
+                    int rightPos = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount + newItemPos - currentPos;
                     SetBTreeChildKeyData(rightSector, keyBuf, keyOfs, keyLen, rightPos);
-                    rightPos += additionalLengthNeeded;
+                    rightPos += additionalLengthNeeded - BTreeChildIterator.HeaderForEntry;
                     Array.Copy(iter.Data, newItemPos, rightSector.Data, rightPos, iter.TotalLength - newItemPos);
                     newKeySector = rightSector;
                     _currentKeyIndexInLeaf -= splitIndex;
                 }
                 else
                 {
-                    Array.Copy(iter.Data, 1, leftSector.Data, 1, newItemPos - 1);
-                    int leftPos = newItemPos;
-                    leftPos += additionalLengthNeeded;
-                    Array.Copy(iter.Data, currentPos - additionalLengthNeeded, rightSector.Data, 1,
-                               iter.TotalLength + additionalLengthNeeded - currentPos);
-                    Array.Copy(iter.Data, newItemPos, leftSector.Data, leftPos, currentPos - leftPos);
-                    leftPos = newItemPos;
-                    SetBTreeChildKeyData(leftSector, keyBuf, keyOfs, keyLen, leftPos);
+                    Array.Copy(iter.Data, iter.FirstOffset, leftSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * leftCount, newItemPos - iter.FirstOffset);
+                    int leftPosInsert = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * leftCount + newItemPos - iter.FirstOffset;
+                    int leftPos = leftPosInsert;
+                    leftPos += additionalLengthNeeded - BTreeChildIterator.HeaderForEntry;
+                    Array.Copy(iter.Data, currentPos - additionalLengthNeeded + BTreeChildIterator.HeaderForEntry, rightSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount,
+                               iter.TotalLength + additionalLengthNeeded - BTreeChildIterator.HeaderForEntry - currentPos);
+                    Array.Copy(iter.Data, newItemPos, leftSector.Data, leftPos, currentPos - newItemPos - additionalLengthNeeded + BTreeChildIterator.HeaderForEntry);
+                    SetBTreeChildKeyData(leftSector, keyBuf, keyOfs, keyLen, leftPosInsert);
                     newKeySector = leftSector;
                 }
+                BTreeChildIterator.RecalculateHeader(leftSector.Data, leftCount);
+                BTreeChildIterator.RecalculateHeader(rightSector.Data, rightCount);
                 FixChildrenParentPointers(leftSector);
                 FixChildrenParentPointers(rightSector);
                 if (leftSector.Parent == null)
@@ -737,9 +737,10 @@ namespace BTDB
                 case FindKeyStrategy.Create:
                     var newRootBTreeSector1 = _owner.NewSector();
                     newRootBTreeSector1.Type = SectorType.BTreeChild;
-                    newRootBTreeSector1.SetLengthWithRound(1 + BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen));
-                    BTreeChildIterator.SetCountToSectorData(newRootBTreeSector1.Data, 1);
-                    SetBTreeChildKeyData(newRootBTreeSector1, keyBuf, keyOfs, keyLen, 1);
+                    var entrySize = BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen);
+                    newRootBTreeSector1.SetLengthWithRound(BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry + entrySize);
+                    BTreeChildIterator.SetOneEntryCount(newRootBTreeSector1.Data, entrySize);
+                    SetBTreeChildKeyData(newRootBTreeSector1, keyBuf, keyOfs, keyLen, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry);
                     Sector newRootBTreeSector = newRootBTreeSector1;
                     _owner.NewState.RootBTree.Ptr = newRootBTreeSector.Position;
                     _owner.NewState.RootBTreeLevels = 1;
@@ -1866,18 +1867,21 @@ namespace BTDB
                 {
                     var leftIter = new BTreeChildIterator(leftSector.Data);
                     var rightIter = new BTreeChildIterator(rightSector.Data);
-                    if (leftIter.Count + rightIter.Count >= 126) return;
                     if (!_owner.Tweaks.ShouldMerge2BTreeChild(leftIter.Count, leftIter.TotalLength, rightIter.Count,
                                                          rightIter.TotalLength))
                         return;
                     mergedSector = _owner.NewSector();
                     mergedSector.Type = SectorType.BTreeChild;
                     mergedSector.Parent = sector;
-                    mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - 1);
+                    mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - BTreeChildIterator.HeaderSize);
                     _owner.PublishSector(mergedSector);
-                    BTreeChildIterator.SetCountToSectorData(mergedSector.Data, leftIter.Count + rightIter.Count);
-                    Array.Copy(leftIter.Data, 1, mergedSector.Data, 1, leftIter.TotalLength - 1);
-                    Array.Copy(rightIter.Data, 1, mergedSector.Data, leftIter.TotalLength, rightIter.TotalLength - 1);
+                    var mergedCount = leftIter.Count + rightIter.Count;
+                    BTreeChildIterator.SetCountToSectorData(mergedSector.Data, mergedCount);
+                    var ofs = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * mergedCount;
+                    Array.Copy(leftIter.Data, leftIter.FirstOffset, mergedSector.Data, ofs, leftIter.TotalLength - leftIter.FirstOffset);
+                    ofs += leftIter.TotalLength - leftIter.FirstOffset;
+                    Array.Copy(rightIter.Data, rightIter.FirstOffset, mergedSector.Data, ofs, rightIter.TotalLength - rightIter.FirstOffset);
+                    BTreeChildIterator.RecalculateHeader(mergedSector.Data, mergedCount);
                 }
                 else
                 {
@@ -2010,13 +2014,17 @@ namespace BTDB
             }
             var eraseToOfs = iter.EntryOffset + iter.CurrentEntrySize;
             var originalLength = iter.TotalLength;
+            var newCount = iter.Count - 1 - (int)(lastKeyIndex - firstKeyIndex);
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
-                                                         originalLength - eraseToOfs + eraseFromOfs,
+                                                         originalLength - eraseToOfs + eraseFromOfs - BTreeChildIterator.HeaderForEntry * (iter.Count - newCount),
                                                          sector.Parent,
                                                          null);
-            BTreeChildIterator.SetCountToSectorData(sector.Data, iter.Count - 1 - (int)(lastKeyIndex - firstKeyIndex));
-            Array.Copy(iter.Data, 1, sector.Data, 1, eraseFromOfs - 1);
-            Array.Copy(iter.Data, eraseToOfs, sector.Data, eraseFromOfs, originalLength - eraseToOfs);
+            BTreeChildIterator.SetCountToSectorData(sector.Data, newCount);
+            var ofs = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * newCount;
+            Array.Copy(iter.Data, iter.FirstOffset, sector.Data, ofs, eraseFromOfs - iter.FirstOffset);
+            ofs += eraseFromOfs - iter.FirstOffset;
+            Array.Copy(iter.Data, eraseToOfs, sector.Data, ofs, originalLength - eraseToOfs);
+            BTreeChildIterator.RecalculateHeader(sector.Data, newCount);
         }
 
         public void Commit()
