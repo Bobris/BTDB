@@ -5,8 +5,9 @@ namespace BTDB
 {
     internal struct BTreeParentIterator
     {
-        internal const int HeaderSize = 1 + LowLevelDB.PtrDownSize + 8;
-        internal const int FirstChildSectorPtrOffset = 1;
+        internal const int HeaderSize = 2 + LowLevelDB.PtrDownSize + 8;
+        internal const int HeaderForEntry = 2;
+        internal const int FirstChildSectorPtrOffset = 2;
 
         readonly byte[] _data;
         readonly int _count;
@@ -17,51 +18,51 @@ namespace BTDB
 
         public BTreeParentIterator(byte[] data)
         {
-            Debug.Assert(data[0] >= 128);
+            Debug.Assert(data[1] >= 128);
             _data = data;
-            _count = data[0] - 128;
+            _count = CountFromSectorData(data);
             _totalLength = 0;
-            _ofs = HeaderSize;
+            _ofs = HeaderSize + _count * HeaderForEntry;
             _pos = 0;
-            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
+            _keyLen = -1;
         }
 
-        internal static uint CountFromSectorData(byte[] data)
+        internal static int CountFromSectorData(byte[] data)
         {
-            return (uint)(data[0] - 128);
+            return (data[1] - 128) * 256 + data[0];
         }
 
         internal static void SetCountToSectorData(byte[] data, int count)
         {
-            Debug.Assert(count < 128);
-            data[0] = (byte)(128 + count);
+            Debug.Assert(count >= 0 && count < 128 * 256);
+            data[0] = (byte)count;
+            data[1] = (byte)((count >> 8) + 128);
         }
 
         internal static int CalcEntrySize(int keyLen)
         {
-            return 4 + BTreeChildIterator.CalcKeyLenInline(keyLen) +
-                   (keyLen > BTreeChildIterator.MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0) +
-                   LowLevelDB.PtrDownSize + 8;
+            return 4 + LowLevelDB.PtrDownSize + 8 + BTreeChildIterator.CalcKeyLenInline(keyLen) +
+                   (keyLen > BTreeChildIterator.MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
+        }
+
+        internal int FirstOffset
+        {
+            get { return HeaderSize + _count * HeaderForEntry; }
         }
 
         internal void MoveFirst()
         {
-            _ofs = HeaderSize;
+            _ofs = FirstOffset;
             _pos = 0;
-            LoadEntry();
-        }
-
-        void LoadEntry()
-        {
-            _keyLen = (int)PackUnpack.UnpackUInt32(_data, _ofs);
+            _keyLen = -1;
         }
 
         internal bool MoveNext()
         {
             if (_pos + 1 >= _count) return false;
+            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + _pos * HeaderForEntry);
             _pos++;
-            _ofs += CurrentEntrySize;
-            LoadEntry();
+            _keyLen = -1;
             return true;
         }
 
@@ -69,28 +70,38 @@ namespace BTDB
         {
             Debug.Assert(pos >= 0);
             Debug.Assert(pos < _count);
-            if (pos < _pos) MoveFirst();
-            while (_pos < pos) MoveNext();
+            if (pos == 0)
+            {
+                MoveFirst();
+                return;
+            }
+            _pos = pos;
+            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (pos - 1) * HeaderForEntry);
+            _keyLen = -1;
         }
 
         internal int KeyLen
         {
-            get { return _keyLen; }
+            get
+            {
+                if (_keyLen == -1) _keyLen = PackUnpack.UnpackInt32(_data, _ofs);
+                return _keyLen;
+            }
         }
 
         internal int KeyOffset
         {
-            get { return _ofs + 4; }
+            get { return _ofs + 4 + LowLevelDB.PtrDownSize + 8; }
         }
 
         internal int KeyLenInline
         {
-            get { return BTreeChildIterator.CalcKeyLenInline(_keyLen); }
+            get { return BTreeChildIterator.CalcKeyLenInline(KeyLen); }
         }
 
         internal bool HasKeySectorPtr
         {
-            get { return _keyLen > BTreeChildIterator.MaxKeyLenInline; }
+            get { return KeyLen > BTreeChildIterator.MaxKeyLenInline; }
         }
 
         internal int KeySectorPtrOffset
@@ -117,7 +128,7 @@ namespace BTDB
 
         internal int ChildSectorPtrOffset
         {
-            get { return KeyOffset + KeyLenInline + (HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0); }
+            get { return _ofs + 4; }
         }
 
         internal long ChildSectorPos
@@ -169,20 +180,14 @@ namespace BTDB
             get
             {
                 if (_totalLength > 0) return _totalLength;
-                if (_count == 0)
+                if (_count==0)
                 {
-                    _totalLength = HeaderSize;
-                    return _totalLength;
+                    _totalLength = FirstOffset;
                 }
-                var backupOfs = _ofs;
-                for (int i = _pos + 1; i < _count; i++)
+                else
                 {
-                    _ofs += CurrentEntrySize;
-                    LoadEntry();
+                    _totalLength = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (_count - 1) * HeaderForEntry);
                 }
-                _totalLength = _ofs + CurrentEntrySize;
-                _ofs = backupOfs;
-                LoadEntry();
                 return _totalLength;
             }
         }
@@ -191,7 +196,7 @@ namespace BTDB
         {
             get
             {
-                int result = 4 + KeyLenInline + LowLevelDB.PtrDownSize + 8;
+                int result = 4 + LowLevelDB.PtrDownSize + 8 + KeyLenInline;
                 if (_keyLen > BTreeChildIterator.MaxKeyLenInline) result += LowLevelDB.PtrDownSize;
                 return result;
             }
@@ -305,10 +310,6 @@ namespace BTDB
         internal long GetChildSectorPos(int index)
         {
             if (index == 0) return FirstChildSectorPos;
-            if (index == Index)
-            {
-                return PackUnpack.UnpackInt64(_data, _ofs - 8 - LowLevelDB.PtrDownSize);
-            }
             MoveTo(index - 1);
             return ChildSectorPos;
         }
@@ -316,10 +317,6 @@ namespace BTDB
         internal SectorPtr GetChildSectorPtr(int index)
         {
             if (index == 0) return FirstChildSectorPtr;
-            if (index == Index)
-            {
-                return SectorPtr.Unpack(_data, _ofs - 8 - LowLevelDB.PtrDownSize);
-            }
             MoveTo(index - 1);
             return ChildSectorPtr;
         }
@@ -350,6 +347,19 @@ namespace BTDB
             MoveTo(index - 1);
             keyCount = ChildKeyCount;
             return ChildSectorPtr;
+        }
+
+        public void SetChildSectorPtrWithKeyCount(int index, SectorPtr childSectorPtr, long keyCount)
+        {
+            if (index == 0)
+            {
+                FirstChildSectorPtr = childSectorPtr;
+                FirstChildKeyCount = keyCount;
+                return;
+            }
+            MoveTo(index-1);
+            ChildSectorPtr = childSectorPtr;
+            ChildKeyCount = keyCount;
         }
 
         internal static void IncrementChildCount(byte[] parentData, long childPos)
@@ -386,6 +396,17 @@ namespace BTDB
                 }
             } while (MoveNext());
             throw new BTDBException("FindChildByPos child not found");
+        }
+
+        internal static void RecalculateHeader(byte[] data, int count)
+        {
+            var ofs1 = HeaderSize + HeaderForEntry * count;
+            var ofs = ofs1;
+            for (int i = 0; i < count; i++)
+            {
+                ofs += CalcEntrySize(PackUnpack.UnpackInt32(data, ofs));
+                PackUnpack.PackUInt16(data, HeaderSize + HeaderForEntry * i, (ushort)(ofs - ofs1));
+            }
         }
     }
 }

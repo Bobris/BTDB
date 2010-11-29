@@ -105,7 +105,7 @@ namespace BTDB
                 return;
             }
             _pos = pos;
-            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (_pos - 1) * HeaderForEntry);
+            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (pos - 1) * HeaderForEntry);
             _keyLen = -1;
             _valueLen = -1;
         }
@@ -376,7 +376,7 @@ namespace BTDB
             PackUnpack.PackUInt16(data, HeaderSize, (ushort)entrySize);
         }
 
-        public static void RecalculateHeader(byte[] data, int count)
+        internal static void RecalculateHeader(byte[] data, int count)
         {
             var ofs1 = HeaderSize + HeaderForEntry * count;
             var ofs = ofs1;
