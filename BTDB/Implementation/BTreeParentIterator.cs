@@ -222,6 +222,14 @@ namespace BTDB
             get { return _ofs; }
         }
 
+        public int NextEntryOffset
+        {
+            get
+            {
+                return FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + _pos * HeaderForEntry);
+            }
+        }
+
         internal long FirstChildSectorPos
         {
             get
