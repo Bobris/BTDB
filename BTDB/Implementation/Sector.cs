@@ -104,28 +104,7 @@ namespace BTDB
         {
             SectorPtr result;
             result.Ptr = Position;
-            if (Type == SectorType.AllocChild)
-            {
-                if (Length < LowLevelDB.MaxLeafAllocSectorSize)
-                    result.Ptr |= 255;
-                else
-                    result.Ptr |= (uint)BitArrayManipulation.SizeOfBiggestHoleUpTo255(Data);
-            }
-            else if (Type == SectorType.AllocParent)
-            {
-                if (Length < LowLevelDB.MaxChildren * LowLevelDB.PtrDownSize)
-                    result.Ptr |= 255;
-                else
-                {
-                    uint res = 0;
-                    for (int i = 0; i < LowLevelDB.MaxChildren; i++)
-                    {
-                        res = Math.Max(res, Data[i * LowLevelDB.PtrDownSize]);
-                    }
-                    result.Ptr |= res;
-                }
-            }
-            else if (Position > 0)
+            if (Position > 0)
             {
                 result.Ptr |= (uint) (Length / LowLevelDB.AllocationGranularity - 1);
             }

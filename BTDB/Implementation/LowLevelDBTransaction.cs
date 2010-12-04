@@ -1831,17 +1831,43 @@ namespace BTDB
         void InternalBTreeParentEraseRange(ref Sector sector, ref BTreeParentIterator iter, int firstIndexToErase, int lastIndexToErase)
         {
             var originalLength = iter.TotalLength;
-            var eraseFromOfs = iter.OffsetOfIndex(firstIndexToErase) - LowLevelDB.PtrDownSize - 8;
+            Debug.Assert(iter.Count >= lastIndexToErase - firstIndexToErase);
+            var eraseFromOfs = iter.OffsetOfIndex(firstIndexToErase);
             var eraseToOfs = lastIndexToErase - 1 == iter.Count
-                                 ? originalLength
-                                 : iter.OffsetOfIndex(lastIndexToErase) - LowLevelDB.PtrDownSize - 8;
+                                 ? originalLength + LowLevelDB.PtrDownSize + 8
+                                 : iter.OffsetOfIndex(lastIndexToErase);
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
                                                          originalLength - eraseToOfs + eraseFromOfs,
                                                          sector.Parent,
                                                          null);
-            BTreeParentIterator.SetCountToSectorData(sector.Data, iter.Count - (lastIndexToErase - firstIndexToErase));
-            Array.Copy(iter.Data, 1, sector.Data, 1, eraseFromOfs - 1);
-            Array.Copy(iter.Data, eraseToOfs, sector.Data, eraseFromOfs, originalLength - eraseToOfs);
+            var newCount = iter.Count - (lastIndexToErase - firstIndexToErase);
+            BTreeParentIterator.SetCountToSectorData(sector.Data, newCount);
+            var ofs = BTreeParentIterator.HeaderSize + newCount * BTreeParentIterator.HeaderForEntry;
+            if (firstIndexToErase == 0)
+            {
+                iter.MoveTo(lastIndexToErase - 1);
+                Array.Copy(iter.Data, iter.ChildSectorPtrOffset, sector.Data, BTreeParentIterator.FirstChildSectorPtrOffset, LowLevelDB.PtrDownSize + 8);
+                Array.Copy(iter.Data, eraseToOfs, sector.Data, ofs, originalLength - eraseToOfs);
+            }
+            else
+            {
+                Array.Copy(iter.Data, BTreeParentIterator.FirstChildSectorPtrOffset, sector.Data, BTreeParentIterator.FirstChildSectorPtrOffset, LowLevelDB.PtrDownSize + 8);
+                iter.MoveTo(firstIndexToErase - 1);
+                if (lastIndexToErase - 1 == iter.Count)
+                {
+                    Array.Copy(iter.Data, iter.FirstOffset, sector.Data, ofs, iter.EntryOffset - iter.FirstOffset);
+                }
+                else
+                {
+                    var ofs2 = ofs + iter.ChildSectorPtrOffset - iter.FirstOffset;
+                    iter.MoveTo(lastIndexToErase - 1);
+                    Array.Copy(iter.Data, iter.FirstOffset, sector.Data, ofs, eraseFromOfs - iter.FirstOffset);
+                    ofs += eraseFromOfs - iter.FirstOffset;
+                    Array.Copy(iter.Data, iter.ChildSectorPtrOffset, sector.Data, ofs2, LowLevelDB.PtrDownSize + 8);
+                    Array.Copy(iter.Data, eraseToOfs, sector.Data, ofs, originalLength - eraseToOfs);
+                }
+            }
+            BTreeParentIterator.RecalculateHeader(sector.Data, newCount);
         }
 
         void SimplifyBTree(ref Sector sector, int mergeAroundIndex)
@@ -1959,7 +1985,7 @@ namespace BTDB
 
         void UpdateKeyAfterRemoval(ref Sector sector, ref BTreeParentIterator iter, Sector childSector)
         {
-            var oldKeyStorageLen = iter.ChildSectorPtrOffset - iter.EntryOffset;
+            var oldKeyStorageLen = iter.NextEntryOffset - iter.EntryOffset;
             byte[] data;
             int ofs;
             int len;
@@ -1967,13 +1993,14 @@ namespace BTDB
             // structure of data is keylen/4, valuelen/8, inlinekey/var, [downptr/12]
             int originalLength = iter.TotalLength;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
-                                                         originalLength - oldKeyStorageLen + len - 8,
+                                                         originalLength - oldKeyStorageLen + len + LowLevelDB.PtrDownSize,
                                                          sector.Parent,
                                                          null);
             Array.Copy(iter.Data, 0, sector.Data, 0, iter.EntryOffset);
             Array.Copy(data, ofs, sector.Data, iter.EntryOffset, 4);
-            Array.Copy(data, ofs + 12, sector.Data, iter.EntryOffset + 4, len - 12);
-            Array.Copy(iter.Data, iter.ChildSectorPtrOffset, sector.Data, iter.EntryOffset + len - 8, originalLength - iter.ChildSectorPtrOffset);
+            Array.Copy(iter.Data, iter.EntryOffset + 4, sector.Data, iter.EntryOffset + 4, LowLevelDB.PtrDownSize + 8);
+            Array.Copy(iter.Data, iter.NextEntryOffset, sector.Data, iter.EntryOffset + len + LowLevelDB.PtrDownSize, originalLength - iter.NextEntryOffset);
+            Array.Copy(data, ofs + 12, sector.Data, iter.KeyOffset, len - 12);
             iter = new BTreeParentIterator(sector.Data);
         }
 

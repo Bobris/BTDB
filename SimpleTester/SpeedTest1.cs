@@ -146,6 +146,37 @@ namespace SimpleTester
             }
         }
 
+        void DoWork3()
+        {
+            var key = new byte[4000];
+
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                _sw.Restart();
+                for (int i = 0; i < 30000; i++)
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
+                        tr.CreateKey(key);
+                        tr.SetValue(key, 0, 4000);
+                        tr.Commit();
+                    }
+                }
+                _sw.Stop();
+                using (var trStat = db.StartTransaction())
+                {
+                    Console.WriteLine(trStat.CalculateStats().ToString());
+                    Console.WriteLine("Insert:              {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                }
+            }
+        }
+
         void WriteCSV()
         {
             using (var sout=new StreamWriter("data.csv"))
@@ -161,7 +192,7 @@ namespace SimpleTester
         public void Test()
         {
             WarmUp();
-            DoWork2();
+            DoWork3();
             //WriteCSV();
         }
     }

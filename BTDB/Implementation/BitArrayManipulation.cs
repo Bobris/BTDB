@@ -56,13 +56,14 @@ namespace BTDB
         internal static int IndexOfFirstHole(byte[] data, int size, int startOffset)
         {
             Debug.Assert(size > 0);
-            int pos = startOffset / 8;
+            Debug.Assert(startOffset >= 0);
+            uint pos = (uint) (startOffset / 8);
             var firstByteFill = (byte)(255 >> (8 - (startOffset & 7)));
-            int sizetill = 0;
-            int laststart = pos * 8;
+            uint sizetill = 0;
+            uint laststart = pos * 8;
             int len = data.Length;
             if (pos >= len) return -1;
-            int b = data[pos] | firstByteFill;
+            uint b = (uint) (data[pos] | firstByteFill);
             pos++;
             switch (b)
             {
@@ -73,20 +74,20 @@ namespace BTDB
                     sizetill += 8;
                     break;
                 default:
-                    if (FirstHoleSize[b] >= size) return laststart;
-                    if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
+                    if (FirstHoleSize[b] >= size) return (int) laststart;
+                    if (MaxHoleSize[b] >= size) return (int) (pos * 8 + MaxHoleOffset[b] - 8);
                     sizetill = LastHoleSize[b];
                     laststart += 8 - sizetill;
                     break;
             }
-            while (pos < len)
+            while (pos < data.Length)
             {
                 b = data[pos];
                 pos++;
                 switch (b)
                 {
                     case 255:
-                        if (sizetill >= size) return laststart;
+                        if (sizetill >= size) return (int) laststart;
                         sizetill = 0;
                         laststart = pos * 8;
                         break;
@@ -95,14 +96,14 @@ namespace BTDB
                         break;
                     default:
                         sizetill += FirstHoleSize[b];
-                        if (sizetill >= size) return laststart;
-                        if (MaxHoleSize[b] >= size) return pos * 8 + MaxHoleOffset[b] - 8;
+                        if (sizetill >= size) return (int) laststart;
+                        if (MaxHoleSize[b] >= size) return (int) (pos * 8 + MaxHoleOffset[b] - 8);
                         sizetill = LastHoleSize[b];
                         laststart = pos * 8 - sizetill;
                         break;
                 }
             }
-            if (sizetill >= size) return laststart;
+            if (sizetill >= size) return (int) laststart;
             return -1;
         }
 
@@ -152,58 +153,6 @@ namespace BTDB
                 }
                 data[endBytePos] &= (byte)~endMask;
             }
-        }
-
-        internal static int SizeOfBiggestHoleUpTo255(byte[] data)
-        {
-            if (data.Length >= 32)
-            {
-                for (int i = data.Length - 32; i < data.Length; i++)
-                {
-                    if (data[i] != 0) goto fastCheckFailed;
-                }
-                return 255;
-            }
-        fastCheckFailed:
-            int pos = 0;
-            int sizetill = 0;
-            int sizemax = 0;
-            int len = data.Length;
-            int b;
-            while (pos < len)
-            {
-                b = data[pos];
-                pos++;
-                if (b == 255)
-                {
-                    if (sizetill > sizemax) sizemax = sizetill;
-                    sizetill = 0;
-                    while (pos < len)
-                    {
-                        b = data[pos];
-                        pos++;
-                        if (b != 255) goto slower;
-                    }
-                    goto finish;
-                }
-            slower:
-                if (b == 0)
-                {
-                    sizetill += 8;
-                    if (sizetill > 255) return 255;
-                }
-                else
-                {
-                    sizetill += FirstHoleSize[b];
-                    if (sizetill > sizemax) sizemax = sizetill;
-                    if (MaxHoleSize[b] > sizemax) sizemax = MaxHoleSize[b];
-                    sizetill = LastHoleSize[b];
-                }
-            }
-            if (sizetill > sizemax) sizemax = sizetill;
-        finish:
-            if (sizemax > 255) sizemax = 255;
-            return sizemax;
         }
 
         internal static int CompareByteArray(byte[] a1, int o1, int l1, byte[] a2, int o2, int l2)
