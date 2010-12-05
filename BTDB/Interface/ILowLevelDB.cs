@@ -7,9 +7,9 @@ namespace BTDB
         ITweaks Tweaks { get; set; }
 
         /// <summary>
-        /// Default DurabilityPromise is NearlyDurable
+        /// Default are durable, not corrupting commits (true)
         /// </summary>
-        DurabilityPromiseType DurabilityPromise { get; set; }
+        bool DurableTransactions { get; set; }
 
         bool Open(IStream stream, bool dispose);
 

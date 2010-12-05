@@ -805,6 +805,10 @@ namespace BTDB
         {
             var iter = new BTreeChildIterator(rightSector.Data);
             int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
+            if (iter.HasKeySectorPtr)
+            {
+                ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, rightSector);
+            }
             CreateBTreeParentFromTwoChildren(leftSector, rightSector, iter.Data, iter.KeyLen, iter.KeyOffset,
                                             keyLenInSector);
         }

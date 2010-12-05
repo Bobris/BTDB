@@ -6,25 +6,25 @@ using System.Threading;
 
 namespace BTDB
 {
-    /* 64 bits for offset (56bit offset + 8bit (Length/max free space)
+    /* 64 bits for offset (55bit offset + 9bit length)
      * 32 bits for http://en.wikipedia.org/wiki/Fletcher%27s_checksum
-     * 65280 max sector size in bytes
-     * Allocation granularity 256 bytes (8 bits)
+     * 262144 max sector size in bytes
+     * Allocation granularity 512 bytes (9 bits)
      * 256 pointers to lower pages in 1 page (3072)
      * Allocation pages:
-     *    8MB in one page 256*8*4096
-     *    2GB in 2nd level
-     *  512GB in 3rd level
-     *  128TB in 4th level
-     *   32PB in 5th level
-     *    8EB in 6th level
+     *   16MB in one page 512*8*4096
+     *    4GB in 2nd level
+     *    1TB in 3rd level
+     *  256TB in 4th level
+     *   64PB in 5th level
+     *   16EB in 6th level
      * 
-     * Root: 96(Header)+80*2=256
+     * Root: 352(Header)+80*2=512
      *   16 - B+Tree (8 ofs+4 check+4 levels)
      *   12 - Free Space Tree (8 ofs+4 check)
      *    4 - Unused - Zeros
      *    8 - Count of key/value pairs stored
-     *    8 - Used Size - including first 256 bytes of header and includes paddings to allocation granularity
+     *    8 - Used Size - including first 512 bytes of header and includes paddings to allocation granularity
      *    8 - Transaction Number
      *    8 - Wanted Size - size of database stream could be trimmed to this size, also this determines Free Space Tree
      *    8 - Transaction Log Position
@@ -60,14 +60,14 @@ namespace BTDB
             internal ulong WantedDatabaseLength;
         }
 
-        internal const int AllocationGranularity = 256;
+        internal const int AllocationGranularity = 512;
         const int RootSize = 80;
         const int RootSizeWithoutChecksum = RootSize - 4;
         const int FirstRootOffset = AllocationGranularity - 2 * RootSize;
         const int SecondRootOffset = FirstRootOffset + RootSize;
         const int TotalHeaderSize = SecondRootOffset + RootSize;
         internal const long MaskOfPosition = -AllocationGranularity; // 0xFFFFFFFFFFFFFF00
-        internal const int MaxSectorSize = 256 * AllocationGranularity;
+        internal const int MaxSectorSize = AllocationGranularity * AllocationGranularity;
         internal const int MaxLeafDataSectorSize = 4096;
         internal const int MaxLeafAllocSectorSize = 4096;
         const int MaxLeafAllocSectorGrans = MaxLeafAllocSectorSize * 8;
@@ -113,7 +113,7 @@ namespace BTDB
         int _inTransactionSectorCount;
         ulong _totalBytesRead;
         ulong _totalBytesWritten;
-        DurabilityPromiseType _durabilityPromise = DurabilityPromiseType.NearlyDurable;
+        bool _durableTransactions = true;
         long _nextAllocStartInGrans;
 
         internal State NewState
@@ -296,10 +296,10 @@ namespace BTDB
             set { _tweaks = value; }
         }
 
-        public DurabilityPromiseType DurabilityPromise
+        public bool DurableTransactions
         {
-            get { return _durabilityPromise; }
-            set { _durabilityPromise = value; }
+            get { return _durableTransactions; }
+            set { _durableTransactions = value; }
         }
 
         public bool Open(IStream stream, bool dispose)
@@ -569,13 +569,9 @@ namespace BTDB
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
-            if (_durabilityPromise != DurabilityPromiseType.NotDurable)
-                _stream.HardFlush();
-            else
-                _stream.Flush();
             _totalBytesWritten += RootSize;
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
-            if (_durabilityPromise == DurabilityPromiseType.CompletelyDurable)
+            if (_durableTransactions)
                 _stream.HardFlush();
             else
                 _stream.Flush();
