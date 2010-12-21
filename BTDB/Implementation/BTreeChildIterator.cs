@@ -14,6 +14,7 @@ namespace BTDB
         byte[] _data;
         readonly int _count;
         int _ofs;
+        int _ofsAfterKeyAndValueLen;
         int _pos;
         int _keyLen;
         int _totalLength;
@@ -24,10 +25,11 @@ namespace BTDB
             _data = data;
             _count = (int)CountFromSectorData(data);
             _totalLength = 0;
-            _pos = 0;
-            _ofs = HeaderSize + _count * HeaderForEntry;
-            _keyLen = -1;
+            _pos = -1;
+            _ofs = -1;
+            _ofsAfterKeyAndValueLen = -1;
             _valueLen = -1;
+            _keyLen = -1;
         }
 
         internal static bool IsChildFromSectorData(byte[] data)
@@ -60,16 +62,22 @@ namespace BTDB
 
         internal static int CalcEntrySize(int keyLen)
         {
-            return 4 + 8 + CalcKeyLenInline(keyLen) +
+            return PackUnpack.LengthVUInt((uint)keyLen) + 1 + CalcKeyLenInline(keyLen) +
                    (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
+        }
+
+        internal static int CalcEntrySizeWOLengths(int keyLen, long valueLen)
+        {
+            return CalcKeyLenInline(keyLen) +
+                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0) +
+                   CalcValueLenInline(valueLen) +
+                   (valueLen > MaxValueLenInline ? LowLevelDB.PtrDownSize : 0);
         }
 
         internal static int CalcEntrySize(int keyLen, long valueLen)
         {
-            return 4 + 8 + CalcKeyLenInline(keyLen) +
-                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0) +
-                   CalcValueLenInline(valueLen) +
-                   (valueLen > MaxValueLenInline ? LowLevelDB.PtrDownSize : 0);
+            return PackUnpack.LengthVUInt((uint)keyLen) + PackUnpack.LengthVUInt((ulong)valueLen) +
+                   CalcEntrySizeWOLengths(keyLen, valueLen);
         }
 
         internal int FirstOffset
@@ -77,12 +85,19 @@ namespace BTDB
             get { return HeaderSize + _count * HeaderForEntry; }
         }
 
+        private void LoadItem()
+        {
+            int ofs = _ofs;
+            _keyLen = (int)PackUnpack.UnpackVUInt(_data, ref ofs);
+            _valueLen = (long)PackUnpack.UnpackVUInt(_data, ref ofs);
+            _ofsAfterKeyAndValueLen = ofs;
+        }
+
         internal void MoveFirst()
         {
             _ofs = FirstOffset;
             _pos = 0;
-            _keyLen = -1;
-            _valueLen = -1;
+            LoadItem();
         }
 
         internal bool MoveNext()
@@ -90,8 +105,7 @@ namespace BTDB
             if (_pos + 1 >= _count) return false;
             _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + _pos * HeaderForEntry);
             _pos++;
-            _keyLen = -1;
-            _valueLen = -1;
+            LoadItem();
             return true;
         }
 
@@ -106,31 +120,22 @@ namespace BTDB
             }
             _pos = pos;
             _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (pos - 1) * HeaderForEntry);
-            _keyLen = -1;
-            _valueLen = -1;
+            LoadItem();
         }
 
         internal int KeyLen
         {
-            get
-            {
-                if (_keyLen == -1) _keyLen = PackUnpack.UnpackInt32(_data, _ofs);
-                return _keyLen;
-            }
+            get { return _keyLen; }
         }
 
         internal long ValueLen
         {
-            get
-            {
-                if (_valueLen == -1) _valueLen = PackUnpack.UnpackInt64(_data, _ofs + 4);
-                return _valueLen;
-            }
+            get { return _valueLen; }
         }
 
         internal int KeyOffset
         {
-            get { return _ofs + 4 + 8; }
+            get { return _ofsAfterKeyAndValueLen; }
         }
 
         internal int KeyLenInline
@@ -147,7 +152,7 @@ namespace BTDB
         {
             get
             {
-                return _ofs + 4 + 8 + KeyLenInline + ((KeyLen > MaxKeyLenInline) ? LowLevelDB.PtrDownSize : 0);
+                return _ofsAfterKeyAndValueLen + KeyLenInline + ((KeyLen > MaxKeyLenInline) ? LowLevelDB.PtrDownSize : 0);
             }
         }
 
@@ -317,9 +322,6 @@ namespace BTDB
 
         internal void ResizeValue(byte[] newData, long newSize)
         {
-            // preserves all before current item including current sizes + key
-            Array.Copy(Data, 0, newData, 0, ValueOffset);
-            // preserves all after current item
             var currentEntrySize = CurrentEntrySize;
             var newEntrySize = CalcEntrySize(KeyLen, newSize);
             int withValuePtr = 0;
@@ -327,14 +329,20 @@ namespace BTDB
             {
                 withValuePtr = LowLevelDB.PtrDownSize;
             }
+            // preserves all before current item including current sizes + key
+            int ofs = EntryOffset + PackUnpack.LengthVUInt((uint)KeyLen);
+            Array.Copy(Data, 0, newData, 0, ofs);
+            Array.Copy(Data, KeyOffset, newData, ofs + PackUnpack.LengthVUInt((ulong)newSize), ValueOffset - KeyOffset);
+            PackUnpack.PackVUInt(newData, ref ofs, (ulong)newSize);
+            // preserves all after current item
             Array.Copy(Data,
                        EntryOffset + currentEntrySize - withValuePtr,
                        newData,
                        EntryOffset + newEntrySize - withValuePtr,
                        TotalLength - EntryOffset - currentEntrySize + withValuePtr);
-            PackUnpack.PackUInt64(newData, EntryOffset + 4, (ulong)newSize);
             _data = newData;
             _valueLen = newSize;
+            _ofsAfterKeyAndValueLen = ofs;
             var delta = newEntrySize - currentEntrySize;
             for (int i = _pos; i < _count; i++)
             {
@@ -349,7 +357,7 @@ namespace BTDB
             SetCountToSectorData(newData, newCount);
             var insertOfs = OffsetOfIndex(entryIndex);
             Array.Copy(Data, HeaderSize, newData, HeaderSize, entryIndex * HeaderForEntry);
-            var additionalLengthNeededWoHeader = additionalLengthNeeded - HeaderForEntry;
+            var additionalLengthNeededWOHeader = additionalLengthNeeded - HeaderForEntry;
             Array.Copy(Data, insertOfs, newData, insertOfs + additionalLengthNeeded,
                        TotalLength - insertOfs);
             Array.Copy(
@@ -362,9 +370,9 @@ namespace BTDB
             {
                 ushort o;
                 if (i == 0)
-                    o = (ushort)additionalLengthNeededWoHeader;
+                    o = (ushort)additionalLengthNeededWOHeader;
                 else
-                    o = (ushort)(PackUnpack.UnpackUInt16(Data, HeaderSize + (i - 1) * HeaderForEntry) + additionalLengthNeededWoHeader);
+                    o = (ushort)(PackUnpack.UnpackUInt16(Data, HeaderSize + (i - 1) * HeaderForEntry) + additionalLengthNeededWOHeader);
                 PackUnpack.PackUInt16(newData, HeaderSize + i * HeaderForEntry, o);
             }
             return insertOfs + HeaderForEntry;
@@ -382,7 +390,9 @@ namespace BTDB
             var ofs = ofs1;
             for (int i = 0; i < count; i++)
             {
-                ofs += CalcEntrySize(PackUnpack.UnpackInt32(data, ofs), PackUnpack.UnpackInt64(data, ofs + 4));
+                var keyLen = (int)PackUnpack.UnpackVUInt(data, ref ofs);
+                var valueLen = (long)PackUnpack.UnpackVUInt(data, ref ofs);
+                ofs += CalcEntrySizeWOLengths(keyLen, valueLen);
                 PackUnpack.PackUInt16(data, HeaderSize + HeaderForEntry * i, (ushort)(ofs - ofs1));
             }
         }

@@ -408,6 +408,7 @@ namespace BTDB
                 else
                 {
                     iter = new BTreeChildIterator(rightSector.Data);
+                    iter.MoveFirst();
                     if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, rightSector);
                     int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
                     AddToBTreeParent(leftSector, rightSector, iter.Data, iter.KeyLen, iter.KeyOffset,
@@ -693,6 +694,7 @@ namespace BTDB
                 case SectorType.BTreeChild:
                     {
                         var iter = new BTreeChildIterator(parent.Data);
+                        iter.MoveFirst();
                         do
                         {
                             if (iter.HasKeySectorPtr)
@@ -804,6 +806,7 @@ namespace BTDB
         void CreateBTreeParentFromTwoLeafs(Sector leftSector, Sector rightSector)
         {
             var iter = new BTreeChildIterator(rightSector.Data);
+            iter.MoveFirst();
             int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
             if (iter.HasKeySectorPtr)
             {
@@ -926,9 +929,8 @@ namespace BTDB
             byte[] sectorData = inSector.Data;
             int realKeyLen = _prefix.Length + keyLen;
             int keyLenInline = BTreeChildIterator.CalcKeyLenInline(realKeyLen);
-            PackUnpack.PackUInt32(sectorData, sectorDataOfs, (uint)realKeyLen);
-            PackUnpack.PackUInt64(sectorData, sectorDataOfs + 4, 0);
-            sectorDataOfs += 4 + 8;
+            PackUnpack.PackVUInt(sectorData, ref sectorDataOfs, (uint)realKeyLen);
+            PackUnpack.PackVUInt(sectorData, ref sectorDataOfs, 0u);
             var usedPrefixLen = Math.Min(_prefix.Length, keyLenInline);
             Array.Copy(_prefix, 0, sectorData, sectorDataOfs, usedPrefixLen);
             Array.Copy(keyBuf, keyOfs, sectorData, sectorDataOfs + _prefix.Length, keyLenInline - usedPrefixLen);
@@ -1698,6 +1700,7 @@ namespace BTDB
             if (sector.Type == SectorType.BTreeChild)
             {
                 var iter = new BTreeChildIterator(sector.Data);
+                iter.MoveFirst();
                 do
                 {
                     if (iter.HasKeySectorPtr)
@@ -1993,29 +1996,32 @@ namespace BTDB
             byte[] data;
             int ofs;
             int len;
-            ExtractFirstKey(childSector, out data, out ofs, out len);
-            // structure of data is keylen/4, valuelen/8, inlinekey/var, [downptr/12]
+            int keyLen;
+            ExtractFirstKey(childSector, out data, out ofs, out len, out keyLen);
+            // structure of data is inlinekey/var, [downptr/12]
             int originalLength = iter.TotalLength;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
                                                          originalLength - oldKeyStorageLen + len + LowLevelDB.PtrDownSize,
                                                          sector.Parent,
                                                          null);
             Array.Copy(iter.Data, 0, sector.Data, 0, iter.EntryOffset);
-            Array.Copy(data, ofs, sector.Data, iter.EntryOffset, 4);
+            PackUnpack.PackInt32(sector.Data, iter.EntryOffset, keyLen);
             Array.Copy(iter.Data, iter.EntryOffset + 4, sector.Data, iter.EntryOffset + 4, LowLevelDB.PtrDownSize + 8);
-            Array.Copy(iter.Data, iter.NextEntryOffset, sector.Data, iter.EntryOffset + len + LowLevelDB.PtrDownSize, originalLength - iter.NextEntryOffset);
-            Array.Copy(data, ofs + 12, sector.Data, iter.KeyOffset, len - 12);
+            Array.Copy(iter.Data, iter.NextEntryOffset, sector.Data, iter.EntryOffset + 4 + LowLevelDB.PtrDownSize + 8 + len, originalLength - iter.NextEntryOffset);
+            Array.Copy(data, ofs, sector.Data, iter.KeyOffset, len);
             iter = new BTreeParentIterator(sector.Data);
         }
 
-        void ExtractFirstKey(Sector sector, out byte[] data, out int ofs, out int len)
+        void ExtractFirstKey(Sector sector, out byte[] data, out int ofs, out int len, out int keyLen)
         {
             if (sector.Type == SectorType.BTreeChild)
             {
                 var iter = new BTreeChildIterator(sector.Data);
+                iter.MoveFirst();
                 data = iter.Data;
-                ofs = iter.EntryOffset;
+                ofs = iter.KeyOffset;
                 len = iter.ValueOffset - ofs;
+                keyLen = iter.KeyLen;
                 if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, sector);
                 Debug.Assert(data == sector.Data);
                 return;
@@ -2026,7 +2032,7 @@ namespace BTDB
                 var childSector = GetBTreeSector(iter.FirstChildSectorPtr, sector);
                 try
                 {
-                    ExtractFirstKey(childSector, out data, out ofs, out len);
+                    ExtractFirstKey(childSector, out data, out ofs, out len, out keyLen);
                 }
                 finally
                 {

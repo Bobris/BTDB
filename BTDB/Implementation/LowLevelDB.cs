@@ -1060,6 +1060,7 @@ namespace BTDB
                 case SectorType.BTreeChild:
                     {
                         var iter = new BTreeChildIterator(where.Data);
+                        iter.MoveFirst();
                         do
                         {
                             if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
