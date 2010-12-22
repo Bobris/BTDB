@@ -2,77 +2,95 @@
 {
     public static class PackUnpack
     {
-        public static void PackUInt16(byte[] data, int offset, ushort value)
+        public static void PackUInt16LE(byte[] data, int offset, ushort value)
         {
-            data[offset] = (byte)value;
-            data[offset + 1] = (byte)(value >> 8);
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
         }
 
-        public static ushort UnpackUInt16(byte[] data, int offset)
+        public static ushort UnpackUInt16LE(byte[] data, int offset)
         {
             return (ushort)(data[offset] | (data[offset + 1] << 8));
         }
 
-        public static void PackInt16(byte[] data, int offset, short value)
+        public static void PackInt16LE(byte[] data, int offset, short value)
         {
-            data[offset] = (byte)value;
-            data[offset + 1] = (byte)(value >> 8);
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
         }
 
-        public static short UnpackInt16(byte[] data, int offset)
+        public static short UnpackInt16LE(byte[] data, int offset)
         {
             return (short)(data[offset] | ((sbyte)data[offset + 1] << 8));
         }
 
-        public static void PackUInt32(byte[] data, int offset, uint value)
+        public static void PackUInt32LE(byte[] data, int offset, uint value)
         {
-            data[offset] = (byte)value;
-            data[offset + 1] = (byte)(value >> 8);
-            data[offset + 2] = (byte)(value >> 16);
-            data[offset + 3] = (byte)(value >> 24);
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+            data[offset + 2] = unchecked((byte)(value >> 16));
+            data[offset + 3] = unchecked((byte)(value >> 24));
         }
 
-        public static uint UnpackUInt32(byte[] data, int offset)
+        public static uint UnpackUInt32LE(byte[] data, int offset)
         {
             return (uint)(data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24));
         }
 
-        public static void PackInt32(byte[] data, int offset, int value)
+        public static void PackInt32LE(byte[] data, int offset, int value)
         {
-            data[offset] = (byte)value;
-            data[offset + 1] = (byte)(value >> 8);
-            data[offset + 2] = (byte)(value >> 16);
-            data[offset + 3] = (byte)(value >> 24);
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+            data[offset + 2] = unchecked((byte)(value >> 16));
+            data[offset + 3] = unchecked((byte)(value >> 24));
         }
 
-        public static int UnpackInt32(byte[] data, int offset)
+        public static int UnpackInt32LE(byte[] data, int offset)
         {
             return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
         }
 
-        public static void PackUInt64(byte[] data, int offset, ulong value)
+        public static void PackUInt64LE(byte[] data, int offset, ulong value)
         {
-            PackUInt32(data, offset, (uint)value);
-            PackUInt32(data, offset + 4, (uint)(value >> 32));
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+            data[offset + 2] = unchecked((byte)(value >> 16));
+            data[offset + 3] = unchecked((byte)(value >> 24));
+            data[offset + 4] = unchecked((byte)(value >> 32));
+            data[offset + 5] = unchecked((byte)(value >> 40));
+            data[offset + 6] = unchecked((byte)(value >> 48));
+            data[offset + 7] = unchecked((byte)(value >> 56));
         }
 
-        public static ulong UnpackUInt64(byte[] data, int offset)
+        public static ulong UnpackUInt64LE(byte[] data, int offset)
         {
-            return UnpackUInt32(data, offset) | ((ulong)UnpackUInt32(data, offset + 4) << 32);
+            return data[offset] | ((ulong) data[offset + 1] << 8) | 
+                   ((ulong) data[offset + 2] << 16) | ((ulong) data[offset + 3] << 24) |
+                   ((ulong) data[offset + 4] << 32) | ((ulong) data[offset + 5] << 40) |
+                   ((ulong) data[offset + 6] << 48) | ((ulong) data[offset + 7] << 56);
         }
 
-        public static void PackInt64(byte[] data, int offset, long value)
+        public static void PackInt64LE(byte[] data, int offset, long value)
         {
-            PackUInt32(data, offset, (uint)value);
-            PackInt32(data, offset + 4, (int)(value >> 32));
+            data[offset] = unchecked((byte)value);
+            data[offset + 1] = unchecked((byte)(value >> 8));
+            data[offset + 2] = unchecked((byte)(value >> 16));
+            data[offset + 3] = unchecked((byte)(value >> 24));
+            data[offset + 4] = unchecked((byte)(value >> 32));
+            data[offset + 5] = unchecked((byte)(value >> 40));
+            data[offset + 6] = unchecked((byte)(value >> 48));
+            data[offset + 7] = unchecked((byte)(value >> 56));
         }
 
-        public static long UnpackInt64(byte[] data, int offset)
+        public static long UnpackInt64LE(byte[] data, int offset)
         {
-            return UnpackUInt32(data, offset) | ((long)UnpackInt32(data, offset + 4) << 32);
+            return data[offset] | ((long)data[offset + 1] << 8) |
+                   ((long)data[offset + 2] << 16) | ((long)data[offset + 3] << 24) |
+                   ((long)data[offset + 4] << 32) | ((long)data[offset + 5] << 40) |
+                   ((long)data[offset + 6] << 48) | ((long)data[offset + 7] << 56);
         }
 
-        public static void IncrementInt64(byte[] data, int offset)
+        public static void IncrementInt64LE(byte[] data, int offset)
         {
             var b = (byte)(data[offset] + 1);
             data[offset] = b;

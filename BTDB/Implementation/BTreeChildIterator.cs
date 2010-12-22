@@ -39,13 +39,13 @@ namespace BTDB
 
         internal static uint CountFromSectorData(byte[] data)
         {
-            return PackUnpack.UnpackUInt16(data, 0);
+            return PackUnpack.UnpackUInt16LE(data, 0);
         }
 
         internal static void SetCountToSectorData(byte[] data, int count)
         {
             Debug.Assert(count > 0 && count < 128 * 256);
-            PackUnpack.PackUInt16(data, 0, (ushort)count);
+            PackUnpack.PackUInt16LE(data, 0, (ushort)count);
         }
 
         internal static int CalcKeyLenInline(int keyLen)
@@ -103,7 +103,7 @@ namespace BTDB
         internal bool MoveNext()
         {
             if (_pos + 1 >= _count) return false;
-            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + _pos * HeaderForEntry);
+            _ofs = FirstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + _pos * HeaderForEntry);
             _pos++;
             LoadItem();
             return true;
@@ -119,7 +119,7 @@ namespace BTDB
                 return;
             }
             _pos = pos;
-            _ofs = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (pos - 1) * HeaderForEntry);
+            _ofs = FirstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + (pos - 1) * HeaderForEntry);
             LoadItem();
         }
 
@@ -170,7 +170,7 @@ namespace BTDB
         {
             get
             {
-                return HasKeySectorPtr ? PackUnpack.UnpackInt64(_data, KeySectorPtrOffset) : 0;
+                return HasKeySectorPtr ? PackUnpack.UnpackInt64LE(_data, KeySectorPtrOffset) : 0;
             }
         }
 
@@ -197,7 +197,7 @@ namespace BTDB
         {
             get
             {
-                return HasValueSectorPtr ? PackUnpack.UnpackInt64(_data, ValueSectorPtrOffset) : 0;
+                return HasValueSectorPtr ? PackUnpack.UnpackInt64LE(_data, ValueSectorPtrOffset) : 0;
             }
         }
 
@@ -219,7 +219,7 @@ namespace BTDB
         {
             if (index == 0) return FirstOffset;
             if (index == _count) return TotalLength;
-            return FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (index - 1) * HeaderForEntry);
+            return FirstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + (index - 1) * HeaderForEntry);
         }
 
         internal int TotalLength
@@ -227,7 +227,7 @@ namespace BTDB
             get
             {
                 if (_totalLength > 0) return _totalLength;
-                _totalLength = FirstOffset + PackUnpack.UnpackUInt16(_data, HeaderSize + (_count - 1) * HeaderForEntry);
+                _totalLength = FirstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + (_count - 1) * HeaderForEntry);
                 return _totalLength;
             }
         }
@@ -331,15 +331,30 @@ namespace BTDB
             }
             // preserves all before current item including current sizes + key
             int ofs = EntryOffset + PackUnpack.LengthVUInt((uint)KeyLen);
-            Array.Copy(Data, 0, newData, 0, ofs);
-            Array.Copy(Data, KeyOffset, newData, ofs + PackUnpack.LengthVUInt((ulong)newSize), ValueOffset - KeyOffset);
+            if (!ReferenceEquals(Data,newData)) Array.Copy(Data, 0, newData, 0, ofs);
+            if (newSize>ValueLen) // because resize could be inplace bytes have to be copied correct order
+            {
+                // preserves all after current item
+                Array.Copy(Data,
+                           EntryOffset + currentEntrySize - withValuePtr,
+                           newData,
+                           EntryOffset + newEntrySize - withValuePtr,
+                           TotalLength - EntryOffset - currentEntrySize + withValuePtr);
+                // preserves key of current item
+                Array.Copy(Data, KeyOffset, newData, ofs + PackUnpack.LengthVUInt((ulong)newSize), ValueOffset - KeyOffset);
+            }
+            else
+            {
+                // preserves key of current item
+                Array.Copy(Data, KeyOffset, newData, ofs + PackUnpack.LengthVUInt((ulong)newSize), ValueOffset - KeyOffset);
+                // preserves all after current item
+                Array.Copy(Data,
+                           EntryOffset + currentEntrySize - withValuePtr,
+                           newData,
+                           EntryOffset + newEntrySize - withValuePtr,
+                           TotalLength - EntryOffset - currentEntrySize + withValuePtr);
+            }
             PackUnpack.PackVUInt(newData, ref ofs, (ulong)newSize);
-            // preserves all after current item
-            Array.Copy(Data,
-                       EntryOffset + currentEntrySize - withValuePtr,
-                       newData,
-                       EntryOffset + newEntrySize - withValuePtr,
-                       TotalLength - EntryOffset - currentEntrySize + withValuePtr);
             _data = newData;
             _valueLen = newSize;
             _ofsAfterKeyAndValueLen = ofs;
@@ -347,7 +362,7 @@ namespace BTDB
             for (int i = _pos; i < _count; i++)
             {
                 var o = HeaderSize + HeaderForEntry * i;
-                PackUnpack.PackUInt16(_data, o, (ushort)(PackUnpack.UnpackUInt16(_data, o) + delta));
+                PackUnpack.PackUInt16LE(_data, o, (ushort)(PackUnpack.UnpackUInt16LE(_data, o) + delta));
             }
         }
 
@@ -372,8 +387,8 @@ namespace BTDB
                 if (i == 0)
                     o = (ushort)additionalLengthNeededWOHeader;
                 else
-                    o = (ushort)(PackUnpack.UnpackUInt16(Data, HeaderSize + (i - 1) * HeaderForEntry) + additionalLengthNeededWOHeader);
-                PackUnpack.PackUInt16(newData, HeaderSize + i * HeaderForEntry, o);
+                    o = (ushort)(PackUnpack.UnpackUInt16LE(Data, HeaderSize + (i - 1) * HeaderForEntry) + additionalLengthNeededWOHeader);
+                PackUnpack.PackUInt16LE(newData, HeaderSize + i * HeaderForEntry, o);
             }
             return insertOfs + HeaderForEntry;
         }
@@ -381,7 +396,7 @@ namespace BTDB
         internal static void SetOneEntryCount(byte[] data, int entrySize)
         {
             SetCountToSectorData(data, 1);
-            PackUnpack.PackUInt16(data, HeaderSize, (ushort)entrySize);
+            PackUnpack.PackUInt16LE(data, HeaderSize, (ushort)entrySize);
         }
 
         internal static void RecalculateHeader(byte[] data, int count)
@@ -393,7 +408,7 @@ namespace BTDB
                 var keyLen = (int)PackUnpack.UnpackVUInt(data, ref ofs);
                 var valueLen = (long)PackUnpack.UnpackVUInt(data, ref ofs);
                 ofs += CalcEntrySizeWOLengths(keyLen, valueLen);
-                PackUnpack.PackUInt16(data, HeaderSize + HeaderForEntry * i, (ushort)(ofs - ofs1));
+                PackUnpack.PackUInt16LE(data, HeaderSize + HeaderForEntry * i, (ushort)(ofs - ofs1));
             }
         }
     }

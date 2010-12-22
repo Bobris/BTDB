@@ -273,7 +273,7 @@ namespace BTDB
             _headerData[4] = (byte)'1';
             _headerData[5] = (byte)'0';
             _headerData[6] = (byte)'0';
-            _headerData[7] = (byte)'1';
+            _headerData[7] = (byte)'2';
             _currentState = new State { Position = FirstRootOffset };
             _newState = new State
                             {
@@ -323,7 +323,7 @@ namespace BTDB
                 _totalBytesRead += TotalHeaderSize;
                 if (_headerData[0] != (byte)'B' || _headerData[1] != (byte)'T' || _headerData[2] != (byte)'D'
                     || _headerData[3] != (byte)'B' || _headerData[4] != (byte)'1' || _headerData[5] != (byte)'0'
-                    || _headerData[6] != (byte)'0' || _headerData[7] != (byte)'1')
+                    || _headerData[6] != (byte)'0' || _headerData[7] != (byte)'2')
                 {
                     throw new BTDBException("Wrong header");
                 }
@@ -384,68 +384,68 @@ namespace BTDB
             Debug.Assert(state.RootAllocPage.Ptr >= 0);
             Debug.Assert(state.WantedDatabaseLength >= 0);
             var o = (int)state.Position;
-            PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootBTree.Ptr);
+            PackUnpack.PackUInt64LE(_headerData, o, (ulong)state.RootBTree.Ptr);
             o += 8;
-            PackUnpack.PackUInt32(_headerData, o, state.RootBTree.Checksum);
+            PackUnpack.PackUInt32LE(_headerData, o, state.RootBTree.Checksum);
             o += 4;
-            PackUnpack.PackUInt32(_headerData, o, state.RootBTreeLevels);
+            PackUnpack.PackUInt32LE(_headerData, o, state.RootBTreeLevels);
             o += 4;
-            PackUnpack.PackUInt64(_headerData, o, (ulong)state.RootAllocPage.Ptr);
+            PackUnpack.PackUInt64LE(_headerData, o, (ulong)state.RootAllocPage.Ptr);
             o += 8;
-            PackUnpack.PackUInt32(_headerData, o, state.RootAllocPage.Checksum);
+            PackUnpack.PackUInt32LE(_headerData, o, state.RootAllocPage.Checksum);
             o += 4;
-            PackUnpack.PackUInt32(_headerData, o, 0);
+            PackUnpack.PackUInt32LE(_headerData, o, 0);
             o += 4;
-            PackUnpack.PackUInt64(_headerData, o, state.KeyValuePairCount);
+            PackUnpack.PackUInt64LE(_headerData, o, state.KeyValuePairCount);
             o += 8;
-            PackUnpack.PackUInt64(_headerData, o, state.UsedSize);
+            PackUnpack.PackUInt64LE(_headerData, o, state.UsedSize);
             o += 8;
-            PackUnpack.PackUInt64(_headerData, o, state.TransactionCounter);
+            PackUnpack.PackUInt64LE(_headerData, o, state.TransactionCounter);
             o += 8;
-            PackUnpack.PackUInt64(_headerData, o, state.WantedDatabaseLength);
+            PackUnpack.PackUInt64LE(_headerData, o, state.WantedDatabaseLength);
             o += 8;
-            PackUnpack.PackUInt64(_headerData, o, state.TransactionLogPtr);
+            PackUnpack.PackUInt64LE(_headerData, o, state.TransactionLogPtr);
             o += 8;
-            PackUnpack.PackUInt32(_headerData, o, state.TransactionAllocSize);
+            PackUnpack.PackUInt32LE(_headerData, o, state.TransactionAllocSize);
             o += 4;
-            PackUnpack.PackUInt32(_headerData, o, Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum));
+            PackUnpack.PackUInt32LE(_headerData, o, Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum));
         }
 
         bool RetrieveStateFromHeaderBuffer(State state)
         {
             var o = (int)state.Position;
             if (Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum) !=
-                PackUnpack.UnpackUInt32(_headerData, o + RootSizeWithoutChecksum))
+                PackUnpack.UnpackUInt32LE(_headerData, o + RootSizeWithoutChecksum))
             {
                 return false;
             }
-            state.RootBTree.Ptr = (long)PackUnpack.UnpackUInt64(_headerData, o);
+            state.RootBTree.Ptr = (long)PackUnpack.UnpackUInt64LE(_headerData, o);
             if (state.RootBTree.Ptr < 0) return false;
             o += 8;
-            state.RootBTree.Checksum = PackUnpack.UnpackUInt32(_headerData, o);
+            state.RootBTree.Checksum = PackUnpack.UnpackUInt32LE(_headerData, o);
             o += 4;
-            state.RootBTreeLevels = PackUnpack.UnpackUInt32(_headerData, o);
+            state.RootBTreeLevels = PackUnpack.UnpackUInt32LE(_headerData, o);
             o += 4;
-            state.RootAllocPage.Ptr = (long)PackUnpack.UnpackUInt64(_headerData, o);
+            state.RootAllocPage.Ptr = (long)PackUnpack.UnpackUInt64LE(_headerData, o);
             if (state.RootAllocPage.Ptr < 0) return false;
             o += 8;
-            state.RootAllocPage.Checksum = PackUnpack.UnpackUInt32(_headerData, o);
+            state.RootAllocPage.Checksum = PackUnpack.UnpackUInt32LE(_headerData, o);
             o += 4;
             // Unused space
             o += 4;
-            state.KeyValuePairCount = PackUnpack.UnpackUInt64(_headerData, o);
+            state.KeyValuePairCount = PackUnpack.UnpackUInt64LE(_headerData, o);
             o += 8;
-            state.UsedSize = PackUnpack.UnpackUInt64(_headerData, o);
+            state.UsedSize = PackUnpack.UnpackUInt64LE(_headerData, o);
             if (state.UsedSize < AllocationGranularity) return false;
             o += 8;
-            state.TransactionCounter = PackUnpack.UnpackUInt64(_headerData, o);
+            state.TransactionCounter = PackUnpack.UnpackUInt64LE(_headerData, o);
             o += 8;
-            state.WantedDatabaseLength = PackUnpack.UnpackUInt64(_headerData, o);
+            state.WantedDatabaseLength = PackUnpack.UnpackUInt64LE(_headerData, o);
             if (state.WantedDatabaseLength < AllocationGranularity) return false;
             o += 8;
-            state.TransactionLogPtr = PackUnpack.UnpackUInt64(_headerData, o);
+            state.TransactionLogPtr = PackUnpack.UnpackUInt64LE(_headerData, o);
             o += 8;
-            state.TransactionAllocSize = PackUnpack.UnpackUInt32(_headerData, o);
+            state.TransactionAllocSize = PackUnpack.UnpackUInt32LE(_headerData, o);
             return true;
         }
 
@@ -688,8 +688,8 @@ namespace BTDB
             {
                 int ofs = FindOfsInParent(dirtySector, dirtySector.Parent);
                 dirtySector.Parent = DirtizeSector(dirtySector.Parent, dirtySector.Parent.Parent, null);
-                PackUnpack.PackInt64(dirtySector.Parent.Data, ofs, ptr);
-                PackUnpack.PackUInt32(dirtySector.Parent.Data, ofs + 8, checksum);
+                PackUnpack.PackInt64LE(dirtySector.Parent.Data, ofs, ptr);
+                PackUnpack.PackUInt32LE(dirtySector.Parent.Data, ofs + 8, checksum);
             }
             dirtySector.Dirty = false;
             UnlinkFromDirtySectors(dirtySector);
@@ -803,7 +803,7 @@ namespace BTDB
             else
             {
                 int ofs = FindOfsInParent(oldSector, inParent);
-                PackUnpack.PackInt64(inParent.Data, ofs, newSector.Position);
+                PackUnpack.PackInt64LE(inParent.Data, ofs, newSector.Position);
             }
         }
 
@@ -1047,14 +1047,18 @@ namespace BTDB
                         var iter = new BTreeParentIterator(where.Data);
                         if ((iter.FirstChildSectorPos & MaskOfPosition) == sector.Position)
                             return BTreeParentIterator.FirstChildSectorPtrOffset;
-                        do
+                        if (iter.Count != 0)
                         {
-                            if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
-                                return iter.KeySectorPtrOffset;
-                            if ((iter.ChildSectorPos & MaskOfPosition) == sector.Position)
-                                return iter.ChildSectorPtrOffset;
+                            iter.MoveFirst();
+                            do
+                            {
+                                if ((iter.KeySectorPos & MaskOfPosition) == sector.Position)
+                                    return iter.KeySectorPtrOffset;
+                                if ((iter.ChildSectorPos & MaskOfPosition) == sector.Position)
+                                    return iter.ChildSectorPtrOffset;
+                            }
+                            while (iter.MoveNext());
                         }
-                        while (iter.MoveNext());
                         throw new BTDBException("Cannot FindOfsInParent");
                     }
                 case SectorType.BTreeChild:
@@ -1075,7 +1079,7 @@ namespace BTDB
                 case SectorType.DataParent:
                     for (int i = 0; i < where.Length / PtrDownSize; i++)
                     {
-                        if ((PackUnpack.UnpackInt64(where.Data, i * PtrDownSize) & MaskOfPosition) == sector.Position)
+                        if ((PackUnpack.UnpackInt64LE(where.Data, i * PtrDownSize) & MaskOfPosition) == sector.Position)
                             return i * PtrDownSize;
                     }
                     throw new BTDBException("Cannot FindOfsInParent");
@@ -1119,7 +1123,7 @@ namespace BTDB
             LinkToTailOfDirtySectors(unallocatedSector);
             if (unallocatedSector.Parent != null)
             {
-                PackUnpack.PackUInt64(unallocatedSector.Parent.Data, ofsInParent, (ulong)newPosition);
+                PackUnpack.PackUInt64LE(unallocatedSector.Parent.Data, ofsInParent, (ulong)newPosition);
             }
             else
             {
@@ -1401,7 +1405,7 @@ namespace BTDB
                     Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
                     for (int j = 0; j < childSectors; j++)
                     {
-                        FixChildParentPointer(PackUnpack.UnpackInt64(sector.Data, j * PtrDownSize), sector);
+                        FixChildParentPointer(PackUnpack.UnpackInt64LE(sector.Data, j * PtrDownSize), sector);
                     }
                 }
                 newLeafSector = NewSector();

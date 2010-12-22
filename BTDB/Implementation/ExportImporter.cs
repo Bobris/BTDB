@@ -25,13 +25,13 @@ namespace BTDB
             tempbuf[5] = (byte)'X';
             tempbuf[6] = (byte)'P';
             tempbuf[7] = (byte)'1';
-            PackUnpack.PackInt64(tempbuf, 8, keyValueCount);
+            PackUnpack.PackInt64LE(tempbuf, 8, keyValueCount);
             stream.Write(tempbuf, 0, 16);
             transaction.FindFirstKey();
             for (long kv = 0; kv < keyValueCount; kv++)
             {
                 var keySize = transaction.GetKeySize();
-                PackUnpack.PackInt32(tempbuf, 0, keySize);
+                PackUnpack.PackInt32LE(tempbuf, 0, keySize);
                 stream.Write(tempbuf, 0, 4);
                 long ofs = 0;
                 while (ofs < keySize)
@@ -44,7 +44,7 @@ namespace BTDB
                     ofs += len;
                 }
                 var valueSize = transaction.GetValueSize();
-                PackUnpack.PackInt64(tempbuf, 0, valueSize);
+                PackUnpack.PackInt64LE(tempbuf, 0, valueSize);
                 stream.Write(tempbuf, 0, 8);
                 ofs = 0;
                 while (ofs < valueSize)
@@ -76,18 +76,18 @@ namespace BTDB
             {
                 throw new BTDBException("Invalid header (it should start with BTDBEXP1)");
             }
-            var keyValuePairs = PackUnpack.UnpackInt64(tempbuf, 8);
+            var keyValuePairs = PackUnpack.UnpackInt64LE(tempbuf, 8);
             if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");
             for (var kv = 0; kv < keyValuePairs; kv++)
             {
                 if (stream.Read(tempbuf, 0, 4) != 4) throw new EndOfStreamException();
-                var keySize = PackUnpack.UnpackInt32(tempbuf, 0);
+                var keySize = PackUnpack.UnpackInt32LE(tempbuf, 0);
                 if (keySize < 0) throw new BTDBException("Negative key size");
                 if (keySize > tempbuf.Length) tempbuf = new byte[keySize];
                 if (stream.Read(tempbuf, 0, keySize) != keySize) throw new EndOfStreamException();
                 transaction.CreateKey(tempbuf);
                 if (stream.Read(tempbuf, 0, 8) != 8) throw new EndOfStreamException();
-                var valueSize = PackUnpack.UnpackInt64(tempbuf, 0);
+                var valueSize = PackUnpack.UnpackInt64LE(tempbuf, 0);
                 if (valueSize < 0) throw new BTDBException("Negative value size");
                 if (valueSize <= tempbuf.Length)
                 {
