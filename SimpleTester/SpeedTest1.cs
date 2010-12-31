@@ -36,7 +36,7 @@ namespace SimpleTester
                 {
                     tr.CreateKey(new byte[10000]);
                     tr.SetValueSize(10000);
-                    tr.SetValue(new byte[1000], 0,1000);
+                    tr.SetValue(new byte[1000], 0, 1000);
                     tr.Commit();
                 }
             }
@@ -53,10 +53,10 @@ namespace SimpleTester
                 _sw.Restart();
                 for (int i = 0; i < 100000; i++)
                 {
-                    key[504] = (byte) (i%256);
-                    key[503] = (byte) (i/256%256);
-                    key[502] = (byte) (i/256/256%256);
-                    key[501] = (byte) (i/256/256/256);
+                    key[504] = (byte)(i % 256);
+                    key[503] = (byte)(i / 256 % 256);
+                    key[502] = (byte)(i / 256 / 256 % 256);
+                    key[501] = (byte)(i / 256 / 256 / 256);
                     using (var tr = db.StartTransaction())
                     {
                         tr.CreateKey(key);
@@ -65,7 +65,7 @@ namespace SimpleTester
                     }
                     _sw.Stop();
                     _results.Add(_sw.Elapsed.TotalMilliseconds);
-                    if (i%1000 == 0) Console.WriteLine("{0} {1}", i, _sw.Elapsed.TotalSeconds);
+                    if (i % 1000 == 0) Console.WriteLine("{0} {1}", i, _sw.Elapsed.TotalSeconds);
                     _sw.Start();
                 }
                 _sw.Stop();
@@ -90,12 +90,11 @@ namespace SimpleTester
                 {
                     for (int i = 0; i < 1000000; i++)
                     {
-                        key[3] = (byte) (i%256);
-                        key[2] = (byte) (i/256%256);
-                        key[1] = (byte) (i/256/256%256);
-                        key[0] = (byte) (i/256/256/256);
-                        tr.CreateKey(key);
-                        tr.SetValue(key, 0, 4);
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
+                        tr.CreateOrUpdateKeyValue(key, key);
                     }
                     tr.Commit();
                 }
@@ -108,10 +107,10 @@ namespace SimpleTester
                 _sw.Restart();
                 for (int i = 0; i < 1000000; i++)
                 {
-                    key[3] = (byte) (i%256);
-                    key[2] = (byte) (i/256%256);
-                    key[1] = (byte) (i/256/256%256);
-                    key[0] = (byte) (i/256/256/256);
+                    key[3] = (byte)(i % 256);
+                    key[2] = (byte)(i / 256 % 256);
+                    key[1] = (byte)(i / 256 / 256 % 256);
+                    key[0] = (byte)(i / 256 / 256 / 256);
                     using (var tr = db.StartTransaction())
                     {
                         tr.FindExactKey(key);
@@ -129,10 +128,10 @@ namespace SimpleTester
                 {
                     for (int i = 0; i < 1000000; i++)
                     {
-                        key[3] = (byte) (i%256);
-                        key[2] = (byte) (i/256%256);
-                        key[1] = (byte) (i/256/256%256);
-                        key[0] = (byte) (i/256/256/256);
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
                         tr.FindExactKey(key);
                         tr.ReadValue();
                     }
@@ -179,10 +178,10 @@ namespace SimpleTester
 
         void WriteCSV()
         {
-            using (var sout=new StreamWriter("data.csv"))
+            using (var sout = new StreamWriter("data.csv"))
             {
                 sout.WriteLine("Order,Time");
-                for (int i = 0; i < _results.Count;i+=100)
+                for (int i = 0; i < _results.Count; i += 100)
                 {
                     sout.WriteLine("{0},{1}", i, _results[i].ToString(CultureInfo.InvariantCulture));
                 }

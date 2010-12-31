@@ -16,6 +16,16 @@ namespace BTDB
             return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch)==FindKeyResult.FoundExact;
         }
 
+        public static bool CreateOrUpdateKeyValue(this ILowLevelDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        {
+            return transaction.CreateOrUpdateKeyValue(keyBuf, 0, keyBuf.Length, valueBuf, 0, valueBuf.Length);
+        }
+
+        public static void SetValue(this ILowLevelDBTransaction transaction, byte[] valueBuf)
+        {
+            transaction.SetValue(valueBuf, 0, valueBuf.Length);
+        }
+
         public static byte[] ReadKey(this ILowLevelDBTransaction transaction)
         {
             int keySize = transaction.GetKeySize();
@@ -86,8 +96,8 @@ namespace BTDB
 
             public UpgradeableReadLockHelper(ReaderWriterLockSlim readerWriterLock)
             {
-                readerWriterLock.EnterUpgradeableReadLock();
                 _readerWriterLock = readerWriterLock;
+                readerWriterLock.EnterUpgradeableReadLock();
             }
 
             public void Dispose()
@@ -102,8 +112,8 @@ namespace BTDB
 
             public WriteLockHelper(ReaderWriterLockSlim readerWriterLock)
             {
-                readerWriterLock.EnterWriteLock();
                 _readerWriterLock = readerWriterLock;
+                readerWriterLock.EnterWriteLock();
             }
 
             public void Dispose()

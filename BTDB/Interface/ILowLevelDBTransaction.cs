@@ -46,10 +46,22 @@ namespace BTDB
         /// </summary>
         /// <param name="keyBuf">Key Data in this buffer</param>
         /// <param name="keyOfs">Key Data starts on this offset in buffer</param>
-        /// <param name="keyLen">Key has this Length</param>
+        /// <param name="keyLen">Key has this length</param>
         /// <param name="strategy">What should happen</param>
         /// <returns>What really happend</returns>
         FindKeyResult FindKey(byte[] keyBuf, int keyOfs, int keyLen, FindKeyStrategy strategy);
+
+        /// <summary>
+        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
+        /// </summary>
+        /// <param name="keyBuf">Key Data in this buffer</param>
+        /// <param name="keyOfs">Key Data starts on this offset in buffer</param>
+        /// <param name="keyLen">Key has this length</param>
+        /// <param name="valueBuf">Value Data in this buffer</param>
+        /// <param name="valueOfs">Value Data starts on this offset in buffer</param>
+        /// <param name="valueLen">Value has this length</param>
+        /// <returns>true for Create, false for Update</returns>
+        bool CreateOrUpdateKeyValue(byte[] keyBuf, int keyOfs, int keyLen, byte[] valueBuf, int valueOfs, int valueLen);
 
         /// <summary>
         /// In current prefix will calculate number of key value pairs

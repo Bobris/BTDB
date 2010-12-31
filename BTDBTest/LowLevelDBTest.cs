@@ -515,6 +515,42 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int length)
+        {
+            var valbuf = new byte[length];
+            new Random(0).NextBytes(valbuf);
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr1 = db.StartTransaction())
+                {
+                    Assert.True(tr1.CreateOrUpdateKeyValue(_key1, valbuf));
+                    Assert.False(tr1.CreateOrUpdateKeyValue(_key1, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValue(_key2, valbuf));
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.True(tr2.FindExactKey(_key1));
+                    var valbuf2 = tr2.ReadValue();
+                    for (int i = 0; i < length; i++)
+                    {
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                    }
+                    Assert.True(tr2.FindExactKey(_key2));
+                    valbuf2 = tr2.ReadValue();
+                    for (int i = 0; i < length; i++)
+                    {
+                        if (valbuf[i] != valbuf2[i])
+                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void FindFirstKeyWorks()
         {
             using (var stream = CreateTestStream())
@@ -680,7 +716,7 @@ namespace BTDBTest
                             key[0] = (byte)i;
                             key[key.Length - 1] = (byte)j;
                             Assert.True(tr.CreateKey(key));
-                            tr.SetValueSize(4000+i*100+j);
+                            tr.SetValueSize(4000 + i * 100 + j);
                         }
                         tr.Commit();
                     }
