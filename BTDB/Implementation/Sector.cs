@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Threading;
 
 namespace BTDB
 {
@@ -24,11 +23,6 @@ namespace BTDB
 
         internal Sector PrevLink { get; set; }
 
-        internal bool Locked
-        {
-            get { return _lockCount > 0; }
-        }
-
         public int Deepness
         {
             get
@@ -42,19 +36,6 @@ namespace BTDB
                 }
                 return result;
             }
-        }
-
-        internal void Lock()
-        {
-            Interlocked.Increment(ref _lockCount);
-            //Console.WriteLine("Lock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
-        }
-
-        internal void Unlock()
-        {
-            //Console.WriteLine("Unlock {0} - {1} - {2} - {3}", Position, _lockCount, Type, Length);
-            Interlocked.Decrement(ref _lockCount);
-            Debug.Assert(_lockCount >= 0);
         }
 
         public bool Allocated
@@ -113,6 +94,5 @@ namespace BTDB
         }
 
         byte[] _data;
-        int _lockCount;
     }
 }
