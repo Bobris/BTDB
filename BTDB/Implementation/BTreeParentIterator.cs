@@ -117,7 +117,7 @@ namespace BTDB
             }
         }
 
-        internal SectorPtr KeySectorPtr
+        SectorPtr KeySectorPtr
         {
             get
             {
@@ -162,7 +162,7 @@ namespace BTDB
             set { PackUnpack.PackInt64LE(_data, ChildKeyCountOffset, value); }
         }
 
-        internal void IncrementChildKeyCount()
+        void IncrementChildKeyCount()
         {
             PackUnpack.IncrementInt64LE(_data, ChildKeyCountOffset);
         }
@@ -336,11 +336,15 @@ namespace BTDB
                 return FirstChildSectorPtr;
             }
             keyIndex += FirstChildKeyCount;
-            MoveFirst();
+            var firstOffset = FirstOffset;
+            _ofs = firstOffset;
+            _pos = 0;
+            _keyLen = -1;
             while (_pos < index - 1)
             {
                 keyIndex += ChildKeyCount;
-                MoveNext();
+                _ofs = firstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + _pos * HeaderForEntry);
+                _pos++;
             }
             return ChildSectorPtr;
         }
