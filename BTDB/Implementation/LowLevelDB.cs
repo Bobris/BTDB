@@ -206,7 +206,7 @@ namespace BTDB
                 _runningCacheCompaction = true;
                 _runningWriteCacheCompaction = inWriteTransaction;
                 runningCompactingSet = true;
-                var sectors = new List<KeyValuePair<Sector, int>>();
+                var sectors = new List<KeyValuePair<Sector, ulong>>();
                 foreach (var pair in _sectorCache)
                 {
                     Sector sector;
@@ -220,7 +220,7 @@ namespace BTDB
                         continue;
                     }
                     if (!inWriteTransaction && sector.InTransaction) continue;
-                    sectors.Add(new KeyValuePair<Sector, int>(sector, 0));
+                    sectors.Add(new KeyValuePair<Sector, ulong>(sector, 0));
                 }
                 if (sectors.Count == 0) return;
                 _tweaks.WhichSectorsToRemoveFromCache(sectors);
@@ -738,7 +738,18 @@ namespace BTDB
                 {
                     var oldLength = sector.Length;
                     sector.Length = newLength;
-                    Interlocked.Add(ref _bytesInCache, newLength - oldLength);
+                    if (_sectorCache.ContainsKey(sector.Position & MaskOfPosition))
+                    {
+                        Interlocked.Add(ref _bytesInCache, newLength - oldLength);
+                    }
+                    else
+                    {
+                        var localSector = sector;
+                        if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force()))
+                        {
+                            Interlocked.Add(ref _bytesInCache, localSector.Length);
+                        }
+                    }
                     return sector;
                 }
             }
@@ -1505,9 +1516,11 @@ namespace BTDB
 
         void LowLevelRemoveFromSectorCache(Sector sector)
         {
-            if (_sectorCache.TryRemove(sector.Position))
+            Lazy<Sector> lazySector;
+            if (_sectorCache.TryRemove(sector.Position,out lazySector))
             {
-                Interlocked.Add(ref _bytesInCache, -sector.Length);
+                //Debug.Assert(lazySector.Value==sector);
+                Interlocked.Add(ref _bytesInCache, -lazySector.Value.Length);
             }
         }
 
@@ -1554,7 +1567,6 @@ namespace BTDB
             }
             else
             {
-                Debug.Fail("Republishing already published sector");
                 throw new BTDBException("Internal error: Republishing already published sector");
             }
             _commitNeeded = true;

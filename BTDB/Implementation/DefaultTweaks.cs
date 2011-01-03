@@ -57,20 +57,32 @@ namespace BTDB
             return sectorsInCache >= 9800;
         }
 
-        public void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, int>> choosen)
+        public void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, ulong>> choosen)
         {
-            choosen.Sort((a, b) => a.Key.LastAccessTime < b.Key.LastAccessTime ? -1 : (a.Key.LastAccessTime > b.Key.LastAccessTime ? 1: 0));
+            var sectorMap = new Dictionary<long, int>(choosen.Count);
             for (int i = 0; i < choosen.Count; i++)
             {
                 var sector = choosen[i].Key;
-                int price = sector.Deepness * 65536 - i;
-                if (sector.Type == SectorType.DataChild || sector.Type==SectorType.DataParent)
-                {
-                    price += 65536*10;
-                }
-                choosen[i] = new KeyValuePair<Sector, int>(sector, price);
+                sectorMap.Add(sector.Position, i);
             }
-            choosen.Sort((a, b) => b.Value - a.Value);
+            for (int i = 0; i < choosen.Count; i++)
+            {
+                var sector = choosen[i].Key;
+                ulong price = sector.LastAccessTime;
+                choosen[i] = new KeyValuePair<Sector, ulong>(sector, Math.Max(price,choosen[i].Value));
+                sector = sector.Parent;
+                while (sector!=null)
+                {
+                    price++;
+                    int index;
+                    if (sectorMap.TryGetValue(sector.Position, out index))
+                    {
+                        choosen[index] = new KeyValuePair<Sector, ulong>(sector, Math.Max(price, choosen[index].Value));
+                    }
+                    sector = sector.Parent;
+                }
+            }
+            choosen.Sort((a, b) => a.Value < b.Value ? -1 : (a.Value > b.Value ? 1: 0));
             choosen.RemoveRange(choosen.Count / 2, choosen.Count - choosen.Count / 2);
         }
 
