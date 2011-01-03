@@ -191,7 +191,7 @@ namespace SimpleTester
         public void Test()
         {
             WarmUp();
-            DoWork2();
+            DoWork3();
             //WriteCSV();
         }
     }

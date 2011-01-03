@@ -77,7 +77,11 @@ namespace BTDB
                     int index;
                     if (sectorMap.TryGetValue(sector.Position, out index))
                     {
-                        choosen[index] = new KeyValuePair<Sector, ulong>(sector, Math.Max(price, choosen[index].Value));
+                        if (choosen[index].Key==sector)
+                        {
+                            choosen[index] = new KeyValuePair<Sector, ulong>(sector,
+                                                                             Math.Max(price, choosen[index].Value));
+                        }
                     }
                     sector = sector.Parent;
                 }

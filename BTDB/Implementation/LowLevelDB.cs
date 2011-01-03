@@ -812,13 +812,15 @@ namespace BTDB
                 case SectorType.BTreeParent:
                 case SectorType.BTreeChild:
                     {
-                        _newState.RootBTree.Ptr = rootSector.Position; // Length encoding is not needed as it is temporary anyway
+                        // Length encoding is not needed as it is temporary anyway
+                        _newState.RootBTree.Ptr = rootSector.Position;
                         break;
                     }
                 case SectorType.AllocChild:
                 case SectorType.AllocParent:
                     {
-                        _newState.RootAllocPage.Ptr = rootSector.Position; // Max free space encoding is not needed as it is temporary anyway
+                        // Length encoding is not needed as it is temporary anyway
+                        _newState.RootAllocPage.Ptr = rootSector.Position;
                         break;
                     }
                 default:
@@ -1519,7 +1521,7 @@ namespace BTDB
             Lazy<Sector> lazySector;
             if (_sectorCache.TryRemove(sector.Position,out lazySector))
             {
-                //Debug.Assert(lazySector.Value==sector);
+                Debug.Assert(lazySector.Value==sector);
                 Interlocked.Add(ref _bytesInCache, -lazySector.Value.Length);
             }
         }
