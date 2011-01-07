@@ -80,7 +80,7 @@ namespace BTDB
                     laststart += 8 - sizetill;
                     break;
             }
-            while (pos < data.Length)
+            while (pos < len)
             {
                 b = data[pos];
                 pos++;

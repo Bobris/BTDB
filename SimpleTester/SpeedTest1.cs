@@ -163,7 +163,7 @@ namespace SimpleTester
                         key[1] = (byte)(i / 256 / 256 % 256);
                         key[0] = (byte)(i / 256 / 256 / 256);
                         tr.CreateKey(key);
-                        tr.SetValue(key, 0, 4000);
+                        tr.SetValue(key);
                         tr.Commit();
                     }
                 }
@@ -171,7 +171,37 @@ namespace SimpleTester
                 using (var trStat = db.StartTransaction())
                 {
                     Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Insert:              {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    Console.WriteLine("Insert CaS:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                }
+            }
+        }
+
+        void DoWork4()
+        {
+            var key = new byte[4000];
+
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                _sw.Restart();
+                for (int i = 0; i < 30000; i++)
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
+                        tr.CreateOrUpdateKeyValue(key, key);
+                        tr.Commit();
+                    }
+                }
+                _sw.Stop();
+                using (var trStat = db.StartTransaction())
+                {
+                    Console.WriteLine(trStat.CalculateStats().ToString());
+                    Console.WriteLine("Insert COU:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 }
             }
         }
@@ -192,6 +222,7 @@ namespace SimpleTester
         {
             WarmUp();
             DoWork3();
+            DoWork4();
             //WriteCSV();
         }
     }
