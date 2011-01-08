@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using BTDB.Implementation;
 
 namespace BTDB
 {
@@ -70,7 +71,7 @@ namespace BTDB
         internal const int MaxSectorSize = AllocationGranularity * AllocationGranularity;
         internal const int MaxLeafDataSectorSize = 4096;
         const int MaxLeafAllocSectorSize = 4096;
-        const int MaxLeafAllocSectorGrans = MaxLeafAllocSectorSize * 8;
+        internal const int MaxLeafAllocSectorGrans = MaxLeafAllocSectorSize * 8;
         internal const int PtrDownSize = 12;
         internal const int MaxChildren = 256;
         internal const int MaskOfGranLength = AllocationGranularity - 1;
@@ -115,6 +116,7 @@ namespace BTDB
         ulong _totalBytesWritten;
         bool _durableTransactions = true;
         long _nextAllocStartInGrans;
+        readonly FreeSpaceAllocatorOptimizer _freeSpaceAllocatorOptimizer = new FreeSpaceAllocatorOptimizer();
 
         internal State NewState
         {
@@ -298,6 +300,7 @@ namespace BTDB
             _stream = stream;
             _disposeStream = dispose;
             _spaceSoonReusable = null;
+            _freeSpaceAllocatorOptimizer.GlobalInvalidate();
             bool newDB = false;
             if (stream.GetSize() == 0)
             {
@@ -565,6 +568,7 @@ namespace BTDB
             else
                 _stream.Flush();
             TransferNewStateToCurrentState();
+            _freeSpaceAllocatorOptimizer.CommitWriteTransaction();
             _commitNeeded = false;
             _currentTrCommited = true;
         }
@@ -873,6 +877,7 @@ namespace BTDB
                 long startGran = sector.Position / AllocationGranularity;
                 int grans = sector.Length / AllocationGranularity;
                 var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
+                _freeSpaceAllocatorOptimizer.InvalidateForNextTransaction(startGran, grans);
                 UnsetBitsInAlloc(startGran, grans, ref _newState.RootAllocPage, totalGrans, null);
                 _newState.UsedSize -= (ulong)sector.Length;
             }
@@ -1203,10 +1208,13 @@ namespace BTDB
 
         long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, long totalGrans, ulong startInBytes, Sector parent, long startSearchInGrans)
         {
-            Sector sector = TryGetSector(sectorPtr.Ptr);
+            Sector sector;
             long startGran;
             if (totalGrans <= MaxLeafAllocSectorGrans)
             {
+                var longestFree = _freeSpaceAllocatorOptimizer.QueryLongestForGran(startInBytes);
+                if (longestFree < grans) return -1;
+                sector = TryGetSector(sectorPtr.Ptr);
                 if (sector == null)
                 {
                     sector = ReadSector(sectorPtr, true);
@@ -1219,13 +1227,21 @@ namespace BTDB
                     startGran = BitArrayManipulation.IndexOfFirstHole(sector.Data, grans, startGranSearch);
                     if (startGran < 0)
                     {
+                        if (sector.Length == MaxLeafAllocSectorSize)
+                        {
+                            _freeSpaceAllocatorOptimizer.UpdateLongestForGran(startInBytes, grans - 1);
+                        }
                         return -1;
                     }
                     ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
                     ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
                     if (checkStartInBytes == foundFreeInBytes) break;
                     ulong newStartGranSearch = (foundFreeInBytes - startInBytes) / AllocationGranularity;
-                    if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
+                    if (newStartGranSearch > MaxLeafAllocSectorGrans)
+                    {
+                        _freeSpaceAllocatorOptimizer.UpdateLongestForGran(startInBytes, grans - 1);
+                        return -1;
+                    }
                     startGranSearch = (int)newStartGranSearch;
                 }
                 sector = DirtizeSector(sector, sector.Parent, null);
@@ -1235,6 +1251,7 @@ namespace BTDB
             }
             int childSectors;
             long gransInChild = GetGransInDownLevel(totalGrans, out childSectors);
+            sector = TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
                 sector = ReadSector(sectorPtr, true);
@@ -1275,10 +1292,13 @@ namespace BTDB
 
         long AllocBitsInAlloc(int grans, ref SectorPtr sectorPtr, long totalGrans, ulong startInBytes, Sector parent)
         {
-            Sector sector = TryGetSector(sectorPtr.Ptr);
             long startGran;
+            Sector sector;
             if (totalGrans <= MaxLeafAllocSectorGrans)
             {
+                var longestFree = _freeSpaceAllocatorOptimizer.QueryLongestForGran(startInBytes);
+                if (longestFree < grans) return -1;
+                sector = TryGetSector(sectorPtr.Ptr);
                 if (sector == null)
                 {
                     sector = ReadSector(sectorPtr, true);
@@ -1299,13 +1319,18 @@ namespace BTDB
                             sectorPtr.Ptr = sector.Position;
                             continue;
                         }
+                        _freeSpaceAllocatorOptimizer.UpdateLongestForGran(startInBytes, grans - 1);
                         return -1;
                     }
                     ulong checkStartInBytes = startInBytes + (ulong)startGran * AllocationGranularity;
                     ulong foundFreeInBytes = _spaceUsedByReadOnlyTransactions.FindFreeSizeAfter(checkStartInBytes, (ulong)grans * AllocationGranularity);
                     if (checkStartInBytes == foundFreeInBytes) break;
                     ulong newStartGranSearch = (foundFreeInBytes - startInBytes) / AllocationGranularity;
-                    if (newStartGranSearch > MaxLeafAllocSectorGrans) return -1;
+                    if (newStartGranSearch > MaxLeafAllocSectorGrans)
+                    {
+                        _freeSpaceAllocatorOptimizer.UpdateLongestForGran(startInBytes, grans - 1);
+                        return -1;
+                    }
                     startGranSearch = (int)newStartGranSearch;
                 }
                 sector = DirtizeSector(sector, sector.Parent, null);
@@ -1315,6 +1340,7 @@ namespace BTDB
             }
             int childSectors;
             long gransInChild = GetGransInDownLevel(totalGrans, out childSectors);
+            sector = TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
                 sector = ReadSector(sectorPtr, true);
@@ -1485,6 +1511,7 @@ namespace BTDB
                 if (_commitNeeded)
                 {
                     // rollback
+                    _freeSpaceAllocatorOptimizer.RollbackWriteTransaction();
                     SwapCurrentAndNewState();
                     TransferNewStateToCurrentState();
                     _commitNeeded = false;
