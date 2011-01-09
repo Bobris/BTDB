@@ -44,6 +44,14 @@ namespace BTDB
             }
         }
 
+        internal void SafeUpgradeToWriteTransaction()
+        {
+            Debug.Assert(_currentKeySector==null);
+            Debug.Assert(!IsWriteTransaction());
+            _owner.UpgradeTransactionToWriteOne(this, null);
+            _readLink = null;
+        }
+
         private void UpgradeToWriteTransaction()
         {
             if (IsWriteTransaction()) return;

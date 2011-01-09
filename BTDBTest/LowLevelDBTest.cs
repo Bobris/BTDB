@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB;
 using NUnit.Framework;
 
@@ -735,6 +736,35 @@ namespace BTDBTest
                         }
                     }
                     Debug.WriteLine(tr.CalculateStats().ToString());
+                }
+            }
+        }
+
+        [Test]
+        public void StartWritingTransactionWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                var tr1 = db.StartWritingTransaction().Result;
+                var tr2Task = db.StartWritingTransaction();
+                var task = Task.Factory.StartNew(() =>
+                                                         {
+                                                             var tr2 = tr2Task.Result;
+                                                             Assert.True(tr2.FindExactKey(_key1));
+                                                             tr2.CreateKey(_key2);
+                                                             tr2.Commit();
+                                                             tr2.Dispose();
+                                                         });
+                tr1.CreateKey(_key1);
+                tr1.Commit();
+                tr1.Dispose();
+                task.Wait(1000);
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.True(tr.FindExactKey(_key1));
+                    Assert.True(tr.FindExactKey(_key2));
                 }
             }
         }

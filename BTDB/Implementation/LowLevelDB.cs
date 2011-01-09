@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Implementation;
 
 namespace BTDB
@@ -117,6 +118,9 @@ namespace BTDB
         bool _durableTransactions = true;
         long _nextAllocStartInGrans;
         readonly FreeSpaceAllocatorOptimizer _freeSpaceAllocatorOptimizer = new FreeSpaceAllocatorOptimizer();
+        readonly ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>> _writtingQueue =
+            new ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>>();
+        bool _writeTrInCreation;
 
         internal State NewState
         {
@@ -488,6 +492,14 @@ namespace BTDB
                 DereferenceReadLink(link);
                 throw;
             }
+        }
+
+        public Task<ILowLevelDBTransaction> StartWritingTransaction()
+        {
+            var taskCompletionSource = new TaskCompletionSource<ILowLevelDBTransaction>();
+            _writtingQueue.Enqueue(taskCompletionSource);
+            TryToRunNextWrittingTransaction();
+            return taskCompletionSource.Task;
         }
 
         private void DereferenceReadLink(ReadTrLink link)
@@ -1538,9 +1550,35 @@ namespace BTDB
             }
             finally
             {
-                _writeTr = null;
+                DereferenceReadLink(_readTrLinkHead);
+                lock (_readLinkLock)
+                {
+                    _writeTr = null;
+                }
             }
-            DereferenceReadLink(_readTrLinkHead);
+            if (!_writtingQueue.IsEmpty) TryToRunNextWrittingTransaction();
+        }
+
+        void TryToRunNextWrittingTransaction()
+        {
+            TaskCompletionSource<ILowLevelDBTransaction> result;
+            lock (_readLinkLock)
+            {
+                if (_writeTr != null) return;
+                if (_writeTrInCreation) return;
+                if (!_writtingQueue.TryDequeue(out result)) return;
+                _writeTrInCreation = true;
+            }
+            try
+            {
+                var tr = (LowLevelDBTransaction)StartTransaction();
+                tr.SafeUpgradeToWriteTransaction();
+                result.SetResult(tr);
+            }
+            catch (Exception e)
+            {
+                result.SetException(e);
+            }
         }
 
         void LowLevelRemoveFromSectorCache(Sector sector)
@@ -1557,9 +1595,16 @@ namespace BTDB
         {
             lock (_readLinkLock)
             {
-                if (_writeTr != null) throw new BTDBTransactionRetryException("Write transaction already running");
-                if (link.TransactionNumber != _currentState.TransactionCounter)
-                    throw new BTDBTransactionRetryException("Newer write transaction already finished");
+                if (link==null && _writeTrInCreation)
+                {
+                    _writeTrInCreation = false;
+                }
+                else
+                {
+                    if (_writeTr != null || _writeTrInCreation) throw new BTDBTransactionRetryException("Write transaction already running");
+                    if (link.TransactionNumber != _currentState.TransactionCounter)
+                        throw new BTDBTransactionRetryException("Newer write transaction already finished");
+                }
                 _writeTr = transaction;
                 _currentTrCommited = false;
                 _commitNeeded = false;

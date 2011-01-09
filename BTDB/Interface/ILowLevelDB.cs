@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace BTDB
 {
@@ -14,5 +15,7 @@ namespace BTDB
         bool Open(IStream stream, bool dispose);
 
         ILowLevelDBTransaction StartTransaction();
+
+        Task<ILowLevelDBTransaction> StartWritingTransaction();
     }
 }
