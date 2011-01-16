@@ -381,7 +381,7 @@ namespace BTDB
                 newData,
                 HeaderSize + newCount * HeaderForEntry,
                 insertOfs - (HeaderSize + Count * HeaderForEntry));
-            for (int i = entryIndex; i < newCount; i++)
+            for (int i = newCount - 1; i >= entryIndex; i--)
             {
                 ushort o;
                 if (i == 0)
