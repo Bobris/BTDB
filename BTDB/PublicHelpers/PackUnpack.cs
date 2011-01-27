@@ -21,7 +21,7 @@
 
         public static short UnpackInt16LE(byte[] data, int offset)
         {
-            return (short)(data[offset] | ((sbyte)data[offset + 1] << 8));
+            return (short)(data[offset] | (data[offset + 1] << 8));
         }
 
         public static void PackUInt32LE(byte[] data, int offset, uint value)

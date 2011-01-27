@@ -43,6 +43,7 @@
   <ItemGroup>
     <Compile Include="Implementation\BitArrayManipulation.cs" />
     <Compile Include="Implementation\BTreeParentIterator.cs" />
+    <Compile Include="Implementation\AbstractBufferedReader.cs" />
     <Compile Include="Implementation\ExportImporter.cs" />
     <Compile Include="Implementation\FreeSpaceAllocatorOptimizer.cs" />
     <Compile Include="Implementation\LowLevelDBTransaction.cs" />
