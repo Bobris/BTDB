@@ -17,7 +17,7 @@ namespace BTDB
         protected int Pos; // 0 for eof
         protected int End; // -1 for eof
 
-        public abstract void FillBuffer();
+        protected abstract void FillBuffer();
 
         public bool Eof
         {
@@ -79,6 +79,33 @@ namespace BTDB
             return res;
         }
 
+        public long ReadInt64()
+        {
+            NeedOneByteInBuffer();
+            long res = 0;
+            if (Pos + 8 <= End)
+            {
+                res = PackUnpack.UnpackInt64BE(Buf, Pos);
+                Pos += 8;
+            }
+            else
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    NeedOneByteInBuffer();
+                    res <<= 8;
+                    res += Buf[Pos];
+                    Pos++;
+                }
+            }
+            return res;
+        }
+
+        public DateTime ReadDateTime()
+        {
+            return DateTime.FromBinary(ReadInt64());
+        }
+
         public string ReadString()
         {
             var len = ReadVUInt64();
@@ -101,26 +128,26 @@ namespace BTDB
                 }
                 else
                 {
-                    res[i] = (char) c;
+                    res[i] = (char)c;
                     i++;
                 }
             }
             return res.ToString();
         }
 
-        public void ReadBlock(byte[] data,int offset,int length)
+        public void ReadBlock(byte[] data, int offset, int length)
         {
-            while (length>0)
+            while (length > 0)
             {
                 NeedOneByteInBuffer();
-                if (Pos+length<=End)
+                if (Pos + length <= End)
                 {
-                    Array.Copy(Buf,Pos,data,offset,length);
+                    Array.Copy(Buf, Pos, data, offset, length);
                     Pos += length;
                     return;
                 }
                 var l = End - Pos;
-                Array.Copy(Buf,Pos,data,offset,l);
+                Array.Copy(Buf, Pos, data, offset, l);
                 offset += l;
                 length -= l;
                 Pos += l;

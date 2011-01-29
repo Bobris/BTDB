@@ -1,4 +1,6 @@
-﻿namespace BTDB
+﻿using System;
+
+namespace BTDB
 {
     public static class PackUnpack
     {
@@ -82,12 +84,32 @@
             data[offset + 7] = unchecked((byte)(value >> 56));
         }
 
+        public static void PackInt64BE(byte[] data, int offset, long value)
+        {
+            data[offset + 7] = unchecked((byte)value);
+            data[offset + 6] = unchecked((byte)(value >> 8));
+            data[offset + 5] = unchecked((byte)(value >> 16));
+            data[offset + 4] = unchecked((byte)(value >> 24));
+            data[offset + 3] = unchecked((byte)(value >> 32));
+            data[offset + 2] = unchecked((byte)(value >> 40));
+            data[offset + 1] = unchecked((byte)(value >> 48));
+            data[offset] = unchecked((byte)(value >> 56));
+        }
+
         public static long UnpackInt64LE(byte[] data, int offset)
         {
             return data[offset] | ((long)data[offset + 1] << 8) |
                    ((long)data[offset + 2] << 16) | ((long)data[offset + 3] << 24) |
                    ((long)data[offset + 4] << 32) | ((long)data[offset + 5] << 40) |
                    ((long)data[offset + 6] << 48) | ((long)data[offset + 7] << 56);
+        }
+
+        public static long UnpackInt64BE(byte[] data, int offset)
+        {
+            return data[offset+7] | ((long)data[offset + 6] << 8) |
+                   ((long)data[offset + 5] << 16) | ((long)data[offset + 4] << 24) |
+                   ((long)data[offset + 3] << 32) | ((long)data[offset + 2] << 40) |
+                   ((long)data[offset + 1] << 48) | ((long)data[offset] << 56);
         }
 
         public static void IncrementInt64LE(byte[] data, int offset)
