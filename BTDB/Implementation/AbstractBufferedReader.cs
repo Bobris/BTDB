@@ -28,7 +28,7 @@ namespace BTDB
             }
         }
 
-        protected void NeedOneByteInBuffer()
+        void NeedOneByteInBuffer()
         {
             if (Eof) throw new EndOfStreamException();
         }
@@ -75,6 +75,7 @@ namespace BTDB
                     res += Buf[Pos];
                     l--;
                 } while (l > 1);
+                Pos++;
             }
             return res;
         }
@@ -109,6 +110,8 @@ namespace BTDB
         public string ReadString()
         {
             var len = ReadVUInt64();
+            if (len == 0) return null;
+            len--;
             if (len > int.MaxValue) throw new InvalidDataException(string.Format("Reading String length overflowed with {0}", len));
             var l = (int)len;
             if (l == 0) return "";
@@ -152,6 +155,11 @@ namespace BTDB
                 length -= l;
                 Pos += l;
             }
+        }
+
+        public void ReadBlock(byte[] data)
+        {
+            ReadBlock(data, 0, data.Length);
         }
 
         public Guid ReadGuid()

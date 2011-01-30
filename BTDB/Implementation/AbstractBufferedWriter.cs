@@ -18,8 +18,8 @@ namespace BTDB
 
         public void WriteVInt32(int value)
         {
-            if (value < 0) WriteVUInt64(((uint)-(value + 1)) * 2);
-            else WriteVUInt64((uint)value*2);
+            if (value < 0) WriteVUInt64(((uint)-(value + 1)) * 2 + 1);
+            else WriteVUInt64((uint)value * 2);
         }
 
         public void WriteVUInt32(uint value)
@@ -29,7 +29,7 @@ namespace BTDB
 
         public void WriteVInt64(long value)
         {
-            if (value < 0) WriteVUInt64(((ulong)-(value + 1)) * 2);
+            if (value < 0) WriteVUInt64(((ulong)-(value + 1)) * 2 + 1);
             else WriteVUInt64((ulong)value * 2);
         }
 
@@ -47,8 +47,8 @@ namespace BTDB
                     WriteBlock(b);
                     return;
                 }
-                PackUnpack.PackVUInt(Buf, ref Pos, value);
             }
+            PackUnpack.PackVUInt(Buf, ref Pos, value);
         }
 
         public void WriteInt64(long value)
@@ -63,9 +63,9 @@ namespace BTDB
                     WriteBlock(b);
                     return;
                 }
-                PackUnpack.PackInt64BE(Buf, Pos, value);
-                Pos += 8;
             }
+            PackUnpack.PackInt64BE(Buf, Pos, value);
+            Pos += 8;
         }
 
         public void WriteDateTime(DateTime value)
@@ -75,18 +75,23 @@ namespace BTDB
 
         public void WriteString(string value)
         {
+            if (value == null)
+            {
+                WriteVUInt64(0);
+                return;
+            }
             var l = value.Length;
-            WriteVUInt64((ulong)l);
+            WriteVUInt64((ulong)l + 1);
             int i = 0;
-            while (i<l)
+            while (i < l)
             {
                 var c = value[i];
-                if (char.IsHighSurrogate(c) && i+1<l)
+                if (char.IsHighSurrogate(c) && i + 1 < l)
                 {
                     var c2 = value[i + 1];
                     if (char.IsLowSurrogate(c2))
                     {
-                        WriteVUInt32( (uint) ((((c - 0xD800) * 0x400) + (c2 - 0xDC00)) + 0x10000));
+                        WriteVUInt32((uint)((((c - 0xD800) * 0x400) + (c2 - 0xDC00)) + 0x10000));
                         i += 2;
                         continue;
                     }
