@@ -616,6 +616,47 @@ namespace BTDBTest
         }
 
         [Test]
+        public void PrefixWithFindNextKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.SetKeyPrefix(_key2, 0, 1);
+                    Assert.True(tr.FindFirstKey());
+                    Assert.True(tr.FindNextKey());
+                    Assert.False(tr.FindNextKey());
+                    Assert.AreEqual(_key2.Skip(1).ToArray(), tr.ReadKey());
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
+        public void PrefixWithFindPrevKeyWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (ILowLevelDB db = new LowLevelDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateKey(_key1);
+                    tr.CreateKey(_key2);
+                    tr.SetKeyPrefix(_key2, 0, 1);
+                    Assert.True(tr.FindFirstKey());
+                    Assert.False(tr.FindPreviousKey());
+                    Assert.AreEqual(_key1.Skip(1).ToArray(), tr.ReadKey());
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
         public void SimpleEraseCurrentWorks()
         {
             using (var stream = CreateTestStream())
