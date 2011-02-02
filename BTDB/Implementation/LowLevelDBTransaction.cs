@@ -209,7 +209,13 @@ namespace BTDB
                 }
                 var sector = _currentKeySector;
                 var parent = PopCurrentKeyParent();
-                while (parent != null)
+                if (parent == null)
+                {
+                    _prefixKeyCount = _currentKeyIndex - _prefixKeyStart + 1;
+                    FindLastKey();
+                    return false;
+                }
+                while (true)
                 {
                     var iter = new BTreeParentIterator(parent.Data);
                     var childByPos = iter.FindChildByPos(sector.Position);
@@ -245,7 +251,6 @@ namespace BTDB
                         childSectorPtr = iter.GetChildSectorPtr(0);
                     }
                 }
-                throw new BTDBException("Internal error");
             }
             catch
             {
