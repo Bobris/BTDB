@@ -16,6 +16,24 @@ namespace BTDB
 
         public abstract void FlushBuffer();
 
+        public void WriteUInt8(byte value)
+        {
+            if (Pos >= End)
+            {
+                FlushBuffer();
+            }
+            Buf[Pos++] = value;
+        }
+
+        public void WriteInt8(sbyte value)
+        {
+            if (Pos >= End)
+            {
+                FlushBuffer();
+            }
+            Buf[Pos++] = (byte)value;
+        }
+
         public void WriteVInt32(int value)
         {
             if (value < 0) WriteVUInt64(((uint)-(value + 1)) * 2 + 1);

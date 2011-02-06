@@ -6,7 +6,7 @@ using NUnit.Framework;
 namespace BTDBTest
 {
     [TestFixture]
-    public class AbstractBufferedWriterTest
+    public class AbstractBufferedReaderWriterTest
     {
         class BufferedWriterStub : AbstractBufferedWriter
         {
@@ -124,6 +124,18 @@ namespace BTDBTest
         static void TestString(string value, byte[] checkResult)
         {
             TestWriteRead(w => w.WriteString(value), checkResult, r => Assert.AreEqual(value, r.ReadString()));
+        }
+
+        [Test]
+        public void UInt8Test()
+        {
+            TestWriteRead(w => w.WriteUInt8(42), new byte[] { 42 }, r => Assert.AreEqual(42, r.ReadUInt8()));
+        }
+
+        [Test]
+        public void Int8Test()
+        {
+            TestWriteRead(w => w.WriteInt8(-42), new byte[] { 0xD6 }, r => Assert.AreEqual(-42, r.ReadInt8()));
         }
 
         [Test]

@@ -33,6 +33,18 @@ namespace BTDB
             if (Eof) throw new EndOfStreamException();
         }
 
+        public byte ReadUInt8()
+        {
+            NeedOneByteInBuffer();
+            return Buf[Pos++];
+        }
+
+        public sbyte ReadInt8()
+        {
+            NeedOneByteInBuffer();
+            return (sbyte)Buf[Pos++];
+        }
+
         public int ReadVInt32()
         {
             var res = ReadVUInt64();
