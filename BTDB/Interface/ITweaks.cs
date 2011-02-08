@@ -11,7 +11,7 @@ namespace BTDB
         bool ShouldMerge2BTreeParent(int leftCount, int leftLength, int rightCount, int rightLength,
                                      int keyStorageLength);
         bool ShouldAttemptCacheCompaction(int sectorsInCache, int bytesInCache);
-        void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, ulong>> choosen);
+        void WhichSectorsToRemoveFromCache(List<Sector> choosen);
         void NewSectorAddedToCache(Sector sector, int sectorsInCache, int bytesInCache);
     }
 }

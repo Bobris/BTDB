@@ -21,15 +21,15 @@ namespace BTDB
 
         public ShouldMergeResult ShouldMergeBTreeParent(int lenPrevious, int lenCurrent, int lenNext)
         {
-            if (lenPrevious<0)
+            if (lenPrevious < 0)
             {
                 return lenCurrent + lenNext < OptimumBTreeParentSize ? ShouldMergeResult.MergeWithNext : ShouldMergeResult.NoMerge;
             }
-            if (lenNext<0)
+            if (lenNext < 0)
             {
                 return lenCurrent + lenPrevious < OptimumBTreeParentSize ? ShouldMergeResult.MergeWithPrevious : ShouldMergeResult.NoMerge;
             }
-            if (lenPrevious<lenNext)
+            if (lenPrevious < lenNext)
             {
                 if (lenCurrent + lenPrevious < OptimumBTreeParentSize) return ShouldMergeResult.MergeWithPrevious;
             }
@@ -57,36 +57,20 @@ namespace BTDB
             return sectorsInCache >= 9800;
         }
 
-        public void WhichSectorsToRemoveFromCache(List<KeyValuePair<Sector, ulong>> choosen)
+        public void WhichSectorsToRemoveFromCache(List<Sector> choosen)
         {
-            var sectorMap = new Dictionary<long, int>(choosen.Count);
-            for (int i = 0; i < choosen.Count; i++)
+            foreach (var sector in choosen)
             {
-                var sector = choosen[i].Key;
-                sectorMap.Add(sector.Position, i);
-            }
-            for (int i = 0; i < choosen.Count; i++)
-            {
-                var sector = choosen[i].Key;
                 ulong price = sector.LastAccessTime;
-                choosen[i] = new KeyValuePair<Sector, ulong>(sector, Math.Max(price,choosen[i].Value));
-                sector = sector.Parent;
-                while (sector!=null)
+                var s = sector.Parent;
+                while (s != null)
                 {
                     price++;
-                    int index;
-                    if (sectorMap.TryGetValue(sector.Position, out index))
-                    {
-                        if (choosen[index].Key==sector)
-                        {
-                            choosen[index] = new KeyValuePair<Sector, ulong>(sector,
-                                                                             Math.Max(price, choosen[index].Value));
-                        }
-                    }
-                    sector = sector.Parent;
+                    s.LastAccessTime = Math.Max(price, s.LastAccessTime);
+                    s = s.Parent;
                 }
             }
-            choosen.Sort((a, b) => a.Value < b.Value ? -1 : (a.Value > b.Value ? 1: 0));
+            choosen.Sort((a, b) => a.LastAccessTime < b.LastAccessTime ? -1 : (a.LastAccessTime > b.LastAccessTime ? 1 : 0));
             choosen.RemoveRange(choosen.Count / 2, choosen.Count - choosen.Count / 2);
         }
 

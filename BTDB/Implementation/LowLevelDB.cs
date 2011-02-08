@@ -127,6 +127,17 @@ namespace BTDB
             get { return _newState; }
         }
 
+        Sector TryGetSectorNoUpdateAccess(long positionWithSize)
+        {
+            Lazy<Sector> res;
+            if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
+            {
+                var sector = res.Value;
+                return sector;
+            }
+            return null;
+        }
+
         internal Sector TryGetSector(long positionWithSize)
         {
             Lazy<Sector> res;
@@ -158,7 +169,7 @@ namespace BTDB
             size = size * AllocationGranularity;
             var lazy = new Lazy<Sector>(() =>
             {
-                var res = new Sector { Position = position, Length = size, LastAccessTime = 0 };
+                var res = new Sector { Position = position, Length = size, InternalLastAccessTime = 0 };
                 if (inWriteTransaction)
                 {
                     res.InTransaction = _spaceAllocatedInTransaction.Contains((ulong)position);
@@ -212,7 +223,7 @@ namespace BTDB
                 _runningCacheCompaction = true;
                 _runningWriteCacheCompaction = inWriteTransaction;
                 runningCompactingSet = true;
-                var sectors = new List<KeyValuePair<Sector, ulong>>();
+                var sectors = new List<Sector>();
                 foreach (var pair in _sectorCache)
                 {
                     Sector sector;
@@ -226,16 +237,16 @@ namespace BTDB
                         continue;
                     }
                     if (!inWriteTransaction && sector.InTransaction) continue;
-                    sectors.Add(new KeyValuePair<Sector, ulong>(sector, 0));
+                    sector.LastAccessTime = (ulong) Interlocked.Read(ref sector.InternalLastAccessTime);
+                    sectors.Add(sector);
                 }
                 if (sectors.Count == 0) return;
                 _tweaks.WhichSectorsToRemoveFromCache(sectors);
                 if (sectors.Count == 0) return;
                 using (_cacheCompactionLock.WriteLock())
                 {
-                    foreach (var pair in sectors)
+                    foreach (var sector in sectors)
                     {
-                        var sector = pair.Key;
                         if (!sector.Deleted)
                         {
                             if (!sector.Allocated) RealSectorAllocate(sector);
@@ -1403,7 +1414,7 @@ namespace BTDB
                 PublishSector(newLeafSector);
                 PublishSector(newParentSector);
                 SectorPtr.Pack(sector.Data, i * PtrDownSize, newParentSector.ToSectorPtr());
-                var childSector = TryGetSector(childSectorPtr.Ptr);
+                var childSector = TryGetSectorNoUpdateAccess(childSectorPtr.Ptr);
                 if (childSector != null)
                 {
                     childSector.Parent = newParentSector;
@@ -1623,7 +1634,7 @@ namespace BTDB
 
         internal Sector NewSector()
         {
-            var result = new Sector { Dirty = true, InTransaction = true, LastAccessTime = 0 };
+            var result = new Sector { Dirty = true, InTransaction = true, InternalLastAccessTime = 0 };
             _unallocatedCounter--;
             result.Position = _unallocatedCounter * AllocationGranularity;
             return result;
@@ -1650,8 +1661,7 @@ namespace BTDB
 
         internal void UpdateLastAccess(Sector sector)
         {
-            if (sector.LastAccessTime == (ulong)_currentCacheTime) return;
-            sector.LastAccessTime = (ulong)Interlocked.Increment(ref _currentCacheTime);
+            Interlocked.Exchange(ref sector.InternalLastAccessTime, Interlocked.Increment(ref _currentCacheTime));
         }
 
         void LinkToTailOfUnallocatedSectors(Sector newSector)
@@ -1740,7 +1750,7 @@ namespace BTDB
 
         internal void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
-            var sector = TryGetSector(childSectorPtr);
+            var sector = TryGetSectorNoUpdateAccess(childSectorPtr);
             if (sector != null)
             {
                 if (sector.InTransaction)
