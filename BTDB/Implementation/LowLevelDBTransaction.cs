@@ -46,7 +46,7 @@ namespace BTDB
 
         internal void SafeUpgradeToWriteTransaction()
         {
-            Debug.Assert(_currentKeySector==null);
+            Debug.Assert(_currentKeySector == null);
             Debug.Assert(!IsWriteTransaction());
             _owner.UpgradeTransactionToWriteOne(this, null);
             _readLink = null;
@@ -329,8 +329,10 @@ namespace BTDB
                 }
                 else
                 {
+                    var origsector = sector;
                     sector = _owner.ResizeSectorWithUpdatePosition(sector, iter.TotalLength + additionalLengthNeeded,
                                                                    sector.Parent, _currentKeySectorParents);
+                    if (sector != origsector) FixChildrenParentPointers(sector);
                     _currentKeySector = sector;
                     int insertOfs = iter.AddEntry(additionalLengthNeeded, sector.Data, _currentKeyIndexInLeaf);
                     SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, insertOfs);
@@ -391,12 +393,14 @@ namespace BTDB
             Sector newKeySector;
             BTreeChildIterator.SetCountToSectorData(leftSector.Data, leftCount);
             int newItemPos = iter.OffsetOfIndex(_currentKeyIndexInLeaf);
+            int setActualDataPos;
             if (beforeNew)
             {
                 Array.Copy(iter.Data, iter.FirstOffset, leftSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * leftCount, currentPos - iter.FirstOffset);
                 Array.Copy(iter.Data, currentPos, rightSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount, newItemPos - currentPos);
                 int rightPos = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount + newItemPos - currentPos;
-                SetBTreeChildKeyData(rightSector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, rightPos);
+                setActualDataPos = rightPos;
+                SetBTreeChildKeyDataJustLengths(rightSector, keyLen, valueLen, rightPos);
                 rightPos += additionalLengthNeeded - BTreeChildIterator.HeaderForEntry;
                 Array.Copy(iter.Data, newItemPos, rightSector.Data, rightPos, iter.TotalLength - newItemPos);
                 newKeySector = rightSector;
@@ -411,13 +415,15 @@ namespace BTDB
                 Array.Copy(iter.Data, currentPos - additionalLengthNeeded + BTreeChildIterator.HeaderForEntry, rightSector.Data, BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * rightCount,
                            iter.TotalLength + additionalLengthNeeded - BTreeChildIterator.HeaderForEntry - currentPos);
                 Array.Copy(iter.Data, newItemPos, leftSector.Data, leftPos, currentPos - newItemPos - additionalLengthNeeded + BTreeChildIterator.HeaderForEntry);
-                SetBTreeChildKeyData(leftSector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, leftPosInsert);
+                setActualDataPos = leftPosInsert;
+                SetBTreeChildKeyDataJustLengths(leftSector, keyLen, valueLen, leftPosInsert);
                 newKeySector = leftSector;
             }
             BTreeChildIterator.RecalculateHeader(leftSector.Data, leftCount);
             BTreeChildIterator.RecalculateHeader(rightSector.Data, rightCount);
             FixChildrenParentPointers(leftSector);
             FixChildrenParentPointers(rightSector);
+            SetBTreeChildKeyData(newKeySector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, setActualDataPos);
             if (leftSector.Parent == null)
             {
                 CreateBTreeParentFromTwoLeafs(leftSector, rightSector);
@@ -510,7 +516,7 @@ namespace BTDB
             {
                 sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
                 sector.Type = BTreeChildIterator.IsChildFromSectorData(sector.Data) ? SectorType.BTreeChild : SectorType.BTreeParent;
-                sector.Parent = _currentKeySector;
+                SafeSetSectorParent(sector, _currentKeySector);
                 if (_currentKeySector != null) _currentKeySectorParents.Add(_currentKeySector);
                 _currentKeySector = sector;
             }
@@ -521,6 +527,18 @@ namespace BTDB
                 _currentKeySector = sector;
             }
             return sector;
+        }
+
+        void SafeSetSectorParent(Sector sector, Sector parent)
+        {
+            if (IsWriteTransaction())
+            {
+                sector.Parent = parent;
+            }
+            else
+            {
+                sector.SetParentIfNull(parent);
+            }
         }
 
         void AddToBTreeParent(Sector leftSector, Sector rightSector, byte[] middleKeyData, int middleKeyLen, int middleKeyOfs, int middleKeyLenInSector)
@@ -579,6 +597,7 @@ namespace BTDB
                 leftSector.Parent = parentSector;
                 rightSector.Parent = parentSector;
                 IncrementChildCountInBTreeParents(parentSector);
+                FixChildrenParentPointers(parentSector);
             }
             else
             {
@@ -620,8 +639,9 @@ namespace BTDB
                     Array.Copy(mergedData, iter.ChildSectorPtrOffset, rightParentSector.Data, BTreeParentIterator.FirstChildSectorPtrOffset, LowLevelDB.PtrDownSize + 8);
                     Array.Copy(mergedData, iter.NextEntryOffset, rightParentSector.Data, rightFirstOffset, iter.TotalLength - iter.NextEntryOffset);
                     BTreeParentIterator.RecalculateHeader(rightParentSector.Data, rightCount);
-                    FixChildrenParentPointers(rightParentSector);
                     _owner.PublishSector(rightParentSector);
+                    FixChildrenParentPointers(leftParentSector);
+                    FixChildrenParentPointers(rightParentSector);
                     int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? LowLevelDB.PtrDownSize : 0);
                     if (leftParentSector.Parent == null)
                     {
@@ -846,7 +866,7 @@ namespace BTDB
             {
                 sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
                 sector.Type = dataLen > sector.Length ? SectorType.DataParent : SectorType.DataChild;
-                sector.Parent = parent;
+                SafeSetSectorParent(sector, parent);
             }
             if (sector.Type == SectorType.DataChild)
             {
@@ -890,6 +910,15 @@ namespace BTDB
             }
             downSectorPtr = SectorPtr.Unpack(sector.Data, i * LowLevelDB.PtrDownSize);
             return SectorDataCompare(startOfs, buf, ofs, len, downSectorPtr, dataLen, sector);
+        }
+
+        void SetBTreeChildKeyDataJustLengths(Sector inSector, int keyLen, int valueLen, int sectorDataOfs)
+        {
+            byte[] sectorData = inSector.Data;
+            int realKeyLen = _prefix.Length + keyLen;
+            int realValueLen = valueLen < 0 ? 0 : valueLen;
+            PackUnpack.PackVUInt(sectorData, ref sectorDataOfs, (uint)realKeyLen);
+            PackUnpack.PackVUInt(sectorData, ref sectorDataOfs, (uint)realValueLen);
         }
 
         void SetBTreeChildKeyData(Sector inSector, byte[] keyBuf, int keyOfs, int keyLen, byte[] valueBuf, int valueOfs, int valueLen, int sectorDataOfs)
@@ -1071,7 +1100,7 @@ namespace BTDB
                     {
                         dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                         dataSector.Type = SectorType.DataChild;
-                        dataSector.Parent = parentOfSector;
+                        SafeSetSectorParent(dataSector, parentOfSector);
                     }
                     buf = dataSector.Data;
                     bufOfs = ofs;
@@ -1082,7 +1111,7 @@ namespace BTDB
                 {
                     dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                     dataSector.Type = SectorType.DataParent;
-                    dataSector.Parent = parentOfSector;
+                    SafeSetSectorParent(dataSector, parentOfSector);
                 }
                 parentOfSector = dataSector;
                 int downPtrCount;
@@ -1155,7 +1184,7 @@ namespace BTDB
                     {
                         dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                         dataSector.Type = SectorType.DataChild;
-                        dataSector.Parent = parentOfSector;
+                        SafeSetSectorParent(dataSector, parentOfSector);
                     }
                     buf = dataSector.Data;
                     bufOfs = (int)ofs;
@@ -1166,7 +1195,7 @@ namespace BTDB
                 {
                     dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
                     dataSector.Type = SectorType.DataParent;
-                    dataSector.Parent = parentOfSector;
+                    SafeSetSectorParent(dataSector, parentOfSector);
                 }
                 parentOfSector = dataSector;
                 int downPtrCount;

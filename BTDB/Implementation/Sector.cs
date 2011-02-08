@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading;
 
 namespace BTDB
 {
@@ -17,7 +18,17 @@ namespace BTDB
 
         public ulong LastAccessTime { get; internal set; }
 
-        internal Sector Parent { get; set; }
+        Sector _parent;
+        internal Sector Parent
+        {
+            get { return _parent; }
+            set { _parent = value; }
+        }
+
+        internal void SetParentIfNull(Sector parent)
+        {
+            Interlocked.CompareExchange(ref _parent, parent, null);
+        }
 
         internal Sector NextLink { get; set; }
 
@@ -94,5 +105,6 @@ namespace BTDB
         }
 
         byte[] _data;
+
     }
 }

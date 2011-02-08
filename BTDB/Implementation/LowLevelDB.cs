@@ -704,12 +704,12 @@ namespace BTDB
         internal Sector DirtizeSector(Sector sector, Sector newParent, List<Sector> unlockStack)
         {
             if (sector.Dirty) return sector;
+            if (newParent != null)
+            {
+                newParent = DirtizeSector(newParent, newParent.Parent, unlockStack);
+            }
             if (sector.InTransaction == false)
             {
-                if (newParent != null)
-                {
-                    newParent = DirtizeSector(newParent, newParent.Parent, unlockStack);
-                }
                 var clone = NewSector();
                 clone.Length = sector.Length;
                 clone.Type = sector.Type;
