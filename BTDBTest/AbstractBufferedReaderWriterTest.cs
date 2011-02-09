@@ -171,6 +171,12 @@ namespace BTDBTest
         }
 
         [Test]
+        public void Int32Test()
+        {
+            TestWriteRead(w => w.WriteInt32(0x12345678), new byte[] { 0x12, 0x34, 0x56, 0x78 }, r => Assert.AreEqual(0x12345678, r.ReadInt32()));
+        }
+
+        [Test]
         public void VUInt32Test()
         {
             TestVUInt32(0, new byte[] { 0 });
@@ -231,5 +237,21 @@ namespace BTDBTest
         {
             TestWriteRead(w => w.WriteVInt64(value), checkResult, r => Assert.AreEqual(value, r.ReadVInt64()));
         }
+
+        [Test]
+        public void DecimalTest()
+        {
+            TestDecimal(0M, new byte[] { 0 });
+            TestDecimal(1M, new byte[] { 32, 1 });
+            TestDecimal(-1M, new byte[] { 160, 1 });
+            TestDecimal(decimal.MaxValue, new byte[] { 96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
+            TestDecimal(decimal.MinValue, new byte[] { 128+96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
+        }
+
+        static void TestDecimal(decimal value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteDecimal(value), checkResult, r => Assert.AreEqual(value, r.ReadDecimal()));
+        }
+
     }
 }

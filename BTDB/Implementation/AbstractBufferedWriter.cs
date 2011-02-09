@@ -86,6 +86,23 @@ namespace BTDB
             Pos += 8;
         }
 
+        public void WriteInt32(int value)
+        {
+            if (Pos + 4 > End)
+            {
+                FlushBuffer();
+                if (Pos + 4 > End)
+                {
+                    var b = new byte[4];
+                    PackUnpack.PackInt32BE(b, 0, value);
+                    WriteBlock(b);
+                    return;
+                }
+            }
+            PackUnpack.PackInt32BE(Buf, Pos, value);
+            Pos += 4;
+        }
+
         public void WriteDateTime(DateTime value)
         {
             WriteInt64(value.ToBinary());
@@ -141,6 +158,44 @@ namespace BTDB
         public void WriteGuid(Guid value)
         {
             WriteBlock(value.ToByteArray());
+        }
+
+        public void WriteDecimal(decimal value)
+        {
+            var ints = decimal.GetBits(value);
+            var header = (byte)((ints[3] >> 16) & 31);
+            if (ints[3] < 0) header |= 128;
+            var first = (uint)ints[0] + ((ulong)ints[1] << 32);
+            if (ints[2] == 0)
+            {
+                if (first == 0)
+                {
+                    WriteUInt8(header);
+                }
+                else
+                {
+                    header |= 32;
+                    WriteUInt8(header);
+                    WriteVUInt64(first);
+                }
+            }
+            else
+            {
+                if ((uint)ints[2] < 0x10000000)
+                {
+                    header |= 64;
+                    WriteUInt8(header);
+                    WriteInt64((long)first);
+                    WriteVUInt32((uint)ints[2]);
+                }
+                else
+                {
+                    header |= 64 | 32;
+                    WriteUInt8(header);
+                    WriteInt64((long)first);
+                    WriteInt32(ints[2]);
+                }
+            }
         }
     }
 }

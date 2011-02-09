@@ -114,6 +114,28 @@ namespace BTDB
             return res;
         }
 
+        public int ReadInt32()
+        {
+            NeedOneByteInBuffer();
+            int res = 0;
+            if (Pos + 4 <= End)
+            {
+                res = PackUnpack.UnpackInt32BE(Buf, Pos);
+                Pos += 4;
+            }
+            else
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    NeedOneByteInBuffer();
+                    res <<= 8;
+                    res += Buf[Pos];
+                    Pos++;
+                }
+            }
+            return res;
+        }
+
         public DateTime ReadDateTime()
         {
             return DateTime.FromBinary(ReadInt64());
@@ -179,6 +201,31 @@ namespace BTDB
             var res = new byte[16];
             ReadBlock(res, 0, 16);
             return new Guid(res);
+        }
+
+        public decimal ReadDecimal()
+        {
+            var header = ReadUInt8();
+            ulong first = 0;
+            uint second = 0;
+            switch (header >> 5 & 3)
+            {
+                case 0:
+                    break;
+                case 1:
+                    first = ReadVUInt64();
+                    break;
+                case 2:
+                    first = (ulong)ReadInt64();
+                    second = ReadVUInt32();
+                    break;
+                case 3:
+                    first = (ulong)ReadInt64();
+                    second = (uint)ReadInt32();
+                    break;
+            }
+            var res = new decimal((int)first, (int)(first >> 32), (int)second, (header & 128) != 0, (byte)(header & 31));
+            return res;
         }
     }
 }

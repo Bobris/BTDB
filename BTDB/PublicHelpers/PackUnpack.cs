@@ -47,9 +47,22 @@ namespace BTDB
             data[offset + 3] = unchecked((byte)(value >> 24));
         }
 
+        public static void PackInt32BE(byte[] data, int offset, int value)
+        {
+            data[offset + 3] = unchecked((byte)value);
+            data[offset + 2] = unchecked((byte)(value >> 8));
+            data[offset + 1] = unchecked((byte)(value >> 16));
+            data[offset] = unchecked((byte)(value >> 24));
+        }
+
         public static int UnpackInt32LE(byte[] data, int offset)
         {
             return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+        }
+
+        public static int UnpackInt32BE(byte[] data, int offset)
+        {
+            return data[offset + 3] | (data[offset + 2] << 8) | (data[offset + 1] << 16) | (data[offset] << 24);
         }
 
         public static void PackUInt64LE(byte[] data, int offset, ulong value)
@@ -66,10 +79,10 @@ namespace BTDB
 
         public static ulong UnpackUInt64LE(byte[] data, int offset)
         {
-            return data[offset] | ((ulong) data[offset + 1] << 8) | 
-                   ((ulong) data[offset + 2] << 16) | ((ulong) data[offset + 3] << 24) |
-                   ((ulong) data[offset + 4] << 32) | ((ulong) data[offset + 5] << 40) |
-                   ((ulong) data[offset + 6] << 48) | ((ulong) data[offset + 7] << 56);
+            return data[offset] | ((ulong)data[offset + 1] << 8) |
+                   ((ulong)data[offset + 2] << 16) | ((ulong)data[offset + 3] << 24) |
+                   ((ulong)data[offset + 4] << 32) | ((ulong)data[offset + 5] << 40) |
+                   ((ulong)data[offset + 6] << 48) | ((ulong)data[offset + 7] << 56);
         }
 
         public static void PackInt64LE(byte[] data, int offset, long value)
@@ -106,7 +119,7 @@ namespace BTDB
 
         public static long UnpackInt64BE(byte[] data, int offset)
         {
-            return data[offset+7] | ((long)data[offset + 6] << 8) |
+            return data[offset + 7] | ((long)data[offset + 6] << 8) |
                    ((long)data[offset + 5] << 16) | ((long)data[offset + 4] << 24) |
                    ((long)data[offset + 3] << 32) | ((long)data[offset + 2] << 40) |
                    ((long)data[offset + 1] << 48) | ((long)data[offset] << 56);
