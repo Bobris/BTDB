@@ -244,8 +244,13 @@ namespace BTDBTest
             TestDecimal(0M, new byte[] { 0 });
             TestDecimal(1M, new byte[] { 32, 1 });
             TestDecimal(-1M, new byte[] { 160, 1 });
+            TestDecimal(0.0002M, new byte[] { 32 + 4, 2 });
+            TestDecimal(1000000000000M, new byte[] { 32, 248, 232, 212, 165, 16, 0 });
+            TestDecimal(1000000000000000000000M, new byte[] { 64, 54, 53, 201, 173, 197, 222, 160, 0, 0 });
+            TestDecimal(decimal.MaxValue - 1, new byte[] { 96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE });
             TestDecimal(decimal.MaxValue, new byte[] { 96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
-            TestDecimal(decimal.MinValue, new byte[] { 128+96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
+            TestDecimal(decimal.MinValue + 1, new byte[] { 128 + 96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE });
+            TestDecimal(decimal.MinValue, new byte[] { 128 + 96, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
         }
 
         static void TestDecimal(decimal value, byte[] checkResult)

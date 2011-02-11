@@ -216,12 +216,12 @@ namespace BTDB
                     first = ReadVUInt64();
                     break;
                 case 2:
-                    first = (ulong)ReadInt64();
                     second = ReadVUInt32();
+                    first = (ulong)ReadInt64();
                     break;
                 case 3:
-                    first = (ulong)ReadInt64();
                     second = (uint)ReadInt32();
+                    first = (ulong)ReadInt64();
                     break;
             }
             var res = new decimal((int)first, (int)(first >> 32), (int)second, (header & 128) != 0, (byte)(header & 31));

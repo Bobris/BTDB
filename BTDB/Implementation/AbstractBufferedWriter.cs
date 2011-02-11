@@ -185,15 +185,15 @@ namespace BTDB
                 {
                     header |= 64;
                     WriteUInt8(header);
-                    WriteInt64((long)first);
                     WriteVUInt32((uint)ints[2]);
+                    WriteInt64((long)first);
                 }
                 else
                 {
                     header |= 64 | 32;
                     WriteUInt8(header);
-                    WriteInt64((long)first);
                     WriteInt32(ints[2]);
+                    WriteInt64((long)first);
                 }
             }
         }
