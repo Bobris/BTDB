@@ -203,6 +203,11 @@ namespace BTDB
             return new Guid(res);
         }
 
+        public double ReadDouble()
+        {
+            return BitConverter.Int64BitsToDouble(ReadInt64());
+        }
+
         public decimal ReadDecimal()
         {
             var header = ReadUInt8();

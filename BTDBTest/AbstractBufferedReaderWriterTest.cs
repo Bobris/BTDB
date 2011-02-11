@@ -258,5 +258,20 @@ namespace BTDBTest
             TestWriteRead(w => w.WriteDecimal(value), checkResult, r => Assert.AreEqual(value, r.ReadDecimal()));
         }
 
+        [Test]
+        public void DoubleTest()
+        {
+            TestDouble(0, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 });
+            TestDouble(1, new byte[] { 63, 240, 0, 0, 0, 0, 0, 0 });
+            TestDouble(double.MinValue, new byte[] { 255, 239, 255, 255, 255, 255, 255, 255 });
+            TestDouble(double.MaxValue, new byte[] { 127, 239, 255, 255, 255, 255, 255, 255 });
+            TestDouble(double.NaN, new byte[] { 255, 248, 0, 0, 0, 0, 0, 0 });
+        }
+
+        static void TestDouble(double value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.AreEqual(value, r.ReadDouble()));
+        }
+
     }
 }

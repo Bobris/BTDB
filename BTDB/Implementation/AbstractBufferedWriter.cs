@@ -160,6 +160,11 @@ namespace BTDB
             WriteBlock(value.ToByteArray());
         }
 
+        public void WriteDouble(double value)
+        {
+            WriteInt64(BitConverter.DoubleToInt64Bits(value));
+        }
+
         public void WriteDecimal(decimal value)
         {
             var ints = decimal.GetBits(value);
