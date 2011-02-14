@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="AbstractBufferedReaderWriterTest.cs" />
     <Compile Include="LowLevelDBTest.cs" />
+    <Compile Include="MidLevelDBTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PtrLenListTest.cs" />
   </ItemGroup>
