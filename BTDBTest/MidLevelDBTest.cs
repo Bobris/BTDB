@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using BTDB;
 using BTDB.ODBLayer;
 using NUnit.Framework;
@@ -21,7 +19,7 @@ namespace BTDBTest
         }
 
         [SetUp]
-        public void SetUp()
+        public void Setup()
         {
             _lowDB = new LowLevelDB();
             _lowDB.Open(new ManagedMemoryStream(), true);

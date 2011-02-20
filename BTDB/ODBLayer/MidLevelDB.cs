@@ -17,7 +17,7 @@ namespace BTDB.ODBLayer
 
         public IMidLevelDBTransaction StartTransaction()
         {
-            throw new NotImplementedException();
+            return new MidLevelDBTransaction(this);
         }
 
         public Task<IMidLevelDBTransaction> StartWritingTransaction()

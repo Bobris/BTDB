@@ -14,17 +14,11 @@ namespace BTDB.ODBLayer
 
         public void Dispose()
         {
-            throw new NotImplementedException();
-        }
-
-        public IQueryable Query(Type type)
-        {
-            throw new NotImplementedException();
         }
 
         public IQueryable<T> Query<T>() where T : class
         {
-            throw new NotImplementedException();
+            return new Query<T>(new QueryProvider(this));
         }
 
         public object Insert(Type type)

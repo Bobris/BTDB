@@ -5,7 +5,6 @@ namespace BTDB.ODBLayer
 {
     public interface IMidLevelDBTransaction : IDisposable
     {
-        IQueryable Query(Type type);
         IQueryable<T> Query<T>() where T : class;
 
         object Insert(Type type);
