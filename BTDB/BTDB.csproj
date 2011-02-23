@@ -62,6 +62,7 @@
     <Compile Include="ODBLayer\ExpressionVisitor.cs" />
     <Compile Include="ODBLayer\IMidLevelDB.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransaction.cs" />
+    <Compile Include="ODBLayer\MakeRunnableExpressionVisitor.cs" />
     <Compile Include="ODBLayer\MidLevelDB.cs" />
     <Compile Include="ODBLayer\MidLevelDBTransaction.cs" />
     <Compile Include="ODBLayer\QueryProvider.cs" />
