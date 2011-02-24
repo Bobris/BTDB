@@ -17,12 +17,13 @@ namespace BTDB.ODBLayer
 
         public IMidLevelDBTransaction StartTransaction()
         {
-            return new MidLevelDBTransaction(this);
+            return new MidLevelDBTransaction(this, _lowLevelDB.StartTransaction());
         }
 
         public Task<IMidLevelDBTransaction> StartWritingTransaction()
         {
-            throw new NotImplementedException();
+            return _lowLevelDB.StartWritingTransaction()
+                .ContinueWith<IMidLevelDBTransaction>(t => new MidLevelDBTransaction(this, t.Result), TaskContinuationOptions.ExecuteSynchronously);
         }
 
         public void Dispose()

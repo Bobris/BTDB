@@ -6,14 +6,17 @@ namespace BTDB.ODBLayer
     class MidLevelDBTransaction : IMidLevelDBTransaction
     {
         MidLevelDB _owner;
+        readonly ILowLevelDBTransaction _lowLevelTr;
 
-        public MidLevelDBTransaction(MidLevelDB owner)
+        public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
         {
             _owner = owner;
+            _lowLevelTr = lowLevelTr;
         }
 
         public void Dispose()
         {
+            _lowLevelTr.Dispose();
         }
 
         public IQueryable<T> Query<T>() where T : class
@@ -28,7 +31,7 @@ namespace BTDB.ODBLayer
 
         public T Insert<T>() where T : class
         {
-            throw new NotImplementedException();
+            return (T)Insert(typeof(T));
         }
 
         public void Delete(object @object)
@@ -38,7 +41,7 @@ namespace BTDB.ODBLayer
 
         public void DeleteAll<T>() where T : class
         {
-            throw new NotImplementedException();
+            DeleteAll(typeof(T));
         }
 
         public void DeleteAll(Type type)
@@ -48,7 +51,7 @@ namespace BTDB.ODBLayer
 
         public void Commit()
         {
-            throw new NotImplementedException();
+            _lowLevelTr.Commit();
         }
     }
 }
