@@ -12,7 +12,7 @@ namespace BTDB.ODBLayer
 {
     class QueryProvider : IQueryProvider
     {
-        MidLevelDBTransaction _owner;
+        readonly MidLevelDBTransaction _owner;
 
         internal QueryProvider(MidLevelDBTransaction owner)
         {
@@ -49,14 +49,9 @@ namespace BTDB.ODBLayer
             return @delegate.DynamicInvoke();
         }
 
-        public IEnumerable<T> GetEnumerable<T>()
+        public IQueryable<T> GetEnumerableAsQueryable<T>() where T : class
         {
-            yield break;
-        }
-
-        public IQueryable<T> GetEnumerableAsQueryable<T>()
-        {
-            return GetEnumerable<T>().AsQueryable();
+            return _owner.Enumerate<T>().AsQueryable();
         }
     }
 }

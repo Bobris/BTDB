@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace BTDB.ODBLayer
@@ -7,6 +8,7 @@ namespace BTDB.ODBLayer
     {
         MidLevelDB _owner;
         readonly ILowLevelDBTransaction _lowLevelTr;
+        System.Collections.Concurrent.ConcurrentDictionary<ulong, WeakReference> _objCache;
 
         public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
         {
@@ -22,6 +24,17 @@ namespace BTDB.ODBLayer
         public IQueryable<T> Query<T>() where T : class
         {
             return new Query<T>(new QueryProvider(this));
+        }
+
+        public IEnumerable<T> Enumerate<T>() where T : class
+        {
+            return Enumerate(typeof (T)).Cast<T>();
+        }
+
+        public IEnumerable<object> Enumerate(Type type)
+        {
+            // TODO
+            yield break;
         }
 
         public object Insert(Type type)
