@@ -6,7 +6,7 @@ namespace BTDB.ODBLayer
 {
     class MidLevelDBTransaction : IMidLevelDBTransaction
     {
-        MidLevelDB _owner;
+        readonly MidLevelDB _owner;
         readonly ILowLevelDBTransaction _lowLevelTr;
         System.Collections.Concurrent.ConcurrentDictionary<ulong, WeakReference> _objCache;
 
@@ -39,6 +39,8 @@ namespace BTDB.ODBLayer
 
         public object Insert(Type type)
         {
+            var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+
             throw new NotImplementedException();
         }
 

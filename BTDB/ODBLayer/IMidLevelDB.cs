@@ -10,5 +10,7 @@ namespace BTDB.ODBLayer
         IMidLevelDBTransaction StartTransaction();
 
         Task<IMidLevelDBTransaction> StartWritingTransaction();
+
+        string RegisterType(Type type);
     }
 }

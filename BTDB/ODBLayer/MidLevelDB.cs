@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BTDB.ODBLayer
@@ -6,7 +7,13 @@ namespace BTDB.ODBLayer
     public class MidLevelDB : IMidLevelDB
     {
         ILowLevelDB _lowLevelDB;
+        readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
         bool _dispose;
+
+        internal Type2NameRegistry Type2NameRegistry
+        {
+            get { return _type2Name; }
+        }
 
         public void Open(ILowLevelDB lowLevelDB, bool dispose)
         {
@@ -24,6 +31,19 @@ namespace BTDB.ODBLayer
         {
             return _lowLevelDB.StartWritingTransaction()
                 .ContinueWith<IMidLevelDBTransaction>(t => new MidLevelDBTransaction(this, t.Result), TaskContinuationOptions.ExecuteSynchronously);
+        }
+
+        public string RegisterType(Type type)
+        {
+            if (type == null) throw new ArgumentNullException("type");
+            string name = type.Name;
+            if (type.IsInterface && name.StartsWith("I")) name = name.Substring(1);
+            return RegisterType(type, name);
+        }
+
+        public string RegisterType(Type type, string asName)
+        {
+            return Type2NameRegistry.RegisterType(type, asName);
         }
 
         public void Dispose()
