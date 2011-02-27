@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace BTDB.ODBLayer
@@ -8,11 +7,17 @@ namespace BTDB.ODBLayer
     {
         ILowLevelDB _lowLevelDB;
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
+        readonly TablesInfo _tablesInfo = new TablesInfo();
         bool _dispose;
 
         internal Type2NameRegistry Type2NameRegistry
         {
             get { return _type2Name; }
+        }
+
+        internal TablesInfo TablesInfo
+        {
+            get { return _tablesInfo; }
         }
 
         public void Open(ILowLevelDB lowLevelDB, bool dispose)

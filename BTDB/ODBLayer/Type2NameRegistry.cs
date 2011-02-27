@@ -5,21 +5,24 @@ namespace BTDB.ODBLayer
 {
     internal class Type2NameRegistry
     {
-        public Type2NameRegistry()
-        {
-            _name2Type = new ConcurrentDictionary<string, Type>(ReferenceEqualityComparer<string>.Instance);
-            _type2Name = new ConcurrentDictionary<Type, string>(ReferenceEqualityComparer<Type>.Instance);
-        }
-
-        readonly ConcurrentDictionary<string, Type> _name2Type;
-        readonly ConcurrentDictionary<Type, string> _type2Name;
+        readonly ConcurrentDictionary<string, Type> _name2Type = new ConcurrentDictionary<string, Type>(ReferenceEqualityComparer<string>.Instance);
+        readonly ConcurrentDictionary<Type, string> _type2Name = new ConcurrentDictionary<Type, string>(ReferenceEqualityComparer<Type>.Instance);
+        readonly object _lock = new object();
 
         internal string RegisterType(Type type, string asName)
         {
             asName = string.Intern(asName);
-            if (FindNameByType(type) == asName && FindTypeByName(asName) == type) return asName;
-            _name2Type.AddOrUpdate(asName, type, (a, b) => type);
-            _type2Name.AddOrUpdate(type, asName, (a, b) => asName);
+            lock (_lock)
+            {
+                var existing = FindNameByType(type);
+                if (ReferenceEquals(existing, asName)) return existing;
+                if (existing != null)
+                {
+                    throw new BTDBException(string.Format("Type {0} is already registered for {1}. Cannot reregister for {2}.", type, existing, asName));
+                }
+                _type2Name.TryAdd(type, asName);
+                _name2Type.TryAdd(asName, type);
+            }
             return asName;
         }
 

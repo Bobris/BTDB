@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BTDB.ODBLayer
 {
-    class MidLevelDBTransaction : IMidLevelDBTransaction
+    internal class MidLevelDBTransaction : IMidLevelDBTransaction
     {
         readonly MidLevelDB _owner;
         readonly ILowLevelDBTransaction _lowLevelTr;
@@ -39,7 +39,12 @@ namespace BTDB.ODBLayer
 
         public object Insert(Type type)
         {
-            var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+            var ti = _owner.TablesInfo.FindByType(type);
+            if (ti == null)
+            {
+                var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+                ti = _owner.TablesInfo.LinkType2Name(type, name);
+            }
 
             throw new NotImplementedException();
         }
