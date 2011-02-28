@@ -33,6 +33,20 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<object> Enumerate(Type type)
         {
+            var ti = _owner.TablesInfo.FindByType(type);
+            if (ti == null)
+            {
+                yield break;
+            }
+            // TODO
+            foreach (var o in EnumerateAll())
+            {
+                if (type.IsAssignableFrom(o.GetType())) yield return o;
+            }
+        }
+
+        public IEnumerable<object> EnumerateAll()
+        {
             // TODO
             yield break;
         }
@@ -45,8 +59,8 @@ namespace BTDB.ODBLayer
                 var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
-
-            throw new NotImplementedException();
+            ti.EnsureClientTypeVersion();
+            return ti.Inserter(this);
         }
 
         public T Insert<T>() where T : class
