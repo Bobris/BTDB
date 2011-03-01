@@ -1,14 +1,24 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace BTDB.ODBLayer
 {
-    internal class MidLevelDBTransaction : IMidLevelDBTransaction
+    internal class MidLevelDBTransaction : IMidLevelDBTransaction, IMidLevelDBTransactionInternal
     {
         readonly MidLevelDB _owner;
         readonly ILowLevelDBTransaction _lowLevelTr;
-        System.Collections.Concurrent.ConcurrentDictionary<ulong, WeakReference> _objCache;
+        readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
+        readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
+        long _lastObjId;
+
+        public ulong ObjectInserted(object obj)
+        {
+            var id = (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
+            _dirtyObjSet.TryAdd(id, obj);
+            return id;
+        }
 
         public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
         {
@@ -28,7 +38,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<T> Enumerate<T>() where T : class
         {
-            return Enumerate(typeof (T)).Cast<T>();
+            return Enumerate(typeof(T)).Cast<T>();
         }
 
         public IEnumerable<object> Enumerate(Type type)
@@ -85,7 +95,16 @@ namespace BTDB.ODBLayer
 
         public void Commit()
         {
+            foreach (var o in _dirtyObjSet)
+            {
+                storeObject(o.Value);
+            }
             _lowLevelTr.Commit();
+        }
+
+        void storeObject(object o)
+        {
+            throw new NotImplementedException();
         }
     }
 }

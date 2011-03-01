@@ -13,8 +13,8 @@ namespace BTDB.ODBLayer
         Type _clientType;
         Type _implType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
-        Func<MidLevelDBTransaction, object> _inserter;
-        ConcurrentDictionary<uint, Func<MidLevelDBTransaction, object>> _loaders = new ConcurrentDictionary<uint, Func<MidLevelDBTransaction, object>>();
+        Func<IMidLevelDBTransactionInternal, object> _inserter;
+        ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>>();
 
         internal TableInfo(uint id, string name)
         {
@@ -42,7 +42,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Func<MidLevelDBTransaction, object> Inserter
+        internal Func<IMidLevelDBTransactionInternal, object> Inserter
         {
             get { return _inserter; }
         }
