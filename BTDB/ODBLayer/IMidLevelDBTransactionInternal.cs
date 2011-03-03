@@ -1,7 +1,8 @@
 namespace BTDB.ODBLayer
 {
-    internal interface IMidLevelDBTransactionInternal
+    public interface IMidLevelDBTransactionInternal
     {
-        ulong ObjectInserted(object obj);
+        ulong CreateNewObjectId();
+        void RegisterDirtyObject(ulong id, object obj);
     }
 }

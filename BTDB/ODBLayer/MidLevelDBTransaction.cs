@@ -13,11 +13,15 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         long _lastObjId;
 
-        public ulong ObjectInserted(object obj)
+        public ulong CreateNewObjectId()
         {
             var id = (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
-            _dirtyObjSet.TryAdd(id, obj);
             return id;
+        }
+
+        public void RegisterDirtyObject(ulong id, object obj)
+        {
+            _dirtyObjSet.TryAdd(id, obj);
         }
 
         public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
@@ -58,7 +62,10 @@ namespace BTDB.ODBLayer
         public IEnumerable<object> EnumerateAll()
         {
             // TODO
-            yield break;
+            foreach (var o in _dirtyObjSet)
+            {
+                yield return o.Value;
+            }
         }
 
         public object Insert(Type type)
@@ -97,12 +104,12 @@ namespace BTDB.ODBLayer
         {
             foreach (var o in _dirtyObjSet)
             {
-                storeObject(o.Value);
+                StoreObject(o.Value);
             }
             _lowLevelTr.Commit();
         }
 
-        void storeObject(object o)
+        void StoreObject(object o)
         {
             throw new NotImplementedException();
         }
