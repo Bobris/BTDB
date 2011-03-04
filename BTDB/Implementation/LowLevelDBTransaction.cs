@@ -1919,6 +1919,7 @@ namespace BTDB
             Array.Copy(iter.Data, iter.EntryOffset + 4, sector.Data, iter.EntryOffset + 4, LowLevelDB.PtrDownSize + 8);
             Array.Copy(iter.Data, iter.NextEntryOffset, sector.Data, iter.EntryOffset + 4 + LowLevelDB.PtrDownSize + 8 + len, originalLength - iter.NextEntryOffset);
             Array.Copy(data, ofs, sector.Data, iter.KeyOffset, len);
+            BTreeParentIterator.RecalculateHeader(sector.Data, iter.Count);
             iter = new BTreeParentIterator(sector.Data);
         }
 
