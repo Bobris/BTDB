@@ -2,6 +2,8 @@
 {
     public interface IMidLevelObject
     {
-        ulong MidLevelId { get; }
+        string TableName { get; }
+        uint TableId { get; }
+        ulong Oid { get; }
     }
 }

@@ -24,6 +24,16 @@ namespace BTDB.ODBLayer
             _dirtyObjSet.TryAdd(id, obj);
         }
 
+        public AbstractBufferedWriter PrepareToWriteObject(ulong id)
+        {
+            var key = new byte[1+PackUnpack.LengthVUInt(id)];
+            key[0] = 1;
+            int ofs = 1;
+            PackUnpack.PackVUInt(key,ref ofs,id);
+            _lowLevelTr.CreateKey(key);
+            return new LowLevelDBValueWriter(_lowLevelTr);
+        }
+
         public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
         {
             _owner = owner;
@@ -111,7 +121,9 @@ namespace BTDB.ODBLayer
 
         void StoreObject(object o)
         {
-            throw new NotImplementedException();
+            var midLevelObject = o as IMidLevelObject;
+            var tableInfo = _owner.TablesInfo.FindById(midLevelObject.TableId);
+            tableInfo.Saver(o);
         }
     }
 }

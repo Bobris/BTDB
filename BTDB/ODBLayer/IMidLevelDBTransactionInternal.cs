@@ -4,5 +4,7 @@ namespace BTDB.ODBLayer
     {
         ulong CreateNewObjectId();
         void RegisterDirtyObject(ulong id, object obj);
+        AbstractBufferedWriter PrepareToWriteObject(ulong id);
+
     }
 }

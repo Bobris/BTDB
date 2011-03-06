@@ -48,6 +48,8 @@
     <Compile Include="Implementation\ExportImporter.cs" />
     <Compile Include="Implementation\FreeSpaceAllocatorOptimizer.cs" />
     <Compile Include="Implementation\LowLevelDBTransaction.cs" />
+    <Compile Include="Implementation\LowLevelDBValueReader.cs" />
+    <Compile Include="Implementation\LowLevelDBValueWriter.cs" />
     <Compile Include="Implementation\Sector.cs" />
     <Compile Include="Implementation\SectorPtr.cs" />
     <Compile Include="Implementation\SectorType.cs" />

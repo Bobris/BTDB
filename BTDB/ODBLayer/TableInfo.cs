@@ -19,7 +19,7 @@ namespace BTDB.ODBLayer
         Type _implType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
         Func<IMidLevelDBTransactionInternal, object> _inserter;
-        Action<IMidLevelDBTransactionInternal> _saver;
+        Action<object> _saver;
         ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>>();
 
         internal TableInfo(uint id, string name)
@@ -51,25 +51,55 @@ namespace BTDB.ODBLayer
         void EnsureImplType()
         {
             if (_implType != null) return;
-            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(Name, ClientType), null);
+            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(Id, Name, ClientType, _clientTypeVersion, _tableVersions[_clientTypeVersion]), null);
         }
 
-        static Type CreateImplType(string name, Type clientType)
+        static Type CreateImplType(uint id, string name, Type clientType, uint clientTypeVersion, TableVersionInfo tableVersionInfo)
         {
             AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
             ModuleBuilder mb = ab.DefineDynamicModule(name + "asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
-            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(INotifyPropertyChanged) });
+            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IMidLevelObject), typeof(INotifyPropertyChanged) });
             var raiseINPCMethod = GenerateINotifyPropertyChangedImpl(tb, symbolDocumentWriter);
             var properties = clientType.GetProperties();
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
             var trFieldBuilder = tb.DefineField("MidLevelDBTransaction", typeof(IMidLevelDBTransactionInternal),
                                                 FieldAttributes.Public);
+            var propInfo = typeof (IMidLevelObject).GetProperty("TableName");
+            var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
+            var ilGenerator = getMethodBuilder.GetILGenerator(16);
+            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilGenerator.Emit(OpCodes.Ldstr,name);
+            ilGenerator.Emit(OpCodes.Ret);
+            tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
+            var propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
+            propertyBuilder.SetGetMethod(getMethodBuilder);
+            propInfo = typeof(IMidLevelObject).GetProperty("TableId");
+            getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
+            ilGenerator = getMethodBuilder.GetILGenerator(16);
+            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilGenerator.Emit(OpCodes.Ldc_I4, id);
+            ilGenerator.Emit(OpCodes.Ret);
+            tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
+            propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
+            propertyBuilder.SetGetMethod(getMethodBuilder);
+            propInfo = typeof(IMidLevelObject).GetProperty("Oid");
+            getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
+            ilGenerator = getMethodBuilder.GetILGenerator(16);
+            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilGenerator.Emit(OpCodes.Ldarg_0);
+            ilGenerator.Emit(OpCodes.Ldfld, oidFieldBuilder);
+            ilGenerator.Emit(OpCodes.Ret);
+            tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
+            propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
+            propertyBuilder.SetGetMethod(getMethodBuilder);
+            var fieldBuilders = new Dictionary<string, FieldBuilder>();
             foreach (var pi in properties)
             {
                 var fieldBuilder = tb.DefineField("Field_" + pi.Name, pi.PropertyType, FieldAttributes.Public);
-                var getMethodBuilder = tb.DefineMethod("get_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, pi.PropertyType, Type.EmptyTypes);
-                var ilGenerator = getMethodBuilder.GetILGenerator(16);
+                fieldBuilders[pi.Name] = fieldBuilder;
+                getMethodBuilder = tb.DefineMethod("get_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, pi.PropertyType, Type.EmptyTypes);
+                ilGenerator = getMethodBuilder.GetILGenerator(16);
                 ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
                 ilGenerator.Emit(OpCodes.Ldarg_0);
                 ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
@@ -96,7 +126,7 @@ namespace BTDB.ODBLayer
                 ilGenerator.MarkLabel(labelNoChange);
                 ilGenerator.Emit(OpCodes.Ret);
                 tb.DefineMethodOverride(setMethodBuilder, pi.GetSetMethod());
-                var propertyBuilder = tb.DefineProperty(pi.Name, PropertyAttributes.None, pi.PropertyType, Type.EmptyTypes);
+                propertyBuilder = tb.DefineProperty(pi.Name, PropertyAttributes.None, pi.PropertyType, Type.EmptyTypes);
                 propertyBuilder.SetGetMethod(getMethodBuilder);
                 propertyBuilder.SetSetMethod(setMethodBuilder);
             }
@@ -132,8 +162,59 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldloc_0);
-            ilg.Emit(OpCodes.Call, typeof(IMidLevelDBTransactionInternal).GetMethod("RegisterDirtyObject"));
+            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("RegisterDirtyObject"));
             ilg.Emit(OpCodes.Ldloc_0);
+            ilg.Emit(OpCodes.Ret);
+            metb = tb.DefineMethod("Saver",
+                MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
+            ilg = metb.GetILGenerator();
+            ilg.DeclareLocal(tb);
+            ilg.DeclareLocal(typeof(AbstractBufferedWriter));
+            var skipException = ilg.DefineLabel();
+            ilg.Emit(OpCodes.Ldarg_0);
+            ilg.Emit(OpCodes.Isinst, tb);
+            ilg.Emit(OpCodes.Stloc_0);
+            ilg.Emit(OpCodes.Ldloc_0);
+            ilg.Emit(OpCodes.Brtrue_S, skipException);
+            ilg.Emit(OpCodes.Ldstr, "Type of object in Saver does not match");
+            ilg.Emit(OpCodes.Newobj, typeof(BTDBException).GetConstructor(new[] { typeof(string) }));
+            ilg.Emit(OpCodes.Throw);
+            ilg.MarkLabel(skipException);
+            ilg.Emit(OpCodes.Ldloc_0);
+            ilg.Emit(OpCodes.Ldfld, trFieldBuilder);
+            ilg.Emit(OpCodes.Ldloc_0);
+            ilg.Emit(OpCodes.Ldfld, oidFieldBuilder);
+            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("PrepareToWriteObject"));
+            ilg.Emit(OpCodes.Stloc_1);
+            ilg.Emit(OpCodes.Ldloc_1);
+            ilg.Emit(OpCodes.Ldc_I4, id);
+            ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
+            ilg.Emit(OpCodes.Ldloc_1);
+            ilg.Emit(OpCodes.Ldc_I4, clientTypeVersion);
+            ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
+            for(int fi=0;fi<tableVersionInfo.FieldCount;fi++)
+            {
+                var tableFieldInfo = tableVersionInfo[fi];
+                ilg.Emit(OpCodes.Ldloc_1);
+                ilg.Emit(OpCodes.Ldloc_0);
+                ilg.Emit(OpCodes.Ldfld, fieldBuilders[tableFieldInfo.Name]);
+                switch (tableFieldInfo.Type)
+                {
+                    case FieldType.String:
+                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
+                        break;
+                    case FieldType.Int:
+                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
+                        break;
+                    case FieldType.UInt:
+                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            ilg.Emit(OpCodes.Ldloc_1);
+            ilg.Emit(OpCodes.Callvirt,GetMethodInfo(()=> ((IDisposable)null).Dispose()));
             ilg.Emit(OpCodes.Ret);
             Type result = tb.CreateType();
             ab.Save(name + "asm.dll");
@@ -142,7 +223,9 @@ namespace BTDB.ODBLayer
 
         static void GenerateJumpIfEqual(ILGenerator ilGenerator, Type type, Label jumpTo, Action<ILGenerator> loadLeft, Action<ILGenerator> loadRight)
         {
-            if (type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(double))
+            if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
+                || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
+                || type == typeof(float) || type == typeof(double))
             {
                 loadLeft(ilGenerator);
                 loadRight(ilGenerator);
@@ -289,7 +372,7 @@ namespace BTDB.ODBLayer
             System.Threading.Interlocked.CompareExchange(ref _inserter, inserter, null);
         }
 
-        internal Action<IMidLevelDBTransactionInternal> Saver
+        internal Action<object> Saver
         {
             get
             {
@@ -301,7 +384,8 @@ namespace BTDB.ODBLayer
         void CreateSaver()
         {
             EnsureImplType();
-            throw new NotImplementedException();
+            var saver = (Action<object>)Delegate.CreateDelegate(typeof(Action<object>), _implType.GetMethod("Saver"));
+            System.Threading.Interlocked.CompareExchange(ref _saver, saver, null);
         }
 
         internal void EnsureClientTypeVersion()
