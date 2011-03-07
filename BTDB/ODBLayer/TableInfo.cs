@@ -65,11 +65,11 @@ namespace BTDB.ODBLayer
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
             var trFieldBuilder = tb.DefineField("MidLevelDBTransaction", typeof(IMidLevelDBTransactionInternal),
                                                 FieldAttributes.Public);
-            var propInfo = typeof (IMidLevelObject).GetProperty("TableName");
+            var propInfo = typeof(IMidLevelObject).GetProperty("TableName");
             var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             var ilGenerator = getMethodBuilder.GetILGenerator(16);
             ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
-            ilGenerator.Emit(OpCodes.Ldstr,name);
+            ilGenerator.Emit(OpCodes.Ldstr, name);
             ilGenerator.Emit(OpCodes.Ret);
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             var propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
@@ -133,6 +133,9 @@ namespace BTDB.ODBLayer
             var constructorBuilder = tb.DefineConstructor(MethodAttributes.Family, CallingConventions.Standard,
                                                           new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
             var ilg = constructorBuilder.GetILGenerator();
+            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilg.Emit(OpCodes.Ldarg_0);
+            ilg.Emit(OpCodes.Call,typeof(object).GetConstructor(Type.EmptyTypes));
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Stfld, oidFieldBuilder);
@@ -143,6 +146,7 @@ namespace BTDB.ODBLayer
             var metbCi = tb.DefineMethod("CreateInstance",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
             ilg = metbCi.GetILGenerator();
+            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Newobj, constructorBuilder);
@@ -150,10 +154,11 @@ namespace BTDB.ODBLayer
             var metb = tb.DefineMethod("Inserter",
                             MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal) });
             ilg = metb.GetILGenerator();
+            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg.DeclareLocal(typeof(object));
             ilg.DeclareLocal(typeof(ulong));
             ilg.Emit(OpCodes.Ldarg_0);
-            ilg.Emit(OpCodes.Call, typeof(IMidLevelDBTransactionInternal).GetMethod("CreateNewObjectId"));
+            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("CreateNewObjectId"));
             ilg.Emit(OpCodes.Stloc_1);
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldarg_0);
@@ -168,6 +173,7 @@ namespace BTDB.ODBLayer
             metb = tb.DefineMethod("Saver",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
             ilg = metb.GetILGenerator();
+            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg.DeclareLocal(tb);
             ilg.DeclareLocal(typeof(AbstractBufferedWriter));
             var skipException = ilg.DefineLabel();
@@ -192,21 +198,24 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldc_I4, clientTypeVersion);
             ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
-            for(int fi=0;fi<tableVersionInfo.FieldCount;fi++)
+            for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var tableFieldInfo = tableVersionInfo[fi];
                 ilg.Emit(OpCodes.Ldloc_1);
                 ilg.Emit(OpCodes.Ldloc_0);
-                ilg.Emit(OpCodes.Ldfld, fieldBuilders[tableFieldInfo.Name]);
+                var fb = fieldBuilders[tableFieldInfo.Name];
+                ilg.Emit(OpCodes.Ldfld, fb);
                 switch (tableFieldInfo.Type)
                 {
                     case FieldType.String:
                         ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
                         break;
                     case FieldType.Int:
+                        if (fb.FieldType != typeof(long)) ilg.Emit(OpCodes.Conv_I8);
                         ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
                         break;
                     case FieldType.UInt:
+                        if (fb.FieldType != typeof(ulong)) ilg.Emit(OpCodes.Conv_U8);
                         ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
                         break;
                     default:
@@ -214,7 +223,8 @@ namespace BTDB.ODBLayer
                 }
             }
             ilg.Emit(OpCodes.Ldloc_1);
-            ilg.Emit(OpCodes.Callvirt,GetMethodInfo(()=> ((IDisposable)null).Dispose()));
+            ilg.Emit(OpCodes.Castclass, typeof(IDisposable));
+            ilg.Emit(OpCodes.Callvirt, GetMethodInfo(() => ((IDisposable)null).Dispose()));
             ilg.Emit(OpCodes.Ret);
             Type result = tb.CreateType();
             ab.Save(name + "asm.dll");
