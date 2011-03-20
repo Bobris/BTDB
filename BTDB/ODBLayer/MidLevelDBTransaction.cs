@@ -26,10 +26,10 @@ namespace BTDB.ODBLayer
 
         public AbstractBufferedWriter PrepareToWriteObject(ulong id)
         {
-            var key = new byte[1+PackUnpack.LengthVUInt(id)];
+            var key = new byte[1 + PackUnpack.LengthVUInt(id)];
             key[0] = 1;
             int ofs = 1;
-            PackUnpack.PackVUInt(key,ref ofs,id);
+            PackUnpack.PackVUInt(key, ref ofs, id);
             _lowLevelTr.CreateKey(key);
             return new LowLevelDBValueWriter(_lowLevelTr);
         }
@@ -76,6 +76,23 @@ namespace BTDB.ODBLayer
             {
                 yield return o.Value;
             }
+            _lowLevelTr.SetKeyPrefix(new byte[] { 1 }, 0, 1);
+            if (!_lowLevelTr.FindFirstKey()) yield break;
+            do
+            {
+                int len;
+                byte[] buf;
+                int bufOfs;
+                _lowLevelTr.PeekKey(0, out len, out buf, out bufOfs);
+                var oid = PackUnpack.UnpackVUInt(buf, ref bufOfs);
+                var reader = new LowLevelDBValueReader(_lowLevelTr);
+                var tableId = reader.ReadVUInt32();
+                var tableInfo = _owner.TablesInfo.FindById(tableId);
+                var tableVersion = reader.ReadVUInt32();
+                var obj = tableInfo.GetLoader(tableVersion)(this, oid, reader);
+                _objCache.TryAdd(oid, new WeakReference(obj));
+                yield return obj;
+            } while (_lowLevelTr.FindNextKey());
         }
 
         public object Insert(Type type)

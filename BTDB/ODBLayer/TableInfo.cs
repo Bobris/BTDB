@@ -20,7 +20,7 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
         Func<IMidLevelDBTransactionInternal, object> _inserter;
         Action<object> _saver;
-        ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, object>>();
+        readonly ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
 
         internal TableInfo(uint id, string name)
         {
@@ -135,7 +135,7 @@ namespace BTDB.ODBLayer
             var ilg = constructorBuilder.GetILGenerator();
             ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg.Emit(OpCodes.Ldarg_0);
-            ilg.Emit(OpCodes.Call,typeof(object).GetConstructor(Type.EmptyTypes));
+            ilg.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes));
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Stfld, oidFieldBuilder);
@@ -429,6 +429,65 @@ namespace BTDB.ODBLayer
             var tvi = new TableVersionInfo(fields.ToArray());
             _tableVersions.TryAdd(_lastVersion + 1, tvi);
             _clientTypeVersion = _lastVersion + 1;
+        }
+
+        internal Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> GetLoader(uint version)
+        {
+            return _loaders.GetOrAdd(version, CreateLoader);
+        }
+
+        Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> CreateLoader(uint version)
+        {
+            var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IMidLevelDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
+            var ilGenerator = method.GetILGenerator();
+            ilGenerator.DeclareLocal(_implType);
+            ilGenerator.Emit(OpCodes.Ldarg_1);
+            ilGenerator.Emit(OpCodes.Ldarg_0);
+            ilGenerator.Emit(OpCodes.Call, _implType.GetMethod("CreateInstance"));
+            ilGenerator.Emit(OpCodes.Isinst, _implType);
+            ilGenerator.Emit(OpCodes.Stloc_0);
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, v => LoadVersionInfo());
+            for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+            {
+                var tableFieldInfo = tableVersionInfo[fi];
+                var fieldInfo = _implType.GetField("Field_" + tableFieldInfo.Name);
+                if (fieldInfo == null) continue;
+                ilGenerator.Emit(OpCodes.Ldloc_0);
+                ilGenerator.Emit(OpCodes.Ldarg_2);
+                switch (tableFieldInfo.Type)
+                {
+                    case FieldType.String:
+                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadString()));
+                        break;
+                    case FieldType.Int:
+                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
+                        if (fieldInfo.FieldType == typeof(long)) { }
+                        else if (fieldInfo.FieldType == typeof(int)) ilGenerator.Emit(OpCodes.Conv_I4);
+                        else if (fieldInfo.FieldType == typeof(short)) ilGenerator.Emit(OpCodes.Conv_I2);
+                        else if (fieldInfo.FieldType == typeof(sbyte)) ilGenerator.Emit(OpCodes.Conv_I1);
+                        else throw new NotImplementedException();
+                        break;
+                    case FieldType.UInt:
+                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
+                        if (fieldInfo.FieldType == typeof(ulong)) { }
+                        else if (fieldInfo.FieldType == typeof(uint)) ilGenerator.Emit(OpCodes.Conv_U4);
+                        else if (fieldInfo.FieldType == typeof(ushort)) ilGenerator.Emit(OpCodes.Conv_U2);
+                        else if (fieldInfo.FieldType == typeof(byte)) ilGenerator.Emit(OpCodes.Conv_U1);
+                        else throw new NotImplementedException();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+                ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            }
+            ilGenerator.Emit(OpCodes.Ldloc_0);
+            ilGenerator.Emit(OpCodes.Ret);
+            return (Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>)method.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>));
+        }
+
+        TableVersionInfo LoadVersionInfo()
+        {
+            throw new NotImplementedException();
         }
     }
 }
