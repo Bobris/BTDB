@@ -45,8 +45,16 @@ namespace BTDB.ODBLayer
         public object Execute(Expression expression)
         {
             var e = new MakeRunnableExpressionVisitor().Translate(expression);
-            var @delegate = Expression.Lambda(e).Compile();
-            return @delegate.DynamicInvoke();
+            if (e.Type.IsValueType) e = Expression.Convert(e, typeof(object));
+            var @delegate = (Func<object>)Expression.Lambda(typeof(Func<object>), e).Compile();
+            try
+            {
+                return @delegate();
+            }
+            catch (TargetInvocationException ex)
+            {
+                throw ex.InnerException;
+            }
         }
 
         public IQueryable<T> GetEnumerableAsQueryable<T>() where T : class

@@ -9,6 +9,7 @@ namespace BTDBTest
     [TestFixture]
     public class MidLevelDBTest
     {
+        IStream _dbstream;
         ILowLevelDB _lowDB;
         IMidLevelDB _db;
 
@@ -21,16 +22,29 @@ namespace BTDBTest
         [SetUp]
         public void Setup()
         {
-            _lowDB = new LowLevelDB();
-            _lowDB.Open(new ManagedMemoryStream(), true);
-            _db = new MidLevelDB();
-            _db.Open(_lowDB, true);
+            _dbstream = new ManagedMemoryStream();
+            OpenDB();
         }
 
         [TearDown]
         public void TearDown()
         {
             _db.Dispose();
+            _dbstream.Dispose();
+        }
+
+        void ReopenDB()
+        {
+            _db.Dispose();
+            OpenDB();
+        }
+
+        void OpenDB()
+        {
+            _lowDB = new LowLevelDB();
+            _lowDB.Open(_dbstream, false);
+            _db = new MidLevelDB();
+            _db.Open(_lowDB, true);
         }
 
         [Test]
@@ -68,6 +82,25 @@ namespace BTDBTest
                 p.Age = 35;
                 tr.Commit();
             }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Query<IPerson>().First();
+                Assert.AreEqual("Bobris", p.Name);
+                Assert.AreEqual(35, p.Age);
+            }
+        }
+
+        [Test]
+        public void InsertPersonAndQueryAfterReopen()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                p.Name = "Bobris";
+                p.Age = 35;
+                tr.Commit();
+            }
+            ReopenDB();
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Query<IPerson>().First();
