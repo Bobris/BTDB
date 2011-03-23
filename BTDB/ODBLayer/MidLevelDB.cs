@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace BTDB.ODBLayer
@@ -25,6 +26,21 @@ namespace BTDB.ODBLayer
             if (lowLevelDB == null) throw new ArgumentNullException("lowLevelDB");
             _lowLevelDB = lowLevelDB;
             _dispose = dispose;
+            _tablesInfo.LoadTables(LoadTablesEnum());
+        }
+
+        IEnumerable<string> LoadTablesEnum()
+        {
+            using (var tr = _lowLevelDB.StartTransaction())
+            {
+                tr.SetKeyPrefix(new byte[] { 0, 0 });
+                var valueReader = new LowLevelDBValueReader(tr);
+                while (tr.Enumerate())
+                {
+                    valueReader.Restart();
+                    yield return valueReader.ReadString();
+                }
+            }
         }
 
         public IMidLevelDBTransaction StartTransaction()

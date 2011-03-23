@@ -88,8 +88,12 @@ namespace BTDB
                 {
                     _prefixKeyCount = -1;
                 }
+                _prefix = buf;
             }
-            _prefix = new byte[prefixLen];
+            else
+            {
+                _prefix = new byte[prefixLen];
+            }
             Array.Copy(prefix, prefixOfs, _prefix, 0, prefixLen);
             InvalidateCurrentKey();
         }
@@ -506,6 +510,7 @@ namespace BTDB
 
         public long GetKeyIndex()
         {
+            if (_currentKeyIndex == -1) return -1;
             return _currentKeyIndex - _prefixKeyStart;
         }
 

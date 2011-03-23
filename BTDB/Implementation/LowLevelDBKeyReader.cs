@@ -2,13 +2,13 @@
 
 namespace BTDB
 {
-    public class LowLevelDBValueReader : AbstractBufferedReader
+    public class LowLevelDBKeyReader : AbstractBufferedReader
     {
         readonly ILowLevelDBTransaction _transaction;
-        long _ofs;
-        long _valueSize;
+        int _ofs;
+        int _keySize;
 
-        public LowLevelDBValueReader(ILowLevelDBTransaction transaction)
+        public LowLevelDBKeyReader(ILowLevelDBTransaction transaction)
         {
             _transaction = transaction;
             Restart();
@@ -16,8 +16,8 @@ namespace BTDB
 
         public void Restart()
         {
-            _valueSize = _transaction.GetValueSize();
-            if (_valueSize < 0) _valueSize = 0;
+            _keySize = _transaction.GetKeySize();
+            if (_keySize < 0) _keySize = 0;
             _ofs = 0;
             FillBuffer();
         }
@@ -25,13 +25,13 @@ namespace BTDB
         protected override sealed void FillBuffer()
         {
             Debug.Assert(Pos == End);
-            if (_ofs == _valueSize)
+            if (_ofs == _keySize)
             {
                 Pos = 0;
                 End = -1;
                 return;
             }
-            _transaction.PeekValue(_ofs, out End, out Buf, out Pos);
+            _transaction.PeekKey(_ofs, out End, out Buf, out Pos);
             _ofs += End;
             End += Pos;
         }

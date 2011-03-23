@@ -8,12 +8,12 @@ namespace BTDB
     {
         public static bool CreateKey(this ILowLevelDBTransaction transaction, byte[] keyBuf)
         {
-            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.Create)==FindKeyResult.Created;
+            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.Create) == FindKeyResult.Created;
         }
 
         public static bool FindExactKey(this ILowLevelDBTransaction transaction, byte[] keyBuf)
         {
-            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch)==FindKeyResult.FoundExact;
+            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch) == FindKeyResult.FoundExact;
         }
 
         public static bool CreateOrUpdateKeyValue(this ILowLevelDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
@@ -39,13 +39,26 @@ namespace BTDB
         {
             long valueSize = transaction.GetValueSize();
             if (valueSize < 0) return null;
-            if ((int)valueSize!=valueSize) throw new BTDBException("Value is bigger then 2GB does not fit in byte[]");
+            if ((int)valueSize != valueSize) throw new BTDBException("Value is bigger then 2GB does not fit in byte[]");
             var result = new byte[valueSize];
             transaction.ReadValue(0, (int)valueSize, result, 0);
             return result;
         }
 
-        public static bool TryRemove<TKey,TValue>(this ConcurrentDictionary<TKey,TValue> dict, TKey key)
+        public static void SetKeyPrefix(this ILowLevelDBTransaction transaction, byte[] prefix)
+        {
+            transaction.SetKeyPrefix(prefix, 0, prefix == null ? 0 : prefix.Length);
+        }
+
+        public static bool Enumerate(this ILowLevelDBTransaction transaction)
+        {
+            if (transaction.GetKeyIndex() < 0) return transaction.FindFirstKey();
+            if (transaction.FindNextKey()) return true;
+            transaction.InvalidateCurrentKey();
+            return false;
+        }
+
+        public static bool TryRemove<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dict, TKey key)
         {
             TValue val;
             return dict.TryRemove(key, out val);
