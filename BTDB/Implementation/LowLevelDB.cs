@@ -120,6 +120,7 @@ namespace BTDB
         readonly ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>> _writtingQueue =
             new ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>>();
         bool _writeTrInCreation;
+        bool _wasAnyCommits;
 
         internal State NewState
         {
@@ -315,6 +316,7 @@ namespace BTDB
             _disposeStream = dispose;
             _spaceSoonReusable = null;
             _freeSpaceAllocatorOptimizer.GlobalInvalidate();
+            _wasAnyCommits = false;
             bool newDB = false;
             if (stream.GetSize() == 0)
             {
@@ -558,6 +560,12 @@ namespace BTDB
         public void Dispose()
         {
             InDebuggerCheckDisposeInvariants();
+            if (_wasAnyCommits)
+            {
+                StoreStateToHeaderBuffer(_newState);
+                _totalBytesWritten += RootSize;
+                _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+            }
             if (_disposeStream)
             {
                 var disposable = _stream as IDisposable;
@@ -585,6 +593,7 @@ namespace BTDB
             StoreStateToHeaderBuffer(_newState);
             _totalBytesWritten += RootSize;
             _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+            _wasAnyCommits = true;
             if (_durableTransactions)
                 _stream.HardFlush();
             else

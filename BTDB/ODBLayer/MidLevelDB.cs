@@ -10,6 +10,8 @@ namespace BTDB.ODBLayer
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
         readonly TablesInfo _tablesInfo = new TablesInfo();
         bool _dispose;
+        internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
+        internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
 
         internal Type2NameRegistry Type2NameRegistry
         {
@@ -33,7 +35,7 @@ namespace BTDB.ODBLayer
         {
             using (var tr = _lowLevelDB.StartTransaction())
             {
-                tr.SetKeyPrefix(new byte[] { 0, 0 });
+                tr.SetKeyPrefix(TableNamesPrefix);
                 var valueReader = new LowLevelDBValueReader(tr);
                 while (tr.Enumerate())
                 {

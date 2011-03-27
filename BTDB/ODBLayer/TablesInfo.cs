@@ -1,17 +1,15 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace BTDB.ODBLayer
 {
     internal class TablesInfo
     {
-        ulong _lastSumOfTableVersions;
         readonly ConcurrentDictionary<uint, TableInfo> _id2Table = new ConcurrentDictionary<uint, TableInfo>();
         readonly ConcurrentDictionary<string, TableInfo> _name2Table = new ConcurrentDictionary<string, TableInfo>(ReferenceEqualityComparer<string>.Instance);
         readonly ConcurrentDictionary<Type, TableInfo> _clientType2Table = new ConcurrentDictionary<Type, TableInfo>(ReferenceEqualityComparer<Type>.Instance);
-        object _lock = new object();
+        readonly object _lock = new object();
 
         internal TableInfo FindByType(Type type)
         {

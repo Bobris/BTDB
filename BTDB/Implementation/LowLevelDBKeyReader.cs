@@ -24,7 +24,6 @@ namespace BTDB
 
         protected override sealed void FillBuffer()
         {
-            Debug.Assert(Pos == End);
             if (_ofs == _keySize)
             {
                 Pos = 0;

@@ -11,6 +11,7 @@ namespace BTDB.ODBLayer
         readonly ILowLevelDBTransaction _lowLevelTr;
         readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
+        readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
         long _lastObjId;
 
         public ulong CreateNewObjectId()
@@ -28,8 +29,9 @@ namespace BTDB.ODBLayer
         {
             var key = new byte[1 + PackUnpack.LengthVUInt(id)];
             key[0] = 1;
-            int ofs = 1;
+            var ofs = 1;
             PackUnpack.PackVUInt(key, ref ofs, id);
+            _lowLevelTr.SetKeyPrefix(null);
             _lowLevelTr.CreateKey(key);
             return new LowLevelDBValueWriter(_lowLevelTr);
         }
@@ -60,7 +62,8 @@ namespace BTDB.ODBLayer
             var ti = _owner.TablesInfo.FindByType(type);
             if (ti == null)
             {
-                yield break;
+                var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+                _owner.TablesInfo.LinkType2Name(type, name);
             }
             // TODO
             foreach (var o in EnumerateAll())
@@ -76,7 +79,7 @@ namespace BTDB.ODBLayer
             {
                 yield return o.Value;
             }
-            _lowLevelTr.SetKeyPrefix(new byte[] { 1 }, 0, 1);
+            _lowLevelTr.SetKeyPrefix(new byte[] { 1 });
             if (!_lowLevelTr.FindFirstKey()) yield break;
             do
             {
@@ -140,7 +143,51 @@ namespace BTDB.ODBLayer
         {
             var midLevelObject = o as IMidLevelObject;
             var tableInfo = _owner.TablesInfo.FindById(midLevelObject.TableId);
+            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
+            {
+                _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
+            }
             tableInfo.Saver(o);
+        }
+
+        bool PersistTableInfo(TableInfo tableInfo)
+        {
+            byte[] key;
+            int ofs;
+            if (tableInfo.LastPersistedVersion <= 0)
+            {
+                _lowLevelTr.SetKeyPrefix(MidLevelDB.TableNamesPrefix);
+                key = new byte[PackUnpack.LengthVUInt(tableInfo.Id)];
+                ofs = 0;
+                PackUnpack.PackVUInt(key, ref ofs, tableInfo.Id);
+                if (_lowLevelTr.CreateKey(key))
+                {
+                    using (var writer = new LowLevelDBValueWriter(_lowLevelTr))
+                    {
+                        writer.WriteString(tableInfo.Name);
+                    }
+                }
+            }
+            _lowLevelTr.SetKeyPrefix(MidLevelDB.TableVersionsPrefix);
+            key = new byte[PackUnpack.LengthVUInt(tableInfo.Id) + PackUnpack.LengthVUInt(tableInfo.ClientTypeVersion)];
+            ofs = 0;
+            PackUnpack.PackVUInt(key, ref ofs, tableInfo.Id);
+            PackUnpack.PackVUInt(key, ref ofs, tableInfo.ClientTypeVersion);
+            if (_lowLevelTr.CreateKey(key))
+            {
+                var tableVersionInfo = tableInfo.ClientTableVersionInfo;
+                using (var writer = new LowLevelDBValueWriter(_lowLevelTr))
+                {
+                    writer.WriteVUInt32((uint)tableVersionInfo.FieldCount);
+                    for (int i = 0; i < tableVersionInfo.FieldCount; i++)
+                    {
+                        writer.WriteString(tableVersionInfo[i].Name);
+                        writer.WriteVUInt32((uint)tableVersionInfo[i].Type);
+                    }
+                }
+            }
+            _lowLevelTr.SetKeyPrefix(null);
+            return true;
         }
     }
 }

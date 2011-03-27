@@ -13,7 +13,7 @@ namespace BTDB.ODBLayer
     {
         readonly uint _id;
         readonly string _name;
-        uint _lastVersion;
+        uint _lastPersistedVersion;
         uint _clientTypeVersion;
         Type _clientType;
         Type _implType;
@@ -44,14 +44,36 @@ namespace BTDB.ODBLayer
             set
             {
                 _clientType = value;
-                _clientTypeVersion = 0;
+                ClientTypeVersion = 0;
             }
+        }
+
+        internal TableVersionInfo ClientTableVersionInfo
+        {
+            get
+            {
+                TableVersionInfo tvi;
+                if (_tableVersions.TryGetValue(_clientTypeVersion, out tvi)) return tvi;
+                return null;
+            }
+        }
+
+        internal uint LastPersistedVersion
+        {
+            get { return _lastPersistedVersion; }
+            set { _lastPersistedVersion = value; }
+        }
+
+        internal uint ClientTypeVersion
+        {
+            get { return _clientTypeVersion; }
+            set { _clientTypeVersion = value; }
         }
 
         void EnsureImplType()
         {
             if (_implType != null) return;
-            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(Id, Name, ClientType, _clientTypeVersion, _tableVersions[_clientTypeVersion]), null);
+            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(Id, Name, ClientType, ClientTypeVersion, _tableVersions[ClientTypeVersion]), null);
         }
 
         static Type CreateImplType(uint id, string name, Type clientType, uint clientTypeVersion, TableVersionInfo tableVersionInfo)
@@ -400,7 +422,7 @@ namespace BTDB.ODBLayer
 
         internal void EnsureClientTypeVersion()
         {
-            if (_clientTypeVersion != 0) return;
+            if (ClientTypeVersion != 0) return;
             var props = _clientType.GetProperties();
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
@@ -427,8 +449,8 @@ namespace BTDB.ODBLayer
                 fields.Add(new TableFieldInfo(string.Intern(pi.Name), ft));
             }
             var tvi = new TableVersionInfo(fields.ToArray());
-            _tableVersions.TryAdd(_lastVersion + 1, tvi);
-            _clientTypeVersion = _lastVersion + 1;
+            _tableVersions.TryAdd(LastPersistedVersion + 1, tvi);
+            ClientTypeVersion = LastPersistedVersion + 1;
         }
 
         internal Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> GetLoader(uint version)
@@ -438,6 +460,8 @@ namespace BTDB.ODBLayer
 
         Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> CreateLoader(uint version)
         {
+            EnsureClientTypeVersion();
+            EnsureImplType();
             var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IMidLevelDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(_implType);
