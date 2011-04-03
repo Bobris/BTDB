@@ -13,6 +13,7 @@ namespace BTDB.ODBLayer
     {
         readonly uint _id;
         readonly string _name;
+        readonly ITableInfoResolver _tableInfoResolver;
         uint _lastPersistedVersion;
         uint _clientTypeVersion;
         Type _clientType;
@@ -22,10 +23,11 @@ namespace BTDB.ODBLayer
         Action<object> _saver;
         readonly ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
 
-        internal TableInfo(uint id, string name)
+        internal TableInfo(uint id, string name, ITableInfoResolver tableInfoResolver)
         {
             _id = id;
             _name = name;
+            _tableInfoResolver = tableInfoResolver;
         }
 
         internal uint Id
@@ -67,7 +69,7 @@ namespace BTDB.ODBLayer
         internal uint ClientTypeVersion
         {
             get { return _clientTypeVersion; }
-            set { _clientTypeVersion = value; }
+            private set { _clientTypeVersion = value; }
         }
 
         void EnsureImplType()
@@ -139,12 +141,22 @@ namespace BTDB.ODBLayer
                                         g.Emit(OpCodes.Ldfld, fieldBuilder);
                                     },
                                     g => g.Emit(OpCodes.Ldarg_1));
+
                 ilGenerator.Emit(OpCodes.Ldarg_0);
                 ilGenerator.Emit(OpCodes.Ldarg_1);
                 ilGenerator.Emit(OpCodes.Stfld, fieldBuilder);
+
+                ilGenerator.Emit(OpCodes.Ldarg_0);
+                ilGenerator.Emit(OpCodes.Ldfld, trFieldBuilder);
+                ilGenerator.Emit(OpCodes.Ldarg_0);
+                ilGenerator.Emit(OpCodes.Ldfld, oidFieldBuilder);
+                ilGenerator.Emit(OpCodes.Ldarg_0);
+                ilGenerator.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("ObjectModified"));
+
                 ilGenerator.Emit(OpCodes.Ldarg_0);
                 ilGenerator.Emit(OpCodes.Ldstr, pi.Name);
                 ilGenerator.Emit(OpCodes.Call, raiseINPCMethod);
+
                 ilGenerator.MarkLabel(labelNoChange);
                 ilGenerator.Emit(OpCodes.Ret);
                 tb.DefineMethodOverride(setMethodBuilder, pi.GetSetMethod());
@@ -189,7 +201,7 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldloc_0);
-            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("RegisterDirtyObject"));
+            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("RegisterNewObject"));
             ilg.Emit(OpCodes.Ldloc_0);
             ilg.Emit(OpCodes.Ret);
             metb = tb.DefineMethod("Saver",
@@ -423,6 +435,7 @@ namespace BTDB.ODBLayer
         internal void EnsureClientTypeVersion()
         {
             if (ClientTypeVersion != 0) return;
+            EnsureKnownLastPersistedVersion();
             var props = _clientType.GetProperties();
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
@@ -449,8 +462,30 @@ namespace BTDB.ODBLayer
                 fields.Add(new TableFieldInfo(string.Intern(pi.Name), ft));
             }
             var tvi = new TableVersionInfo(fields.ToArray());
-            _tableVersions.TryAdd(LastPersistedVersion + 1, tvi);
-            ClientTypeVersion = LastPersistedVersion + 1;
+            if (LastPersistedVersion==0)
+            {
+                _tableVersions.TryAdd(1, tvi);
+                ClientTypeVersion = 1;
+            }
+            else
+            {
+                var last=_tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v));
+                if (TableVersionInfo.Equal(last,tvi))
+                {
+                    ClientTypeVersion = LastPersistedVersion;
+                }
+                else
+                {
+                    _tableVersions.TryAdd(LastPersistedVersion + 1, tvi);
+                    ClientTypeVersion = LastPersistedVersion + 1;
+                }
+            }
+        }
+
+        void EnsureKnownLastPersistedVersion()
+        {
+            if (LastPersistedVersion != 0) return;
+            LastPersistedVersion = _tableInfoResolver.GetLastPesistedVersion(_id);
         }
 
         internal Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> GetLoader(uint version)
@@ -470,7 +505,7 @@ namespace BTDB.ODBLayer
             ilGenerator.Emit(OpCodes.Call, _implType.GetMethod("CreateInstance"));
             ilGenerator.Emit(OpCodes.Isinst, _implType);
             ilGenerator.Emit(OpCodes.Stloc_0);
-            var tableVersionInfo = _tableVersions.GetOrAdd(version, v => LoadVersionInfo());
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var tableFieldInfo = tableVersionInfo[fi];
@@ -507,11 +542,6 @@ namespace BTDB.ODBLayer
             ilGenerator.Emit(OpCodes.Ldloc_0);
             ilGenerator.Emit(OpCodes.Ret);
             return (Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>)method.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>));
-        }
-
-        TableVersionInfo LoadVersionInfo()
-        {
-            throw new NotImplementedException();
         }
     }
 }

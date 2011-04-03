@@ -64,6 +64,7 @@
     <Compile Include="Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\ExpressionVisitor.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
+    <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\TableFieldInfo.cs" />
     <Compile Include="ODBLayer\FieldType.cs" />
     <Compile Include="ODBLayer\IMidLevelDB.cs" />

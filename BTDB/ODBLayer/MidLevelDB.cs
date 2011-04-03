@@ -8,10 +8,11 @@ namespace BTDB.ODBLayer
     {
         ILowLevelDB _lowLevelDB;
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
-        readonly TablesInfo _tablesInfo = new TablesInfo();
+        TablesInfo _tablesInfo;
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
+        TableInfoResolver _tableInfoResolver;
 
         internal Type2NameRegistry Type2NameRegistry
         {
@@ -28,6 +29,8 @@ namespace BTDB.ODBLayer
             if (lowLevelDB == null) throw new ArgumentNullException("lowLevelDB");
             _lowLevelDB = lowLevelDB;
             _dispose = dispose;
+            _tableInfoResolver = new TableInfoResolver(lowLevelDB);
+            _tablesInfo = new TablesInfo(_tableInfoResolver);
             _tablesInfo.LoadTables(LoadTablesEnum());
         }
 
@@ -75,6 +78,49 @@ namespace BTDB.ODBLayer
             {
                 _lowLevelDB.Dispose();
                 _dispose = false;
+            }
+        }
+
+        class TableInfoResolver : ITableInfoResolver
+        {
+            readonly ILowLevelDB _lowLevelDB;
+
+            internal TableInfoResolver(ILowLevelDB lowLevelDB)
+            {
+                _lowLevelDB = lowLevelDB;
+            }
+
+            uint ITableInfoResolver.GetLastPesistedVersion(uint id)
+            {
+                using (var tr = _lowLevelDB.StartTransaction())
+                {
+                    tr.SetKeyPrefix(TableVersionsPrefix);
+                    var key = new byte[PackUnpack.LengthVUInt(id) + 1];
+                    var ofs = 0;
+                    PackUnpack.PackVUInt(key, ref ofs, id);
+                    key[ofs] = 0xff;
+                    if (tr.FindKey(key, 0, key.Length, FindKeyStrategy.PreferPrevious) == FindKeyResult.NotFound)
+                        return 0;
+                    var key2 = tr.ReadKey();
+                    if (key2.Length < ofs) return 0;
+                    if (BitArrayManipulation.CompareByteArray(key, 0, ofs, key2, 0, ofs) != 0) return 0;
+                    return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
+                }
+            }
+
+            TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version)
+            {
+                using (var tr = _lowLevelDB.StartTransaction())
+                {
+                    tr.SetKeyPrefix(TableVersionsPrefix);
+                    var key = new byte[PackUnpack.LengthVUInt(id) + PackUnpack.LengthVUInt(version)];
+                    var ofs = 0;
+                    PackUnpack.PackVUInt(key, ref ofs, id);
+                    PackUnpack.PackVUInt(key, ref ofs, version);
+                    if (!tr.FindExactKey(key))
+                        throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
+                    return TableVersionInfo.Load(new LowLevelDBValueReader(tr));
+                }
             }
         }
     }

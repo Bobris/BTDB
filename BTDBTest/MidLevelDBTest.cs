@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using BTDB;
 using BTDB.ODBLayer;
@@ -17,6 +18,13 @@ namespace BTDBTest
         {
             string Name { get; set; }
             uint Age { get; set; }
+        }
+
+        public interface IPersonNew
+        {
+            string Name { get; set; }
+            string Comment { get; set; }
+            ulong Age { get; set; }
         }
 
         [SetUp]
@@ -108,6 +116,53 @@ namespace BTDBTest
                 Assert.AreEqual(35, p.Age);
             }
         }
+
+        [Test]
+        public void ModifyPerson()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                p.Name = "Bobris";
+                p.Age = 35;
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Query<IPerson>().First();
+                p.Age++;
+                Assert.AreEqual(36, p.Age);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Query<IPerson>().First();
+                Assert.AreEqual(36, p.Age);
+            }
+        }
+
+        [Test]
+        public void PersonUpgrade()
+        {
+            var personObjDBName = _db.RegisterType(typeof(IPerson));
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                p.Name = "Bobris";
+                p.Age = 35;
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(IPersonNew), personObjDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Query<IPersonNew>().First();
+                Assert.AreEqual("Bobris", p.Name);
+                Assert.AreEqual(35, p.Age);
+                Assert.AreEqual(null, p.Comment);
+            }
+        }
+
 
     }
 }

@@ -10,6 +10,12 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<string, TableInfo> _name2Table = new ConcurrentDictionary<string, TableInfo>(ReferenceEqualityComparer<string>.Instance);
         readonly ConcurrentDictionary<Type, TableInfo> _clientType2Table = new ConcurrentDictionary<Type, TableInfo>(ReferenceEqualityComparer<Type>.Instance);
         readonly object _lock = new object();
+        readonly ITableInfoResolver _tableInfoResolver;
+
+        public TablesInfo(ITableInfoResolver tableInfoResolver)
+        {
+            _tableInfoResolver = tableInfoResolver;
+        }
 
         internal TableInfo FindByType(Type type)
         {
@@ -71,7 +77,7 @@ namespace BTDB.ODBLayer
         TableInfo PrivateCreateTable(string name)
         {
             name = string.Intern(name);
-            var t = new TableInfo((uint)(_id2Table.Count + 1), name);
+            var t = new TableInfo((uint)(_id2Table.Count + 1), name, _tableInfoResolver);
             _id2Table.TryAdd(t.Id, t);
             _name2Table.TryAdd(t.Name, t);
             return t;

@@ -20,8 +20,9 @@ namespace BTDB.ODBLayer
             return id;
         }
 
-        public void RegisterDirtyObject(ulong id, object obj)
+        public void RegisterNewObject(ulong id, object obj)
         {
+            _objCache.TryAdd(id, new WeakReference(obj));
             _dirtyObjSet.TryAdd(id, obj);
         }
 
@@ -34,6 +35,11 @@ namespace BTDB.ODBLayer
             _lowLevelTr.SetKeyPrefix(null);
             _lowLevelTr.CreateKey(key);
             return new LowLevelDBValueWriter(_lowLevelTr);
+        }
+
+        public void ObjectModified(ulong id, object obj)
+        {
+            _dirtyObjSet.TryAdd(id, obj);
         }
 
         public MidLevelDBTransaction(MidLevelDB owner, ILowLevelDBTransaction lowLevelTr)
@@ -178,12 +184,7 @@ namespace BTDB.ODBLayer
                 var tableVersionInfo = tableInfo.ClientTableVersionInfo;
                 using (var writer = new LowLevelDBValueWriter(_lowLevelTr))
                 {
-                    writer.WriteVUInt32((uint)tableVersionInfo.FieldCount);
-                    for (int i = 0; i < tableVersionInfo.FieldCount; i++)
-                    {
-                        writer.WriteString(tableVersionInfo[i].Name);
-                        writer.WriteVUInt32((uint)tableVersionInfo[i].Type);
-                    }
+                    tableVersionInfo.Save(writer);
                 }
             }
             _lowLevelTr.SetKeyPrefix(null);
