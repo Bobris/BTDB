@@ -123,7 +123,18 @@ namespace BTDB.ODBLayer
 
         public void Delete(object @object)
         {
-            throw new NotImplementedException();
+            if (@object == null) throw new ArgumentNullException("object");
+            var o = @object as IMidLevelObject;
+            if (o == null) throw new BTDBException("Object to delete is not MidLevelDB object");
+            var oid = o.Oid;
+            _lowLevelTr.SetKeyPrefix(MidLevelDB.AllObjectsPrefix);
+            var key = new byte[PackUnpack.LengthVUInt(oid)];
+            int ofs = 0;
+            PackUnpack.PackVUInt(key, ref ofs, oid);
+            if (_lowLevelTr.FindExactKey(key))
+                _lowLevelTr.EraseCurrent();
+            _objCache.TryRemove(oid);
+            _dirtyObjSet.TryRemove(oid);
         }
 
         public void DeleteAll<T>() where T : class

@@ -189,6 +189,22 @@ namespace BTDBTest
             }
         }
 
-
+        [Test]
+        public void DeleteObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                p.Name = "Bobris";
+                p.Age = 35;
+                p = tr.Insert<IPerson>();
+                p.Name = "DeadMan";
+                p.Age = 105;
+                Assert.AreEqual(2, tr.Enumerate<IPerson>().Count());
+                tr.Delete(p);
+                Assert.AreEqual(1,tr.Enumerate<IPerson>().Count());
+                tr.Commit();
+            }
+        }
     }
 }
