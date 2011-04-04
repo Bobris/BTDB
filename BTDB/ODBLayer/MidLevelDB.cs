@@ -12,6 +12,7 @@ namespace BTDB.ODBLayer
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
+        internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         TableInfoResolver _tableInfoResolver;
 
         internal Type2NameRegistry Type2NameRegistry

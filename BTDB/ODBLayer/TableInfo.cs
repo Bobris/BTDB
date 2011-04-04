@@ -80,7 +80,7 @@ namespace BTDB.ODBLayer
 
         static Type CreateImplType(uint id, string name, Type clientType, uint clientTypeVersion, TableVersionInfo tableVersionInfo)
         {
-            AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
+            AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
             ModuleBuilder mb = ab.DefineDynamicModule(name + "asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
             TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IMidLevelObject), typeof(INotifyPropertyChanged) });
@@ -261,7 +261,7 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Callvirt, GetMethodInfo(() => ((IDisposable)null).Dispose()));
             ilg.Emit(OpCodes.Ret);
             Type result = tb.CreateType();
-            ab.Save(name + "asm.dll");
+            //ab.Save(name + "asm.dll");
             return result;
         }
 

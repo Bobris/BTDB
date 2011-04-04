@@ -78,14 +78,14 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public IEnumerable<object> EnumerateAll()
+        IEnumerable<object> EnumerateAll()
         {
             // TODO
             foreach (var o in _dirtyObjSet)
             {
                 yield return o.Value;
             }
-            _lowLevelTr.SetKeyPrefix(new byte[] { 1 });
+            _lowLevelTr.SetKeyPrefix(MidLevelDB.AllObjectsPrefix);
             if (!_lowLevelTr.FindFirstKey()) yield break;
             do
             {
@@ -133,7 +133,10 @@ namespace BTDB.ODBLayer
 
         public void DeleteAll(Type type)
         {
-            throw new NotImplementedException();
+            foreach (var o in Enumerate(type))
+            {
+                Delete(o);
+            }
         }
 
         public void Commit()
@@ -143,6 +146,10 @@ namespace BTDB.ODBLayer
                 StoreObject(o.Value);
             }
             _lowLevelTr.Commit();
+            foreach (var updatedTable in _updatedTables)
+            {
+                updatedTable.Key.LastPersistedVersion = updatedTable.Key.ClientTypeVersion;
+            }
         }
 
         void StoreObject(object o)

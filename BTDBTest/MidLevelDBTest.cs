@@ -163,6 +163,32 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void ALotsOfPeople()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                for (uint i = 0; i < 1000; i++)
+                {
+                    var p = tr.Insert<IPerson>();
+                    p.Name = string.Format("Person {0}", i);
+                    p.Age = i;
+                }
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var q = tr.Query<IPerson>().OrderByDescending(p => p.Age);
+                uint i = 1000;
+                foreach (var p in q)
+                {
+                    i--;
+                    Assert.AreEqual(i, p.Age);
+                    Assert.AreEqual(string.Format("Person {0}", i), p.Name);
+                }
+            }
+        }
+
 
     }
 }
