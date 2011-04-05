@@ -62,7 +62,6 @@
     <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="Implementation\ManagedMemoryStream.cs" />
     <Compile Include="Interface\ShouldMergeResult.cs" />
-    <Compile Include="ODBLayer\ExpressionVisitor.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\TableFieldInfo.cs" />
@@ -70,16 +69,13 @@
     <Compile Include="ODBLayer\IMidLevelDB.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransaction.cs" />
     <Compile Include="ODBLayer\IMidLevelObject.cs" />
-    <Compile Include="ODBLayer\MakeRunnableExpressionVisitor.cs" />
     <Compile Include="ODBLayer\MidLevelDB.cs" />
     <Compile Include="ODBLayer\MidLevelDBTransaction.cs" />
-    <Compile Include="ODBLayer\QueryProvider.cs" />
     <Compile Include="ODBLayer\TableInfo.cs" />
     <Compile Include="ODBLayer\TablesInfo.cs" />
     <Compile Include="ODBLayer\TableVersionInfo.cs" />
     <Compile Include="ODBLayer\Type2NameRegistry.cs" />
     <Compile Include="ODBLayer\TypeHelper.cs" />
-    <Compile Include="ODBLayer\Query.cs" />
     <Compile Include="PublicHelpers\Checksum.cs" />
     <Compile Include="PublicHelpers\ExtensionMethods.cs" />
     <Compile Include="Interface\FindKeyResult.cs" />

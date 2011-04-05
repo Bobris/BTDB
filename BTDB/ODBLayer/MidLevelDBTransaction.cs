@@ -52,11 +52,6 @@ namespace BTDB.ODBLayer
             _lowLevelTr.Dispose();
         }
 
-        public IQueryable<T> Query<T>() where T : class
-        {
-            return new Query<T>(new QueryProvider(this));
-        }
-
         public IEnumerable<T> Enumerate<T>() where T : class
         {
             return Enumerate(typeof(T)).Cast<T>();

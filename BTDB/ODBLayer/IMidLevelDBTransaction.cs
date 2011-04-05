@@ -6,7 +6,6 @@ namespace BTDB.ODBLayer
 {
     public interface IMidLevelDBTransaction : IDisposable
     {
-        IQueryable<T> Query<T>() where T : class;
         IEnumerable<T> Enumerate<T>() where T : class;
         IEnumerable<object> Enumerate(Type type);
 

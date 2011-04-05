@@ -60,7 +60,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(tr.Query<IPerson>().Count(), 0);
+                Assert.AreEqual(tr.Enumerate<IPerson>().Count(), 0);
             }
         }
 
@@ -72,7 +72,7 @@ namespace BTDBTest
                 var p = tr.Insert<IPerson>();
                 p.Name = "Bobris";
                 p.Age = 35;
-                var p2 = tr.Query<IPerson>().First();
+                var p2 = tr.Enumerate<IPerson>().First();
                 Assert.AreSame(p, p2);
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
@@ -81,7 +81,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void InsertPersonAndQueryInNextTransaction()
+        public void InsertPersonAndEnumerateInNextTransaction()
         {
             using (var tr = _db.StartTransaction())
             {
@@ -92,14 +92,14 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Query<IPerson>().First();
+                var p = tr.Enumerate<IPerson>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
             }
         }
 
         [Test]
-        public void InsertPersonAndQueryAfterReopen()
+        public void InsertPersonAndEnumerateAfterReopen()
         {
             using (var tr = _db.StartTransaction())
             {
@@ -111,7 +111,7 @@ namespace BTDBTest
             ReopenDB();
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Query<IPerson>().First();
+                var p = tr.Enumerate<IPerson>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
             }
@@ -129,14 +129,14 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Query<IPerson>().First();
+                var p = tr.Enumerate<IPerson>().First();
                 p.Age++;
                 Assert.AreEqual(36, p.Age);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Query<IPerson>().First();
+                var p = tr.Enumerate<IPerson>().First();
                 Assert.AreEqual(36, p.Age);
             }
         }
@@ -156,7 +156,7 @@ namespace BTDBTest
             _db.RegisterType(typeof(IPersonNew), personObjDBName);
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Query<IPersonNew>().First();
+                var p = tr.Enumerate<IPersonNew>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
                 Assert.AreEqual(null, p.Comment);
@@ -178,7 +178,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var q = tr.Query<IPerson>().OrderByDescending(p => p.Age);
+                var q = tr.Enumerate<IPerson>().OrderByDescending(p => p.Age);
                 uint i = 1000;
                 foreach (var p in q)
                 {
