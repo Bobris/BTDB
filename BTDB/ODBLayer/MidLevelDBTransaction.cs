@@ -12,11 +12,10 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
-        long _lastObjId;
 
         public ulong CreateNewObjectId()
         {
-            var id = (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
+            var id = _owner.AllocateNewObjectId();
             return id;
         }
 

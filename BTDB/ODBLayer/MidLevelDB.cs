@@ -14,6 +14,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         TableInfoResolver _tableInfoResolver;
+        long _lastObjId;
 
         internal Type2NameRegistry Type2NameRegistry
         {
@@ -32,20 +33,26 @@ namespace BTDB.ODBLayer
             _dispose = dispose;
             _tableInfoResolver = new TableInfoResolver(lowLevelDB);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
-            _tablesInfo.LoadTables(LoadTablesEnum());
-        }
-
-        IEnumerable<string> LoadTablesEnum()
-        {
+            _lastObjId = 0;
             using (var tr = _lowLevelDB.StartTransaction())
             {
-                tr.SetKeyPrefix(TableNamesPrefix);
-                var valueReader = new LowLevelDBValueReader(tr);
-                while (tr.Enumerate())
+                tr.SetKeyPrefix(AllObjectsPrefix);
+                if (tr.FindLastKey())
                 {
-                    valueReader.Restart();
-                    yield return valueReader.ReadString();
+                    _lastObjId = (long)new LowLevelDBKeyReader(tr).ReadVUInt64();
                 }
+                _tablesInfo.LoadTables(LoadTablesEnum(tr));
+            }
+        }
+
+        static IEnumerable<string> LoadTablesEnum(ILowLevelDBTransaction tr)
+        {
+            tr.SetKeyPrefix(TableNamesPrefix);
+            var valueReader = new LowLevelDBValueReader(tr);
+            while (tr.Enumerate())
+            {
+                valueReader.Restart();
+                yield return valueReader.ReadString();
             }
         }
 
@@ -123,6 +130,11 @@ namespace BTDB.ODBLayer
                     return TableVersionInfo.Load(new LowLevelDBValueReader(tr));
                 }
             }
+        }
+
+        internal ulong AllocateNewObjectId()
+        {
+            return (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
         }
     }
 }

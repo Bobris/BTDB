@@ -202,9 +202,37 @@ namespace BTDBTest
                 p.Age = 105;
                 Assert.AreEqual(2, tr.Enumerate<IPerson>().Count());
                 tr.Delete(p);
-                Assert.AreEqual(1,tr.Enumerate<IPerson>().Count());
+                Assert.AreEqual(1, tr.Enumerate<IPerson>().Count());
                 tr.Commit();
             }
         }
+
+        [Test]
+        public void OIdsAreInOrder()
+        {
+            ulong firstOid;
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                firstOid = ((IMidLevelObject)p).Oid;
+                p = tr.Insert<IPerson>();
+                Assert.AreEqual(firstOid + 1, ((IMidLevelObject)p).Oid);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                Assert.AreEqual(firstOid + 2, ((IMidLevelObject)p).Oid);
+                tr.Commit();
+            }
+            ReopenDB();
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                Assert.AreEqual(firstOid + 3, ((IMidLevelObject)p).Oid);
+                tr.Commit();
+            }
+        }
+
     }
 }
