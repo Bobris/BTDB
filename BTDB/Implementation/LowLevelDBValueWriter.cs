@@ -22,7 +22,7 @@ namespace BTDB
             Pos = 0;
         }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             if (Pos != 0) FlushBuffer();
             _transaction.SetValueSize(_ofs);

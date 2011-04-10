@@ -234,5 +234,29 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void EnumReturnsOidsInOrderAndNewObjIsSkipped()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p1 = tr.Insert<IPerson>();
+                var p2 = tr.Insert<IPerson>();
+                int i = 0;
+                foreach (var p in tr.Enumerate<IPerson>())
+                {
+                    if (i == 0)
+                    {
+                        Assert.AreSame(p1, p);
+                        tr.Insert<IPerson>();
+                    }
+                    else
+                    {
+                        Assert.AreSame(p2, p);
+                    }
+                    i++;
+                }
+                Assert.AreEqual(2, i);
+            }
+        }
     }
 }

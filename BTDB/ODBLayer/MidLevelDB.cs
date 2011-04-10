@@ -132,9 +132,14 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal ulong AllocateNewObjectId()
+        internal ulong AllocateNewOid()
         {
             return (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
+        }
+
+        internal ulong GetLastAllocatedOid()
+        {
+            return (ulong)System.Threading.Interlocked.Read(ref _lastObjId);
         }
     }
 }
