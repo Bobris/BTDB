@@ -19,9 +19,11 @@ namespace BTDB.ODBLayer
         Type _clientType;
         Type _implType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
-        Func<IMidLevelDBTransactionInternal, object> _inserter;
+        Func<IMidLevelDBTransactionInternal, ulong, object> _inserter;
         Action<object> _saver;
         readonly ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
+        ulong? _singletonOid;
+        readonly object _singletonLock = new object();
 
         internal TableInfo(uint id, string name, ITableInfoResolver tableInfoResolver)
         {
@@ -186,20 +188,16 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Newobj, constructorBuilder);
             ilg.Emit(OpCodes.Ret);
             var metb = tb.DefineMethod("Inserter",
-                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal) });
+                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal) , typeof(ulong)});
             ilg = metb.GetILGenerator();
             ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg.DeclareLocal(typeof(object));
-            ilg.DeclareLocal(typeof(ulong));
-            ilg.Emit(OpCodes.Ldarg_0);
-            ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("CreateNewObjectId"));
-            ilg.Emit(OpCodes.Stloc_1);
-            ilg.Emit(OpCodes.Ldloc_1);
+            ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Ldarg_0);
             ilg.Emit(OpCodes.Call, metbCi);
             ilg.Emit(OpCodes.Stloc_0);
             ilg.Emit(OpCodes.Ldarg_0);
-            ilg.Emit(OpCodes.Ldloc_1);
+            ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Ldloc_0);
             ilg.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("RegisterNewObject"));
             ilg.Emit(OpCodes.Ldloc_0);
@@ -400,7 +398,7 @@ namespace BTDB.ODBLayer
             return methodBuilder;
         }
 
-        internal Func<IMidLevelDBTransactionInternal, object> Inserter
+        internal Func<IMidLevelDBTransactionInternal, ulong, object> Inserter
         {
             get
             {
@@ -412,7 +410,7 @@ namespace BTDB.ODBLayer
         void CreateInserter()
         {
             EnsureImplType();
-            var inserter = (Func<IMidLevelDBTransactionInternal, object>)Delegate.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, object>), _implType.GetMethod("Inserter"));
+            var inserter = (Func<IMidLevelDBTransactionInternal, ulong, object>)Delegate.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, ulong, object>), _implType.GetMethod("Inserter"));
             System.Threading.Interlocked.CompareExchange(ref _inserter, inserter, null);
         }
 
@@ -422,6 +420,23 @@ namespace BTDB.ODBLayer
             {
                 if (_saver == null) CreateSaver();
                 return _saver;
+            }
+        }
+
+        public ulong SingletonOid
+        {
+            get 
+            {
+                if (_singletonOid.HasValue) return _singletonOid.Value;
+                _singletonOid = _tableInfoResolver.GetSingletonOid(_id);
+                return _singletonOid.Value;
+            }
+        }
+
+        public object SingletonLock
+        {
+            get {
+                return _singletonLock;
             }
         }
 

@@ -121,15 +121,10 @@ namespace BTDB.ODBLayer
                             continue;
                         }
                     }
-                    var reader = new LowLevelDBValueReader(_lowLevelTr);
-                    var tableId = reader.ReadVUInt32();
-                    var tableInfo = _owner.TablesInfo.FindById(tableId);
-                    if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of Oid {1}", tableId, oid));
-                    EnsureClientTypeNotNull(tableInfo);
+                    TableInfo tableInfo;
+                    LowLevelDBValueReader reader = ReadObjStart(oid, out tableInfo);
                     if (type != null && !type.IsAssignableFrom(tableInfo.ClientType)) continue;
-                    var tableVersion = reader.ReadVUInt32();
-                    var obj = tableInfo.GetLoader(tableVersion)(this, oid, reader);
-                    _objCache.TryAdd(oid, new WeakReference(obj));
+                    object obj = ReadObjFinish(oid, tableInfo, reader);
                     _lowLevelTrProtector.Stop(ref taken);
                     yield return obj;
                 }
@@ -150,6 +145,95 @@ namespace BTDB.ODBLayer
                 object obj = dObjPair.Value;
                 if (type != null && !type.IsAssignableFrom(obj.GetType())) continue;
                 yield return obj;
+            }
+        }
+
+        object ReadObjFinish(ulong oid, TableInfo tableInfo, LowLevelDBValueReader reader)
+        {
+            var tableVersion = reader.ReadVUInt32();
+            var obj = tableInfo.GetLoader(tableVersion)(this, oid, reader);
+            _objCache.TryAdd(oid, new WeakReference(obj));
+            return obj;
+        }
+
+        LowLevelDBValueReader ReadObjStart(ulong oid, out TableInfo tableInfo)
+        {
+            var reader = new LowLevelDBValueReader(_lowLevelTr);
+            var tableId = reader.ReadVUInt32();
+            tableInfo = _owner.TablesInfo.FindById(tableId);
+            if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of Oid {1}", tableId, oid));
+            EnsureClientTypeNotNull(tableInfo);
+            return reader;
+        }
+
+        public object Get(ulong oid)
+        {
+            WeakReference weakObj;
+            if (_objCache.TryGetValue(oid, out weakObj))
+            {
+                var o = weakObj.Target;
+                if (o != null)
+                {
+                    return o;
+                }
+            }
+            bool taken = false;
+            try
+            {
+                _lowLevelTrProtector.Start(ref taken);
+                _lowLevelTr.SetKeyPrefix(MidLevelDB.AllObjectsPrefix);
+                if (!_lowLevelTr.FindExactKey(BuildKeyFromOid(oid)))
+                {
+                    return null;
+                }
+                TableInfo tableInfo;
+                var reader = ReadObjStart(oid, out tableInfo);
+                return ReadObjFinish(oid, tableInfo, reader);
+            }
+            finally
+            {
+                if (taken) _lowLevelTrProtector.Stop();
+            }
+        }
+
+        public object Singleton(Type type)
+        {
+            var tableInfo = AutoRegisterType(type);
+            tableInfo.EnsureClientTypeVersion();
+            lock (tableInfo.SingletonLock)
+            {
+                var oid = tableInfo.SingletonOid;
+                var obj = Get(oid);
+                if (obj != null)
+                {
+                    if (!type.IsAssignableFrom(obj.GetType()))
+                    {
+                        throw new BTDBException(string.Format("Internal error oid {0} does not belong to {1}", oid, tableInfo.Name));
+                    }
+                    return obj;
+                }
+                StoreSingletonOid(tableInfo.Id, oid);
+                return tableInfo.Inserter(this, oid);
+            }
+        }
+
+        public T Singleton<T>() where T : class
+        {
+            return (T)Singleton(typeof(T));
+        }
+
+        void StoreSingletonOid(uint tableId, ulong oid)
+        {
+            bool taken = false;
+            try
+            {
+                _lowLevelTrProtector.Start(ref taken);
+                _lowLevelTr.SetKeyPrefix(MidLevelDB.TableSingletonsPrefix);
+                _lowLevelTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableId), BuildKeyFromOid(oid));
+            }
+            finally
+            {
+                if (taken) _lowLevelTrProtector.Stop();
             }
         }
 
@@ -191,7 +275,7 @@ namespace BTDB.ODBLayer
         {
             var ti = AutoRegisterType(type);
             ti.EnsureClientTypeVersion();
-            return ti.Inserter(this);
+            return ti.Inserter(this, _owner.AllocateNewOid());
         }
 
         TableInfo AutoRegisterType(Type type)

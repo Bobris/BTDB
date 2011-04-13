@@ -9,6 +9,11 @@ namespace BTDB.ODBLayer
         IEnumerable<T> Enumerate<T>() where T : class;
         IEnumerable<object> Enumerate(Type type);
 
+        object Get(ulong oid);
+
+        object Singleton(Type type);
+        T Singleton<T>() where T : class;
+
         object Insert(Type type);
         T Insert<T>() where T : class;
 

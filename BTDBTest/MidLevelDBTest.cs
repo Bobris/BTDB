@@ -258,5 +258,75 @@ namespace BTDBTest
                 Assert.AreEqual(2, i);
             }
         }
+
+        [Test]
+        public void GetByOid()
+        {
+            ulong firstOid;
+            using (var tr = _db.StartTransaction())
+            {
+                var p1 = tr.Insert<IPerson>();
+                firstOid = ((IMidLevelObject)p1).Oid;
+                p1.Name = "Bobris";
+                p1.Age = 35;
+                var p2 = tr.Insert<IPerson>();
+                p2.Name = "DeadMan";
+                p2.Age = 105;
+                Assert.AreSame(p1, tr.Get(firstOid));
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Get(firstOid);
+                Assert.IsInstanceOf<IPerson>(p);
+                Assert.AreEqual("Bobris", ((IPerson)p).Name);
+            }
+        }
+
+        [Test]
+        public void SingletonBasic()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                p.Name = "Bobris";
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                Assert.AreEqual("Bobris", p.Name);
+            }
+        }
+
+        [Test]
+        public void SingletonComplex()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                p.Name = "Garbage";
+                // No commit here
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                Assert.Null(p.Name);
+                p.Name = "Bobris";
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                Assert.AreEqual("Bobris", p.Name);
+                tr.Delete(p);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Singleton<IPerson>();
+                Assert.Null(p.Name);
+            }
+        }
     }
 }

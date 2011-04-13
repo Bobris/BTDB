@@ -12,6 +12,7 @@ namespace BTDB.ODBLayer
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
+        internal static readonly byte[] TableSingletonsPrefix = new byte[] { 0, 2 };
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
@@ -31,7 +32,7 @@ namespace BTDB.ODBLayer
             if (lowLevelDB == null) throw new ArgumentNullException("lowLevelDB");
             _lowLevelDB = lowLevelDB;
             _dispose = dispose;
-            _tableInfoResolver = new TableInfoResolver(lowLevelDB);
+            _tableInfoResolver = new TableInfoResolver(lowLevelDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
             _lastObjId = 0;
             using (var tr = _lowLevelDB.StartTransaction())
@@ -92,10 +93,12 @@ namespace BTDB.ODBLayer
         class TableInfoResolver : ITableInfoResolver
         {
             readonly ILowLevelDB _lowLevelDB;
+            readonly MidLevelDB _midLevelDB;
 
-            internal TableInfoResolver(ILowLevelDB lowLevelDB)
+            internal TableInfoResolver(ILowLevelDB lowLevelDB, MidLevelDB midLevelDB)
             {
                 _lowLevelDB = lowLevelDB;
+                _midLevelDB = midLevelDB;
             }
 
             uint ITableInfoResolver.GetLastPesistedVersion(uint id)
@@ -128,6 +131,22 @@ namespace BTDB.ODBLayer
                     if (!tr.FindExactKey(key))
                         throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
                     return TableVersionInfo.Load(new LowLevelDBValueReader(tr));
+                }
+            }
+
+            public ulong GetSingletonOid(uint id)
+            {
+                using (var tr = _lowLevelDB.StartTransaction())
+                {
+                    tr.SetKeyPrefix(TableSingletonsPrefix);
+                    var key = new byte[PackUnpack.LengthVUInt(id)];
+                    var ofs = 0;
+                    PackUnpack.PackVUInt(key, ref ofs, id);
+                    if (tr.FindExactKey(key))
+                    {
+                        return new LowLevelDBValueReader(tr).ReadVUInt64();
+                    }
+                    return _midLevelDB.AllocateNewOid();
                 }
             }
         }
