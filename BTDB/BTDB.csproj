@@ -62,6 +62,7 @@
     <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="Implementation\ManagedMemoryStream.cs" />
     <Compile Include="Interface\ShouldMergeResult.cs" />
+    <Compile Include="ODBLayer\EmitHelpers.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\LowLevelDBTransactionProtector.cs" />

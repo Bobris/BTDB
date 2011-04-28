@@ -83,10 +83,9 @@ namespace BTDB.ODBLayer
         static Type CreateImplType(uint id, string name, Type clientType, uint clientTypeVersion, TableVersionInfo tableVersionInfo)
         {
             AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
-            ModuleBuilder mb = ab.DefineDynamicModule(name + "asm.dll", true);
+            ModuleBuilder mb = ab.DefineDynamicModule(name + "Asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
-            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IMidLevelObject), typeof(INotifyPropertyChanged) });
-            var raiseINPCMethod = GenerateINotifyPropertyChangedImpl(tb, symbolDocumentWriter);
+            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IMidLevelObject) });
             var properties = clientType.GetProperties();
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
             var trFieldBuilder = tb.DefineField("MidLevelDBTransaction", typeof(IMidLevelDBTransactionInternal),
@@ -136,7 +135,7 @@ namespace BTDB.ODBLayer
                 ilGenerator = setMethodBuilder.GetILGenerator();
                 ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
                 var labelNoChange = ilGenerator.DefineLabel();
-                GenerateJumpIfEqual(ilGenerator, pi.PropertyType, labelNoChange,
+                EmitHelpers.GenerateJumpIfEqual(ilGenerator, pi.PropertyType, labelNoChange,
                                     g =>
                                     {
                                         g.Emit(OpCodes.Ldarg_0);
@@ -154,10 +153,6 @@ namespace BTDB.ODBLayer
                 ilGenerator.Emit(OpCodes.Ldfld, oidFieldBuilder);
                 ilGenerator.Emit(OpCodes.Ldarg_0);
                 ilGenerator.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("ObjectModified"));
-
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Ldstr, pi.Name);
-                ilGenerator.Emit(OpCodes.Call, raiseINPCMethod);
 
                 ilGenerator.MarkLabel(labelNoChange);
                 ilGenerator.Emit(OpCodes.Ret);
@@ -226,10 +221,10 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Stloc_1);
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldc_I4, id);
-            ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
+            ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldc_I4, clientTypeVersion);
-            ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
+            ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var tableFieldInfo = tableVersionInfo[fi];
@@ -240,15 +235,15 @@ namespace BTDB.ODBLayer
                 switch (tableFieldInfo.Type)
                 {
                     case FieldType.String:
-                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
+                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
                         break;
                     case FieldType.Int:
                         if (fb.FieldType != typeof(long)) ilg.Emit(OpCodes.Conv_I8);
-                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
+                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
                         break;
                     case FieldType.UInt:
                         if (fb.FieldType != typeof(ulong)) ilg.Emit(OpCodes.Conv_U8);
-                        ilg.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
+                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -256,146 +251,11 @@ namespace BTDB.ODBLayer
             }
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Castclass, typeof(IDisposable));
-            ilg.Emit(OpCodes.Callvirt, GetMethodInfo(() => ((IDisposable)null).Dispose()));
+            ilg.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((IDisposable)null).Dispose()));
             ilg.Emit(OpCodes.Ret);
             Type result = tb.CreateType();
             //ab.Save(name + "asm.dll");
             return result;
-        }
-
-        static void GenerateJumpIfEqual(ILGenerator ilGenerator, Type type, Label jumpTo, Action<ILGenerator> loadLeft, Action<ILGenerator> loadRight)
-        {
-            if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
-                || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
-                || type == typeof(float) || type == typeof(double))
-            {
-                loadLeft(ilGenerator);
-                loadRight(ilGenerator);
-                ilGenerator.Emit(OpCodes.Beq_S, jumpTo);
-                return;
-            }
-            if (type.IsGenericType)
-            {
-                var genType = type.GetGenericTypeDefinition();
-                if (genType == typeof(Nullable<>))
-                {
-                    var localLeft = ilGenerator.DeclareLocal(type);
-                    var localRight = ilGenerator.DeclareLocal(type);
-                    var hasValueMethod = type.GetMethod("get_HasValue");
-                    var getValueMethod = type.GetMethod("GetValueOrDefault", Type.EmptyTypes);
-                    loadLeft(ilGenerator);
-                    ilGenerator.Emit(OpCodes.Stloc, localLeft);
-                    loadRight(ilGenerator);
-                    ilGenerator.Emit(OpCodes.Stloc, localRight);
-                    var labelLeftHasValue = ilGenerator.DefineLabel();
-                    var labelDifferent = ilGenerator.DefineLabel();
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localLeft);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brtrue_S, labelLeftHasValue);
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brtrue_S, labelDifferent);
-                    ilGenerator.Emit(OpCodes.Br_S, jumpTo);
-                    ilGenerator.MarkLabel(labelLeftHasValue);
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brfalse_S, labelDifferent);
-                    GenerateJumpIfEqual(ilGenerator, type.GetGenericArguments()[0], jumpTo, g =>
-                    {
-                        ilGenerator.Emit(OpCodes.Ldloca_S, localLeft);
-                        g.Emit(OpCodes.Call, getValueMethod);
-                    }, g =>
-                    {
-                        ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                        g.Emit(OpCodes.Call, getValueMethod);
-                    });
-                    ilGenerator.MarkLabel(labelDifferent);
-                    return;
-                }
-            }
-            var equalsMethod = type.GetMethod("Equals", new[] { type, type });
-            if (equalsMethod != null)
-            {
-                loadLeft(ilGenerator);
-                loadRight(ilGenerator);
-                ilGenerator.Emit(OpCodes.Call, equalsMethod);
-                ilGenerator.Emit(OpCodes.Brtrue_S, jumpTo);
-                return;
-            }
-            throw new NotImplementedException(string.Format("Don't know how to compare type {0}", type));
-        }
-
-        static MethodInfo GetMethodInfo(Expression<Action> expression)
-        {
-            return (expression.Body as MethodCallExpression).Method;
-        }
-
-        static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
-        {
-            var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
-            var eventBuilder = typeBuilder.DefineEvent("PropertyChanged", EventAttributes.None, typeof(PropertyChangedEventHandler));
-            eventBuilder.SetAddOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, true));
-            eventBuilder.SetRemoveOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, false));
-            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", MethodAttributes.Family, null, new[] { typeof(string) });
-            var ilGenerator = methodBuilder.GetILGenerator();
-            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
-            ilGenerator.DeclareLocal(typeof(PropertyChangedEventHandler));
-            var labelRet = ilGenerator.DefineLabel();
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Brfalse_S, labelRet);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Newobj, typeof(PropertyChangedEventArgs).GetConstructor(new[] { typeof(string) }));
-            ilGenerator.Emit(OpCodes.Callvirt, typeof(PropertyChangedEventHandler).GetMethod("Invoke", new[] { typeof(object), typeof(PropertyChangedEventArgs) }));
-            ilGenerator.MarkLabel(labelRet);
-            ilGenerator.Emit(OpCodes.Ret);
-            return methodBuilder;
-        }
-
-        static MethodBuilder GenerateAddRemoveEvent(TypeBuilder typeBuilder, FieldBuilder fieldBuilder, bool add)
-        {
-            Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
-            EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");
-            var methodBuilder = typeBuilder.DefineMethod((add ? "add" : "remove") + "_PropertyChanged",
-                                                         MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
-                                                         MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final,
-                                                         typeof(void), new[] { typePropertyChangedEventHandler });
-            var ilGenerator = methodBuilder.GetILGenerator();
-            ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
-            ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
-            ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
-            var label = ilGenerator.DefineLabel();
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.MarkLabel(label);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Stloc_1);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Call,
-                             add
-                                 ? GetMethodInfo(() => Delegate.Combine(null, null))
-                                 : GetMethodInfo(() => Delegate.Remove(null, null)));
-            ilGenerator.Emit(OpCodes.Castclass, typePropertyChangedEventHandler);
-            ilGenerator.Emit(OpCodes.Stloc_2);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldflda, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Ldloc_2);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            PropertyChangedEventHandler stub = null;
-            ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => System.Threading.Interlocked.CompareExchange(ref stub, null, null)));
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Bne_Un_S, label);
-            ilGenerator.Emit(OpCodes.Ret);
-            typeBuilder.DefineMethodOverride(methodBuilder, add ? eventPropertyChanged.GetAddMethod() : eventPropertyChanged.GetRemoveMethod());
-            return methodBuilder;
         }
 
         internal Func<IMidLevelDBTransactionInternal, ulong, object> Inserter
@@ -531,10 +391,10 @@ namespace BTDB.ODBLayer
                 switch (tableFieldInfo.Type)
                 {
                     case FieldType.String:
-                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadString()));
+                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadString()));
                         break;
                     case FieldType.Int:
-                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
+                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
                         if (fieldInfo.FieldType == typeof(long)) { }
                         else if (fieldInfo.FieldType == typeof(int)) ilGenerator.Emit(OpCodes.Conv_I4);
                         else if (fieldInfo.FieldType == typeof(short)) ilGenerator.Emit(OpCodes.Conv_I2);
@@ -542,7 +402,7 @@ namespace BTDB.ODBLayer
                         else throw new NotImplementedException();
                         break;
                     case FieldType.UInt:
-                        ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
+                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
                         if (fieldInfo.FieldType == typeof(ulong)) { }
                         else if (fieldInfo.FieldType == typeof(uint)) ilGenerator.Emit(OpCodes.Conv_U4);
                         else if (fieldInfo.FieldType == typeof(ushort)) ilGenerator.Emit(OpCodes.Conv_U2);
