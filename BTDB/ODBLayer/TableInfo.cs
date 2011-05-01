@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics.SymbolStore;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -315,26 +312,7 @@ namespace BTDB.ODBLayer
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
-                if (!pi.CanRead || !pi.CanWrite) continue;
-                FieldType ft;
-                var pt = pi.PropertyType;
-                if (pt == typeof(string))
-                {
-                    ft = FieldType.String;
-                }
-                else if (pt == typeof(Byte) || pt == typeof(UInt16) || pt == typeof(UInt32) || pt == typeof(UInt64))
-                {
-                    ft = FieldType.UInt;
-                }
-                else if (pt == typeof(SByte) || pt == typeof(Int16) || pt == typeof(Int32) || pt == typeof(Int64))
-                {
-                    ft = FieldType.Int;
-                }
-                else
-                {
-                    throw new BTDBException(string.Format("Type {0} is not supported field type", pt));
-                }
-                fields.Add(new TableFieldInfo(string.Intern(pi.Name), ft));
+                fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory, ClientType));
             }
             var tvi = new TableVersionInfo(fields.ToArray());
             if (LastPersistedVersion==0)
@@ -344,7 +322,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var last=_tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v));
+                var last=_tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v, Name));
                 if (TableVersionInfo.Equal(last,tvi))
                 {
                     ClientTypeVersion = LastPersistedVersion;
@@ -380,39 +358,21 @@ namespace BTDB.ODBLayer
             ilGenerator.Emit(OpCodes.Call, _implType.GetMethod("CreateInstance"));
             ilGenerator.Emit(OpCodes.Isinst, _implType);
             ilGenerator.Emit(OpCodes.Stloc_0);
-            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1));
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var tableFieldInfo = tableVersionInfo[fi];
-                var fieldInfo = _implType.GetField("Field_" + tableFieldInfo.Name);
-                if (fieldInfo == null) continue;
-                ilGenerator.Emit(OpCodes.Ldloc_0);
-                ilGenerator.Emit(OpCodes.Ldarg_2);
-                switch (tableFieldInfo.Type)
-                {
-                    case FieldType.String:
-                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadString()));
-                        break;
-                    case FieldType.Int:
-                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
-                        if (fieldInfo.FieldType == typeof(long)) { }
-                        else if (fieldInfo.FieldType == typeof(int)) ilGenerator.Emit(OpCodes.Conv_I4);
-                        else if (fieldInfo.FieldType == typeof(short)) ilGenerator.Emit(OpCodes.Conv_I2);
-                        else if (fieldInfo.FieldType == typeof(sbyte)) ilGenerator.Emit(OpCodes.Conv_I1);
-                        else throw new NotImplementedException();
-                        break;
-                    case FieldType.UInt:
-                        ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
-                        if (fieldInfo.FieldType == typeof(ulong)) { }
-                        else if (fieldInfo.FieldType == typeof(uint)) ilGenerator.Emit(OpCodes.Conv_U4);
-                        else if (fieldInfo.FieldType == typeof(ushort)) ilGenerator.Emit(OpCodes.Conv_U2);
-                        else if (fieldInfo.FieldType == typeof(byte)) ilGenerator.Emit(OpCodes.Conv_U1);
-                        else throw new NotImplementedException();
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-                ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+                var loadCtx = new FieldHandlerLoad
+                                  {
+                                      FieldName = tableFieldInfo.Name,
+                                      IlGenerator = ilGenerator,
+                                      ImplType = _implType,
+                                      PushThis = ig => ig.Emit(OpCodes.Ldloc_0),
+                                      PushReader = ig => ig.Emit(OpCodes.Ldarg_2),
+                                      ClientTableVersionInfo = ClientTableVersionInfo,
+                                      TargetTableFieldInfo = ClientTableVersionInfo[tableFieldInfo.Name]
+                                  };
+                tableFieldInfo.Handler.Load(loadCtx);
             }
             ilGenerator.Emit(OpCodes.Ldloc_0);
             ilGenerator.Emit(OpCodes.Ret);

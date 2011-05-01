@@ -1,8 +1,8 @@
-﻿using System;
+﻿using System.Linq;
 
 namespace BTDB.ODBLayer
 {
-    internal class TableVersionInfo
+    public class TableVersionInfo
     {
         readonly TableFieldInfo[] _tableFields;
 
@@ -18,6 +18,11 @@ namespace BTDB.ODBLayer
             get { return _tableFields[idx]; }
         }
 
+        internal TableFieldInfo this[string name]
+        {
+            get { return _tableFields.FirstOrDefault(tfi => tfi.Name == name); }
+        }
+
         internal void Save(AbstractBufferedWriter writer)
         {
             writer.WriteVUInt32((uint)FieldCount);
@@ -27,13 +32,13 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal static TableVersionInfo Load(AbstractBufferedReader reader)
+        internal static TableVersionInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
         {
             var fieldCount = reader.ReadVUInt32();
             var fieldInfos = new TableFieldInfo[fieldCount];
             for (int i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = TableFieldInfo.Load(reader);
+                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, tableName);
             }
             return new TableVersionInfo(fieldInfos);
         }

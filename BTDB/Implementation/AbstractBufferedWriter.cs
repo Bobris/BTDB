@@ -202,5 +202,16 @@ namespace BTDB
                 }
             }
         }
+
+        public void WriteByteArray(byte[] value)
+        {
+            if (value == null)
+            {
+                WriteVUInt32(0);
+                return;
+            }
+            WriteVUInt32((uint) (value.Length + 1));
+            WriteBlock(value);
+        }
     }
 }

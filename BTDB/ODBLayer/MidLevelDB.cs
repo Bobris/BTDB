@@ -16,6 +16,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
+        IFieldHandlerFactory _fieldHandlerFactory = new DefaultFieldHandlerFactory();
 
         internal Type2NameRegistry Type2NameRegistry
         {
@@ -119,7 +120,7 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version)
+            TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
             {
                 using (var tr = _lowLevelDB.StartTransaction())
                 {
@@ -130,7 +131,7 @@ namespace BTDB.ODBLayer
                     PackUnpack.PackVUInt(key, ref ofs, version);
                     if (!tr.FindExactKey(key))
                         throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
-                    return TableVersionInfo.Load(new LowLevelDBValueReader(tr));
+                    return TableVersionInfo.Load(new LowLevelDBValueReader(tr), _midLevelDB.FieldHandlerFactory, tableName);
                 }
             }
 
@@ -148,6 +149,23 @@ namespace BTDB.ODBLayer
                     }
                     return _midLevelDB.AllocateNewOid();
                 }
+            }
+
+            public IFieldHandlerFactory FieldHandlerFactory
+            {
+                get { return _midLevelDB.FieldHandlerFactory; }
+            }
+        }
+
+        protected IFieldHandlerFactory FieldHandlerFactory
+        {
+            get
+            {
+                return _fieldHandlerFactory;
+            }
+            set
+            {
+                _fieldHandlerFactory = value;
             }
         }
 
