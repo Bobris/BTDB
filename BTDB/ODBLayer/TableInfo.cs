@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -89,8 +90,7 @@ namespace BTDB.ODBLayer
                                                 FieldAttributes.Public);
             var propInfo = typeof(IMidLevelObject).GetProperty("TableName");
             var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
-            var ilGenerator = getMethodBuilder.GetILGenerator(16);
-            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            var ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Emit(OpCodes.Ldstr, name);
             ilGenerator.Emit(OpCodes.Ret);
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
@@ -98,8 +98,7 @@ namespace BTDB.ODBLayer
             propertyBuilder.SetGetMethod(getMethodBuilder);
             propInfo = typeof(IMidLevelObject).GetProperty("TableId");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
-            ilGenerator = getMethodBuilder.GetILGenerator(16);
-            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Emit(OpCodes.Ldc_I4, id);
             ilGenerator.Emit(OpCodes.Ret);
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
@@ -107,57 +106,13 @@ namespace BTDB.ODBLayer
             propertyBuilder.SetGetMethod(getMethodBuilder);
             propInfo = typeof(IMidLevelObject).GetProperty("Oid");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
-            ilGenerator = getMethodBuilder.GetILGenerator(16);
-            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Emit(OpCodes.Ldarg_0);
             ilGenerator.Emit(OpCodes.Ldfld, oidFieldBuilder);
             ilGenerator.Emit(OpCodes.Ret);
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
-            var fieldBuilders = new Dictionary<string, FieldBuilder>();
-            foreach (var pi in properties)
-            {
-                var fieldBuilder = tb.DefineField("Field_" + pi.Name, pi.PropertyType, FieldAttributes.Public);
-                fieldBuilders[pi.Name] = fieldBuilder;
-                getMethodBuilder = tb.DefineMethod("get_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, pi.PropertyType, Type.EmptyTypes);
-                ilGenerator = getMethodBuilder.GetILGenerator(16);
-                ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-                ilGenerator.Emit(OpCodes.Ret);
-                tb.DefineMethodOverride(getMethodBuilder, pi.GetGetMethod());
-                var setMethodBuilder = tb.DefineMethod("set_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, typeof(void),
-                                                       new[] { pi.PropertyType });
-                ilGenerator = setMethodBuilder.GetILGenerator();
-                ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
-                var labelNoChange = ilGenerator.DefineLabel();
-                EmitHelpers.GenerateJumpIfEqual(ilGenerator, pi.PropertyType, labelNoChange,
-                                    g =>
-                                    {
-                                        g.Emit(OpCodes.Ldarg_0);
-                                        g.Emit(OpCodes.Ldfld, fieldBuilder);
-                                    },
-                                    g => g.Emit(OpCodes.Ldarg_1));
-
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Ldarg_1);
-                ilGenerator.Emit(OpCodes.Stfld, fieldBuilder);
-
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Ldfld, trFieldBuilder);
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Ldfld, oidFieldBuilder);
-                ilGenerator.Emit(OpCodes.Ldarg_0);
-                ilGenerator.Emit(OpCodes.Callvirt, typeof(IMidLevelDBTransactionInternal).GetMethod("ObjectModified"));
-
-                ilGenerator.MarkLabel(labelNoChange);
-                ilGenerator.Emit(OpCodes.Ret);
-                tb.DefineMethodOverride(setMethodBuilder, pi.GetSetMethod());
-                propertyBuilder = tb.DefineProperty(pi.Name, PropertyAttributes.None, pi.PropertyType, Type.EmptyTypes);
-                propertyBuilder.SetGetMethod(getMethodBuilder);
-                propertyBuilder.SetSetMethod(setMethodBuilder);
-            }
             var constructorBuilder = tb.DefineConstructor(MethodAttributes.Family, CallingConventions.Standard,
                                                           new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
             var ilg = constructorBuilder.GetILGenerator();
@@ -180,9 +135,8 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Newobj, constructorBuilder);
             ilg.Emit(OpCodes.Ret);
             var metb = tb.DefineMethod("Inserter",
-                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal) , typeof(ulong)});
-            ilg = metb.GetILGenerator();
-            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal), typeof(ulong) });
+            ilg = metb.GetILGenerator(symbolDocumentWriter);
             ilg.DeclareLocal(typeof(object));
             ilg.Emit(OpCodes.Ldarg_1);
             ilg.Emit(OpCodes.Ldarg_0);
@@ -196,8 +150,7 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Ret);
             metb = tb.DefineMethod("Saver",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
-            ilg = metb.GetILGenerator();
-            ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            ilg = metb.GetILGenerator(symbolDocumentWriter);
             ilg.DeclareLocal(tb);
             ilg.DeclareLocal(typeof(AbstractBufferedWriter));
             var skipException = ilg.DefineLabel();
@@ -222,29 +175,27 @@ namespace BTDB.ODBLayer
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Ldc_I4, clientTypeVersion);
             ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt32(0)));
-            for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+            for (int fieldIndex = 0; fieldIndex < tableVersionInfo.FieldCount; fieldIndex++)
             {
-                var tableFieldInfo = tableVersionInfo[fi];
-                ilg.Emit(OpCodes.Ldloc_1);
-                ilg.Emit(OpCodes.Ldloc_0);
-                var fb = fieldBuilders[tableFieldInfo.Name];
-                ilg.Emit(OpCodes.Ldfld, fb);
-                switch (tableFieldInfo.Type)
-                {
-                    case FieldType.String:
-                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
-                        break;
-                    case FieldType.Int:
-                        if (fb.FieldType != typeof(long)) ilg.Emit(OpCodes.Conv_I8);
-                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
-                        break;
-                    case FieldType.UInt:
-                        if (fb.FieldType != typeof(ulong)) ilg.Emit(OpCodes.Conv_U8);
-                        ilg.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                var tableFieldInfo = tableVersionInfo[fieldIndex];
+                var fieldHandlerCreateImpl = new FieldHandlerCreateImpl
+                    {
+                        FieldName = tableFieldInfo.Name,
+                        ImplType = tb,
+                        SymbolDocWriter = symbolDocumentWriter,
+                        Saver = ilg,
+                        PropertyInfo = properties.FirstOrDefault(pi => pi.Name == tableFieldInfo.Name),
+                        CallObjectModified = generator =>
+                            {
+                                generator.Emit(OpCodes.Ldarg_0);
+                                generator.Emit(OpCodes.Ldfld, trFieldBuilder);
+                                generator.Emit(OpCodes.Ldarg_0);
+                                generator.Emit(OpCodes.Ldfld, oidFieldBuilder);
+                                generator.Emit(OpCodes.Ldarg_0);
+                                generator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((IMidLevelDBTransactionInternal)null).ObjectModified(0, null)));
+                            }
+                    };
+                tableFieldInfo.Handler.CreateImpl(fieldHandlerCreateImpl);
             }
             ilg.Emit(OpCodes.Ldloc_1);
             ilg.Emit(OpCodes.Castclass, typeof(IDisposable));
@@ -282,7 +233,7 @@ namespace BTDB.ODBLayer
 
         public ulong SingletonOid
         {
-            get 
+            get
             {
                 if (_singletonOid.HasValue) return _singletonOid.Value;
                 _singletonOid = _tableInfoResolver.GetSingletonOid(_id);
@@ -292,7 +243,8 @@ namespace BTDB.ODBLayer
 
         public object SingletonLock
         {
-            get {
+            get
+            {
                 return _singletonLock;
             }
         }
@@ -315,15 +267,15 @@ namespace BTDB.ODBLayer
                 fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory, ClientType));
             }
             var tvi = new TableVersionInfo(fields.ToArray());
-            if (LastPersistedVersion==0)
+            if (LastPersistedVersion == 0)
             {
                 _tableVersions.TryAdd(1, tvi);
                 ClientTypeVersion = 1;
             }
             else
             {
-                var last=_tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v, Name));
-                if (TableVersionInfo.Equal(last,tvi))
+                var last = _tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v, Name));
+                if (TableVersionInfo.Equal(last, tvi))
                 {
                     ClientTypeVersion = LastPersistedVersion;
                 }

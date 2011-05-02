@@ -164,6 +164,28 @@ namespace BTDBTest
         }
 
         [Test]
+        public void PersonDegrade()
+        {
+            var personObjDBName = _db.RegisterType(typeof(IPersonNew));
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPersonNew>();
+                p.Name = "Bobris";
+                p.Age = 35;
+                p.Comment = "Will be lost";
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(IPerson), personObjDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Enumerate<IPerson>().First();
+                Assert.AreEqual("Bobris", p.Name);
+                Assert.AreEqual(35, p.Age);
+            }
+        }
+
+        [Test]
         public void ALotsOfPeople()
         {
             using (var tr = _db.StartTransaction())

@@ -64,6 +64,7 @@
     <Compile Include="Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\DefaultFieldHandlerFactory.cs" />
     <Compile Include="ODBLayer\EmitHelpers.cs" />
+    <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerCreateImpl.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerLoad.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerSkipLoad.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerHelpers.cs" />

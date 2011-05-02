@@ -48,5 +48,16 @@ namespace BTDB.ODBLayer
             ctx.PushReader(ctx.IlGenerator);
             ctx.IlGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVUInt64()));
         }
+
+        public void CreateImpl(FieldHandlerCreateImpl ctx)
+        {
+            FieldBuilder fieldBuilder = FieldHandlerHelpers.GenerateSimplePropertyCreateImpl(ctx);
+            var ilGenerator = ctx.Saver;
+            ilGenerator.Emit(OpCodes.Ldloc_1);
+            ilGenerator.Emit(OpCodes.Ldloc_0);
+            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
+            if (fieldBuilder.FieldType != typeof(ulong)) ilGenerator.Emit(OpCodes.Conv_U8);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
+        }
     }
 }

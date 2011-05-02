@@ -9,5 +9,6 @@ namespace BTDB.ODBLayer
         bool IsCompatibleWith(Type type);
         void Load(FieldHandlerLoad ctx);
         void SkipLoad(FieldHandlerSkipLoad ctx);
+        void CreateImpl(FieldHandlerCreateImpl ctx);
     }
 }

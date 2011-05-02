@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace BTDB.ODBLayer
@@ -39,6 +40,16 @@ namespace BTDB.ODBLayer
         {
             ctx.PushReader(ctx.IlGenerator);
             ctx.IlGenerator.Emit(OpCodes.Call,EmitHelpers.GetMethodInfo(()=>((AbstractBufferedReader)null).SkipString()));
+        }
+
+        public void CreateImpl(FieldHandlerCreateImpl ctx)
+        {
+            FieldBuilder fieldBuilder = FieldHandlerHelpers.GenerateSimplePropertyCreateImpl(ctx);
+            var ilGenerator = ctx.Saver;
+            ilGenerator.Emit(OpCodes.Ldloc_1);
+            ilGenerator.Emit(OpCodes.Ldloc_0);
+            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)));
         }
     }
 }

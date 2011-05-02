@@ -15,6 +15,13 @@ namespace BTDB.ODBLayer
             return (expression.Body as MethodCallExpression).Method;
         }
 
+        internal static ILGenerator GetILGenerator(this MethodBuilder mb,ISymbolDocumentWriter symbolDocumentWriter, int ilsize=64)
+        {
+            var ilGenerator = mb.GetILGenerator(ilsize);
+            if (symbolDocumentWriter!=null) ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            return ilGenerator;
+        }
+
         internal static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
         {
             var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
