@@ -10,6 +10,7 @@ namespace BTDB.ODBLayer
                 new StringFieldHandler(),
                 new SignedFieldHandler(),
                 new UnsignedFieldHandler(),
+                new ObjectFieldHandler(),
             };
 
         public IFieldHandler CreateFromProperty(string tableName, Type clientType, PropertyInfo property)

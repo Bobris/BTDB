@@ -185,6 +185,7 @@ namespace BTDB.ODBLayer
                         SymbolDocWriter = symbolDocumentWriter,
                         Saver = ilg,
                         PropertyInfo = properties.FirstOrDefault(pi => pi.Name == tableFieldInfo.Name),
+                        FieldMidLevelDBTransaction = trFieldBuilder,
                         CallObjectModified = generator =>
                             {
                                 generator.Emit(OpCodes.Ldarg_0);

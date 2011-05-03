@@ -27,6 +27,13 @@ namespace BTDBTest
             ulong Age { get; set; }
         }
 
+        public interface ITree
+        {
+            ITree Left { get; set; }
+            ITree Right { get; set; }
+            string Content { get; set; }
+        }
+
         [SetUp]
         public void Setup()
         {
@@ -350,5 +357,31 @@ namespace BTDBTest
                 Assert.Null(p.Name);
             }
         }
+
+        [Test]
+        public void NestedIfaceObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                t.Content = "Root";
+                Assert.Null(t.Left);
+                var l = tr.Insert<ITree>();
+                l.Content = "Left";
+                t.Left = l;
+                Assert.AreSame(l, t.Left);
+                t.Right = tr.Insert<ITree>();
+                t.Right.Content = "Right";
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                Assert.AreEqual("Root", t.Content);
+                Assert.AreEqual("Left", t.Left.Content);
+                Assert.AreEqual("Right", t.Right.Content);
+            }
+        }
+
     }
 }

@@ -36,7 +36,9 @@ namespace BTDB.ODBLayer
 
         public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory, Type clientType)
         {
-            return new TableFieldInfo(pi.Name,fieldHandlerFactory.CreateFromProperty(tableName, clientType, pi));
+            var fieldHandler = fieldHandlerFactory.CreateFromProperty(tableName, clientType, pi);
+            if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
+            return new TableFieldInfo(pi.Name, fieldHandler);
         }
 
         internal void Save(AbstractBufferedWriter writer)

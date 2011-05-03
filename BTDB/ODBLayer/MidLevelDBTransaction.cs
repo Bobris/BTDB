@@ -196,6 +196,14 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public ulong GetOid(object obj)
+        {
+            if (obj == null) return 0;
+            var midLevelObject = obj as IMidLevelObject;
+            if (midLevelObject == null) throw new BTDBException("Only MidLevelObjects are allowed");
+            return midLevelObject.Oid;
+        }
+
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type);

@@ -13,5 +13,6 @@ namespace BTDB.ODBLayer
         public ILGenerator Saver { get; set; }
         public PropertyInfo PropertyInfo { get; set; }
         public Action<ILGenerator> CallObjectModified { get; set; }
+        public FieldBuilder FieldMidLevelDBTransaction { get; set; }
     }
 }
