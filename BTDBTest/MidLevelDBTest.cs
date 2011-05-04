@@ -383,5 +383,47 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void NestedIfaceObjectDelete()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                t.Left = tr.Insert<ITree>();
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                Assert.NotNull(t.Left);
+                tr.Delete(t.Left);
+                Assert.Null(t.Left);
+            }
+        }
+
+        [Test]
+        public void NestedIfaceObjectModification()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                t.Left = tr.Insert<ITree>();
+                t.Left.Content = "Before";
+                tr.Insert<ITree>().Content = "After";
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                t.Left = tr.Enumerate<ITree>().First(i => i.Content == "After");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<ITree>();
+                Assert.AreEqual("After", t.Left.Content);
+            }
+        }
+
     }
 }
