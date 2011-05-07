@@ -4,11 +4,11 @@ using System.Reflection.Emit;
 
 namespace BTDB.ODBLayer
 {
-    public class ObjectFieldHandler : IFieldHandler
+    public class MidLevelObjectFieldHandler : IFieldHandler
     {
         public string Name
         {
-            get { return "Object"; }
+            get { return "DBObject"; }
         }
 
         public byte[] Configuration
@@ -18,13 +18,13 @@ namespace BTDB.ODBLayer
 
         public bool IsCompatibleWith(Type type)
         {
-            return type == typeof(object) || (type.IsInterface && !type.IsGenericTypeDefinition);
+            return type == typeof(IMidLevelObject) || (type.IsInterface && !type.IsGenericTypeDefinition);
         }
 
         public void Load(FieldHandlerLoad ctx)
         {
             if (FieldHandlerHelpers.SkipLoadIfNeeded(this, ctx)) return;
-            if (!ctx.TargetTableFieldInfo.Handler.IsCompatibleWith(typeof(object)))
+            if (!ctx.TargetTableFieldInfo.Handler.IsCompatibleWith(typeof(IMidLevelObject)))
             {
                 FieldHandlerHelpers.SkipLoad(this, ctx);
                 return;

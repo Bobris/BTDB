@@ -70,7 +70,9 @@
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerHelpers.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandlerFactory.cs" />
-    <Compile Include="ODBLayer\FieldHandlerImpl\ObjectFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\BoolFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\DoubleFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\MidLevelObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\LowLevelDBTransactionProtector.cs" />

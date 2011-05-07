@@ -425,5 +425,82 @@ namespace BTDBTest
             }
         }
 
+        public interface IVariousFieldTypes : IMidLevelObject
+        {
+            string StringField { get; set; }
+            sbyte SByteField { get; set; }
+            byte ByteField { get; set; }
+            short ShortField { get; set; }
+            ushort UShortField { get; set; }
+            int IntField { get; set; }
+            uint UIntField { get; set; }
+            long LongField { get; set; }
+            ulong ULongField { get; set; }
+            IMidLevelObject MidLevelObjectField { get; set; }
+            IVariousFieldTypes VariousFieldTypesField { get; set; }
+            bool BoolField { get; set; }
+            double DoubleField { get; set; }
+        }
+
+        [Test]
+        public void FieldsOfVariousTypes()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var o = tr.Singleton<IVariousFieldTypes>();
+                Assert.Null(o.StringField);
+                Assert.AreEqual(0, o.SByteField);
+                Assert.AreEqual(0, o.ByteField);
+                Assert.AreEqual(0, o.ShortField);
+                Assert.AreEqual(0, o.UShortField);
+                Assert.AreEqual(0, o.IntField);
+                Assert.AreEqual(0, o.UIntField);
+                Assert.AreEqual(0, o.LongField);
+                Assert.AreEqual(0, o.ULongField);
+                Assert.Null(o.MidLevelObjectField);
+                Assert.Null(o.VariousFieldTypesField);
+                Assert.False(o.BoolField);
+                Assert.AreEqual(0, o.DoubleField);
+
+                o.StringField = "Text";
+                o.SByteField = -10;
+                o.ByteField = 10;
+                o.ShortField = -1000;
+                o.UShortField = 1000;
+                o.IntField = -100000;
+                o.UIntField = 100000;
+                o.LongField = -1000000000000;
+                o.ULongField = 1000000000000;
+                o.MidLevelObjectField = o;
+                o.VariousFieldTypesField = o;
+                o.BoolField = true;
+                o.DoubleField = 12.34;
+
+                AssertContent(o);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var o = tr.Singleton<IVariousFieldTypes>();
+                AssertContent(o);
+            }
+        }
+
+        static void AssertContent(IVariousFieldTypes o)
+        {
+            Assert.AreEqual("Text", o.StringField);
+            Assert.AreEqual(-10, o.SByteField);
+            Assert.AreEqual(10, o.ByteField);
+            Assert.AreEqual(-1000, o.ShortField);
+            Assert.AreEqual(1000, o.UShortField);
+            Assert.AreEqual(-100000, o.IntField);
+            Assert.AreEqual(100000, o.UIntField);
+            Assert.AreEqual(-1000000000000, o.LongField);
+            Assert.AreEqual(1000000000000, o.ULongField);
+            Assert.AreSame(o, o.MidLevelObjectField);
+            Assert.AreSame(o, o.VariousFieldTypesField);
+            Assert.True(o.BoolField);
+            Assert.AreEqual(12.34,o.DoubleField,1e-10);
+        }
     }
 }

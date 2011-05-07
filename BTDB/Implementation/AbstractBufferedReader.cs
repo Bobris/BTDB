@@ -33,6 +33,17 @@ namespace BTDB
             if (Eof) throw new EndOfStreamException();
         }
 
+        public bool ReadBool()
+        {
+            NeedOneByteInBuffer();
+            return Buf[Pos++]!=0;
+        }
+
+        public void SkipBool()
+        {
+            SkipUInt8();
+        }
+
         public byte ReadUInt8()
         {
             NeedOneByteInBuffer();

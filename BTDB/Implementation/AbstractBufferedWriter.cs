@@ -16,6 +16,15 @@ namespace BTDB
 
         public abstract void FlushBuffer();
 
+        public void WriteBool(bool value)
+        {
+            if (Pos >= End)
+            {
+                FlushBuffer();
+            }
+            Buf[Pos++] = (byte)(value ? 1 : 0);
+        }
+
         public void WriteUInt8(byte value)
         {
             if (Pos >= End)
@@ -210,7 +219,7 @@ namespace BTDB
                 WriteVUInt32(0);
                 return;
             }
-            WriteVUInt32((uint) (value.Length + 1));
+            WriteVUInt32((uint)(value.Length + 1));
             WriteBlock(value);
         }
     }
