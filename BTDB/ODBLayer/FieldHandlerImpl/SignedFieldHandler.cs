@@ -24,29 +24,26 @@ namespace BTDB.ODBLayer
             return false;
         }
 
-        public void Load(FieldHandlerLoad ctx)
+        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
         {
-            if (FieldHandlerHelpers.SkipLoadIfNeeded(this, ctx)) return;
-            if (!ctx.TargetTableFieldInfo.Handler.IsCompatibleWith(typeof(long)))
-            {
-                FieldHandlerHelpers.SkipLoad(this, ctx);
-                return;
-            }
-            ctx.PushThis(ctx.IlGenerator);
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
-            var fieldInfo = ctx.ImplType.GetField("_FieldStorage_" + ctx.FieldName);
-            if (fieldInfo.FieldType == typeof(long)) { }
-            else if (fieldInfo.FieldType == typeof(int)) ctx.IlGenerator.Emit(OpCodes.Conv_I4);
-            else if (fieldInfo.FieldType == typeof(short)) ctx.IlGenerator.Emit(OpCodes.Conv_I2);
-            else if (fieldInfo.FieldType == typeof(sbyte)) ctx.IlGenerator.Emit(OpCodes.Conv_I1);
-            ctx.IlGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            return false;
         }
 
-        public void SkipLoad(FieldHandlerSkipLoad ctx)
+        public Type WillLoad()
         {
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVInt64()));
+            return typeof(long);
+        }
+
+        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
+        }
+
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVInt64()));
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)

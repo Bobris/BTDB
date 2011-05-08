@@ -6,5 +6,6 @@
         TableVersionInfo LoadTableVersionInfo(uint id, uint version, string tableName);
         ulong GetSingletonOid(uint id);
         IFieldHandlerFactory FieldHandlerFactory { get; }
+        ITypeConvertorGenerator TypeConvertorGenerator { get; }
     }
 }

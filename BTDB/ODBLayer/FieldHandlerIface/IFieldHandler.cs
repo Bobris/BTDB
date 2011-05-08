@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection.Emit;
 
 namespace BTDB.ODBLayer
 {
@@ -7,8 +8,10 @@ namespace BTDB.ODBLayer
         string Name { get; }
         byte[] Configuration { get; }
         bool IsCompatibleWith(Type type);
-        void Load(FieldHandlerLoad ctx);
-        void SkipLoad(FieldHandlerSkipLoad ctx);
+        bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName);
+        Type WillLoad();
+        void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
+        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
         void CreateImpl(FieldHandlerCreateImpl ctx);
     }
 }

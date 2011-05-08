@@ -62,10 +62,10 @@
     <Compile Include="Interface\LowLevelDBStats.cs" />
     <Compile Include="Implementation\ManagedMemoryStream.cs" />
     <Compile Include="Interface\ShouldMergeResult.cs" />
+    <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\DefaultFieldHandlerFactory.cs" />
     <Compile Include="ODBLayer\EmitHelpers.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerCreateImpl.cs" />
-    <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerLoad.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerSkipLoad.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerHelpers.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandler.cs" />
@@ -75,6 +75,7 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\MidLevelObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
+    <Compile Include="ODBLayer\ITypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\LowLevelDBTransactionProtector.cs" />
     <Compile Include="ODBLayer\LowLevelDBValueProtectedWriter.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SignedFieldHandler.cs" />

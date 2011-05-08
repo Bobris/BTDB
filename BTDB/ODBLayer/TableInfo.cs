@@ -314,18 +314,27 @@ namespace BTDB.ODBLayer
             var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
-                var tableFieldInfo = tableVersionInfo[fi];
-                var loadCtx = new FieldHandlerLoad
-                                  {
-                                      FieldName = tableFieldInfo.Name,
-                                      IlGenerator = ilGenerator,
-                                      ImplType = _implType,
-                                      PushThis = ig => ig.Emit(OpCodes.Ldloc_0),
-                                      PushReader = ig => ig.Emit(OpCodes.Ldarg_2),
-                                      ClientTableVersionInfo = ClientTableVersionInfo,
-                                      TargetTableFieldInfo = ClientTableVersionInfo[tableFieldInfo.Name]
-                                  };
-                tableFieldInfo.Handler.Load(loadCtx);
+                var srcFieldInfo = tableVersionInfo[fi];
+                var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
+                if (destFieldInfo != null)
+                {
+                    if (srcFieldInfo.Handler == destFieldInfo.Handler && srcFieldInfo.Handler.LoadToSameHandler(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2), ig => ig.Emit(OpCodes.Ldloc_0), _implType, destFieldInfo.Name))
+                    {
+                        continue;
+                    }
+                    var willLoad = srcFieldInfo.Handler.WillLoad();
+                    var fieldInfo = _implType.GetField("_FieldStorage_" + destFieldInfo.Name);
+                    var canConvertThrough = _tableInfoResolver.TypeConvertorGenerator.CanConvertThrough(willLoad, t => t == fieldInfo.FieldType);
+                    if (canConvertThrough != null)
+                    {
+                        ilGenerator.Emit(OpCodes.Ldloc_0);
+                        srcFieldInfo.Handler.LoadToWillLoad(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2));
+                        _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, canConvertThrough)(ilGenerator);
+                        ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+                        continue;
+                    }
+                }
+                srcFieldInfo.Handler.SkipLoad(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2));
             }
             ilGenerator.Emit(OpCodes.Ldloc_0);
             ilGenerator.Emit(OpCodes.Ret);

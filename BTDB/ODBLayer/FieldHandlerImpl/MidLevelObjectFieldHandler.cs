@@ -21,25 +21,30 @@ namespace BTDB.ODBLayer
             return type == typeof(IMidLevelObject) || (type.IsInterface && !type.IsGenericTypeDefinition);
         }
 
-        public void Load(FieldHandlerLoad ctx)
+        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
         {
-            if (FieldHandlerHelpers.SkipLoadIfNeeded(this, ctx)) return;
-            if (!ctx.TargetTableFieldInfo.Handler.IsCompatibleWith(typeof(IMidLevelObject)))
-            {
-                FieldHandlerHelpers.SkipLoad(this, ctx);
-                return;
-            }
-            ctx.PushThis(ctx.IlGenerator);
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
-            var fieldInfo = ctx.ImplType.GetField("_FieldStorage_" + ctx.FieldName);
-            ctx.IlGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            pushThis(ilGenerator);
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
+            var fieldInfo = implType.GetField("_FieldStorage_" + destFieldName);
+            ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            return true;
         }
 
-        public void SkipLoad(FieldHandlerSkipLoad ctx)
+        public Type WillLoad()
         {
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVUInt64()));
+            return null;
+        }
+
+        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVUInt64()));
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)

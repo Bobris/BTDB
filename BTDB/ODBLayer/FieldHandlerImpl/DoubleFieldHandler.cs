@@ -20,25 +20,26 @@ namespace BTDB.ODBLayer
             return type == typeof(double);
         }
 
-        public void Load(FieldHandlerLoad ctx)
+        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
         {
-            if (FieldHandlerHelpers.SkipLoadIfNeeded(this, ctx)) return;
-            if (!ctx.TargetTableFieldInfo.Handler.IsCompatibleWith(typeof(double)))
-            {
-                FieldHandlerHelpers.SkipLoad(this, ctx);
-                return;
-            }
-            ctx.PushThis(ctx.IlGenerator);
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadDouble()));
-            var fieldInfo = ctx.ImplType.GetField("_FieldStorage_" + ctx.FieldName);
-            ctx.IlGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            return false;
         }
 
-        public void SkipLoad(FieldHandlerSkipLoad ctx)
+        public Type WillLoad()
         {
-            ctx.PushReader(ctx.IlGenerator);
-            ctx.IlGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipDouble()));
+            return typeof(double);
+        }
+
+        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadDouble()));
+        }
+
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        {
+            pushReader(ilGenerator);
+            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipDouble()));
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)

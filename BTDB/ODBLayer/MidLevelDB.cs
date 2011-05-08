@@ -16,7 +16,12 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
-        IFieldHandlerFactory _fieldHandlerFactory = new DefaultFieldHandlerFactory();
+
+        public MidLevelDB()
+        {
+            FieldHandlerFactory = new DefaultFieldHandlerFactory();
+            TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
+        }
 
         internal Type2NameRegistry Type2NameRegistry
         {
@@ -155,19 +160,15 @@ namespace BTDB.ODBLayer
             {
                 get { return _midLevelDB.FieldHandlerFactory; }
             }
+
+            public ITypeConvertorGenerator TypeConvertorGenerator
+            {
+                get { return _midLevelDB.TypeConvertorGenerator; }
+            }
         }
 
-        protected IFieldHandlerFactory FieldHandlerFactory
-        {
-            get
-            {
-                return _fieldHandlerFactory;
-            }
-            set
-            {
-                _fieldHandlerFactory = value;
-            }
-        }
+        public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+        public IFieldHandlerFactory FieldHandlerFactory { get; set; }
 
         internal ulong AllocateNewOid()
         {

@@ -14,5 +14,9 @@ namespace BTDB.ODBLayer
         string RegisterType(Type type);
 
         string RegisterType(Type type, string withName);
+
+        ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+
+        IFieldHandlerFactory FieldHandlerFactory { get; set; }
     }
 }
