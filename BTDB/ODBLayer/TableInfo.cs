@@ -12,7 +12,6 @@ namespace BTDB.ODBLayer
         readonly uint _id;
         readonly string _name;
         readonly ITableInfoResolver _tableInfoResolver;
-        uint _lastPersistedVersion;
         uint _clientTypeVersion;
         Type _clientType;
         Type _implType;
@@ -60,11 +59,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal uint LastPersistedVersion
-        {
-            get { return _lastPersistedVersion; }
-            set { _lastPersistedVersion = value; }
-        }
+        internal uint LastPersistedVersion { get; set; }
 
         internal uint ClientTypeVersion
         {
