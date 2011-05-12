@@ -73,6 +73,7 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\BoolFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DoubleFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\MidLevelObjectFieldHandler.cs" />
+    <Compile Include="IL\ILGeneratorExtensions.cs" />
     <Compile Include="ODBLayer\IMidLevelDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\ITypeConvertorGenerator.cs" />

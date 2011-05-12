@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
+using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
@@ -15,10 +16,10 @@ namespace BTDB.ODBLayer
             return (expression.Body as MethodCallExpression).Method;
         }
 
-        internal static ILGenerator GetILGenerator(this MethodBuilder mb,ISymbolDocumentWriter symbolDocumentWriter, int ilsize=64)
+        internal static ILGenerator GetILGenerator(this MethodBuilder mb, ISymbolDocumentWriter symbolDocumentWriter, int ilsize = 64)
         {
             var ilGenerator = mb.GetILGenerator(ilsize);
-            if (symbolDocumentWriter!=null) ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            if (symbolDocumentWriter != null) ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             return ilGenerator;
         }
 
@@ -33,18 +34,19 @@ namespace BTDB.ODBLayer
             ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilGenerator.DeclareLocal(typeof(PropertyChangedEventHandler));
             var labelRet = ilGenerator.DefineLabel();
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Brfalse_S, labelRet);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Newobj, typeof(PropertyChangedEventArgs).GetConstructor(new[] { typeof(string) }));
-            ilGenerator.Emit(OpCodes.Callvirt, typeof(PropertyChangedEventHandler).GetMethod("Invoke", new[] { typeof(object), typeof(PropertyChangedEventArgs) }));
-            ilGenerator.MarkLabel(labelRet);
-            ilGenerator.Emit(OpCodes.Ret);
+            ilGenerator
+                .Ldarg(0)
+                .Ldfld(fieldBuilder)
+                .Stloc(0)
+                .Ldloc(0)
+                .BrfalseS(labelRet)
+                .Ldloc(0)
+                .Ldarg(0)
+                .Ldarg(1)
+                .Newobj(typeof(PropertyChangedEventArgs), typeof(string))
+                .Callvirt(() => ((PropertyChangedEventHandler)null).Invoke(null, null))
+                .Mark(labelRet)
+                .Ret();
             return methodBuilder;
         }
 
@@ -61,31 +63,33 @@ namespace BTDB.ODBLayer
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
             var label = ilGenerator.DefineLabel();
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.MarkLabel(label);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Stloc_1);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Call,
-                             add
-                                 ? GetMethodInfo(() => Delegate.Combine(null, null))
-                                 : GetMethodInfo(() => Delegate.Remove(null, null)));
-            ilGenerator.Emit(OpCodes.Castclass, typePropertyChangedEventHandler);
-            ilGenerator.Emit(OpCodes.Stloc_2);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
+            ilGenerator
+                .Ldarg(0)
+                .Ldfld(fieldBuilder)
+                .Stloc(0)
+                .Mark(label)
+                .Ldloc(0)
+                .Stloc(1)
+                .Ldloc(1)
+                .Ldarg(1)
+                .Call(add
+                          ? GetMethodInfo(() => Delegate.Combine(null, null))
+                          : GetMethodInfo(() => Delegate.Remove(null, null)))
+                .Castclass(typePropertyChangedEventHandler)
+                .Stloc(2)
+                .Ldarg(0);
             ilGenerator.Emit(OpCodes.Ldflda, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Ldloc_2);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
+            ilGenerator
+                .Ldloc(2)
+                .Ldloc(1);
             PropertyChangedEventHandler stub = null;
-            ilGenerator.Emit(OpCodes.Call, GetMethodInfo(() => Interlocked.CompareExchange(ref stub, null, null)));
-            ilGenerator.Emit(OpCodes.Stloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldloc_1);
+            ilGenerator
+                .Call(() => Interlocked.CompareExchange(ref stub, null, null))
+                .Stloc(0)
+                .Ldloc(0)
+                .Ldloc(1);
             ilGenerator.Emit(OpCodes.Bne_Un_S, label);
-            ilGenerator.Emit(OpCodes.Ret);
+            ilGenerator.Ret();
             typeBuilder.DefineMethodOverride(methodBuilder, add ? eventPropertyChanged.GetAddMethod() : eventPropertyChanged.GetRemoveMethod());
             return methodBuilder;
         }
