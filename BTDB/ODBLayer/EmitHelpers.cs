@@ -77,9 +77,8 @@ namespace BTDB.ODBLayer
                           : GetMethodInfo(() => Delegate.Remove(null, null)))
                 .Castclass(typePropertyChangedEventHandler)
                 .Stloc(2)
-                .Ldarg(0);
-            ilGenerator.Emit(OpCodes.Ldflda, fieldBuilder);
-            ilGenerator
+                .Ldarg(0)
+                .Ldflda(fieldBuilder)
                 .Ldloc(2)
                 .Ldloc(1);
             PropertyChangedEventHandler stub = null;
@@ -87,9 +86,9 @@ namespace BTDB.ODBLayer
                 .Call(() => Interlocked.CompareExchange(ref stub, null, null))
                 .Stloc(0)
                 .Ldloc(0)
-                .Ldloc(1);
-            ilGenerator.Emit(OpCodes.Bne_Un_S, label);
-            ilGenerator.Ret();
+                .Ldloc(1)
+                .BneUnS(label)
+                .Ret();
             typeBuilder.DefineMethodOverride(methodBuilder, add ? eventPropertyChanged.GetAddMethod() : eventPropertyChanged.GetRemoveMethod());
             return methodBuilder;
         }
@@ -102,7 +101,7 @@ namespace BTDB.ODBLayer
             {
                 loadLeft(ilGenerator);
                 loadRight(ilGenerator);
-                ilGenerator.Emit(OpCodes.Beq_S, jumpTo);
+                ilGenerator.BeqS(jumpTo);
                 return;
             }
             if (type.IsGenericType)
@@ -115,32 +114,30 @@ namespace BTDB.ODBLayer
                     var hasValueMethod = type.GetMethod("get_HasValue");
                     var getValueMethod = type.GetMethod("GetValueOrDefault", Type.EmptyTypes);
                     loadLeft(ilGenerator);
-                    ilGenerator.Emit(OpCodes.Stloc, localLeft);
+                    ilGenerator.Stloc(localLeft);
                     loadRight(ilGenerator);
-                    ilGenerator.Emit(OpCodes.Stloc, localRight);
+                    ilGenerator.Stloc(localRight);
                     var labelLeftHasValue = ilGenerator.DefineLabel();
                     var labelDifferent = ilGenerator.DefineLabel();
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localLeft);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brtrue_S, labelLeftHasValue);
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brtrue_S, labelDifferent);
-                    ilGenerator.Emit(OpCodes.Br_S, jumpTo);
-                    ilGenerator.MarkLabel(labelLeftHasValue);
-                    ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                    ilGenerator.Emit(OpCodes.Call, hasValueMethod);
-                    ilGenerator.Emit(OpCodes.Brfalse_S, labelDifferent);
-                    GenerateJumpIfEqual(ilGenerator, type.GetGenericArguments()[0], jumpTo, g =>
-                                                                                                {
-                                                                                                    ilGenerator.Emit(OpCodes.Ldloca_S, localLeft);
-                                                                                                    g.Emit(OpCodes.Call, getValueMethod);
-                                                                                                }, g =>
-                                                                                                       {
-                                                                                                           ilGenerator.Emit(OpCodes.Ldloca_S, localRight);
-                                                                                                           g.Emit(OpCodes.Call, getValueMethod);
-                                                                                                       });
-                    ilGenerator.MarkLabel(labelDifferent);
+                    ilGenerator
+                        .Ldloca(localLeft)
+                        .Call(hasValueMethod)
+                        .BrtrueS(labelLeftHasValue)
+                        .Ldloca(localRight)
+                        .Call(hasValueMethod)
+                        .BrtrueS(labelDifferent)
+                        .BrS(jumpTo)
+                        .Mark(labelLeftHasValue)
+                        .Ldloca(localRight)
+                        .Call(hasValueMethod)
+                        .BrfalseS(labelDifferent);
+                    GenerateJumpIfEqual(
+                        ilGenerator, 
+                        type.GetGenericArguments()[0], 
+                        jumpTo, 
+                        g => g.Ldloca(localLeft).Call(getValueMethod), 
+                        g => g.Ldloca(localRight).Call(getValueMethod));
+                    ilGenerator.Mark(labelDifferent);
                     return;
                 }
             }
@@ -149,8 +146,9 @@ namespace BTDB.ODBLayer
             {
                 loadLeft(ilGenerator);
                 loadRight(ilGenerator);
-                ilGenerator.Emit(OpCodes.Call, equalsMethod);
-                ilGenerator.Emit(OpCodes.Brtrue_S, jumpTo);
+                ilGenerator
+                    .Call(equalsMethod)
+                    .BrtrueS(jumpTo);
                 return;
             }
             throw new NotImplementedException(String.Format("Don't know how to compare type {0}", type));

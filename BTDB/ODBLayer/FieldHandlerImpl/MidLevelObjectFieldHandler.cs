@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Reflection;
 using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
@@ -25,9 +26,9 @@ namespace BTDB.ODBLayer
         {
             pushThis(ilGenerator);
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVUInt64());
             var fieldInfo = implType.GetField("_FieldStorage_" + destFieldName);
-            ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            ilGenerator.Stfld(fieldInfo);
             return true;
         }
 
@@ -44,7 +45,7 @@ namespace BTDB.ODBLayer
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVUInt64()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVUInt64());
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)
@@ -54,49 +55,50 @@ namespace BTDB.ODBLayer
             var fieldBuilder = tb.DefineField("_FieldStorage_" + ctx.FieldName, typeof(ulong), FieldAttributes.Public);
             var getMethodBuilder = tb.DefineMethod("get_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, pi.PropertyType, Type.EmptyTypes);
             var ilGenerator = getMethodBuilder.GetILGenerator(ctx.SymbolDocWriter);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, ctx.FieldMidLevelDBTransaction);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((IMidLevelDBTransactionInternal)null).Get(0)));
-            if (pi.PropertyType!=typeof(object))
+            ilGenerator
+                .Ldarg(0)
+                .Ldfld(ctx.FieldMidLevelDBTransaction)
+                .Ldarg(0)
+                .Ldfld(fieldBuilder)
+                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).Get(0));
+            if (pi.PropertyType != typeof(object))
             {
-                ilGenerator.Emit(OpCodes.Isinst, pi.PropertyType);
+                ilGenerator.Isinst(pi.PropertyType);
             }
-            ilGenerator.Emit(OpCodes.Ret);
+            ilGenerator.Ret();
             tb.DefineMethodOverride(getMethodBuilder, pi.GetGetMethod());
             var setMethodBuilder = tb.DefineMethod("set_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, typeof(void),
                                                    new[] { pi.PropertyType });
             ilGenerator = setMethodBuilder.GetILGenerator(ctx.SymbolDocWriter);
             var labelNoChange = ilGenerator.DefineLabel();
             ilGenerator.DeclareLocal(typeof(ulong));
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldfld, ctx.FieldMidLevelDBTransaction);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((IMidLevelDBTransactionInternal)null).GetOid(null)));
-            ilGenerator.Emit(OpCodes.Stloc_0);
+            ilGenerator
+                .Ldarg(0)
+                .Ldfld(ctx.FieldMidLevelDBTransaction)
+                .Ldarg(1)
+                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).GetOid(null))
+                .Stloc(0);
             EmitHelpers.GenerateJumpIfEqual(ilGenerator, typeof(ulong), labelNoChange,
-                                            g =>
-                                                {
-                                                    g.Emit(OpCodes.Ldarg_0);
-                                                    g.Emit(OpCodes.Ldfld, fieldBuilder);
-                                                },
-                                            g => g.Emit(OpCodes.Ldloc_0));
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Stfld, fieldBuilder);
+                                            g => g.Ldarg(0).Ldfld(fieldBuilder),
+                                            g => g.Ldloc(0));
+            ilGenerator
+                .Ldarg(0)
+                .Ldloc(0)
+                .Stfld(fieldBuilder);
             ctx.CallObjectModified(ilGenerator);
-            ilGenerator.MarkLabel(labelNoChange);
-            ilGenerator.Emit(OpCodes.Ret);
+            ilGenerator
+                .Mark(labelNoChange)
+                .Ret();
             tb.DefineMethodOverride(setMethodBuilder, pi.GetSetMethod());
             var propertyBuilder = tb.DefineProperty(pi.Name, PropertyAttributes.None, pi.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
             propertyBuilder.SetSetMethod(setMethodBuilder);
             ilGenerator = ctx.Saver;
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)));
+            ilGenerator
+                .Ldloc(1)
+                .Ldloc(0)
+                .Ldfld(fieldBuilder)
+                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
         }
     }
 }

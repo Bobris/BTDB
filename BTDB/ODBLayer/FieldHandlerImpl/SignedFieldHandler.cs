@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
@@ -37,24 +38,25 @@ namespace BTDB.ODBLayer
         public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVInt64());
         }
 
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Callvirt, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVInt64()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVInt64());
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)
         {
             FieldBuilder fieldBuilder = FieldHandlerHelpers.GenerateSimplePropertyCreateImpl(ctx);
             var ilGenerator = ctx.Saver;
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            if (fieldBuilder.FieldType != typeof(long)) ilGenerator.Emit(OpCodes.Conv_I8);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)));
+            ilGenerator
+                .Ldloc(1)
+                .Ldloc(0)
+                .Ldfld(fieldBuilder);
+            if (fieldBuilder.FieldType != typeof(long)) ilGenerator.ConvI8();
+            ilGenerator.Call(() => ((AbstractBufferedWriter)null).WriteVInt64(0));
         }
     }
 }

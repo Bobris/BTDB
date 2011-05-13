@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
@@ -33,23 +34,24 @@ namespace BTDB.ODBLayer
         public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadBool()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadBool());
         }
 
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipBool()));
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipBool());
         }
 
         public void CreateImpl(FieldHandlerCreateImpl ctx)
         {
             FieldBuilder fieldBuilder = FieldHandlerHelpers.GenerateSimplePropertyCreateImpl(ctx);
             var ilGenerator = ctx.Saver;
-            ilGenerator.Emit(OpCodes.Ldloc_1);
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ldfld, fieldBuilder);
-            ilGenerator.Emit(OpCodes.Call, EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteBool(false)));
+            ilGenerator
+                .Ldloc(1)
+                .Ldloc(0)
+                .Ldfld(fieldBuilder)
+                .Call(() => ((AbstractBufferedWriter)null).WriteBool(false));
         }
     }
 }
