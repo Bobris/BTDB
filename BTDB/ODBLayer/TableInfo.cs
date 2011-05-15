@@ -111,7 +111,7 @@ namespace BTDB.ODBLayer
             ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg
                 .Ldarg(0)
-                .Call(typeof(object).GetConstructor(Type.EmptyTypes))
+                .Call(()=>new object())
                 .Ldarg(0)
                 .Ldarg(1)
                 .Stfld(oidFieldBuilder)
@@ -155,7 +155,7 @@ namespace BTDB.ODBLayer
                 .Ldloc(0)
                 .BrtrueS(skipException)
                 .Ldstr("Type of object in Saver does not match")
-                .Newobj(typeof(BTDBException).GetConstructor(new[] { typeof(string) }))
+                .Newobj(() => new BTDBException(null))
                 .Throw()
                 .Mark(skipException)
                 .Ldloc(0)

@@ -43,7 +43,7 @@ namespace BTDB.ODBLayer
                 .Ldloc(0)
                 .Ldarg(0)
                 .Ldarg(1)
-                .Newobj(typeof(PropertyChangedEventArgs), typeof(string))
+                .Newobj(() => new PropertyChangedEventArgs(null))
                 .Callvirt(() => ((PropertyChangedEventHandler)null).Invoke(null, null))
                 .Mark(labelRet)
                 .Ret();
@@ -132,10 +132,10 @@ namespace BTDB.ODBLayer
                         .Call(hasValueMethod)
                         .BrfalseS(labelDifferent);
                     GenerateJumpIfEqual(
-                        ilGenerator, 
-                        type.GetGenericArguments()[0], 
-                        jumpTo, 
-                        g => g.Ldloca(localLeft).Call(getValueMethod), 
+                        ilGenerator,
+                        type.GetGenericArguments()[0],
+                        jumpTo,
+                        g => g.Ldloca(localLeft).Call(getValueMethod),
                         g => g.Ldloca(localRight).Call(getValueMethod));
                     ilGenerator.Mark(labelDifferent);
                     return;

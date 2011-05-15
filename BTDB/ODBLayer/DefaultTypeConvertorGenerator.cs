@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
@@ -15,14 +16,14 @@ namespace BTDB.ODBLayer
                                                typeof (byte), typeof (sbyte), typeof (ushort), typeof (short),
                                                typeof (uint), typeof (int), typeof (ulong), typeof (long)
                                            };
-            AddConversions(convConvertibleTypes, typeof(long), ilg => ilg.Emit(OpCodes.Conv_I8));
-            AddConversions(convConvertibleTypes, typeof(ulong), ilg => ilg.Emit(OpCodes.Conv_U8));
-            AddConversions(convConvertibleTypes, typeof(int), ilg => ilg.Emit(OpCodes.Conv_I4));
-            AddConversions(convConvertibleTypes, typeof(uint), ilg => ilg.Emit(OpCodes.Conv_U4));
-            AddConversions(convConvertibleTypes, typeof(short), ilg => ilg.Emit(OpCodes.Conv_I2));
-            AddConversions(convConvertibleTypes, typeof(ushort), ilg => ilg.Emit(OpCodes.Conv_U2));
-            AddConversions(convConvertibleTypes, typeof(sbyte), ilg => ilg.Emit(OpCodes.Conv_I1));
-            AddConversions(convConvertibleTypes, typeof(byte), ilg => ilg.Emit(OpCodes.Conv_U1));
+            AddConversions(convConvertibleTypes, typeof(long), ilg => ilg.ConvI8());
+            AddConversions(convConvertibleTypes, typeof(ulong), ilg => ilg.ConvU8());
+            AddConversions(convConvertibleTypes, typeof(int), ilg => ilg.ConvI4());
+            AddConversions(convConvertibleTypes, typeof(uint), ilg => ilg.ConvU4());
+            AddConversions(convConvertibleTypes, typeof(short), ilg => ilg.ConvI2());
+            AddConversions(convConvertibleTypes, typeof(ushort), ilg => ilg.ConvU2());
+            AddConversions(convConvertibleTypes, typeof(sbyte), ilg => ilg.ConvI1());
+            AddConversions(convConvertibleTypes, typeof(byte), ilg => ilg.ConvU1());
         }
 
         void AddConversions(IEnumerable<Type> fromList, Type to, Action<ILGenerator> generator)

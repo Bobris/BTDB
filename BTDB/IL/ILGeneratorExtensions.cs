@@ -211,9 +211,10 @@ namespace BTDB.IL
             return il;
         }
 
-        internal static ILGenerator Newobj(this ILGenerator il, Type objectType, params Type[] parameterTypes)
+        internal static ILGenerator Newobj(this ILGenerator il, Expression<Action> expression)
         {
-            il.Emit(OpCodes.Newobj, objectType.GetConstructor(parameterTypes));
+            var constructorInfo = (expression.Body as NewExpression).Constructor;
+            il.Emit(OpCodes.Newobj, constructorInfo);
             return il;
         }
 
@@ -240,8 +241,16 @@ namespace BTDB.IL
 
         internal static ILGenerator Call(this ILGenerator il, Expression<Action> expression)
         {
-            var methodInfo = (expression.Body as MethodCallExpression).Method;
-            il.Emit(OpCodes.Call, methodInfo);
+            var newExpression = expression.Body as NewExpression;
+            if (newExpression!=null)
+            {
+                il.Emit(OpCodes.Call, newExpression.Constructor);
+            }
+            else
+            {
+                var methodInfo = (expression.Body as MethodCallExpression).Method;
+                il.Emit(OpCodes.Call, methodInfo);
+            }
             return il;
         }
 
