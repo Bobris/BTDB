@@ -350,5 +350,17 @@ namespace BTDB.IL
             return il;
         }
 
+        internal static ILGenerator ConvR8(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Conv_R8);
+            return il;
+        }
+
+        internal static ILGenerator ConvR4(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Conv_R4);
+            return il;
+        }
+
     }
 }
