@@ -13,6 +13,7 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
+        bool _valid;
 
         public ulong CreateNewObjectId()
         {
@@ -56,10 +57,12 @@ namespace BTDB.ODBLayer
         {
             _owner = owner;
             _lowLevelTr = lowLevelTr;
+            _valid = true;
         }
 
         public void Dispose()
         {
+            _valid = false;
             _lowLevelTr.Dispose();
         }
 
@@ -204,6 +207,12 @@ namespace BTDB.ODBLayer
             return midLevelObject.Oid;
         }
 
+        public void CheckPropertyOperationValidity(object obj)
+        {
+            if (!_valid) throw new BTDBException(string.Format("Cannot access object {0} outside of transaction",((IMidLevelObject)obj).TableName));
+            if (((IMidLevelObject)obj).Deleted) throw new BTDBException(string.Format("Cannot access deleted object {0}",((IMidLevelObject)obj).TableName));
+        }
+
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type);
@@ -302,11 +311,9 @@ namespace BTDB.ODBLayer
             return (T)Insert(typeof(T));
         }
 
-        public void Delete(object @object)
+        public void InternalDelete(object obj)
         {
-            if (@object == null) throw new ArgumentNullException("object");
-            var o = @object as IMidLevelObject;
-            if (o == null) throw new BTDBException("Object to delete is not MidLevelDB object");
+            var o = (IMidLevelObject)obj;
             var oid = o.Oid;
             var taken = false;
             try
@@ -327,6 +334,14 @@ namespace BTDB.ODBLayer
             _dirtyObjSet.TryRemove(oid);
         }
 
+        public void Delete(object @object)
+        {
+            if (@object == null) throw new ArgumentNullException("object");
+            var o = @object as IMidLevelObject;
+            if (o == null) throw new BTDBException("Object to delete is not MidLevelDB object");
+            o.Delete();
+        }
+
         public void DeleteAll<T>() where T : class
         {
             DeleteAll(typeof(T));
@@ -342,9 +357,16 @@ namespace BTDB.ODBLayer
 
         public void Commit()
         {
-            foreach (var o in _dirtyObjSet)
+            try
             {
-                StoreObject(o.Value);
+                foreach (var o in _dirtyObjSet)
+                {
+                    StoreObject(o.Value);
+                }
+            }
+            finally
+            {
+                _valid = false;
             }
             _lowLevelTr.Commit();
             foreach (var updatedTable in _updatedTables)

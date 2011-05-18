@@ -500,7 +500,32 @@ namespace BTDBTest
             Assert.AreSame(o, o.MidLevelObjectField);
             Assert.AreSame(o, o.VariousFieldTypesField);
             Assert.True(o.BoolField);
-            Assert.AreEqual(12.34,o.DoubleField,1e-10);
+            Assert.AreEqual(12.34, o.DoubleField, 1e-10);
+        }
+
+        [Test]
+        public void AccessingObjectOutsideOfTransactionIsForbidden()
+        {
+            IPerson p;
+            using (var tr = _db.StartTransaction())
+            {
+                p = tr.Insert<IPerson>();
+                tr.Commit();
+            }
+            Assert.Throws<BTDBException>(() => { if (p.Name != null) { } });
+            Assert.Throws<BTDBException>(() => { p.Name = "does not matter"; });
+        }
+
+        [Test]
+        public void AccessingDeletedObjectIsForbidden()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Insert<IPerson>();
+                tr.Delete(p);
+                Assert.Throws<BTDBException>(() => { if (p.Name != null) { } });
+                Assert.Throws<BTDBException>(() => { p.Name = "does not matter"; });
+            }
         }
     }
 }

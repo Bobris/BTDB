@@ -362,5 +362,11 @@ namespace BTDB.IL
             return il;
         }
 
+        internal static ILGenerator Tail(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Tailcall);
+            return il;
+        }
+
     }
 }

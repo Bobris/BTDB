@@ -7,5 +7,7 @@ namespace BTDB.ODBLayer
         void ObjectModified(ulong id, object obj);
         object Get(ulong oid);
         ulong GetOid(object obj);
+        void CheckPropertyOperationValidity(object obj);
+        void InternalDelete(object obj);
     }
 }

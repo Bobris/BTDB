@@ -83,7 +83,8 @@ namespace BTDB.ODBLayer
             var properties = clientType.GetProperties();
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
             var trFieldBuilder = tb.DefineField("MidLevelDBTransaction", typeof(IMidLevelDBTransactionInternal),
-                                                FieldAttributes.Public);
+                                                FieldAttributes.InitOnly | FieldAttributes.Public);
+            var deletedFieldBuilder = tb.DefineField("_deleted", typeof(bool), FieldAttributes.Family);
             var propInfo = typeof(IMidLevelObject).GetProperty("TableName");
             var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             var ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
@@ -105,13 +106,20 @@ namespace BTDB.ODBLayer
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
+            propInfo = typeof(IMidLevelObject).GetProperty("Deleted");
+            getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
+            ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+            ilGenerator.Ldarg(0).Ldfld(deletedFieldBuilder).Ret();
+            tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
+            propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
+            propertyBuilder.SetGetMethod(getMethodBuilder);
             var constructorBuilder = tb.DefineConstructor(MethodAttributes.Family, CallingConventions.Standard,
                                                           new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
             var ilg = constructorBuilder.GetILGenerator();
             ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg
                 .Ldarg(0)
-                .Call(()=>new object())
+                .Call(() => new object())
                 .Ldarg(0)
                 .Ldarg(1)
                 .Stfld(oidFieldBuilder)
@@ -141,6 +149,18 @@ namespace BTDB.ODBLayer
                 .Ldloc(0)
                 .Callvirt(() => ((IMidLevelDBTransactionInternal)null).RegisterNewObject(0, null))
                 .Ldloc(0)
+                .Ret();
+            metb = tb.DefineMethod("Delete",
+                            MethodAttributes.Public | MethodAttributes.Virtual, typeof(void), Type.EmptyTypes);
+            ilg = metb.GetILGenerator(symbolDocumentWriter);
+            ilg
+                .Ldarg(0)
+                .LdcI4(1)
+                .Stfld(deletedFieldBuilder)
+                .Ldarg(0)
+                .Ldfld(trFieldBuilder)
+                .Ldarg(0)
+                .Tail().Call(() => ((IMidLevelDBTransactionInternal)null).InternalDelete(null))
                 .Ret();
             metb = tb.DefineMethod("Saver",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
@@ -200,6 +220,11 @@ namespace BTDB.ODBLayer
                 {
                     getMethodBuilder = tb.DefineMethod("get_" + property.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, property.PropertyType, Type.EmptyTypes);
                     ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter);
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldfld(trFieldBuilder)
+                        .Ldarg(0)
+                        .Callvirt(() => ((IMidLevelDBTransactionInternal)null).CheckPropertyOperationValidity(null));
                     fieldHandlerCreateImpl.Generator = ilGenerator;
                     tableFieldInfo.Handler.CreatePropertyGetter(fieldHandlerCreateImpl);
                     ilGenerator.Ret();
@@ -211,6 +236,11 @@ namespace BTDB.ODBLayer
                     var setMethodBuilder = tb.DefineMethod("set_" + property.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, typeof(void),
                                                            new[] { property.PropertyType });
                     ilGenerator = setMethodBuilder.GetILGenerator(symbolDocumentWriter);
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldfld(trFieldBuilder)
+                        .Ldarg(0)
+                        .Callvirt(() => ((IMidLevelDBTransactionInternal)null).CheckPropertyOperationValidity(null));
                     fieldHandlerCreateImpl.Generator = ilGenerator;
                     tableFieldInfo.Handler.CreatePropertySetter(fieldHandlerCreateImpl);
                     ilGenerator.Ret();

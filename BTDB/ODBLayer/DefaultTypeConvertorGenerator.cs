@@ -126,5 +126,10 @@ namespace BTDB.ODBLayer
             return new decimal(value);
         }
 
+        public static bool Convert2Bool(int value)
+        {
+            return value!=0;
+        }
+
     }
 }
