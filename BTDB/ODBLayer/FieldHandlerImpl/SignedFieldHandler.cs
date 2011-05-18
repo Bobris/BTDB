@@ -47,10 +47,25 @@ namespace BTDB.ODBLayer
             ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVInt64());
         }
 
-        public void CreateImpl(FieldHandlerCreateImpl ctx)
+        public void CreateStorage(FieldHandlerCreateImpl ctx)
         {
-            FieldBuilder fieldBuilder = FieldHandlerHelpers.GenerateSimplePropertyCreateImpl(ctx);
-            var ilGenerator = ctx.Saver;
+            ctx.CreateSimpleStorage();
+        }
+
+        public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
+        {
+            ctx.CreateSimplePropertyGetter();
+        }
+
+        public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
+        {
+            ctx.CreateSimplePropertySetter();
+        }
+
+        public void CreateSaver(FieldHandlerCreateImpl ctx)
+        {
+            var fieldBuilder = ctx.DefaultFieldBuilder;
+            var ilGenerator = ctx.Generator;
             ilGenerator
                 .Ldloc(1)
                 .Ldloc(0)

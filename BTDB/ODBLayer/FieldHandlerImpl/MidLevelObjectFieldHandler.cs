@@ -48,28 +48,30 @@ namespace BTDB.ODBLayer
             ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVUInt64());
         }
 
-        public void CreateImpl(FieldHandlerCreateImpl ctx)
+        public void CreateStorage(FieldHandlerCreateImpl ctx)
         {
-            var tb = ctx.ImplType;
-            var pi = ctx.PropertyInfo;
-            var fieldBuilder = tb.DefineField("_FieldStorage_" + ctx.FieldName, typeof(ulong), FieldAttributes.Public);
-            var getMethodBuilder = tb.DefineMethod("get_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, pi.PropertyType, Type.EmptyTypes);
-            var ilGenerator = getMethodBuilder.GetILGenerator(ctx.SymbolDocWriter);
+            ctx.CreateSimpleStorage(typeof(ulong));
+        }
+
+        public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
+        {
+            var ilGenerator = ctx.Generator;
             ilGenerator
                 .Ldarg(0)
                 .Ldfld(ctx.FieldMidLevelDBTransaction)
                 .Ldarg(0)
-                .Ldfld(fieldBuilder)
+                .Ldfld(ctx.DefaultFieldBuilder)
                 .Callvirt(() => ((IMidLevelDBTransactionInternal)null).Get(0));
-            if (pi.PropertyType != typeof(object))
+            if (ctx.PropertyInfo.PropertyType != typeof(object))
             {
-                ilGenerator.Isinst(pi.PropertyType);
+                ilGenerator.Isinst(ctx.PropertyInfo.PropertyType);
             }
-            ilGenerator.Ret();
-            tb.DefineMethodOverride(getMethodBuilder, pi.GetGetMethod());
-            var setMethodBuilder = tb.DefineMethod("set_" + pi.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, typeof(void),
-                                                   new[] { pi.PropertyType });
-            ilGenerator = setMethodBuilder.GetILGenerator(ctx.SymbolDocWriter);
+        }
+
+        public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
+        {
+            var ilGenerator = ctx.Generator;
+            var fieldBuilder = ctx.DefaultFieldBuilder;
             var labelNoChange = ilGenerator.DefineLabel();
             ilGenerator.DeclareLocal(typeof(ulong));
             ilGenerator
@@ -87,17 +89,15 @@ namespace BTDB.ODBLayer
                 .Stfld(fieldBuilder);
             ctx.CallObjectModified(ilGenerator);
             ilGenerator
-                .Mark(labelNoChange)
-                .Ret();
-            tb.DefineMethodOverride(setMethodBuilder, pi.GetSetMethod());
-            var propertyBuilder = tb.DefineProperty(pi.Name, PropertyAttributes.None, pi.PropertyType, Type.EmptyTypes);
-            propertyBuilder.SetGetMethod(getMethodBuilder);
-            propertyBuilder.SetSetMethod(setMethodBuilder);
-            ilGenerator = ctx.Saver;
-            ilGenerator
+                .Mark(labelNoChange);
+        }
+
+        public void CreateSaver(FieldHandlerCreateImpl ctx)
+        {
+            ctx.Generator
                 .Ldloc(1)
                 .Ldloc(0)
-                .Ldfld(fieldBuilder)
+                .Ldfld(ctx.DefaultFieldBuilder)
                 .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
         }
     }

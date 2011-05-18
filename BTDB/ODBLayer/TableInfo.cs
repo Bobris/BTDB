@@ -170,16 +170,19 @@ namespace BTDB.ODBLayer
                 .Ldloc(1)
                 .LdcI4((int)clientTypeVersion)
                 .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0));
+            var objHolder = new Dictionary<string, object>();
             for (int fieldIndex = 0; fieldIndex < tableVersionInfo.FieldCount; fieldIndex++)
             {
                 var tableFieldInfo = tableVersionInfo[fieldIndex];
+                var property = properties.First(pi => pi.Name == tableFieldInfo.Name);
                 var fieldHandlerCreateImpl = new FieldHandlerCreateImpl
                     {
                         FieldName = tableFieldInfo.Name,
                         ImplType = tb,
                         SymbolDocWriter = symbolDocumentWriter,
-                        Saver = ilg,
-                        PropertyInfo = properties.FirstOrDefault(pi => pi.Name == tableFieldInfo.Name),
+                        ObjectStorage = objHolder,
+                        Generator = null,
+                        PropertyInfo = property,
                         FieldMidLevelDBTransaction = trFieldBuilder,
                         CallObjectModified = generator =>
                             {
@@ -191,7 +194,30 @@ namespace BTDB.ODBLayer
                                 generator.Callvirt(() => ((IMidLevelDBTransactionInternal)null).ObjectModified(0, null));
                             }
                     };
-                tableFieldInfo.Handler.CreateImpl(fieldHandlerCreateImpl);
+                tableFieldInfo.Handler.CreateStorage(fieldHandlerCreateImpl);
+                propertyBuilder = tb.DefineProperty(property.Name, PropertyAttributes.None, property.PropertyType, Type.EmptyTypes);
+                if (property.CanRead)
+                {
+                    getMethodBuilder = tb.DefineMethod("get_" + property.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, property.PropertyType, Type.EmptyTypes);
+                    ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter);
+                    fieldHandlerCreateImpl.Generator = ilGenerator;
+                    tableFieldInfo.Handler.CreatePropertyGetter(fieldHandlerCreateImpl);
+                    ilGenerator.Ret();
+                    tb.DefineMethodOverride(getMethodBuilder, property.GetGetMethod());
+                    propertyBuilder.SetGetMethod(getMethodBuilder);
+                }
+                if (property.CanWrite)
+                {
+                    var setMethodBuilder = tb.DefineMethod("set_" + property.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, typeof(void),
+                                                           new[] { property.PropertyType });
+                    ilGenerator = setMethodBuilder.GetILGenerator(symbolDocumentWriter);
+                    fieldHandlerCreateImpl.Generator = ilGenerator;
+                    tableFieldInfo.Handler.CreatePropertySetter(fieldHandlerCreateImpl);
+                    ilGenerator.Ret();
+                    propertyBuilder.SetSetMethod(setMethodBuilder);
+                }
+                fieldHandlerCreateImpl.Generator = ilg;
+                tableFieldInfo.Handler.CreateSaver(fieldHandlerCreateImpl);
             }
             ilg.Ldloc(1);
             ilg.Castclass(typeof(IDisposable));
