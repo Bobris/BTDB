@@ -1,9 +1,0 @@
-<Configuration>
-  <NamespaceFolders>
-    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:Implementation</SkipFolder>
-    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:Interface</SkipFolder>
-    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:ODBLayer/d:FieldHandlerIface</SkipFolder>
-    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:ODBLayer/d:FieldHandlerImpl</SkipFolder>
-    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:PublicHelpers</SkipFolder>
-  </NamespaceFolders>
-</Configuration>

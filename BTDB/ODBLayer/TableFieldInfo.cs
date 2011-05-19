@@ -1,5 +1,10 @@
 ﻿using System;
 using System.Reflection;
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.ImplementationDetails;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer
 {

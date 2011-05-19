@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using BTDB.IL;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer.FieldHandlerIface
 {
     public class FieldHandlerCreateImpl
     {

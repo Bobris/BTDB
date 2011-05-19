@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer.Interface;
 
 namespace BTDB.ODBLayer
 {

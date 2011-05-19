@@ -1,6 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer.ImplementationDetails;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer
 {

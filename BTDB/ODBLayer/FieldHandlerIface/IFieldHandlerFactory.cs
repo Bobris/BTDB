@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Reflection;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer.FieldHandlerIface
 {
     public interface IFieldHandlerFactory
     {

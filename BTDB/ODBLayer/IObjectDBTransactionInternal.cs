@@ -1,3 +1,6 @@
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.ReaderWriters;
+
 namespace BTDB.ODBLayer
 {
     public interface IObjectDBTransactionInternal

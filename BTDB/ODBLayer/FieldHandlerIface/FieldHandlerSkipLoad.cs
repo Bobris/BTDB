@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Reflection.Emit;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer.FieldHandlerIface
 {
     public class FieldHandlerSkipLoad
     {

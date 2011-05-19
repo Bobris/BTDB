@@ -2,6 +2,10 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.ReaderWriters;
 
 namespace BTDB.ODBLayer
 {

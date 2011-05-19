@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using BTDB;
+using BTDB.KVDBLayer.Implementation;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.StreamLayer;
 
 namespace SimpleTester
 {
@@ -18,7 +21,7 @@ namespace SimpleTester
             {
                 if (File.Exists("data.btdb"))
                     File.Delete("data.btdb");
-                return new BTDB.PositionLessStreamProxy("data.btdb");
+                return new PositionLessStreamProxy("data.btdb");
             }
             else
             {
@@ -206,7 +209,7 @@ namespace SimpleTester
             }
         }
 
-        void WriteCSV()
+        void WriteCsv()
         {
             using (var sout = new StreamWriter("data.csv"))
             {
@@ -223,7 +226,7 @@ namespace SimpleTester
             WarmUp();
             DoWork3();
             DoWork4();
-            //WriteCSV();
+            //WriteCsv();
         }
     }
 }

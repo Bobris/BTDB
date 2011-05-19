@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Linq;
 using BTDB;
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.ReaderWriters;
 using NUnit.Framework;
 
 namespace BTDBTest

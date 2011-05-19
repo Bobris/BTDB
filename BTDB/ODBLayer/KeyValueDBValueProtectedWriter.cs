@@ -1,4 +1,8 @@
-﻿namespace BTDB.ODBLayer
+﻿using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.ReaderWriters;
+
+namespace BTDB.ODBLayer
 {
     internal class KeyValueDBValueProtectedWriter : KeyValueDBValueWriter
     {

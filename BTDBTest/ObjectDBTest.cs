@@ -1,6 +1,9 @@
 ﻿using System.Linq;
 using BTDB;
+using BTDB.KVDBLayer.Implementation;
+using BTDB.KVDBLayer.Interface;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using NUnit.Framework;
 
 namespace BTDBTest

@@ -5,6 +5,10 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using BTDB.IL;
+using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer
 {

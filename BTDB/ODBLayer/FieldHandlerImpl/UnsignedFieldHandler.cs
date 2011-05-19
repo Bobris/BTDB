@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Reflection.Emit;
 using BTDB.IL;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
-namespace BTDB.ODBLayer
+namespace BTDB.ODBLayer.FieldHandlerImpl
 {
     public class UnsignedFieldHandler : IFieldHandler
     {
