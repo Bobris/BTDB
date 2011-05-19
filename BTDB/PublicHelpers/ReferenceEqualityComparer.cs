@@ -9,7 +9,7 @@ namespace BTDB
 
         static ReferenceEqualityComparer()
         {
-            ReferenceEqualityComparer<T>.Instance = new ReferenceEqualityComparer<T>();
+            Instance = new ReferenceEqualityComparer<T>();
         }
 
         private ReferenceEqualityComparer()

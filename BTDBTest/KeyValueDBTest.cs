@@ -9,14 +9,14 @@ using NUnit.Framework;
 namespace BTDBTest
 {
     [TestFixture]
-    public class LowLevelDBTest
+    public class KeyValueDBTest
     {
         [Test]
         public void CreateEmptyDatabase()
         {
             using (var stream = CreateTestStream())
             {
-                using (ILowLevelDB db = new LowLevelDB())
+                using (IKeyValueDB db = new KeyValueDB())
                 {
                     Assert.IsTrue(db.Open(stream, false));
                 }
@@ -28,11 +28,11 @@ namespace BTDBTest
         {
             using (var stream = CreateTestStream())
             {
-                using (ILowLevelDB db = new LowLevelDB())
+                using (IKeyValueDB db = new KeyValueDB())
                 {
                     Assert.IsTrue(db.Open(stream, false));
                 }
-                using (ILowLevelDB db = new LowLevelDB())
+                using (IKeyValueDB db = new KeyValueDB())
                 {
                     Assert.IsFalse(db.Open(stream, false));
                 }
@@ -43,7 +43,7 @@ namespace BTDBTest
         public void FirstTransaction()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -58,7 +58,7 @@ namespace BTDBTest
         public void MoreComplexTransaction()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -79,7 +79,7 @@ namespace BTDBTest
         public void CommitWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -102,7 +102,7 @@ namespace BTDBTest
         public void RollbackWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -121,7 +121,7 @@ namespace BTDBTest
         public void OnlyOneWrittingTransactionPossible()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -140,7 +140,7 @@ namespace BTDBTest
         public void OnlyOneWrittingTransactionPossible2()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var tr1 = db.StartTransaction();
@@ -162,7 +162,7 @@ namespace BTDBTest
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
             using (var stream = CreateTestStream())
             {
-                using (ILowLevelDB db = new LowLevelDB())
+                using (IKeyValueDB db = new KeyValueDB())
                 {
                     db.Open(stream, false);
                     using (var tr1 = db.StartTransaction())
@@ -186,7 +186,7 @@ namespace BTDBTest
         public void TwoTransactions()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -215,7 +215,7 @@ namespace BTDBTest
         public void MultipleTransactions([Values(1000)] int transactionCount)
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var key = new byte[2];
@@ -245,7 +245,7 @@ namespace BTDBTest
         public void MultipleTransactions2([Values(1000)] int transactionCount)
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var key = new byte[2];
@@ -275,7 +275,7 @@ namespace BTDBTest
         public void SimpleFindPreviousKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -299,7 +299,7 @@ namespace BTDBTest
         public void SimpleFindNextKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -323,7 +323,7 @@ namespace BTDBTest
         public void AdvancedFindPreviousAndNextKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var key = new byte[2];
@@ -368,7 +368,7 @@ namespace BTDBTest
             var valbuf = new byte[secondLength];
             new Random(0).NextBytes(valbuf);
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -402,7 +402,7 @@ namespace BTDBTest
             var valbuf = new byte[secondLength];
             new Random(0).NextBytes(valbuf);
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -443,7 +443,7 @@ namespace BTDBTest
             var valbuf = new byte[firstLength];
             new Random(0).NextBytes(valbuf);
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -490,7 +490,7 @@ namespace BTDBTest
             var valbuf = new byte[firstLength];
             new Random(0).NextBytes(valbuf);
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -521,7 +521,7 @@ namespace BTDBTest
             var valbuf = new byte[length];
             new Random(0).NextBytes(valbuf);
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr1 = db.StartTransaction())
@@ -555,7 +555,7 @@ namespace BTDBTest
         public void FindFirstKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -575,7 +575,7 @@ namespace BTDBTest
         public void FindLastKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -595,7 +595,7 @@ namespace BTDBTest
         public void SimplePrefixWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -619,7 +619,7 @@ namespace BTDBTest
         public void PrefixWithFindNextKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -640,7 +640,7 @@ namespace BTDBTest
         public void PrefixWithFindPrevKeyWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -660,7 +660,7 @@ namespace BTDBTest
         public void SimpleEraseCurrentWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -683,7 +683,7 @@ namespace BTDBTest
         public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var key = new byte[2];
@@ -745,7 +745,7 @@ namespace BTDBTest
         public void ALotOfLargeKeysWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 for (int i = 0; i < 10; i++)
@@ -785,7 +785,7 @@ namespace BTDBTest
         public void StartWritingTransactionWorks()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 var tr1 = db.StartWritingTransaction().Result;
@@ -814,13 +814,13 @@ namespace BTDBTest
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
 
-        static IStream CreateTestStream(bool log = false)
+        static IPositionLessStream CreateTestStream(bool log = false)
         {
             if (log)
             {
-                return new LoggingStream(new ManagedMemoryStream(), true, LogDebug);
+                return new LoggingPositionLessStream(new MemoryPositionLessStream(), true, LogDebug);
             }
-            return new ManagedMemoryStream();
+            return new MemoryPositionLessStream();
         }
 
         static void LogDebug(string s)

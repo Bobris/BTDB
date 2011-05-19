@@ -3,13 +3,13 @@ using System.Threading.Tasks;
 
 namespace BTDB.ODBLayer
 {
-    public interface IMidLevelDB : IDisposable 
+    public interface IObjectDB : IDisposable 
     {
-        void Open(ILowLevelDB lowLevelDB, bool dispose);
+        void Open(IKeyValueDB keyValueDB, bool dispose);
 
-        IMidLevelDBTransaction StartTransaction();
+        IObjectDBTransaction StartTransaction();
 
-        Task<IMidLevelDBTransaction> StartWritingTransaction();
+        Task<IObjectDBTransaction> StartWritingTransaction();
 
         string RegisterType(Type type);
 

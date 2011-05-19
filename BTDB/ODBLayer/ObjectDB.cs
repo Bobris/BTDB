@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 
 namespace BTDB.ODBLayer
 {
-    public class MidLevelDB : IMidLevelDB
+    public class ObjectDB : IObjectDB
     {
-        ILowLevelDB _lowLevelDB;
+        IKeyValueDB _keyValueDB;
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
         TablesInfo _tablesInfo;
         bool _dispose;
@@ -17,7 +17,7 @@ namespace BTDB.ODBLayer
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
 
-        public MidLevelDB()
+        public ObjectDB()
         {
             FieldHandlerFactory = new DefaultFieldHandlerFactory();
             TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
@@ -33,29 +33,29 @@ namespace BTDB.ODBLayer
             get { return _tablesInfo; }
         }
 
-        public void Open(ILowLevelDB lowLevelDB, bool dispose)
+        public void Open(IKeyValueDB keyValueDB, bool dispose)
         {
-            if (lowLevelDB == null) throw new ArgumentNullException("lowLevelDB");
-            _lowLevelDB = lowLevelDB;
+            if (keyValueDB == null) throw new ArgumentNullException("keyValueDB");
+            _keyValueDB = keyValueDB;
             _dispose = dispose;
-            _tableInfoResolver = new TableInfoResolver(lowLevelDB, this);
+            _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
             _lastObjId = 0;
-            using (var tr = _lowLevelDB.StartTransaction())
+            using (var tr = _keyValueDB.StartTransaction())
             {
                 tr.SetKeyPrefix(AllObjectsPrefix);
                 if (tr.FindLastKey())
                 {
-                    _lastObjId = (long)new LowLevelDBKeyReader(tr).ReadVUInt64();
+                    _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
                 }
                 _tablesInfo.LoadTables(LoadTablesEnum(tr));
             }
         }
 
-        static IEnumerable<string> LoadTablesEnum(ILowLevelDBTransaction tr)
+        static IEnumerable<string> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
             tr.SetKeyPrefix(TableNamesPrefix);
-            var valueReader = new LowLevelDBValueReader(tr);
+            var valueReader = new KeyValueDBValueReader(tr);
             while (tr.Enumerate())
             {
                 valueReader.Restart();
@@ -63,15 +63,15 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public IMidLevelDBTransaction StartTransaction()
+        public IObjectDBTransaction StartTransaction()
         {
-            return new MidLevelDBTransaction(this, _lowLevelDB.StartTransaction());
+            return new ObjectDBTransaction(this, _keyValueDB.StartTransaction());
         }
 
-        public Task<IMidLevelDBTransaction> StartWritingTransaction()
+        public Task<IObjectDBTransaction> StartWritingTransaction()
         {
-            return _lowLevelDB.StartWritingTransaction()
-                .ContinueWith<IMidLevelDBTransaction>(t => new MidLevelDBTransaction(this, t.Result), TaskContinuationOptions.ExecuteSynchronously);
+            return _keyValueDB.StartWritingTransaction()
+                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result), TaskContinuationOptions.ExecuteSynchronously);
         }
 
         public string RegisterType(Type type)
@@ -91,25 +91,25 @@ namespace BTDB.ODBLayer
         {
             if (_dispose)
             {
-                _lowLevelDB.Dispose();
+                _keyValueDB.Dispose();
                 _dispose = false;
             }
         }
 
         class TableInfoResolver : ITableInfoResolver
         {
-            readonly ILowLevelDB _lowLevelDB;
-            readonly MidLevelDB _midLevelDB;
+            readonly IKeyValueDB _keyValueDB;
+            readonly ObjectDB _objectDB;
 
-            internal TableInfoResolver(ILowLevelDB lowLevelDB, MidLevelDB midLevelDB)
+            internal TableInfoResolver(IKeyValueDB keyValueDB, ObjectDB objectDB)
             {
-                _lowLevelDB = lowLevelDB;
-                _midLevelDB = midLevelDB;
+                _keyValueDB = keyValueDB;
+                _objectDB = objectDB;
             }
 
             uint ITableInfoResolver.GetLastPesistedVersion(uint id)
             {
-                using (var tr = _lowLevelDB.StartTransaction())
+                using (var tr = _keyValueDB.StartTransaction())
                 {
                     tr.SetKeyPrefix(TableVersionsPrefix);
                     var key = new byte[PackUnpack.LengthVUInt(id) + 1];
@@ -127,7 +127,7 @@ namespace BTDB.ODBLayer
 
             TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
             {
-                using (var tr = _lowLevelDB.StartTransaction())
+                using (var tr = _keyValueDB.StartTransaction())
                 {
                     tr.SetKeyPrefix(TableVersionsPrefix);
                     var key = new byte[PackUnpack.LengthVUInt(id) + PackUnpack.LengthVUInt(version)];
@@ -136,13 +136,13 @@ namespace BTDB.ODBLayer
                     PackUnpack.PackVUInt(key, ref ofs, version);
                     if (!tr.FindExactKey(key))
                         throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
-                    return TableVersionInfo.Load(new LowLevelDBValueReader(tr), _midLevelDB.FieldHandlerFactory, tableName);
+                    return TableVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, tableName);
                 }
             }
 
             public ulong GetSingletonOid(uint id)
             {
-                using (var tr = _lowLevelDB.StartTransaction())
+                using (var tr = _keyValueDB.StartTransaction())
                 {
                     tr.SetKeyPrefix(TableSingletonsPrefix);
                     var key = new byte[PackUnpack.LengthVUInt(id)];
@@ -150,20 +150,20 @@ namespace BTDB.ODBLayer
                     PackUnpack.PackVUInt(key, ref ofs, id);
                     if (tr.FindExactKey(key))
                     {
-                        return new LowLevelDBValueReader(tr).ReadVUInt64();
+                        return new KeyValueDBValueReader(tr).ReadVUInt64();
                     }
-                    return _midLevelDB.AllocateNewOid();
+                    return _objectDB.AllocateNewOid();
                 }
             }
 
             public IFieldHandlerFactory FieldHandlerFactory
             {
-                get { return _midLevelDB.FieldHandlerFactory; }
+                get { return _objectDB.FieldHandlerFactory; }
             }
 
             public ITypeConvertorGenerator TypeConvertorGenerator
             {
-                get { return _midLevelDB.TypeConvertorGenerator; }
+                get { return _objectDB.TypeConvertorGenerator; }
             }
         }
 

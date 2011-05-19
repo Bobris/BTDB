@@ -3,14 +3,14 @@ using System.IO;
 
 namespace BTDB
 {
-    public static class ExportImporter
+    public static class KeyValueDBExportImporter
     {
         /// <summary>
         /// Writes all key value pairs in current prefix to stream (prefix itself is not written)
         /// </summary>
         /// <param name="transaction">transaction from where export all data</param>
         /// <param name="stream">where to write it to</param>
-        public static void Export(ILowLevelDBTransaction transaction, Stream stream)
+        public static void Export(IKeyValueDBTransaction transaction, Stream stream)
         {
             if (transaction == null) throw new ArgumentNullException("transaction");
             if (stream == null) throw new ArgumentNullException("stream");
@@ -65,7 +65,7 @@ namespace BTDB
         /// </summary>
         /// <param name="transaction">transaction where to import all data</param>
         /// <param name="stream">where to read it from</param>
-        public static void Import(ILowLevelDBTransaction transaction, Stream stream)
+        public static void Import(IKeyValueDBTransaction transaction, Stream stream)
         {
             if (transaction == null) throw new ArgumentNullException("transaction");
             if (stream == null) throw new ArgumentNullException("stream");

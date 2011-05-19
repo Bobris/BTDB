@@ -2,7 +2,7 @@
 
 namespace BTDB
 {
-    public interface ILowLevelDBTransaction : IDisposable
+    public interface IKeyValueDBTransaction : IDisposable
     {
         /// <summary>
         /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key
@@ -173,7 +173,7 @@ namespace BTDB
         /// <summary>
         /// Calculates statistics. It is global, not relative to current prefix.
         /// </summary>
-        /// <returns>DTO with usefull statistic about current Transaction and LowLevelDB</returns>
-        LowLevelDBStats CalculateStats();
+        /// <returns>DTO with usefull statistic about current Transaction and KeyValueDB</returns>
+        KeyValueDBStats CalculateStats();
     }
 }

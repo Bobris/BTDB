@@ -2,7 +2,7 @@
 
 namespace BTDB
 {
-    public interface ITweaks
+    public interface IKeyValueDBTweaks
     {
         bool ShouldSplitBTreeChild(int oldSize, int addSize, int oldKeys);
         bool ShouldSplitBTreeParent(int oldSize, int addSize, int oldChildren);

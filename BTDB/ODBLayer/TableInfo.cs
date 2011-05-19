@@ -17,9 +17,9 @@ namespace BTDB.ODBLayer
         Type _clientType;
         Type _implType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
-        Func<IMidLevelDBTransactionInternal, ulong, object> _inserter;
+        Func<IObjectDBTransactionInternal, ulong, object> _inserter;
         Action<object> _saver;
-        readonly ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
+        readonly ConcurrentDictionary<uint, Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
         ulong? _singletonOid;
         readonly object _singletonLock = new object();
 
@@ -79,34 +79,34 @@ namespace BTDB.ODBLayer
             AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
             ModuleBuilder mb = ab.DefineDynamicModule(name + "Asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
-            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IMidLevelObject) });
+            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IDBObject) });
             var properties = clientType.GetProperties();
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
-            var trFieldBuilder = tb.DefineField("MidLevelDBTransaction", typeof(IMidLevelDBTransactionInternal),
+            var trFieldBuilder = tb.DefineField("ObjectDBTransaction", typeof(IObjectDBTransactionInternal),
                                                 FieldAttributes.InitOnly | FieldAttributes.Public);
             var deletedFieldBuilder = tb.DefineField("_deleted", typeof(bool), FieldAttributes.Family);
-            var propInfo = typeof(IMidLevelObject).GetProperty("TableName");
+            var propInfo = typeof(IDBObject).GetProperty("TableName");
             var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             var ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Ldstr(name).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             var propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
-            propInfo = typeof(IMidLevelObject).GetProperty("TableId");
+            propInfo = typeof(IDBObject).GetProperty("TableId");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.LdcI4((int)id).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
-            propInfo = typeof(IMidLevelObject).GetProperty("Oid");
+            propInfo = typeof(IDBObject).GetProperty("Oid");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Ldarg(0).Ldfld(oidFieldBuilder).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
-            propInfo = typeof(IMidLevelObject).GetProperty("Deleted");
+            propInfo = typeof(IDBObject).GetProperty("Deleted");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
             ilGenerator.Ldarg(0).Ldfld(deletedFieldBuilder).Ret();
@@ -114,7 +114,7 @@ namespace BTDB.ODBLayer
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
             var constructorBuilder = tb.DefineConstructor(MethodAttributes.Family, CallingConventions.Standard,
-                                                          new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
+                                                          new[] { typeof(ulong), typeof(IObjectDBTransactionInternal) });
             var ilg = constructorBuilder.GetILGenerator();
             ilg.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             ilg
@@ -128,7 +128,7 @@ namespace BTDB.ODBLayer
                 .Stfld(trFieldBuilder)
                 .Ret();
             var metbCi = tb.DefineMethod("CreateInstance",
-                MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(ulong), typeof(IMidLevelDBTransactionInternal) });
+                MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(ulong), typeof(IObjectDBTransactionInternal) });
             ilg = metbCi.GetILGenerator(symbolDocumentWriter);
             ilg
                 .Ldarg(0)
@@ -136,7 +136,7 @@ namespace BTDB.ODBLayer
                 .Newobj(constructorBuilder)
                 .Ret();
             var metb = tb.DefineMethod("Inserter",
-                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IMidLevelDBTransactionInternal), typeof(ulong) });
+                            MethodAttributes.Public | MethodAttributes.Static, typeof(object), new[] { typeof(IObjectDBTransactionInternal), typeof(ulong) });
             ilg = metb.GetILGenerator(symbolDocumentWriter);
             ilg.DeclareLocal(typeof(object));
             ilg
@@ -147,7 +147,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0)
                 .Ldarg(1)
                 .Ldloc(0)
-                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).RegisterNewObject(0, null))
+                .Callvirt(() => ((IObjectDBTransactionInternal)null).RegisterNewObject(0, null))
                 .Ldloc(0)
                 .Ret();
             metb = tb.DefineMethod("Delete",
@@ -160,7 +160,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0)
                 .Ldfld(trFieldBuilder)
                 .Ldarg(0)
-                .Tail().Call(() => ((IMidLevelDBTransactionInternal)null).InternalDelete(null))
+                .Tail().Call(() => ((IObjectDBTransactionInternal)null).InternalDelete(null))
                 .Ret();
             metb = tb.DefineMethod("Saver",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
@@ -182,7 +182,7 @@ namespace BTDB.ODBLayer
                 .Ldfld(trFieldBuilder)
                 .Ldloc(0)
                 .Ldfld(oidFieldBuilder)
-                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).PrepareToWriteObject(0))
+                .Callvirt(() => ((IObjectDBTransactionInternal)null).PrepareToWriteObject(0))
                 .Stloc(1)
                 .Ldloc(1)
                 .LdcI4((int)id)
@@ -211,7 +211,7 @@ namespace BTDB.ODBLayer
                                 generator.Ldarg(0);
                                 generator.Ldfld(oidFieldBuilder);
                                 generator.Ldarg(0);
-                                generator.Callvirt(() => ((IMidLevelDBTransactionInternal)null).ObjectModified(0, null));
+                                generator.Callvirt(() => ((IObjectDBTransactionInternal)null).ObjectModified(0, null));
                             }
                     };
                 tableFieldInfo.Handler.CreateStorage(fieldHandlerCreateImpl);
@@ -224,7 +224,7 @@ namespace BTDB.ODBLayer
                         .Ldarg(0)
                         .Ldfld(trFieldBuilder)
                         .Ldarg(0)
-                        .Callvirt(() => ((IMidLevelDBTransactionInternal)null).CheckPropertyOperationValidity(null));
+                        .Callvirt(() => ((IObjectDBTransactionInternal)null).CheckPropertyOperationValidity(null));
                     fieldHandlerCreateImpl.Generator = ilGenerator;
                     tableFieldInfo.Handler.CreatePropertyGetter(fieldHandlerCreateImpl);
                     ilGenerator.Ret();
@@ -240,7 +240,7 @@ namespace BTDB.ODBLayer
                         .Ldarg(0)
                         .Ldfld(trFieldBuilder)
                         .Ldarg(0)
-                        .Callvirt(() => ((IMidLevelDBTransactionInternal)null).CheckPropertyOperationValidity(null));
+                        .Callvirt(() => ((IObjectDBTransactionInternal)null).CheckPropertyOperationValidity(null));
                     fieldHandlerCreateImpl.Generator = ilGenerator;
                     tableFieldInfo.Handler.CreatePropertySetter(fieldHandlerCreateImpl);
                     ilGenerator.Ret();
@@ -258,7 +258,7 @@ namespace BTDB.ODBLayer
             return result;
         }
 
-        internal Func<IMidLevelDBTransactionInternal, ulong, object> Inserter
+        internal Func<IObjectDBTransactionInternal, ulong, object> Inserter
         {
             get
             {
@@ -270,7 +270,7 @@ namespace BTDB.ODBLayer
         void CreateInserter()
         {
             EnsureImplType();
-            var inserter = (Func<IMidLevelDBTransactionInternal, ulong, object>)Delegate.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, ulong, object>), _implType.GetMethod("Inserter"));
+            var inserter = (Func<IObjectDBTransactionInternal, ulong, object>)Delegate.CreateDelegate(typeof(Func<IObjectDBTransactionInternal, ulong, object>), _implType.GetMethod("Inserter"));
             System.Threading.Interlocked.CompareExchange(ref _inserter, inserter, null);
         }
 
@@ -345,16 +345,16 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _tableInfoResolver.GetLastPesistedVersion(_id);
         }
 
-        internal Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> GetLoader(uint version)
+        internal Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object> GetLoader(uint version)
         {
             return _loaders.GetOrAdd(version, CreateLoader);
         }
 
-        Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object> CreateLoader(uint version)
+        Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object> CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
             EnsureImplType();
-            var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IMidLevelDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
+            var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IObjectDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(_implType);
             ilGenerator.Emit(OpCodes.Ldarg_1);
@@ -389,7 +389,7 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Emit(OpCodes.Ldloc_0);
             ilGenerator.Emit(OpCodes.Ret);
-            return (Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>)method.CreateDelegate(typeof(Func<IMidLevelDBTransactionInternal, ulong, AbstractBufferedReader, object>));
+            return (Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>)method.CreateDelegate(typeof(Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>));
         }
     }
 }

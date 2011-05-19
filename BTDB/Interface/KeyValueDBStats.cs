@@ -1,6 +1,6 @@
 ﻿namespace BTDB
 {
-    public class LowLevelDBStats
+    public class KeyValueDBStats
     {
         public ulong KeyValuePairCount { get; set; }
         public ulong ReallyUsedSize { get; set; }

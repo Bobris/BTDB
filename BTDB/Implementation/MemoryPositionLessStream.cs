@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB
 {
-    public class ManagedMemoryStream : IStream
+    public class MemoryPositionLessStream : IPositionLessStream
     {
         ulong _size;
         readonly List<byte[]> _data = new List<byte[]>();

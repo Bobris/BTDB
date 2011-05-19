@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using BTDB;
 using BTDB.ODBLayer;
 using NUnit.Framework;
@@ -8,11 +6,11 @@ using NUnit.Framework;
 namespace BTDBTest
 {
     [TestFixture]
-    public class MidLevelDBTest
+    public class ObjectDBTest
     {
-        IStream _dbstream;
-        ILowLevelDB _lowDB;
-        IMidLevelDB _db;
+        IPositionLessStream _dbstream;
+        IKeyValueDB _lowDB;
+        IObjectDB _db;
 
         public interface IPerson
         {
@@ -37,7 +35,7 @@ namespace BTDBTest
         [SetUp]
         public void Setup()
         {
-            _dbstream = new ManagedMemoryStream();
+            _dbstream = new MemoryPositionLessStream();
             OpenDB();
         }
 
@@ -56,9 +54,9 @@ namespace BTDBTest
 
         void OpenDB()
         {
-            _lowDB = new LowLevelDB();
+            _lowDB = new KeyValueDB();
             _lowDB.Open(_dbstream, false);
-            _db = new MidLevelDB();
+            _db = new ObjectDB();
             _db.Open(_lowDB, true);
         }
 
@@ -243,22 +241,22 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Insert<IPerson>();
-                firstOid = ((IMidLevelObject)p).Oid;
+                firstOid = ((IDBObject)p).Oid;
                 p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 1, ((IMidLevelObject)p).Oid);
+                Assert.AreEqual(firstOid + 1, ((IDBObject)p).Oid);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 2, ((IMidLevelObject)p).Oid);
+                Assert.AreEqual(firstOid + 2, ((IDBObject)p).Oid);
                 tr.Commit();
             }
             ReopenDB();
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 3, ((IMidLevelObject)p).Oid);
+                Assert.AreEqual(firstOid + 3, ((IDBObject)p).Oid);
                 tr.Commit();
             }
         }
@@ -295,7 +293,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p1 = tr.Insert<IPerson>();
-                firstOid = ((IMidLevelObject)p1).Oid;
+                firstOid = ((IDBObject)p1).Oid;
                 p1.Name = "Bobris";
                 p1.Age = 35;
                 var p2 = tr.Insert<IPerson>();
@@ -425,7 +423,7 @@ namespace BTDBTest
             }
         }
 
-        public interface IVariousFieldTypes : IMidLevelObject
+        public interface IVariousFieldTypes : IDBObject
         {
             string StringField { get; set; }
             sbyte SByteField { get; set; }
@@ -436,7 +434,7 @@ namespace BTDBTest
             uint UIntField { get; set; }
             long LongField { get; set; }
             ulong ULongField { get; set; }
-            IMidLevelObject MidLevelObjectField { get; set; }
+            IDBObject DBObjectField { get; set; }
             IVariousFieldTypes VariousFieldTypesField { get; set; }
             bool BoolField { get; set; }
             double DoubleField { get; set; }
@@ -457,7 +455,7 @@ namespace BTDBTest
                 Assert.AreEqual(0, o.UIntField);
                 Assert.AreEqual(0, o.LongField);
                 Assert.AreEqual(0, o.ULongField);
-                Assert.Null(o.MidLevelObjectField);
+                Assert.Null(o.DBObjectField);
                 Assert.Null(o.VariousFieldTypesField);
                 Assert.False(o.BoolField);
                 Assert.AreEqual(0, o.DoubleField);
@@ -471,7 +469,7 @@ namespace BTDBTest
                 o.UIntField = 100000;
                 o.LongField = -1000000000000;
                 o.ULongField = 1000000000000;
-                o.MidLevelObjectField = o;
+                o.DBObjectField = o;
                 o.VariousFieldTypesField = o;
                 o.BoolField = true;
                 o.DoubleField = 12.34;
@@ -497,7 +495,7 @@ namespace BTDBTest
             Assert.AreEqual(100000, o.UIntField);
             Assert.AreEqual(-1000000000000, o.LongField);
             Assert.AreEqual(1000000000000, o.ULongField);
-            Assert.AreSame(o, o.MidLevelObjectField);
+            Assert.AreSame(o, o.DBObjectField);
             Assert.AreSame(o, o.VariousFieldTypesField);
             Assert.True(o.BoolField);
             Assert.AreEqual(12.34, o.DoubleField, 1e-10);

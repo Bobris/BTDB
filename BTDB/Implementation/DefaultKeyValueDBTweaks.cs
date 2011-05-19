@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace BTDB
 {
-    class DefaultTweaks : ITweaks
+    class DefaultKeyValueDBTweaks : IKeyValueDBTweaks
     {
         const int OptimumBTreeParentSize = 4096;
         const int OptimumBTreeChildSize = 4096;

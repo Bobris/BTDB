@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Reflection;
 using System.Reflection.Emit;
 using BTDB.IL;
 
 namespace BTDB.ODBLayer
 {
-    public class MidLevelObjectFieldHandler : IFieldHandler
+    public class DBObjectFieldHandler : IFieldHandler
     {
         public string Name
         {
@@ -19,7 +18,7 @@ namespace BTDB.ODBLayer
 
         public bool IsCompatibleWith(Type type)
         {
-            return type == typeof(IMidLevelObject) || (type.IsInterface && !type.IsGenericTypeDefinition);
+            return type == typeof(IDBObject) || (type.IsInterface && !type.IsGenericTypeDefinition);
         }
 
         public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
@@ -61,7 +60,7 @@ namespace BTDB.ODBLayer
                 .Ldfld(ctx.FieldMidLevelDBTransaction)
                 .Ldarg(0)
                 .Ldfld(ctx.DefaultFieldBuilder)
-                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).Get(0));
+                .Callvirt(() => ((IObjectDBTransactionInternal)null).Get(0));
             if (ctx.PropertyInfo.PropertyType != typeof(object))
             {
                 ilGenerator.Isinst(ctx.PropertyInfo.PropertyType);
@@ -78,7 +77,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0)
                 .Ldfld(ctx.FieldMidLevelDBTransaction)
                 .Ldarg(1)
-                .Callvirt(() => ((IMidLevelDBTransactionInternal)null).GetOid(null))
+                .Callvirt(() => ((IObjectDBTransactionInternal)null).GetOid(null))
                 .Stloc(0);
             EmitHelpers.GenerateJumpIfEqual(ilGenerator, typeof(ulong), labelNoChange,
                                             g => g.Ldarg(0).Ldfld(fieldBuilder),

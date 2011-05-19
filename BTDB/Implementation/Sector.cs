@@ -71,8 +71,8 @@ namespace BTDB
 
             internal set
             {
-                Debug.Assert(value >= 0 && value <= LowLevelDB.MaxSectorSize);
-                Debug.Assert(value % LowLevelDB.AllocationGranularity == 0);
+                Debug.Assert(value >= 0 && value <= KeyValueDB.MaxSectorSize);
+                Debug.Assert(value % KeyValueDB.AllocationGranularity == 0);
                 if (value == 0)
                 {
                     _data = null;
@@ -91,7 +91,7 @@ namespace BTDB
 
         internal void SetLengthWithRound(int length)
         {
-            Length = LowLevelDB.RoundToAllocationGranularity(length);
+            Length = KeyValueDB.RoundToAllocationGranularity(length);
         }
 
         internal SectorPtr ToSectorPtr()
@@ -100,7 +100,7 @@ namespace BTDB
             result.Ptr = Position;
             if (Position > 0)
             {
-                result.Ptr |= (uint) (Length / LowLevelDB.AllocationGranularity - 1);
+                result.Ptr |= (uint) (Length / KeyValueDB.AllocationGranularity - 1);
             }
             result.Checksum = Dirty ? 0 : Checksum.CalcFletcher(Data, 0, (uint)Length);
             return result;

@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace BTDB.ODBLayer
 {
-    public interface IMidLevelDBTransaction : IDisposable
+    public interface IObjectDBTransaction : IDisposable
     {
         IEnumerable<T> Enumerate<T>() where T : class;
         IEnumerable<object> Enumerate(Type type);

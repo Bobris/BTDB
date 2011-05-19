@@ -2,12 +2,12 @@
 
 namespace BTDB
 {
-    public class LowLevelDBValueWriter : AbstractBufferedWriter, IDisposable
+    public class KeyValueDBValueWriter : AbstractBufferedWriter, IDisposable
     {
-        readonly ILowLevelDBTransaction _transaction;
+        readonly IKeyValueDBTransaction _transaction;
         long _ofs;
 
-        public LowLevelDBValueWriter(ILowLevelDBTransaction transaction)
+        public KeyValueDBValueWriter(IKeyValueDBTransaction transaction)
         {
             _transaction = transaction;
             Buf = new byte[4096];

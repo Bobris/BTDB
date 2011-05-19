@@ -44,7 +44,7 @@ namespace BTDB
 
         internal int QueryLongestForGran(ulong byteOffset)
         {
-            var i = byteOffset / (LowLevelDB.MaxLeafAllocSectorGrans*LowLevelDB.AllocationGranularity);
+            var i = byteOffset / (KeyValueDB.MaxLeafAllocSectorGrans*KeyValueDB.AllocationGranularity);
             if (i >= (ulong)_info.Count) return int.MaxValue;
             var v = _info[(int)i] & 63;
             return v == 63 ? int.MaxValue : v;
@@ -52,7 +52,7 @@ namespace BTDB
 
         internal void UpdateLongestForGran(ulong byteOffset, int len)
         {
-            var i = byteOffset / (LowLevelDB.MaxLeafAllocSectorGrans * LowLevelDB.AllocationGranularity);
+            var i = byteOffset / (KeyValueDB.MaxLeafAllocSectorGrans * KeyValueDB.AllocationGranularity);
             if (i >= (ulong)_info.Count)
             {
                 if (len > 62) return;
@@ -64,13 +64,13 @@ namespace BTDB
 
         internal void InvalidateForNextTransaction(long startGran, int grans)
         {
-            var i = startGran / LowLevelDB.MaxLeafAllocSectorGrans;
-            var r = (int)(startGran % LowLevelDB.MaxLeafAllocSectorGrans)+grans;
+            var i = startGran / KeyValueDB.MaxLeafAllocSectorGrans;
+            var r = (int)(startGran % KeyValueDB.MaxLeafAllocSectorGrans)+grans;
             do
             {
                 if (i >= _info.Count) return;
                 _info[(int)i] |= 128;
-                r -= LowLevelDB.MaxLeafAllocSectorGrans;
+                r -= KeyValueDB.MaxLeafAllocSectorGrans;
                 i++;
             } while (r>0);
         }

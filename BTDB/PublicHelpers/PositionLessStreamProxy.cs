@@ -2,20 +2,20 @@
 
 namespace BTDB
 {
-    public class StreamProxy : IStream
+    public class PositionLessStreamProxy : IPositionLessStream
     {
         private readonly System.IO.Stream _stream;
         private readonly object _lock = new object();
         private readonly bool _dispose;
 
-        public StreamProxy(string fileName)
+        public PositionLessStreamProxy(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) throw new ArgumentOutOfRangeException("fileName");
             _stream = new System.IO.FileStream(fileName, System.IO.FileMode.OpenOrCreate);
             _dispose = true;
         }
 
-        public StreamProxy(System.IO.Stream stream, bool dispose)
+        public PositionLessStreamProxy(System.IO.Stream stream, bool dispose)
         {
             if (stream == null) throw new ArgumentNullException("stream");
             _stream = stream;

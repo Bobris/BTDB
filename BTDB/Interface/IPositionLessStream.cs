@@ -2,7 +2,7 @@
 
 namespace BTDB
 {
-    public interface IStream : IDisposable
+    public interface IPositionLessStream : IDisposable
     {
         int Read(byte[] data, int offset, int size, ulong position);
 

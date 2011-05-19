@@ -4,18 +4,18 @@ using System.Text;
 
 namespace BTDB
 {
-    public class LoggingStream : IStream
+    public class LoggingPositionLessStream : IPositionLessStream
     {
-        IStream _stream;
+        IPositionLessStream _positionLessStream;
         readonly bool _dispose;
         readonly Action<string> _logAction;
 
-        public LoggingStream(IStream stream, bool dispose, Action<string> logAction)
+        public LoggingPositionLessStream(IPositionLessStream positionLessStream, bool dispose, Action<string> logAction)
         {
-            _stream = stream;
+            _positionLessStream = positionLessStream;
             _dispose = dispose;
             _logAction = logAction;
-            Log("LoggingStream created Stream:{0} Dispose:{1}", _stream.ToString(), _dispose);
+            Log("LoggingStream created Stream:{0} Dispose:{1}", _positionLessStream.ToString(), _dispose);
         }
 
         private void Log(string what, params object[] parameters)
@@ -25,7 +25,7 @@ namespace BTDB
 
         public int Read(byte[] data, int offset, int size, ulong pos)
         {
-            int res = _stream.Read(data, offset, size, pos);
+            int res = _positionLessStream.Read(data, offset, size, pos);
             Log("read size:{2}/{0} pos:{1} datalen:{3} dataofs:{4}", size, pos, res, data.Length, offset);
             int i = 0;
             int j = 0;
@@ -81,7 +81,7 @@ namespace BTDB
             }
             try
             {
-                _stream.Write(data, offset, size, pos);
+                _positionLessStream.Write(data, offset, size, pos);
             }
             catch (Exception ex)
             {
@@ -93,18 +93,18 @@ namespace BTDB
         public void Flush()
         {
             Log("flushing stream");
-            _stream.Flush();
+            _positionLessStream.Flush();
         }
 
         public void HardFlush()
         {
             Log("hard flushing stream");
-            _stream.HardFlush();
+            _positionLessStream.HardFlush();
         }
 
         public ulong GetSize()
         {
-            ulong res = _stream.GetSize();
+            ulong res = _positionLessStream.GetSize();
             Log("get stream size:{0}", res);
             return res;
         }
@@ -114,7 +114,7 @@ namespace BTDB
             Log("setting stream size:{0}", size);
             try
             {
-                _stream.SetSize(size);
+                _positionLessStream.SetSize(size);
             }
             catch (Exception ex)
             {
@@ -126,10 +126,10 @@ namespace BTDB
         public void Dispose()
         {
             Log("LoggingStream disposed");
-            if (_dispose && _stream != null)
+            if (_dispose && _positionLessStream != null)
             {
-                _stream.Dispose();
-                _stream = null;
+                _positionLessStream.Dispose();
+                _positionLessStream = null;
             }
         }
     }

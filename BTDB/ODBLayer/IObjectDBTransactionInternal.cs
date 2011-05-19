@@ -1,6 +1,6 @@
 namespace BTDB.ODBLayer
 {
-    public interface IMidLevelDBTransactionInternal
+    public interface IObjectDBTransactionInternal
     {
         void RegisterNewObject(ulong id, object obj);
         AbstractBufferedWriter PrepareToWriteObject(ulong id);

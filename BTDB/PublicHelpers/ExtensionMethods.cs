@@ -6,27 +6,27 @@ namespace BTDB
 {
     public static class ExtensionMethods
     {
-        public static bool CreateKey(this ILowLevelDBTransaction transaction, byte[] keyBuf)
+        public static bool CreateKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
         {
             return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.Create) == FindKeyResult.Created;
         }
 
-        public static bool FindExactKey(this ILowLevelDBTransaction transaction, byte[] keyBuf)
+        public static bool FindExactKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
         {
             return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch) == FindKeyResult.FoundExact;
         }
 
-        public static bool CreateOrUpdateKeyValue(this ILowLevelDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        public static bool CreateOrUpdateKeyValue(this IKeyValueDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
         {
             return transaction.CreateOrUpdateKeyValue(keyBuf, 0, keyBuf.Length, valueBuf, 0, valueBuf.Length);
         }
 
-        public static void SetValue(this ILowLevelDBTransaction transaction, byte[] valueBuf)
+        public static void SetValue(this IKeyValueDBTransaction transaction, byte[] valueBuf)
         {
             transaction.SetValue(valueBuf, 0, valueBuf.Length);
         }
 
-        public static byte[] ReadKey(this ILowLevelDBTransaction transaction)
+        public static byte[] ReadKey(this IKeyValueDBTransaction transaction)
         {
             int keySize = transaction.GetKeySize();
             if (keySize < 0) return null;
@@ -35,7 +35,7 @@ namespace BTDB
             return result;
         }
 
-        public static byte[] ReadValue(this ILowLevelDBTransaction transaction)
+        public static byte[] ReadValue(this IKeyValueDBTransaction transaction)
         {
             long valueSize = transaction.GetValueSize();
             if (valueSize < 0) return null;
@@ -45,12 +45,12 @@ namespace BTDB
             return result;
         }
 
-        public static void SetKeyPrefix(this ILowLevelDBTransaction transaction, byte[] prefix)
+        public static void SetKeyPrefix(this IKeyValueDBTransaction transaction, byte[] prefix)
         {
             transaction.SetKeyPrefix(prefix, 0, prefix == null ? 0 : prefix.Length);
         }
 
-        public static bool Enumerate(this ILowLevelDBTransaction transaction)
+        public static bool Enumerate(this IKeyValueDBTransaction transaction)
         {
             if (transaction.GetKeyIndex() < 0) return transaction.FindFirstKey();
             if (transaction.FindNextKey()) return true;

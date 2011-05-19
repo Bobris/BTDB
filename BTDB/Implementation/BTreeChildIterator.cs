@@ -5,8 +5,8 @@ namespace BTDB
 {
     internal struct BTreeChildIterator
     {
-        internal const int MaxKeyLenInline = LowLevelDB.AllocationGranularity + 12;
-        internal const int MaxValueLenInline = LowLevelDB.AllocationGranularity + 12;
+        internal const int MaxKeyLenInline = KeyValueDB.AllocationGranularity + 12;
+        internal const int MaxValueLenInline = KeyValueDB.AllocationGranularity + 12;
         internal const int HeaderSize = 2;
         internal const int HeaderForEntry = 2;
 
@@ -51,27 +51,27 @@ namespace BTDB
         internal static int CalcKeyLenInline(int keyLen)
         {
             if (keyLen <= MaxKeyLenInline) return keyLen;
-            return keyLen - LowLevelDB.RoundToAllocationGranularity(keyLen - MaxKeyLenInline);
+            return keyLen - KeyValueDB.RoundToAllocationGranularity(keyLen - MaxKeyLenInline);
         }
 
         internal static int CalcValueLenInline(long valueLen)
         {
             if (valueLen <= MaxValueLenInline) return (int)valueLen;
-            return (int)(valueLen - LowLevelDB.RoundToAllocationGranularity(valueLen - MaxValueLenInline));
+            return (int)(valueLen - KeyValueDB.RoundToAllocationGranularity(valueLen - MaxValueLenInline));
         }
 
         internal static int CalcEntrySize(int keyLen)
         {
             return PackUnpack.LengthVUInt((uint)keyLen) + 1 + CalcKeyLenInline(keyLen) +
-                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
+                   (keyLen > MaxKeyLenInline ? KeyValueDB.PtrDownSize : 0);
         }
 
         internal static int CalcEntrySizeWOLengths(int keyLen, long valueLen)
         {
             return CalcKeyLenInline(keyLen) +
-                   (keyLen > MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0) +
+                   (keyLen > MaxKeyLenInline ? KeyValueDB.PtrDownSize : 0) +
                    CalcValueLenInline(valueLen) +
-                   (valueLen > MaxValueLenInline ? LowLevelDB.PtrDownSize : 0);
+                   (valueLen > MaxValueLenInline ? KeyValueDB.PtrDownSize : 0);
         }
 
         internal static int CalcEntrySize(int keyLen, long valueLen)
@@ -152,7 +152,7 @@ namespace BTDB
         {
             get
             {
-                return _ofsAfterKeyAndValueLen + KeyLenInline + ((KeyLen > MaxKeyLenInline) ? LowLevelDB.PtrDownSize : 0);
+                return _ofsAfterKeyAndValueLen + KeyLenInline + ((KeyLen > MaxKeyLenInline) ? KeyValueDB.PtrDownSize : 0);
             }
         }
 
@@ -327,7 +327,7 @@ namespace BTDB
             int withValuePtr = 0;
             if (HasValueSectorPtr && newSize > MaxValueLenInline)
             {
-                withValuePtr = LowLevelDB.PtrDownSize;
+                withValuePtr = KeyValueDB.PtrDownSize;
             }
             // preserves all before current item including current sizes + key
             int ofs = EntryOffset + PackUnpack.LengthVUInt((uint)KeyLen);

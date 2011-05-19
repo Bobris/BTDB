@@ -12,24 +12,24 @@ namespace SimpleTester
         readonly Stopwatch _sw = new Stopwatch();
         readonly List<double> _results = new List<double>();
 
-        static IStream CreateTestStream()
+        static IPositionLessStream CreateTestStream()
         {
             if (false)
             {
                 if (File.Exists("data.btdb"))
                     File.Delete("data.btdb");
-                return new BTDB.StreamProxy("data.btdb");
+                return new BTDB.PositionLessStreamProxy("data.btdb");
             }
             else
             {
-                return new ManagedMemoryStream();
+                return new MemoryPositionLessStream();
             }
         }
 
         void WarmUp()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -47,7 +47,7 @@ namespace SimpleTester
             var key = new byte[1000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -82,7 +82,7 @@ namespace SimpleTester
             var key = new byte[4];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -150,7 +150,7 @@ namespace SimpleTester
             var key = new byte[4000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -181,7 +181,7 @@ namespace SimpleTester
             var key = new byte[4000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();

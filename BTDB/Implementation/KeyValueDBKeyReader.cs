@@ -2,13 +2,13 @@
 
 namespace BTDB
 {
-    public class LowLevelDBKeyReader : AbstractBufferedReader
+    public class KeyValueDBKeyReader : AbstractBufferedReader
     {
-        readonly ILowLevelDBTransaction _transaction;
+        readonly IKeyValueDBTransaction _transaction;
         int _ofs;
         int _keySize;
 
-        public LowLevelDBKeyReader(ILowLevelDBTransaction transaction)
+        public KeyValueDBKeyReader(IKeyValueDBTransaction transaction)
         {
             _transaction = transaction;
             Restart();

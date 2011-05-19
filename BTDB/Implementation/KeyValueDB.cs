@@ -33,7 +33,7 @@ namespace BTDB
      *    4 - Checksum
      */
 
-    public sealed class LowLevelDB : ILowLevelDB
+    public sealed class KeyValueDB : IKeyValueDB
     {
         internal class State
         {
@@ -76,10 +76,10 @@ namespace BTDB
         internal const int MaxChildren = 256;
         internal const int MaskOfGranLength = AllocationGranularity - 1;
 
-        IStream _stream;
+        IPositionLessStream _positionLessStream;
         bool _disposeStream;
 
-        ITweaks _tweaks = new DefaultTweaks();
+        IKeyValueDBTweaks _keyValueDBTweaks = new DefaultKeyValueDBTweaks();
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
         int _bytesInCache;
         long _currentCacheTime = 1;
@@ -97,7 +97,7 @@ namespace BTDB
         ReadTrLink _readTrLinkTail;
         ReadTrLink _readTrLinkHead;
         readonly object _readLinkLock = new object();
-        LowLevelDBTransaction _writeTr;
+        KeyValueDBTransaction _writeTr;
         bool _commitNeeded;
         bool _currentTrCommited;
         bool _inSpaceAllocation;
@@ -117,8 +117,8 @@ namespace BTDB
         bool _durableTransactions = true;
         long _nextAllocStartInGrans;
         readonly FreeSpaceAllocatorOptimizer _freeSpaceAllocatorOptimizer = new FreeSpaceAllocatorOptimizer();
-        readonly ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>> _writtingQueue =
-            new ConcurrentQueue<TaskCompletionSource<ILowLevelDBTransaction>>();
+        readonly ConcurrentQueue<TaskCompletionSource<IKeyValueDBTransaction>> _writtingQueue =
+            new ConcurrentQueue<TaskCompletionSource<IKeyValueDBTransaction>>();
         bool _writeTrInCreation;
         bool _wasAnyCommits;
 
@@ -177,7 +177,7 @@ namespace BTDB
                         LinkToTailOfInTransactionSectors(res);
                 }
                 //Console.WriteLine("Reading {0} len:{1}", position, size);
-                if (_stream.Read(res.Data, 0, size, (ulong)position) != size)
+                if (_positionLessStream.Read(res.Data, 0, size, (ulong)position) != size)
                 {
                     throw new BTDBException("Data reading error");
                 }
@@ -198,7 +198,7 @@ namespace BTDB
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (!_tweaks.ShouldAttemptCacheCompaction(_sectorCache.Count, _bytesInCache)) return;
+            if (!_keyValueDBTweaks.ShouldAttemptCacheCompaction(_sectorCache.Count, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {
@@ -241,7 +241,7 @@ namespace BTDB
                     sectors.Add(sector);
                 }
                 if (sectors.Count == 0) return;
-                _tweaks.WhichSectorsToRemoveFromCache(sectors);
+                _keyValueDBTweaks.WhichSectorsToRemoveFromCache(sectors);
                 if (sectors.Count == 0) return;
                 using (_cacheCompactionLock.WriteLock())
                 {
@@ -293,14 +293,14 @@ namespace BTDB
             TransferNewStateToCurrentState();
             StoreStateToHeaderBuffer(_newState);
             _totalBytesWritten += TotalHeaderSize;
-            _stream.Write(_headerData, 0, TotalHeaderSize, 0);
-            _stream.Flush();
+            _positionLessStream.Write(_headerData, 0, TotalHeaderSize, 0);
+            _positionLessStream.Flush();
         }
 
-        public ITweaks Tweaks
+        public IKeyValueDBTweaks KeyValueDBTweaks
         {
-            get { return _tweaks; }
-            set { _tweaks = value; }
+            get { return _keyValueDBTweaks; }
+            set { _keyValueDBTweaks = value; }
         }
 
         public bool DurableTransactions
@@ -309,23 +309,23 @@ namespace BTDB
             set { _durableTransactions = value; }
         }
 
-        public bool Open(IStream stream, bool dispose)
+        public bool Open(IPositionLessStream positionLessStream, bool dispose)
         {
-            if (stream == null) throw new ArgumentNullException("stream");
-            _stream = stream;
+            if (positionLessStream == null) throw new ArgumentNullException("positionLessStream");
+            _positionLessStream = positionLessStream;
             _disposeStream = dispose;
             _spaceSoonReusable = null;
             _freeSpaceAllocatorOptimizer.GlobalInvalidate();
             _wasAnyCommits = false;
             bool newDB = false;
-            if (stream.GetSize() == 0)
+            if (positionLessStream.GetSize() == 0)
             {
                 InitEmptyDB();
                 newDB = true;
             }
             else
             {
-                if (_stream.Read(_headerData, 0, TotalHeaderSize, 0) != TotalHeaderSize)
+                if (_positionLessStream.Read(_headerData, 0, TotalHeaderSize, 0) != TotalHeaderSize)
                 {
                     throw new BTDBException("Too short header");
                 }
@@ -463,7 +463,7 @@ namespace BTDB
             DereferenceReadLink(link);
         }
 
-        public ILowLevelDBTransaction StartTransaction()
+        public IKeyValueDBTransaction StartTransaction()
         {
             ReadTrLink link;
             lock (_readLinkLock)
@@ -497,7 +497,7 @@ namespace BTDB
             }
             try
             {
-                return new LowLevelDBTransaction(this, link);
+                return new KeyValueDBTransaction(this, link);
             }
             catch (Exception)
             {
@@ -506,9 +506,9 @@ namespace BTDB
             }
         }
 
-        public Task<ILowLevelDBTransaction> StartWritingTransaction()
+        public Task<IKeyValueDBTransaction> StartWritingTransaction()
         {
-            var taskCompletionSource = new TaskCompletionSource<ILowLevelDBTransaction>();
+            var taskCompletionSource = new TaskCompletionSource<IKeyValueDBTransaction>();
             _writtingQueue.Enqueue(taskCompletionSource);
             TryToRunNextWrittingTransaction();
             return taskCompletionSource.Task;
@@ -564,14 +564,14 @@ namespace BTDB
             {
                 StoreStateToHeaderBuffer(_newState);
                 _totalBytesWritten += RootSize;
-                _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+                _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
             }
             if (_disposeStream)
             {
-                var disposable = _stream as IDisposable;
+                var disposable = _positionLessStream as IDisposable;
                 if (disposable != null) disposable.Dispose();
             }
-            _stream = null;
+            _positionLessStream = null;
         }
 
         internal void CommitWriteTransaction()
@@ -592,12 +592,12 @@ namespace BTDB
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
             _totalBytesWritten += RootSize;
-            _stream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+            _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
             _wasAnyCommits = true;
             if (_durableTransactions)
-                _stream.HardFlush();
+                _positionLessStream.HardFlush();
             else
-                _stream.Flush();
+                _positionLessStream.Flush();
             TransferNewStateToCurrentState();
             _freeSpaceAllocatorOptimizer.CommitWriteTransaction();
             _commitNeeded = false;
@@ -682,7 +682,7 @@ namespace BTDB
         {
             //Console.WriteLine("Writing {0} len:{1}", dirtySector.Position, dirtySector.Length);
             _totalBytesWritten += (ulong)dirtySector.Length;
-            _stream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
+            _positionLessStream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
             var checksum = Checksum.CalcFletcher(dirtySector.Data, 0, (uint)dirtySector.Length);
             long ptr = dirtySector.Position;
             ptr += dirtySector.Length / AllocationGranularity - 1;
@@ -1580,7 +1580,7 @@ namespace BTDB
 
         void TryToRunNextWrittingTransaction()
         {
-            TaskCompletionSource<ILowLevelDBTransaction> result;
+            TaskCompletionSource<IKeyValueDBTransaction> result;
             lock (_readLinkLock)
             {
                 if (_writeTr != null) return;
@@ -1590,7 +1590,7 @@ namespace BTDB
             }
             try
             {
-                var tr = (LowLevelDBTransaction)StartTransaction();
+                var tr = (KeyValueDBTransaction)StartTransaction();
                 tr.SafeUpgradeToWriteTransaction();
                 result.SetResult(tr);
             }
@@ -1610,7 +1610,7 @@ namespace BTDB
             }
         }
 
-        internal void UpgradeTransactionToWriteOne(LowLevelDBTransaction transaction, ReadTrLink link)
+        internal void UpgradeTransactionToWriteOne(KeyValueDBTransaction transaction, ReadTrLink link)
         {
             lock (_readLinkLock)
             {
@@ -1664,7 +1664,7 @@ namespace BTDB
             }
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            _tweaks.NewSectorAddedToCache(newSector, _sectorCache.Count, _bytesInCache);
+            _keyValueDBTweaks.NewSectorAddedToCache(newSector, _sectorCache.Count, _bytesInCache);
         }
 
         internal void UpdateLastAccess(Sector sector)
@@ -1731,11 +1731,11 @@ namespace BTDB
             return (value + AllocationGranularity - 1) & ~(AllocationGranularity - 1);
         }
 
-        internal LowLevelDBStats CalculateStats(ReadTrLink readLink)
+        internal KeyValueDBStats CalculateStats(ReadTrLink readLink)
         {
-            var result = new LowLevelDBStats
+            var result = new KeyValueDBStats
                              {
-                                 DatabaseStreamSize = _stream.GetSize(),
+                                 DatabaseStreamSize = _positionLessStream.GetSize(),
                                  TotalBytesRead = _totalBytesRead,
                                  TotalBytesWritten = _totalBytesWritten
                              };

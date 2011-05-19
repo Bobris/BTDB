@@ -1,6 +1,6 @@
 ﻿namespace BTDB.ODBLayer
 {
-    public interface IMidLevelObject
+    public interface IDBObject
     {
         string TableName { get; }
         uint TableId { get; }

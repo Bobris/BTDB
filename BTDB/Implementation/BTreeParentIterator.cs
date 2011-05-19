@@ -5,7 +5,7 @@ namespace BTDB
 {
     internal struct BTreeParentIterator
     {
-        internal const int HeaderSize = 2 + LowLevelDB.PtrDownSize + 8;
+        internal const int HeaderSize = 2 + KeyValueDB.PtrDownSize + 8;
         internal const int HeaderForEntry = 2;
         internal const int FirstChildSectorPtrOffset = 2;
 
@@ -41,8 +41,8 @@ namespace BTDB
 
         internal static int CalcEntrySize(int keyLen)
         {
-            return 4 + LowLevelDB.PtrDownSize + 8 + BTreeChildIterator.CalcKeyLenInline(keyLen) +
-                   (keyLen > BTreeChildIterator.MaxKeyLenInline ? LowLevelDB.PtrDownSize : 0);
+            return 4 + KeyValueDB.PtrDownSize + 8 + BTreeChildIterator.CalcKeyLenInline(keyLen) +
+                   (keyLen > BTreeChildIterator.MaxKeyLenInline ? KeyValueDB.PtrDownSize : 0);
         }
 
         internal int FirstOffset
@@ -91,7 +91,7 @@ namespace BTDB
 
         internal int KeyOffset
         {
-            get { return _ofs + 4 + LowLevelDB.PtrDownSize + 8; }
+            get { return _ofs + 4 + KeyValueDB.PtrDownSize + 8; }
         }
 
         internal int KeyLenInline
@@ -153,7 +153,7 @@ namespace BTDB
 
         internal int ChildKeyCountOffset
         {
-            get { return ChildSectorPtrOffset + LowLevelDB.PtrDownSize; }
+            get { return ChildSectorPtrOffset + KeyValueDB.PtrDownSize; }
         }
 
         internal long ChildKeyCount
@@ -196,8 +196,8 @@ namespace BTDB
         {
             get
             {
-                int result = 4 + LowLevelDB.PtrDownSize + 8 + KeyLenInline;
-                if (_keyLen > BTreeChildIterator.MaxKeyLenInline) result += LowLevelDB.PtrDownSize;
+                int result = 4 + KeyValueDB.PtrDownSize + 8 + KeyLenInline;
+                if (_keyLen > BTreeChildIterator.MaxKeyLenInline) result += KeyValueDB.PtrDownSize;
                 return result;
             }
         }
@@ -246,13 +246,13 @@ namespace BTDB
 
         internal long FirstChildKeyCount
         {
-            get { return PackUnpack.UnpackInt64LE(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize); }
-            set { PackUnpack.PackInt64LE(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize, value); }
+            get { return PackUnpack.UnpackInt64LE(_data, FirstChildSectorPtrOffset + KeyValueDB.PtrDownSize); }
+            set { PackUnpack.PackInt64LE(_data, FirstChildSectorPtrOffset + KeyValueDB.PtrDownSize, value); }
         }
 
         void IncrementFirstChildKeyCount()
         {
-            PackUnpack.IncrementInt64LE(_data, FirstChildSectorPtrOffset + LowLevelDB.PtrDownSize);
+            PackUnpack.IncrementInt64LE(_data, FirstChildSectorPtrOffset + KeyValueDB.PtrDownSize);
         }
 
         internal int BinarySearch(byte[] prefix, byte[] keyBuf, int keyOfs, int keyLen, Sector parent, Func<int, byte[], int, int, SectorPtr, int, Sector, int> compare)
@@ -377,7 +377,7 @@ namespace BTDB
         internal static void IncrementChildCount(byte[] parentData, long childPos)
         {
             var iterParent = new BTreeParentIterator(parentData);
-            if ((iterParent.FirstChildSectorPos & LowLevelDB.MaskOfPosition) == childPos)
+            if ((iterParent.FirstChildSectorPos & KeyValueDB.MaskOfPosition) == childPos)
             {
                 iterParent.IncrementFirstChildKeyCount();
                 return;
@@ -387,7 +387,7 @@ namespace BTDB
                 iterParent.MoveFirst();
                 do
                 {
-                    if ((iterParent.ChildSectorPos & LowLevelDB.MaskOfPosition) == childPos)
+                    if ((iterParent.ChildSectorPos & KeyValueDB.MaskOfPosition) == childPos)
                     {
                         iterParent.IncrementChildKeyCount();
                         return;
@@ -399,7 +399,7 @@ namespace BTDB
 
         internal int FindChildByPos(long position)
         {
-            if ((FirstChildSectorPos & LowLevelDB.MaskOfPosition) == position)
+            if ((FirstChildSectorPos & KeyValueDB.MaskOfPosition) == position)
             {
                 return 0;
             }
@@ -408,7 +408,7 @@ namespace BTDB
                 MoveFirst();
                 do
                 {
-                    if ((ChildSectorPos & LowLevelDB.MaskOfPosition) == position)
+                    if ((ChildSectorPos & KeyValueDB.MaskOfPosition) == position)
                     {
                         return Index + 1;
                     }
