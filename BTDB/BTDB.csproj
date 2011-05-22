@@ -60,6 +60,11 @@
     <Compile Include="KVDBLayer\Implementation\DefaultKeyValueDBTweaks.cs" />
     <Compile Include="KVDBLayer\Interface\IKeyValueDBTweaks.cs" />
     <Compile Include="KVDBLayer\Interface\KeyValueDBStats.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamReader.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamWriter.cs" />
+    <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayProxy.cs" />
+    <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayTransactionProxy.cs" />
+    <Compile Include="KVDBLayer\ReplayProxy\KVReplayOperation.cs" />
     <Compile Include="StreamLayer\MemoryPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />

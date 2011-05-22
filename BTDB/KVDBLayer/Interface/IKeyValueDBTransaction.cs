@@ -5,6 +5,12 @@ namespace BTDB.KVDBLayer.Interface
     public interface IKeyValueDBTransaction : IDisposable
     {
         /// <summary>
+        /// Check writting status of this transaction.
+        /// </summary>
+        /// <returns>true when this transaction is writting one</returns>
+        bool IsWritting();
+        
+        /// <summary>
         /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key
         /// </summary>
         /// <param name="prefix">Prefix data</param>

@@ -6,6 +6,8 @@ using System.IO;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.KVDBLayer.ReplayProxy;
 using BTDB.StreamLayer;
 
 namespace SimpleTester
@@ -209,6 +211,59 @@ namespace SimpleTester
             }
         }
 
+        void DoRandomWork()
+        {
+            var opCounter = 0;
+            var random = new Random();
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDBReplayProxy(new KeyValueDB(),new PositionLessStreamWriter(new PositionLessStreamProxy("btdb.log"))))
+            {
+                db.Open(stream, false);
+                IKeyValueDBTransaction tr = db.StartTransaction();
+                while (opCounter < 100000)
+                {
+                    //if (opCounter % 1000 == 0)
+                    {
+                        Console.WriteLine(string.Format("Operation {0}", opCounter));
+                        Console.WriteLine(tr.CalculateStats().ToString());
+                    }
+                    opCounter++;
+                    var action = random.Next(100);
+                    if (action < 10)
+                    {
+                        if (action > 1) tr.Commit();
+                        tr.Dispose();
+                        tr = db.StartTransaction();
+                    }
+                    else if (action < 50 || tr.GetKeyIndex()<0)
+                    {
+                        var key = new byte[random.Next(1, 1000)];
+                        random.NextBytes(key);
+                        tr.CreateKey(key);
+                    }
+                    else if (action < 60)
+                    {
+                        tr.EraseCurrent();
+                    }
+                    else if (action < 65)
+                    {
+                        tr.FindNextKey();
+                    }
+                    else if (action < 70)
+                    {
+                        tr.FindPreviousKey();
+                    }
+                    else
+                    {
+                        var value = new byte[random.Next(1, 100000)];
+                        random.NextBytes(value);
+                        tr.SetValue(value);
+                    }
+                }
+                tr.Dispose();
+            }
+        }
+
         void WriteCsv()
         {
             using (var sout = new StreamWriter("data.csv"))
@@ -223,9 +278,10 @@ namespace SimpleTester
 
         public void Test()
         {
-            WarmUp();
-            DoWork3();
-            DoWork4();
+            DoRandomWork();
+            //WarmUp();
+            //DoWork3();
+            //DoWork4();
             //WriteCsv();
         }
     }

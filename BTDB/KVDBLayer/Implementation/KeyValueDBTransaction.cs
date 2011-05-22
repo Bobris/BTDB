@@ -50,14 +50,14 @@ namespace BTDB.KVDBLayer.Implementation
         internal void SafeUpgradeToWriteTransaction()
         {
             Debug.Assert(_currentKeySector == null);
-            Debug.Assert(!IsWriteTransaction());
+            Debug.Assert(!IsWritting());
             _owner.UpgradeTransactionToWriteOne(this, null);
             _readLink = null;
         }
 
         private void UpgradeToWriteTransaction()
         {
-            if (IsWriteTransaction()) return;
+            if (IsWritting()) return;
             _owner.UpgradeTransactionToWriteOne(this, _readLink);
             _readLink = null;
             var sector = _currentKeySector;
@@ -75,7 +75,7 @@ namespace BTDB.KVDBLayer.Implementation
             if (prefixLen == 0)
             {
                 _prefixKeyStart = 0;
-                _prefixKeyCount = (long)(IsWriteTransaction() ? _owner.NewState.KeyValuePairCount : _readLink.KeyValuePairCount);
+                _prefixKeyCount = (long)(IsWritting() ? _owner.NewState.KeyValuePairCount : _readLink.KeyValuePairCount);
                 InvalidateCurrentKey();
                 return;
             }
@@ -522,7 +522,7 @@ namespace BTDB.KVDBLayer.Implementation
             Sector sector = _owner.TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
-                sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
+                sector = _owner.ReadSector(sectorPtr, IsWritting());
                 sector.Type = BTreeChildIterator.IsChildFromSectorData(sector.Data) ? SectorType.BTreeChild : SectorType.BTreeParent;
                 SafeSetSectorParent(sector, _currentKeySector);
                 if (_currentKeySector != null) _currentKeySectorParents.Add(_currentKeySector);
@@ -530,7 +530,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
             else
             {
-                if (IsWriteTransaction()) sector.Parent = _currentKeySector;
+                if (IsWritting()) sector.Parent = _currentKeySector;
                 if (_currentKeySector != null) _currentKeySectorParents.Add(_currentKeySector);
                 _currentKeySector = sector;
             }
@@ -539,7 +539,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         void SafeSetSectorParent(Sector sector, Sector parent)
         {
-            if (IsWriteTransaction())
+            if (IsWritting())
             {
                 sector.Parent = parent;
             }
@@ -804,7 +804,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         SectorPtr GetRootBTreeSectorPtr()
         {
-            return IsWriteTransaction() ? _owner.NewState.RootBTree : _readLink.RootBTree;
+            return IsWritting() ? _owner.NewState.RootBTree : _readLink.RootBTree;
         }
 
         void CreateBTreeParentFromTwoLeafs(Sector leftSector, Sector rightSector)
@@ -872,7 +872,7 @@ namespace BTDB.KVDBLayer.Implementation
             var sector = _owner.TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
-                sector = _owner.ReadSector(sectorPtr, IsWriteTransaction());
+                sector = _owner.ReadSector(sectorPtr, IsWritting());
                 sector.Type = dataLen > sector.Length ? SectorType.DataParent : SectorType.DataChild;
                 SafeSetSectorParent(sector, parent);
             }
@@ -1106,7 +1106,7 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     if (dataSector == null)
                     {
-                        dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
+                        dataSector = _owner.ReadSector(dataSectorPtr, IsWritting());
                         dataSector.Type = SectorType.DataChild;
                         SafeSetSectorParent(dataSector, parentOfSector);
                     }
@@ -1117,7 +1117,7 @@ namespace BTDB.KVDBLayer.Implementation
                 }
                 if (dataSector == null)
                 {
-                    dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
+                    dataSector = _owner.ReadSector(dataSectorPtr, IsWritting());
                     dataSector.Type = SectorType.DataParent;
                     SafeSetSectorParent(dataSector, parentOfSector);
                 }
@@ -1139,7 +1139,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
-        bool IsWriteTransaction()
+        public bool IsWritting()
         {
             return _readLink == null;
         }
@@ -1190,7 +1190,7 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     if (dataSector == null)
                     {
-                        dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
+                        dataSector = _owner.ReadSector(dataSectorPtr, IsWritting());
                         dataSector.Type = SectorType.DataChild;
                         SafeSetSectorParent(dataSector, parentOfSector);
                     }
@@ -1201,7 +1201,7 @@ namespace BTDB.KVDBLayer.Implementation
                 }
                 if (dataSector == null)
                 {
-                    dataSector = _owner.ReadSector(dataSectorPtr, IsWriteTransaction());
+                    dataSector = _owner.ReadSector(dataSectorPtr, IsWritting());
                     dataSector.Type = SectorType.DataParent;
                     SafeSetSectorParent(dataSector, parentOfSector);
                 }
