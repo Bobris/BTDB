@@ -224,14 +224,22 @@ namespace SimpleTester
                 {
                     //if (opCounter % 1000 == 0)
                     {
-                        Console.WriteLine(string.Format("Operation {0}", opCounter));
-                        Console.WriteLine(tr.CalculateStats().ToString());
+                        // Console.WriteLine(string.Format("Operation {0}", opCounter));
+                        // Console.WriteLine(tr.CalculateStats().ToString());
                     }
                     opCounter++;
                     var action = random.Next(100);
                     if (action < 10)
                     {
-                        if (action > 1) tr.Commit();
+                        if (action > 1)
+                        {
+                            Console.WriteLine("Commit");
+                            tr.Commit();
+                        }
+                        else
+                        {
+                            Console.WriteLine("Rollback");
+                        }
                         tr.Dispose();
                         tr = db.StartTransaction();
                     }
@@ -239,24 +247,29 @@ namespace SimpleTester
                     {
                         var key = new byte[random.Next(1, 1000)];
                         random.NextBytes(key);
+                        Console.WriteLine(string.Format("CreateKey {0}",key.Length));
                         tr.CreateKey(key);
                     }
                     else if (action < 60)
                     {
+                        Console.WriteLine("EraseCurrent");
                         tr.EraseCurrent();
                     }
                     else if (action < 65)
                     {
+                        Console.WriteLine("FindNextKey");
                         tr.FindNextKey();
                     }
                     else if (action < 70)
                     {
+                        Console.WriteLine("FindPreviousKey");
                         tr.FindPreviousKey();
                     }
                     else
                     {
                         var value = new byte[random.Next(1, 100000)];
                         random.NextBytes(value);
+                        Console.WriteLine(string.Format("SetValue {0}", value.Length));
                         tr.SetValue(value);
                     }
                 }
