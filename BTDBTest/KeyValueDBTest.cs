@@ -745,6 +745,24 @@ namespace BTDBTest
         }
 
         [Test]
+        public void RandomlyCreatedTest1()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateKey(new byte[232]);
+                    tr.SetValue(new byte[93341]);
+                    tr.SetValue(new byte[15397]);
+                    tr.SetValue(new byte[46700]);
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
         public void ALotOfLargeKeysWorks()
         {
             using (var stream = CreateTestStream())

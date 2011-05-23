@@ -1528,7 +1528,7 @@ namespace BTDB.KVDBLayer.Implementation
             sector.Parent = parentSector;
             SectorPtr lastSectorPtr;
             long lastOffset;
-            for (int i = newDownPtrCount + 1; i < oldDownPtrCount; i++)
+            for (int i = newDownPtrCount; i < oldDownPtrCount; i++)
             {
                 lastOffset = i * oldBytesInDownLevel;
                 lastSectorPtr = SectorPtr.Unpack(sector.Data, i * KeyValueDB.PtrDownSize);
