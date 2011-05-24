@@ -1,5 +1,6 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using BTDB.KVDBLayer.Implementation;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.StreamLayer;
 
 namespace SimpleTester
 {
@@ -7,8 +8,8 @@ namespace SimpleTester
     {
         static void Main(string[] args)
         {
-            new KeyValueDBReplayer("bug.log").Replay();
-            //new SpeedTest1().Test();
+            //new KeyValueDBReplayer("bug.log").CreateSource();
+            new SpeedTest1().Test();
         }
     }
 }

@@ -231,7 +231,8 @@ namespace SimpleTester
                     var action = random.Next(100);
                     if (action < 10)
                     {
-                        if (action > 1)
+                        // if (action > 1)
+                        if (true)
                         {
                             Console.WriteLine("Commit");
                             tr.Commit();

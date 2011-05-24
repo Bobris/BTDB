@@ -872,7 +872,8 @@ namespace BTDB.KVDBLayer.Implementation
             if (_inSpaceAllocation)
             {
                 Debug.Assert(sector.Deleted == false);
-                sector.Deleted = true;
+                if (sector.InTransaction) 
+                    sector.Deleted = true;
                 _postponedDeallocateSectors.Add(sector);
                 return;
             }

@@ -763,6 +763,28 @@ namespace BTDBTest
         }
 
         [Test]
+        public void RandomlyCreatedTest2()
+        {
+            var db = new KeyValueDB();
+            db.Open(new MemoryPositionLessStream(), true);
+            var tr1 = db.StartTransaction();
+            tr1.CreateKey(new byte[] {1});
+            tr1.Commit();
+            tr1.Dispose();
+            var tr2 = db.StartTransaction();
+            tr2.CreateKey(new byte[] {2});
+            tr2.Commit();
+            tr2.Dispose();
+            var tr3 = db.StartTransaction();
+            tr3.CreateKey(new byte[] {3});
+            tr3.Dispose();
+            var tr4 = db.StartTransaction();
+            tr4.CreateKey(new byte[] {4});
+            tr4.Dispose();
+            db.Dispose();
+        }
+
+        [Test]
         public void ALotOfLargeKeysWorks()
         {
             using (var stream = CreateTestStream())

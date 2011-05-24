@@ -295,7 +295,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
                     }
                     if (result == 0)
                     {
-                        if (prefix.Length + keyLen <= MaxKeyLenInline)
+                        if (prefix.Length + keyLen <= MaxKeyLenInline || _keyLen - keyLenInline == 0)
                         {
                             if (prefix.Length + keyLen == keyLenInline) return m * 2 + 1;
                             l = m + 1;
@@ -333,8 +333,8 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             }
             // preserves all before current item including current sizes + key
             int ofs = EntryOffset + PackUnpack.LengthVUInt((uint)KeyLen);
-            if (!ReferenceEquals(Data,newData)) Array.Copy(Data, 0, newData, 0, ofs);
-            if (newSize>ValueLen) // because resize could be inplace bytes have to be copied correct order
+            if (!ReferenceEquals(Data, newData)) Array.Copy(Data, 0, newData, 0, ofs);
+            if (newSize > ValueLen) // because resize could be inplace bytes have to be copied correct order
             {
                 // preserves all after current item
                 Array.Copy(Data,

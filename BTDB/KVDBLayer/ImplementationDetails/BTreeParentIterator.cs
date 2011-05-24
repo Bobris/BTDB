@@ -291,7 +291,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
                     }
                     if (result == 0)
                     {
-                        if (prefix.Length + keyLen <= BTreeChildIterator.MaxKeyLenInline)
+                        if (prefix.Length + keyLen <= BTreeChildIterator.MaxKeyLenInline || _keyLen - keyLenInline == 0)
                         {
                             if (prefix.Length + keyLen == keyLenInline) return m * 2 + 1;
                             l = m + 1;
@@ -406,7 +406,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             {
                 return 0;
             }
-            if (Count!=0)
+            if (Count != 0)
             {
                 MoveFirst();
                 do
