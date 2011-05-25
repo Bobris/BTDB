@@ -216,61 +216,61 @@ namespace SimpleTester
             var opCounter = 0;
             var random = new Random();
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDBReplayProxy(new KeyValueDB(),new PositionLessStreamWriter(new PositionLessStreamProxy("btdb.log"))))
+            //using (IKeyValueDB db = new KeyValueDBReplayProxy(new KeyValueDB(), new PositionLessStreamWriter(new PositionLessStreamProxy("btdb.log"))))
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 IKeyValueDBTransaction tr = db.StartTransaction();
                 while (opCounter < 100000)
                 {
-                    //if (opCounter % 1000 == 0)
+                    if (opCounter % 1000 == 0)
                     {
-                        // Console.WriteLine(string.Format("Operation {0}", opCounter));
-                        // Console.WriteLine(tr.CalculateStats().ToString());
+                        Console.WriteLine(string.Format("Operation {0}", opCounter));
+                        Console.WriteLine(tr.CalculateStats().ToString());
                     }
                     opCounter++;
                     var action = random.Next(100);
                     if (action < 10)
                     {
-                        // if (action > 1)
-                        if (true)
+                        if (action > 1)
                         {
-                            Console.WriteLine("Commit");
+                            //Console.WriteLine("Commit");
                             tr.Commit();
                         }
                         else
                         {
-                            Console.WriteLine("Rollback");
+                            //Console.WriteLine("Rollback");
                         }
                         tr.Dispose();
                         tr = db.StartTransaction();
                     }
-                    else if (action < 50 || tr.GetKeyIndex()<0)
+                    else if (action < 50 || tr.GetKeyIndex() < 0)
                     {
                         var key = new byte[random.Next(1, 1000)];
                         random.NextBytes(key);
-                        Console.WriteLine(string.Format("CreateKey {0}",key.Length));
+                        //Console.WriteLine(string.Format("CreateKey {0}", key.Length));
                         tr.CreateKey(key);
                     }
                     else if (action < 60)
                     {
-                        Console.WriteLine("EraseCurrent");
+                        //Console.WriteLine("EraseCurrent");
                         tr.EraseCurrent();
                     }
                     else if (action < 65)
                     {
-                        Console.WriteLine("FindNextKey");
+                        //Console.WriteLine("FindNextKey");
                         tr.FindNextKey();
                     }
                     else if (action < 70)
                     {
-                        Console.WriteLine("FindPreviousKey");
+                        //Console.WriteLine("FindPreviousKey");
                         tr.FindPreviousKey();
                     }
                     else
                     {
                         var value = new byte[random.Next(1, 100000)];
                         random.NextBytes(value);
-                        Console.WriteLine(string.Format("SetValue {0}", value.Length));
+                        //Console.WriteLine(string.Format("SetValue {0}", value.Length));
                         tr.SetValue(value);
                     }
                 }

@@ -1910,22 +1910,24 @@ namespace BTDB.KVDBLayer.Implementation
 
         void UpdateKeyAfterRemoval(ref Sector sector, ref BTreeParentIterator iter, Sector childSector)
         {
-            var oldKeyStorageLen = iter.NextEntryOffset - iter.EntryOffset;
+            var entryOffset = iter.EntryOffset;
+            var nextEntryOffset = iter.NextEntryOffset;
+            var originalEntryLength = nextEntryOffset - entryOffset;
             byte[] data;
             int ofs;
             int len;
             int keyLen;
             ExtractFirstKey(childSector, out data, out ofs, out len, out keyLen);
+            var newEntryLength = BTreeParentIterator.CalcEntrySize(keyLen);
             // structure of data is inlinekey/var, [downptr/12]
             int originalLength = iter.TotalLength;
             sector = _owner.ResizeSectorNoUpdatePosition(sector,
-                                                         originalLength - oldKeyStorageLen + len + KeyValueDB.PtrDownSize,
+                                                         originalLength - originalEntryLength + newEntryLength,
                                                          sector.Parent,
                                                          null);
-            Array.Copy(iter.Data, 0, sector.Data, 0, iter.EntryOffset);
-            PackUnpack.PackInt32LE(sector.Data, iter.EntryOffset, keyLen);
-            Array.Copy(iter.Data, iter.EntryOffset + 4, sector.Data, iter.EntryOffset + 4, KeyValueDB.PtrDownSize + 8);
-            Array.Copy(iter.Data, iter.NextEntryOffset, sector.Data, iter.EntryOffset + 4 + KeyValueDB.PtrDownSize + 8 + len, originalLength - iter.NextEntryOffset);
+            Array.Copy(iter.Data, 0, sector.Data, 0, iter.KeyOffset);
+            Array.Copy(iter.Data, nextEntryOffset, sector.Data, entryOffset + newEntryLength, originalLength - nextEntryOffset);
+            PackUnpack.PackInt32LE(sector.Data, entryOffset, keyLen);
             Array.Copy(data, ofs, sector.Data, iter.KeyOffset, len);
             BTreeParentIterator.RecalculateHeader(sector.Data, iter.Count);
             iter = new BTreeParentIterator(sector.Data);
