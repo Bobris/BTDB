@@ -8,21 +8,26 @@ using System.Threading;
 
 namespace BTDB.IL
 {
-    internal static class EmitHelpers
+    public static class EmitHelpers
     {
-        internal static MethodInfo GetMethodInfo(Expression<Action> expression)
+        public static MethodInfo GetMethodInfo(Expression<Action> expression)
         {
             return (expression.Body as MethodCallExpression).Method;
         }
 
-        internal static ILGenerator GetILGenerator(this MethodBuilder mb, ISymbolDocumentWriter symbolDocumentWriter, int ilsize = 64)
+        public static ILGenerator GetILGenerator(this MethodBuilder mb, ISymbolDocumentWriter symbolDocumentWriter, int ilsize = 64)
         {
             var ilGenerator = mb.GetILGenerator(ilsize);
             if (symbolDocumentWriter != null) ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
             return ilGenerator;
         }
 
-        internal static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
+        public static T CreateDelegate<T>(this DynamicMethod mi) where T:class 
+        {
+            return (T)(object)mi.CreateDelegate(typeof(T));
+        }
+
+        public static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
         {
             var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
             var eventBuilder = typeBuilder.DefineEvent("PropertyChanged", EventAttributes.None, typeof(PropertyChangedEventHandler));
@@ -92,7 +97,7 @@ namespace BTDB.IL
             return methodBuilder;
         }
 
-        internal static void GenerateJumpIfEqual(ILGenerator ilGenerator, Type type, Label jumpTo, Action<ILGenerator> loadLeft, Action<ILGenerator> loadRight)
+        public static void GenerateJumpIfEqual(ILGenerator ilGenerator, Type type, Label jumpTo, Action<ILGenerator> loadLeft, Action<ILGenerator> loadRight)
         {
             if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
                 || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)

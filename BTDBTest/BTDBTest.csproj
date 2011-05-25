@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AbstractBufferedReaderWriterTest.cs" />
+    <Compile Include="ILExtensionsTest.cs" />
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="ObjectDBTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
