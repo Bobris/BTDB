@@ -214,8 +214,7 @@ namespace BTDB.IL
         internal static ILGenerator Newobj(this ILGenerator il, Expression<Action> expression)
         {
             var constructorInfo = (expression.Body as NewExpression).Constructor;
-            il.Emit(OpCodes.Newobj, constructorInfo);
-            return il;
+            return Newobj(il, constructorInfo);
         }
 
         internal static ILGenerator Newobj(this ILGenerator il, ConstructorInfo constructorInfo)
@@ -227,9 +226,7 @@ namespace BTDB.IL
         internal static ILGenerator Callvirt(this ILGenerator il, Expression<Action> expression)
         {
             var methodInfo = (expression.Body as MethodCallExpression).Method;
-            if (methodInfo.IsStatic) throw new ArgumentException("Method in Callvirt cannot be static");
-            il.Emit(OpCodes.Callvirt, methodInfo);
-            return il;
+            return Callvirt(il, methodInfo);
         }
 
         internal static ILGenerator Callvirt(this ILGenerator il, MethodInfo methodInfo)
