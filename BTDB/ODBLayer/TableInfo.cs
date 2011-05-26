@@ -361,11 +361,12 @@ namespace BTDB.ODBLayer
             var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IObjectDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(_implType);
-            ilGenerator.Emit(OpCodes.Ldarg_1);
-            ilGenerator.Emit(OpCodes.Ldarg_0);
-            ilGenerator.Emit(OpCodes.Call, _implType.GetMethod("CreateInstance"));
-            ilGenerator.Emit(OpCodes.Isinst, _implType);
-            ilGenerator.Emit(OpCodes.Stloc_0);
+            ilGenerator
+                .Ldarg(1)
+                .Ldarg(0)
+                .Call(_implType.GetMethod("CreateInstance"))
+                .Isinst(_implType)
+                .Stloc(0);
             var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
@@ -373,7 +374,7 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    if (srcFieldInfo.Handler == destFieldInfo.Handler && srcFieldInfo.Handler.LoadToSameHandler(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2), ig => ig.Emit(OpCodes.Ldloc_0), _implType, destFieldInfo.Name))
+                    if (srcFieldInfo.Handler == destFieldInfo.Handler && srcFieldInfo.Handler.LoadToSameHandler(ilGenerator, ig => ig.Ldarg(2), ig => ig.Ldloc(0), _implType, destFieldInfo.Name))
                     {
                         continue;
                     }
@@ -382,18 +383,17 @@ namespace BTDB.ODBLayer
                     var canConvertThrough = _tableInfoResolver.TypeConvertorGenerator.CanConvertThrough(willLoad, t => t == fieldInfo.FieldType);
                     if (canConvertThrough != null)
                     {
-                        ilGenerator.Emit(OpCodes.Ldloc_0);
-                        srcFieldInfo.Handler.LoadToWillLoad(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2));
+                        ilGenerator.Ldloc(0);
+                        srcFieldInfo.Handler.LoadToWillLoad(ilGenerator, ig => ig.Ldarg(2));
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, canConvertThrough)(ilGenerator);
-                        ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+                        ilGenerator.Stfld(fieldInfo);
                         continue;
                     }
                 }
-                srcFieldInfo.Handler.SkipLoad(ilGenerator, ig => ig.Emit(OpCodes.Ldarg_2));
+                srcFieldInfo.Handler.SkipLoad(ilGenerator, ig => ig.Ldarg(2));
             }
-            ilGenerator.Emit(OpCodes.Ldloc_0);
-            ilGenerator.Emit(OpCodes.Ret);
-            return (Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>)method.CreateDelegate(typeof(Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>));
+            ilGenerator.Ldloc(0).Ret();
+            return method.CreateDelegate<Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
         }
     }
 }
