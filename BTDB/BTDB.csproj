@@ -41,6 +41,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="KVDBLayer\ImplementationDetails\SectorTypeInit.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\AbstractBufferedWriter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BitArrayManipulation.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeParentIterator.cs" />

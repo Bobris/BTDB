@@ -116,7 +116,7 @@ namespace BTDB.KVDBLayer.Implementation
         int _unallocatedSectorCount;
         int _dirtySectorCount;
         int _inTransactionSectorCount;
-        ulong _totalBytesRead;
+        long _totalBytesRead;
         ulong _totalBytesWritten;
         bool _durableTransactions = true;
         long _nextAllocStartInGrans;
@@ -154,18 +154,13 @@ namespace BTDB.KVDBLayer.Implementation
             return null;
         }
 
-        internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction)
+        internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction, SectorTypeInit typeInit)
         {
-            return ReadSector(sectorPtr.Ptr, sectorPtr.Checksum, inWriteTransaction);
+            Debug.Assert(sectorPtr.Ptr > 0);
+            return ReadSector(sectorPtr.Ptr & MaskOfPosition, (int)(sectorPtr.Ptr & MaskOfGranLength) + 1, sectorPtr.Checksum, inWriteTransaction, typeInit);
         }
 
-        Sector ReadSector(long positionWithSize, uint checksum, bool inWriteTransaction)
-        {
-            Debug.Assert(positionWithSize > 0);
-            return ReadSector(positionWithSize & MaskOfPosition, (int)(positionWithSize & MaskOfGranLength) + 1, checksum, inWriteTransaction);
-        }
-
-        Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction)
+        Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction, SectorTypeInit typeInit)
         {
             if (position <= 0) throw new BTDBException("Wrong data in db (negative position)");
             if (size <= 0 || size > MaxSectorSize / AllocationGranularity) throw new BTDBException("Wrong sector length");
@@ -185,12 +180,34 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     throw new BTDBException("Data reading error");
                 }
-                _totalBytesRead += (ulong)size;
+                Interlocked.Add(ref _totalBytesRead, size);
                 if (Checksum.CalcFletcher(res.Data, 0, (uint)size) != checksum)
                 {
                     throw new BTDBException("Checksum error");
                 }
                 Interlocked.Add(ref _bytesInCache, size);
+                switch (typeInit)
+                {
+                    case SectorTypeInit.AllocChild:
+                        res.Type = SectorType.AllocChild;
+                        break;
+                    case SectorTypeInit.AllocParent:
+                        res.Type = SectorType.AllocParent;
+                        break;
+                    case SectorTypeInit.DataParent:
+                        res.Type = SectorType.DataParent;
+                        break;
+                    case SectorTypeInit.DataChild:
+                        res.Type = SectorType.DataChild;
+                        break;
+                    case SectorTypeInit.BTreeChildOrParent:
+                        res.Type = BTreeChildIterator.IsChildFromSectorData(res.Data)
+                                       ? SectorType.BTreeChild
+                                       : SectorType.BTreeParent;
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
                 UpdateLastAccess(res);
                 return res;
             });
@@ -241,7 +258,7 @@ namespace BTDB.KVDBLayer.Implementation
                         continue;
                     }
                     if (!inWriteTransaction && sector.InTransaction) continue;
-                    sector.LastAccessTime = (ulong) Interlocked.Read(ref sector.InternalLastAccessTime);
+                    sector.LastAccessTime = (ulong)Interlocked.Read(ref sector.InternalLastAccessTime);
                     sectors.Add(sector);
                 }
                 if (sectors.Count == 0) return;
@@ -872,7 +889,7 @@ namespace BTDB.KVDBLayer.Implementation
             if (_inSpaceAllocation)
             {
                 Debug.Assert(sector.Deleted == false);
-                if (sector.InTransaction) 
+                if (sector.InTransaction)
                     sector.Deleted = true;
                 _postponedDeallocateSectors.Add(sector);
                 return;
@@ -964,8 +981,8 @@ namespace BTDB.KVDBLayer.Implementation
                     sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
                                         RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
                                         sectorPtr.Checksum,
-                                        true);
-                    sector.Type = SectorType.AllocChild;
+                                        true,
+                                        SectorTypeInit.AllocChild);
                 }
                 sector.Parent = parent;
                 sector = DirtizeSector(sector, sector.Parent, null);
@@ -980,8 +997,8 @@ namespace BTDB.KVDBLayer.Implementation
                 sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
                                     RoundToAllocationGranularity(childSectors * PtrDownSize) / AllocationGranularity,
                                     sectorPtr.Checksum,
-                                    true);
-                sector.Type = SectorType.AllocParent;
+                                    true,
+                                    SectorTypeInit.AllocParent);
             }
             sector.Parent = parent;
             sector = DirtizeSector(sector, sector.Parent, null);
@@ -1253,8 +1270,7 @@ namespace BTDB.KVDBLayer.Implementation
                 sector = TryGetSector(sectorPtr.Ptr);
                 if (sector == null)
                 {
-                    sector = ReadSector(sectorPtr, true);
-                    sector.Type = SectorType.AllocChild;
+                    sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocChild);
                 }
                 sector.Parent = parent;
                 int startGranSearch = 0;
@@ -1290,8 +1306,7 @@ namespace BTDB.KVDBLayer.Implementation
             sector = TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
-                sector = ReadSector(sectorPtr, true);
-                sector.Type = SectorType.AllocParent;
+                sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocParent);
             }
             sector.Parent = parent;
             sector = DirtizeSector(sector, sector.Parent, null);
@@ -1337,8 +1352,7 @@ namespace BTDB.KVDBLayer.Implementation
                 sector = TryGetSector(sectorPtr.Ptr);
                 if (sector == null)
                 {
-                    sector = ReadSector(sectorPtr, true);
-                    sector.Type = SectorType.AllocChild;
+                    sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocChild);
                 }
                 sector.Parent = parent;
                 int startGranSearch = 0;
@@ -1379,8 +1393,7 @@ namespace BTDB.KVDBLayer.Implementation
             sector = TryGetSector(sectorPtr.Ptr);
             if (sector == null)
             {
-                sector = ReadSector(sectorPtr, true);
-                sector.Type = SectorType.AllocParent;
+                sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocParent);
             }
             sector.Parent = parent;
             sector = DirtizeSector(sector, sector.Parent, null);
@@ -1608,9 +1621,9 @@ namespace BTDB.KVDBLayer.Implementation
         void LowLevelRemoveFromSectorCache(Sector sector)
         {
             Lazy<Sector> lazySector;
-            if (_sectorCache.TryRemove(sector.Position,out lazySector))
+            if (_sectorCache.TryRemove(sector.Position, out lazySector))
             {
-                Debug.Assert(lazySector.Value==sector);
+                Debug.Assert(lazySector.Value == sector);
                 Interlocked.Add(ref _bytesInCache, -lazySector.Value.Length);
             }
         }
@@ -1619,7 +1632,7 @@ namespace BTDB.KVDBLayer.Implementation
         {
             lock (_readLinkLock)
             {
-                if (link==null && _writeTrInCreation)
+                if (link == null && _writeTrInCreation)
                 {
                     _writeTrInCreation = false;
                 }
@@ -1741,7 +1754,7 @@ namespace BTDB.KVDBLayer.Implementation
             var result = new KeyValueDBStats
                              {
                                  DatabaseStreamSize = _positionLessStream.GetSize(),
-                                 TotalBytesRead = _totalBytesRead,
+                                 TotalBytesRead = (ulong)_totalBytesRead,
                                  TotalBytesWritten = _totalBytesWritten
                              };
             if (readLink != null)

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.Helpers;
@@ -278,6 +280,46 @@ namespace SimpleTester
             }
         }
 
+        void DoParallelTest()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[4000];
+                    for (int i = 0; i < 30000; i++)
+                    {
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
+                        tr.CreateOrUpdateKeyValue(key, key);
+                    }
+                    tr.Commit();
+                }
+                Parallel.For(0, 4, iter =>
+                    {
+                        using (var tr = db.StartTransaction())
+                        {
+                            var key = new byte[4000];
+                            for (int i = 0; i < 30000; i++)
+                            {
+                                key[3] = (byte)(i % 256);
+                                key[2] = (byte)(i / 256 % 256);
+                                key[1] = (byte)(i / 256 / 256 % 256);
+                                key[0] = (byte)(i / 256 / 256 / 256);
+                                if (!tr.FindExactKey(key)) Trace.Assert(false);
+                                //var val = tr.ReadValue();
+                                //Trace.Assert(key.SequenceEqual(val));
+                            }
+                        }
+                    });
+            }
+        }
+
+
         void WriteCsv()
         {
             using (var sout = new StreamWriter("data.csv"))
@@ -292,7 +334,7 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoRandomWork();
+            DoParallelTest();
             //WarmUp();
             //DoWork3();
             //DoWork4();
