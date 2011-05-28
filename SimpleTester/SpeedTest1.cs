@@ -3,7 +3,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using BTDB;
+using System.Linq;
+using System.Threading.Tasks;
+using BTDB.KVDBLayer.Implementation;
+using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.KVDBLayer.ReplayProxy;
+using BTDB.StreamLayer;
 
 namespace SimpleTester
 {
@@ -12,24 +19,24 @@ namespace SimpleTester
         readonly Stopwatch _sw = new Stopwatch();
         readonly List<double> _results = new List<double>();
 
-        static IStream CreateTestStream()
+        static IPositionLessStream CreateTestStream()
         {
             if (false)
             {
                 if (File.Exists("data.btdb"))
                     File.Delete("data.btdb");
-                return new BTDB.StreamProxy("data.btdb");
+                return new PositionLessStreamProxy("data.btdb");
             }
             else
             {
-                return new ManagedMemoryStream();
+                return new MemoryPositionLessStream();
             }
         }
 
         void WarmUp()
         {
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 using (var tr = db.StartTransaction())
@@ -47,7 +54,7 @@ namespace SimpleTester
             var key = new byte[1000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -82,7 +89,7 @@ namespace SimpleTester
             var key = new byte[4];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -150,7 +157,7 @@ namespace SimpleTester
             var key = new byte[4000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -181,7 +188,7 @@ namespace SimpleTester
             var key = new byte[4000];
 
             using (var stream = CreateTestStream())
-            using (ILowLevelDB db = new LowLevelDB())
+            using (IKeyValueDB db = new KeyValueDB())
             {
                 db.Open(stream, false);
                 _sw.Restart();
@@ -206,7 +213,114 @@ namespace SimpleTester
             }
         }
 
-        void WriteCSV()
+        void DoRandomWork()
+        {
+            var opCounter = 0;
+            var random = new Random();
+            using (var stream = CreateTestStream())
+            //using (IKeyValueDB db = new KeyValueDBReplayProxy(new KeyValueDB(), new PositionLessStreamWriter(new PositionLessStreamProxy("btdb.log"))))
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                IKeyValueDBTransaction tr = db.StartTransaction();
+                while (opCounter < 100000)
+                {
+                    if (opCounter % 1000 == 0)
+                    {
+                        Console.WriteLine(string.Format("Operation {0}", opCounter));
+                        Console.WriteLine(tr.CalculateStats().ToString());
+                    }
+                    opCounter++;
+                    var action = random.Next(100);
+                    if (action < 10)
+                    {
+                        if (action > 1)
+                        {
+                            //Console.WriteLine("Commit");
+                            tr.Commit();
+                        }
+                        else
+                        {
+                            //Console.WriteLine("Rollback");
+                        }
+                        tr.Dispose();
+                        tr = db.StartTransaction();
+                    }
+                    else if (action < 50 || tr.GetKeyIndex() < 0)
+                    {
+                        var key = new byte[random.Next(1, 1000)];
+                        random.NextBytes(key);
+                        //Console.WriteLine(string.Format("CreateKey {0}", key.Length));
+                        tr.CreateKey(key);
+                    }
+                    else if (action < 60)
+                    {
+                        //Console.WriteLine("EraseCurrent");
+                        tr.EraseCurrent();
+                    }
+                    else if (action < 65)
+                    {
+                        //Console.WriteLine("FindNextKey");
+                        tr.FindNextKey();
+                    }
+                    else if (action < 70)
+                    {
+                        //Console.WriteLine("FindPreviousKey");
+                        tr.FindPreviousKey();
+                    }
+                    else
+                    {
+                        var value = new byte[random.Next(1, 100000)];
+                        random.NextBytes(value);
+                        //Console.WriteLine(string.Format("SetValue {0}", value.Length));
+                        tr.SetValue(value);
+                    }
+                }
+                tr.Dispose();
+            }
+        }
+
+        void DoParallelTest()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[4000];
+                    for (int i = 0; i < 30000; i++)
+                    {
+                        key[3] = (byte)(i % 256);
+                        key[2] = (byte)(i / 256 % 256);
+                        key[1] = (byte)(i / 256 / 256 % 256);
+                        key[0] = (byte)(i / 256 / 256 / 256);
+                        tr.CreateOrUpdateKeyValue(key, key);
+                    }
+                    tr.Commit();
+                }
+                Parallel.For(0, 4, iter =>
+                    {
+                        using (var tr = db.StartTransaction())
+                        {
+                            var key = new byte[4000];
+                            for (int i = 0; i < 30000; i++)
+                            {
+                                key[3] = (byte)(i % 256);
+                                key[2] = (byte)(i / 256 % 256);
+                                key[1] = (byte)(i / 256 / 256 % 256);
+                                key[0] = (byte)(i / 256 / 256 / 256);
+                                if (!tr.FindExactKey(key)) Trace.Assert(false);
+                                //var val = tr.ReadValue();
+                                //Trace.Assert(key.SequenceEqual(val));
+                            }
+                        }
+                    });
+            }
+        }
+
+
+        void WriteCsv()
         {
             using (var sout = new StreamWriter("data.csv"))
             {
@@ -220,10 +334,11 @@ namespace SimpleTester
 
         public void Test()
         {
-            WarmUp();
-            DoWork3();
-            DoWork4();
-            //WriteCSV();
+            DoParallelTest();
+            //WarmUp();
+            //DoWork3();
+            //DoWork4();
+            //WriteCsv();
         }
     }
 }
