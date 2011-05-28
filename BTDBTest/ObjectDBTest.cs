@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.KVDBLayer.Interface;
 using BTDB.ODBLayer;
@@ -440,6 +441,10 @@ namespace BTDBTest
             IVariousFieldTypes VariousFieldTypesField { get; set; }
             bool BoolField { get; set; }
             double DoubleField { get; set; }
+            float FloatField { get; set; }
+            decimal DecimalField { get; set; }
+            Guid GuidField { get; set; }
+            DateTime DateTimeField { get; set; }
         }
 
         [Test]
@@ -460,7 +465,11 @@ namespace BTDBTest
                 Assert.Null(o.DBObjectField);
                 Assert.Null(o.VariousFieldTypesField);
                 Assert.False(o.BoolField);
-                Assert.AreEqual(0, o.DoubleField);
+                Assert.AreEqual(0d, o.DoubleField);
+                Assert.AreEqual(0f, o.FloatField);
+                Assert.AreEqual(0m, o.DecimalField);
+                Assert.AreEqual(new DateTime(), o.DateTimeField);
+                Assert.AreEqual(new Guid(), o.GuidField);
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -475,6 +484,10 @@ namespace BTDBTest
                 o.VariousFieldTypesField = o;
                 o.BoolField = true;
                 o.DoubleField = 12.34;
+                o.FloatField = -12.34f;
+                o.DecimalField = 123456.789m;
+                o.DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local);
+                o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
 
                 AssertContent(o);
                 tr.Commit();
@@ -501,6 +514,10 @@ namespace BTDBTest
             Assert.AreSame(o, o.VariousFieldTypesField);
             Assert.True(o.BoolField);
             Assert.AreEqual(12.34, o.DoubleField, 1e-10);
+            Assert.AreEqual(-12.34, o.FloatField, 1e-6);
+            Assert.AreEqual(123456.789m, o.DecimalField);
+            Assert.AreEqual(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
+            Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
         }
 
         [Test]

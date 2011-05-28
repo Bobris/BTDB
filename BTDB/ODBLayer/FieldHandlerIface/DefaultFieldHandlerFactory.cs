@@ -13,6 +13,9 @@ namespace BTDB.ODBLayer.FieldHandlerIface
                 new UnsignedFieldHandler(),
                 new BoolFieldHandler(),
                 new DoubleFieldHandler(),
+                new DecimalFieldHandler(),
+                new DateTimeFieldHandler(),
+                new GuidFieldHandler(),
                 new DBObjectFieldHandler(),
             };
 

@@ -145,7 +145,8 @@ namespace BTDB.IL
                     return;
                 }
             }
-            var equalsMethod = type.GetMethod("Equals", new[] { type, type });
+            var equalsMethod = type.GetMethod("Equals", new[] { type, type })
+                ?? type.GetMethod("op_Equality", new[] { type, type });
             if (equalsMethod != null)
             {
                 loadLeft(ilGenerator);

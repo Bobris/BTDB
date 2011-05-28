@@ -6,11 +6,11 @@ using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer.FieldHandlerImpl
 {
-    public class DoubleFieldHandler : IFieldHandler
+    public class GuidFieldHandler : IFieldHandler
     {
         public string Name
         {
-            get { return "Double"; }
+            get { return "Guid"; }
         }
 
         public byte[] Configuration
@@ -20,7 +20,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public bool IsCompatibleWith(Type type)
         {
-            return type == typeof(double) || type == typeof(float);
+            return type == typeof(Guid);
         }
 
         public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
@@ -30,19 +30,19 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public Type WillLoad()
         {
-            return typeof(double);
+            return typeof(Guid);
         }
 
         public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadDouble());
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadGuid());
         }
 
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipDouble());
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipGuid());
         }
 
         public void CreateStorage(FieldHandlerCreateImpl ctx)
@@ -66,7 +66,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 .Ldloc(1)
                 .Ldloc(0)
                 .Ldfld(ctx.DefaultFieldBuilder)
-                .Call(() => ((AbstractBufferedWriter)null).WriteDouble(0));
+                .Call(() => ((AbstractBufferedWriter)null).WriteGuid(new Guid()));
         }
     }
 }
