@@ -131,36 +131,44 @@ namespace BTDB.KVDBLayer.Implementation
             get { return _newState; }
         }
 
-        Sector TryGetSectorNoUpdateAccess(long positionWithSize)
+        internal void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
             Lazy<Sector> res;
-            if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
+            if (_sectorCache.TryGetValue(childSectorPtr & MaskOfPosition, out res))
             {
-                var sector = res.Value;
-                return sector;
+                res.Value.Parent = parent;
             }
-            return null;
         }
 
-        internal Sector TryGetSector(long positionWithSize)
+        internal Sector TryGetSector(long positionWithSize, bool inWriteTransaction, Sector parent)
         {
             Lazy<Sector> res;
             if (_sectorCache.TryGetValue(positionWithSize & MaskOfPosition, out res))
             {
                 var sector = res.Value;
                 UpdateLastAccess(sector);
+                if (inWriteTransaction)
+                {
+                    sector.Parent = parent;
+                }
                 return sector;
             }
             return null;
         }
 
-        internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction, SectorTypeInit typeInit)
+        internal Sector ReadSector(SectorPtr sectorPtr, bool inWriteTransaction, SectorTypeInit typeInit, Sector parent)
         {
             Debug.Assert(sectorPtr.Ptr > 0);
-            return ReadSector(sectorPtr.Ptr & MaskOfPosition, (int)(sectorPtr.Ptr & MaskOfGranLength) + 1, sectorPtr.Checksum, inWriteTransaction, typeInit);
+            return ReadSector(sectorPtr.Ptr & MaskOfPosition, (int)(sectorPtr.Ptr & MaskOfGranLength) + 1, sectorPtr.Checksum, inWriteTransaction, typeInit, parent);
         }
 
-        Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction, SectorTypeInit typeInit)
+        internal Sector GetOrReadSector(SectorPtr sectorPtr, bool inWriteTransaction, SectorTypeInit typeInit, Sector parent)
+        {
+            return TryGetSector(sectorPtr.Ptr, inWriteTransaction, parent) ??
+                   ReadSector(sectorPtr, inWriteTransaction, typeInit, parent);
+        }
+
+        Sector ReadSector(long position, int size, uint checksum, bool inWriteTransaction, SectorTypeInit typeInit, Sector parent)
         {
             if (position <= 0) throw new BTDBException("Wrong data in db (negative position)");
             if (size <= 0 || size > MaxSectorSize / AllocationGranularity) throw new BTDBException("Wrong sector length");
@@ -209,11 +217,20 @@ namespace BTDB.KVDBLayer.Implementation
                         throw new InvalidOperationException();
                 }
                 UpdateLastAccess(res);
+
                 return res;
             });
             var lazy2 = _sectorCache.GetOrAdd(position, lazy);
             Sector result = lazy2.Value;
             UpdateLastAccess(result);
+            if (inWriteTransaction)
+            {
+                result.Parent = parent;
+            }
+            else
+            {
+                result.SetParentIfNull(parent);
+            }
             return result;
         }
 
@@ -973,7 +990,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         void UnsetBitsInAlloc(long startGran, int grans, ref SectorPtr sectorPtr, long totalGrans, Sector parent)
         {
-            Sector sector = TryGetSector(sectorPtr.Ptr);
+            Sector sector = TryGetSector(sectorPtr.Ptr, true, parent);
             if (totalGrans <= MaxLeafAllocSectorGrans)
             {
                 if (sector == null)
@@ -982,10 +999,10 @@ namespace BTDB.KVDBLayer.Implementation
                                         RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
                                         sectorPtr.Checksum,
                                         true,
-                                        SectorTypeInit.AllocChild);
+                                        SectorTypeInit.AllocChild,
+                                        parent);
                 }
-                sector.Parent = parent;
-                sector = DirtizeSector(sector, sector.Parent, null);
+                sector = DirtizeSector(sector, parent, null);
                 BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
                 sectorPtr = sector.ToSectorPtr();
                 return;
@@ -998,10 +1015,10 @@ namespace BTDB.KVDBLayer.Implementation
                                     RoundToAllocationGranularity(childSectors * PtrDownSize) / AllocationGranularity,
                                     sectorPtr.Checksum,
                                     true,
-                                    SectorTypeInit.AllocParent);
+                                    SectorTypeInit.AllocParent,
+                                    parent);
             }
-            sector.Parent = parent;
-            sector = DirtizeSector(sector, sector.Parent, null);
+            sector = DirtizeSector(sector, parent, null);
             for (var i = (int)(startGran / gransInChild); i < childSectors; i++)
             {
                 var startingGranOfChild = i * gransInChild;
@@ -1267,12 +1284,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 var longestFree = _freeSpaceAllocatorOptimizer.QueryLongestForGran(startInBytes);
                 if (longestFree < grans) return -1;
-                sector = TryGetSector(sectorPtr.Ptr);
-                if (sector == null)
-                {
-                    sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocChild);
-                }
-                sector.Parent = parent;
+                sector = GetOrReadSector(sectorPtr, true, SectorTypeInit.AllocChild, parent);
                 int startGranSearch = 0;
                 while (true)
                 {
@@ -1303,13 +1315,8 @@ namespace BTDB.KVDBLayer.Implementation
             }
             int childSectors;
             long gransInChild = GetGransInDownLevel(totalGrans, out childSectors);
-            sector = TryGetSector(sectorPtr.Ptr);
-            if (sector == null)
-            {
-                sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocParent);
-            }
-            sector.Parent = parent;
-            sector = DirtizeSector(sector, sector.Parent, null);
+            sector = GetOrReadSector(sectorPtr, true, SectorTypeInit.AllocParent, parent);
+            sector = DirtizeSector(sector, parent, null);
             sectorPtr = sector.ToSectorPtr();
             var i = 0;
             long startingGranOfChild;
@@ -1349,12 +1356,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 var longestFree = _freeSpaceAllocatorOptimizer.QueryLongestForGran(startInBytes);
                 if (longestFree < grans) return -1;
-                sector = TryGetSector(sectorPtr.Ptr);
-                if (sector == null)
-                {
-                    sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocChild);
-                }
-                sector.Parent = parent;
+                sector = GetOrReadSector(sectorPtr, true, SectorTypeInit.AllocChild, parent);
                 int startGranSearch = 0;
                 while (true)
                 {
@@ -1383,20 +1385,15 @@ namespace BTDB.KVDBLayer.Implementation
                     }
                     startGranSearch = (int)newStartGranSearch;
                 }
-                sector = DirtizeSector(sector, sector.Parent, null);
+                sector = DirtizeSector(sector, parent, null);
                 BitArrayManipulation.SetBits(sector.Data, (int)startGran, grans);
                 sectorPtr = sector.ToSectorPtr();
                 return startGran;
             }
             int childSectors;
             long gransInChild = GetGransInDownLevel(totalGrans, out childSectors);
-            sector = TryGetSector(sectorPtr.Ptr);
-            if (sector == null)
-            {
-                sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocParent);
-            }
-            sector.Parent = parent;
-            sector = DirtizeSector(sector, sector.Parent, null);
+            sector = GetOrReadSector(sectorPtr, true, SectorTypeInit.AllocParent, parent);
+            sector = DirtizeSector(sector, parent, null);
             sectorPtr = sector.ToSectorPtr();
             var i = 0;
             long startingGranOfChild;
@@ -1440,11 +1437,7 @@ namespace BTDB.KVDBLayer.Implementation
                 PublishSector(newLeafSector);
                 PublishSector(newParentSector);
                 SectorPtr.Pack(sector.Data, i * PtrDownSize, newParentSector.ToSectorPtr());
-                var childSector = TryGetSectorNoUpdateAccess(childSectorPtr.Ptr);
-                if (childSector != null)
-                {
-                    childSector.Parent = newParentSector;
-                }
+                FixChildParentPointer(childSectorPtr.Ptr, newParentSector);
                 return startingGranOfChild + gransInChild2 * MaxChildren;
             }
             if (childSectors == MaxChildren) return -1;
@@ -1772,18 +1765,6 @@ namespace BTDB.KVDBLayer.Implementation
                 result.WastedSize = _newState.WantedDatabaseLength - _newState.UsedSize;
             }
             return result;
-        }
-
-        internal void FixChildParentPointer(long childSectorPtr, Sector parent)
-        {
-            var sector = TryGetSectorNoUpdateAccess(childSectorPtr);
-            if (sector != null)
-            {
-                if (sector.InTransaction)
-                {
-                    sector.Parent = parent;
-                }
-            }
         }
     }
 }
