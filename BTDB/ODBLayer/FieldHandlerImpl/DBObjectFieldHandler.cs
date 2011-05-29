@@ -49,6 +49,11 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVUInt64());
         }
 
+        public void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue)
+        {
+            throw new InvalidOperationException();
+        }
+
         public void CreateStorage(FieldHandlerCreateImpl ctx)
         {
             ctx.CreateSimpleStorage(typeof(ulong));

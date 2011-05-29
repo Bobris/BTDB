@@ -12,6 +12,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         Type WillLoad();
         void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
         void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
+        void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue);
         void CreateStorage(FieldHandlerCreateImpl ctx);
         void CreatePropertyGetter(FieldHandlerCreateImpl ctx);
         void CreatePropertySetter(FieldHandlerCreateImpl ctx);
