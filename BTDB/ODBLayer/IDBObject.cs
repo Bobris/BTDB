@@ -7,5 +7,6 @@
         ulong Oid { get; }
         bool Deleted { get; }
         void Delete();
+        IObjectDBTransaction OwningTransaction { get; }
     }
 }

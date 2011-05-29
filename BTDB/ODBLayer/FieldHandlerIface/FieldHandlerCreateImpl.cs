@@ -17,10 +17,12 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         public PropertyInfo PropertyInfo { get; set; }
         public Action<ILGenerator> CallObjectModified { get; set; }
         public FieldBuilder FieldMidLevelDBTransaction { get; set; }
+        public string TableName { get; set; }
 
         public string DefaultFieldName { get { return "_FieldStorage_" + FieldName; } }
         
         public FieldBuilder DefaultFieldBuilder { get { return ObjectStorage[DefaultFieldName] as FieldBuilder; } }
+
 
         public void CreateSimpleStorage()
         {

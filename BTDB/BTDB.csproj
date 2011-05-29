@@ -69,6 +69,7 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\ListDBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
     <Compile Include="StreamLayer\MemoryPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Interface\ShouldMergeResult.cs" />

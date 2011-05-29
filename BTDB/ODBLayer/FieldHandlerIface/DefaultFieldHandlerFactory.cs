@@ -17,6 +17,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
                 new DateTimeFieldHandler(),
                 new GuidFieldHandler(),
                 new DBObjectFieldHandler(),
+                new ListDBObjectFieldHandler(),
             };
 
         public IFieldHandler CreateFromProperty(string tableName, Type clientType, PropertyInfo property)

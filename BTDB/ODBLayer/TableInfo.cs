@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using BTDB.IL;
-using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer.FieldHandlerIface;
@@ -117,6 +116,13 @@ namespace BTDB.ODBLayer
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
+            propInfo = typeof(IDBObject).GetProperty("OwningTransaction");
+            getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
+            ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+            ilGenerator.Ldarg(0).Ldfld(trFieldBuilder).Isinst(propInfo.PropertyType).Ret();
+            tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
+            propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
+            propertyBuilder.SetGetMethod(getMethodBuilder);
             var constructorBuilder = tb.DefineConstructor(MethodAttributes.Family, CallingConventions.Standard,
                                                           new[] { typeof(ulong), typeof(IObjectDBTransactionInternal) });
             var ilg = constructorBuilder.GetILGenerator();
@@ -202,6 +208,7 @@ namespace BTDB.ODBLayer
                 var fieldHandlerCreateImpl = new FieldHandlerCreateImpl
                     {
                         FieldName = tableFieldInfo.Name,
+                        TableName = name,
                         ImplType = tb,
                         SymbolDocWriter = symbolDocumentWriter,
                         ObjectStorage = objHolder,
