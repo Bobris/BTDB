@@ -52,9 +52,9 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public void ObjectModified(ulong id, object obj)
+        public void ObjectModified(object obj)
         {
-            _dirtyObjSet.TryAdd(id, obj);
+            _dirtyObjSet.TryAdd(((IDBObject)obj).Oid, obj);
         }
 
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)

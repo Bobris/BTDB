@@ -77,7 +77,14 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public void CreateSaver(FieldHandlerCreateImpl ctx)
         {
-            SaveFromWillLoad(ctx.Generator, il => il.Ldloc(1), il => il.Ldloc(0).Ldfld(ctx.DefaultFieldBuilder));
+            var willLoad = WillLoad();
+            var defaultFieldBuilder = ctx.DefaultFieldBuilder;
+            var generateConversion = ctx.TypeConvertorGenerator.GenerateConversion(defaultFieldBuilder.FieldType, willLoad);
+            SaveFromWillLoad(ctx.Generator, il => il.Ldloc(1), il =>
+            {
+                il.Ldloc(0).Ldfld(defaultFieldBuilder);
+                generateConversion(il);
+            });
         }
     }
 }

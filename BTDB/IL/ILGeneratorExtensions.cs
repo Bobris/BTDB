@@ -275,6 +275,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Ldnull(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Ldnull);
+            return il;
+        }
+
         public static ILGenerator Throw(this ILGenerator il)
         {
             il.Emit(OpCodes.Throw);
@@ -284,6 +290,12 @@ namespace BTDB.IL
         public static ILGenerator Ret(this ILGenerator il)
         {
             il.Emit(OpCodes.Ret);
+            return il;
+        }
+
+        public static ILGenerator Pop(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Pop);
             return il;
         }
 

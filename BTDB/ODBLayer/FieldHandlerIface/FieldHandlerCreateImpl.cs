@@ -11,6 +11,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
     {
         public TypeBuilder ImplType { get; set; }
         public ISymbolDocumentWriter SymbolDocWriter { get; set; }
+        public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
         public string FieldName { get; set; }
         public ILGenerator Generator { get; set; }
         public Dictionary<string, object> ObjectStorage { get; set; }
@@ -22,7 +23,6 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         public string DefaultFieldName { get { return "_FieldStorage_" + FieldName; } }
         
         public FieldBuilder DefaultFieldBuilder { get { return ObjectStorage[DefaultFieldName] as FieldBuilder; } }
-
 
         public void CreateSimpleStorage()
         {

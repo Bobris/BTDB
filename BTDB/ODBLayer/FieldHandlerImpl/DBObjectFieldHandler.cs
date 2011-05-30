@@ -20,7 +20,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public bool IsCompatibleWith(Type type)
         {
-            return type == typeof(IDBObject) || (type.IsInterface && !type.IsGenericTypeDefinition);
+            return type == typeof(IDBObject) || (type.IsInterface && !type.IsGenericType);
         }
 
         public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)

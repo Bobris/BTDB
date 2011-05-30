@@ -74,16 +74,17 @@ namespace BTDB.ODBLayer
         void EnsureImplType()
         {
             if (_implType != null) return;
-            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(Id, Name, ClientType, ClientTypeVersion, _tableVersions[ClientTypeVersion]), null);
+            System.Threading.Interlocked.CompareExchange(ref _implType, CreateImplType(), null);
         }
 
-        static Type CreateImplType(uint id, string name, Type clientType, uint clientTypeVersion, TableVersionInfo tableVersionInfo)
+        Type CreateImplType()
         {
-            AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
-            ModuleBuilder mb = ab.DefineDynamicModule(name + "Asm.dll", true);
-            var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
-            TypeBuilder tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { clientType, typeof(IDBObject) });
-            var properties = clientType.GetProperties();
+            var tableVersionInfo = _tableVersions[ClientTypeVersion];
+            AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(Name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
+            ModuleBuilder mb = ab.DefineDynamicModule(Name + "Asm.dll", true);
+            var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + Name, Guid.Empty, Guid.Empty, Guid.Empty);
+            TypeBuilder tb = mb.DefineType(Name + "Impl", TypeAttributes.Public, typeof(object), new[] { ClientType, typeof(IDBObject) });
+            var properties = ClientType.GetProperties();
             var oidFieldBuilder = tb.DefineField("Oid", typeof(ulong), FieldAttributes.InitOnly | FieldAttributes.Public);
             var trFieldBuilder = tb.DefineField("ObjectDBTransaction", typeof(IObjectDBTransactionInternal),
                                                 FieldAttributes.InitOnly | FieldAttributes.Public);
@@ -91,14 +92,14 @@ namespace BTDB.ODBLayer
             var propInfo = typeof(IDBObject).GetProperty("TableName");
             var getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             var ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
-            ilGenerator.Ldstr(name).Ret();
+            ilGenerator.Ldstr(Name).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             var propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
             propInfo = typeof(IDBObject).GetProperty("TableId");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
-            ilGenerator.LdcI4((int)id).Ret();
+            ilGenerator.LdcI4((int)Id).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
@@ -119,7 +120,7 @@ namespace BTDB.ODBLayer
             propInfo = typeof(IDBObject).GetProperty("OwningTransaction");
             getMethodBuilder = tb.DefineMethod("get_" + propInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName, propInfo.PropertyType, Type.EmptyTypes);
             ilGenerator = getMethodBuilder.GetILGenerator(symbolDocumentWriter, 16);
-            ilGenerator.Ldarg(0).Ldfld(trFieldBuilder).Isinst(propInfo.PropertyType).Ret();
+            ilGenerator.Ldarg(0).Ldfld(trFieldBuilder).Castclass(propInfo.PropertyType).Ret();
             tb.DefineMethodOverride(getMethodBuilder, propInfo.GetGetMethod());
             propertyBuilder = tb.DefineProperty(propInfo.Name, PropertyAttributes.None, propInfo.PropertyType, Type.EmptyTypes);
             propertyBuilder.SetGetMethod(getMethodBuilder);
@@ -170,7 +171,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0)
                 .Ldfld(trFieldBuilder)
                 .Ldarg(0)
-                .Tail().Call(() => ((IObjectDBTransactionInternal)null).InternalDelete(null))
+                .Tail().Callvirt(() => ((IObjectDBTransactionInternal)null).InternalDelete(null))
                 .Ret();
             metb = tb.DefineMethod("Saver",
                 MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object) });
@@ -195,10 +196,10 @@ namespace BTDB.ODBLayer
                 .Callvirt(() => ((IObjectDBTransactionInternal)null).PrepareToWriteObject(0))
                 .Stloc(1)
                 .Ldloc(1)
-                .LdcI4((int)id)
+                .LdcI4((int)Id)
                 .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0))
                 .Ldloc(1)
-                .LdcI4((int)clientTypeVersion)
+                .LdcI4((int)ClientTypeVersion)
                 .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0));
             var objHolder = new Dictionary<string, object>();
             for (int fieldIndex = 0; fieldIndex < tableVersionInfo.FieldCount; fieldIndex++)
@@ -208,8 +209,9 @@ namespace BTDB.ODBLayer
                 var fieldHandlerCreateImpl = new FieldHandlerCreateImpl
                     {
                         FieldName = tableFieldInfo.Name,
-                        TableName = name,
+                        TableName = Name,
                         ImplType = tb,
+                        TypeConvertorGenerator = _tableInfoResolver.TypeConvertorGenerator,
                         SymbolDocWriter = symbolDocumentWriter,
                         ObjectStorage = objHolder,
                         Generator = null,
@@ -220,9 +222,7 @@ namespace BTDB.ODBLayer
                                 generator.Ldarg(0);
                                 generator.Ldfld(trFieldBuilder);
                                 generator.Ldarg(0);
-                                generator.Ldfld(oidFieldBuilder);
-                                generator.Ldarg(0);
-                                generator.Callvirt(() => ((IObjectDBTransactionInternal)null).ObjectModified(0, null));
+                                generator.Callvirt(() => ((IObjectDBTransactionInternal)null).ObjectModified(null));
                             }
                     };
                 tableFieldInfo.Handler.CreateStorage(fieldHandlerCreateImpl);
@@ -265,7 +265,7 @@ namespace BTDB.ODBLayer
             ilg.Callvirt(() => ((IDisposable)null).Dispose());
             ilg.Ret();
             Type result = tb.CreateType();
-            //ab.Save(name + "asm.dll");
+            //ab.Save(Name + "asm.dll");
             return result;
         }
 
@@ -372,7 +372,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(1)
                 .Ldarg(0)
                 .Call(_implType.GetMethod("CreateInstance"))
-                .Isinst(_implType)
+                .Castclass(_implType)
                 .Stloc(0);
             var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)

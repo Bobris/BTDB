@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.KVDBLayer.Interface;
@@ -544,5 +545,36 @@ namespace BTDBTest
                 Assert.Throws<BTDBException>(() => { p.Name = "does not matter"; });
             }
         }
+
+        public interface IRoot
+        {
+            IList<IPerson> Persons { get; }
+        }
+
+        [Test]
+        public void ListOfDBObjectsSimple()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<IRoot>();
+                var p1 = tr.Insert<IPerson>();
+                p1.Name = "P1";
+                root.Persons.Add(p1);
+                var p2 = tr.Insert<IPerson>();
+                p2.Name = "P2";
+                root.Persons.Add(p2);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<IRoot>();
+                Assert.AreEqual(2, root.Persons.Count);
+                var p1 = root.Persons[0];
+                var p2 = root.Persons[1];
+                Assert.AreEqual("P1", p1.Name);
+                Assert.AreEqual("P2", p2.Name);
+            }
+        }
+
     }
 }

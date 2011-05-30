@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection.Emit;
+using System.Threading;
 using BTDB.IL;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.ReaderWriters;
@@ -13,14 +15,25 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
     {
         static readonly IFieldHandler MemberHandler = new DBObjectFieldHandler();
 
+        // ReSharper disable MemberCanBePrivate.Global
         public class ListOfDBObject<T> : IList<T> where T : class
+        // ReSharper restore MemberCanBePrivate.Global
         {
-            readonly List<ulong> _oids = new List<ulong>();
+            readonly List<ulong> _oids;
             readonly IDBObject _owner;
 
+            // ReSharper disable UnusedMember.Global
             public ListOfDBObject(IDBObject owner)
+            // ReSharper restore UnusedMember.Global
             {
                 _owner = owner;
+                _oids = new List<ulong>();
+            }
+
+            public ListOfDBObject(IDBObject owner, List<ulong> oids)
+            {
+                _owner = owner;
+                _oids = oids;
             }
 
             public IEnumerator<T> GetEnumerator()
@@ -36,9 +49,14 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 return GetEnumerator();
             }
 
+            public List<ulong> Oids
+            {
+                get { return _oids; }
+            }
+
             void OnChange()
             {
-                ((IObjectDBTransactionInternal)_owner.OwningTransaction).ObjectModified(_owner.Oid, _owner);
+                ((IObjectDBTransactionInternal)_owner.OwningTransaction).ObjectModified(_owner);
             }
 
             ulong GetOid(T item)
@@ -134,12 +152,27 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                    MemberHandler.IsCompatibleWith(type.GetGenericArguments()[0]);
         }
 
+        // ReSharper disable UnusedMember.Global
+        public static IList<T> LoaderImpl<T>(AbstractBufferedReader reader, IDBObject owner) where T : class
+        // ReSharper restore UnusedMember.Global
+        {
+            var count = reader.ReadVUInt32();
+            if (count == 0) return null;
+            var oids = new List<ulong>((int)count);
+            while (count-- > 0)
+            {
+                oids.Add(reader.ReadVUInt64());
+            }
+            return new ListOfDBObject<T>(owner, oids);
+        }
+
         public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
         {
+            var fieldInfo = implType.GetField("_FieldStorage_" + destFieldName);
             pushThis(ilGenerator);
             pushReader(ilGenerator);
-            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVUInt64());
-            var fieldInfo = implType.GetField("_FieldStorage_" + destFieldName);
+            pushThis(ilGenerator);
+            ilGenerator.Call(typeof(ListDBObjectFieldHandler).GetMethod("LoaderImpl").MakeGenericMethod(fieldInfo.FieldType.GetGenericArguments()));
             ilGenerator.Stfld(fieldInfo);
             return true;
         }
@@ -154,9 +187,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             throw new InvalidOperationException();
         }
 
-// ReSharper disable MemberCanBePrivate.Global
+        // ReSharper disable MemberCanBePrivate.Global
         public static void SkipImpl(AbstractBufferedReader reader)
-// ReSharper restore MemberCanBePrivate.Global
+        // ReSharper restore MemberCanBePrivate.Global
         {
             var items = reader.ReadVUInt32();
             while (items-- > 0)
@@ -183,42 +216,49 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
         {
+            var defaultFieldBuilder = ctx.DefaultFieldBuilder;
+            var listImplType = typeof(ListOfDBObject<>).MakeGenericType(defaultFieldBuilder.FieldType.GetGenericArguments());
+            var miGenericCompareExchange = typeof(Interlocked).GetMethods().Single(mi => mi.IsGenericMethod && mi.Name == "CompareExchange");
+            var miCompareExchange = miGenericCompareExchange.MakeGenericMethod(defaultFieldBuilder.FieldType);
             var ilGenerator = ctx.Generator;
+            var label = ilGenerator.DefineLabel();
             ilGenerator
                 .Ldarg(0)
-                .Ldfld(ctx.FieldMidLevelDBTransaction)
+                .Ldfld(defaultFieldBuilder)
+                .BrtrueS(label)
                 .Ldarg(0)
-                .Ldfld(ctx.DefaultFieldBuilder)
-                .Callvirt(() => ((IObjectDBTransactionInternal)null).Get(0));
-            if (ctx.PropertyInfo.PropertyType != typeof(object))
-            {
-                ilGenerator.Isinst(ctx.PropertyInfo.PropertyType);
-            }
+                .Ldflda(defaultFieldBuilder)
+                .Ldarg(0)
+                .Newobj(listImplType.GetConstructor(new[] {typeof (IDBObject)}))
+                .Castclass(defaultFieldBuilder.FieldType)
+                .Ldnull()
+                .Call(miCompareExchange)
+                .Pop()
+                .Mark(label)
+                .Ldarg(0)
+                .Ldfld(defaultFieldBuilder);
         }
 
         public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
         {
             throw new BTDBException(string.Format("Property {0} in {1} must be read only", ctx.FieldName, ctx.TableName));
-            var ilGenerator = ctx.Generator;
-            var fieldBuilder = ctx.DefaultFieldBuilder;
-            var labelNoChange = ilGenerator.DefineLabel();
-            ilGenerator.DeclareLocal(typeof(ulong));
-            ilGenerator
-                .Ldarg(0)
-                .Ldfld(ctx.FieldMidLevelDBTransaction)
-                .Ldarg(1)
-                .Callvirt(() => ((IObjectDBTransactionInternal)null).GetOid(null))
-                .Stloc(0);
-            EmitHelpers.GenerateJumpIfEqual(ilGenerator, typeof(ulong), labelNoChange,
-                                            g => g.Ldarg(0).Ldfld(fieldBuilder),
-                                            g => g.Ldloc(0));
-            ilGenerator
-                .Ldarg(0)
-                .Ldloc(0)
-                .Stfld(fieldBuilder);
-            ctx.CallObjectModified(ilGenerator);
-            ilGenerator
-                .Mark(labelNoChange);
+        }
+
+        // ReSharper disable UnusedMember.Global
+        public static void SaverImpl<T>(AbstractBufferedWriter writer, IList<T> ilist) where T : class
+        // ReSharper restore UnusedMember.Global
+        {
+            if (ilist == null)
+            {
+                writer.WriteVUInt32(0);
+                return;
+            }
+            var oids = ((ListOfDBObject<T>)ilist).Oids;
+            writer.WriteVUInt32((uint)oids.Count);
+            foreach (var oid in oids)
+            {
+                writer.WriteVUInt64(oid);
+            }
         }
 
         public void CreateSaver(FieldHandlerCreateImpl ctx)
@@ -227,7 +267,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 .Ldloc(1)
                 .Ldloc(0)
                 .Ldfld(ctx.DefaultFieldBuilder)
-                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
+                .Call(typeof(ListDBObjectFieldHandler).GetMethod("SaverImpl").MakeGenericMethod(ctx.DefaultFieldBuilder.FieldType.GetGenericArguments()));
         }
     }
 }
