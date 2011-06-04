@@ -321,8 +321,8 @@ namespace SimpleTester
 
         void DoWork5()
         {
-            long pureDataLength = 0;
             _sw.Restart();
+            long pureDataLength = 0;
             using (var stream = CreateTestStream())
             using (IKeyValueDB db = new KeyValueDB())
             {
@@ -350,7 +350,7 @@ namespace SimpleTester
                             }
                             if (pureDataLengthCheck!=pureDataLengthPrevTr)
                             {
-                                throw new Exception("Transactions are not in serializble mode");
+                                throw new Exception("Transactions are not in serializable mode");
                             }
                         }
                         tr.Commit();

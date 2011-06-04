@@ -85,6 +85,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         IKeyValueDBTweaks _keyValueDBTweaks = new DefaultKeyValueDBTweaks();
         readonly ConcurrentDictionary<long, Lazy<Sector>> _sectorCache = new ConcurrentDictionary<long, Lazy<Sector>>();
+        int _sectorsInCache;
         int _bytesInCache;
         long _currentCacheTime = 1;
         readonly ReaderWriterLockSlim _cacheCompactionLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
@@ -194,6 +195,7 @@ namespace BTDB.KVDBLayer.Implementation
                     throw new BTDBException("Checksum error");
                 }
                 Interlocked.Add(ref _bytesInCache, size);
+                Interlocked.Increment(ref _sectorsInCache);
                 switch (typeInit)
                 {
                     case SectorTypeInit.AllocChild:
@@ -236,7 +238,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (!_keyValueDBTweaks.ShouldAttemptCacheCompaction(_sectorCache.Count, _bytesInCache)) return;
+            if (!_keyValueDBTweaks.ShouldAttemptCacheCompaction(_sectorsInCache, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {
@@ -588,11 +590,14 @@ namespace BTDB.KVDBLayer.Implementation
         {
             Debug.Assert(_writeTr == null);
             int bytesInCache = 0;
+            int sectorsInCache = 0;
             foreach (var item in _sectorCache)
             {
                 bytesInCache += item.Value.Value.Length;
+                sectorsInCache++;
             }
             Debug.Assert(bytesInCache == _bytesInCache);
+            Debug.Assert(sectorsInCache == _sectorsInCache);
         }
 
         public void Dispose()
@@ -793,6 +798,7 @@ namespace BTDB.KVDBLayer.Implementation
                 if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force()))
                 {
                     Interlocked.Add(ref _bytesInCache, localSector.Length);
+                    Interlocked.Increment(ref _sectorsInCache);
                 }
             }
             sector.Dirty = true;
@@ -821,6 +827,7 @@ namespace BTDB.KVDBLayer.Implementation
                         if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, new Lazy<Sector>(() => localSector).Force()))
                         {
                             Interlocked.Add(ref _bytesInCache, localSector.Length);
+                            Interlocked.Increment(ref _sectorsInCache);
                         }
                     }
                     return sector;
@@ -1174,6 +1181,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 try
                 {
+                    Interlocked.Decrement(ref _sectorsInCache);
                     Interlocked.Add(ref _bytesInCache, -lazyRemoved.Value.Length);
                 }
                 // ReSharper disable EmptyGeneralCatchClause
@@ -1617,6 +1625,7 @@ namespace BTDB.KVDBLayer.Implementation
             if (_sectorCache.TryRemove(sector.Position, out lazySector))
             {
                 Debug.Assert(lazySector.Value == sector);
+                Interlocked.Decrement(ref _sectorsInCache);
                 Interlocked.Add(ref _bytesInCache, -lazySector.Value.Length);
             }
         }
@@ -1668,6 +1677,7 @@ namespace BTDB.KVDBLayer.Implementation
             if (_sectorCache.TryAdd(newSector.Position, lazy))
             {
                 Interlocked.Add(ref _bytesInCache, newSector.Length);
+                Interlocked.Increment(ref _sectorsInCache);
             }
             else
             {
@@ -1675,7 +1685,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            _keyValueDBTweaks.NewSectorAddedToCache(newSector, _sectorCache.Count, _bytesInCache);
+            _keyValueDBTweaks.NewSectorAddedToCache(newSector, _sectorsInCache, _bytesInCache);
         }
 
         internal void UpdateLastAccess(Sector sector)
