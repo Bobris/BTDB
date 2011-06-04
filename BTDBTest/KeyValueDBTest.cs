@@ -726,7 +726,9 @@ namespace BTDBTest
             }
         }
 
+// ReSharper disable UnusedMember.Global
         public static IEnumerable<int[]> EraseRangeSource()
+// ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
             for (int i = 1001; i < 10000; i += 1000)

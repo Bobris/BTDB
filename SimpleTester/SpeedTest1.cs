@@ -319,6 +319,52 @@ namespace SimpleTester
             }
         }
 
+        void DoWork5()
+        {
+            long pureDataLength = 0;
+            _sw.Restart();
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.DurableTransactions = true;
+                db.Open(stream, false);
+                for (int i = 0; i < 200; i++)
+                {
+                    long pureDataLengthPrevTr = pureDataLength;
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int j = 0; j < 200; j++)
+                        {
+                            tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
+                            pureDataLength += 2 + 1 + i * j;
+                        }
+                        using (var trCheck = db.StartTransaction())
+                        {
+                            long pureDataLengthCheck = 0;
+                            if (trCheck.FindFirstKey())
+                            {
+                                do
+                                {
+                                    pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
+                                } while (trCheck.FindNextKey());
+                            }
+                            if (pureDataLengthCheck!=pureDataLengthPrevTr)
+                            {
+                                throw new Exception("Transactions are not in serializble mode");
+                            }
+                        }
+                        tr.Commit();
+                    }
+                }
+                using (var trStat = db.StartTransaction())
+                {
+                    Console.WriteLine(trStat.CalculateStats().ToString());
+                }
+            }
+            _sw.Stop();
+            Console.WriteLine("Pure data length: {0}", pureDataLength);
+            Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+        }
 
         void WriteCsv()
         {
@@ -334,11 +380,7 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoParallelTest();
-            //WarmUp();
-            //DoWork3();
-            //DoWork4();
-            //WriteCsv();
+            DoWork5();
         }
     }
 }
