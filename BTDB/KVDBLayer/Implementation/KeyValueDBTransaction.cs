@@ -1034,9 +1034,19 @@ namespace BTDB.KVDBLayer.Implementation
             return iter.ValueLen;
         }
 
-        public void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs)
+        public bool IsWritting()
+        {
+            return _readLink == null;
+        }
+
+        void ThrowIfCurrentKeyIsInvalid()
         {
             if (_currentKeyIndexInLeaf < 0) throw new BTDBException("Current Key is invalid");
+        }
+
+        public void PeekKey(int ofs, out int len, out byte[] buf, out int bufOfs)
+        {
+            ThrowIfCurrentKeyIsInvalid();
             ofs += _prefix.Length;
             var iter = new BTreeChildIterator(_currentKeySector.Data);
             iter.MoveTo(_currentKeyIndexInLeaf);
@@ -1086,30 +1096,36 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
-        public bool IsWritting()
-        {
-            return _readLink == null;
-        }
-
         public void ReadKey(int ofs, int len, byte[] buf, int bufOfs)
         {
-            while (len > 0)
+            ThrowIfCurrentKeyIsInvalid();
+            ofs += _prefix.Length;
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndexInLeaf);
+            var keyLen = iter.KeyLen;
+            if (ofs < 0 || ofs > keyLen) throw new ArgumentOutOfRangeException("ofs");
+            if (len < 0 || ofs + len > keyLen) throw new ArgumentOutOfRangeException("len");
+            if (len == 0) return;
+            var keyLenInline = iter.KeyLenInline;
+            if (ofs < keyLenInline)
             {
-                byte[] localBuf;
-                int localBufOfs;
-                int localOutLen;
-                PeekKey(ofs, out localOutLen, out localBuf, out localBufOfs);
-                if (localOutLen == 0) throw new BTDBException("Trying to read key outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len, localOutLen));
-                ofs += localOutLen;
-                bufOfs += localOutLen;
-                len -= localOutLen;
+                var copyLen = Math.Min(len, keyLenInline - ofs);
+                Array.Copy(_currentKeySector.Data, iter.KeyOffset + ofs, buf, bufOfs, copyLen);
+                len -= copyLen;
+                bufOfs += copyLen;
+                ofs += copyLen;
+            }
+            if (len > 0)
+            {
+                ofs -= keyLenInline;
+                int dataLen = keyLen - keyLenInline;
+                RecursiveReadOverflown(ofs, iter.KeySectorPtr, _currentKeySector, dataLen, buf, ref bufOfs, ref len);
             }
         }
 
         public void PeekValue(long ofs, out int len, out byte[] buf, out int bufOfs)
         {
-            if (_currentKeyIndexInLeaf < 0) throw new BTDBException("Current Key is invalid");
+            ThrowIfCurrentKeyIsInvalid();
             var iter = new BTreeChildIterator(_currentKeySector.Data);
             iter.MoveTo(_currentKeyIndexInLeaf);
             if (ofs < 0 || ofs >= iter.ValueLen)
@@ -1160,18 +1176,60 @@ namespace BTDB.KVDBLayer.Implementation
 
         public void ReadValue(long ofs, int len, byte[] buf, int bufOfs)
         {
-            while (len > 0)
+            ThrowIfCurrentKeyIsInvalid();
+            var iter = new BTreeChildIterator(_currentKeySector.Data);
+            iter.MoveTo(_currentKeyIndexInLeaf);
+            var valueLen = iter.ValueLen;
+            if (ofs < 0 || ofs > valueLen) throw new ArgumentOutOfRangeException("ofs");
+            if (len < 0 || ofs + len > valueLen) throw new ArgumentOutOfRangeException("len");
+            if (len == 0) return;
+            var valueLenInline = iter.ValueLenInline;
+            long dataLen = valueLen - valueLenInline;
+            if (ofs < dataLen)
             {
-                byte[] localBuf;
-                int localBufOfs;
-                int localOutLen;
-                PeekValue(ofs, out localOutLen, out localBuf, out localBufOfs);
-                if (localOutLen == 0) throw new BTDBException("Trying to read value outside of its boundary");
-                Array.Copy(localBuf, localBufOfs, buf, bufOfs, Math.Min(len, localOutLen));
-                ofs += localOutLen;
-                bufOfs += localOutLen;
-                len -= localOutLen;
+                RecursiveReadOverflown(ofs, iter.ValueSectorPtr, _currentKeySector, dataLen, buf, ref bufOfs, ref len);
+                ofs = dataLen;
             }
+            if (len > 0)
+            {
+                Debug.Assert(ofs >= dataLen);
+                Array.Copy(_currentKeySector.Data, iter.ValueOffset + (int)(ofs - dataLen), buf, bufOfs, len);
+            }
+        }
+
+        void RecursiveReadOverflown(long ofs, SectorPtr dataSectorPtr, Sector parentOfSector, long dataLen, byte[] buf, ref int bufOfs, ref int len)
+        {
+            Sector dataSector = GetOrReadDataSector(dataSectorPtr, dataLen, parentOfSector);
+            if (dataSector.Type == SectorType.DataChild)
+            {
+                var copyLen = Math.Min(len, (int)(dataSector.Length - ofs));
+                Array.Copy(dataSector.Data, (int)ofs, buf, bufOfs, copyLen);
+                len -= copyLen;
+                bufOfs += copyLen;
+                return;
+            }
+            int downPtrCount;
+            long bytesInDownLevel = GetBytesInDownLevel(dataLen, out downPtrCount);
+            var childIndex = (int)(ofs / bytesInDownLevel);
+            ofs = ofs % bytesInDownLevel;
+            while (childIndex < downPtrCount && len > 0)
+            {
+                long childDataLen;
+                if (childIndex < downPtrCount - 1)
+                {
+                    childDataLen = bytesInDownLevel;
+                }
+                else
+                {
+                    childDataLen = dataLen % bytesInDownLevel;
+                    if (childDataLen == 0) childDataLen = bytesInDownLevel;
+                }
+                dataSectorPtr = SectorPtr.Unpack(dataSector.Data, childIndex * KeyValueDB.PtrDownSize);
+                RecursiveReadOverflown(ofs, dataSectorPtr, dataSector, childDataLen, buf, ref bufOfs, ref len);
+                ofs = 0;
+                childIndex++;
+            }
+
         }
 
         public void WriteValue(long ofs, int len, byte[] buf, int bufOfs)
@@ -1179,7 +1237,7 @@ namespace BTDB.KVDBLayer.Implementation
             if (len < 0) throw new ArgumentOutOfRangeException("len");
             if (ofs < 0) throw new ArgumentOutOfRangeException("ofs");
             if (len == 0) return;
-            if (_currentKeyIndexInLeaf < 0) throw new BTDBException("Current Key is invalid");
+            ThrowIfCurrentKeyIsInvalid();
             UpgradeToWriteTransaction();
             if (ofs + len > GetValueSize()) SetValueSize(ofs + len);
             InternalWriteValue(ofs, len, buf, bufOfs);
