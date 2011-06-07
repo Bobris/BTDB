@@ -4,7 +4,7 @@ namespace BTDB.KVDBLayer.Helpers
 {
     public static class Checksum
     {
-        public static uint CalcFletcher(byte[] data, uint position, uint length)
+        public static uint CalcFletcher32(byte[] data, uint position, uint length)
         {
             Debug.Assert((length & 1) == 0);
             length >>= 1;

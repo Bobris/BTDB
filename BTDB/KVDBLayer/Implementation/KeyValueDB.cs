@@ -194,7 +194,7 @@ namespace BTDB.KVDBLayer.Implementation
                         throw new BTDBException("Data reading error");
                     }
                     Interlocked.Add(ref _totalBytesRead, size);
-                    if (Checksum.CalcFletcher(sector.Data, 0, (uint) size) != checksum)
+                    if (Checksum.CalcFletcher32(sector.Data, 0, (uint) size) != checksum)
                     {
                         throw new BTDBException("Checksum error");
                     }
@@ -452,13 +452,13 @@ namespace BTDB.KVDBLayer.Implementation
             o += 8;
             PackUnpack.PackUInt32LE(_headerData, o, state.TransactionAllocSize);
             o += 4;
-            PackUnpack.PackUInt32LE(_headerData, o, Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum));
+            PackUnpack.PackUInt32LE(_headerData, o, Checksum.CalcFletcher32(_headerData, state.Position, RootSizeWithoutChecksum));
         }
 
         bool RetrieveStateFromHeaderBuffer(State state)
         {
             var o = (int)state.Position;
-            if (Checksum.CalcFletcher(_headerData, state.Position, RootSizeWithoutChecksum) !=
+            if (Checksum.CalcFletcher32(_headerData, state.Position, RootSizeWithoutChecksum) !=
                 PackUnpack.UnpackUInt32LE(_headerData, o + RootSizeWithoutChecksum))
             {
                 return false;
@@ -721,7 +721,7 @@ namespace BTDB.KVDBLayer.Implementation
             //Console.WriteLine("Writing {0} len:{1}", dirtySector.Position, dirtySector.Length);
             _totalBytesWritten += (ulong)dirtySector.Length;
             _positionLessStream.Write(dirtySector.Data, 0, dirtySector.Length, (ulong)dirtySector.Position);
-            var checksum = Checksum.CalcFletcher(dirtySector.Data, 0, (uint)dirtySector.Length);
+            var checksum = Checksum.CalcFletcher32(dirtySector.Data, 0, (uint)dirtySector.Length);
             long ptr = dirtySector.Position;
             ptr += dirtySector.Length / AllocationGranularity - 1;
             if (dirtySector.Parent == null)

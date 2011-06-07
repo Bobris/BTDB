@@ -104,7 +104,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             {
                 result.Ptr |= (uint) (Length / KeyValueDB.AllocationGranularity - 1);
             }
-            result.Checksum = Dirty ? 0 : Checksum.CalcFletcher(Data, 0, (uint)Length);
+            result.Checksum = Dirty ? 0 : Checksum.CalcFletcher32(Data, 0, (uint)Length);
             return result;
         }
 
