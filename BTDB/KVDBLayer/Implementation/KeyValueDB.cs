@@ -811,17 +811,14 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     var oldLength = sector.Length;
                     sector.Length = newLength;
-                    if (_sectorCache.ContainsKey(sector.Position & MaskOfPosition))
+                    if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, sector))
                     {
-                        Interlocked.Add(ref _bytesInCache, newLength - oldLength);
+                        Interlocked.Add(ref _bytesInCache, sector.Length);
+                        Interlocked.Increment(ref _sectorsInCache);
                     }
                     else
                     {
-                        if (_sectorCache.TryAdd(sector.Position & MaskOfPosition, sector))
-                        {
-                            Interlocked.Add(ref _bytesInCache, sector.Length);
-                            Interlocked.Increment(ref _sectorsInCache);
-                        }
+                        Interlocked.Add(ref _bytesInCache, newLength - oldLength);
                     }
                     return sector;
                 }
@@ -1166,16 +1163,10 @@ namespace BTDB.KVDBLayer.Implementation
                 ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
             }
             long newPosition = AllocateSpace(unallocatedSector.Length);
-            Sector lazyTemp;
-            _sectorCache.TryRemove(unallocatedSector.Position, out lazyTemp);
+            _sectorCache.TryRemove(unallocatedSector.Position);
             unallocatedSector.Position = newPosition;
-            Sector lazyRemoved;
-            if (_sectorCache.TryRemove(newPosition, out lazyRemoved))
-            {
-                Interlocked.Decrement(ref _sectorsInCache);
-                Interlocked.Add(ref _bytesInCache, -lazyRemoved.Length);
-            }
-            _sectorCache.TryAdd(newPosition, lazyTemp);
+            LowLevelRemoveFromSectorCache(newPosition);
+            _sectorCache.TryAdd(newPosition, unallocatedSector);
             _spaceAllocatedInTransaction.TryInclude((ulong)newPosition, (ulong)unallocatedSector.Length);
             UnlinkFromUnallocatedSectors(unallocatedSector);
             LinkToTailOfDirtySectors(unallocatedSector);
@@ -1606,12 +1597,16 @@ namespace BTDB.KVDBLayer.Implementation
 
         void LowLevelRemoveFromSectorCache(Sector sector)
         {
-            Sector lazySector;
-            if (_sectorCache.TryRemove(sector.Position, out lazySector))
+            LowLevelRemoveFromSectorCache(sector.Position);
+        }
+
+        void LowLevelRemoveFromSectorCache(long position)
+        {
+            Sector removedSector;
+            if (_sectorCache.TryRemove(position & MaskOfPosition, out removedSector))
             {
-                Debug.Assert(lazySector == sector);
                 Interlocked.Decrement(ref _sectorsInCache);
-                Interlocked.Add(ref _bytesInCache, -lazySector.Length);
+                Interlocked.Add(ref _bytesInCache, -removedSector.Length);
             }
         }
 
@@ -1655,7 +1650,6 @@ namespace BTDB.KVDBLayer.Implementation
 
         internal void PublishSector(Sector newSector)
         {
-            Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
             UpdateLastAccess(newSector);
             if (_sectorCache.TryAdd(newSector.Position, newSector))
             {
