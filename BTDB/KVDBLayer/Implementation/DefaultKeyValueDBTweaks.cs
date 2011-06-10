@@ -59,6 +59,32 @@ namespace BTDB.KVDBLayer.Implementation
             return sectorsInCache >= 9800;
         }
 
+        static void PartialSort(IList<Sector> a, int k)
+        {
+            var l = 0;
+            var m = a.Count - 1;
+            while (l < m)
+            {
+                var x = a[k];
+                var i = l;
+                var j = m;
+                do
+                {
+                    while (a[i].LastAccessTime < x.LastAccessTime) i++;
+                    while (x.LastAccessTime < a[j].LastAccessTime) j--;
+                    if (i <= j)
+                    {
+                        var temp = a[i];
+                        a[i] = a[j];
+                        a[j] = temp;
+                        i++; j--;
+                    }
+                } while (i <= j);
+                if (j < k) l = i;
+                if (k < i) m = j;
+            }
+        }
+
         public void WhichSectorsToRemoveFromCache(List<Sector> choosen)
         {
             foreach (var sector in choosen)
@@ -72,7 +98,7 @@ namespace BTDB.KVDBLayer.Implementation
                     s = s.Parent;
                 }
             }
-            choosen.Sort((a, b) => a.LastAccessTime < b.LastAccessTime ? -1 : (a.LastAccessTime > b.LastAccessTime ? 1 : 0));
+            PartialSort(choosen, choosen.Count / 2);
             choosen.RemoveRange(choosen.Count / 2, choosen.Count - choosen.Count / 2);
         }
 
