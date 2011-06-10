@@ -65,13 +65,13 @@ namespace BTDB.KVDBLayer.Implementation
             var m = a.Count - 1;
             while (l < m)
             {
-                var x = a[k];
+                var x = a[k].LastAccessTime;
                 var i = l;
                 var j = m;
                 do
                 {
-                    while (a[i].LastAccessTime < x.LastAccessTime) i++;
-                    while (x.LastAccessTime < a[j].LastAccessTime) j--;
+                    while (a[i].LastAccessTime < x) i++;
+                    while (x < a[j].LastAccessTime) j--;
                     if (i <= j)
                     {
                         var temp = a[i];
