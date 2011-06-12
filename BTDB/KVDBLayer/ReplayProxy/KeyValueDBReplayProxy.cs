@@ -30,10 +30,10 @@ namespace BTDB.KVDBLayer.ReplayProxy
             _db.Dispose();
         }
 
-        public IKeyValueDBTweaks KeyValueDBTweaks
+        public int CacheSizeInMB
         {
-            get { return _db.KeyValueDBTweaks; }
-            set { _db.KeyValueDBTweaks = value; }
+            get { return _db.CacheSizeInMB; }
+            set { _db.CacheSizeInMB = value; }
         }
 
         public bool DurableTransactions

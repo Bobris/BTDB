@@ -21,7 +21,7 @@ namespace SimpleTester
 
         static IPositionLessStream CreateTestStream()
         {
-            if (false)
+            if (true)
             {
                 if (File.Exists("data.btdb"))
                     File.Delete("data.btdb");
@@ -319,7 +319,7 @@ namespace SimpleTester
             }
         }
 
-        void DoWork5()
+        void DoWork5(bool alsoDoReads)
         {
             _sw.Restart();
             long pureDataLength = 0;
@@ -327,6 +327,7 @@ namespace SimpleTester
             using (IKeyValueDB db = new KeyValueDB())
             {
                 db.DurableTransactions = true;
+                db.CacheSizeInMB = 40;
                 db.Open(stream, false);
                 for (int i = 0; i < 200; i++)
                 {
@@ -338,7 +339,7 @@ namespace SimpleTester
                             tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
                             pureDataLength += 2 + 1 + i * j;
                         }
-                        using (var trCheck = db.StartTransaction())
+                        if (alsoDoReads) using (var trCheck = db.StartTransaction())
                         {
                             long pureDataLengthCheck = 0;
                             if (trCheck.FindFirstKey())
@@ -348,7 +349,7 @@ namespace SimpleTester
                                     pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
                                 } while (trCheck.FindNextKey());
                             }
-                            if (pureDataLengthCheck!=pureDataLengthPrevTr)
+                            if (pureDataLengthCheck != pureDataLengthPrevTr)
                             {
                                 throw new Exception("Transactions are not in serializable mode");
                             }
@@ -380,7 +381,7 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoWork5();
+            DoWork5(true);
         }
     }
 }

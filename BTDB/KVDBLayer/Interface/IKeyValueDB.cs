@@ -6,8 +6,11 @@ namespace BTDB.KVDBLayer.Interface
 {
     public interface IKeyValueDB: IDisposable
     {
-        IKeyValueDBTweaks KeyValueDBTweaks { get; set; }
-
+        /// <summary>
+        /// Default Cache Size is 10MB. Minimum is 1MB. Maximum is 1024MB.
+        /// </summary>
+        int CacheSizeInMB { get; set; }
+        
         /// <summary>
         /// Default are durable, not corrupting commits (true)
         /// </summary>

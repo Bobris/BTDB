@@ -82,8 +82,8 @@ namespace BTDB.KVDBLayer.Implementation
 
         IPositionLessStream _positionLessStream;
         bool _disposeStream;
+        int _cacheSizeInMB = 10;
 
-        IKeyValueDBTweaks _keyValueDBTweaks = new DefaultKeyValueDBTweaks();
         readonly ReaderWriterLockSlim _cacheLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
         readonly Dictionary<long, Sector> _sectorCache = new Dictionary<long, Sector>();
         int _sectorsInCache;
@@ -262,7 +262,7 @@ namespace BTDB.KVDBLayer.Implementation
 
         internal void TruncateSectorCache(bool inWriteTransaction)
         {
-            if (!_keyValueDBTweaks.ShouldAttemptCacheCompaction(_sectorsInCache, _bytesInCache)) return;
+            if (!ShouldAttemptCacheCompaction(_sectorsInCache, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
             if (inWriteTransaction)
             {
@@ -299,7 +299,7 @@ namespace BTDB.KVDBLayer.Implementation
                     }
                 }
                 if (sectors.Count == 0) return;
-                _keyValueDBTweaks.WhichSectorsToRemoveFromCache(sectors);
+                WhichSectorsToRemoveFromCache(sectors);
                 if (sectors.Count == 0) return;
                 using (_cacheCompactionLock.WriteLock())
                 {
@@ -355,10 +355,14 @@ namespace BTDB.KVDBLayer.Implementation
             _positionLessStream.Flush();
         }
 
-        public IKeyValueDBTweaks KeyValueDBTweaks
+        public int CacheSizeInMB
         {
-            get { return _keyValueDBTweaks; }
-            set { _keyValueDBTweaks = value; }
+            get { return _cacheSizeInMB; }
+            set
+            {
+                if (value < 1 || value > 1024) throw new ArgumentOutOfRangeException();
+                _cacheSizeInMB = value;
+            }
         }
 
         public bool DurableTransactions
@@ -1703,7 +1707,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
-            _keyValueDBTweaks.NewSectorAddedToCache(newSector, _sectorsInCache, _bytesInCache);
+            NewSectorAddedToCache(_sectorsInCache, _bytesInCache);
         }
 
         internal void UpdateLastAccess(Sector sector)
@@ -1793,6 +1797,110 @@ namespace BTDB.KVDBLayer.Implementation
                 result.WastedSize = _newState.WantedDatabaseLength - _newState.UsedSize;
             }
             return result;
+        }
+
+        const int OptimumBTreeParentSize = 4096;
+        const int OptimumBTreeChildSize = 4096;
+
+        internal static bool ShouldSplitBTreeChild(int oldSize, int addSize, int oldKeys)
+        {
+            if (oldKeys > 32000) return true;
+            return oldSize + addSize > OptimumBTreeChildSize;
+        }
+
+        internal static bool ShouldSplitBTreeParent(int oldSize, int addSize, int oldChildren)
+        {
+            if (oldChildren > 32000) return true;
+            return oldSize + addSize > OptimumBTreeParentSize;
+        }
+
+        internal static ShouldMergeResult ShouldMergeBTreeParent(int lenPrevious, int lenCurrent, int lenNext)
+        {
+            if (lenPrevious < 0)
+            {
+                return lenCurrent + lenNext < OptimumBTreeParentSize ? ShouldMergeResult.MergeWithNext : ShouldMergeResult.NoMerge;
+            }
+            if (lenNext < 0)
+            {
+                return lenCurrent + lenPrevious < OptimumBTreeParentSize ? ShouldMergeResult.MergeWithPrevious : ShouldMergeResult.NoMerge;
+            }
+            if (lenPrevious < lenNext)
+            {
+                if (lenCurrent + lenPrevious < OptimumBTreeParentSize) return ShouldMergeResult.MergeWithPrevious;
+            }
+            else
+            {
+                if (lenCurrent + lenNext < OptimumBTreeParentSize) return ShouldMergeResult.MergeWithNext;
+            }
+            return ShouldMergeResult.NoMerge;
+        }
+
+        internal static bool ShouldMerge2BTreeChild(int leftCount, int leftLength, int rightCount, int rightLength)
+        {
+            if (leftCount + rightCount > 32000) return false;
+            if (leftLength + rightLength - 1 > OptimumBTreeChildSize) return false;
+            return true;
+        }
+
+        internal static bool ShouldMerge2BTreeParent(int leftCount, int leftLength, int rightCount, int rightLength, int keyStorageLength)
+        {
+            if (leftCount + rightCount > 32000) return false;
+            if (leftLength + rightLength - 1 + keyStorageLength > OptimumBTreeParentSize) return false;
+            return true;
+        }
+
+        bool ShouldAttemptCacheCompaction(int sectorsInCache, int bytesInCache)
+        {
+            return (sectorsInCache * 64 + bytesInCache) / (1024 * 1024) >= _cacheSizeInMB;
+        }
+
+        static void PartialSort(IList<Sector> a, int k)
+        {
+            var l = 0;
+            var m = a.Count - 1;
+            while (l < m)
+            {
+                var x = a[k].LastAccessTime;
+                var i = l;
+                var j = m;
+                do
+                {
+                    while (a[i].LastAccessTime < x) i++;
+                    while (x < a[j].LastAccessTime) j--;
+                    if (i <= j)
+                    {
+                        var temp = a[i];
+                        a[i] = a[j];
+                        a[j] = temp;
+                        i++; j--;
+                    }
+                } while (i <= j);
+                if (j < k) l = i;
+                if (k < i) m = j;
+            }
+        }
+
+        static void WhichSectorsToRemoveFromCache(List<Sector> choosen)
+        {
+            foreach (var sector in choosen)
+            {
+                ulong price = sector.LastAccessTime;
+                var s = sector.Parent;
+                while (s != null)
+                {
+                    price++;
+                    s.LastAccessTime = Math.Max(price, s.LastAccessTime);
+                    s = s.Parent;
+                }
+            }
+            int splitAt = choosen.Count / 2;
+            PartialSort(choosen, splitAt);
+            choosen.RemoveRange(splitAt, choosen.Count - splitAt);
+        }
+
+        void NewSectorAddedToCache(int sectorsInCache, int bytesInCache)
+        {
+            Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 1);
         }
     }
 }

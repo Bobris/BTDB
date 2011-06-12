@@ -58,8 +58,6 @@
     <Compile Include="KVDBLayer\Interface\BTDBException.cs" />
     <Compile Include="KVDBLayer\Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeChildIterator.cs" />
-    <Compile Include="KVDBLayer\Implementation\DefaultKeyValueDBTweaks.cs" />
-    <Compile Include="KVDBLayer\Interface\IKeyValueDBTweaks.cs" />
     <Compile Include="KVDBLayer\Interface\KeyValueDBStats.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamReader.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamWriter.cs" />

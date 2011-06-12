@@ -330,7 +330,7 @@ namespace BTDB.KVDBLayer.Implementation
                 int additionalLengthNeeded = BTreeChildIterator.HeaderForEntry +
                     (valueLen >= 0 ? BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen, valueLen) :
                     BTreeChildIterator.CalcEntrySize(_prefix.Length + keyLen));
-                if (_owner.KeyValueDBTweaks.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
+                if (KeyValueDB.ShouldSplitBTreeChild(iter.TotalLength, additionalLengthNeeded, iter.Count))
                 {
                     SplitBTreeChild(keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, sector, iter, additionalLengthNeeded);
                 }
@@ -527,7 +527,7 @@ namespace BTDB.KVDBLayer.Implementation
             int additionalLengthNeeded = BTreeParentIterator.HeaderForEntry + BTreeParentIterator.CalcEntrySize(middleKeyLen);
             int leftIndexInParent = iter.FindChildByPos(leftSector.Position);
             bool splitting = true;
-            if (!_owner.KeyValueDBTweaks.ShouldSplitBTreeParent(iter.TotalLength, additionalLengthNeeded, iter.Count + 1))
+            if (!KeyValueDB.ShouldSplitBTreeParent(iter.TotalLength, additionalLengthNeeded, iter.Count + 1))
             {
                 parentSector = _owner.ResizeSectorWithUpdatePosition(parentSector,
                                                                      iter.TotalLength + additionalLengthNeeded,
@@ -1784,7 +1784,7 @@ namespace BTDB.KVDBLayer.Implementation
             var lenNext = -1;
             if (mergeAroundIndex < iter.Count)
                 lenNext = ApproximateLengthOfBTreeChild(iter.GetChildSectorPtr(mergeAroundIndex + 1));
-            ShouldMergeResult result = _owner.KeyValueDBTweaks.ShouldMergeBTreeParent(lenPrevious, lenCurrent, lenNext);
+            ShouldMergeResult result = KeyValueDB.ShouldMergeBTreeParent(lenPrevious, lenCurrent, lenNext);
             if (result == ShouldMergeResult.NoMerge)
                 return;
             if (result == ShouldMergeResult.MergeWithPrevious)
@@ -1803,7 +1803,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 var leftIter = new BTreeChildIterator(leftSector.Data);
                 var rightIter = new BTreeChildIterator(rightSector.Data);
-                if (!_owner.KeyValueDBTweaks.ShouldMerge2BTreeChild(leftIter.Count, leftIter.TotalLength, rightIter.Count,
+                if (!KeyValueDB.ShouldMerge2BTreeChild(leftIter.Count, leftIter.TotalLength, rightIter.Count,
                                                           rightIter.TotalLength))
                     return;
                 mergedSector = _owner.NewSector();
@@ -1824,7 +1824,7 @@ namespace BTDB.KVDBLayer.Implementation
                 var keyStorageLen = 4 + iter.KeyLenInline + (iter.HasKeySectorPtr ? KeyValueDB.PtrDownSize : 0);
                 var leftIter = new BTreeParentIterator(leftSector.Data);
                 var rightIter = new BTreeParentIterator(rightSector.Data);
-                if (!_owner.KeyValueDBTweaks.ShouldMerge2BTreeParent(leftIter.Count, leftIter.TotalLength, rightIter.Count,
+                if (!KeyValueDB.ShouldMerge2BTreeParent(leftIter.Count, leftIter.TotalLength, rightIter.Count,
                                                            rightIter.TotalLength, keyStorageLen))
                     return;
                 mergedSector = _owner.NewSector();
