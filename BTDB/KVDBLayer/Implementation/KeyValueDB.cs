@@ -663,9 +663,12 @@ namespace BTDB.KVDBLayer.Implementation
             _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
             _wasAnyCommits = true;
             if (_durableTransactions)
+            {
                 _positionLessStream.HardFlush();
-            else
-                _positionLessStream.Flush();
+                _totalBytesWritten += RootSize;
+                _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _currentState.Position);
+            }
+            _positionLessStream.Flush();
             TransferNewStateToCurrentState();
             _freeSpaceAllocatorOptimizer.CommitWriteTransaction();
             _commitNeeded = false;

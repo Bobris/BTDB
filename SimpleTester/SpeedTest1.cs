@@ -340,20 +340,20 @@ namespace SimpleTester
                             pureDataLength += 2 + 1 + i * j;
                         }
                         if (alsoDoReads) using (var trCheck = db.StartTransaction())
-                        {
-                            long pureDataLengthCheck = 0;
-                            if (trCheck.FindFirstKey())
                             {
-                                do
+                                long pureDataLengthCheck = 0;
+                                if (trCheck.FindFirstKey())
                                 {
-                                    pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
-                                } while (trCheck.FindNextKey());
+                                    do
+                                    {
+                                        pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
+                                    } while (trCheck.FindNextKey());
+                                }
+                                if (pureDataLengthCheck != pureDataLengthPrevTr)
+                                {
+                                    throw new Exception("Transactions are not in serializable mode");
+                                }
                             }
-                            if (pureDataLengthCheck != pureDataLengthPrevTr)
-                            {
-                                throw new Exception("Transactions are not in serializable mode");
-                            }
-                        }
                         tr.Commit();
                     }
                 }
@@ -364,6 +364,41 @@ namespace SimpleTester
             }
             _sw.Stop();
             Console.WriteLine("Pure data length: {0}", pureDataLength);
+            Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+        }
+
+        void DoWork5ReadCheck()
+        {
+            _sw.Restart();
+            using (var stream = new PositionLessStreamProxy("data.btdb"))
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                using (var trStat = db.StartTransaction())
+                {
+                    Console.WriteLine(trStat.CalculateStats().ToString());
+                }
+                using (var trCheck = db.StartTransaction())
+                {
+                    long pureDataLengthCheck = 0;
+                    if (trCheck.FindFirstKey())
+                    {
+                        do
+                        {
+                            pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
+                        } while (trCheck.FindNextKey());
+                    }
+                    if (pureDataLengthCheck != 396130000)
+                    {
+                        throw new Exception("Bug");
+                    }
+                }
+                using (var trStat = db.StartTransaction())
+                {
+                    Console.WriteLine(trStat.CalculateStats().ToString());
+                }
+            }
+            _sw.Stop();
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
 
@@ -381,7 +416,8 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoWork5(true);
+            DoWork5(false);
+            DoWork5ReadCheck();
         }
     }
 }
