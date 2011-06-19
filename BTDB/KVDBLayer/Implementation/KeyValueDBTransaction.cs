@@ -464,7 +464,7 @@ namespace BTDB.KVDBLayer.Implementation
                 return;
             }
             int downPtrCount;
-            long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
+            long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(len, out downPtrCount);
             sector = sector ?? _owner.ReadSector(sectorPtr, true, SectorTypeInit.DataParent, parent);
             for (int i = 0; i < downPtrCount; i++)
             {
@@ -865,7 +865,7 @@ namespace BTDB.KVDBLayer.Implementation
                                                              sector.Length - dataOfs);
             }
             int downPtrCount;
-            var bytesInDownLevel = (int)GetBytesInDownLevel(dataLen, out downPtrCount);
+            var bytesInDownLevel = (int)KeyValueDB.GetBytesInDownLevel(dataLen, out downPtrCount);
             int i;
             SectorPtr downSectorPtr;
             for (i = 0; i < downPtrCount - 1; i++)
@@ -949,7 +949,7 @@ namespace BTDB.KVDBLayer.Implementation
                 return newLeafSector.ToSectorPtr();
             }
             int downPtrCount;
-            var bytesInDownLevel = (int)GetBytesInDownLevel(len + len2, out downPtrCount);
+            var bytesInDownLevel = (int)KeyValueDB.GetBytesInDownLevel(len + len2, out downPtrCount);
             var newSector = _owner.NewSector();
             newSector.Type = SectorType.DataParent;
             newSector.SetLengthWithRound(downPtrCount * KeyValueDB.PtrDownSize);
@@ -983,7 +983,7 @@ namespace BTDB.KVDBLayer.Implementation
                 return newLeafSector.ToSectorPtr();
             }
             int downPtrCount;
-            long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
+            long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(len, out downPtrCount);
             var newSector = _owner.NewSector();
             newSector.Type = SectorType.DataParent;
             newSector.SetLengthWithRound(downPtrCount * KeyValueDB.PtrDownSize);
@@ -1008,7 +1008,7 @@ namespace BTDB.KVDBLayer.Implementation
                 return;
             }
             int downPtrCount;
-            long bytesInDownLevel = GetBytesInDownLevel(len, out downPtrCount);
+            long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(len, out downPtrCount);
             for (int i = 0; i < downPtrCount; i++)
             {
                 var downSectorPtr = SectorPtr.Unpack(sector.Data, i * KeyValueDB.PtrDownSize);
@@ -1080,7 +1080,7 @@ namespace BTDB.KVDBLayer.Implementation
                 }
                 parentOfSector = dataSector;
                 int downPtrCount;
-                var bytesInDownLevel = (int)GetBytesInDownLevel(dataLen, out downPtrCount);
+                var bytesInDownLevel = (int)KeyValueDB.GetBytesInDownLevel(dataLen, out downPtrCount);
                 int i = ofs / bytesInDownLevel;
                 ofs = ofs % bytesInDownLevel;
                 dataSectorPtr = SectorPtr.Unpack(dataSector.Data, i * KeyValueDB.PtrDownSize);
@@ -1158,7 +1158,7 @@ namespace BTDB.KVDBLayer.Implementation
                 }
                 parentOfSector = dataSector;
                 int downPtrCount;
-                long bytesInDownLevel = GetBytesInDownLevel(dataLen, out downPtrCount);
+                long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(dataLen, out downPtrCount);
                 var i = (int)(ofs / bytesInDownLevel);
                 ofs = ofs % bytesInDownLevel;
                 dataSectorPtr = SectorPtr.Unpack(dataSector.Data, i * KeyValueDB.PtrDownSize);
@@ -1209,7 +1209,7 @@ namespace BTDB.KVDBLayer.Implementation
                 return;
             }
             int downPtrCount;
-            long bytesInDownLevel = GetBytesInDownLevel(dataLen, out downPtrCount);
+            long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(dataLen, out downPtrCount);
             var childIndex = (int)(ofs / bytesInDownLevel);
             ofs = ofs % bytesInDownLevel;
             while (childIndex < downPtrCount && len > 0)
@@ -1294,7 +1294,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
             dataSector = _owner.DirtizeSector(dataSector, newParent, null);
             int downPtrCount;
-            long bytesInDownLevel = GetBytesInDownLevel(valueLen, out downPtrCount);
+            long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(valueLen, out downPtrCount);
             var i = (int)(ofs / bytesInDownLevel);
             while (i < downPtrCount)
             {
@@ -1328,23 +1328,6 @@ namespace BTDB.KVDBLayer.Implementation
                 i++;
             }
             return dataSector.ToSectorPtr();
-        }
-
-        static long GetBytesInDownLevel(long len, out int downPtrCount)
-        {
-            if (len <= KeyValueDB.MaxLeafDataSectorSize)
-            {
-                downPtrCount = (int)len;
-                return 1;
-            }
-            long leafSectors = len / KeyValueDB.MaxLeafDataSectorSize;
-            if (len % KeyValueDB.MaxLeafDataSectorSize != 0) leafSectors++;
-            long currentLevelLeafSectors = 1;
-            while (currentLevelLeafSectors * KeyValueDB.MaxChildren < leafSectors)
-                currentLevelLeafSectors *= KeyValueDB.MaxChildren;
-            long bytesInDownLevel = currentLevelLeafSectors * KeyValueDB.MaxLeafDataSectorSize;
-            downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
-            return bytesInDownLevel;
         }
 
         public void SetValueSize(long newSize)
@@ -1453,9 +1436,9 @@ namespace BTDB.KVDBLayer.Implementation
                 return oldSectorPtr;
             }
             int oldDownPtrCount;
-            var oldBytesInDownLevel = GetBytesInDownLevel(oldSize, out oldDownPtrCount);
+            var oldBytesInDownLevel = KeyValueDB.GetBytesInDownLevel(oldSize, out oldDownPtrCount);
             int newDownPtrCount;
-            var newBytesInDownLevel = GetBytesInDownLevel(newSize, out newDownPtrCount);
+            var newBytesInDownLevel = KeyValueDB.GetBytesInDownLevel(newSize, out newDownPtrCount);
             Sector sector = null;
             if (oldBytesInDownLevel < newBytesInDownLevel)
             {

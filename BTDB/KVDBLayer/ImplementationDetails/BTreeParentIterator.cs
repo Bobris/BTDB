@@ -120,7 +120,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             }
         }
 
-        SectorPtr KeySectorPtr
+        internal SectorPtr KeySectorPtr
         {
             get
             {

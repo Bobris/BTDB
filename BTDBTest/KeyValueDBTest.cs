@@ -726,9 +726,9 @@ namespace BTDBTest
             }
         }
 
-// ReSharper disable UnusedMember.Global
+        // ReSharper disable UnusedMember.Global
         public static IEnumerable<int[]> EraseRangeSource()
-// ReSharper restore UnusedMember.Global
+        // ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
             for (int i = 1001; i < 10000; i += 1000)
@@ -749,10 +749,9 @@ namespace BTDBTest
         [Test]
         public void RandomlyCreatedTest1()
         {
-            using (var stream = CreateTestStream())
             using (IKeyValueDB db = new KeyValueDB())
             {
-                db.Open(stream, false);
+                db.Open(CreateTestStream(), true);
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateKey(new byte[232]);
@@ -767,23 +766,28 @@ namespace BTDBTest
         [Test]
         public void RandomlyCreatedTest2()
         {
-            var db = new KeyValueDB();
-            db.Open(new MemoryPositionLessStream(), true);
-            var tr1 = db.StartTransaction();
-            tr1.CreateKey(new byte[] {1});
-            tr1.Commit();
-            tr1.Dispose();
-            var tr2 = db.StartTransaction();
-            tr2.CreateKey(new byte[] {2});
-            tr2.Commit();
-            tr2.Dispose();
-            var tr3 = db.StartTransaction();
-            tr3.CreateKey(new byte[] {3});
-            tr3.Dispose();
-            var tr4 = db.StartTransaction();
-            tr4.CreateKey(new byte[] {4});
-            tr4.Dispose();
-            db.Dispose();
+            using (var db = new KeyValueDB())
+            {
+                db.Open(CreateTestStream(), true);
+                using (var tr1 = db.StartTransaction())
+                {
+                    tr1.CreateKey(new byte[] { 1 });
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    tr2.CreateKey(new byte[] { 2 });
+                    tr2.Commit();
+                }
+                using (var tr3 = db.StartTransaction())
+                {
+                    tr3.CreateKey(new byte[] { 3 });
+                }
+                using (var tr4 = db.StartTransaction())
+                {
+                    tr4.CreateKey(new byte[] { 4 });
+                }
+            }
         }
 
         [Test]
@@ -851,6 +855,47 @@ namespace BTDBTest
                 {
                     Assert.True(tr.FindExactKey(_key1));
                     Assert.True(tr.FindExactKey(_key2));
+                }
+            }
+        }
+
+        [Test]
+        public void RepairsOnReopen([Values(false, true)] bool durable)
+        {
+            using (var stream = CreateTestStream())
+            {
+                using (IKeyValueDB db = new KeyValueDB())
+                {
+                    db.DurableTransactions = durable;
+                    db.Open(stream, false);
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateKey(_key1);
+                        tr.Commit();
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateKey(_key2);
+                        tr.Commit();
+                    }
+                    using (IKeyValueDB db2 = new KeyValueDB())
+                    {
+                        db2.Open(stream, false);
+                        using (var tr = db2.StartTransaction())
+                        {
+                            Assert.True(tr.FindExactKey(_key1));
+                            Assert.True(tr.FindExactKey(_key2));
+                        }
+                    }
+                }
+                using (IKeyValueDB db = new KeyValueDB())
+                {
+                    db.Open(stream, false);
+                    using (var tr = db.StartTransaction())
+                    {
+                        Assert.True(tr.FindExactKey(_key1));
+                        Assert.True(tr.FindExactKey(_key2));
+                    }
                 }
             }
         }

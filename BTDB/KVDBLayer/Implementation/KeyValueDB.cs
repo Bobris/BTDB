@@ -77,7 +77,7 @@ namespace BTDB.KVDBLayer.Implementation
         const int MaxLeafAllocSectorSize = 4096;
         internal const int MaxLeafAllocSectorGrans = MaxLeafAllocSectorSize * 8;
         internal const int PtrDownSize = 12;
-        internal const int MaxChildren = 256;
+        const int MaxChildren = 256;
         internal const int MaskOfGranLength = AllocationGranularity - 1;
 
         IPositionLessStream _positionLessStream;
@@ -405,9 +405,30 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 if (RetrieveStateFromHeaderBuffer(_currentState))
                 {
-                    if (_currentState.TransactionCounter < _newState.TransactionCounter)
+                    if (_currentState.TransactionCounter != _newState.TransactionCounter)
                     {
-                        SwapCurrentAndNewState();
+                        if (_currentState.TransactionCounter > _newState.TransactionCounter)
+                        {
+                            SwapCurrentAndNewState();
+                        }
+                        if (!CheckDB(_newState))
+                        {
+                            if (CheckDB(_currentState))
+                            {
+                                SwapCurrentAndNewState();
+                            }
+                            else
+                            {
+                                ThrowDatabaseCorrupted();
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if (!CheckDB(_newState))
+                    {
+                        ThrowDatabaseCorrupted();
                     }
                 }
             }
@@ -418,14 +439,22 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     throw new BTDBException("Both root headers corrupted");
                 }
+                if (!CheckDB(_newState))
+                {
+                    ThrowDatabaseCorrupted();
+                }
             }
             TransferNewStateToCurrentState();
             if (_currentState.TransactionAllocSize > 0)
             {
-                // TODO restore TransactionLog
                 throw new BTDBException("TransactionLog is not supported");
             }
             return newDB;
+        }
+
+        void ThrowDatabaseCorrupted()
+        {
+            throw new BTDBException("Database corrupted");
         }
 
         private void SwapCurrentAndNewState()
@@ -633,6 +662,7 @@ namespace BTDB.KVDBLayer.Implementation
                 StoreStateToHeaderBuffer(_newState);
                 _totalBytesWritten += RootSize;
                 _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
+                _positionLessStream.Flush();
             }
             if (_disposeStream)
             {
@@ -665,10 +695,11 @@ namespace BTDB.KVDBLayer.Implementation
             if (_durableTransactions)
             {
                 _positionLessStream.HardFlush();
-                _totalBytesWritten += RootSize;
-                _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _currentState.Position);
             }
-            _positionLessStream.Flush();
+            else
+            {
+                _positionLessStream.Flush();
+            }
             TransferNewStateToCurrentState();
             _freeSpaceAllocatorOptimizer.CommitWriteTransaction();
             _commitNeeded = false;
@@ -1035,12 +1066,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 if (sector == null)
                 {
-                    sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
-                                        RoundToAllocationGranularity(((int)totalGrans + 7) / 8) / AllocationGranularity,
-                                        sectorPtr.Checksum,
-                                        true,
-                                        SectorTypeInit.AllocChild,
-                                        parent);
+                    sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocChild, parent);
                 }
                 sector = DirtizeSector(sector, parent, null);
                 BitArrayManipulation.UnsetBits(sector.Data, (int)startGran, grans);
@@ -1051,12 +1077,7 @@ namespace BTDB.KVDBLayer.Implementation
             long gransInChild = GetGransInDownLevel(totalGrans, out childSectors);
             if (sector == null)
             {
-                sector = ReadSector(sectorPtr.Ptr & MaskOfPosition,
-                                    RoundToAllocationGranularity(childSectors * PtrDownSize) / AllocationGranularity,
-                                    sectorPtr.Checksum,
-                                    true,
-                                    SectorTypeInit.AllocParent,
-                                    parent);
+                sector = ReadSector(sectorPtr, true, SectorTypeInit.AllocParent, parent);
             }
             sector = DirtizeSector(sector, parent, null);
             for (var i = (int)(startGran / gransInChild); i < childSectors; i++)
@@ -1904,6 +1925,130 @@ namespace BTDB.KVDBLayer.Implementation
         void NewSectorAddedToCache(int sectorsInCache, int bytesInCache)
         {
             Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 1);
+        }
+
+        bool CheckDB(State state)
+        {
+            if (state.RootBTree.Ptr != 0)
+            {
+                if (!CheckBTree(state.RootBTree))
+                {
+                    return false;
+                }
+            }
+            if (state.RootAllocPage.Ptr != 0)
+            {
+                var totalGrans = (long)(_newState.WantedDatabaseLength / AllocationGranularity);
+                if (!CheckAllocPages(state.RootAllocPage, totalGrans))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool CheckBTree(SectorPtr sectorPtr)
+        {
+            byte[] sector = CheckSector(sectorPtr);
+            if (sector == null) return false;
+            if (BTreeChildIterator.IsChildFromSectorData(sector))
+            {
+                var iter = new BTreeChildIterator(sector);
+                iter.MoveFirst();
+                do
+                {
+                    if (iter.HasKeySectorPtr)
+                    {
+                        if (!CheckDataPages(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline)) return false;
+                    }
+                    if (iter.HasValueSectorPtr)
+                    {
+                        if (!CheckDataPages(iter.ValueSectorPtr, iter.ValueLen - iter.ValueLenInline)) return false;
+                    }
+                } while (iter.MoveNext());
+            }
+            else
+            {
+                var iter = new BTreeParentIterator(sector);
+                if (!CheckBTree(iter.FirstChildSectorPtr)) return false;
+                iter.MoveFirst();
+                do
+                {
+                    if (iter.HasKeySectorPtr)
+                    {
+                        if (!CheckDataPages(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline)) return false;
+                    }
+                    if (!CheckBTree(iter.ChildSectorPtr)) return false;
+                } while (iter.MoveNext());
+            }
+            return true;
+        }
+
+        bool CheckDataPages(SectorPtr sectorPtr, long dataLen)
+        {
+            byte[] sector = CheckSector(sectorPtr);
+            if (sector == null) return false;
+            if (dataLen <= MaxLeafDataSectorSize) return true;
+            int downPtrCount;
+            long bytesInDownLevel = GetBytesInDownLevel(dataLen, out downPtrCount);
+            for (int i = 0; i < downPtrCount; i++)
+            {
+                if (!CheckDataPages(SectorPtr.Unpack(sector, i * PtrDownSize), Math.Min(dataLen, bytesInDownLevel)))
+                    return false;
+                dataLen -= bytesInDownLevel;
+            }
+            return true;
+        }
+
+        bool CheckAllocPages(SectorPtr sectorPtr, long grans)
+        {
+            byte[] sector = CheckSector(sectorPtr);
+            if (sector == null) return false;
+            if (grans <= MaxLeafAllocSectorGrans) return true;
+            int childSectors;
+            long gransInChild = GetGransInDownLevel(grans, out childSectors);
+            for (int i = 0; i < childSectors; i++)
+            {
+                if (!CheckAllocPages(SectorPtr.Unpack(sector, i * PtrDownSize), Math.Min(grans, gransInChild)))
+                    return false;
+                grans -= gransInChild;
+            }
+            return true;
+        }
+
+        byte[] CheckSector(SectorPtr sectorPtr)
+        {
+            if (sectorPtr.Ptr <= 0) return null;
+            int size = (int)(sectorPtr.Ptr & MaskOfGranLength) + 1;
+            size = size * AllocationGranularity;
+            var sector = new byte[size];
+            if (_positionLessStream.Read(sector, 0, size, (ulong)(sectorPtr.Ptr & MaskOfPosition)) != size)
+            {
+                return null;
+            }
+            Interlocked.Add(ref _totalBytesRead, size);
+            if (sectorPtr.Checksum != 0 && Checksum.CalcFletcher32(sector, 0, (uint)size) != sectorPtr.Checksum)
+            {
+                return null;
+            }
+            return sector;
+        }
+
+        internal static long GetBytesInDownLevel(long len, out int downPtrCount)
+        {
+            if (len <= MaxLeafDataSectorSize)
+            {
+                downPtrCount = (int)len;
+                return 1;
+            }
+            long leafSectors = len / MaxLeafDataSectorSize;
+            if (len % MaxLeafDataSectorSize != 0) leafSectors++;
+            long currentLevelLeafSectors = 1;
+            while (currentLevelLeafSectors * MaxChildren < leafSectors)
+                currentLevelLeafSectors *= MaxChildren;
+            long bytesInDownLevel = currentLevelLeafSectors * MaxLeafDataSectorSize;
+            downPtrCount = (int)((leafSectors + currentLevelLeafSectors - 1) / currentLevelLeafSectors);
+            return bytesInDownLevel;
         }
     }
 }
