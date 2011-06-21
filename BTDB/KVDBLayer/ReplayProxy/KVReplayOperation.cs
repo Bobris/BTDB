@@ -30,6 +30,7 @@
         EraseAll,
         EraseRange,
         Commit,
-        CalculateStats
+        CalculateStats,
+        SetHumanReadableDescriptionInHeader
     }
 }

@@ -45,7 +45,6 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 
 ### Roadmap:
 
-* Human readable part in header for easy recognizing different use-cases
 * More tests, especially multi-threaded
 * Bug fixing stabilization
 * Transaction Log for better commit speed (hard and will be less important with SSD drives => low priority)
