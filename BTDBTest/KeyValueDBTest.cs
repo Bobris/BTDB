@@ -58,6 +58,25 @@ namespace BTDBTest
         }
 
         [Test]
+        public void HumanReadableDescriptionInHeaderWorks()
+        {
+            using (var stream = CreateTestStream())
+            {
+                using (IKeyValueDB db = new KeyValueDB())
+                {
+                    db.Open(stream, false);
+                    db.HumanReadableDescriptionInHeader = "Hello World";
+                    Assert.AreEqual("Hello World", db.HumanReadableDescriptionInHeader);
+                }
+                using (IKeyValueDB db = new KeyValueDB())
+                {
+                    db.Open(stream, false);
+                    Assert.AreEqual("Hello World", db.HumanReadableDescriptionInHeader);
+                }
+            }
+        }
+
+        [Test]
         public void MoreComplexTransaction()
         {
             using (var stream = CreateTestStream())

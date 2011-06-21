@@ -70,6 +70,21 @@ namespace BTDB.KVDBLayer.ReplayProxy
             return _db.Open(positionLessStream, dispose);
         }
 
+        public string HumanReadableDescriptionInHeader
+        {
+            get { return _db.HumanReadableDescriptionInHeader; }
+            set
+            {
+                lock (_log)
+                {
+                    _log.WriteUInt8((byte)KVReplayOperation.SetHumanReadableDescriptionInHeader);
+                    _log.WriteString(value);
+                    _log.FlushBuffer();
+                }
+                _db.HumanReadableDescriptionInHeader = value;
+            }
+        }
+
         public IKeyValueDBTransaction StartTransaction()
         {
             var result = new KeyValueDBReplayTransactionProxy(_db.StartTransaction(), _log, ref _trCounter);

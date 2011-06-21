@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer.Helpers;
@@ -65,6 +66,8 @@ namespace BTDB.KVDBLayer.Implementation
             internal ulong WantedDatabaseLength;
         }
 
+        const int DescriptionOffsetInHeader = 16;
+        const int DescriptionLengthInHeader = 320;
         internal const int AllocationGranularity = 512;
         const int RootSize = 80;
         const int RootSizeWithoutChecksum = RootSize - 4;
@@ -452,9 +455,34 @@ namespace BTDB.KVDBLayer.Implementation
             return newDB;
         }
 
-        void ThrowDatabaseCorrupted()
+        static void ThrowDatabaseCorrupted()
         {
             throw new BTDBException("Database corrupted");
+        }
+
+        public string HumanReadableDescriptionInHeader
+        {
+            get
+            {
+                return Encoding.UTF8.GetString(_headerData, DescriptionOffsetInHeader, DescriptionLengthInHeader).TrimEnd((char)0);
+            }
+            set
+            {
+                var b = Encoding.UTF8.GetBytes(value);
+                if (b.Length > DescriptionLengthInHeader) throw new ArgumentOutOfRangeException();
+                Array.Clear(_headerData, DescriptionOffsetInHeader, DescriptionLengthInHeader);
+                Array.Copy(b, 0, _headerData, DescriptionOffsetInHeader, b.Length);
+                _positionLessStream.Write(_headerData, DescriptionOffsetInHeader, DescriptionLengthInHeader,
+                                          DescriptionOffsetInHeader);
+                if (_durableTransactions)
+                {
+                    _positionLessStream.HardFlush();
+                }
+                else
+                {
+                    _positionLessStream.Flush();
+                }
+            }
         }
 
         private void SwapCurrentAndNewState()
