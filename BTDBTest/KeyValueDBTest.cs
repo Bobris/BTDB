@@ -299,6 +299,74 @@ namespace BTDBTest
         }
 
         [Test]
+        public void FindKeyWithOnlyAndPreferNextKeyWorks()
+        {
+            const int keyCount = 10000;
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[100];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        tr.CreateKey(key);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[101];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        var findKeyResult = tr.FindKey(key, 0, key.Length, FindKeyStrategy.OnlyNext);
+                        if (i == keyCount - 1)
+                        {
+                            Assert.AreEqual(FindKeyResult.NotFound, findKeyResult);
+                            Assert.AreEqual(-1, tr.GetKeyIndex());
+                        }
+                        else
+                        {
+                            Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
+                            Assert.AreEqual(i + 1, tr.GetKeyIndex());
+                        }
+                        findKeyResult = tr.FindKey(key, 0, key.Length, FindKeyStrategy.PreferNext);
+                        if (i == keyCount - 1)
+                        {
+                            Assert.AreEqual(FindKeyResult.FoundPrevious, findKeyResult);
+                            Assert.AreEqual(i, tr.GetKeyIndex());
+                        }
+                        else
+                        {
+                            Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
+                            Assert.AreEqual(i + 1, tr.GetKeyIndex());
+                        }
+                    }
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[99];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        var findKeyResult = tr.FindKey(key, 0, key.Length, FindKeyStrategy.OnlyNext);
+                        Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
+                        Assert.AreEqual(i, tr.GetKeyIndex());
+                        findKeyResult = tr.FindKey(key, 0, key.Length, FindKeyStrategy.PreferNext);
+                        Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
+                        Assert.AreEqual(i, tr.GetKeyIndex());
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void SimpleFindNextKeyWorks()
         {
             using (var stream = CreateTestStream())

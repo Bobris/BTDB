@@ -804,6 +804,7 @@ namespace BTDB.KVDBLayer.Implementation
                         return FindKeyResult.FoundNext;
                     }
                     _currentKeyIndexInLeaf--;
+                    _currentKeyIndex--;
                     return FindNextKey() ? FindKeyResult.FoundNext : FindKeyNotFound();
                 case FindKeyStrategy.PreferNext:
                     if (_currentKeyIndexInLeaf < iter.Count)
@@ -811,6 +812,7 @@ namespace BTDB.KVDBLayer.Implementation
                         return FindKeyResult.FoundNext;
                     }
                     _currentKeyIndexInLeaf--;
+                    _currentKeyIndex--;
                     return FindNextKey() ? FindKeyResult.FoundNext : FindKeyResult.FoundPrevious;
                 case FindKeyStrategy.OnlyPrevious:
                     if (_currentKeyIndexInLeaf > 0)
