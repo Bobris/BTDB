@@ -8,37 +8,76 @@ namespace BTDB.KVDBLayer.ImplementationDetails
 {
     public sealed class Sector
     {
-        public SectorType Type { get; internal set; }
+        internal SectorType Type { get; set; }
 
         internal long Position { get; set; }
 
-        public bool InTransaction { get; internal set; }
+        internal bool InTransaction { get; set; }
 
-        public bool Dirty { get; internal set; }
+        internal bool Dirty { get; set; }
 
         internal bool Deleted { get; set; }
 
-        public ulong LastAccessTime { get; set; }
+        internal ulong LastAccessTime { get; set; }
 
         internal long InternalLastAccessTime;
 
+        internal bool InCache
+        {
+            set
+            {
+                if (value == _inCache) return;
+                if (value)
+                {
+                    if (_parent != null)
+                    {
+                        Interlocked.Increment(ref _parent.ChildrenInCache);
+                    }
+                }
+                else
+                {
+                    if (_parent != null)
+                    {
+                        Interlocked.Decrement(ref _parent.ChildrenInCache);
+                    }
+                }
+                _inCache = value;
+            }
+        }
+        internal int ChildrenInCache;
+
         Sector _parent;
+        bool _inCache;
+
         internal Sector Parent
         {
             get { return _parent; }
-            set { _parent = value; }
-        }
-
-        internal void SetParentIfNull(Sector parent)
-        {
-            Interlocked.CompareExchange(ref _parent, parent, null);
+            set
+            {
+                if (_inCache)
+                {
+                    if (_parent != null)
+                    {
+                        Interlocked.Decrement(ref _parent.ChildrenInCache);
+                    }
+                    _parent = value;
+                    if (value != null)
+                    {
+                        Interlocked.Increment(ref value.ChildrenInCache);
+                    }
+                }
+                else
+                {
+                    _parent = value;
+                }
+            }
         }
 
         internal Sector NextLink { get; set; }
 
         internal Sector PrevLink { get; set; }
 
-        public int Deepness
+        internal int Deepness
         {
             get
             {
@@ -53,7 +92,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             }
         }
 
-        public bool Allocated
+        internal bool Allocated
         {
             get { return Position > 0; }
         }
@@ -63,7 +102,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             get { return _data; }
         }
 
-        public int Length
+        internal int Length
         {
             get
             {
@@ -71,7 +110,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
                 return _data.Length;
             }
 
-            internal set
+            set
             {
                 Debug.Assert(value >= 0 && value <= KeyValueDB.MaxSectorSize);
                 Debug.Assert(value % KeyValueDB.AllocationGranularity == 0);
@@ -102,7 +141,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
             result.Ptr = Position;
             if (Position > 0)
             {
-                result.Ptr |= (uint) (Length / KeyValueDB.AllocationGranularity - 1);
+                result.Ptr |= (uint)(Length / KeyValueDB.AllocationGranularity - 1);
             }
             result.Checksum = Dirty ? 0 : Checksum.CalcFletcher32(Data, 0, (uint)Length);
             return result;

@@ -347,7 +347,6 @@ namespace BTDB.KVDBLayer.Implementation
                 }
                 _owner.NewState.KeyValuePairCount++;
                 if (_prefixKeyCount != -1) _prefixKeyCount++;
-                _owner.TruncateSectorCache(true);
                 return FindKeyResult.Created;
             }
             catch
@@ -947,7 +946,6 @@ namespace BTDB.KVDBLayer.Implementation
                 if (len > 0) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
                 if (len2 > 0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
                 _owner.PublishSector(newLeafSector);
-                _owner.TruncateSectorCache(true);
                 return newLeafSector.ToSectorPtr();
             }
             int downPtrCount;
@@ -968,7 +966,6 @@ namespace BTDB.KVDBLayer.Implementation
                 len2 -= usedLen2;
             }
             _owner.PublishSector(newSector);
-            _owner.TruncateSectorCache(true);
             return newSector.ToSectorPtr();
         }
 
@@ -981,7 +978,6 @@ namespace BTDB.KVDBLayer.Implementation
                 newLeafSector.SetLengthWithRound((int)len);
                 newLeafSector.Parent = parent;
                 _owner.PublishSector(newLeafSector);
-                _owner.TruncateSectorCache(true);
                 return newLeafSector.ToSectorPtr();
             }
             int downPtrCount;
@@ -997,7 +993,6 @@ namespace BTDB.KVDBLayer.Implementation
                 len -= bytesInDownLevel;
             }
             _owner.PublishSector(newSector);
-            _owner.TruncateSectorCache(true);
             return newSector.ToSectorPtr();
         }
 

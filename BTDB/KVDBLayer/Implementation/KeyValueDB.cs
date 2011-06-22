@@ -296,6 +296,7 @@ namespace BTDB.KVDBLayer.Implementation
                     foreach (var pair in _sectorCache)
                     {
                         var sector = pair.Value;
+                        if (sector.ChildrenInCache > 0) continue;
                         if (!inWriteTransaction && sector.InTransaction) continue;
                         sector.LastAccessTime = (ulong)Interlocked.Read(ref sector.InternalLastAccessTime);
                         sectors.Add(sector);
@@ -310,6 +311,7 @@ namespace BTDB.KVDBLayer.Implementation
                     {
                         if (!sector.Deleted)
                         {
+                            if (sector.ChildrenInCache > 0) continue;
                             if (!sector.Allocated) RealSectorAllocate(sector);
                             Debug.Assert(sector.Deleted == false);
                             if (sector.Dirty) FlushDirtySector(sector);
@@ -331,7 +333,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
-        private void InitEmptyDB()
+        void InitEmptyDB()
         {
             Array.Clear(_headerData, 0, TotalHeaderSize);
             _headerData[0] = (byte)'B';
@@ -1189,7 +1191,6 @@ namespace BTDB.KVDBLayer.Implementation
             BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
             sectorStack.Push(new InitAllocItem { Sector = newLeafSector, Level = 0 });
             PublishSector(newLeafSector);
-            TruncateSectorCache(true);
         }
 
         static int FindOfsInParent(Sector sector, Sector where)
@@ -1703,6 +1704,7 @@ namespace BTDB.KVDBLayer.Implementation
                 if (_sectorCache.TryGetValue(position & MaskOfPosition, out removedSector))
                 {
                     _sectorCache.Remove(position & MaskOfPosition);
+                    removedSector.InCache = false;
                     _sectorsInCache--;
                     _bytesInCache -= removedSector.Length;
                 }
@@ -1754,12 +1756,14 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 Debug.Assert(!_sectorCache.ContainsKey(newSector.Position));
                 _sectorCache.Add(newSector.Position, newSector);
+                newSector.InCache = true;
                 _bytesInCache += newSector.Length;
                 _sectorsInCache++;
             }
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
             NewSectorAddedToCache(_sectorsInCache, _bytesInCache);
+            TruncateSectorCache(true);
         }
 
         internal void UpdateLastAccess(Sector sector)
