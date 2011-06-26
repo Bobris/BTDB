@@ -24,6 +24,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
 
         internal bool InCache
         {
+            get { return _inCache; }
             set
             {
                 if (value == _inCache) return;
@@ -44,6 +45,7 @@ namespace BTDB.KVDBLayer.ImplementationDetails
                 _inCache = value;
             }
         }
+
         internal int ChildrenInCache;
 
         Sector _parent;

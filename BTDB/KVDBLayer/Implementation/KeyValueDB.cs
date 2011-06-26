@@ -137,7 +137,7 @@ namespace BTDB.KVDBLayer.Implementation
             get { return _newState; }
         }
 
-        internal void FixChildParentPointer(long childSectorPtr, Sector parent)
+        void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
             Sector res;
             using (_cacheLock.ReadLock())
@@ -183,7 +183,7 @@ namespace BTDB.KVDBLayer.Implementation
         {
             if (position <= 0) throw new BTDBException("Wrong data in db (negative position)");
             if (size <= 0 || size > MaxSectorSize / AllocationGranularity) throw new BTDBException("Wrong sector length");
-            TruncateSectorCache(inWriteTransaction);
+            TruncateSectorCache(inWriteTransaction, parent != null ? parent.Position : 0);
             lock (_readSectorLock)
             {
                 Sector sector;
@@ -250,6 +250,7 @@ namespace BTDB.KVDBLayer.Implementation
                     else
                     {
                         _sectorCache.Add(position, sector);
+                        sector.InCache = true;
                         _bytesInCache += size;
                         _sectorsInCache++;
                     }
@@ -263,7 +264,7 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
-        internal void TruncateSectorCache(bool inWriteTransaction)
+        internal void TruncateSectorCache(bool inWriteTransaction, long exceptSectorPos)
         {
             if (!ShouldAttemptCacheCompaction(_sectorsInCache, _bytesInCache)) return;
             if (_runningWriteCacheCompaction) return;
@@ -297,6 +298,7 @@ namespace BTDB.KVDBLayer.Implementation
                     {
                         var sector = pair.Value;
                         if (sector.ChildrenInCache > 0) continue;
+                        if (sector.Position == exceptSectorPos) continue;
                         if (!inWriteTransaction && sector.InTransaction) continue;
                         sector.LastAccessTime = (ulong)Interlocked.Read(ref sector.InternalLastAccessTime);
                         sectors.Add(sector);
@@ -314,6 +316,8 @@ namespace BTDB.KVDBLayer.Implementation
                             if (sector.ChildrenInCache > 0) continue;
                             if (!sector.Allocated) RealSectorAllocate(sector);
                             Debug.Assert(sector.Deleted == false);
+                            if (sector.ChildrenInCache > 0)
+                                continue;
                             if (sector.Dirty) FlushDirtySector(sector);
                             Debug.Assert(sector.Deleted == false);
                             if (sector.InTransaction) UnlinkFromInTransactionSectors(sector);
@@ -365,7 +369,7 @@ namespace BTDB.KVDBLayer.Implementation
             get { return _cacheSizeInMB; }
             set
             {
-                if (value < 1 || value > 1024) throw new ArgumentOutOfRangeException();
+                if (value < 0 || value > 1024) throw new ArgumentOutOfRangeException();
                 _cacheSizeInMB = value;
             }
         }
@@ -715,7 +719,7 @@ namespace BTDB.KVDBLayer.Implementation
             {
                 DetransactionalizeSector(_inTransactionSectorHeadLink);
             }
-            TruncateSectorCache(true);
+            TruncateSectorCache(true, 0);
             _readTrLinkHead.SpaceToReuse = _spaceDeallocatedInTransaction.CloneAndClear();
             _spaceAllocatedInTransaction.Clear();
             StoreStateToHeaderBuffer(_newState);
@@ -866,10 +870,11 @@ namespace BTDB.KVDBLayer.Implementation
                 clone.Type = sector.Type;
                 Array.Copy(sector.Data, clone.Data, clone.Length);
                 clone.Parent = newParent;
-                PublishSector(clone);
+                PublishSector(clone, true);
                 UpdatePositionOfSector(clone, sector, newParent);
                 DeallocateSector(sector);
                 UpdateCurrentParents(sector, clone, unlockStack);
+                TruncateSectorCache(true, clone.Position);
                 return clone;
             }
             bool foundBetter = false;
@@ -900,7 +905,7 @@ namespace BTDB.KVDBLayer.Implementation
             return sector;
         }
 
-        private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent, List<Sector> unlockStack)
+        private Sector ResizeSector(Sector sector, int newLength, Sector newParent, bool aUpdatePositionInParent, bool writeTruncate, List<Sector> unlockStack)
         {
             if (newLength < 0 || newLength > MaxSectorSize) throw new BTDBException("Sector cannot be bigger than MaxSectorSize");
             newLength = RoundToAllocationGranularity(newLength);
@@ -935,11 +940,12 @@ namespace BTDB.KVDBLayer.Implementation
             clone.Length = newLength;
             clone.Type = sector.Type;
             clone.Parent = newParent;
-            PublishSector(clone);
+            PublishSector(clone, false);
             if (aUpdatePositionInParent)
                 UpdatePositionOfSector(clone, sector, newParent);
             DeallocateSector(sector);
             UpdateCurrentParents(sector, clone, unlockStack);
+            TruncateSectorCache(writeTruncate, clone.Position);
             return clone;
         }
 
@@ -956,14 +962,19 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
+        internal Sector ResizeSectorWithUpdatePositionNoWriteTruncate(Sector sector, int newLength, Sector newParent, List<Sector> unlockStack)
+        {
+            return ResizeSector(sector, newLength, newParent, true, false, unlockStack);
+        }
+
         internal Sector ResizeSectorWithUpdatePosition(Sector sector, int newLength, Sector newParent, List<Sector> unlockStack)
         {
-            return ResizeSector(sector, newLength, newParent, true, unlockStack);
+            return ResizeSector(sector, newLength, newParent, true, true, unlockStack);
         }
 
         internal Sector ResizeSectorNoUpdatePosition(Sector sector, int newLength, Sector newParent, List<Sector> unlockStack)
         {
-            return ResizeSector(sector, newLength, newParent, false, unlockStack);
+            return ResizeSector(sector, newLength, newParent, false, true, unlockStack);
         }
 
         void UpdatePositionOfSector(Sector newSector, Sector oldSector, Sector inParent)
@@ -1018,19 +1029,22 @@ namespace BTDB.KVDBLayer.Implementation
                 if (sector.InTransaction)
                 {
                     sector.Deleted = true;
-                    LowLevelRemoveFromSectorCache(sector);
-                    if (!sector.Allocated)
+                    if (sector.InCache)
                     {
-                        UnlinkFromUnallocatedSectors(sector);
-                        return;
-                    }
-                    if (sector.Dirty)
-                    {
-                        UnlinkFromDirtySectors(sector);
-                    }
-                    else
-                    {
-                        UnlinkFromInTransactionSectors(sector);
+                        LowLevelRemoveFromSectorCache(sector);
+                        if (!sector.Allocated)
+                        {
+                            UnlinkFromUnallocatedSectors(sector);
+                            return;
+                        }
+                        if (sector.Dirty)
+                        {
+                            UnlinkFromDirtySectors(sector);
+                        }
+                        else
+                        {
+                            UnlinkFromInTransactionSectors(sector);
+                        }
                     }
                     _spaceAllocatedInTransaction.TryExclude((ulong)sector.Position, (ulong)sector.Length);
                 }
@@ -1157,7 +1171,7 @@ namespace BTDB.KVDBLayer.Implementation
                             SectorPtr.Pack(newParentSector.Data, 0, last.Sector.ToSectorPtr());
                             last.Sector.Parent = newParentSector;
                             sectorStack.Push(new InitAllocItem { Level = last.Level + 1, Children = 1, Sector = newParentSector });
-                            PublishSector(newParentSector);
+                            PublishSector(newParentSector, false);
                             break;
                         }
                         var last2 = sectorStack.Peek();
@@ -1190,7 +1204,8 @@ namespace BTDB.KVDBLayer.Implementation
             if (sectorStack.Count > 0) newLeafSector.Parent = sectorStack.Peek().Sector;
             BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
             sectorStack.Push(new InitAllocItem { Sector = newLeafSector, Level = 0 });
-            PublishSector(newLeafSector);
+            PublishSector(newLeafSector, false);
+            if (grans == MaxLeafAllocSectorGrans) TruncateSectorCache(true, newLeafSector.Position);
         }
 
         static int FindOfsInParent(Sector sector, Sector where)
@@ -1322,10 +1337,11 @@ namespace BTDB.KVDBLayer.Implementation
                     BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
                     SectorPtr.Pack(newParentSector.Data, 0, _newState.RootAllocPage);
                     SectorPtr.Pack(newParentSector.Data, PtrDownSize, newLeafSector.ToSectorPtr());
-                    PublishSector(newLeafSector);
-                    PublishSector(newParentSector);
                     FixChildParentPointer(_newState.RootAllocPage.Ptr, newParentSector);
                     _newState.RootAllocPage = newParentSector.ToSectorPtr();
+                    PublishSector(newParentSector, false);
+                    PublishSector(newLeafSector, false);
+                    TruncateSectorCache(true, 0);
                     posInGrans = gransInChild * childSectors;
                 }
                 _nextAllocStartInGrans = posInGrans + grans;
@@ -1514,22 +1530,24 @@ namespace BTDB.KVDBLayer.Implementation
                 BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
                 SectorPtr.Pack(newParentSector.Data, 0, childSectorPtr);
                 SectorPtr.Pack(newParentSector.Data, PtrDownSize, newLeafSector.ToSectorPtr());
-                PublishSector(newLeafSector);
-                PublishSector(newParentSector);
                 SectorPtr.Pack(sector.Data, i * PtrDownSize, newParentSector.ToSectorPtr());
                 FixChildParentPointer(childSectorPtr.Ptr, newParentSector);
+                PublishSector(newLeafSector, false);
+                PublishSector(newParentSector, false);
+                TruncateSectorCache(true, 0);
                 return startingGranOfChild + gransInChild2 * MaxChildren;
             }
             if (childSectors == MaxChildren) return -1;
             if (sector.Length < (childSectors + 1) * PtrDownSize)
             {
                 var oldData = sector.Data;
+                var oldSector = sector;
                 sector = ResizeSectorNoUpdatePosition(sector, (childSectors + 1) * PtrDownSize, sector.Parent, null);
-                sectorPtr = sector.ToSectorPtr();
-                Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
-                for (int j = 0; j < childSectors; j++)
+                if (oldSector != sector)
                 {
-                    FixChildParentPointer(PackUnpack.UnpackInt64LE(sector.Data, j * PtrDownSize), sector);
+                    sectorPtr = sector.ToSectorPtr();
+                    Array.Copy(oldData, 0, sector.Data, 0, oldData.Length);
+                    FixChildrenParentPointers(sector);
                 }
             }
             newLeafSector = NewSector();
@@ -1538,7 +1556,8 @@ namespace BTDB.KVDBLayer.Implementation
             newLeafSector.Parent = sector;
             BitArrayManipulation.SetBits(newLeafSector.Data, 0, grans);
             SectorPtr.Pack(sector.Data, childSectors * PtrDownSize, newLeafSector.ToSectorPtr());
-            PublishSector(newLeafSector);
+            PublishSector(newLeafSector, false);
+            TruncateSectorCache(true, 0);
             return gransInChild * childSectors;
         }
 
@@ -1749,7 +1768,7 @@ namespace BTDB.KVDBLayer.Implementation
             return result;
         }
 
-        internal void PublishSector(Sector newSector)
+        internal void PublishSector(Sector newSector, bool fixChildrenNeeded)
         {
             UpdateLastAccess(newSector);
             using (_cacheLock.WriteLock())
@@ -1763,8 +1782,59 @@ namespace BTDB.KVDBLayer.Implementation
             _commitNeeded = true;
             LinkToTailOfUnallocatedSectors(newSector);
             NewSectorAddedToCache(_sectorsInCache, _bytesInCache);
-            TruncateSectorCache(true);
+            if (fixChildrenNeeded)
+            {
+                FixChildrenParentPointers(newSector);
+            }
         }
+
+        internal void FixChildrenParentPointers(Sector parent)
+        {
+            switch (parent.Type)
+            {
+                case SectorType.BTreeParent:
+                    {
+                        var iter = new BTreeParentIterator(parent.Data);
+                        for (int i = 0; i <= iter.Count; i++)
+                        {
+                            var childSectorPos = iter.GetChildSectorPos(i);
+                            FixChildParentPointer(childSectorPos, parent);
+                        }
+                        break;
+                    }
+                case SectorType.BTreeChild:
+                    {
+                        var iter = new BTreeChildIterator(parent.Data);
+                        iter.MoveFirst();
+                        do
+                        {
+                            if (iter.HasKeySectorPtr)
+                                FixChildParentPointer(iter.KeySectorPos, parent);
+                            if (iter.HasValueSectorPtr)
+                                FixChildParentPointer(iter.ValueSectorPos, parent);
+                        } while (iter.MoveNext());
+                        break;
+                    }
+                case SectorType.DataChild:
+                case SectorType.AllocChild:
+                    break;
+                case SectorType.AllocParent:
+                case SectorType.DataParent:
+                    {
+                        var ptrCount = parent.Length / PtrDownSize;
+                        for (int i = 0; i < ptrCount; i++)
+                        {
+                            var sectorPos = PackUnpack.UnpackInt64LE(parent.Data, i * PtrDownSize);
+                            if (sectorPos == 0) break;
+                            FixChildParentPointer(sectorPos, parent);
+                        }
+                    }
+                    break;
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
 
         internal void UpdateLastAccess(Sector sector)
         {
@@ -1936,8 +2006,9 @@ namespace BTDB.KVDBLayer.Implementation
             }
         }
 
-        static void WhichSectorsToRemoveFromCache(List<Sector> choosen)
+        void WhichSectorsToRemoveFromCache(List<Sector> choosen)
         {
+            if (_cacheSizeInMB == 0) return; // Special case for Cache eviction hardening
             foreach (var sector in choosen)
             {
                 ulong price = sector.LastAccessTime;

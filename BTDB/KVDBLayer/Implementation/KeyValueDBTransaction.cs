@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using BTDB.KVDBLayer.Helpers;
 using BTDB.KVDBLayer.ImplementationDetails;
 using BTDB.KVDBLayer.Interface;
@@ -339,11 +340,15 @@ namespace BTDB.KVDBLayer.Implementation
                     var origsector = sector;
                     sector = _owner.ResizeSectorWithUpdatePosition(sector, iter.TotalLength + additionalLengthNeeded,
                                                                    sector.Parent, _currentKeySectorParents);
-                    if (sector != origsector) FixChildrenParentPointers(sector);
+                    if (sector != origsector)
+                    {
+                        Array.Copy(origsector.Data, sector.Data, origsector.Data.Length);
+                        _owner.FixChildrenParentPointers(sector);
+                    }
                     _currentKeySector = sector;
                     int insertOfs = iter.AddEntry(additionalLengthNeeded, sector.Data, _currentKeyIndexInLeaf);
-                    SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, insertOfs);
                     IncrementChildCountInBTreeParents(sector);
+                    SetBTreeChildKeyData(sector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, insertOfs);
                 }
                 _owner.NewState.KeyValuePairCount++;
                 if (_prefixKeyCount != -1) _prefixKeyCount++;
@@ -391,7 +396,6 @@ namespace BTDB.KVDBLayer.Implementation
             rightSector.SetLengthWithRound(BTreeChildIterator.HeaderSize + rightCount * BTreeChildIterator.HeaderForEntry + iter.TotalLength + additionalLengthNeeded - BTreeChildIterator.HeaderForEntry - currentPos);
             BTreeChildIterator.SetCountToSectorData(rightSector.Data, rightCount);
             rightSector.Parent = sector.Parent;
-            _owner.PublishSector(rightSector);
             int leftCount = splitIndex + (beforeNew ? 0 : 1);
             var leftSector = _owner.ResizeSectorWithUpdatePosition(sector, BTreeChildIterator.HeaderSize + leftCount * BTreeChildIterator.HeaderForEntry + currentPos - iter.FirstOffset, sector.Parent,
                                                                       _currentKeySectorParents);
@@ -427,21 +431,32 @@ namespace BTDB.KVDBLayer.Implementation
             }
             BTreeChildIterator.RecalculateHeader(leftSector.Data, leftCount);
             BTreeChildIterator.RecalculateHeader(rightSector.Data, rightCount);
-            FixChildrenParentPointers(leftSector);
-            FixChildrenParentPointers(rightSector);
-            SetBTreeChildKeyData(newKeySector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, setActualDataPos);
-            if (leftSector.Parent == null)
+            _owner.FixChildrenParentPointers(leftSector);
+            _owner.PublishSector(rightSector, true);
+            Interlocked.Increment(ref leftSector.ChildrenInCache);
+            Interlocked.Increment(ref rightSector.ChildrenInCache);
+            try
             {
-                CreateBTreeParentFromTwoLeafs(leftSector, rightSector);
+                _owner.TruncateSectorCache(true, 0);
+                SetBTreeChildKeyData(newKeySector, keyBuf, keyOfs, keyLen, valueBuf, valueOfs, valueLen, setActualDataPos);
+                if (leftSector.Parent == null)
+                {
+                    CreateBTreeParentFromTwoLeafs(leftSector, rightSector);
+                }
+                else
+                {
+                    iter = new BTreeChildIterator(rightSector.Data);
+                    iter.MoveFirst();
+                    if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, rightSector);
+                    int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? KeyValueDB.PtrDownSize : 0);
+                    AddToBTreeParent(leftSector, rightSector, iter.Data, iter.KeyLen, iter.KeyOffset,
+                                     keyLenInSector);
+                }
             }
-            else
+            finally
             {
-                iter = new BTreeChildIterator(rightSector.Data);
-                iter.MoveFirst();
-                if (iter.HasKeySectorPtr) ForceKeyFlush(iter.KeySectorPtr, iter.KeyLen - iter.KeyLenInline, rightSector);
-                int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? KeyValueDB.PtrDownSize : 0);
-                AddToBTreeParent(leftSector, rightSector, iter.Data, iter.KeyLen, iter.KeyOffset,
-                                 keyLenInSector);
+                Interlocked.Decrement(ref leftSector.ChildrenInCache);
+                Interlocked.Decrement(ref rightSector.ChildrenInCache);
             }
             UnlockUselessAndFixKeySectorParents(newKeySector, leftSector, rightSector);
             _currentKeySector = newKeySector;
@@ -528,10 +543,11 @@ namespace BTDB.KVDBLayer.Implementation
             bool splitting = true;
             if (!KeyValueDB.ShouldSplitBTreeParent(iter.TotalLength, additionalLengthNeeded, iter.Count + 1))
             {
-                parentSector = _owner.ResizeSectorWithUpdatePosition(parentSector,
-                                                                     iter.TotalLength + additionalLengthNeeded,
-                                                                     parentSector.Parent,
-                                                                     _currentKeySectorParents);
+                parentSector = _owner.ResizeSectorWithUpdatePositionNoWriteTruncate(
+                    parentSector,
+                    iter.TotalLength + additionalLengthNeeded,
+                    parentSector.Parent,
+                    _currentKeySectorParents);
                 splitting = false;
             }
             var mergedData = new byte[iter.TotalLength + additionalLengthNeeded];
@@ -575,7 +591,7 @@ namespace BTDB.KVDBLayer.Implementation
                 leftSector.Parent = parentSector;
                 rightSector.Parent = parentSector;
                 IncrementChildCountInBTreeParents(parentSector);
-                FixChildrenParentPointers(parentSector);
+                _owner.FixChildrenParentPointers(parentSector);
             }
             else
             {
@@ -617,17 +633,27 @@ namespace BTDB.KVDBLayer.Implementation
                     Array.Copy(mergedData, iter.ChildSectorPtrOffset, rightParentSector.Data, BTreeParentIterator.FirstChildSectorPtrOffset, KeyValueDB.PtrDownSize + 8);
                     Array.Copy(mergedData, iter.NextEntryOffset, rightParentSector.Data, rightFirstOffset, iter.TotalLength - iter.NextEntryOffset);
                     BTreeParentIterator.RecalculateHeader(rightParentSector.Data, rightCount);
-                    _owner.PublishSector(rightParentSector);
-                    FixChildrenParentPointers(leftParentSector);
-                    FixChildrenParentPointers(rightParentSector);
-                    int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? KeyValueDB.PtrDownSize : 0);
-                    if (leftParentSector.Parent == null)
+                    _owner.FixChildrenParentPointers(leftParentSector);
+                    _owner.PublishSector(rightParentSector, true);
+                    Interlocked.Increment(ref leftParentSector.ChildrenInCache);
+                    Interlocked.Increment(ref rightParentSector.ChildrenInCache);
+                    try
                     {
-                        CreateBTreeParentFromTwoChildren(leftParentSector, rightParentSector, iter.Data, iter.KeyLen, iter.KeyOffset, keyLenInSector);
+                        _owner.TruncateSectorCache(true, 0);
+                        int keyLenInSector = iter.KeyLenInline + (iter.HasKeySectorPtr ? KeyValueDB.PtrDownSize : 0);
+                        if (leftParentSector.Parent == null)
+                        {
+                            CreateBTreeParentFromTwoChildren(leftParentSector, rightParentSector, iter.Data, iter.KeyLen, iter.KeyOffset, keyLenInSector);
+                        }
+                        else
+                        {
+                            AddToBTreeParent(leftParentSector, rightParentSector, iter.Data, iter.KeyLen, iter.KeyOffset, keyLenInSector);
+                        }
                     }
-                    else
+                    finally
                     {
-                        AddToBTreeParent(leftParentSector, rightParentSector, iter.Data, iter.KeyLen, iter.KeyOffset, keyLenInSector);
+                        Interlocked.Decrement(ref leftParentSector.ChildrenInCache);
+                        Interlocked.Decrement(ref rightParentSector.ChildrenInCache);
                     }
                 }
                 finally
@@ -644,39 +670,6 @@ namespace BTDB.KVDBLayer.Implementation
                         }
                     }
                 }
-            }
-        }
-
-        void FixChildrenParentPointers(Sector parent)
-        {
-            Debug.Assert(IsWritting());
-            switch (parent.Type)
-            {
-                case SectorType.BTreeParent:
-                    {
-                        var iter = new BTreeParentIterator(parent.Data);
-                        for (int i = 0; i <= iter.Count; i++)
-                        {
-                            var childSectorPos = iter.GetChildSectorPos(i);
-                            _owner.FixChildParentPointer(childSectorPos, parent);
-                        }
-                        break;
-                    }
-                case SectorType.BTreeChild:
-                    {
-                        var iter = new BTreeChildIterator(parent.Data);
-                        iter.MoveFirst();
-                        do
-                        {
-                            if (iter.HasKeySectorPtr)
-                                _owner.FixChildParentPointer(iter.KeySectorPos, parent);
-                            if (iter.HasValueSectorPtr)
-                                _owner.FixChildParentPointer(iter.ValueSectorPos, parent);
-                        } while (iter.MoveNext());
-                        break;
-                    }
-                default:
-                    throw new InvalidOperationException();
             }
         }
 
@@ -706,7 +699,8 @@ namespace BTDB.KVDBLayer.Implementation
             leftSector.Parent = parentSector;
             rightSector.Parent = parentSector;
             _currentKeySectorParents.Insert(0, parentSector);
-            _owner.PublishSector(parentSector);
+            _owner.PublishSector(parentSector, false);
+            _owner.TruncateSectorCache(true, 0);
         }
 
         static ulong CalcKeysInSector(Sector sector)
@@ -755,7 +749,8 @@ namespace BTDB.KVDBLayer.Implementation
                     _owner.NewState.RootBTree.Ptr = newRootBTreeSector.Position;
                     _owner.NewState.RootBTreeLevels = 1;
                     _owner.NewState.KeyValuePairCount = 1;
-                    _owner.PublishSector(newRootBTreeSector);
+                    _owner.PublishSector(newRootBTreeSector, false);
+                    _owner.TruncateSectorCache(true, newRootBTreeSector.Position);
                     _currentKeySector = newRootBTreeSector;
                     _currentKeyIndexInLeaf = 0;
                     _currentKeyIndex = 0;
@@ -916,8 +911,7 @@ namespace BTDB.KVDBLayer.Implementation
             sectorDataOfs += keyLenInline;
             if (realKeyLen > BTreeChildIterator.MaxKeyLenInline)
             {
-                SectorPtr keySecPtr = CreateContentSector(_prefix, keyLenInline, _prefix.Length - usedPrefixLen, keyBuf, keyOfs + keyLenInline - usedPrefixLen, keyLen - keyLenInline + usedPrefixLen, inSector);
-                SectorPtr.Pack(sectorData, sectorDataOfs, keySecPtr);
+                CreateContentSector(_prefix, keyLenInline, _prefix.Length - usedPrefixLen, keyBuf, keyOfs + keyLenInline - usedPrefixLen, keyLen - keyLenInline + usedPrefixLen, inSector, sectorDataOfs);
                 sectorDataOfs += KeyValueDB.PtrDownSize;
             }
             if (valueLen <= 0) return;
@@ -925,17 +919,16 @@ namespace BTDB.KVDBLayer.Implementation
             sectorDataOfs += valueLenInline;
             if (realValueLen > BTreeChildIterator.MaxValueLenInline)
             {
-                SectorPtr valueSecPtr = CreateContentSector(valueBuf, valueOfs, realValueLen - valueLenInline, inSector);
-                SectorPtr.Pack(sectorData, sectorDataOfs, valueSecPtr);
+                CreateContentSector(valueBuf, valueOfs, realValueLen - valueLenInline, inSector, sectorDataOfs);
             }
         }
 
-        SectorPtr CreateContentSector(byte[] buf, int ofs, int len, Sector parent)
+        void CreateContentSector(byte[] buf, int ofs, int len, Sector parent, int ofsInParent)
         {
-            return CreateContentSector(buf, ofs, len, null, 0, 0, parent);
+            CreateContentSector(buf, ofs, len, null, 0, 0, parent, ofsInParent);
         }
 
-        SectorPtr CreateContentSector(byte[] buf, int ofs, int len, byte[] buf2, int ofs2, int len2, Sector parent)
+        void CreateContentSector(byte[] buf, int ofs, int len, byte[] buf2, int ofs2, int len2, Sector parent, int ofsInParent)
         {
             if (len + len2 <= KeyValueDB.MaxLeafDataSectorSize)
             {
@@ -945,8 +938,10 @@ namespace BTDB.KVDBLayer.Implementation
                 newLeafSector.Parent = parent;
                 if (len > 0) Array.Copy(buf, ofs, newLeafSector.Data, 0, len);
                 if (len2 > 0) Array.Copy(buf2, ofs2, newLeafSector.Data, len, len2);
-                _owner.PublishSector(newLeafSector);
-                return newLeafSector.ToSectorPtr();
+                _owner.PublishSector(newLeafSector, false);
+                Debug.Assert(parent.Dirty);
+                SectorPtr.Pack(parent.Data, ofsInParent, newLeafSector.ToSectorPtr());
+                return;
             }
             int downPtrCount;
             var bytesInDownLevel = (int)KeyValueDB.GetBytesInDownLevel(len + len2, out downPtrCount);
@@ -954,22 +949,23 @@ namespace BTDB.KVDBLayer.Implementation
             newSector.Type = SectorType.DataParent;
             newSector.SetLengthWithRound(downPtrCount * KeyValueDB.PtrDownSize);
             newSector.Parent = parent;
+            _owner.PublishSector(newSector, false);
+            Debug.Assert(parent.Dirty);
+            SectorPtr.Pack(parent.Data, ofsInParent, newSector.ToSectorPtr());
             for (int i = 0; i < downPtrCount; i++)
             {
                 var usedLen = Math.Min(len, bytesInDownLevel);
                 var usedLen2 = Math.Min(len2, bytesInDownLevel - usedLen);
-                SectorPtr sectorPtr = CreateContentSector(buf, ofs, usedLen, buf2, ofs2, usedLen2, newSector);
-                SectorPtr.Pack(newSector.Data, i * KeyValueDB.PtrDownSize, sectorPtr);
+                CreateContentSector(buf, ofs, usedLen, buf2, ofs2, usedLen2, newSector, i * KeyValueDB.PtrDownSize);
+                _owner.TruncateSectorCache(true, newSector.Position);
                 ofs += usedLen;
                 ofs2 += usedLen2;
                 len -= usedLen;
                 len2 -= usedLen2;
             }
-            _owner.PublishSector(newSector);
-            return newSector.ToSectorPtr();
         }
 
-        SectorPtr CreateContentSector(long len, Sector parent)
+        void CreateContentSector(long len, Sector parent, int ofsInParent)
         {
             if (len <= KeyValueDB.MaxLeafDataSectorSize)
             {
@@ -977,8 +973,10 @@ namespace BTDB.KVDBLayer.Implementation
                 newLeafSector.Type = SectorType.DataChild;
                 newLeafSector.SetLengthWithRound((int)len);
                 newLeafSector.Parent = parent;
-                _owner.PublishSector(newLeafSector);
-                return newLeafSector.ToSectorPtr();
+                _owner.PublishSector(newLeafSector, false);
+                Debug.Assert(parent.Dirty);
+                SectorPtr.Pack(parent.Data, ofsInParent, newLeafSector.ToSectorPtr());
+                return;
             }
             int downPtrCount;
             long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(len, out downPtrCount);
@@ -986,14 +984,15 @@ namespace BTDB.KVDBLayer.Implementation
             newSector.Type = SectorType.DataParent;
             newSector.SetLengthWithRound(downPtrCount * KeyValueDB.PtrDownSize);
             newSector.Parent = parent;
+            _owner.PublishSector(newSector, false);
+            Debug.Assert(parent.Dirty);
+            SectorPtr.Pack(parent.Data, ofsInParent, newSector.ToSectorPtr());
             for (int i = 0; i < downPtrCount; i++)
             {
-                SectorPtr sectorPtr = CreateContentSector(Math.Min(len, bytesInDownLevel), newSector);
-                SectorPtr.Pack(newSector.Data, i * KeyValueDB.PtrDownSize, sectorPtr);
+                CreateContentSector(Math.Min(len, bytesInDownLevel), newSector, i * KeyValueDB.PtrDownSize);
+                _owner.TruncateSectorCache(true, newSector.Position);
                 len -= bytesInDownLevel;
             }
-            _owner.PublishSector(newSector);
-            return newSector.ToSectorPtr();
         }
 
         void DeleteContentSector(SectorPtr sectorPtr, long len, Sector parent)
@@ -1267,10 +1266,10 @@ namespace BTDB.KVDBLayer.Implementation
                 len -= inlineEnd - inlineStart;
                 if (len == 0) return;
             }
-            iter.ValueSectorPtr = RecursiveWriteValue(iter.ValueSectorPtr, valueLen - valueLenInline, ofs, len, buf, bufOfs, _currentKeySector);
+            RecursiveWriteValue(iter.ValueSectorPtr, valueLen - valueLenInline, ofs, len, buf, bufOfs, _currentKeySector, iter.ValueSectorPtrOffset);
         }
 
-        SectorPtr RecursiveWriteValue(SectorPtr sectorPtr, long valueLen, long ofs, int len, byte[] buf, int bufOfs, Sector newParent)
+        void RecursiveWriteValue(SectorPtr sectorPtr, long valueLen, long ofs, int len, byte[] buf, int bufOfs, Sector newParent, int ofsInParent)
         {
             if (ofs < 0) throw new ArgumentOutOfRangeException("ofs");
             if (ofs + len > valueLen) throw new ArgumentOutOfRangeException("ofs");
@@ -1287,9 +1286,11 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     Array.Clear(dataSector.Data, (int)ofs, len);
                 }
-                return dataSector.ToSectorPtr();
+                SectorPtr.Pack(newParent.Data, ofsInParent, dataSector.ToSectorPtr());
+                return;
             }
             dataSector = _owner.DirtizeSector(dataSector, newParent, null);
+            SectorPtr.Pack(newParent.Data, ofsInParent, dataSector.ToSectorPtr());
             int downPtrCount;
             long bytesInDownLevel = KeyValueDB.GetBytesInDownLevel(valueLen, out downPtrCount);
             var i = (int)(ofs / bytesInDownLevel);
@@ -1320,11 +1321,9 @@ namespace BTDB.KVDBLayer.Implementation
                 {
                     newlen = (int)(downValueLen - newofs);
                 }
-                downSectorPtr = RecursiveWriteValue(downSectorPtr, downValueLen, newofs, newlen, buf, newBufOfs, dataSector);
-                SectorPtr.Pack(dataSector.Data, i * KeyValueDB.PtrDownSize, downSectorPtr);
+                RecursiveWriteValue(downSectorPtr, downValueLen, newofs, newlen, buf, newBufOfs, dataSector, i * KeyValueDB.PtrDownSize);
                 i++;
             }
-            return dataSector.ToSectorPtr();
         }
 
         public void SetValueSize(long newSize)
@@ -1352,26 +1351,20 @@ namespace BTDB.KVDBLayer.Implementation
             }
             long oldDeepSize = oldSize - oldInlineSize;
             long newDeepSize = newSize - newInlineSize;
-            var oldValueSectorPtr = new SectorPtr();
-            if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
+            if (oldDeepSize > 0 && newDeepSize == 0)
+                DeleteContentSector(iter.ValueSectorPtr, oldDeepSize, _currentKeySector);
             _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, newSize), _currentKeySector.Parent, _currentKeySectorParents);
             iter.ResizeValue(_currentKeySector.Data, newSize);
-            FixChildrenParentPointers(_currentKeySector);
+            _owner.FixChildrenParentPointers(_currentKeySector);
             if (oldDeepSize != newDeepSize)
             {
                 if (oldDeepSize == 0)
                 {
-                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                   CreateContentSector(newDeepSize, _currentKeySector));
+                    CreateContentSector(newDeepSize, _currentKeySector, iter.ValueSectorPtrOffset);
                 }
-                else if (newDeepSize == 0)
+                else if (newDeepSize != 0)
                 {
-                    DeleteContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector);
-                }
-                else
-                {
-                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                   ResizeContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector, newDeepSize, null, 0));
+                    ResizeContentSector(iter.ValueSectorPtr, oldDeepSize, _currentKeySector, iter.ValueSectorPtrOffset, newDeepSize, null, 0);
                 }
             }
             if (newEndContent.Length > 0) InternalWriteValue(newEndContentOfs, newEndContent.Length, newEndContent, 0);
@@ -1395,65 +1388,71 @@ namespace BTDB.KVDBLayer.Implementation
             int newInlineSize = BTreeChildIterator.CalcValueLenInline(len);
             long oldDeepSize = oldSize - oldInlineSize;
             int newDeepSize = len - newInlineSize;
-            var oldValueSectorPtr = new SectorPtr();
-            if (oldDeepSize > 0) oldValueSectorPtr = iter.ValueSectorPtr;
+            if (oldDeepSize > 0 && newDeepSize == 0)
+                DeleteContentSector(iter.ValueSectorPtr, oldDeepSize, _currentKeySector);
             _currentKeySector = _owner.ResizeSectorWithUpdatePosition(_currentKeySector, iter.TotalLength - iter.CurrentEntrySize + BTreeChildIterator.CalcEntrySize(iter.KeyLen, len), _currentKeySector.Parent, _currentKeySectorParents);
             iter.ResizeValue(_currentKeySector.Data, len);
-            FixChildrenParentPointers(_currentKeySector);
+            _owner.FixChildrenParentPointers(_currentKeySector);
             Array.Copy(buf, bufOfs + len - newInlineSize, _currentKeySector.Data, iter.ValueOffset, newInlineSize);
             if (oldDeepSize == 0)
             {
                 if (newDeepSize != 0)
                 {
-                    SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                    CreateContentSector(buf, bufOfs, newDeepSize, _currentKeySector));
+                    CreateContentSector(buf, bufOfs, newDeepSize, _currentKeySector, iter.ValueSectorPtrOffset);
                 }
             }
-            else if (newDeepSize == 0)
+            else if (newDeepSize != 0)
             {
-                DeleteContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector);
-            }
-            else
-            {
-                SectorPtr.Pack(_currentKeySector.Data, iter.ValueOffset + newInlineSize,
-                                ResizeContentSector(oldValueSectorPtr, oldDeepSize, _currentKeySector, newDeepSize, buf, bufOfs));
+                ResizeContentSector(iter.ValueSectorPtr, oldDeepSize, _currentKeySector, iter.ValueSectorPtrOffset, newDeepSize, buf, bufOfs);
             }
         }
 
-        SectorPtr ResizeContentSector(SectorPtr oldSectorPtr, long oldSize, Sector parentSector, long newSize, byte[] buf, int bufOfs)
+        void ResizeContentSector(SectorPtr oldSectorPtr, long oldSize, Sector parentSector, int ofsInParent, long newSize, byte[] buf, int bufOfs)
         {
             Debug.Assert(oldSize != 0 && newSize != 0);
             if (oldSize == newSize)
             {
                 if (buf != null)
                 {
-                    return RecursiveWriteValue(oldSectorPtr, newSize, 0, (int)newSize, buf, bufOfs, parentSector);
+                    RecursiveWriteValue(oldSectorPtr, newSize, 0, (int)newSize, buf, bufOfs, parentSector, ofsInParent);
+                    return;
                 }
-                _owner.FixChildParentPointer(oldSectorPtr.Ptr, parentSector);
-                return oldSectorPtr;
+                SectorPtr.Pack(parentSector.Data, ofsInParent, oldSectorPtr);
+                return;
             }
             int oldDownPtrCount;
             var oldBytesInDownLevel = KeyValueDB.GetBytesInDownLevel(oldSize, out oldDownPtrCount);
             int newDownPtrCount;
             var newBytesInDownLevel = KeyValueDB.GetBytesInDownLevel(newSize, out newDownPtrCount);
-            Sector sector = null;
+            Sector sector;
             if (oldBytesInDownLevel < newBytesInDownLevel)
             {
                 sector = _owner.NewSector();
                 sector.SetLengthWithRound(newDownPtrCount * KeyValueDB.PtrDownSize);
                 sector.Parent = parentSector;
                 sector.Type = SectorType.DataParent;
-                _owner.PublishSector(sector);
-                SectorPtr.Pack(sector.Data, 0, ResizeContentSector(oldSectorPtr, oldSize, sector, newBytesInDownLevel, buf, bufOfs));
+                SectorPtr.Pack(sector.Data, 0, oldSectorPtr);
+                _owner.PublishSector(sector, true);
+                SectorPtr.Pack(parentSector.Data, ofsInParent, sector.ToSectorPtr());
+                Interlocked.Increment(ref sector.ChildrenInCache);
+                try
+                {
+                    _owner.TruncateSectorCache(true, oldSectorPtr.Ptr);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref sector.ChildrenInCache);
+                }
+                ResizeContentSector(oldSectorPtr, oldSize, sector, 0, newBytesInDownLevel, buf, bufOfs);
                 for (int i = 1; i < newDownPtrCount; i++)
                 {
                     long downLevelSize = Math.Min(newSize - i * newBytesInDownLevel, newBytesInDownLevel);
-                    SectorPtr.Pack(sector.Data, i * KeyValueDB.PtrDownSize,
-                                   buf != null
-                                       ? CreateContentSector(buf, (int)(bufOfs + i * newBytesInDownLevel), (int)downLevelSize, sector)
-                                       : CreateContentSector(downLevelSize, sector));
+                    if (buf != null)
+                        CreateContentSector(buf, (int)(bufOfs + i * newBytesInDownLevel), (int)downLevelSize, sector, i * KeyValueDB.PtrDownSize);
+                    else
+                        CreateContentSector(downLevelSize, sector, i * KeyValueDB.PtrDownSize);
                 }
-                return sector.ToSectorPtr();
+                return;
             }
             if (oldBytesInDownLevel > newBytesInDownLevel)
             {
@@ -1464,11 +1463,13 @@ namespace BTDB.KVDBLayer.Implementation
                     DeleteContentSector(SectorPtr.Unpack(sector.Data, i * KeyValueDB.PtrDownSize), downLevelSize, sector);
                 }
                 _owner.DeallocateSector(sector);
-                return ResizeContentSector(SectorPtr.Unpack(sector.Data, 0), oldBytesInDownLevel, parentSector, newSize, buf, bufOfs);
+                ResizeContentSector(SectorPtr.Unpack(sector.Data, 0), oldBytesInDownLevel, parentSector, ofsInParent, newSize, buf, bufOfs);
+                return;
             }
             if (oldBytesInDownLevel == 1)
             {
-                return ResizeContentSectorChild(ref sector, oldSectorPtr, oldDownPtrCount, newDownPtrCount, parentSector, buf, bufOfs);
+                ResizeContentSectorChild(oldSectorPtr, oldDownPtrCount, newDownPtrCount, parentSector, ofsInParent, buf, bufOfs);
+                return;
             }
             sector = _owner.GetOrReadSector(oldSectorPtr, true, SectorTypeInit.DataParent, parentSector);
             SectorPtr lastSectorPtr;
@@ -1482,54 +1483,52 @@ namespace BTDB.KVDBLayer.Implementation
             var lastCommonPtrCount = Math.Min(oldDownPtrCount, newDownPtrCount) - 1;
             byte[] oldData = sector.Data;
             sector = _owner.ResizeSectorNoUpdatePosition(sector, newDownPtrCount * KeyValueDB.PtrDownSize, parentSector, null);
-            Array.Copy(oldData, 0, sector.Data, 0, (lastCommonPtrCount + 1) * KeyValueDB.PtrDownSize);
+            var commonLength = (lastCommonPtrCount + 1) * KeyValueDB.PtrDownSize;
+            Array.Copy(oldData, 0, sector.Data, 0, commonLength);
+            Array.Clear(sector.Data, commonLength, sector.Data.Length - commonLength);
+            SectorPtr.Pack(parentSector.Data, ofsInParent, sector.ToSectorPtr());
+            _owner.FixChildrenParentPointers(sector);
             if (buf != null)
             {
                 for (int i = 0; i < lastCommonPtrCount; i++)
                 {
                     lastSectorPtr = SectorPtr.Unpack(sector.Data, i * KeyValueDB.PtrDownSize);
                     lastOffset = i * newBytesInDownLevel;
-                    lastSectorPtr = RecursiveWriteValue(lastSectorPtr, newBytesInDownLevel, 0, (int)newBytesInDownLevel, buf, (int)(bufOfs + lastOffset), sector);
-                    SectorPtr.Pack(sector.Data, i * KeyValueDB.PtrDownSize, lastSectorPtr);
-                }
-            }
-            else
-            {
-                for (int i = 0; i < lastCommonPtrCount; i++)
-                {
-                    var lastSectorPos = PackUnpack.UnpackInt64LE(sector.Data, i * KeyValueDB.PtrDownSize);
-                    _owner.FixChildParentPointer(lastSectorPos, sector);
+                    RecursiveWriteValue(lastSectorPtr, newBytesInDownLevel, 0, (int)newBytesInDownLevel, buf, (int)(bufOfs + lastOffset), sector, i * KeyValueDB.PtrDownSize);
                 }
             }
             lastSectorPtr = SectorPtr.Unpack(sector.Data, lastCommonPtrCount * KeyValueDB.PtrDownSize);
             lastOffset = lastCommonPtrCount * newBytesInDownLevel;
-            lastSectorPtr = ResizeContentSector(lastSectorPtr, Math.Min(oldSize - lastOffset, oldBytesInDownLevel), sector, Math.Min(newSize - lastOffset, newBytesInDownLevel), buf, (int)(bufOfs + lastOffset));
-            SectorPtr.Pack(sector.Data, lastCommonPtrCount * KeyValueDB.PtrDownSize, lastSectorPtr);
+            ResizeContentSector(lastSectorPtr, Math.Min(oldSize - lastOffset, oldBytesInDownLevel), sector,
+                                lastCommonPtrCount * KeyValueDB.PtrDownSize,
+                                Math.Min(newSize - lastOffset, newBytesInDownLevel), buf, (int)(bufOfs + lastOffset));
             for (int i = oldDownPtrCount; i < newDownPtrCount; i++)
             {
                 lastOffset = i * newBytesInDownLevel;
-                lastSectorPtr = buf != null ?
-                                                CreateContentSector(buf, (int)(bufOfs + lastOffset), (int)Math.Min(newSize - lastOffset, newBytesInDownLevel), sector) :
-                                                                                                                                                                           CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector);
-                SectorPtr.Pack(sector.Data, i * KeyValueDB.PtrDownSize, lastSectorPtr);
+                if (buf != null)
+                    CreateContentSector(buf, (int)(bufOfs + lastOffset),
+                                        (int)Math.Min(newSize - lastOffset, newBytesInDownLevel), sector,
+                                        i * KeyValueDB.PtrDownSize);
+                else
+                    CreateContentSector(Math.Min(newSize - lastOffset, newBytesInDownLevel), sector,
+                                        i * KeyValueDB.PtrDownSize);
             }
-            return sector.ToSectorPtr();
         }
 
-        SectorPtr ResizeContentSectorChild(ref Sector sector, SectorPtr oldSectorPtr, int oldDownPtrCount, int newDownPtrCount, Sector parentSector, byte[] buf, int bufOfs)
+        void ResizeContentSectorChild(SectorPtr oldSectorPtr, int oldLength, int newLength, Sector parentSector, int ofsInParent, byte[] buf, int bufOfs)
         {
-            sector = _owner.GetOrReadSector(oldSectorPtr, true, SectorTypeInit.DataChild, parentSector);
+            var sector = _owner.GetOrReadSector(oldSectorPtr, true, SectorTypeInit.DataChild, parentSector);
             byte[] oldData = sector.Data;
-            sector = _owner.ResizeSectorNoUpdatePosition(sector, newDownPtrCount, parentSector, null);
+            sector = _owner.ResizeSectorNoUpdatePosition(sector, newLength, parentSector, null);
             if (buf == null)
             {
-                Array.Copy(oldData, 0, sector.Data, 0, Math.Min(oldDownPtrCount, newDownPtrCount));
+                Array.Copy(oldData, 0, sector.Data, 0, Math.Min(oldLength, newLength));
             }
             else
             {
-                Array.Copy(buf, bufOfs, sector.Data, 0, newDownPtrCount);
+                Array.Copy(buf, bufOfs, sector.Data, 0, newLength);
             }
-            return sector.ToSectorPtr();
+            SectorPtr.Pack(parentSector.Data, ofsInParent, sector.ToSectorPtr());
         }
 
         public void EraseCurrent()
@@ -1790,7 +1789,6 @@ namespace BTDB.KVDBLayer.Implementation
                 mergedSector.Type = SectorType.BTreeChild;
                 mergedSector.Parent = sector;
                 mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength - BTreeChildIterator.HeaderSize);
-                _owner.PublishSector(mergedSector);
                 var mergedCount = leftIter.Count + rightIter.Count;
                 BTreeChildIterator.SetCountToSectorData(mergedSector.Data, mergedCount);
                 var ofs = BTreeChildIterator.HeaderSize + BTreeChildIterator.HeaderForEntry * mergedCount;
@@ -1811,7 +1809,6 @@ namespace BTDB.KVDBLayer.Implementation
                 mergedSector.Type = SectorType.BTreeParent;
                 mergedSector.Parent = sector;
                 mergedSector.SetLengthWithRound(leftIter.TotalLength + rightIter.TotalLength + keyStorageLen);
-                _owner.PublishSector(mergedSector);
                 var mergedCount = leftIter.Count + rightIter.Count + 1;
                 BTreeParentIterator.SetCountToSectorData(mergedSector.Data, mergedCount);
                 Array.Copy(leftIter.Data, BTreeParentIterator.FirstChildSectorPtrOffset, mergedSector.Data,
@@ -1828,13 +1825,14 @@ namespace BTDB.KVDBLayer.Implementation
                 Array.Copy(rightIter.Data, rightIter.FirstOffset, mergedSector.Data, ofs, rightIter.TotalLength - rightIter.FirstOffset);
                 BTreeParentIterator.RecalculateHeader(mergedSector.Data, mergedCount);
             }
-            FixChildrenParentPointers(mergedSector);
+            _owner.PublishSector(mergedSector, true);
             _owner.DeallocateSector(leftSector);
+            _owner.DeallocateSector(rightSector);
             InternalBTreeParentEraseRange(ref sector, ref iter, mergeAroundIndex, mergeAroundIndex + 1);
             new BTreeParentIterator(sector.Data).SetChildSectorPtrWithKeyCount(mergeAroundIndex,
                                                                                mergedSector.ToSectorPtr(),
                                                                                mergedPairs);
-            _owner.DeallocateSector(rightSector);
+            _owner.TruncateSectorCache(true, 0);
         }
 
         int ApproximateLengthOfBTreeChild(SectorPtr childSectorPtr)
