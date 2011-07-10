@@ -106,5 +106,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 .Ldfld(ctx.DefaultFieldBuilder)
                 .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
         }
+
+        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        {
+        }
     }
 }

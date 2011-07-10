@@ -269,5 +269,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 .Ldfld(ctx.DefaultFieldBuilder)
                 .Call(typeof(ListDBObjectFieldHandler).GetMethod("SaverImpl").MakeGenericMethod(ctx.DefaultFieldBuilder.FieldType.GetGenericArguments()));
         }
+
+        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        {
+        }
     }
 }

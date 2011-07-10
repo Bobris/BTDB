@@ -17,5 +17,6 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         void CreatePropertyGetter(FieldHandlerCreateImpl ctx);
         void CreatePropertySetter(FieldHandlerCreateImpl ctx);
         void CreateSaver(FieldHandlerCreateImpl ctx);
+        void InformAboutDestinationHandler(IFieldHandler dstHandler);
     }
 }

@@ -381,10 +381,11 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    if (srcFieldInfo.Handler == destFieldInfo.Handler && srcFieldInfo.Handler.LoadToSameHandler(ilGenerator, ig => ig.Ldarg(2), ig => ig.Ldloc(0), _implType, destFieldInfo.Name))
+                    if (srcFieldInfo.Handler.GetType() == destFieldInfo.Handler.GetType() && srcFieldInfo.Handler.LoadToSameHandler(ilGenerator, ig => ig.Ldarg(2), ig => ig.Ldloc(0), _implType, destFieldInfo.Name))
                     {
                         continue;
                     }
+                    srcFieldInfo.Handler.InformAboutDestinationHandler(destFieldInfo.Handler);
                     var willLoad = srcFieldInfo.Handler.WillLoad();
                     var fieldInfo = _implType.GetField("_FieldStorage_" + destFieldInfo.Name);
                     var canConvertThrough = _tableInfoResolver.TypeConvertorGenerator.CanConvertThrough(willLoad, t => t == fieldInfo.FieldType);

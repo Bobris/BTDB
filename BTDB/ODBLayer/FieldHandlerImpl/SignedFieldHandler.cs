@@ -1,10 +1,11 @@
 ﻿using System;
 using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer.FieldHandlerImpl
 {
-    public class SignedFieldHandler : SimpleFieldHandlerBase
+    public class SignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public SignedFieldHandler(): base(
             EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()),
@@ -18,13 +19,19 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             get { return "Signed"; }
         }
 
-        public override bool IsCompatibleWith(Type type)
+
+        public new static bool IsCompatibleWith(Type type)
         {
             if (type == typeof(sbyte)) return true;
             if (type == typeof(short)) return true;
             if (type == typeof(int)) return true;
             if (type == typeof(long)) return true;
             return false;
+        }
+
+        bool IFieldHandler.IsCompatibleWith(Type type)
+        {
+            return IsCompatibleWith(type);
         }
     }
 }

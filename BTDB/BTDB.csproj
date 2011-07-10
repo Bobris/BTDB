@@ -48,6 +48,8 @@
     <Compile Include="KVDBLayer\ReaderWriters\AbstractBufferedReader.cs" />
     <Compile Include="KVDBLayer\Helpers\KeyValueDBExportImporter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\FreeSpaceAllocatorOptimizer.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\ByteArrayReader.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\ByteArrayWriter.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBKeyReader.cs" />
     <Compile Include="KVDBLayer\Implementation\KeyValueDBTransaction.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBValueReader.cs" />
@@ -66,6 +68,7 @@
     <Compile Include="KVDBLayer\ReplayProxy\KVReplayOperation.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\EnumFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ListDBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />

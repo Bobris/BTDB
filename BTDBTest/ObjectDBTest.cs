@@ -427,6 +427,12 @@ namespace BTDBTest
             }
         }
 
+        public enum TestEnum
+        {
+            Item1,
+            Item2
+        }
+
         public interface IVariousFieldTypes : IDBObject
         {
             string StringField { get; set; }
@@ -446,6 +452,7 @@ namespace BTDBTest
             decimal DecimalField { get; set; }
             Guid GuidField { get; set; }
             DateTime DateTimeField { get; set; }
+            TestEnum EnumField { get; set; }
         }
 
         [Test]
@@ -471,6 +478,7 @@ namespace BTDBTest
                 Assert.AreEqual(0m, o.DecimalField);
                 Assert.AreEqual(new DateTime(), o.DateTimeField);
                 Assert.AreEqual(new Guid(), o.GuidField);
+                Assert.AreEqual(TestEnum.Item1, o.EnumField);
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -489,6 +497,7 @@ namespace BTDBTest
                 o.DecimalField = 123456.789m;
                 o.DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local);
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
+                o.EnumField = TestEnum.Item2;
 
                 AssertContent(o);
                 tr.Commit();
@@ -519,6 +528,7 @@ namespace BTDBTest
             Assert.AreEqual(123456.789m, o.DecimalField);
             Assert.AreEqual(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
             Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
+            Assert.AreEqual(TestEnum.Item2, o.EnumField);
         }
 
         [Test]

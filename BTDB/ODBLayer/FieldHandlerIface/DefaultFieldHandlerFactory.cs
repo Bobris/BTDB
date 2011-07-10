@@ -23,6 +23,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         public IFieldHandler CreateFromProperty(string tableName, Type clientType, PropertyInfo property)
         {
             var propertyType = property.PropertyType;
+            if (EnumFieldHandler.IsCompatibleWith(propertyType)) return new EnumFieldHandler(propertyType);
             foreach (var fieldHandler in FieldHandlers)
             {
                 if (fieldHandler.IsCompatibleWith(propertyType)) return fieldHandler;
@@ -36,6 +37,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
             {
                 if (fieldHandler.Name == handlerName) return fieldHandler;
             }
+            if (handlerName == EnumFieldHandler.HandlerName) return new EnumFieldHandler(configuration);
             return null;
         }
     }

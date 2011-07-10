@@ -86,5 +86,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 generateConversion(il);
             });
         }
+
+        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        {
+        }
     }
 }
