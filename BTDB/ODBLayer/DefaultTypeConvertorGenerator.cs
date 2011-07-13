@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using BTDB.IL;
+using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ODBLayer
 {
@@ -57,16 +58,17 @@ namespace BTDB.ODBLayer
             {
                 return generator;
             }
+            if (from.IsEnum && to.IsEnum) return GenerateEnum2EnumConversion(from, to);
             return null;
         }
 
-        public Type CanConvertThrough(Type from, Func<Type, bool> toFilter)
+        Action<ILGenerator> GenerateEnum2EnumConversion(Type from, Type to)
         {
-            if (toFilter(from)) return from;
-            foreach (var conversion in _conversions)
+            var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
+            var tocfg = new EnumFieldHandler.EnumConfiguration(to);
+            if (fromcfg == tocfg)
             {
-                if (conversion.Key.Item1 != from) continue;
-                if (toFilter(conversion.Key.Item2)) return conversion.Key.Item2;
+                return GenerateConversion(from.GetEnumUnderlyingType(), to.GetEnumUnderlyingType());
             }
             return null;
         }

@@ -388,12 +388,12 @@ namespace BTDB.ODBLayer
                     srcFieldInfo.Handler.InformAboutDestinationHandler(destFieldInfo.Handler);
                     var willLoad = srcFieldInfo.Handler.WillLoad();
                     var fieldInfo = _implType.GetField("_FieldStorage_" + destFieldInfo.Name);
-                    var canConvertThrough = _tableInfoResolver.TypeConvertorGenerator.CanConvertThrough(willLoad, t => t == fieldInfo.FieldType);
-                    if (canConvertThrough != null)
+                    var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.FieldType);
+                    if (converterGenerator != null)
                     {
                         ilGenerator.Ldloc(0);
                         srcFieldInfo.Handler.LoadToWillLoad(ilGenerator, ig => ig.Ldarg(2));
-                        _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, canConvertThrough)(ilGenerator);
+                        converterGenerator(ilGenerator);
                         ilGenerator.Stfld(fieldInfo);
                         continue;
                     }

@@ -586,5 +586,60 @@ namespace BTDBTest
             }
         }
 
+        public enum TestEnumUlong : ulong
+        {
+            Item1,
+            Item2
+        }
+
+        public enum TestEnumEx
+        {
+            Item1,
+            Item2,
+            Item3
+        }
+
+        public interface ITestEnum
+        {
+            TestEnum E { get; set; }
+        }
+
+        public interface ITestEnumUlong
+        {
+            TestEnumUlong E { get; set; }
+        }
+
+        public interface ITestEnumEx
+        {
+            TestEnumEx E { get; set; }
+        }
+
+        [Test]
+        public void EnumUpgrade()
+        {
+            TestEnum2TestEnumUlong(TestEnum.Item1, TestEnumUlong.Item1);
+            TestEnum2TestEnumUlong(TestEnum.Item2, TestEnumUlong.Item2);
+        }
+
+        void TestEnum2TestEnumUlong(TestEnum from, TestEnumUlong to)
+        {
+            ReopenDB();
+            var testEnumObjDBName = _db.RegisterType(typeof(ITestEnum));
+            using (var tr = _db.StartTransaction())
+            {
+                var e = tr.Insert<ITestEnum>();
+                e.E = from;
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(ITestEnumUlong), testEnumObjDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var e = tr.Enumerate<ITestEnumUlong>().First();
+                Assert.AreEqual(to, e.E);
+                (e as IDBObject).Delete();
+                tr.Commit();
+            }
+        }
     }
 }
