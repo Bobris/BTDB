@@ -72,6 +72,16 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ListDBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
+    <Compile Include="ServiceLayer\ChannelStatus.cs" />
+    <Compile Include="ServiceLayer\IChannel.cs" />
+    <Compile Include="ServiceLayer\IServer.cs" />
+    <Compile Include="ServiceLayer\IService.cs" />
+    <Compile Include="ServiceLayer\IServiceClient.cs" />
+    <Compile Include="ServiceLayer\IServiceServer.cs" />
+    <Compile Include="ServiceLayer\PipedTwoChannels.cs" />
+    <Compile Include="ServiceLayer\Service.cs" />
+    <Compile Include="ServiceLayer\TcpipClient.cs" />
+    <Compile Include="ServiceLayer\TcpipServer.cs" />
     <Compile Include="StreamLayer\MemoryPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />
