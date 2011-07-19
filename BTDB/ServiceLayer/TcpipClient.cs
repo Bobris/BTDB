@@ -1,33 +1,46 @@
 ﻿using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
+using BTDB.KVDBLayer.Helpers;
 
 namespace BTDB.ServiceLayer
 {
     public class TcpipClient : IChannel
     {
+        readonly TcpipServer.Client _client;
+
+        public TcpipClient(IPEndPoint endPoint, Action<IChannel> statusChanged)
+        {
+            var socket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            _client = new TcpipServer.Client(socket);
+            _client.StatusChanged = statusChanged;
+            _client.Connect(endPoint);
+        }
+
         public void Dispose()
         {
-            throw new NotImplementedException();
+            _client.Dispose();
         }
 
         public Action<IChannel> StatusChanged
         {
-            set { throw new NotImplementedException(); }
+            set { _client.StatusChanged = value; }
         }
 
-        public void Send(byte[] data)
+        public void Send(ArraySegment<byte> data)
         {
-            throw new NotImplementedException();
+            _client.Send(data);
         }
 
-        public Task<byte[]> Receive()
+        public Task<ArraySegment<byte>> Receive()
         {
-            throw new NotImplementedException();
+            return _client.Receive();
         }
 
         public ChannelStatus Status
         {
-            get { throw new NotImplementedException(); }
+            get { return _client.Status; }
         }
     }
 }

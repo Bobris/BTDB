@@ -21,10 +21,10 @@ namespace BTDB.ServiceLayer
         {
             readonly PipedTwoChannels _owner;
             readonly object _sync = new object();
-            readonly BlockingCollection<byte[]> _producerConsumer = new BlockingCollection<byte[]>(10);
+            readonly BlockingCollection<ArraySegment<byte>> _producerConsumer = new BlockingCollection<ArraySegment<byte>>(10);
             Channel _other;
             Action<IChannel> _statusChanged;
-            TaskCompletionSource<byte[]> _receiveSource;
+            TaskCompletionSource<ArraySegment<byte>> _receiveSource;
             ChannelStatus _channelStatus;
 
             public Channel(PipedTwoChannels owner)
@@ -48,12 +48,12 @@ namespace BTDB.ServiceLayer
                 set { _statusChanged = value; }
             }
 
-            public void Send(byte[] data)
+            public void Send(ArraySegment<byte> data)
             {
                 _other.Receive(data);
             }
 
-            void Receive(byte[] data)
+            void Receive(ArraySegment<byte> data)
             {
                 _producerConsumer.Add(data);
                 lock (_sync)
@@ -67,15 +67,15 @@ namespace BTDB.ServiceLayer
                 }
             }
 
-            public Task<byte[]> Receive()
+            public Task<ArraySegment<byte>> Receive()
             {
-                Task<byte[]> result;
+                Task<ArraySegment<byte>> result;
                 lock (_sync)
                 {
                     if (_receiveSource != null) throw new InvalidOperationException("Only one receive could be in fight");
-                    _receiveSource = new TaskCompletionSource<byte[]>();
+                    _receiveSource = new TaskCompletionSource<ArraySegment<byte>>();
                     result = _receiveSource.Task;
-                    byte[] data;
+                    ArraySegment<byte> data;
                     if (_producerConsumer.TryTake(out data))
                     {
                         _receiveSource.SetResult(data);

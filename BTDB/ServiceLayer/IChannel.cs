@@ -6,8 +6,8 @@ namespace BTDB.ServiceLayer
     public interface IChannel : IDisposable
     {
         Action<IChannel> StatusChanged { set; }
-        void Send(byte[] data);
-        Task<byte[]> Receive();
+        void Send(ArraySegment<byte> data);
+        Task<ArraySegment<byte>> Receive();
         ChannelStatus Status { get; }
     }
 }
