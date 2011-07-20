@@ -61,11 +61,12 @@ namespace BTDB.ServiceLayer
             readonly Socket _socket;
             ChannelStatus _status;
             Action<IChannel> _statusChanged;
-            TaskCompletionSource<ArraySegment<byte>> _receiveSource;
 
             public Client(Socket socket)
             {
                 _socket = socket;
+                _socket.Blocking = true;
+                _socket.ReceiveTimeout = 0;
                 _status = ChannelStatus.Connecting;
                 _statusChanged = _ => { };
             }
@@ -77,8 +78,7 @@ namespace BTDB.ServiceLayer
                     _status = ChannelStatus.Disconnecting;
                     _statusChanged(this);
                     _socket.Shutdown(SocketShutdown.Both);
-                    _status = ChannelStatus.Disconnected;
-                    _statusChanged(this);
+                    SignalDisconnected();
                 }
                 _socket.Dispose();
             }
@@ -94,7 +94,17 @@ namespace BTDB.ServiceLayer
                 var vuBuf = new byte[vuLen];
                 int o = 0;
                 PackUnpack.PackVUInt(vuBuf, ref o, (uint)data.Count);
-                _socket.Send(new[] { new ArraySegment<byte>(vuBuf), data });
+                SocketError socketError;
+                _socket.Send(new[] { new ArraySegment<byte>(vuBuf), data }, SocketFlags.None, out socketError);
+                if (socketError != SocketError.Success)
+                {
+                    if (!IsConnected())
+                    {
+                        SignalDisconnected();
+                        return;
+                    }
+                    throw new SocketException((int) socketError);
+                }
             }
 
             public Task<ArraySegment<byte>> Receive()
@@ -102,16 +112,42 @@ namespace BTDB.ServiceLayer
                 return Task<ArraySegment<byte>>.Factory.StartNew(() =>
                     {
                         var buf = new byte[9];
-                        if (_socket.Receive(buf, 0, 1, SocketFlags.None) != 1) throw new InvalidDataException();
+                        SocketError errorCode;
+                        if (_socket.Receive(buf, 0, 1, SocketFlags.None, out errorCode) != 1) ReceiveFailed();
                         var packLen = PackUnpack.LengthVUInt(buf, 0);
-                        if (packLen > 1 && _socket.Receive(buf, 1, packLen - 1, SocketFlags.None) != packLen - 1) throw new InvalidDataException();
+                        if (packLen > 1 && _socket.Receive(buf, 1, packLen - 1, SocketFlags.None, out errorCode) != packLen - 1) ReceiveFailed();
                         int o = 0;
                         var len = PackUnpack.UnpackVUInt(buf, ref o);
                         if (len > int.MaxValue) throw new InvalidDataException();
                         var result = new byte[len];
-                        if (len != 0 && _socket.Receive(result) != (int)len) throw new InvalidDataException();
+                        if (len != 0 && _socket.Receive(result, 0, (int)len, SocketFlags.None, out errorCode) != (int)len) ReceiveFailed();
                         return new ArraySegment<byte>(result);
                     });
+            }
+
+            bool IsConnected()
+            {
+                try
+                {
+                    return !(_socket.Poll(1, SelectMode.SelectRead) && _socket.Available == 0);
+                }
+                catch (SocketException) { return false; }
+            }
+
+            void ReceiveFailed()
+            {
+                if (!IsConnected())
+                {
+                    SignalDisconnected();
+                    throw new OperationCanceledException();
+                }
+                throw new InvalidDataException();
+            }
+
+            void SignalDisconnected()
+            {
+                _status = ChannelStatus.Disconnected;
+                _statusChanged(this);
             }
 
             public ChannelStatus Status
@@ -136,8 +172,7 @@ namespace BTDB.ServiceLayer
                                               }
                                               catch (Exception)
                                               {
-                                                  _status = ChannelStatus.Disconnected;
-                                                  _statusChanged(this);
+                                                  SignalDisconnected();
                                               }
                                           });
             }

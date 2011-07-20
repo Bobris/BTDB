@@ -15,7 +15,7 @@ namespace BTDBTest
         [Test]
         public void StartAndStopListeningWorks()
         {
-            var server=new TcpipServer(_ipEndPoint);
+            var server = new TcpipServer(_ipEndPoint);
             server.StartListening();
             server.StopListening();
         }
@@ -23,17 +23,15 @@ namespace BTDBTest
         [Test]
         public void ConnectNothereFails()
         {
-            var e = new ManualResetEvent(false);
+            var e = new AutoResetEvent(false);
             ChannelStatus status = ChannelStatus.Connecting;
-            var client = new TcpipClient(_ipEndPoint,
-                ch =>
-                    {
-                        status = ch.Status;
-                        e.Set();
-                    }
-                );
+            var client = new TcpipClient(_ipEndPoint, ch =>
+                {
+                    status = ch.Status;
+                    e.Set();
+                });
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.AreEqual(ChannelStatus.Disconnected,status);
+            Assert.AreEqual(ChannelStatus.Disconnected, status);
         }
 
         [Test]
@@ -43,31 +41,34 @@ namespace BTDBTest
             var e = new AutoResetEvent(false);
             var e2 = new AutoResetEvent(false);
             var status2 = ChannelStatus.Connecting;
+            IChannel clientOnServer = null;
             server.NewClient = ch =>
-                                   {
-                                       ch.StatusChanged = ch2 =>
-                                                              {
-                                                                  status2 = ch2.Status;
-                                                                  e2.Set();
-                                                              };
-                                   };
+                {
+                    clientOnServer = ch;
+                    ch.StatusChanged = ch2 =>
+                        {
+                            status2 = ch2.Status;
+                            e2.Set();
+                        };
+                };
             server.StartListening();
 
             var status = ChannelStatus.Connecting;
-            var client = new TcpipClient(_ipEndPoint,
-                ch =>
+            var client = new TcpipClient(_ipEndPoint, ch =>
                 {
                     status = ch.Status;
                     e.Set();
-                }
-                );
+                });
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.AreEqual(ChannelStatus.Connected, status);
             Assert.AreEqual(ChannelStatus.Connected, status2);
             client.Dispose();
+            clientOnServer.Receive().ContinueWith(t => Assert.True(t.IsFaulted)).Wait(TimeSpan.FromSeconds(10));
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
+            Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.AreEqual(ChannelStatus.Disconnected, status);
+            Assert.AreEqual(ChannelStatus.Disconnected, status2);
             server.StopListening();
         }
     }
