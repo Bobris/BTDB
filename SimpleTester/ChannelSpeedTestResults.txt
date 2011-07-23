@@ -1,0 +1,13 @@
+TcpIp C/S in same process
+
+Echo send in 109.94 s which is 9095.89 messages of size 8192 per second
+Echo recv in 109.94 s which is 9095.88 messages of size 8192 per second
+Min 114.2us Avg 431.5us Max 4998607.7us Stdev 19984.8us Count 1000000
+
+Echo send in 33.0937 s which is 30217.2 messages of size 1024 per second
+Echo recv in 33.0946 s which is 30216.4 messages of size 1024 per second
+Min 88.0us Avg 860.5us Max 9920.7us Stdev 195.1us Count 1000000
+
+Echo send in 23.4387 s which is 42664.5 messages of size 8 per second
+Echo recv in 23.5029 s which is 42547.9 messages of size 8 per second
+Min 6664.3us Avg 67704.2us Max 101037.7us Stdev 7344.1us Count 1000000

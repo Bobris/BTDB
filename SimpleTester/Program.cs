@@ -8,8 +8,9 @@ namespace SimpleTester
     {
         static void Main(string[] args)
         {
-            //new KeyValueDBReplayer("bug.log").CreateSource();
-            new SpeedTest1().Test();
+            //new KeyValueDBReplayer("bug.log").Replay();
+            //new SpeedTest1().Test();
+            new ChannelSpeedTest().Run(args);
         }
     }
 }

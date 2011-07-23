@@ -66,7 +66,7 @@ namespace BTDB.ServiceLayer
             {
                 _socket = socket;
                 _socket.Blocking = true;
-                _socket.ReceiveTimeout = 0;
+                _socket.ReceiveTimeout = -1;
                 _status = ChannelStatus.Connecting;
                 _statusChanged = _ => { };
             }
@@ -103,7 +103,7 @@ namespace BTDB.ServiceLayer
                         SignalDisconnected();
                         return;
                     }
-                    throw new SocketException((int) socketError);
+                    throw new SocketException((int)socketError);
                 }
             }
 
@@ -113,16 +113,39 @@ namespace BTDB.ServiceLayer
                     {
                         var buf = new byte[9];
                         SocketError errorCode;
-                        if (_socket.Receive(buf, 0, 1, SocketFlags.None, out errorCode) != 1) ReceiveFailed();
+                        Receive(buf, 0, 1);
                         var packLen = PackUnpack.LengthVUInt(buf, 0);
-                        if (packLen > 1 && _socket.Receive(buf, 1, packLen - 1, SocketFlags.None, out errorCode) != packLen - 1) ReceiveFailed();
+                        if (packLen > 1) Receive(buf, 1, packLen - 1);
                         int o = 0;
                         var len = PackUnpack.UnpackVUInt(buf, ref o);
                         if (len > int.MaxValue) throw new InvalidDataException();
                         var result = new byte[len];
-                        if (len != 0 && _socket.Receive(result, 0, (int)len, SocketFlags.None, out errorCode) != (int)len) ReceiveFailed();
+                        if (len != 0) Receive(result, 0, (int)len);
                         return new ArraySegment<byte>(result);
                     });
+            }
+
+            void Receive(byte[] buf, int ofs, int len)
+            {
+                while (len > 0)
+                {
+                    SocketError errorCode;
+                    var received = _socket.Receive(buf, ofs, len, SocketFlags.None, out errorCode);
+                    if (errorCode != SocketError.Success)
+                    {
+                        throw new InvalidDataException();
+                    }
+                    ofs += received;
+                    len -= received;
+                    if (received == 0)
+                    {
+                        if (!IsConnected())
+                        {
+                            SignalDisconnected();
+                            throw new OperationCanceledException();
+                        }
+                    }
+                }
             }
 
             bool IsConnected()
@@ -132,16 +155,6 @@ namespace BTDB.ServiceLayer
                     return !(_socket.Poll(1, SelectMode.SelectRead) && _socket.Available == 0);
                 }
                 catch (SocketException) { return false; }
-            }
-
-            void ReceiveFailed()
-            {
-                if (!IsConnected())
-                {
-                    SignalDisconnected();
-                    throw new OperationCanceledException();
-                }
-                throw new InvalidDataException();
             }
 
             void SignalDisconnected()
