@@ -63,14 +63,30 @@ namespace SimpleTester
             void Shutdown();
         }
 
+        public class ReadLine : ITestRun
+        {
+            public void Setup(string[] parameters)
+            {
+            }
+
+            public void Run()
+            {
+                Console.WriteLine("Press Enter to shutdown");
+                Console.ReadLine();
+            }
+
+            public void Shutdown()
+            {
+            }
+        }
+
         public class EchoServer : ITestRun
         {
             IServer _server;
 
             public void Setup(string[] parameters)
             {
-                _server = new TcpipServer(new IPEndPoint(IPAddress.Any, 12345));
-                _server.NewClient = OnNewClient;
+                _server = new TcpipServer(new IPEndPoint(IPAddress.Any, 12345)) { NewClient = OnNewClient };
                 _server.StartListening();
             }
 
@@ -164,6 +180,114 @@ namespace SimpleTester
             public void Shutdown()
             {
                 _client.Dispose();
+            }
+        }
+
+        public class SendClient : ITestRun
+        {
+            int _messageLen;
+            int _messageCount;
+            IChannel _client;
+            readonly Stopwatch _stopwatch = new Stopwatch();
+
+            public void Setup(string[] parameters)
+            {
+                _messageLen = 1024;
+                _messageCount = 1000;
+                if (parameters.Length > 0) _messageLen = int.Parse(parameters[0]);
+                if (parameters.Length > 1) _messageCount = int.Parse(parameters[1]);
+            }
+
+            public void Run()
+            {
+                _client = new TcpipClient(new IPEndPoint(IPAddress.Loopback, 12345), ch => { });
+                while (_client.Status != ChannelStatus.Connected)
+                {
+                    if (_client.Status == ChannelStatus.Disconnected)
+                    {
+                        Console.WriteLine("EchoClient cannot connect to server");
+                    }
+                    Thread.Yield();
+                }
+                _stopwatch.Start();
+                var message = new byte[_messageLen];
+                for (int i = 0; i < _messageCount; i++)
+                {
+                    PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
+                    _client.Send(new ArraySegment<byte>(message));
+                }
+                var timeSpan = _stopwatch.Elapsed;
+                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Send in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
+            }
+
+            public void Shutdown()
+            {
+                _client.Dispose();
+            }
+        }
+
+        public class RecvServer : ITestRun
+        {
+            IServer _server;
+            int _messageLen;
+            int _messageCount;
+            IChannel _client;
+            readonly Stopwatch _stopwatch = new Stopwatch();
+            readonly TimeStatCalculator _stats = new TimeStatCalculator();
+            int _receiveCounter;
+
+            public void Setup(string[] parameters)
+            {
+                _messageLen = 1024;
+                _messageCount = 1000;
+                if (parameters.Length > 0) _messageLen = int.Parse(parameters[0]);
+                if (parameters.Length > 1) _messageCount = int.Parse(parameters[1]);
+                _server = new TcpipServer(new IPEndPoint(IPAddress.Any, 12345)) { NewClient = OnNewClient };
+                _server.StartListening();
+            }
+
+            void OnNewClient(IChannel channel)
+            {
+                _client = channel;
+                _stopwatch.Start();
+                Receive();
+            }
+
+            public void Run()
+            {
+                while (_receiveCounter != _messageCount && (_client == null || _client.Status != ChannelStatus.Disconnected)) Thread.Sleep(100);
+                Thread.Sleep(100);
+            }
+
+            void Receive()
+            {
+                _client.Receive().ContinueWith(t =>
+                {
+                    if (t.IsFaulted) return;
+                    var message = t.Result;
+                    if (message.Count != _messageLen)
+                    {
+                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", t.Result.Count, _messageLen));
+                    }
+                    var ticks = Stopwatch.GetTimestamp();
+                    ticks -= PackUnpack.UnpackInt64LE(message.Array, message.Offset);
+                    _stats.Record(ticks);
+                    _receiveCounter++;
+                    if (_receiveCounter == _messageCount)
+                    {
+                        var timeSpan = _stopwatch.Elapsed;
+                        Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Recv in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
+                        Console.WriteLine(_stats.ToString());
+                        _client.Dispose();
+                        return;
+                    }
+                    Receive();
+                });
+            }
+
+            public void Shutdown()
+            {
+                _server.StopListening();
             }
         }
 

@@ -1,5 +1,7 @@
+First Implementation - with Task<ArraySegment> OnReceive
 TcpIp C/S in same process
 
+EchoServer EchoClient=8192=1000000
 Echo send in 109.94 s which is 9095.89 messages of size 8192 per second
 Echo recv in 109.94 s which is 9095.88 messages of size 8192 per second
 Min 114.2us Avg 431.5us Max 4998607.7us Stdev 19984.8us Count 1000000
@@ -11,3 +13,30 @@ Min 88.0us Avg 860.5us Max 9920.7us Stdev 195.1us Count 1000000
 Echo send in 23.4387 s which is 42664.5 messages of size 8 per second
 Echo recv in 23.5029 s which is 42547.9 messages of size 8 per second
 Min 6664.3us Avg 67704.2us Max 101037.7us Stdev 7344.1us Count 1000000
+
+SendClient=8192=1000000 RecvServer=8192=1000000
+Recv in 43.5531 s which is 22960.5 messages of size 8192 per second
+Send in 43.5542 s which is 22959.9 messages of size 8192 per second
+Min 33.7us Avg 44.0us Max 13774.5us Stdev 25.9us Count 1000000
+
+Send in 15.2854 s which is 65422 messages of size 1024 per second
+Recv in 15.2842 s which is 65426.8 messages of size 1024 per second
+Min 11.2us Avg 23.5us Max 14272.3us Stdev 68.1us Count 1000000
+
+Recv in 14.2816 s which is 70020.4 messages of size 8 per second
+Send in 14.2829 s which is 70013.7 messages of size 8 per second
+Min 9.7us Avg 28.6us Max 16937.6us Stdev 296.3us Count 1000000
+
+TcpIp C/S in different process
+
+EchoServer ReadLine
+EchoClient=1024=1000000
+Echo send in 42.9279 s which is 23294.9 messages of size 1024 per second
+Echo recv in 42.9288 s which is 23294.4 messages of size 1024 per second
+Min 62.6us Avg 1139.1us Max 19819.1us Stdev 151.4us Count 1000000
+
+RecvServer=1024=1000000
+SendClient=1024=1000000
+Send in 16.1715 s which is 61837.2 messages of size 1024 per second
+Recv in 16.1703 s which is 61841.8 messages of size 1024 per second
+Min 12.4us Avg 224.2us Max 15176.1us Stdev 204.8us Count 1000000
