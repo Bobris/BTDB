@@ -1,13 +1,13 @@
 ﻿using System;
-using System.Threading.Tasks;
+using BTDB.Buffer;
 
 namespace BTDB.ServiceLayer
 {
     public interface IChannel : IDisposable
     {
         Action<IChannel> StatusChanged { set; }
-        void Send(ArraySegment<byte> data);
-        Task<ArraySegment<byte>> Receive();
+        void Send(ByteBuffer data);
+        IObservable<ByteBuffer> OnReceive { get; }
         ChannelStatus Status { get; }
     }
 }

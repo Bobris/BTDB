@@ -1,4 +1,6 @@
 First Implementation - with Task<ArraySegment> OnReceive
+========================================================
+
 TcpIp C/S in same process
 
 EchoServer EchoClient=8192=1000000
@@ -40,3 +42,48 @@ SendClient=1024=1000000
 Send in 16.1715 s which is 61837.2 messages of size 1024 per second
 Recv in 16.1703 s which is 61841.8 messages of size 1024 per second
 Min 12.4us Avg 224.2us Max 15176.1us Stdev 204.8us Count 1000000
+
+After Rx redesign
+=================
+
+TcpIp C/S in same process
+
+EchoServer EchoClient=8192=1000000
+Echo send in 80.0294 s which is 12495.4 messages of size 8192 per second
+Echo recv in 80.0296 s which is 12495.4 messages of size 8192 per second
+Min 108.6us Avg 288.6us Max 4997091.2us Stdev 11173.1us Count 1000000
+
+Echo send in 23.1914 s which is 43119.5 messages of size 1024 per second
+Echo recv in 23.1919 s which is 43118.5 messages of size 1024 per second
+Min 29.6us Avg 574.1us Max 10860.4us Stdev 226.8us Count 1000000
+
+Echo send in 10.3792 s which is 96346.8 messages of size 8 per second
+Echo recv in 10.4182 s which is 95985.7 messages of size 8 per second
+Min 4294.3us Avg 28869.2us Max 49116.1us Stdev 4916.7us Count 1000000
+
+SendClient=8192=1000000 RecvServer=8192=1000000
+Recv in 43.6977 s which is 22884.5 messages of size 8192 per second
+Send in 43.6994 s which is 22883.6 messages of size 8192 per second
+Min 34.1us Avg 43.6us Max 14280.1us Stdev 29.6us Count 1000000
+
+Send in 15.3874 s which is 64988.2 messages of size 1024 per second
+Recv in 15.3857 s which is 64995.5 messages of size 1024 per second
+Min 11.2us Avg 17.5us Max 15179.4us Stdev 47.5us Count 1000000
+
+Send in 14.2782 s which is 70037 messages of size 8 per second
+Recv in 14.2765 s which is 70045.2 messages of size 8 per second
+Min 9.7us Avg 20.7us Max 14969.7us Stdev 204.9us Count 1000000
+
+TcpIp C/S in different process
+
+EchoServer ReadLine
+EchoClient=1024=1000000
+Echo send in 31.6127 s which is 31632.8 messages of size 1024 per second
+Echo recv in 31.6133 s which is 31632.3 messages of size 1024 per second
+Min 28.5us Avg 863.2us Max 4994781.6us Stdev 40873.5us Count 1000000
+
+RecvServer=1024=1000000
+SendClient=1024=1000000
+Send in 14.8815 s which is 67197.7 messages of size 1024 per second
+Recv in 14.8796 s which is 67206.2 messages of size 1024 per second
+Min 10.5us Avg 18.1us Max 16977.0us Stdev 70.0us Count 1000000

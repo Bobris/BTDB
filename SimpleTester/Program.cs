@@ -1,4 +1,5 @@
-﻿using BTDB.KVDBLayer.Implementation;
+﻿using System;
+using BTDB.KVDBLayer.Implementation;
 using BTDB.KVDBLayer.Helpers;
 using BTDB.StreamLayer;
 

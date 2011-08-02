@@ -5,6 +5,8 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
+using BTDB.Buffer;
 using BTDB.KVDBLayer.Helpers;
 using BTDB.ServiceLayer;
 
@@ -92,12 +94,7 @@ namespace SimpleTester
 
             static void OnNewClient(IChannel channel)
             {
-                channel.Receive().ContinueWith(t =>
-                    {
-                        if (t.IsFaulted) return;
-                        channel.Send(t.Result);
-                        OnNewClient(channel);
-                    });
+                channel.OnReceive.Subscribe(channel.Send);
             }
 
             public void Run()
@@ -144,7 +141,7 @@ namespace SimpleTester
                 for (int i = 0; i < _messageCount; i++)
                 {
                     PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
-                    _client.Send(new ArraySegment<byte>(message));
+                    _client.Send(ByteBuffer.NewSync(message));
                 }
                 var timeSpan = _stopwatch.Elapsed;
                 Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Echo send in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
@@ -154,16 +151,14 @@ namespace SimpleTester
 
             void Receive()
             {
-                _client.Receive().ContinueWith(t =>
+                _client.OnReceive.Subscribe(message=>
                     {
-                        if (t.IsFaulted) return;
-                        var message = t.Result;
-                        if (message.Count != _messageLen)
+                        if (message.Length != _messageLen)
                         {
-                            throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", t.Result.Count, _messageLen));
+                            throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
                         }
                         var ticks = Stopwatch.GetTimestamp();
-                        ticks -= PackUnpack.UnpackInt64LE(message.Array, message.Offset);
+                        ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);
                         _stats.Record(ticks);
                         _receiveCounter++;
                         if (_receiveCounter == _messageCount)
@@ -171,9 +166,7 @@ namespace SimpleTester
                             var timeSpan = _stopwatch.Elapsed;
                             Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Echo recv in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
                             Console.WriteLine(_stats.ToString());
-                            return;
                         }
-                        Receive();
                     });
             }
 
@@ -214,7 +207,7 @@ namespace SimpleTester
                 for (int i = 0; i < _messageCount; i++)
                 {
                     PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
-                    _client.Send(new ArraySegment<byte>(message));
+                    _client.Send(ByteBuffer.NewSync(message));
                 }
                 var timeSpan = _stopwatch.Elapsed;
                 Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Send in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
@@ -261,16 +254,14 @@ namespace SimpleTester
 
             void Receive()
             {
-                _client.Receive().ContinueWith(t =>
+                _client.OnReceive.Subscribe(message =>
                 {
-                    if (t.IsFaulted) return;
-                    var message = t.Result;
-                    if (message.Count != _messageLen)
+                    if (message.Length != _messageLen)
                     {
-                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", t.Result.Count, _messageLen));
+                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
                     }
                     var ticks = Stopwatch.GetTimestamp();
-                    ticks -= PackUnpack.UnpackInt64LE(message.Array, message.Offset);
+                    ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);
                     _stats.Record(ticks);
                     _receiveCounter++;
                     if (_receiveCounter == _messageCount)
@@ -278,10 +269,7 @@ namespace SimpleTester
                         var timeSpan = _stopwatch.Elapsed;
                         Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Recv in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
                         Console.WriteLine(_stats.ToString());
-                        _client.Dispose();
-                        return;
                     }
-                    Receive();
                 });
             }
 

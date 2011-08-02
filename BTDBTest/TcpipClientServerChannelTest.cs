@@ -63,10 +63,12 @@ namespace BTDBTest
             Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.AreEqual(ChannelStatus.Connected, status);
             Assert.AreEqual(ChannelStatus.Connected, status2);
+            bool completed = false;
+            clientOnServer.OnReceive.Subscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () => completed = true);
             client.Dispose();
-            clientOnServer.Receive().ContinueWith(t => Assert.True(t.IsFaulted)).Wait(TimeSpan.FromSeconds(10));
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
+            Assert.True(completed);
             Assert.AreEqual(ChannelStatus.Disconnected, status);
             Assert.AreEqual(ChannelStatus.Disconnected, status2);
             server.StopListening();

@@ -6,7 +6,7 @@ namespace BTDB.Buffer
     {
         byte[] _buffer;
         uint _offset;
-        int _length;
+        readonly int _length;
 
         public static ByteBuffer NewAsync(byte[] buffer)
         {
@@ -55,6 +55,11 @@ namespace BTDB.Buffer
             Array.Copy(_buffer, Offset, copy, 0, _length);
             _buffer = copy;
             _offset = 0;
+        }
+
+        internal ArraySegment<byte> ToArraySegment()
+        {
+            return new ArraySegment<byte>(Buffer, Offset, Length);
         }
     }
 }

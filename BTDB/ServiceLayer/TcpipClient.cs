@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using BTDB.Buffer;
 using BTDB.KVDBLayer.Helpers;
 
 namespace BTDB.ServiceLayer
@@ -28,14 +29,14 @@ namespace BTDB.ServiceLayer
             set { _client.StatusChanged = value; }
         }
 
-        public void Send(ArraySegment<byte> data)
+        public void Send(ByteBuffer data)
         {
             _client.Send(data);
         }
 
-        public Task<ArraySegment<byte>> Receive()
+        public IObservable<ByteBuffer> OnReceive
         {
-            return _client.Receive();
+            get { return _client.OnReceive; }
         }
 
         public ChannelStatus Status

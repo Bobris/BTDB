@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Threading.Tasks;
-using System.Collections.Concurrent;
+using System.Reactive.Subjects;
+using BTDB.Buffer;
 
 namespace BTDB.ServiceLayer
 {
@@ -11,25 +11,21 @@ namespace BTDB.ServiceLayer
 
         public PipedTwoChannels()
         {
-            _first = new Channel(this);
-            _second = new Channel(this);
+            _first = new Channel();
+            _second = new Channel();
             _first.Other = _second;
             _second.Other = _first;
         }
 
         class Channel : IChannel
         {
-            readonly PipedTwoChannels _owner;
-            readonly object _sync = new object();
-            readonly BlockingCollection<ArraySegment<byte>> _producerConsumer = new BlockingCollection<ArraySegment<byte>>(10);
             Channel _other;
+            readonly Subject<ByteBuffer> _receiver = new Subject<ByteBuffer>();
             Action<IChannel> _statusChanged;
-            TaskCompletionSource<ArraySegment<byte>> _receiveSource;
             ChannelStatus _channelStatus;
 
-            public Channel(PipedTwoChannels owner)
+            public Channel()
             {
-                _owner = owner;
                 _channelStatus = ChannelStatus.Disconnected;
             }
 
@@ -39,6 +35,8 @@ namespace BTDB.ServiceLayer
                 {
                     _channelStatus = ChannelStatus.Disconnected;
                     _statusChanged(this);
+                    _receiver.OnCompleted();
+                    _receiver.Dispose();
                 }
                 _other.Dispose();
             }
@@ -48,41 +46,14 @@ namespace BTDB.ServiceLayer
                 set { _statusChanged = value; }
             }
 
-            public void Send(ArraySegment<byte> data)
+            public void Send(ByteBuffer data)
             {
-                _other.Receive(data);
+                _other._receiver.OnNext(data);
             }
 
-            void Receive(ArraySegment<byte> data)
+            public IObservable<ByteBuffer> OnReceive
             {
-                _producerConsumer.Add(data);
-                lock (_sync)
-                {
-                    if (_receiveSource != null)
-                    {
-                        _receiveSource.SetResult(_producerConsumer.Take());
-                        _receiveSource = null;
-                        return;
-                    }
-                }
-            }
-
-            public Task<ArraySegment<byte>> Receive()
-            {
-                Task<ArraySegment<byte>> result;
-                lock (_sync)
-                {
-                    if (_receiveSource != null) throw new InvalidOperationException("Only one receive could be in fight");
-                    _receiveSource = new TaskCompletionSource<ArraySegment<byte>>();
-                    result = _receiveSource.Task;
-                    ArraySegment<byte> data;
-                    if (_producerConsumer.TryTake(out data))
-                    {
-                        _receiveSource.SetResult(data);
-                        _receiveSource = null;
-                    }
-                }
-                return result;
+                get { return _receiver; }
             }
 
             public ChannelStatus Status
