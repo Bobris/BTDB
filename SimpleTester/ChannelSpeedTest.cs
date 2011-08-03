@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -107,14 +108,99 @@ namespace SimpleTester
             }
         }
 
+        class Sender
+        {
+            readonly int _messageLen;
+            readonly int _messageCount;
+            readonly IChannel _client;
+            TimeSpan _elapsedTime;
+
+            public Sender(int messageLen, int messageCount, IChannel client)
+            {
+                _messageLen = messageLen;
+                _client = client;
+                _messageCount = messageCount;
+            }
+
+            public void MassSend()
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var message = new byte[_messageLen];
+                for (int i = 0; i < _messageCount; i++)
+                {
+                    PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
+                    _client.Send(ByteBuffer.NewSync(message));
+                }
+                _elapsedTime = stopwatch.Elapsed;
+            }
+
+            public string SummaryInfo(string caption)
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{3} in {0:G6} s which is {1:G6} messages of size {2} per second",
+                    _elapsedTime.TotalSeconds, _messageCount / _elapsedTime.TotalSeconds, _messageLen, caption);
+            }
+        }
+
+        class Receiver
+        {
+            readonly int _messageLen;
+            readonly int _messageCount;
+            IChannel _client;
+            readonly TimeStatCalculator _stats = new TimeStatCalculator();
+            readonly Stopwatch _stopwatch = new Stopwatch();
+            readonly TaskCompletionSource<Unit> _finished = new TaskCompletionSource<Unit>();
+            TimeSpan _elapsedTime;
+            int _receiveCounter;
+            IDisposable _unlinker;
+
+            public Receiver(int messageLen, int messageCount)
+            {
+                _messageLen = messageLen;
+                _messageCount = messageCount;
+            }
+
+            public void StartReceive(IChannel client)
+            {
+                _client = client;
+                _stopwatch.Start();
+                _unlinker = _client.OnReceive.Subscribe(message =>
+                {
+                    if (message.Length != _messageLen)
+                    {
+                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
+                    }
+                    var ticks = Stopwatch.GetTimestamp();
+                    ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);
+                    _stats.Record(ticks);
+                    _receiveCounter++;
+                    if (_receiveCounter == _messageCount)
+                    {
+                        _elapsedTime = _stopwatch.Elapsed;
+                        _finished.TrySetResult(Unit.Default);
+                    }
+                });
+
+            }
+
+            public void WaitTillFinish()
+            {
+                _finished.Task.Wait();
+                _unlinker.Dispose();
+            }
+
+            public string SummaryInfo(string caption)
+            {
+                return string.Format(CultureInfo.InvariantCulture, "{3} in {0:G6} s which is {1:G6} messages of size {2} per second{4}{5}", _elapsedTime.TotalSeconds, _messageCount / _elapsedTime.TotalSeconds, _messageLen, caption, Environment.NewLine, _stats);
+            }
+
+        }
+
         public class EchoClient : ITestRun
         {
             int _messageLen;
             int _messageCount;
             IChannel _client;
-            readonly Stopwatch _stopwatch = new Stopwatch();
-            readonly TimeStatCalculator _stats = new TimeStatCalculator();
-            int _receiveCounter;
 
             public void Setup(string[] parameters)
             {
@@ -135,39 +221,13 @@ namespace SimpleTester
                     }
                     Thread.Yield();
                 }
-                _stopwatch.Start();
-                Receive();
-                var message = new byte[_messageLen];
-                for (int i = 0; i < _messageCount; i++)
-                {
-                    PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
-                    _client.Send(ByteBuffer.NewSync(message));
-                }
-                var timeSpan = _stopwatch.Elapsed;
-                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Echo send in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
-                while (_receiveCounter != _messageCount && _client.Status != ChannelStatus.Disconnected) Thread.Sleep(100);
-                Thread.Sleep(100);
-            }
-
-            void Receive()
-            {
-                _client.OnReceive.Subscribe(message=>
-                    {
-                        if (message.Length != _messageLen)
-                        {
-                            throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
-                        }
-                        var ticks = Stopwatch.GetTimestamp();
-                        ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);
-                        _stats.Record(ticks);
-                        _receiveCounter++;
-                        if (_receiveCounter == _messageCount)
-                        {
-                            var timeSpan = _stopwatch.Elapsed;
-                            Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Echo recv in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
-                            Console.WriteLine(_stats.ToString());
-                        }
-                    });
+                var sender = new Sender(_messageLen, _messageCount, _client);
+                var receiver = new Receiver(_messageLen, _messageCount);
+                receiver.StartReceive(_client);
+                sender.MassSend();
+                receiver.WaitTillFinish();
+                Console.WriteLine(sender.SummaryInfo("Echo send"));
+                Console.WriteLine(receiver.SummaryInfo("Echo recv"));
             }
 
             public void Shutdown()
@@ -181,7 +241,6 @@ namespace SimpleTester
             int _messageLen;
             int _messageCount;
             IChannel _client;
-            readonly Stopwatch _stopwatch = new Stopwatch();
 
             public void Setup(string[] parameters)
             {
@@ -202,15 +261,9 @@ namespace SimpleTester
                     }
                     Thread.Yield();
                 }
-                _stopwatch.Start();
-                var message = new byte[_messageLen];
-                for (int i = 0; i < _messageCount; i++)
-                {
-                    PackUnpack.PackInt64LE(message, 0, Stopwatch.GetTimestamp());
-                    _client.Send(ByteBuffer.NewSync(message));
-                }
-                var timeSpan = _stopwatch.Elapsed;
-                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Send in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
+                var sender = new Sender(_messageLen, _messageCount, _client);
+                sender.MassSend();
+                Console.WriteLine(sender.SummaryInfo("Send"));
             }
 
             public void Shutdown()
@@ -224,10 +277,7 @@ namespace SimpleTester
             IServer _server;
             int _messageLen;
             int _messageCount;
-            IChannel _client;
-            readonly Stopwatch _stopwatch = new Stopwatch();
-            readonly TimeStatCalculator _stats = new TimeStatCalculator();
-            int _receiveCounter;
+            Receiver _receiver;
 
             public void Setup(string[] parameters)
             {
@@ -237,45 +287,53 @@ namespace SimpleTester
                 if (parameters.Length > 1) _messageCount = int.Parse(parameters[1]);
                 _server = new TcpipServer(new IPEndPoint(IPAddress.Any, 12345)) { NewClient = OnNewClient };
                 _server.StartListening();
+                _receiver = new Receiver(_messageLen, _messageCount);
             }
 
             void OnNewClient(IChannel channel)
             {
-                _client = channel;
-                _stopwatch.Start();
-                Receive();
+                _receiver.StartReceive(channel);
             }
 
             public void Run()
             {
-                while (_receiveCounter != _messageCount && (_client == null || _client.Status != ChannelStatus.Disconnected)) Thread.Sleep(100);
-                Thread.Sleep(100);
-            }
-
-            void Receive()
-            {
-                _client.OnReceive.Subscribe(message =>
-                {
-                    if (message.Length != _messageLen)
-                    {
-                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
-                    }
-                    var ticks = Stopwatch.GetTimestamp();
-                    ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);
-                    _stats.Record(ticks);
-                    _receiveCounter++;
-                    if (_receiveCounter == _messageCount)
-                    {
-                        var timeSpan = _stopwatch.Elapsed;
-                        Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "Recv in {0:G6} s which is {1:G6} messages of size {2} per second", timeSpan.TotalSeconds, _messageCount / timeSpan.TotalSeconds, _messageLen));
-                        Console.WriteLine(_stats.ToString());
-                    }
-                });
+                _receiver.WaitTillFinish();
+                Console.WriteLine(_receiver.SummaryInfo("Recv"));
             }
 
             public void Shutdown()
             {
                 _server.StopListening();
+            }
+        }
+
+        public class PipeEcho : ITestRun
+        {
+            const int MessageCount = 50000000;
+            PipedTwoChannels _twoChannels;
+
+            public void Setup(string[] parameters)
+            {
+            }
+
+            public void Run()
+            {
+                _twoChannels = new PipedTwoChannels();
+                _twoChannels.Second.OnReceive.Subscribe(_twoChannels.Second.Send);
+                _twoChannels.Connect();
+                const int messageLen = 1024;
+                var sender = new Sender(messageLen, MessageCount, _twoChannels.First);
+                var receiver = new Receiver(messageLen, MessageCount);
+                receiver.StartReceive(_twoChannels.First);
+                sender.MassSend();
+                receiver.WaitTillFinish();
+                Console.WriteLine(sender.SummaryInfo("PipeEcho send"));
+                Console.WriteLine(receiver.SummaryInfo("PipeEcho recv"));
+                _twoChannels.Disconnect();
+            }
+
+            public void Shutdown()
+            {
             }
         }
 

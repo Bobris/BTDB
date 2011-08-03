@@ -20,8 +20,8 @@ namespace BTDB.ServiceLayer
         class Channel : IChannel
         {
             Channel _other;
-            readonly Subject<ByteBuffer> _receiver = new Subject<ByteBuffer>();
-            Action<IChannel> _statusChanged;
+            readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
+            Action<IChannel> _statusChanged = ch => { };
             ChannelStatus _channelStatus;
 
             public Channel()
@@ -36,9 +36,8 @@ namespace BTDB.ServiceLayer
                     _channelStatus = ChannelStatus.Disconnected;
                     _statusChanged(this);
                     _receiver.OnCompleted();
-                    _receiver.Dispose();
+                    _other.Dispose();
                 }
-                _other.Dispose();
             }
 
             public Action<IChannel> StatusChanged
@@ -63,7 +62,8 @@ namespace BTDB.ServiceLayer
 
             internal Channel Other
             {
-                set {
+                set
+                {
                     _other = value;
                 }
             }
