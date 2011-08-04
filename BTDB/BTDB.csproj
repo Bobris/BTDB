@@ -77,7 +77,7 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\ListDBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
     <Compile Include="ServiceLayer\ChannelStatus.cs" />
-    <Compile Include="ServiceLayer\FastSubject.cs" />
+    <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="ServiceLayer\IChannel.cs" />
     <Compile Include="ServiceLayer\IServer.cs" />
     <Compile Include="ServiceLayer\IService.cs" />
