@@ -95,6 +95,7 @@
     <Compile Include="KeyValueDBReplayer.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RxSpeedTest.cs" />
     <Compile Include="SpeedTest1.cs" />
   </ItemGroup>
   <ItemGroup>

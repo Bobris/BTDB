@@ -135,6 +135,9 @@ namespace BTDB.Reactive
             _current = DisposedSubjectMarker;
         }
 
+// disable invalid warning about using volatile inside Interlocked.CompareExchange
+#pragma warning disable 420
+
         public void OnCompleted()
         {
             IObserver<T> original;
@@ -142,9 +145,7 @@ namespace BTDB.Reactive
             {
                 original = _current;
                 if (original is IStoppedSubjectMarker) break;
-#pragma warning disable 420
             } while (Interlocked.CompareExchange(ref _current, CompletedSubjectMarker, original) != original);
-#pragma warning restore 420
             original.OnCompleted();
         }
 
@@ -159,9 +160,7 @@ namespace BTDB.Reactive
             {
                 original = _current;
                 if (original is IStoppedSubjectMarker) break;
-#pragma warning disable 420
             } while (Interlocked.CompareExchange(ref _current, new ExceptionedSubject(error), original) != original);
-#pragma warning restore 420
             original.OnError(error);
         }
 
@@ -209,9 +208,7 @@ namespace BTDB.Reactive
                 {
                     nextState = new MultiSubject(new[] { original, observer });
                 }
-#pragma warning disable 420
             } while (Interlocked.CompareExchange(ref _current, nextState, original) != original);
-#pragma warning restore 420
             return new Subscription(this, observer);
         }
 
@@ -245,9 +242,7 @@ namespace BTDB.Reactive
                     if (original != observer) return;
                     nextState = EmptySubjectMarker;
                 }
-#pragma warning disable 420
             } while (Interlocked.CompareExchange(ref _current, nextState, original) != original);
-#pragma warning restore 420
         }
 
         sealed class Subscription : IDisposable

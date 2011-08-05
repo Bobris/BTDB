@@ -11,7 +11,8 @@ namespace SimpleTester
         {
             //new KeyValueDBReplayer("bug.log").Replay();
             //new SpeedTest1().Test();
-            new ChannelSpeedTest().Run(args);
+            //new ChannelSpeedTest().Run(args);
+            new RxSpeedTest().Run();
         }
     }
 }
