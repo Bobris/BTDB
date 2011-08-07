@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.Helpers;
+using BTDB.Reactive;
 using BTDB.ServiceLayer;
 
 namespace SimpleTester
@@ -95,7 +96,7 @@ namespace SimpleTester
 
             static void OnNewClient(IChannel channel)
             {
-                channel.OnReceive.Subscribe(channel.Send);
+                channel.OnReceive.FastSubscribe(channel.Send);
             }
 
             public void Run()
@@ -164,7 +165,7 @@ namespace SimpleTester
             {
                 _client = client;
                 _stopwatch.Start();
-                _unlinker = _client.OnReceive.Subscribe(message =>
+                _unlinker = _client.OnReceive.FastSubscribe(message =>
                 {
                     if (message.Length != _messageLen)
                     {
@@ -319,7 +320,7 @@ namespace SimpleTester
             public void Run()
             {
                 _twoChannels = new PipedTwoChannels();
-                _twoChannels.Second.OnReceive.Subscribe(_twoChannels.Second.Send);
+                _twoChannels.Second.OnReceive.FastSubscribe(_twoChannels.Second.Send);
                 _twoChannels.Connect();
                 const int messageLen = 1024;
                 var sender = new Sender(messageLen, MessageCount, _twoChannels.First);
