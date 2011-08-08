@@ -7,39 +7,50 @@ namespace BTDB.ServiceLayer
     {
         readonly IChannel _channel;
 
+        readonly object _serverServiceLock = new object();
+        readonly Dictionary<object, ulong> _serverServices = new Dictionary<object, ulong>();
+        ulong _lastServerServiceId;
+
         public Service(IChannel channel)
         {
             _channel = channel;
+            _lastServerServiceId = 0;
         }
 
         public void Dispose()
         {
-            throw new NotImplementedException();
+            _channel.Dispose();
         }
 
-        public T QueryService<T>() where T : class
+        public T QueryOtherService<T>() where T : class
+        {
+            return (T) QueryOtherService(typeof (T));
+        }
+
+        public object QueryOtherService(Type serviceType)
         {
             throw new NotImplementedException();
         }
 
-        public object QueryService(Type serviceType)
+        public void RegisterMyService(object service)
         {
-            throw new NotImplementedException();
+            lock(_serverServiceLock)
+            {
+                var serviceId = ++_lastServerServiceId;
+                _serverServices.Add(service, serviceId);
+            }
         }
 
-        public IEnumerable<object> EnumServices()
+        public void UnregisterMyService(object service)
         {
-            throw new NotImplementedException();
-        }
-
-        public void RegisterService(object service)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void UnregisterService(object service)
-        {
-            throw new NotImplementedException();
+            lock(_serverServiceLock)
+            {
+                ulong serviceId;
+                if (_serverServices.TryGetValue(service, out serviceId))
+                {
+                    _serverServices.Remove(service);
+                }
+            }
         }
 
         public IChannel Channel

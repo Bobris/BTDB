@@ -4,7 +4,7 @@ namespace BTDB.ServiceLayer
 {
     public interface IServiceServer : IDisposable
     {
-        void RegisterService(object service);
-        void UnregisterService(object service);
+        void RegisterMyService(object service);
+        void UnregisterMyService(object service);
     }
 }

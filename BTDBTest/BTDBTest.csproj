@@ -63,6 +63,7 @@
     <Compile Include="ObjectDBTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PtrLenListTest.cs" />
+    <Compile Include="ConnectedServiceTest.cs" />
     <Compile Include="TcpipClientServerChannelTest.cs" />
   </ItemGroup>
   <ItemGroup>
