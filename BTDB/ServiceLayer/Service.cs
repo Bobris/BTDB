@@ -9,6 +9,9 @@ namespace BTDB.ServiceLayer
 
         readonly object _serverServiceLock = new object();
         readonly Dictionary<object, ulong> _serverServices = new Dictionary<object, ulong>();
+        readonly NumberAllocator _serverTypeNumbers = new NumberAllocator(0);
+        readonly Dictionary<uint,TypeInf> _serverTypeInfs = new Dictionary<uint, TypeInf>();
+
         ulong _lastServerServiceId;
 
         public Service(IChannel channel)
@@ -29,15 +32,20 @@ namespace BTDB.ServiceLayer
 
         public object QueryOtherService(Type serviceType)
         {
+            if (serviceType == null) throw new ArgumentNullException("serviceType");
             throw new NotImplementedException();
         }
 
         public void RegisterMyService(object service)
         {
+            if (service == null) throw new ArgumentNullException("service");
             lock(_serverServiceLock)
             {
                 var serviceId = ++_lastServerServiceId;
                 _serverServices.Add(service, serviceId);
+                Type type = service.GetType();
+                var typeId = _serverTypeNumbers.Allocate();
+                _serverTypeInfs.Add(typeId, new TypeInf(type));
             }
         }
 
@@ -49,6 +57,7 @@ namespace BTDB.ServiceLayer
                 if (_serverServices.TryGetValue(service, out serviceId))
                 {
                     _serverServices.Remove(service);
+                    throw new NotImplementedException();
                 }
             }
         }

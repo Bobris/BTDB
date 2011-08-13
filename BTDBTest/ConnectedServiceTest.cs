@@ -32,7 +32,7 @@ namespace BTDBTest
             int Add(int a, int b);
         }
 
-        class Adder : IAdder
+        public class Adder : IAdder
         {
             public int Add(int a, int b)
             {

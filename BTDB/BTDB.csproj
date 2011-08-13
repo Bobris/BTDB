@@ -85,10 +85,14 @@
     <Compile Include="ServiceLayer\IService.cs" />
     <Compile Include="ServiceLayer\IServiceClient.cs" />
     <Compile Include="ServiceLayer\IServiceServer.cs" />
+    <Compile Include="ServiceLayer\MethodInf.cs" />
+    <Compile Include="ServiceLayer\NumberAllocator.cs" />
+    <Compile Include="ServiceLayer\ParameterInf.cs" />
     <Compile Include="ServiceLayer\PipedTwoChannels.cs" />
     <Compile Include="ServiceLayer\Service.cs" />
     <Compile Include="ServiceLayer\TcpipClient.cs" />
     <Compile Include="ServiceLayer\TcpipServer.cs" />
+    <Compile Include="ServiceLayer\TypeInf.cs" />
     <Compile Include="StreamLayer\MemoryPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />
