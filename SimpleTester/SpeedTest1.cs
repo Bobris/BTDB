@@ -23,9 +23,10 @@ namespace SimpleTester
         {
             if (true)
             {
-                if (File.Exists("data.btdb"))
-                    File.Delete("data.btdb");
-                return new PositionLessStreamProxy("data.btdb");
+                const string dbfilename = "data.btdb";
+                if (File.Exists(dbfilename))
+                    File.Delete(dbfilename);
+                return new PositionLessStreamProxy(dbfilename);
             }
             else
             {
@@ -185,14 +186,15 @@ namespace SimpleTester
 
         void DoWork4()
         {
-            var key = new byte[4000];
+            var key = new byte[4];
 
             using (var stream = CreateTestStream())
             using (IKeyValueDB db = new KeyValueDB())
             {
+                db.DurableTransactions = false;
                 db.Open(stream, false);
                 _sw.Restart();
-                for (int i = 0; i < 30000; i++)
+                for (int i = 0; i < 100000; i++)
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -416,8 +418,7 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoWork5(false);
-            DoWork5ReadCheck();
+            DoWork4();
         }
     }
 }

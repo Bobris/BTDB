@@ -137,6 +137,15 @@ namespace BTDB.KVDBLayer.Implementation
             get { return _newState; }
         }
 
+        void FixChildParentPointerNoLock(long childSectorPtr, Sector parent)
+        {
+            Sector res;
+            if (_sectorCache.TryGetValue(childSectorPtr & MaskOfPosition, out res))
+            {
+                res.Parent = parent;
+            }
+        }
+
         void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
             Sector res;
@@ -1746,10 +1755,13 @@ namespace BTDB.KVDBLayer.Implementation
                 case SectorType.BTreeParent:
                     {
                         var iter = new BTreeParentIterator(parent.Data);
-                        for (int i = 0; i <= iter.Count; i++)
+                        using (_cacheLock.ReadLock())
                         {
-                            var childSectorPos = iter.GetChildSectorPos(i);
-                            FixChildParentPointer(childSectorPos, parent);
+                            for (int i = 0; i <= iter.Count; i++)
+                            {
+                                var childSectorPos = iter.GetChildSectorPos(i);
+                                FixChildParentPointerNoLock(childSectorPos, parent);
+                            }
                         }
                         break;
                     }
@@ -1757,13 +1769,16 @@ namespace BTDB.KVDBLayer.Implementation
                     {
                         var iter = new BTreeChildIterator(parent.Data);
                         iter.MoveFirst();
-                        do
+                        using (_cacheLock.ReadLock())
                         {
-                            if (iter.HasKeySectorPtr)
-                                FixChildParentPointer(iter.KeySectorPos, parent);
-                            if (iter.HasValueSectorPtr)
-                                FixChildParentPointer(iter.ValueSectorPos, parent);
-                        } while (iter.MoveNext());
+                            do
+                            {
+                                if (iter.HasKeySectorPtr)
+                                    FixChildParentPointerNoLock(iter.KeySectorPos, parent);
+                                if (iter.HasValueSectorPtr)
+                                    FixChildParentPointerNoLock(iter.ValueSectorPos, parent);
+                            } while (iter.MoveNext());
+                        }
                         break;
                     }
                 case SectorType.DataChild:
@@ -1773,11 +1788,14 @@ namespace BTDB.KVDBLayer.Implementation
                 case SectorType.DataParent:
                     {
                         var ptrCount = parent.Length / PtrDownSize;
-                        for (int i = 0; i < ptrCount; i++)
+                        using (_cacheLock.ReadLock())
                         {
-                            var sectorPos = PackUnpack.UnpackInt64LE(parent.Data, i * PtrDownSize);
-                            if (sectorPos == 0) break;
-                            FixChildParentPointer(sectorPos, parent);
+                            for (int i = 0; i < ptrCount; i++)
+                            {
+                                var sectorPos = PackUnpack.UnpackInt64LE(parent.Data, i*PtrDownSize);
+                                if (sectorPos == 0) break;
+                                FixChildParentPointerNoLock(sectorPos, parent);
+                            }
                         }
                     }
                     break;

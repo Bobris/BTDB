@@ -321,8 +321,11 @@ namespace BTDB.KVDBLayer.ImplementationDetails
         internal long GetChildSectorPos(int index)
         {
             if (index == 0) return FirstChildSectorPos;
-            MoveTo(index - 1);
-            return ChildSectorPos;
+            if (index == 1)
+            {
+                return PackUnpack.UnpackInt64LE(_data, FirstOffset + 4);
+            }
+            return PackUnpack.UnpackInt64LE(_data, FirstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + (index - 2) * HeaderForEntry) + 4);
         }
 
         internal SectorPtr GetChildSectorPtr(int index)
