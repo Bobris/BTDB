@@ -1,4 +1,5 @@
 using System.Reflection;
+using BTDB.KVDBLayer.ReaderWriters;
 
 namespace BTDB.ServiceLayer
 {
@@ -21,6 +22,18 @@ namespace BTDB.ServiceLayer
             }
         }
 
+        public MethodInf(AbstractBufferedReader reader)
+        {
+            _name = reader.ReadString();
+            _ifaceName = reader.ReadString();
+            var parameterCount = reader.ReadVUInt32();
+            _parameters = new ParameterInf[parameterCount];
+            for (int i = 0; i < _parameters.Length; i++)
+            {
+                _parameters[i]=new ParameterInf(reader);
+            }
+        }
+
         public string Name
         {
             get { return _name; }
@@ -29,6 +42,17 @@ namespace BTDB.ServiceLayer
         public string IfaceName
         {
             get { return _ifaceName; }
+        }
+
+        public void Store(AbstractBufferedWriter writer)
+        {
+            writer.WriteString(_name);
+            writer.WriteString(_ifaceName);
+            writer.WriteVUInt32((uint) _parameters.Length);
+            foreach (var parameter in _parameters)
+            {
+                parameter.Store(writer);
+            }
         }
     }
 }

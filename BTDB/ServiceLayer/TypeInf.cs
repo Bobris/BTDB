@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BTDB.KVDBLayer.ReaderWriters;
 
 namespace BTDB.ServiceLayer
 {
@@ -25,6 +26,17 @@ namespace BTDB.ServiceLayer
             _methodInfs = methodInfs.ToArray();
         }
 
+        public TypeInf(AbstractBufferedReader reader)
+        {
+            _name = reader.ReadString();
+            var methodCount = reader.ReadVUInt32();
+            _methodInfs = new MethodInf[methodCount];
+            for (int i = 0; i < methodCount; i++)
+            {
+                _methodInfs[i] = new MethodInf(reader);
+            }
+        }
+
         public string Name
         {
             get { return _name; }
@@ -33,6 +45,16 @@ namespace BTDB.ServiceLayer
         public MethodInf[] MethodInfs
         {
             get { return _methodInfs; }
+        }
+
+        public void Store(AbstractBufferedWriter writer)
+        {
+            writer.WriteString(_name);
+            writer.WriteVUInt32((uint)_methodInfs.Length);
+            foreach (var methodInf in _methodInfs)
+            {
+                methodInf.Store(writer);
+            }
         }
 
         static bool IsMethodSupported(MethodInfo method)
@@ -53,6 +75,5 @@ namespace BTDB.ServiceLayer
             if (type == typeof(int)) return true;
             return false;
         }
-    
     }
 }

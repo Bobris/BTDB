@@ -78,6 +78,7 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\Extensions.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\ByteBufferReader.cs" />
     <Compile Include="ServiceLayer\ChannelStatus.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="ServiceLayer\IChannel.cs" />
