@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -11,7 +12,7 @@ using BTDB.IL;
 
 namespace BTDB.ServiceLayer
 {
-    public class Service : IService
+    public class Service : IService, IServiceInternalClient
     {
         enum Command : uint
         {
@@ -35,12 +36,26 @@ namespace BTDB.ServiceLayer
         ulong _lastServerServiceId;
         readonly Dictionary<object, ulong> _serverServices = new Dictionary<object, ulong>();
         readonly NumberAllocator _serverTypeNumbers = new NumberAllocator(0);
-        readonly Dictionary<uint,TypeInf> _serverTypeInfs = new Dictionary<uint, TypeInf>();
+        readonly Dictionary<uint, TypeInf> _serverTypeInfs = new Dictionary<uint, TypeInf>();
 
-        readonly Dictionary<uint,TypeInf> _clientTypeInfs = new Dictionary<uint, TypeInf>();
-        readonly Dictionary<uint,uint> _clientKnownServicesTypes = new Dictionary<uint, uint>();
-        readonly Dictionary<uint,BindInf> _clientBindings = new Dictionary<uint, BindInf>();
+        readonly Dictionary<uint, TypeInf> _clientTypeInfs = new Dictionary<uint, TypeInf>();
+        readonly Dictionary<uint, uint> _clientKnownServicesTypes = new Dictionary<uint, uint>();
+        readonly Dictionary<uint, BindInf> _clientBindings = new Dictionary<uint, BindInf>();
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
+        readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
+        readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
+
+        struct TaskAndBindInf
+        {
+            public object TaskCompletionSource;
+            public BindInf Binding;
+
+            public TaskAndBindInf(BindInf binding, object taskCompletionSource)
+            {
+                Binding = binding;
+                TaskCompletionSource = taskCompletionSource;
+            }
+        }
 
         public Service(IChannel channel)
         {
@@ -53,16 +68,29 @@ namespace BTDB.ServiceLayer
         {
             var reader = new ByteBufferReader(obj);
             var c0 = reader.ReadVUInt32();
-            switch((Command)c0)
+            uint ackId;
+            TaskAndBindInf taskAndBind;
+            switch ((Command)c0)
             {
                 case Command.Subcommand:
                     OnSubcommand(reader);
                     break;
                 case Command.Result:
+                    ackId = reader.ReadVUInt32();
+                    if (_clientAcks.TryRemove(ackId, out taskAndBind))
+                    {
+                        _clientAckNumbers.Deallocate(ackId);
+                        taskAndBind.Binding.HandleResult(taskAndBind.TaskCompletionSource, reader);
+                    }
                     break;
                 case Command.Exception:
-                    break;
-                case Command.FirstToBind:
+                    ackId = reader.ReadVUInt32();
+                    if (_clientAcks.TryRemove(ackId, out taskAndBind))
+                    {
+                        _clientAckNumbers.Deallocate(ackId);
+                        var ex = new Exception(reader.ReadString());
+                        taskAndBind.Binding.HandleException(taskAndBind.TaskCompletionSource, ex);
+                    }
                     break;
                 default:
                     break;
@@ -72,7 +100,7 @@ namespace BTDB.ServiceLayer
         void OnSubcommand(ByteBufferReader reader)
         {
             var c1 = reader.ReadVUInt32();
-            switch((Subcommand)c1)
+            switch ((Subcommand)c1)
             {
                 case Subcommand.RegisterType:
                     var typeId = reader.ReadVUInt32();
@@ -80,7 +108,7 @@ namespace BTDB.ServiceLayer
                     break;
                 case Subcommand.RegisterService:
                     var serviceId = reader.ReadVUInt32();
-                    _clientKnownServicesTypes.Add(serviceId,reader.ReadVUInt32());
+                    _clientKnownServicesTypes.Add(serviceId, reader.ReadVUInt32());
                     break;
                 case Subcommand.UnregisterService:
                     OnUnregisterService(reader.ReadVUInt32());
@@ -104,14 +132,14 @@ namespace BTDB.ServiceLayer
 
         public T QueryOtherService<T>() where T : class
         {
-            return (T) QueryOtherService(typeof (T));
+            return (T)QueryOtherService(typeof(T));
         }
 
         public object QueryOtherService(Type serviceType)
         {
             if (serviceType == null) throw new ArgumentNullException("serviceType");
             var typeInf = new TypeInf(serviceType);
-            lock(_serverServiceLock)
+            lock (_serverServiceLock)
             {
                 var bestMatch = int.MinValue;
                 var bestServiceId = 0u;
@@ -121,7 +149,7 @@ namespace BTDB.ServiceLayer
                 {
                     var targetTypeInf = _clientTypeInfs[servicesType.Value];
                     var score = EvaluateCompatibility(typeInf, targetTypeInf);
-                    if (score>bestMatch)
+                    if (score > bestMatch)
                     {
                         bestMatch = score;
                         bestServiceId = servicesType.Key;
@@ -143,8 +171,21 @@ namespace BTDB.ServiceLayer
                     var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
                     var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                     var bindingId = _clientBindNumbers.Allocate();
-                    var bindingInf = new BindInf {ServiceId = bestServiceId, MethodId = (uint) targetMethodIndex, OneWay = false};
-                    _clientBindings.Add(bindingId,bindingInf);
+                    var bindingInf = new BindInf
+                        {
+                            BindingId = bindingId,
+                            ServiceId = bestServiceId,
+                            MethodId = (uint)targetMethodIndex,
+                            OneWay = false,
+                            HandleResult = (t, reader) => ((TaskCompletionSource<int>)t).TrySetResult(reader.ReadInt32()),
+                            HandleException = (t, ex) => ((TaskCompletionSource<int>)t).TrySetException(ex),
+                            TaskWithSourceCreator = () =>
+                                {
+                                    var source = new TaskCompletionSource<int>();
+                                    return new TaskWithSource(source, source.Task);
+                                }
+                        };
+                    _clientBindings.Add(bindingId, bindingInf);
                     var writer = new ByteArrayWriter();
                     writer.WriteVUInt32((uint)Command.Subcommand);
                     writer.WriteVUInt32((uint)Subcommand.Bind);
@@ -152,7 +193,7 @@ namespace BTDB.ServiceLayer
                     writer.Dispose();
                     _channel.Send(ByteBuffer.NewAsync(writer.Data));
 
-                    
+
 
 
                     tb.DefineMethodOverride(methodBuilder, methodInfo);
@@ -169,7 +210,7 @@ namespace BTDB.ServiceLayer
         public void RegisterMyService(object service)
         {
             if (service == null) throw new ArgumentNullException("service");
-            lock(_serverServiceLock)
+            lock (_serverServiceLock)
             {
                 var serviceId = ++_lastServerServiceId;
                 _serverServices.Add(service, serviceId);
@@ -178,16 +219,16 @@ namespace BTDB.ServiceLayer
                 var typeInf = new TypeInf(type);
                 _serverTypeInfs.Add(typeId, typeInf);
                 var writer = new ByteArrayWriter();
-                writer.WriteVUInt32((uint) Command.Subcommand);
-                writer.WriteVUInt32((uint) Subcommand.RegisterType);
+                writer.WriteVUInt32((uint)Command.Subcommand);
+                writer.WriteVUInt32((uint)Subcommand.RegisterType);
                 writer.WriteVUInt32(typeId);
                 typeInf.Store(writer);
                 writer.Dispose();
                 _channel.Send(ByteBuffer.NewAsync(writer.Data));
                 writer = new ByteArrayWriter();
-                writer.WriteVUInt32((uint) Command.Subcommand);
-                writer.WriteVUInt32((uint) Subcommand.RegisterService);
-                writer.WriteVUInt32((uint) serviceId);
+                writer.WriteVUInt32((uint)Command.Subcommand);
+                writer.WriteVUInt32((uint)Subcommand.RegisterService);
+                writer.WriteVUInt32((uint)serviceId);
                 writer.WriteVUInt32(typeId);
                 writer.Dispose();
                 _channel.Send(ByteBuffer.NewAsync(writer.Data));
@@ -196,16 +237,16 @@ namespace BTDB.ServiceLayer
 
         public void UnregisterMyService(object service)
         {
-            lock(_serverServiceLock)
+            lock (_serverServiceLock)
             {
                 ulong serviceId;
                 if (_serverServices.TryGetValue(service, out serviceId))
                 {
                     _serverServices.Remove(service);
                     var writer = new ByteArrayWriter();
-                    writer.WriteVUInt32((uint) Command.Subcommand);
-                    writer.WriteVUInt32((uint) Subcommand.UnregisterService);
-                    writer.WriteVUInt32((uint) serviceId);
+                    writer.WriteVUInt32((uint)Command.Subcommand);
+                    writer.WriteVUInt32((uint)Subcommand.UnregisterService);
+                    writer.WriteVUInt32((uint)serviceId);
                     writer.Dispose();
                     _channel.Send(ByteBuffer.NewAsync(writer.Data));
                 }
@@ -216,19 +257,40 @@ namespace BTDB.ServiceLayer
         {
             get { return _channel; }
         }
+
+        public AbstractBufferedWriter StartTwoWayMarshaling(BindInf binding, out Task resultReturned)
+        {
+            var message = new ByteArrayWriter();
+            message.WriteVUInt32(binding.BindingId);
+            var taskWithSource = binding.TaskWithSourceCreator();
+            resultReturned = taskWithSource.Task;
+            var ackId = _clientAckNumbers.Allocate();
+            _clientAcks.TryAdd(ackId, new TaskAndBindInf(binding, taskWithSource.Source));
+            return message;
+        }
+
+        public void FinishTwoWayMarshaling(AbstractBufferedWriter writer)
+        {
+            ((ByteArrayWriter)writer).Dispose();
+            _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
+        }
     }
 
     public interface IServiceInternalClient
     {
-        AbstractBufferedWriter StartTwoWayMarshaling(uint bindingId, Task resultReturned);
+        AbstractBufferedWriter StartTwoWayMarshaling(BindInf binding, out Task resultReturned);
         void FinishTwoWayMarshaling(AbstractBufferedWriter writer);
     }
 
-    internal class BindInf
+    public class BindInf
     {
+        internal uint BindingId { get; set; }
         internal uint ServiceId { get; set; }
         internal uint MethodId { get; set; }
         internal bool OneWay { get; set; }
+        internal Action<object, AbstractBufferedReader> HandleResult { get; set; }
+        internal Action<object, Exception> HandleException { get; set; }
+        internal Func<TaskWithSource> TaskWithSourceCreator { get; set; }
 
         internal BindInf() { }
 
@@ -244,6 +306,18 @@ namespace BTDB.ServiceLayer
             writer.WriteVUInt32(ServiceId);
             writer.WriteVUInt32(MethodId);
             writer.WriteBool(OneWay);
+        }
+    }
+
+    internal struct TaskWithSource
+    {
+        internal object Source;
+        internal Task Task;
+
+        public TaskWithSource(object source, Task task)
+        {
+            Source = source;
+            Task = task;
         }
     }
 }
