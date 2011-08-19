@@ -44,6 +44,11 @@ namespace BTDB.ServiceLayer
             get { return _ifaceName; }
         }
 
+        public ParameterInf[] Parameters
+        {
+            get { return _parameters; }
+        }
+
         public void Store(AbstractBufferedWriter writer)
         {
             writer.WriteString(_name);

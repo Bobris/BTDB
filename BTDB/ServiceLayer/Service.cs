@@ -93,6 +93,7 @@ namespace BTDB.ServiceLayer
                     }
                     break;
                 default:
+                    // TODO
                     break;
             }
         }
@@ -114,6 +115,7 @@ namespace BTDB.ServiceLayer
                     OnUnregisterService(reader.ReadVUInt32());
                     break;
                 case Subcommand.Bind:
+                    // TODO
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -143,7 +145,6 @@ namespace BTDB.ServiceLayer
             {
                 var bestMatch = int.MinValue;
                 var bestServiceId = 0u;
-                var bestServiceTypeId = 0u;
                 TypeInf bestServiceTypeInf = null;
                 foreach (var servicesType in _clientKnownServicesTypes)
                 {
@@ -153,7 +154,6 @@ namespace BTDB.ServiceLayer
                     {
                         bestMatch = score;
                         bestServiceId = servicesType.Key;
-                        bestServiceTypeId = servicesType.Value;
                         bestServiceTypeInf = targetTypeInf;
                     }
                 }
@@ -163,11 +163,17 @@ namespace BTDB.ServiceLayer
                 var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
                 var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
                 var tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { serviceType });
+                var ownerField = tb.DefineField("_owner", typeof(IServiceInternalClient), FieldAttributes.Private);
+                var bindings = new List<BindInf>();
+                var bindingFields = new List<FieldBuilder>();
+                ILGenerator ilGenerator;
                 foreach (var methodInfo in serviceType.GetMethods())
                 {
+                    var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(BindInf), FieldAttributes.Private);
+                    bindingFields.Add(bindingField);
                     var parameterTypes = methodInfo.GetParameters().Select(pi => pi.ParameterType).ToArray();
                     var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, methodInfo.ReturnType, parameterTypes);
-                    var ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+                    ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
                     var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
                     var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                     var bindingId = _clientBindNumbers.Allocate();
@@ -186,19 +192,64 @@ namespace BTDB.ServiceLayer
                                 }
                         };
                     _clientBindings.Add(bindingId, bindingInf);
+                    bindings.Add(bindingInf);
                     var writer = new ByteArrayWriter();
                     writer.WriteVUInt32((uint)Command.Subcommand);
                     writer.WriteVUInt32((uint)Subcommand.Bind);
                     bindingInf.Store(writer);
                     writer.Dispose();
                     _channel.Send(ByteBuffer.NewAsync(writer.Data));
-
-
-
-
+                    var resultTaskLocal = ilGenerator.DeclareLocal(typeof(Task));
+                    var writerLocal = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+                    Task placebo;
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldfld(ownerField)
+                        .Ldarg(0)
+                        .Ldfld(bindingField)
+                        .Ldloca(resultTaskLocal)
+                        .Callvirt(() => ((IServiceInternalClient)null).StartTwoWayMarshaling(null, out placebo))
+                        .Stloc(writerLocal);
+                    uint paramOrder = 0;
+                    foreach (var parameterInf in targetMethodInf.Parameters)
+                    {
+                        var order = (ushort)(1 + paramOrder);
+                        parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il => il.Ldarg(order));
+                        paramOrder++;
+                    }
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldfld(ownerField)
+                        .Ldloc(writerLocal)
+                        .Callvirt(() => ((IServiceInternalClient)null).FinishTwoWayMarshaling(null))
+                        .Ldloc(resultTaskLocal)
+                        .Castclass(typeof(Task<int>))
+                        .Callvirt(typeof(Task<int>).GetMethod("get_Result"))
+                        .Ret();
                     tb.DefineMethodOverride(methodBuilder, methodInfo);
                 }
-                return tb.GetType().GetConstructor(Type.EmptyTypes).Invoke(null);
+                var constructorParams = new[] { typeof(IServiceInternalClient), typeof(BindInf[]) };
+                var contructorBuilder = tb.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard,
+                    constructorParams);
+                ilGenerator = contructorBuilder.GetILGenerator();
+                ilGenerator
+                    .Ldarg(0)
+                    .Call(() => new object())
+                    .Ldarg(0)
+                    .Ldarg(1)
+                    .Stfld(ownerField);
+                for (int i = 0; i < bindingFields.Count; i++)
+                {
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldarg(2)
+                        .LdcI4(i)
+                        .LdelemRef()
+                        .Stfld(bindingFields[i]);
+                }
+                ilGenerator.Ret();
+                var finalType = tb.CreateType();
+                return finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
             }
         }
 

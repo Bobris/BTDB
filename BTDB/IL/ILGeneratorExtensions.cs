@@ -377,5 +377,11 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator LdelemRef(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Ldelem_Ref);
+            return il;
+        }
+
     }
 }
