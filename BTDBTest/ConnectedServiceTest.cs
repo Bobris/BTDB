@@ -1,3 +1,5 @@
+using System;
+using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ServiceLayer;
 using NUnit.Framework;
 
@@ -37,6 +39,24 @@ namespace BTDBTest
             public int Add(int a, int b)
             {
                 return a + b;
+            }
+        }
+
+        public void Runner(object obj, AbstractBufferedReader reader, IServiceInternalServer server)
+        {
+            var resultId = reader.ReadVUInt32();
+            try
+            {
+                var param1 = reader.ReadVInt32();
+                var param2 = reader.ReadVInt32();
+                var result = ((IAdder)obj).Add(param1, param2);
+                var writer = server.StartResultMarshaling(resultId);
+                writer.WriteVInt32(result);
+                server.FinishResultMarshaling(writer);
+            }
+            catch (Exception ex)
+            {
+                server.ExceptionMarshaling(resultId, ex);
             }
         }
 

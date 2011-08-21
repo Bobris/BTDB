@@ -11,6 +11,7 @@ namespace BTDB.ServiceLayer
 
         public MethodInf(MethodInfo method)
         {
+            MethodInfo = method;
             _name = method.Name;
             var methodBase = method.GetBaseDefinition();
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
@@ -48,6 +49,8 @@ namespace BTDB.ServiceLayer
         {
             get { return _parameters; }
         }
+
+        public MethodInfo MethodInfo { get; set; }
 
         public void Store(AbstractBufferedWriter writer)
         {
