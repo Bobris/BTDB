@@ -1,5 +1,7 @@
 using System.Reflection;
 using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ServiceLayer
 {
@@ -8,12 +10,14 @@ namespace BTDB.ServiceLayer
         readonly string _name;
         readonly string _ifaceName;
         readonly ParameterInf[] _parameters;
+        readonly IFieldHandler _resultFieldHandler;
 
         public MethodInf(MethodInfo method)
         {
             MethodInfo = method;
             _name = method.Name;
             var methodBase = method.GetBaseDefinition();
+            _resultFieldHandler = new SignedFieldHandler();
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];
@@ -27,11 +31,17 @@ namespace BTDB.ServiceLayer
         {
             _name = reader.ReadString();
             _ifaceName = reader.ReadString();
+            var resultFieldHandlerName = reader.ReadString();
+            if (resultFieldHandlerName != null)
+            {
+                reader.ReadByteArray();
+                _resultFieldHandler = new SignedFieldHandler();
+            }
             var parameterCount = reader.ReadVUInt32();
             _parameters = new ParameterInf[parameterCount];
             for (int i = 0; i < _parameters.Length; i++)
             {
-                _parameters[i]=new ParameterInf(reader);
+                _parameters[i] = new ParameterInf(reader);
             }
         }
 
@@ -50,13 +60,27 @@ namespace BTDB.ServiceLayer
             get { return _parameters; }
         }
 
+        public IFieldHandler ResultFieldHandler
+        {
+            get { return _resultFieldHandler; }
+        }
+
         public MethodInfo MethodInfo { get; set; }
 
         public void Store(AbstractBufferedWriter writer)
         {
             writer.WriteString(_name);
             writer.WriteString(_ifaceName);
-            writer.WriteVUInt32((uint) _parameters.Length);
+            if (_resultFieldHandler != null)
+            {
+                writer.WriteString(_resultFieldHandler.Name);
+                writer.WriteByteArray(_resultFieldHandler.Configuration);
+            }
+            else
+            {
+                writer.WriteString(null);
+            }
+            writer.WriteVUInt32((uint)_parameters.Length);
             foreach (var parameter in _parameters)
             {
                 parameter.Store(writer);

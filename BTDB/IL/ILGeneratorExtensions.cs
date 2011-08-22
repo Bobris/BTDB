@@ -383,5 +383,11 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Catch(this ILGenerator il, Type exceptionType)
+        {
+            il.BeginCatchBlock(exceptionType);
+            return il;
+        }
+
     }
 }

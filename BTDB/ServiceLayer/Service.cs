@@ -8,6 +8,7 @@ using System.Reflection.Emit;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer;
 using BTDB.Reactive;
 using BTDB.IL;
 
@@ -47,6 +48,8 @@ namespace BTDB.ServiceLayer
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
+
+        readonly DefaultTypeConvertorGenerator _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
 
         struct TaskAndBindInf
         {
@@ -141,21 +144,23 @@ namespace BTDB.ServiceLayer
             binding.Object = serverObject;
             var method = new DynamicMethod(string.Format("{0}_{1}", typeInf.Name, methodInf.Name), typeof(void), new[] { typeof(object), typeof(AbstractBufferedReader), typeof(IServiceInternalServer) });
             var ilGenerator = method.GetILGenerator();
-            var localResultId = ilGenerator.DeclareLocal(typeof (uint));
-            var localWriter = ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
-            var localException = ilGenerator.DeclareLocal(typeof (Exception));
+            var localResultId = ilGenerator.DeclareLocal(typeof(uint));
+            var localWriter = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            var localException = ilGenerator.DeclareLocal(typeof(Exception));
             var localParams = new LocalBuilder[methodInf.Parameters.Length];
-            var localResult = ilGenerator.DeclareLocal(methodInf.MethodInfo.ReturnType);
+            var localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.WillLoad());
             ilGenerator
                 .Ldarg(1)
-                .Callvirt(() => ((AbstractBufferedReader) null).ReadVUInt32())
+                .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
                 .Stloc(localResultId)
                 .BeginExceptionBlock();
             for (int i = 0; i < methodInf.Parameters.Length; i++)
             {
                 var fieldHandler = methodInf.Parameters[i].FieldHandler;
-                localParams[i]=ilGenerator.DeclareLocal(fieldHandler.WillLoad());
-                fieldHandler.LoadToWillLoad(ilGenerator,il=>il.Ldarg(1));
+                localParams[i] = ilGenerator.DeclareLocal(methodInf.MethodInfo.GetParameters()[i].ParameterType);
+                fieldHandler.LoadToWillLoad(ilGenerator, il => il.Ldarg(1));
+                _typeConvertorGenerator.GenerateConversion(fieldHandler.WillLoad(), localParams[i].LocalType)
+                    (ilGenerator);
                 ilGenerator.Stloc(localParams[i]);
             }
             ilGenerator
@@ -166,29 +171,28 @@ namespace BTDB.ServiceLayer
                 ilGenerator.Ldloc(localParams[i]);
             }
             ilGenerator
-                .Callvirt(methodInf.MethodInfo)
+                .Callvirt(methodInf.MethodInfo);
+            _typeConvertorGenerator.GenerateConversion(methodInf.MethodInfo.ReturnType, localResult.LocalType)(ilGenerator);
+            ilGenerator
                 .Stloc(localResult)
                 .Ldarg(2)
                 .Ldloc(localResultId)
-                .Callvirt(() => ((IServiceInternalServer) null).StartResultMarshaling(0u))
+                .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
                 .Stloc(localWriter);
-            
-    //L_002c: ldloc.s writer
-    //L_002e: ldloc.3 
-    //L_002f: callvirt instance void [BTDB]BTDB.KVDBLayer.ReaderWriters.AbstractBufferedWriter::WriteVInt32(int32)
-    //L_0034: ldarg.3 
-    //L_0035: ldloc.s writer
-    //L_0037: callvirt instance void [BTDB]BTDB.ServiceLayer.IServiceInternalServer::FinishResultMarshaling(class [BTDB]BTDB.KVDBLayer.ReaderWriters.AbstractBufferedWriter)
-    //L_003c: leave.s L_004b
-    //L_003e: stloc.s ex
-    //L_0040: ldarg.3 
-    //L_0041: ldloc.0 
-    //L_0042: ldloc.s ex
-    //L_0044: callvirt instance void [BTDB]BTDB.ServiceLayer.IServiceInternalServer::ExceptionMarshaling(uint32, class [mscorlib]System.Exception)
-    //L_0049: leave.s L_004b
-    //L_004b: ret 
-    //.try L_0007 to L_003e catch [mscorlib]System.Exception handler L_003e to L_004b
-
+            methodInf.ResultFieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(localWriter), il => il.Ldloc(localResult));
+            ilGenerator
+                .Ldarg(2)
+                .Ldloc(localWriter)
+                .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+            ilGenerator
+                .Catch(typeof(Exception))
+                .Stloc(localException)
+                .Ldarg(2)
+                .Ldloc(localResultId)
+                .Ldloc(localException)
+                .Callvirt(() => ((IServiceInternalServer)null).ExceptionMarshaling(0u, null))
+                .EndExceptionBlock();
+            ilGenerator.Ret();
 
             binding.Runner = method.CreateDelegate<Action<object, AbstractBufferedReader, IServiceInternalServer>>();
             _serverBindings.TryAdd(binding.BindingId, binding);
@@ -254,7 +258,7 @@ namespace BTDB.ServiceLayer
                         ServiceId = bestServiceId,
                         MethodId = (uint)targetMethodIndex,
                         OneWay = false,
-                        HandleResult = (t, reader) => ((TaskCompletionSource<int>)t).TrySetResult(reader.ReadInt32()),
+                        HandleResult = (t, reader) => ((TaskCompletionSource<int>)t).TrySetResult((int)reader.ReadVInt64()),
                         HandleException = (t, ex) => ((TaskCompletionSource<int>)t).TrySetException(ex),
                         TaskWithSourceCreator = () =>
                             {
@@ -285,7 +289,12 @@ namespace BTDB.ServiceLayer
                 foreach (var parameterInf in targetMethodInf.Parameters)
                 {
                     var order = (ushort)(1 + paramOrder);
-                    parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il => il.Ldarg(order));
+                    var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[paramOrder], parameterInf.FieldHandler.WillLoad());
+                    parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                        {
+                            il.Ldarg(order);
+                            convGen(il);
+                        });
                     paramOrder++;
                 }
                 ilGenerator
@@ -320,6 +329,7 @@ namespace BTDB.ServiceLayer
             }
             ilGenerator.Ret();
             var finalType = tb.CreateType();
+            //ab.Save(mb.ScopeName);
             return finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
         }
 
@@ -381,6 +391,7 @@ namespace BTDB.ServiceLayer
             resultReturned = taskWithSource.Task;
             var ackId = _clientAckNumbers.Allocate();
             _clientAcks.TryAdd(ackId, new TaskAndBindInf(binding, taskWithSource.Source));
+            message.WriteVUInt32(ackId);
             return message;
         }
 
