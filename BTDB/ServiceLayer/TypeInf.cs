@@ -10,7 +10,7 @@ namespace BTDB.ServiceLayer
         readonly string _name;
         readonly MethodInf[] _methodInfs;
 
-        public TypeInf(Type type)
+        public TypeInf(Type type, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             _name = type.Name;
             var methodInfs = new List<MethodInf>();
@@ -20,20 +20,20 @@ namespace BTDB.ServiceLayer
                 var methodBase = method.GetBaseDefinition();
                 if (methodBase.DeclaringType == typeof(object)) continue;
                 if (!methodBase.IsPublic) continue;
-                if (!IsMethodSupported(method)) continue;
-                methodInfs.Add(new MethodInf(method));
+                if (!IsMethodSupported(method, fieldHandlerFactory)) continue;
+                methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
             }
             _methodInfs = methodInfs.ToArray();
         }
 
-        public TypeInf(AbstractBufferedReader reader)
+        public TypeInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
             var methodCount = reader.ReadVUInt32();
             _methodInfs = new MethodInf[methodCount];
             for (int i = 0; i < methodCount; i++)
             {
-                _methodInfs[i] = new MethodInf(reader);
+                _methodInfs[i] = new MethodInf(reader, fieldHandlerFactory);
             }
         }
 
@@ -57,23 +57,17 @@ namespace BTDB.ServiceLayer
             }
         }
 
-        static bool IsMethodSupported(MethodInfo method)
+        static bool IsMethodSupported(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
-            if (!IsSupportedType(method.ReturnType)) return false;
+            if (!fieldHandlerFactory.TypeSupported(method.ReturnType)) return false;
             foreach (var parameter in method.GetParameters())
             {
                 if (parameter.IsOptional) return false;
                 if (parameter.IsOut) return false;
                 if (parameter.IsRetval) return false;
-                if (!IsSupportedType(parameter.ParameterType)) return false;
+                if (!fieldHandlerFactory.TypeSupported(parameter.ParameterType)) return false;
             }
             return true;
-        }
-
-        static bool IsSupportedType(Type type)
-        {
-            if (type == typeof(int)) return true;
-            return false;
         }
     }
 }

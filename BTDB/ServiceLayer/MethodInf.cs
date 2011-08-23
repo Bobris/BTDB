@@ -1,7 +1,6 @@
 using System.Reflection;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer.FieldHandlerIface;
-using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ServiceLayer
 {
@@ -12,36 +11,35 @@ namespace BTDB.ServiceLayer
         readonly ParameterInf[] _parameters;
         readonly IFieldHandler _resultFieldHandler;
 
-        public MethodInf(MethodInfo method)
+        public MethodInf(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             MethodInfo = method;
             _name = method.Name;
             var methodBase = method.GetBaseDefinition();
-            _resultFieldHandler = new SignedFieldHandler();
+            _resultFieldHandler = fieldHandlerFactory.CreateFromType(method.ReturnType);
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];
             for (int i = 0; i < parameterInfos.Length; i++)
             {
-                _parameters[i] = new ParameterInf(parameterInfos[i]);
+                _parameters[i] = new ParameterInf(parameterInfos[i], fieldHandlerFactory);
             }
         }
 
-        public MethodInf(AbstractBufferedReader reader)
+        public MethodInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
             _ifaceName = reader.ReadString();
             var resultFieldHandlerName = reader.ReadString();
             if (resultFieldHandlerName != null)
             {
-                reader.ReadByteArray();
-                _resultFieldHandler = new SignedFieldHandler();
+                _resultFieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray());
             }
             var parameterCount = reader.ReadVUInt32();
             _parameters = new ParameterInf[parameterCount];
             for (int i = 0; i < _parameters.Length; i++)
             {
-                _parameters[i] = new ParameterInf(reader);
+                _parameters[i] = new ParameterInf(reader, fieldHandlerFactory);
             }
         }
 

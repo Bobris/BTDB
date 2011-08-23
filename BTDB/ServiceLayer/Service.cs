@@ -49,7 +49,8 @@ namespace BTDB.ServiceLayer
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
 
-        readonly DefaultTypeConvertorGenerator _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
+        readonly ITypeConvertorGenerator _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
+        readonly IServiceFieldHandlerFactory _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory();
 
         struct TaskAndBindInf
         {
@@ -114,7 +115,7 @@ namespace BTDB.ServiceLayer
             {
                 case Subcommand.RegisterType:
                     var typeId = reader.ReadVUInt32();
-                    _clientTypeInfs.TryAdd(typeId, new TypeInf(reader));
+                    _clientTypeInfs.TryAdd(typeId, new TypeInf(reader, _fieldHandlerFactory));
                     break;
                 case Subcommand.RegisterService:
                     var serviceId = reader.ReadVUInt32();
@@ -217,7 +218,7 @@ namespace BTDB.ServiceLayer
         public object QueryOtherService(Type serviceType)
         {
             if (serviceType == null) throw new ArgumentNullException("serviceType");
-            var typeInf = new TypeInf(serviceType);
+            var typeInf = new TypeInf(serviceType, _fieldHandlerFactory);
             var bestMatch = int.MinValue;
             var bestServiceId = 0u;
             TypeInf bestServiceTypeInf = null;
@@ -234,7 +235,7 @@ namespace BTDB.ServiceLayer
             }
             if (bestMatch <= 0) return null;
             var name = serviceType.Name;
-            var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndCollect);
+            var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
             var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
             var tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { serviceType });
@@ -252,6 +253,8 @@ namespace BTDB.ServiceLayer
                 var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
                 var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                 var bindingId = _clientBindNumbers.Allocate();
+                Type resultAsTask = typeof (Task<>).MakeGenericType(methodInfo.ReturnType);
+                
                 var bindingInf = new ClientBindInf
                     {
                         BindingId = bindingId,
@@ -303,8 +306,8 @@ namespace BTDB.ServiceLayer
                     .Ldloc(writerLocal)
                     .Callvirt(() => ((IServiceInternalClient)null).FinishTwoWayMarshaling(null))
                     .Ldloc(resultTaskLocal)
-                    .Castclass(typeof(Task<int>))
-                    .Callvirt(typeof(Task<int>).GetMethod("get_Result"))
+                    .Castclass(resultAsTask)
+                    .Callvirt(resultAsTask.GetMethod("get_Result"))
                     .Ret();
                 tb.DefineMethodOverride(methodBuilder, methodInfo);
             }
@@ -329,7 +332,7 @@ namespace BTDB.ServiceLayer
             }
             ilGenerator.Ret();
             var finalType = tb.CreateType();
-            //ab.Save(mb.ScopeName);
+            ab.Save(mb.ScopeName);
             return finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
         }
 
@@ -346,7 +349,7 @@ namespace BTDB.ServiceLayer
             _serverServices.TryAdd(service, serviceId);
             Type type = service.GetType();
             var typeId = _serverTypeNumbers.Allocate();
-            var typeInf = new TypeInf(type);
+            var typeInf = new TypeInf(type, _fieldHandlerFactory);
             _serverTypeInfs.TryAdd(typeId, typeInf);
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);

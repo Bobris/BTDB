@@ -48,5 +48,42 @@ namespace BTDBTest
             _first.RegisterMyService(new Adder());
             Assert.AreEqual(3, _second.QueryOtherService<IAdder>().Add(1, 2));
         }
+
+        public interface IIface1
+        {
+            int Meth1(string param);
+            string Meth2();
+            bool Meth3(bool a, bool b);
+        }
+
+        public class Class1 : Adder, IIface1
+        {
+            public int Meth1(string param)
+            {
+                return param.Length;
+            }
+
+            public string Meth2()
+            {
+                return "Hello World";
+            }
+
+            public bool Meth3(bool a, bool b)
+            {
+                return a && b;
+            }
+        }
+
+        [Test]
+        public void ServiceWithIAdderAndIIface1()
+        {
+            _first.RegisterMyService(new Class1());
+            Assert.AreEqual(5, _second.QueryOtherService<IAdder>().Add(10000, -9995));
+            var i1 = _second.QueryOtherService<IIface1>();
+            Assert.AreEqual(2, i1.Meth1("Hi"));
+            Assert.AreEqual("Hello World", i1.Meth2());
+            Assert.AreEqual(true, i1.Meth3(true, true));
+        }
+
     }
 }

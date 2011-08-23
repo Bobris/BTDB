@@ -1,7 +1,6 @@
 using System.Reflection;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer.FieldHandlerIface;
-using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ServiceLayer
 {
@@ -10,18 +9,17 @@ namespace BTDB.ServiceLayer
         readonly string _name;
         readonly IFieldHandler _fieldHandler;
 
-        public ParameterInf(ParameterInfo parameter)
+        public ParameterInf(ParameterInfo parameter, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             _name = parameter.Name;
-            _fieldHandler = new SignedFieldHandler();
+            _fieldHandler = fieldHandlerFactory.CreateFromType(parameter.ParameterType);
         }
 
-        public ParameterInf(AbstractBufferedReader reader)
+        public ParameterInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
-            reader.ReadString();
-            reader.ReadByteArray();
-            _fieldHandler = new SignedFieldHandler();
+            var handlerName = reader.ReadString();
+            _fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, reader.ReadByteArray());
         }
 
         public string Name
