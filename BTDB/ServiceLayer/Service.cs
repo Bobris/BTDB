@@ -233,7 +233,7 @@ namespace BTDB.ServiceLayer
                     bestServiceTypeInf = targetTypeInf;
                 }
             }
-            if (bestMatch <= 0) return null;
+            if (bestServiceTypeInf == null) return null;
             var name = serviceType.Name;
             var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
             var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
@@ -242,32 +242,28 @@ namespace BTDB.ServiceLayer
             var ownerField = tb.DefineField("_owner", typeof(IServiceInternalClient), FieldAttributes.Private);
             var bindings = new List<ClientBindInf>();
             var bindingFields = new List<FieldBuilder>();
+            var bindingResultTypes = new List<string>();
             ILGenerator ilGenerator;
             foreach (var methodInfo in serviceType.GetMethods())
             {
                 var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
                 var parameterTypes = methodInfo.GetParameters().Select(pi => pi.ParameterType).ToArray();
-                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, methodInfo.ReturnType, parameterTypes);
-                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+                var returnType = methodInfo.ReturnType;
+                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, returnType, parameterTypes);
+                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
                 var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
                 var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                 var bindingId = _clientBindNumbers.Allocate();
-                Type resultAsTask = typeof (Task<>).MakeGenericType(methodInfo.ReturnType);
-                
+                var resultAsTask = typeof(Task<>).MakeGenericType(returnType);
+                var resultAsTcs = typeof(TaskCompletionSource<>).MakeGenericType(returnType);
+
                 var bindingInf = new ClientBindInf
                     {
                         BindingId = bindingId,
                         ServiceId = bestServiceId,
                         MethodId = (uint)targetMethodIndex,
-                        OneWay = false,
-                        HandleResult = (t, reader) => ((TaskCompletionSource<int>)t).TrySetResult((int)reader.ReadVInt64()),
-                        HandleException = (t, ex) => ((TaskCompletionSource<int>)t).TrySetException(ex),
-                        TaskWithSourceCreator = () =>
-                            {
-                                var source = new TaskCompletionSource<int>();
-                                return new TaskWithSource(source, source.Task);
-                            }
+                        OneWay = false
                     };
                 _clientBindings.TryAdd(bindingId, bindingInf);
                 bindings.Add(bindingInf);
@@ -310,6 +306,43 @@ namespace BTDB.ServiceLayer
                     .Callvirt(resultAsTask.GetMethod("get_Result"))
                     .Ret();
                 tb.DefineMethodOverride(methodBuilder, methodInfo);
+                if (bindingResultTypes.Contains(returnType.FullName))
+                {
+                    bindingResultTypes.Add(returnType.FullName);
+                    continue;
+                }
+                bindingResultTypes.Add(returnType.FullName);
+                methodBuilder = tb.DefineMethod("HandleResult_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object), typeof(AbstractBufferedReader) });
+                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
+                ilGenerator
+                    .Ldarg(0)
+                    .Castclass(resultAsTcs);
+                targetMethodInf.ResultFieldHandler.LoadToWillLoad(ilGenerator, il => il.Ldarg(1));
+                _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.WillLoad(), returnType)(ilGenerator);
+                ilGenerator
+                    .Callvirt(resultAsTcs.GetMethod("TrySetResult"))
+                    .Pop()
+                    .Ret();
+                methodBuilder = tb.DefineMethod("HandleException_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object), typeof(Exception) });
+                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+                ilGenerator
+                    .Ldarg(0)
+                    .Castclass(resultAsTcs)
+                    .Ldarg(1)
+                    .Callvirt(resultAsTcs.GetMethod("TrySetException", new[] { typeof(Exception) }))
+                    .Pop()
+                    .Ret();
+                methodBuilder = tb.DefineMethod("TaskWithSourceCreator_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(TaskWithSource), Type.EmptyTypes);
+                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 32);
+                ilGenerator.DeclareLocal(resultAsTcs);
+                ilGenerator
+                    .Newobj(resultAsTcs.GetConstructor(Type.EmptyTypes))
+                    .Stloc(0)
+                    .Ldloc(0)
+                    .Ldloc(0)
+                    .Callvirt(resultAsTcs.GetMethod("get_Task"))
+                    .Newobj(() => new TaskWithSource(null, null))
+                    .Ret();
             }
             var constructorParams = new[] { typeof(IServiceInternalClient), typeof(ClientBindInf[]) };
             var contructorBuilder = tb.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard,
@@ -333,6 +366,16 @@ namespace BTDB.ServiceLayer
             ilGenerator.Ret();
             var finalType = tb.CreateType();
             ab.Save(mb.ScopeName);
+            for (int i = 0; i < bindings.Count; i++)
+            {
+                var resultType = bindingResultTypes[i];
+                bindings[i].HandleResult =
+                    finalType.GetMethod("HandleResult_" + resultType).CreateDelegate<Action<object, AbstractBufferedReader>>();
+                bindings[i].HandleException =
+                    finalType.GetMethod("HandleException_" + resultType).CreateDelegate<Action<object, Exception>>();
+                bindings[i].TaskWithSourceCreator =
+                    finalType.GetMethod("TaskWithSourceCreator_" + resultType).CreateDelegate<Func<TaskWithSource>>();
+            }
             return finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
         }
 
@@ -480,17 +523,5 @@ namespace BTDB.ServiceLayer
             OneWay = reader.ReadBool();
         }
 
-    }
-
-    internal struct TaskWithSource
-    {
-        internal object Source;
-        internal Task Task;
-
-        public TaskWithSource(object source, Task task)
-        {
-            Source = source;
-            Task = task;
-        }
     }
 }

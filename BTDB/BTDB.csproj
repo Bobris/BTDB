@@ -93,6 +93,7 @@
     <Compile Include="ServiceLayer\ParameterInf.cs" />
     <Compile Include="ServiceLayer\PipedTwoChannels.cs" />
     <Compile Include="ServiceLayer\Service.cs" />
+    <Compile Include="ServiceLayer\TaskWithSource.cs" />
     <Compile Include="ServiceLayer\TcpipClient.cs" />
     <Compile Include="ServiceLayer\TcpipServer.cs" />
     <Compile Include="ServiceLayer\TypeInf.cs" />

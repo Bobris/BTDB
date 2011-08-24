@@ -27,6 +27,11 @@ namespace BTDB.IL
             return (T)(object)mi.CreateDelegate(typeof(T));
         }
 
+        public static T CreateDelegate<T>(this MethodInfo mi) where T : class
+        {
+            return (T)(object)Delegate.CreateDelegate(typeof(T), mi);
+        }
+
         public static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
         {
             var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
