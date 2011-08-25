@@ -16,7 +16,8 @@ namespace BTDB.ServiceLayer
             MethodInfo = method;
             _name = method.Name;
             var methodBase = method.GetBaseDefinition();
-            _resultFieldHandler = fieldHandlerFactory.CreateFromType(method.ReturnType);
+            if (method.ReturnType != typeof(void))
+                _resultFieldHandler = fieldHandlerFactory.CreateFromType(method.ReturnType);
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];

@@ -54,10 +54,13 @@ namespace BTDBTest
             int Meth1(string param);
             string Meth2();
             bool Meth3(bool a, bool b);
+            void Meth4();
         }
 
         public class Class1 : Adder, IIface1
         {
+            internal bool Meth4Called;
+
             public int Meth1(string param)
             {
                 return param.Length;
@@ -72,17 +75,25 @@ namespace BTDBTest
             {
                 return a && b;
             }
+
+            public void Meth4()
+            {
+                Meth4Called = true;
+            }
         }
 
         [Test]
         public void ServiceWithIAdderAndIIface1()
         {
-            _first.RegisterMyService(new Class1());
+            var service = new Class1();
+            _first.RegisterMyService(service);
             Assert.AreEqual(5, _second.QueryOtherService<IAdder>().Add(10000, -9995));
             var i1 = _second.QueryOtherService<IIface1>();
             Assert.AreEqual(2, i1.Meth1("Hi"));
             Assert.AreEqual("Hello World", i1.Meth2());
             Assert.AreEqual(true, i1.Meth3(true, true));
+            i1.Meth4();
+            Assert.True(service.Meth4Called);
         }
 
     }

@@ -59,7 +59,8 @@ namespace BTDB.ServiceLayer
 
         static bool IsMethodSupported(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
-            if (!fieldHandlerFactory.TypeSupported(method.ReturnType)) return false;
+            if (method.ReturnType!=typeof(void))
+                if (!fieldHandlerFactory.TypeSupported(method.ReturnType)) return false;
             foreach (var parameter in method.GetParameters())
             {
                 if (parameter.IsOptional) return false;
