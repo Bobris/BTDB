@@ -1,4 +1,5 @@
 using System.Reflection;
+using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer.FieldHandlerIface;
 
@@ -16,8 +17,9 @@ namespace BTDB.ServiceLayer
             MethodInfo = method;
             _name = method.Name;
             var methodBase = method.GetBaseDefinition();
-            if (method.ReturnType != typeof(void))
-                _resultFieldHandler = fieldHandlerFactory.CreateFromType(method.ReturnType);
+            var syncReturnType = method.ReturnType.UnwrapTask();
+            if (syncReturnType != typeof(void))
+                _resultFieldHandler = fieldHandlerFactory.CreateFromType(syncReturnType);
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];

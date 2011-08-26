@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace BTDB.IL
 {
@@ -30,6 +31,15 @@ namespace BTDB.IL
         public static T CreateDelegate<T>(this MethodInfo mi) where T : class
         {
             return (T)(object)Delegate.CreateDelegate(typeof(T), mi);
+        }
+
+        public static Type UnwrapTask(this Type type)
+        {
+            if (type == null) return null;
+            if (type == typeof(Task)) return typeof (void);
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
+                return type.GetGenericArguments()[0];
+            return type;
         }
 
         public static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)

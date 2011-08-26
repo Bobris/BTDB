@@ -154,7 +154,8 @@ namespace BTDB.ServiceLayer
             if (!binding.OneWay)
             {
                 localResultId = ilGenerator.DeclareLocal(typeof(uint));
-                localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.WillLoad());
+                if (methodInf.ResultFieldHandler != null)
+                    localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.WillLoad());
                 ilGenerator
                     .Ldarg(1)
                     .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
@@ -185,18 +186,29 @@ namespace BTDB.ServiceLayer
             }
             else
             {
-                _typeConvertorGenerator.GenerateConversion(methodInf.MethodInfo.ReturnType, localResult.LocalType)(ilGenerator);
-                ilGenerator
-                    .Stloc(localResult)
-                    .Ldarg(2)
-                    .Ldloc(localResultId)
-                    .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
-                    .Stloc(localWriter);
-                methodInf.ResultFieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(localWriter), il => il.Ldloc(localResult));
-                ilGenerator
-                    .Ldarg(2)
-                    .Ldloc(localWriter)
-                    .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+                if (localResult == null)
+                {
+                    if (methodInf.MethodInfo.ReturnType != typeof(void)) ilGenerator.Pop();
+                    ilGenerator
+                        .Ldarg(2)
+                        .Ldloc(localResultId)
+                        .Callvirt(() => ((IServiceInternalServer) null).VoidResultMarshaling(0u));
+                }
+                else
+                {
+                    _typeConvertorGenerator.GenerateConversion(methodInf.MethodInfo.ReturnType, localResult.LocalType)(ilGenerator);
+                    ilGenerator
+                        .Stloc(localResult)
+                        .Ldarg(2)
+                        .Ldloc(localResultId)
+                        .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
+                        .Stloc(localWriter);
+                    methodInf.ResultFieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(localWriter), il => il.Ldloc(localResult));
+                    ilGenerator
+                        .Ldarg(2)
+                        .Ldloc(localWriter)
+                        .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+                }
                 ilGenerator
                     .Catch(typeof(Exception))
                     .Stloc(localException)
@@ -262,8 +274,9 @@ namespace BTDB.ServiceLayer
                 var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
                 var parameterTypes = methodInfo.GetParameters().Select(pi => pi.ParameterType).ToArray();
-                var returnType = methodInfo.ReturnType;
-                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, returnType, parameterTypes);
+                var returnType = methodInfo.ReturnType.UnwrapTask();
+                var isAsync = returnType != methodInfo.ReturnType;
+                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, methodInfo.ReturnType, parameterTypes);
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
                 var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
                 var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
@@ -286,7 +299,7 @@ namespace BTDB.ServiceLayer
                         BindingId = bindingId,
                         ServiceId = bestServiceId,
                         MethodId = (uint)targetMethodIndex,
-                        OneWay = returnType == typeof(void)
+                        OneWay = !isAsync && returnType == typeof(void)
                     };
                 _clientBindings.TryAdd(bindingId, bindingInf);
                 bindings.Add(bindingInf);
@@ -340,11 +353,14 @@ namespace BTDB.ServiceLayer
                 if (bindingInf.OneWay)
                     ilGenerator.Callvirt(() => ((IServiceInternalClient)null).FinishOneWayMarshaling(null));
                 else
+                {
                     ilGenerator
                         .Callvirt(() => ((IServiceInternalClient)null).FinishTwoWayMarshaling(null))
                         .Ldloc(resultTaskLocal)
-                        .Castclass(resultAsTask)
-                        .Callvirt(resultAsTask.GetMethod("get_Result"));
+                        .Castclass(resultAsTask);
+                    if (!isAsync)
+                        ilGenerator.Callvirt(resultAsTask.GetMethod("get_Result"));
+                }
                 ilGenerator.Ret();
                 tb.DefineMethodOverride(methodBuilder, methodInfo);
                 if (bindingInf.OneWay)
@@ -363,8 +379,15 @@ namespace BTDB.ServiceLayer
                 ilGenerator
                     .Ldarg(0)
                     .Castclass(resultAsTcs);
-                targetMethodInf.ResultFieldHandler.LoadToWillLoad(ilGenerator, il => il.Ldarg(1));
-                _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.WillLoad(), returnType)(ilGenerator);
+                if (targetMethodInf.ResultFieldHandler==null && returnType==typeof(void))
+                {
+                    ilGenerator.Ldnull();
+                }
+                else
+                {
+                    targetMethodInf.ResultFieldHandler.LoadToWillLoad(ilGenerator, il => il.Ldarg(1));
+                    _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.WillLoad(), returnType)(ilGenerator);
+                }
                 ilGenerator
                     .Callvirt(resultAsTcs.GetMethod("TrySetResult"))
                     .Pop()
@@ -527,6 +550,15 @@ namespace BTDB.ServiceLayer
             message.WriteVUInt32((uint)Command.Exception);
             message.WriteVUInt32(resultId);
             message.WriteString(ex.Message);
+            message.Dispose();
+            _channel.Send(ByteBuffer.NewAsync(message.Data));
+        }
+
+        public void VoidResultMarshaling(uint resultId)
+        {
+            var message = new ByteArrayWriter();
+            message.WriteVUInt32((uint)Command.Result);
+            message.WriteVUInt32(resultId);
             message.Dispose();
             _channel.Send(ByteBuffer.NewAsync(message.Data));
         }

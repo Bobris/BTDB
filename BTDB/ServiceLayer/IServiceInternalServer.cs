@@ -8,5 +8,6 @@ namespace BTDB.ServiceLayer
         AbstractBufferedWriter StartResultMarshaling(uint resultId);
         void FinishResultMarshaling(AbstractBufferedWriter writer);
         void ExceptionMarshaling(uint resultId, Exception ex);
+        void VoidResultMarshaling(uint resultId);
     }
 }

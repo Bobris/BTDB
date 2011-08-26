@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ServiceLayer;
 using NUnit.Framework;
@@ -57,6 +58,14 @@ namespace BTDBTest
             void Meth4();
         }
 
+        public interface IIface1Async
+        {
+            Task<int> Meth1(string param);
+            Task<string> Meth2();
+            Task<bool> Meth3(bool a, bool b);
+            Task Meth4();
+        }
+
         public class Class1 : Adder, IIface1
         {
             internal bool Meth4Called;
@@ -93,6 +102,19 @@ namespace BTDBTest
             Assert.AreEqual("Hello World", i1.Meth2());
             Assert.AreEqual(true, i1.Meth3(true, true));
             i1.Meth4();
+            Assert.True(service.Meth4Called);
+        }
+
+        [Test]
+        public void AutomaticConversionToAsyncIface()
+        {
+            var service = new Class1();
+            _first.RegisterMyService(service);
+            var i1 = _second.QueryOtherService<IIface1Async>();
+            Assert.AreEqual(2, i1.Meth1("Hi").Result);
+            Assert.AreEqual("Hello World", i1.Meth2().Result);
+            Assert.AreEqual(true, i1.Meth3(true, true).Result);
+            i1.Meth4().Wait();
             Assert.True(service.Meth4Called);
         }
 

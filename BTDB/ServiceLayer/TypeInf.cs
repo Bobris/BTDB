@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
 
 namespace BTDB.ServiceLayer
@@ -59,8 +60,9 @@ namespace BTDB.ServiceLayer
 
         static bool IsMethodSupported(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
         {
-            if (method.ReturnType!=typeof(void))
-                if (!fieldHandlerFactory.TypeSupported(method.ReturnType)) return false;
+            var syncReturnType = method.ReturnType.UnwrapTask();
+            if (syncReturnType != typeof(void))
+                if (!fieldHandlerFactory.TypeSupported(syncReturnType)) return false;
             foreach (var parameter in method.GetParameters())
             {
                 if (parameter.IsOptional) return false;
