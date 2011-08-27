@@ -263,13 +263,14 @@ namespace BTDB.ServiceLayer
             var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
             var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
             var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
-            var tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), new[] { serviceType });
+            var isDelegate = serviceType.IsSubclassOf(typeof(Delegate));
+            var tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), isDelegate ? Type.EmptyTypes : new[] { serviceType });
             var ownerField = tb.DefineField("_owner", typeof(IServiceInternalClient), FieldAttributes.Private);
             var bindings = new List<ClientBindInf>();
             var bindingFields = new List<FieldBuilder>();
             var bindingResultTypes = new List<string>();
             ILGenerator ilGenerator;
-            foreach (var methodInfo in serviceType.GetMethods())
+            foreach (var methodInfo in typeInf.MethodInfs.Select(mi=>mi.MethodInfo))
             {
                 var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
@@ -362,7 +363,8 @@ namespace BTDB.ServiceLayer
                         ilGenerator.Callvirt(resultAsTask.GetMethod("get_Result"));
                 }
                 ilGenerator.Ret();
-                tb.DefineMethodOverride(methodBuilder, methodInfo);
+                if (!isDelegate)
+                    tb.DefineMethodOverride(methodBuilder, methodInfo);
                 if (bindingInf.OneWay)
                 {
                     bindingResultTypes.Add("");
@@ -446,7 +448,8 @@ namespace BTDB.ServiceLayer
                 bindings[i].TaskWithSourceCreator =
                     finalType.GetMethod("TaskWithSourceCreator_" + resultType).CreateDelegate<Func<TaskWithSource>>();
             }
-            return finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
+            var finalObject = finalType.GetConstructor(constructorParams).Invoke(new object[] {this, bindings.ToArray()});
+            return isDelegate ? Delegate.CreateDelegate(serviceType, finalObject, "Invoke") : finalObject;
         }
 
         int EvaluateCompatibility(TypeInf from, TypeInf to)

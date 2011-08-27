@@ -118,5 +118,13 @@ namespace BTDBTest
             Assert.True(service.Meth4Called);
         }
 
+        [Test]
+        public void DelegateAsService()
+        {
+            _first.RegisterMyService((Func<double,double,double>)((a, b)=>a+b));
+            var d = _second.QueryOtherService<Func<double, double, double>>();
+            Assert.AreEqual(31.0, d(10.5, 20.5), 1e-10);
+        }
+
     }
 }
