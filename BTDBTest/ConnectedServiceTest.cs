@@ -111,11 +111,16 @@ namespace BTDBTest
             var service = new Class1();
             _first.RegisterMyService(service);
             var i1 = _second.QueryOtherService<IIface1Async>();
+            AssertIIface1Async(i1);
+            Assert.True(service.Meth4Called);
+        }
+
+        static void AssertIIface1Async(IIface1Async i1)
+        {
             Assert.AreEqual(2, i1.Meth1("Hi").Result);
             Assert.AreEqual("Hello World", i1.Meth2().Result);
             Assert.AreEqual(true, i1.Meth3(true, true).Result);
             i1.Meth4().Wait();
-            Assert.True(service.Meth4Called);
         }
 
         [Test]
@@ -124,6 +129,43 @@ namespace BTDBTest
             _first.RegisterMyService((Func<double,double,double>)((a, b)=>a+b));
             var d = _second.QueryOtherService<Func<double, double, double>>();
             Assert.AreEqual(31.0, d(10.5, 20.5), 1e-10);
+        }
+
+        public class Class1Async : IIface1Async
+        {
+            internal bool Meth4Called;
+
+            public Task<int> Meth1(string param)
+            {
+                var tco = new TaskCompletionSource<int>();
+                tco.SetResult(param.Length);
+                return tco.Task;
+            }
+
+            public Task<string> Meth2()
+            {
+                return Task.Factory.StartNew(()=>"Hello World");
+            }
+
+            public Task<bool> Meth3(bool a, bool b)
+            {
+                return Task.Factory.StartNew(()=>a && b);
+            }
+
+            public Task Meth4()
+            {
+                return Task.Factory.StartNew(() => { Meth4Called = true; });
+            }
+        }
+ 
+        [Test]
+        public void AsyncIfaceOnServerSide()
+        {
+            var service = new Class1Async();
+            _first.RegisterMyService(service);
+            var i1 = _second.QueryOtherService<IIface1Async>();
+            AssertIIface1Async(i1);
+            Assert.True(service.Meth4Called);
         }
 
     }

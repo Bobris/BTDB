@@ -263,6 +263,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Ldftn(this ILGenerator il, MethodInfo methodInfo)
+        {
+            il.Emit(OpCodes.Ldftn, methodInfo);
+            return il;
+        }
+
         public static ILGenerator Mark(this ILGenerator il, Label label)
         {
             il.MarkLabel(label);

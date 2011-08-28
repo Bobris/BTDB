@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reactive;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -10,6 +11,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer;
+using BTDB.ODBLayer.FieldHandlerIface;
 using BTDB.Reactive;
 using BTDB.IL;
 
@@ -143,6 +145,8 @@ namespace BTDB.ServiceLayer
             TypeInf typeInf;
             _serverTypeInfs.TryGetValue(typeId, out typeInf);
             var methodInf = typeInf.MethodInfs[binding.MethodId];
+            var returnType = methodInf.MethodInfo.ReturnType.UnwrapTask();
+            var isAsync = returnType != methodInf.MethodInfo.ReturnType;
             binding.Object = serverObject;
             var method = new DynamicMethod(string.Format("{0}_{1}", typeInf.Name, methodInf.Name), typeof(void), new[] { typeof(object), typeof(AbstractBufferedReader), typeof(IServiceInternalServer) });
             var ilGenerator = method.GetILGenerator();
@@ -154,7 +158,7 @@ namespace BTDB.ServiceLayer
             if (!binding.OneWay)
             {
                 localResultId = ilGenerator.DeclareLocal(typeof(uint));
-                if (methodInf.ResultFieldHandler != null)
+                if (methodInf.ResultFieldHandler != null && !isAsync)
                     localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.WillLoad());
                 ilGenerator
                     .Ldarg(1)
@@ -182,21 +186,31 @@ namespace BTDB.ServiceLayer
                 .Callvirt(methodInf.MethodInfo);
             if (binding.OneWay)
             {
-                if (methodInf.MethodInfo.ReturnType != typeof(void)) ilGenerator.Pop();
+                if (returnType != typeof(void)) ilGenerator.Pop();
             }
             else
             {
                 if (localResult == null)
                 {
-                    if (methodInf.MethodInfo.ReturnType != typeof(void)) ilGenerator.Pop();
-                    ilGenerator
-                        .Ldarg(2)
-                        .Ldloc(localResultId)
-                        .Callvirt(() => ((IServiceInternalServer) null).VoidResultMarshaling(0u));
+                    if (isAsync)
+                    {
+                        ilGenerator
+                            .Ldarg(2)
+                            .Ldloc(localResultId)
+                            .Newobj(CreateTaskContinuationWithResultMarshaling(methodInf.MethodInfo.ReturnType, methodInf.ResultFieldHandler));
+                    }
+                    else
+                    {
+                        if (methodInf.MethodInfo.ReturnType != typeof(void)) ilGenerator.Pop();
+                        ilGenerator
+                            .Ldarg(2)
+                            .Ldloc(localResultId)
+                            .Callvirt(() => ((IServiceInternalServer)null).VoidResultMarshaling(0u));
+                    }
                 }
                 else
                 {
-                    _typeConvertorGenerator.GenerateConversion(methodInf.MethodInfo.ReturnType, localResult.LocalType)(ilGenerator);
+                    _typeConvertorGenerator.GenerateConversion(returnType, localResult.LocalType)(ilGenerator);
                     ilGenerator
                         .Stloc(localResult)
                         .Ldarg(2)
@@ -222,6 +236,83 @@ namespace BTDB.ServiceLayer
 
             binding.Runner = method.CreateDelegate<Action<object, AbstractBufferedReader, IServiceInternalServer>>();
             _serverBindings.TryAdd(binding.BindingId, binding);
+        }
+
+        ConstructorInfo CreateTaskContinuationWithResultMarshaling(Type taskType, IFieldHandler resultFieldHandler)
+        {
+            var name = "TaskContinuationWithResultMarshaling_" + taskType.Name;
+            var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
+            var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
+            var symbolDocumentWriter = mb.DefineDocument("just_dynamic_" + name, Guid.Empty, Guid.Empty, Guid.Empty);
+            var tb = mb.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            var ownerField = tb.DefineField("_owner", typeof(IServiceInternalServer), FieldAttributes.Private);
+            var resultIdField = tb.DefineField("_resultId", typeof(uint), FieldAttributes.Private);
+            var methodBuilder = tb.DefineMethod("Run", MethodAttributes.Public, typeof(void), new[] { taskType });
+            var ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
+            ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            var notFaultedLabel = ilGenerator.DefineLabel();
+            ilGenerator
+                .Ldarg(1)
+                .Callvirt(typeof(Task).GetMethod("get_IsFaulted"))
+                .BrfalseS(notFaultedLabel)
+                .Ldarg(0)
+                .Ldfld(ownerField)
+                .Ldarg(0)
+                .Ldfld(resultIdField)
+                .Ldarg(1)
+                .Callvirt(typeof(Task).GetMethod("get_Exception"))
+                .Callvirt(() => ((IServiceInternalServer)null).ExceptionMarshaling(0u, null))
+                .Ret()
+                .Mark(notFaultedLabel)
+                .Ldarg(0)
+                .Ldfld(ownerField)
+                .Ldarg(0)
+                .Ldfld(resultIdField);
+            if (resultFieldHandler == null)
+            {
+                ilGenerator
+                    .Callvirt(() => ((IServiceInternalServer)null).VoidResultMarshaling(0u));
+            }
+            else
+            {
+                ilGenerator
+                    .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
+                    .Stloc(0);
+                resultFieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(0), il =>
+                    {
+                        il.Ldarg(1).Callvirt(taskType.GetMethod("get_Result"));
+                        _typeConvertorGenerator.GenerateConversion(taskType.UnwrapTask(), resultFieldHandler.WillLoad())(il);
+                    });
+                ilGenerator
+                    .Ldarg(0)
+                    .Ldfld(ownerField)
+                    .Ldloc(0)
+                    .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+            }
+            ilGenerator.Ret();
+            var constructorBuilder = tb.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard,
+                                                          new[] { taskType, typeof(IServiceInternalServer), typeof(uint) });
+            var actionOfTaskType = typeof(Action<>).MakeGenericType(taskType);
+            ilGenerator = constructorBuilder.GetILGenerator();
+            ilGenerator
+                .Ldarg(0)
+                .Call(() => new object())
+                .Ldarg(0)
+                .Ldarg(2)
+                .Stfld(ownerField)
+                .Ldarg(0)
+                .Ldarg(3)
+                .Stfld(resultIdField)
+                .Ldarg(1)
+                .Ldarg(0)
+                .Ldftn(methodBuilder)
+                .Newobj(actionOfTaskType.GetConstructor(new[] { typeof(object), typeof(IntPtr) }))
+                .Callvirt(taskType.GetMethod("ContinueWith", new[] { actionOfTaskType }))
+                .Pop()
+                .Ret();
+            var type = tb.CreateType();
+            ab.Save(mb.ScopeName);
+            return type.GetConstructors()[0];
         }
 
         void OnUnregisterService(uint serviceId)
@@ -270,7 +361,7 @@ namespace BTDB.ServiceLayer
             var bindingFields = new List<FieldBuilder>();
             var bindingResultTypes = new List<string>();
             ILGenerator ilGenerator;
-            foreach (var methodInfo in typeInf.MethodInfs.Select(mi=>mi.MethodInfo))
+            foreach (var methodInfo in typeInf.MethodInfs.Select(mi => mi.MethodInfo))
             {
                 var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
@@ -381,7 +472,7 @@ namespace BTDB.ServiceLayer
                 ilGenerator
                     .Ldarg(0)
                     .Castclass(resultAsTcs);
-                if (targetMethodInf.ResultFieldHandler==null && returnType==typeof(void))
+                if (targetMethodInf.ResultFieldHandler == null && returnType == typeof(void))
                 {
                     ilGenerator.Ldnull();
                 }
@@ -448,7 +539,7 @@ namespace BTDB.ServiceLayer
                 bindings[i].TaskWithSourceCreator =
                     finalType.GetMethod("TaskWithSourceCreator_" + resultType).CreateDelegate<Func<TaskWithSource>>();
             }
-            var finalObject = finalType.GetConstructor(constructorParams).Invoke(new object[] {this, bindings.ToArray()});
+            var finalObject = finalType.GetConstructor(constructorParams).Invoke(new object[] { this, bindings.ToArray() });
             return isDelegate ? Delegate.CreateDelegate(serviceType, finalObject, "Invoke") : finalObject;
         }
 
