@@ -11,6 +11,7 @@ namespace BTDB.IL
 {
     public static class EmitHelpers
     {
+
         public static MethodInfo GetMethodInfo(Expression<Action> expression)
         {
             return (expression.Body as MethodCallExpression).Method;

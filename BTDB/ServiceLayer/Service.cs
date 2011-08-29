@@ -148,7 +148,7 @@ namespace BTDB.ServiceLayer
             var returnType = methodInf.MethodInfo.ReturnType.UnwrapTask();
             var isAsync = returnType != methodInf.MethodInfo.ReturnType;
             binding.Object = serverObject;
-            var method = new DynamicMethod(string.Format("{0}_{1}", typeInf.Name, methodInf.Name), typeof(void), new[] { typeof(object), typeof(AbstractBufferedReader), typeof(IServiceInternalServer) });
+            var method = new DynamicMethod<Action<object, AbstractBufferedReader, IServiceInternalServer>>(string.Format("{0}_{1}", typeInf.Name, methodInf.Name));
             var ilGenerator = method.GetILGenerator();
             LocalBuilder localResultId = null;
             var localWriter = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
@@ -234,7 +234,7 @@ namespace BTDB.ServiceLayer
             }
             ilGenerator.Ret();
 
-            binding.Runner = method.CreateDelegate<Action<object, AbstractBufferedReader, IServiceInternalServer>>();
+            binding.Runner = method.Create();
             _serverBindings.TryAdd(binding.BindingId, binding);
         }
 

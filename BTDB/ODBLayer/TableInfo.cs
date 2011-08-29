@@ -365,7 +365,7 @@ namespace BTDB.ODBLayer
         {
             EnsureClientTypeVersion();
             EnsureImplType();
-            var method = new DynamicMethod(string.Format("{0}_loader_{1}", Name, version), typeof(object), new[] { typeof(IObjectDBTransactionInternal), typeof(ulong), typeof(AbstractBufferedReader) });
+            var method = new DynamicMethod<Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>>(string.Format("{0}_loader_{1}", Name, version));
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(_implType);
             ilGenerator
@@ -401,7 +401,7 @@ namespace BTDB.ODBLayer
                 srcFieldInfo.Handler.SkipLoad(ilGenerator, ig => ig.Ldarg(2));
             }
             ilGenerator.Ldloc(0).Ret();
-            return method.CreateDelegate<Func<IObjectDBTransactionInternal, ulong, AbstractBufferedReader, object>>();
+            return method.Create();
         }
     }
 }

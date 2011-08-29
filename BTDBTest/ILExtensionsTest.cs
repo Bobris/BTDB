@@ -52,7 +52,7 @@ namespace BTDBTest
         [Test]
         public void ILNewWay()
         {
-            var method = new DynamicMethod("SampleCall", typeof(Nested), Type.EmptyTypes);
+            var method = new DynamicMethod<Func<Nested>>("SampleCall");
             var il = method.GetILGenerator();
             il.DeclareLocal(typeof(Nested));
             il
@@ -63,7 +63,7 @@ namespace BTDBTest
                 .Call(() => ((Nested)null).Fun(""))
                 .Ldloc(0)
                 .Ret();
-            var action = method.CreateDelegate<Func<Nested>>();
+            var action = method.Create();
             var n = action();
             Assert.AreEqual("Test", n.PassedParam);
         }
