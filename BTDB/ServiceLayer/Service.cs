@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Reactive;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.ReaderWriters;
@@ -51,6 +51,7 @@ namespace BTDB.ServiceLayer
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
+        readonly ConditionalWeakTable<Type, WeakReference> _otherServiceCache = new ConditionalWeakTable<Type, WeakReference>();
 
         readonly ITypeConvertorGenerator _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
         readonly IServiceFieldHandlerFactory _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory();
@@ -334,6 +335,20 @@ namespace BTDB.ServiceLayer
         public object QueryOtherService(Type serviceType)
         {
             if (serviceType == null) throw new ArgumentNullException("serviceType");
+            var weak = _otherServiceCache.GetValue(serviceType, t => new WeakReference(null, true));
+            lock (weak)
+            {
+                var result = weak.Target;
+                if (result == null)
+                {
+                    weak.Target = result = InternalQueryOtherService(serviceType);
+                }
+                return result;
+            }
+        }
+
+        object InternalQueryOtherService(Type serviceType)
+        {
             var typeInf = new TypeInf(serviceType, _fieldHandlerFactory);
             var bestMatch = int.MinValue;
             var bestServiceId = 0u;
@@ -370,7 +385,12 @@ namespace BTDB.ServiceLayer
                 var isAsync = returnType != methodInfo.ReturnType;
                 var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, methodInfo.ReturnType, parameterTypes);
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
-                var targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
+                MethodInf targetMethodInf;
+                if (bestServiceTypeInf.MethodInfs.Length == 1) targetMethodInf = bestServiceTypeInf.MethodInfs[0];
+                else
+                {
+                    targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
+                }
                 var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                 var bindingId = _clientBindNumbers.Allocate();
                 Type resultAsTask;
@@ -545,7 +565,61 @@ namespace BTDB.ServiceLayer
 
         int EvaluateCompatibility(TypeInf from, TypeInf to)
         {
-            return 1;
+            var result = 0;
+            if (from.MethodInfs.Length == 1 && to.MethodInfs.Length == 1)
+            {
+                result = EvaluateCompatibilityIgnoringName(from.MethodInfs[0], to.MethodInfs[0]);
+                if (result == int.MinValue) return result;
+                if (from.Name == to.Name) result += 5;
+                return result;
+            }
+            foreach (var methodToCheck in from.MethodInfs)
+            {
+                var bestValue = int.MinValue;
+                var bestIndex = int.MinValue;
+                for (int j = 0; j < to.MethodInfs.Length; j++)
+                {
+                    if (methodToCheck.Name != to.MethodInfs[j].Name) continue;
+                    var value = EvaluateCompatibilityIgnoringName(methodToCheck, to.MethodInfs[j]);
+                    if (value > bestValue)
+                    {
+                        bestValue = value;
+                        bestIndex = j;
+                    }
+                    else if (value == bestValue)
+                    {
+                        bestIndex = int.MinValue; // Ambiguity
+                    }
+                }
+                if (bestIndex == int.MinValue) return int.MinValue;
+                result += bestValue;
+            }
+            return result;
+        }
+
+        int EvaluateCompatibilityIgnoringName(MethodInf from, MethodInf to)
+        {
+            var result = 0;
+            if (from.ResultFieldHandler != null && to.ResultFieldHandler != null)
+            {
+                result = EvaluateCompatibility(to.ResultFieldHandler, from.ResultFieldHandler); // from to is exchanged because return value going back
+                if (result == int.MinValue) return result;
+            }
+            if (from.Parameters.Length != to.Parameters.Length) return int.MinValue;
+            for (int i = 0; i < from.Parameters.Length; i++)
+            {
+                if (from.Parameters[i].Name == to.Parameters[i].Name) result++;
+                var value = EvaluateCompatibility(from.Parameters[i].FieldHandler, to.Parameters[i].FieldHandler);
+                if (value == int.MinValue) return int.MinValue;
+                result += value;
+            }
+            return result;
+        }
+
+        int EvaluateCompatibility(IFieldHandler from, IFieldHandler to)
+        {
+            if (from.Name == to.Name && (from.Configuration==to.Configuration || from.Configuration.SequenceEqual(to.Configuration))) return 10;
+            return int.MinValue;
         }
 
         public void RegisterMyService(object service)
@@ -558,6 +632,7 @@ namespace BTDB.ServiceLayer
             var typeId = _serverTypeNumbers.Allocate();
             var typeInf = new TypeInf(type, _fieldHandlerFactory);
             _serverTypeInfs.TryAdd(typeId, typeInf);
+            _serverKnownServicesTypes.TryAdd(serviceId, typeId);
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
             writer.WriteVUInt32((uint)Subcommand.RegisterType);

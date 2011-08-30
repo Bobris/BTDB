@@ -126,7 +126,7 @@ namespace BTDBTest
         [Test]
         public void DelegateAsService()
         {
-            _first.RegisterMyService((Func<double,double,double>)((a, b)=>a+b));
+            _first.RegisterMyService((Func<double, double, double>)((a, b) => a + b));
             var d = _second.QueryOtherService<Func<double, double, double>>();
             Assert.AreEqual(31.0, d(10.5, 20.5), 1e-10);
         }
@@ -144,12 +144,12 @@ namespace BTDBTest
 
             public Task<string> Meth2()
             {
-                return Task.Factory.StartNew(()=>"Hello World");
+                return Task.Factory.StartNew(() => "Hello World");
             }
 
             public Task<bool> Meth3(bool a, bool b)
             {
-                return Task.Factory.StartNew(()=>a && b);
+                return Task.Factory.StartNew(() => a && b);
             }
 
             public Task Meth4()
@@ -157,7 +157,7 @@ namespace BTDBTest
                 return Task.Factory.StartNew(() => { Meth4Called = true; });
             }
         }
- 
+
         [Test]
         public void AsyncIfaceOnServerSide()
         {
@@ -166,6 +166,46 @@ namespace BTDBTest
             var i1 = _second.QueryOtherService<IIface1Async>();
             AssertIIface1Async(i1);
             Assert.True(service.Meth4Called);
+        }
+
+        [Test]
+        public void MultipleServicesAndIdentity()
+        {
+            _first.RegisterMyService(new Adder());
+            _first.RegisterMyService(new Class1Async());
+            var adder = _second.QueryOtherService<IAdder>();
+            Assert.AreSame(adder, _second.QueryOtherService<IAdder>());
+            var i1 = _second.QueryOtherService<IIface1>();
+            Assert.AreSame(i1, _second.QueryOtherService<IIface1>());
+        }
+
+        [Test]
+        public void ClientServiceDeallocedWhenNotneeded()
+        {
+            _first.RegisterMyService(new Adder());
+            var adder = _second.QueryOtherService<IAdder>();
+            var weakAdder = new WeakReference(adder);
+            adder = null;
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Assert.False(weakAdder.IsAlive);
+            adder = _second.QueryOtherService<IAdder>();
+            Assert.AreEqual(2, adder.Add(1, 1));
+        }
+
+        [Test]
+        public void IfaceToDelegateConversion()
+        {
+            _first.RegisterMyService(new Adder());
+            var adder = _second.QueryOtherService<Func<int, int, int>>();
+            Assert.AreEqual(5,adder(2,3));
+        }
+
+        [Test]
+        public void DelegateToIfaceConversion()
+        {
+            _first.RegisterMyService((Func<int, int, int>)((a, b) => a + b));
+            Assert.AreEqual(30, _second.QueryOtherService<IAdder>().Add(10, 20));
         }
 
     }
