@@ -198,7 +198,7 @@ namespace BTDBTest
         {
             _first.RegisterMyService(new Adder());
             var adder = _second.QueryOtherService<Func<int, int, int>>();
-            Assert.AreEqual(5,adder(2,3));
+            Assert.AreEqual(5, adder(2, 3));
         }
 
         [Test]
@@ -206,6 +206,34 @@ namespace BTDBTest
         {
             _first.RegisterMyService((Func<int, int, int>)((a, b) => a + b));
             Assert.AreEqual(30, _second.QueryOtherService<IAdder>().Add(10, 20));
+        }
+
+        public interface IIface2
+        {
+            int Invoke(string param);
+            int Invoke(int param);
+        }
+
+        public class Class2 : IIface2
+        {
+            public int Invoke(string param)
+            {
+                return param.Length;
+            }
+
+            public int Invoke(int param)
+            {
+                return param * param;
+            }
+        }
+
+        [Test]
+        public void BasicMethodOverloading()
+        {
+            _first.RegisterMyService(new Class2());
+            var i2 = _second.QueryOtherService<IIface2>();
+            Assert.AreEqual(9, i2.Invoke(3));
+            Assert.AreEqual(2, i2.Invoke("Hi"));
         }
 
     }

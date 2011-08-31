@@ -356,7 +356,7 @@ namespace BTDB.ServiceLayer
             foreach (var servicesType in _clientKnownServicesTypes)
             {
                 var targetTypeInf = _clientTypeInfs[servicesType.Value];
-                var score = EvaluateCompatibility(typeInf, targetTypeInf);
+                var score = EvaluateCompatibility(typeInf, targetTypeInf, null);
                 if (score > bestMatch)
                 {
                     bestMatch = score;
@@ -365,6 +365,8 @@ namespace BTDB.ServiceLayer
                 }
             }
             if (bestServiceTypeInf == null) return null;
+            var mapping = new uint[typeInf.MethodInfs.Length][];
+            EvaluateCompatibility(typeInf, bestServiceTypeInf, mapping);
             var name = serviceType.Name;
             var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave);
             var mb = ab.DefineDynamicModule(name + "Asm.dll", true);
@@ -376,21 +378,19 @@ namespace BTDB.ServiceLayer
             var bindingFields = new List<FieldBuilder>();
             var bindingResultTypes = new List<string>();
             ILGenerator ilGenerator;
-            foreach (var methodInfo in typeInf.MethodInfs.Select(mi => mi.MethodInfo))
+            for (int sourceMethodIndex = 0; sourceMethodIndex < typeInf.MethodInfs.Length; sourceMethodIndex++)
             {
-                var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count.ToString()), typeof(ClientBindInf), FieldAttributes.Private);
+                var methodInf = typeInf.MethodInfs[sourceMethodIndex];
+                var methodInfo = methodInf.MethodInfo;
+                var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count), typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
                 var parameterTypes = methodInfo.GetParameters().Select(pi => pi.ParameterType).ToArray();
                 var returnType = methodInfo.ReturnType.UnwrapTask();
                 var isAsync = returnType != methodInfo.ReturnType;
-                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual, methodInfo.ReturnType, parameterTypes);
+                var methodBuilder = tb.DefineMethod(methodInfo.Name, MethodAttributes.Public | MethodAttributes.Virtual,
+                                                    methodInfo.ReturnType, parameterTypes);
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
-                MethodInf targetMethodInf;
-                if (bestServiceTypeInf.MethodInfs.Length == 1) targetMethodInf = bestServiceTypeInf.MethodInfs[0];
-                else
-                {
-                    targetMethodInf = bestServiceTypeInf.MethodInfs.First(minf => minf.Name == methodInfo.Name);
-                }
+                var targetMethodInf = bestServiceTypeInf.MethodInfs[mapping[sourceMethodIndex][0]];
                 var targetMethodIndex = Array.IndexOf(bestServiceTypeInf.MethodInfs, targetMethodInf);
                 var bindingId = _clientBindNumbers.Allocate();
                 Type resultAsTask;
@@ -450,7 +450,8 @@ namespace BTDB.ServiceLayer
                 foreach (var parameterInf in targetMethodInf.Parameters)
                 {
                     var order = (ushort)(1 + paramOrder);
-                    var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[paramOrder], parameterInf.FieldHandler.WillLoad());
+                    var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[paramOrder],
+                                                                             parameterInf.FieldHandler.WillLoad());
                     parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il =>
                         {
                             il.Ldarg(order);
@@ -487,7 +488,9 @@ namespace BTDB.ServiceLayer
                     continue;
                 }
                 bindingResultTypes.Add(returnType.FullName);
-                methodBuilder = tb.DefineMethod("HandleResult_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object), typeof(AbstractBufferedReader) });
+                methodBuilder = tb.DefineMethod("HandleResult_" + returnType.FullName,
+                                                MethodAttributes.Public | MethodAttributes.Static, typeof(void),
+                                                new[] { typeof(object), typeof(AbstractBufferedReader) });
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter);
                 ilGenerator
                     .Ldarg(0)
@@ -499,13 +502,16 @@ namespace BTDB.ServiceLayer
                 else
                 {
                     targetMethodInf.ResultFieldHandler.LoadToWillLoad(ilGenerator, il => il.Ldarg(1));
-                    _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.WillLoad(), returnType)(ilGenerator);
+                    _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.WillLoad(), returnType)
+                        (ilGenerator);
                 }
                 ilGenerator
                     .Callvirt(resultAsTcs.GetMethod("TrySetResult"))
                     .Pop()
                     .Ret();
-                methodBuilder = tb.DefineMethod("HandleException_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(void), new[] { typeof(object), typeof(Exception) });
+                methodBuilder = tb.DefineMethod("HandleException_" + returnType.FullName,
+                                                MethodAttributes.Public | MethodAttributes.Static, typeof(void),
+                                                new[] { typeof(object), typeof(Exception) });
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
                 ilGenerator
                     .Ldarg(0)
@@ -514,7 +520,9 @@ namespace BTDB.ServiceLayer
                     .Callvirt(resultAsTcs.GetMethod("TrySetException", new[] { typeof(Exception) }))
                     .Pop()
                     .Ret();
-                methodBuilder = tb.DefineMethod("TaskWithSourceCreator_" + returnType.FullName, MethodAttributes.Public | MethodAttributes.Static, typeof(TaskWithSource), Type.EmptyTypes);
+                methodBuilder = tb.DefineMethod("TaskWithSourceCreator_" + returnType.FullName,
+                                                MethodAttributes.Public | MethodAttributes.Static,
+                                                typeof(TaskWithSource), Type.EmptyTypes);
                 ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 32);
                 ilGenerator.DeclareLocal(resultAsTcs);
                 ilGenerator
@@ -563,24 +571,31 @@ namespace BTDB.ServiceLayer
             return isDelegate ? Delegate.CreateDelegate(serviceType, finalObject, "Invoke") : finalObject;
         }
 
-        int EvaluateCompatibility(TypeInf from, TypeInf to)
+        int EvaluateCompatibility(TypeInf from, TypeInf to, uint[][] mapping)
         {
             var result = 0;
             if (from.MethodInfs.Length == 1 && to.MethodInfs.Length == 1)
             {
-                result = EvaluateCompatibilityIgnoringName(from.MethodInfs[0], to.MethodInfs[0]);
+                uint[] parameterMapping = null;
+                if (mapping != null)
+                {
+                    parameterMapping = new uint[1 + to.MethodInfs[0].Parameters.Length];
+                    mapping[0] = parameterMapping;
+                }
+                result = EvaluateCompatibilityIgnoringName(from.MethodInfs[0], to.MethodInfs[0], parameterMapping);
                 if (result == int.MinValue) return result;
                 if (from.Name == to.Name) result += 5;
                 return result;
             }
-            foreach (var methodToCheck in from.MethodInfs)
+            for (int i = 0; i < from.MethodInfs.Length; i++)
             {
+                var methodToCheck = from.MethodInfs[i];
                 var bestValue = int.MinValue;
                 var bestIndex = int.MinValue;
                 for (int j = 0; j < to.MethodInfs.Length; j++)
                 {
                     if (methodToCheck.Name != to.MethodInfs[j].Name) continue;
-                    var value = EvaluateCompatibilityIgnoringName(methodToCheck, to.MethodInfs[j]);
+                    var value = EvaluateCompatibilityIgnoringName(methodToCheck, to.MethodInfs[j], null);
                     if (value > bestValue)
                     {
                         bestValue = value;
@@ -593,11 +608,18 @@ namespace BTDB.ServiceLayer
                 }
                 if (bestIndex == int.MinValue) return int.MinValue;
                 result += bestValue;
+                if (mapping != null)
+                {
+                    var parameterMapping = new uint[1 + to.MethodInfs[bestIndex].Parameters.Length];
+                    parameterMapping[0] = (uint)bestIndex;
+                    EvaluateCompatibilityIgnoringName(methodToCheck, to.MethodInfs[bestIndex], parameterMapping);
+                    mapping[i] = parameterMapping;
+                }
             }
             return result;
         }
 
-        int EvaluateCompatibilityIgnoringName(MethodInf from, MethodInf to)
+        int EvaluateCompatibilityIgnoringName(MethodInf from, MethodInf to, uint[] mapping)
         {
             var result = 0;
             if (from.ResultFieldHandler != null && to.ResultFieldHandler != null)
@@ -611,6 +633,7 @@ namespace BTDB.ServiceLayer
                 if (from.Parameters[i].Name == to.Parameters[i].Name) result++;
                 var value = EvaluateCompatibility(from.Parameters[i].FieldHandler, to.Parameters[i].FieldHandler);
                 if (value == int.MinValue) return int.MinValue;
+                if (mapping != null) mapping[i + 1] = (uint)i;
                 result += value;
             }
             return result;
@@ -618,7 +641,7 @@ namespace BTDB.ServiceLayer
 
         int EvaluateCompatibility(IFieldHandler from, IFieldHandler to)
         {
-            if (from.Name == to.Name && (from.Configuration==to.Configuration || from.Configuration.SequenceEqual(to.Configuration))) return 10;
+            if (from.Name == to.Name && (from.Configuration == to.Configuration || from.Configuration.SequenceEqual(to.Configuration))) return 10;
             return int.MinValue;
         }
 
