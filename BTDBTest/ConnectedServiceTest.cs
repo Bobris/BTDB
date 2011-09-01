@@ -236,5 +236,45 @@ namespace BTDBTest
             Assert.AreEqual(2, i2.Invoke("Hi"));
         }
 
+        public interface IIface3A
+        {
+            int Invoke(string param, string param2);
+            int Invoke(int param2, int param);
+        }
+
+        public interface IIface3B
+        {
+            int Invoke(string param2, string param);
+            int Invoke(int param, int param2);
+        }
+
+        public class Class3 : IIface3A
+        {
+            public int Invoke(string param, string param2)
+            {
+                return param.Length + 2 * (param2 ?? "").Length;
+            }
+
+            public int Invoke(int param2, int param)
+            {
+                return 2 * param2 + param;
+            }
+        }
+
+        [Test]
+        public void ChangingNumberAndOrderOfParameters()
+        {
+            _first.RegisterMyService(new Class3());
+            var i2 = _second.QueryOtherService<IIface2>();
+            Assert.AreEqual(3, i2.Invoke(3));
+            Assert.AreEqual(2, i2.Invoke("Hi"));
+            var i3 = _second.QueryOtherService<IIface3A>();
+            Assert.AreEqual(10, i3.Invoke(3, 4));
+            Assert.AreEqual(8, i3.Invoke("Hi", "Dev"));
+            var i3O = _second.QueryOtherService<IIface3B>();
+            Assert.AreEqual(10, i3O.Invoke(4, 3));
+            Assert.AreEqual(7, i3O.Invoke("Hi", "Dev"));
+        }
+
     }
 }

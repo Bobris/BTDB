@@ -444,20 +444,36 @@ namespace BTDB.ServiceLayer
                         .Ldloca(resultTaskLocal)
                         .Callvirt(() => ((IServiceInternalClient)null).StartTwoWayMarshaling(null, out placebo));
                 }
-                ilGenerator
-                    .Stloc(writerLocal);
-                uint paramOrder = 0;
-                foreach (var parameterInf in targetMethodInf.Parameters)
+                ilGenerator.Stloc(writerLocal);
+                for (int paramOrder = 0; paramOrder < targetMethodInf.Parameters.Length; paramOrder++)
                 {
-                    var order = (ushort)(1 + paramOrder);
-                    var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[paramOrder],
-                                                                             parameterInf.FieldHandler.WillLoad());
-                    parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                    var parameterInf = targetMethodInf.Parameters[paramOrder];
+                    var sourceParamIndex = mapping[sourceMethodIndex][paramOrder + 1];
+                    if (sourceParamIndex == uint.MaxValue)
+                    {
+                        if (parameterInf.FieldHandler.WillLoad().IsValueType)
                         {
-                            il.Ldarg(order);
+                            parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                            {
+                                il.LdcI4(0);
+                                _typeConvertorGenerator.GenerateConversion(typeof(int), parameterInf.FieldHandler.WillLoad())(il);
+                            });
+                        }
+                        else
+                        {
+                            parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il => il.Ldnull());
+                        }
+                    }
+                    else
+                    {
+                        var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[sourceParamIndex],
+                                                                                 parameterInf.FieldHandler.WillLoad());
+                        parameterInf.FieldHandler.SaveFromWillLoad(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                        {
+                            il.Ldarg((ushort)(sourceParamIndex + 1));
                             convGen(il);
                         });
-                    paramOrder++;
+                    }
                 }
                 ilGenerator
                     .Ldarg(0)
@@ -627,14 +643,51 @@ namespace BTDB.ServiceLayer
                 result = EvaluateCompatibility(to.ResultFieldHandler, from.ResultFieldHandler); // from to is exchanged because return value going back
                 if (result == int.MinValue) return result;
             }
-            if (from.Parameters.Length != to.Parameters.Length) return int.MinValue;
+            if (mapping != null)
+                for (int i = 1; i < mapping.Length; i++)
+                {
+                    mapping[i] = uint.MaxValue;
+                }
+            var usedFrom = new bool[from.Parameters.Length];
+            var usedTo = new bool[to.Parameters.Length];
             for (int i = 0; i < from.Parameters.Length; i++)
             {
-                if (from.Parameters[i].Name == to.Parameters[i].Name) result++;
-                var value = EvaluateCompatibility(from.Parameters[i].FieldHandler, to.Parameters[i].FieldHandler);
-                if (value == int.MinValue) return int.MinValue;
-                if (mapping != null) mapping[i + 1] = (uint)i;
-                result += value;
+                var name = from.Parameters[i].Name;
+                for (int j = 0; j < to.Parameters.Length; j++)
+                {
+                    if (usedTo[j]) continue;
+                    if (name == to.Parameters[j].Name)
+                    {
+                        var value = EvaluateCompatibility(from.Parameters[i].FieldHandler, to.Parameters[j].FieldHandler);
+                        if (value == int.MinValue) return int.MinValue;
+                        usedFrom[i] = true;
+                        usedTo[j] = true;
+                        if (mapping != null) mapping[j + 1] = (uint)i;
+                        result += value + 1;
+                        break;
+                    }
+                }
+            }
+            for (int i = 0; i < from.Parameters.Length; i++)
+            {
+                if (usedFrom[i]) continue;
+                for (int j = 0; j < to.Parameters.Length; j++)
+                {
+                    if (usedTo[j]) continue;
+                    var value = EvaluateCompatibility(from.Parameters[i].FieldHandler, to.Parameters[j].FieldHandler);
+                    if (value == int.MinValue)
+                    {
+                        for (; i < from.Parameters.Length; i++)
+                            if (!usedFrom[i]) result--;
+                        return result;
+                    }
+                    usedFrom[i] = true;
+                    usedTo[j] = true;
+                    if (mapping != null) mapping[j + 1] = (uint)i;
+                    result += value;
+                    break;
+                }
+                if (!usedFrom[i]) result--;
             }
             return result;
         }
