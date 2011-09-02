@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ServiceLayer;
@@ -274,6 +275,14 @@ namespace BTDBTest
             var i3O = _second.QueryOtherService<IIface3B>();
             Assert.AreEqual(10, i3O.Invoke(4, 3));
             Assert.AreEqual(7, i3O.Invoke("Hi", "Dev"));
+        }
+
+        [Test]
+        public void ByteArraySupport()
+        {
+            _first.RegisterMyService((Func<byte[], byte[]>)(p => p.AsEnumerable().Reverse().ToArray()));
+            var d = _second.QueryOtherService<Func<byte[], byte[]>>();
+            Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(new byte[] { 0, 1, 2, 3, 255 }));
         }
 
     }

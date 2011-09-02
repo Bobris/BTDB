@@ -16,6 +16,7 @@ namespace BTDB.ServiceLayer
                 new DecimalFieldHandler(),
                 new DateTimeFieldHandler(),
                 new GuidFieldHandler(),
+                new ByteArrayFieldHandler(),
             };
 
         public bool TypeSupported(Type type)

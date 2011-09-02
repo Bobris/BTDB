@@ -1,5 +1,4 @@
-﻿using System;
-using BTDB.IL;
+﻿using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
 
 namespace BTDB.ODBLayer.FieldHandlerImpl

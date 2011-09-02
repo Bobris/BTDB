@@ -71,6 +71,7 @@
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayProxy.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayTransactionProxy.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KVReplayOperation.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\ByteArrayFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\EnumFieldHandler.cs" />
