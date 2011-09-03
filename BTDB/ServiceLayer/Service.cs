@@ -695,6 +695,9 @@ namespace BTDB.ServiceLayer
         int EvaluateCompatibility(IFieldHandler from, IFieldHandler to)
         {
             if (from.Name == to.Name && (from.Configuration == to.Configuration || from.Configuration.SequenceEqual(to.Configuration))) return 10;
+            var typeFrom=from.WillLoad();
+            var typeTo=to.WillLoad();
+            if (_typeConvertorGenerator.GenerateConversion(typeFrom, typeTo) != null) return 5;
             return int.MinValue;
         }
 

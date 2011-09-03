@@ -285,5 +285,12 @@ namespace BTDBTest
             Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(new byte[] { 0, 1, 2, 3, 255 }));
         }
 
+        [Test]
+        public void SimpleConversion()
+        {
+            _first.RegisterMyService((Func<int, int>)(p => p * p));
+            var d = _second.QueryOtherService<Func<short, string>>();
+            Assert.AreEqual("81", d(9));
+        }
     }
 }
