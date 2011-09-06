@@ -292,5 +292,19 @@ namespace BTDBTest
             var d = _second.QueryOtherService<Func<short, string>>();
             Assert.AreEqual("81", d(9));
         }
+
+        [Test]
+        public void PassingException()
+        {
+            _first.RegisterMyService((Func<int>)(() => { throw new ArgumentException("msg", "te" + "st"); }));
+            var d = _second.QueryOtherService<Func<int>>();
+            var e = Assert.Catch(() => d());
+            Assert.IsInstanceOf<AggregateException>(e);
+            Assert.AreEqual(1, ((AggregateException) e).InnerExceptions.Count);
+            e = ((AggregateException) e).InnerExceptions[0];
+            Assert.IsInstanceOf<ArgumentException>(e);
+            Assert.That(e.Message, Is.StringStarting("msg"));
+            Assert.AreEqual("test", ((ArgumentException)e).ParamName);
+        }
     }
 }

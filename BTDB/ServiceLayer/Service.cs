@@ -7,6 +7,7 @@ using System.Reactive;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.ReaderWriters;
@@ -98,7 +99,7 @@ namespace BTDB.ServiceLayer
                     if (_clientAcks.TryRemove(ackId, out taskAndBind))
                     {
                         _clientAckNumbers.Deallocate(ackId);
-                        var ex = new Exception(reader.ReadString());
+                        var ex = new BinaryFormatter().Deserialize(new MemoryStream(reader.ReadByteArray())) as Exception;
                         taskAndBind.Binding.HandleException(taskAndBind.TaskCompletionSource, ex);
                     }
                     break;
@@ -797,7 +798,11 @@ namespace BTDB.ServiceLayer
             var message = new ByteArrayWriter();
             message.WriteVUInt32((uint)Command.Exception);
             message.WriteVUInt32(resultId);
-            message.WriteString(ex.Message);
+            using (var stream = new MemoryStream())
+            {
+                new BinaryFormatter().Serialize(stream, ex);
+                message.WriteByteArray(stream.ToArray());
+            }
             message.Dispose();
             _channel.Send(ByteBuffer.NewAsync(message.Data));
         }
