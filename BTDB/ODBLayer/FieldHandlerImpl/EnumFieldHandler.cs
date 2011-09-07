@@ -69,17 +69,17 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 }
             }
 
-            public bool Flags
+            bool Flags
             {
                 get { return _flags; }
             }
 
-            public string[] Names
+            string[] Names
             {
                 get { return _names; }
             }
 
-            public ulong[] Values
+            ulong[] Values
             {
                 get { return _values; }
             }
@@ -151,12 +151,12 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             _signed = ec.Signed;
         }
 
-        public static bool IsSignedEnum(Type enumType)
+        static bool IsSignedEnum(Type enumType)
         {
             return SignedFieldHandler.IsCompatibleWith(enumType.GetEnumUnderlyingType());
         }
 
-        public static bool IsFlagsEnum(Type type)
+        static bool IsFlagsEnum(Type type)
         {
             return type.GetCustomAttributes(typeof(FlagsAttribute), false).Length != 0;
         }
@@ -183,22 +183,12 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             return SignedFieldHandler.IsCompatibleWith(enumUnderlyingType) || UnsignedFieldHandler.IsCompatibleWith(enumUnderlyingType);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
-        {
-            return IsCompatibleWith(type);
-        }
-
-        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
-        {
-            return false;
-        }
-
-        public Type WillLoad()
+        public Type HandledType()
         {
             return _enumType ?? (_enumType = new EnumConfiguration(_configuration).ToType());
         }
 
-        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
             pushReader(ilGenerator);
             Type typeRead;
@@ -215,7 +205,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
             pushReader(ilGenerator);
             if (_signed)
@@ -228,7 +218,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             }
         }
 
-        public void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue)
+        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
@@ -246,39 +236,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             }
         }
 
-        public void CreateStorage(FieldHandlerCreateImpl ctx)
+        bool IFieldHandler.IsCompatibleWith(Type type)
         {
-            ctx.CreateSimpleStorage();
-        }
-
-        public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimplePropertyGetter();
-        }
-
-        public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimplePropertySetter();
-        }
-
-        public void CreateSaver(FieldHandlerCreateImpl ctx)
-        {
-            ctx.Generator
-                .Ldloc(1)
-                .Ldloc(0)
-                .Ldfld(ctx.DefaultFieldBuilder);
-            if (_signed)
-            {
-                ctx.Generator
-                    .ConvI8()
-                    .Call(() => ((AbstractBufferedWriter)null).WriteVInt64(0));
-            }
-            else
-            {
-                ctx.Generator
-                    .ConvU8()
-                    .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
-            }
+            return IsCompatibleWith(type);
         }
 
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)
@@ -287,7 +247,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             if ((dstHandler is EnumFieldHandler) == false) return;
             if (dstHandler.Configuration.SequenceEqual(Configuration))
             {
-                _enumType = dstHandler.WillLoad();
+                _enumType = dstHandler.HandledType();
             }
         }
     }

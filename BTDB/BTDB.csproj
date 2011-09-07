@@ -71,12 +71,12 @@
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayProxy.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayTransactionProxy.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KVReplayOperation.cs" />
+    <Compile Include="ODBLayer\DBObjectMetadata.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ByteArrayFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\EnumFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
-    <Compile Include="ODBLayer\FieldHandlerImpl\ListDBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\Extensions.cs" />
@@ -108,15 +108,12 @@
     <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\DefaultFieldHandlerFactory.cs" />
     <Compile Include="IL\EmitHelpers.cs" />
-    <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerCreateImpl.cs" />
-    <Compile Include="ODBLayer\FieldHandlerIface\FieldHandlerSkipLoad.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandlerFactory.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\BoolFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DoubleFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DBObjectFieldHandler.cs" />
     <Compile Include="IL\ILGeneratorExtensions.cs" />
-    <Compile Include="ODBLayer\IObjectDBTransactionInternal.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="ODBLayer\ITypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\KeyValueDBTransactionProtector.cs" />
@@ -126,7 +123,6 @@
     <Compile Include="ODBLayer\TableFieldInfo.cs" />
     <Compile Include="ODBLayer\IObjectDB.cs" />
     <Compile Include="ODBLayer\IObjectDBTransaction.cs" />
-    <Compile Include="ODBLayer\IDBObject.cs" />
     <Compile Include="ODBLayer\ObjectDB.cs" />
     <Compile Include="ODBLayer\ObjectDBTransaction.cs" />
     <Compile Include="ODBLayer\TableInfo.cs" />

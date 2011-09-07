@@ -9,13 +9,12 @@ namespace BTDB.ODBLayer
         IEnumerable<object> Enumerate(Type type);
 
         object Get(ulong oid);
+        ulong GetOid(object @object);
 
         object Singleton(Type type);
         T Singleton<T>() where T : class;
 
-        object Insert(Type type);
-        T Insert<T>() where T : class;
-
+        ulong Store(object @object);
         void Delete(object @object);
 
         void DeleteAll<T>() where T : class;

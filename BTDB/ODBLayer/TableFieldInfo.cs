@@ -1,6 +1,4 @@
-﻿using System;
-using System.Reflection;
-using BTDB.KVDBLayer;
+﻿using System.Reflection;
 using BTDB.KVDBLayer.ImplementationDetails;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.ReaderWriters;
@@ -34,14 +32,14 @@ namespace BTDB.ODBLayer
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            var fieldHandler = fieldHandlerFactory.CreateFromName(tableName, name, handlerName, configuration);
+            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not created handler {0} in {1}.{2}", handlerName, tableName, name));
             return new TableFieldInfo(name, fieldHandler);
         }
 
-        public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory, Type clientType)
+        public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory)
         {
-            var fieldHandler = fieldHandlerFactory.CreateFromProperty(tableName, clientType, pi);
+            var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
             return new TableFieldInfo(pi.Name, fieldHandler);
         }

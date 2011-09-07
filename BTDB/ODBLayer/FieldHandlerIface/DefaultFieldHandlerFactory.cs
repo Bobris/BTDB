@@ -17,21 +17,19 @@ namespace BTDB.ODBLayer.FieldHandlerIface
                 new DateTimeFieldHandler(),
                 new GuidFieldHandler(),
                 new DBObjectFieldHandler(),
-                new ListDBObjectFieldHandler(),
             };
 
-        public IFieldHandler CreateFromProperty(string tableName, Type clientType, PropertyInfo property)
+        public IFieldHandler CreateFromType(Type type)
         {
-            var propertyType = property.PropertyType;
-            if (EnumFieldHandler.IsCompatibleWith(propertyType)) return new EnumFieldHandler(propertyType);
+            if (EnumFieldHandler.IsCompatibleWith(type)) return new EnumFieldHandler(type);
             foreach (var fieldHandler in FieldHandlers)
             {
-                if (fieldHandler.IsCompatibleWith(propertyType)) return fieldHandler;
+                if (fieldHandler.IsCompatibleWith(type)) return fieldHandler;
             }
             return null;
         }
 
-        public IFieldHandler CreateFromName(string tableName, string fieldName, string handlerName, byte[] configuration)
+        public IFieldHandler CreateFromName(string handlerName, byte[] configuration)
         {
             foreach (var fieldHandler in FieldHandlers)
             {

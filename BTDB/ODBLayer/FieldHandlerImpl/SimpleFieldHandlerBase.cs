@@ -31,60 +31,28 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             return _loader.ReturnType == type;
         }
 
-        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
-        {
-            return false;
-        }
-
-        public Type WillLoad()
+        public Type HandledType()
         {
             return _loader.ReturnType;
         }
 
-        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
             pushReader(ilGenerator);
             ilGenerator.Call(_loader);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
             pushReader(ilGenerator);
             ilGenerator.Call(_skipper);
         }
 
-        public void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue)
+        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
             ilGenerator.Call(_saver);
-        }
-
-        public void CreateStorage(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimpleStorage();
-        }
-
-        public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimplePropertyGetter();
-        }
-
-        public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimplePropertySetter();
-        }
-
-        public void CreateSaver(FieldHandlerCreateImpl ctx)
-        {
-            var willLoad = WillLoad();
-            var defaultFieldBuilder = ctx.DefaultFieldBuilder;
-            var generateConversion = ctx.TypeConvertorGenerator.GenerateConversion(defaultFieldBuilder.FieldType, willLoad);
-            SaveFromWillLoad(ctx.Generator, il => il.Ldloc(1), il =>
-            {
-                il.Ldloc(0).Ldfld(defaultFieldBuilder);
-                generateConversion(il);
-            });
         }
 
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)

@@ -16,24 +16,24 @@ namespace BTDBTest
         IKeyValueDB _lowDB;
         IObjectDB _db;
 
-        public interface IPerson
+        public class Person
         {
-            string Name { get; set; }
-            uint Age { get; set; }
+            public string Name { get; set; }
+            public uint Age { get; set; }
         }
 
-        public interface IPersonNew
+        public class PersonNew
         {
-            string Name { get; set; }
-            string Comment { get; set; }
-            ulong Age { get; set; }
+            public string Name { get; set; }
+            public string Comment { get; set; }
+            public ulong Age { get; set; }
         }
 
-        public interface ITree
+        public class Tree
         {
-            ITree Left { get; set; }
-            ITree Right { get; set; }
-            string Content { get; set; }
+            public Tree Left { get; set; }
+            public Tree Right { get; set; }
+            public string Content { get; set; }
         }
 
         [SetUp]
@@ -69,7 +69,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(tr.Enumerate<IPerson>().Count(), 0);
+                Assert.AreEqual(tr.Enumerate<Person>().Count(), 0);
             }
         }
 
@@ -78,10 +78,9 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
-                var p2 = tr.Enumerate<IPerson>().First();
+                var p = new Person { Name = "Bobris", Age = 35 };
+                tr.Store(p);
+                var p2 = tr.Enumerate<Person>().First();
                 Assert.AreSame(p, p2);
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
@@ -94,14 +93,12 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
+                tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPerson>().First();
+                var p = tr.Enumerate<Person>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
             }
@@ -112,15 +109,13 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
+                tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
             ReopenDB();
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPerson>().First();
+                var p = tr.Enumerate<Person>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
             }
@@ -131,21 +126,19 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
+                tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPerson>().First();
+                var p = tr.Enumerate<Person>().First();
                 p.Age++;
-                Assert.AreEqual(36, p.Age);
+                tr.Store(p);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPerson>().First();
+                var p = tr.Enumerate<Person>().First();
                 Assert.AreEqual(36, p.Age);
             }
         }
@@ -153,19 +146,17 @@ namespace BTDBTest
         [Test]
         public void PersonUpgrade()
         {
-            var personObjDBName = _db.RegisterType(typeof(IPerson));
+            var personObjDBName = _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
+                tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
             ReopenDB();
-            _db.RegisterType(typeof(IPersonNew), personObjDBName);
+            _db.RegisterType(typeof(PersonNew), personObjDBName);
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPersonNew>().First();
+                var p = tr.Enumerate<PersonNew>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
                 Assert.AreEqual(null, p.Comment);
@@ -175,20 +166,17 @@ namespace BTDBTest
         [Test]
         public void PersonDegrade()
         {
-            var personObjDBName = _db.RegisterType(typeof(IPersonNew));
+            var personObjDBName = _db.RegisterType(typeof(PersonNew));
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPersonNew>();
-                p.Name = "Bobris";
-                p.Age = 35;
-                p.Comment = "Will be lost";
+                tr.Store(new PersonNew { Name = "Bobris", Age = 35, Comment = "Will be lost" });
                 tr.Commit();
             }
             ReopenDB();
-            _db.RegisterType(typeof(IPerson), personObjDBName);
+            _db.RegisterType(typeof(Person), personObjDBName);
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Enumerate<IPerson>().First();
+                var p = tr.Enumerate<Person>().First();
                 Assert.AreEqual("Bobris", p.Name);
                 Assert.AreEqual(35, p.Age);
             }
@@ -201,15 +189,13 @@ namespace BTDBTest
             {
                 for (uint i = 0; i < 1000; i++)
                 {
-                    var p = tr.Insert<IPerson>();
-                    p.Name = string.Format("Person {0}", i);
-                    p.Age = i;
+                    tr.Store(new Person { Name = string.Format("Person {0}", i), Age = i });
                 }
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var q = tr.Enumerate<IPerson>().OrderByDescending(p => p.Age);
+                var q = tr.Enumerate<Person>().OrderByDescending(p => p.Age);
                 uint i = 1000;
                 foreach (var p in q)
                 {
@@ -225,15 +211,13 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                p.Name = "Bobris";
-                p.Age = 35;
-                p = tr.Insert<IPerson>();
-                p.Name = "DeadMan";
-                p.Age = 105;
-                Assert.AreEqual(2, tr.Enumerate<IPerson>().Count());
+                var p = new Person { Name = "Bobris", Age = 35 };
+                tr.Store(p);
+                p = new Person { Name = "DeadMan", Age = 105 };
+                tr.Store(p);
+                Assert.AreEqual(2, tr.Enumerate<Person>().Count());
                 tr.Delete(p);
-                Assert.AreEqual(1, tr.Enumerate<IPerson>().Count());
+                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
                 tr.Commit();
             }
         }
@@ -244,23 +228,19 @@ namespace BTDBTest
             ulong firstOid;
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                firstOid = ((IDBObject)p).Oid;
-                p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 1, ((IDBObject)p).Oid);
+                firstOid = tr.Store(new Person());
+                Assert.AreEqual(firstOid + 1, tr.Store(new Person()));
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 2, ((IDBObject)p).Oid);
+                Assert.AreEqual(firstOid + 2, tr.Store(new Person()));
                 tr.Commit();
             }
             ReopenDB();
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Insert<IPerson>();
-                Assert.AreEqual(firstOid + 3, ((IDBObject)p).Oid);
+                Assert.AreEqual(firstOid + 3, tr.Store(new Person()));
                 tr.Commit();
             }
         }
@@ -270,15 +250,17 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p1 = tr.Insert<IPerson>();
-                var p2 = tr.Insert<IPerson>();
+                var p1 = new Person();
+                var p2 = new Person();
+                tr.Store(p1);
+                tr.Store(p2);
                 int i = 0;
-                foreach (var p in tr.Enumerate<IPerson>())
+                foreach (var p in tr.Enumerate<Person>())
                 {
                     if (i == 0)
                     {
                         Assert.AreSame(p1, p);
-                        tr.Insert<IPerson>();
+                        tr.Store(new Person());
                     }
                     else
                     {
@@ -296,21 +278,19 @@ namespace BTDBTest
             ulong firstOid;
             using (var tr = _db.StartTransaction())
             {
-                var p1 = tr.Insert<IPerson>();
-                firstOid = ((IDBObject)p1).Oid;
+                var p1 = new Person();
+                firstOid = tr.Store(p1);
                 p1.Name = "Bobris";
                 p1.Age = 35;
-                var p2 = tr.Insert<IPerson>();
-                p2.Name = "DeadMan";
-                p2.Age = 105;
+                tr.Store(new Person { Name = "DeadMan", Age = 105 });
                 Assert.AreSame(p1, tr.Get(firstOid));
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Get(firstOid);
-                Assert.IsInstanceOf<IPerson>(p);
-                Assert.AreEqual("Bobris", ((IPerson)p).Name);
+                Assert.IsInstanceOf<Person>(p);
+                Assert.AreEqual("Bobris", ((Person)p).Name);
             }
         }
 
@@ -319,13 +299,13 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 p.Name = "Bobris";
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 Assert.AreEqual("Bobris", p.Name);
             }
         }
@@ -335,27 +315,27 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 p.Name = "Garbage";
                 // No commit here
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 Assert.Null(p.Name);
                 p.Name = "Bobris";
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 Assert.AreEqual("Bobris", p.Name);
                 tr.Delete(p);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var p = tr.Singleton<IPerson>();
+                var p = tr.Singleton<Person>();
                 Assert.Null(p.Name);
             }
         }
@@ -365,20 +345,16 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
+                var t = tr.Singleton<Tree>();
                 t.Content = "Root";
                 Assert.Null(t.Left);
-                var l = tr.Insert<ITree>();
-                l.Content = "Left";
-                t.Left = l;
-                Assert.AreSame(l, t.Left);
-                t.Right = tr.Insert<ITree>();
-                t.Right.Content = "Right";
+                t.Left = new Tree { Content = "Left" };
+                t.Right = new Tree { Content = "Right" };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
+                var t = tr.Singleton<Tree>();
                 Assert.AreEqual("Root", t.Content);
                 Assert.AreEqual("Left", t.Left.Content);
                 Assert.AreEqual("Right", t.Right.Content);
@@ -390,15 +366,14 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
-                t.Left = tr.Insert<ITree>();
+                var t = tr.Singleton<Tree>();
+                t.Left = new Tree();
+                tr.Delete(t.Left);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
-                Assert.NotNull(t.Left);
-                tr.Delete(t.Left);
+                var t = tr.Singleton<Tree>();
                 Assert.Null(t.Left);
             }
         }
@@ -408,21 +383,21 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
-                t.Left = tr.Insert<ITree>();
-                t.Left.Content = "Before";
-                tr.Insert<ITree>().Content = "After";
+                var t = tr.Singleton<Tree>();
+                t.Left = new Tree { Content = "Before" };
+                tr.Store(new Tree { Content = "After" });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
-                t.Left = tr.Enumerate<ITree>().First(i => i.Content == "After");
+                var t = tr.Singleton<Tree>();
+                t.Left = tr.Enumerate<Tree>().First(i => i.Content == "After");
+                tr.Store(t);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var t = tr.Singleton<ITree>();
+                var t = tr.Singleton<Tree>();
                 Assert.AreEqual("After", t.Left.Content);
             }
         }
@@ -433,26 +408,26 @@ namespace BTDBTest
             Item2
         }
 
-        public interface IVariousFieldTypes : IDBObject
+        public class VariousFieldTypes
         {
-            string StringField { get; set; }
-            sbyte SByteField { get; set; }
-            byte ByteField { get; set; }
-            short ShortField { get; set; }
-            ushort UShortField { get; set; }
-            int IntField { get; set; }
-            uint UIntField { get; set; }
-            long LongField { get; set; }
-            ulong ULongField { get; set; }
-            IDBObject DBObjectField { get; set; }
-            IVariousFieldTypes VariousFieldTypesField { get; set; }
-            bool BoolField { get; set; }
-            double DoubleField { get; set; }
-            float FloatField { get; set; }
-            decimal DecimalField { get; set; }
-            Guid GuidField { get; set; }
-            DateTime DateTimeField { get; set; }
-            TestEnum EnumField { get; set; }
+            public string StringField { get; set; }
+            public sbyte SByteField { get; set; }
+            public byte ByteField { get; set; }
+            public short ShortField { get; set; }
+            public ushort UShortField { get; set; }
+            public int IntField { get; set; }
+            public uint UIntField { get; set; }
+            public long LongField { get; set; }
+            public ulong ULongField { get; set; }
+            public object DBObjectField { get; set; }
+            public VariousFieldTypes VariousFieldTypesField { get; set; }
+            public bool BoolField { get; set; }
+            public double DoubleField { get; set; }
+            public float FloatField { get; set; }
+            public decimal DecimalField { get; set; }
+            public Guid GuidField { get; set; }
+            public DateTime DateTimeField { get; set; }
+            public TestEnum EnumField { get; set; }
         }
 
         [Test]
@@ -460,7 +435,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var o = tr.Singleton<IVariousFieldTypes>();
+                var o = tr.Singleton<VariousFieldTypes>();
                 Assert.Null(o.StringField);
                 Assert.AreEqual(0, o.SByteField);
                 Assert.AreEqual(0, o.ByteField);
@@ -504,12 +479,12 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var o = tr.Singleton<IVariousFieldTypes>();
+                var o = tr.Singleton<VariousFieldTypes>();
                 AssertContent(o);
             }
         }
 
-        static void AssertContent(IVariousFieldTypes o)
+        static void AssertContent(VariousFieldTypes o)
         {
             Assert.AreEqual("Text", o.StringField);
             Assert.AreEqual(-10, o.SByteField);
@@ -531,34 +506,9 @@ namespace BTDBTest
             Assert.AreEqual(TestEnum.Item2, o.EnumField);
         }
 
-        [Test]
-        public void AccessingObjectOutsideOfTransactionIsForbidden()
+        public class Root
         {
-            IPerson p;
-            using (var tr = _db.StartTransaction())
-            {
-                p = tr.Insert<IPerson>();
-                tr.Commit();
-            }
-            Assert.Throws<BTDBException>(() => { if (p.Name != null) { } });
-            Assert.Throws<BTDBException>(() => { p.Name = "does not matter"; });
-        }
-
-        [Test]
-        public void AccessingDeletedObjectIsForbidden()
-        {
-            using (var tr = _db.StartTransaction())
-            {
-                var p = tr.Insert<IPerson>();
-                tr.Delete(p);
-                Assert.Throws<BTDBException>(() => { if (p.Name != null) { } });
-                Assert.Throws<BTDBException>(() => { p.Name = "does not matter"; });
-            }
-        }
-
-        public interface IRoot
-        {
-            IList<IPerson> Persons { get; }
+            public IList<Person> Persons { get; set; }
         }
 
         [Test]
@@ -566,18 +516,15 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<IRoot>();
-                var p1 = tr.Insert<IPerson>();
-                p1.Name = "P1";
-                root.Persons.Add(p1);
-                var p2 = tr.Insert<IPerson>();
-                p2.Name = "P2";
-                root.Persons.Add(p2);
+                var root = tr.Singleton<Root>();
+                root.Persons = new List<Person>();
+                root.Persons.Add(new Person { Name = "P1" });
+                root.Persons.Add(new Person { Name = "P2" });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<IRoot>();
+                var root = tr.Singleton<Root>();
                 Assert.AreEqual(2, root.Persons.Count);
                 var p1 = root.Persons[0];
                 var p2 = root.Persons[1];
@@ -599,19 +546,19 @@ namespace BTDBTest
             Item3
         }
 
-        public interface ITestEnum
+        public class CTestEnum
         {
-            TestEnum E { get; set; }
+            public TestEnum E { get; set; }
         }
 
-        public interface ITestEnumUlong
+        public class CTestEnumUlong
         {
-            TestEnumUlong E { get; set; }
+            public TestEnumUlong E { get; set; }
         }
 
-        public interface ITestEnumEx
+        public class CTestEnumEx
         {
-            TestEnumEx E { get; set; }
+            public TestEnumEx E { get; set; }
         }
 
         [Test]
@@ -624,20 +571,19 @@ namespace BTDBTest
         void TestEnum2TestEnumUlong(TestEnum from, TestEnumUlong to)
         {
             ReopenDB();
-            var testEnumObjDBName = _db.RegisterType(typeof(ITestEnum));
+            var testEnumObjDBName = _db.RegisterType(typeof(CTestEnum));
             using (var tr = _db.StartTransaction())
             {
-                var e = tr.Insert<ITestEnum>();
-                e.E = from;
+                tr.Store(new CTestEnum { E = from });
                 tr.Commit();
             }
             ReopenDB();
-            _db.RegisterType(typeof(ITestEnumUlong), testEnumObjDBName);
+            _db.RegisterType(typeof(CTestEnumUlong), testEnumObjDBName);
             using (var tr = _db.StartTransaction())
             {
-                var e = tr.Enumerate<ITestEnumUlong>().First();
+                var e = tr.Enumerate<CTestEnumUlong>().First();
                 Assert.AreEqual(to, e.E);
-                (e as IDBObject).Delete();
+                tr.Delete(e);
                 tr.Commit();
             }
         }

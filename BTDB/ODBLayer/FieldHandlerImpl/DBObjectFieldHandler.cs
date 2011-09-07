@@ -20,91 +20,28 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public bool IsCompatibleWith(Type type)
         {
-            return type == typeof(IDBObject) || (type.IsInterface && !type.IsGenericType);
+            return (!type.IsInterface && !type.IsValueType && !type.IsGenericType);
         }
 
-        public bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName)
-        {
-            pushThis(ilGenerator);
-            pushReader(ilGenerator);
-            ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVUInt64());
-            var fieldInfo = implType.GetField("_FieldStorage_" + destFieldName);
-            ilGenerator.Stfld(fieldInfo);
-            return true;
-        }
-
-        public Type WillLoad()
+        public Type HandledType()
         {
             return null;
         }
 
-        public void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
-            throw new InvalidOperationException();
+            throw new NotImplementedException();
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader)
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVUInt64());
+            ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVInt64());
         }
 
-        public void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue)
+        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue)
         {
-            throw new InvalidOperationException();
-        }
-
-        public void CreateStorage(FieldHandlerCreateImpl ctx)
-        {
-            ctx.CreateSimpleStorage(typeof(ulong));
-        }
-
-        public void CreatePropertyGetter(FieldHandlerCreateImpl ctx)
-        {
-            var ilGenerator = ctx.Generator;
-            ilGenerator
-                .Ldarg(0)
-                .Ldfld(ctx.FieldMidLevelDBTransaction)
-                .Ldarg(0)
-                .Ldfld(ctx.DefaultFieldBuilder)
-                .Callvirt(() => ((IObjectDBTransactionInternal)null).Get(0));
-            if (ctx.PropertyInfo.PropertyType != typeof(object))
-            {
-                ilGenerator.Isinst(ctx.PropertyInfo.PropertyType);
-            }
-        }
-
-        public void CreatePropertySetter(FieldHandlerCreateImpl ctx)
-        {
-            var ilGenerator = ctx.Generator;
-            var fieldBuilder = ctx.DefaultFieldBuilder;
-            var labelNoChange = ilGenerator.DefineLabel();
-            ilGenerator.DeclareLocal(typeof(ulong));
-            ilGenerator
-                .Ldarg(0)
-                .Ldfld(ctx.FieldMidLevelDBTransaction)
-                .Ldarg(1)
-                .Callvirt(() => ((IObjectDBTransactionInternal)null).GetOid(null))
-                .Stloc(0);
-            EmitHelpers.GenerateJumpIfEqual(ilGenerator, typeof(ulong), labelNoChange,
-                                            g => g.Ldarg(0).Ldfld(fieldBuilder),
-                                            g => g.Ldloc(0));
-            ilGenerator
-                .Ldarg(0)
-                .Ldloc(0)
-                .Stfld(fieldBuilder);
-            ctx.CallObjectModified(ilGenerator);
-            ilGenerator
-                .Mark(labelNoChange);
-        }
-
-        public void CreateSaver(FieldHandlerCreateImpl ctx)
-        {
-            ctx.Generator
-                .Ldloc(1)
-                .Ldloc(0)
-                .Ldfld(ctx.DefaultFieldBuilder)
-                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
+            throw new NotImplementedException();
         }
 
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)

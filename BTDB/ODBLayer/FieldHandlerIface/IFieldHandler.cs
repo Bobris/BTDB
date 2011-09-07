@@ -8,15 +8,10 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         string Name { get; }
         byte[] Configuration { get; }
         bool IsCompatibleWith(Type type);
-        bool LoadToSameHandler(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushThis, Type implType, string destFieldName);
-        Type WillLoad();
-        void LoadToWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
-        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader);
-        void SaveFromWillLoad(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushValue);
-        void CreateStorage(FieldHandlerCreateImpl ctx);
-        void CreatePropertyGetter(FieldHandlerCreateImpl ctx);
-        void CreatePropertySetter(FieldHandlerCreateImpl ctx);
-        void CreateSaver(FieldHandlerCreateImpl ctx);
+        Type HandledType();
+        void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx);
+        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx);
+        void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue);
         void InformAboutDestinationHandler(IFieldHandler dstHandler);
     }
 }
