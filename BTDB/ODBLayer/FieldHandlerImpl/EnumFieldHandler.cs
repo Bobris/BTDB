@@ -188,9 +188,14 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             return _enumType ?? (_enumType = new EnumConfiguration(_configuration).ToType());
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
+        public bool NeedsCtx()
         {
-            pushReader(ilGenerator);
+            return false;
+        }
+
+        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        {
+            pushReaderOrCtx(ilGenerator);
             Type typeRead;
             if (_signed)
             {
@@ -205,9 +210,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReader(ilGenerator);
+            pushReaderOrCtx(ilGenerator);
             if (_signed)
             {
                 ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVInt64());
@@ -218,9 +223,9 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             }
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue)
+        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
         {
-            pushWriter(ilGenerator);
+            pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);
             if (_signed)
             {

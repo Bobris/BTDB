@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Reflection;
 using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ODBLayer.FieldHandlerIface
@@ -16,7 +15,6 @@ namespace BTDB.ODBLayer.FieldHandlerIface
                 new DecimalFieldHandler(),
                 new DateTimeFieldHandler(),
                 new GuidFieldHandler(),
-                new DBObjectFieldHandler(),
             };
 
         public IFieldHandler CreateFromType(Type type)
@@ -26,6 +24,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
             {
                 if (fieldHandler.IsCompatibleWith(type)) return fieldHandler;
             }
+            if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(type);
             return null;
         }
 
@@ -35,6 +34,7 @@ namespace BTDB.ODBLayer.FieldHandlerIface
             {
                 if (fieldHandler.Name == handlerName) return fieldHandler;
             }
+            if (handlerName == DBObjectFieldHandler.HandlerName) return new DBObjectFieldHandler(configuration);
             if (handlerName == EnumFieldHandler.HandlerName) return new EnumFieldHandler(configuration);
             return null;
         }

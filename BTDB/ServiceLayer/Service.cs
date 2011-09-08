@@ -172,7 +172,7 @@ namespace BTDB.ServiceLayer
             {
                 var fieldHandler = methodInf.Parameters[i].FieldHandler;
                 localParams[i] = ilGenerator.DeclareLocal(methodInf.MethodInfo.GetParameters()[i].ParameterType);
-                fieldHandler.Load(ilGenerator, il => il.Ldarg(1), null);
+                fieldHandler.Load(ilGenerator, il => il.Ldarg(1));
                 _typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), localParams[i].LocalType)
                     (ilGenerator);
                 ilGenerator.Stloc(localParams[i]);
@@ -219,7 +219,7 @@ namespace BTDB.ServiceLayer
                         .Ldloc(localResultId)
                         .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
                         .Stloc(localWriter);
-                    methodInf.ResultFieldHandler.Save(ilGenerator, il => il.Ldloc(localWriter), null, il => il.Ldloc(localResult));
+                    methodInf.ResultFieldHandler.Save(ilGenerator, il => il.Ldloc(localWriter), il => il.Ldloc(localResult));
                     ilGenerator
                         .Ldarg(2)
                         .Ldloc(localWriter)
@@ -280,7 +280,7 @@ namespace BTDB.ServiceLayer
                 ilGenerator
                     .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
                     .Stloc(0);
-                resultFieldHandler.Save(ilGenerator, il => il.Ldloc(0), null, il =>
+                resultFieldHandler.Save(ilGenerator, il => il.Ldloc(0), il =>
                     {
                         il.Ldarg(1).Callvirt(taskType.GetMethod("get_Result"));
                         _typeConvertorGenerator.GenerateConversion(taskType.UnwrapTask(), resultFieldHandler.HandledType())(il);
@@ -454,7 +454,7 @@ namespace BTDB.ServiceLayer
                     {
                         if (parameterInf.FieldHandler.HandledType().IsValueType)
                         {
-                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), null, il =>
+                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il =>
                             {
                                 il.LdcI4(0);
                                 _typeConvertorGenerator.GenerateConversion(typeof(int), parameterInf.FieldHandler.HandledType())(il);
@@ -462,14 +462,14 @@ namespace BTDB.ServiceLayer
                         }
                         else
                         {
-                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), null, il => il.Ldnull());
+                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il => il.Ldnull());
                         }
                     }
                     else
                     {
                         var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[sourceParamIndex],
                                                                                  parameterInf.FieldHandler.HandledType());
-                        parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), null, il =>
+                        parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il =>
                         {
                             il.Ldarg((ushort)(sourceParamIndex + 1));
                             convGen(il);
@@ -518,7 +518,7 @@ namespace BTDB.ServiceLayer
                 }
                 else
                 {
-                    targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldarg(1), null);
+                    targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldarg(1));
                     _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.HandledType(), returnType)
                         (ilGenerator);
                 }

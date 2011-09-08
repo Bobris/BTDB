@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
 
@@ -15,8 +16,8 @@ namespace BTDB.ODBLayer
         Type _clientType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
         Func<IObjectDBTransaction, DBObjectMetadata, object> _creator;
-        Action<object> _saver;
-        readonly ConcurrentDictionary<uint, Func<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Func<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+        Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
+        readonly ConcurrentDictionary<uint, Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
         ulong? _singletonOid;
         readonly object _singletonLock = new object();
 
@@ -85,7 +86,7 @@ namespace BTDB.ODBLayer
             System.Threading.Interlocked.CompareExchange(ref _creator, creator, null);
         }
 
-        internal Action<object> Saver
+        internal Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
         {
             get
             {
@@ -114,7 +115,42 @@ namespace BTDB.ODBLayer
 
         void CreateSaver()
         {
-            var saver = (Action<object>)null;
+            var method = new DynamicMethod<Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
+            var ilGenerator = method.GetILGenerator();
+            ilGenerator.DeclareLocal(ClientType);
+            ilGenerator
+                .Ldarg(3)
+                .Castclass(ClientType)
+                .Stloc(0);
+            var anyNeedsCtx = ClientTableVersionInfo.NeedsCtx();
+            if (anyNeedsCtx)
+            {
+                ilGenerator.DeclareLocal(typeof (IWriterCtx));
+                ilGenerator
+                    .Ldarg(0)
+                    .Ldarg(2)
+                    .Newobj(() => new DBWriterCtx(null, null))
+                    .Stloc(1);
+            }
+            for (int i = 0; i < ClientTableVersionInfo.FieldCount; i++)
+            {
+                var field = ClientTableVersionInfo[i];
+                var getter = ClientType.GetProperty(field.Name).GetGetMethod();
+                Action<ILGenerator> writerOrCtx;
+                if (field.Handler.NeedsCtx())
+                    writerOrCtx = il => il.Ldloc(1);
+                else
+                    writerOrCtx = il => il.Ldarg(2);
+                field.Handler.Save(ilGenerator, writerOrCtx, il =>
+                    {
+                        il.Ldloc(0).Callvirt(getter);
+                        _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
+                                                                                     field.Handler.HandledType())(il);
+                    });
+            }
+            ilGenerator
+                .Ret();
+            var saver = method.Create();
             System.Threading.Interlocked.CompareExchange(ref _saver, saver, null);
         }
 
@@ -155,24 +191,40 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _tableInfoResolver.GetLastPesistedVersion(_id);
         }
 
-        internal Func<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
+        internal Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
         {
             return _loaders.GetOrAdd(version, CreateLoader);
         }
 
-        Func<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
+        Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
-            var method = new DynamicMethod<Func<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
+            var method = new DynamicMethod<Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
             var ilGenerator = method.GetILGenerator();
-            ilGenerator.DeclareLocal(_clientType);
+            ilGenerator.DeclareLocal(ClientType);
             ilGenerator
-                .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
+                .Ldarg(3)
+                .Castclass(ClientType)
                 .Stloc(0);
             var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
+            var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+            if (anyNeedsCtx)
+            {
+                ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                ilGenerator
+                    .Ldarg(0)
+                    .Ldarg(2)
+                    .Newobj(() => new DBReaderCtx(null, null))
+                    .Stloc(1);
+            }
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
+                Action<ILGenerator> readerOrCtx;
+                if (srcFieldInfo.Handler.NeedsCtx())
+                    readerOrCtx = il => il.Ldloc(1);
+                else
+                    readerOrCtx = il => il.Ldarg(2);
                 var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
@@ -183,15 +235,15 @@ namespace BTDB.ODBLayer
                     if (converterGenerator != null)
                     {
                         ilGenerator.Ldloc(0);
-                        srcFieldInfo.Handler.Load(ilGenerator, ig => ig.Ldarg(2), null);
+                        srcFieldInfo.Handler.Load(ilGenerator, readerOrCtx);
                         converterGenerator(ilGenerator);
                         ilGenerator.Call(fieldInfo);
                         continue;
                     }
                 }
-                srcFieldInfo.Handler.SkipLoad(ilGenerator, ig => ig.Ldarg(2), null);
+                srcFieldInfo.Handler.SkipLoad(ilGenerator, readerOrCtx);
             }
-            ilGenerator.Ldloc(0).Ret();
+            ilGenerator.Ret();
             return method.Create();
         }
     }

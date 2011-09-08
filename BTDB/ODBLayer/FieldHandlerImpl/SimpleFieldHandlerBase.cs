@@ -36,21 +36,26 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             return _loader.ReturnType;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
+        public bool NeedsCtx()
         {
-            pushReader(ilGenerator);
+            return false;
+        }
+
+        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        {
+            pushReaderOrCtx(ilGenerator);
             ilGenerator.Call(_loader);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx)
+        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReader(ilGenerator);
+            pushReaderOrCtx(ilGenerator);
             ilGenerator.Call(_skipper);
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue)
+        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
         {
-            pushWriter(ilGenerator);
+            pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);
             ilGenerator.Call(_saver);
         }

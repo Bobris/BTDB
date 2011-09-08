@@ -72,12 +72,16 @@
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayTransactionProxy.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KVReplayOperation.cs" />
     <Compile Include="ODBLayer\DBObjectMetadata.cs" />
+    <Compile Include="ODBLayer\DBReaderCtx.cs" />
+    <Compile Include="ODBLayer\DBWriterCtx.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ByteArrayFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\EnumFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
+    <Compile Include="ODBLayer\IReaderCtx.cs" />
+    <Compile Include="ODBLayer\IWriterCtx.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\Extensions.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\ByteBufferReader.cs" />

@@ -15,7 +15,7 @@ namespace BTDB.ODBLayer
         IKeyValueDBTransaction _keyValueTr;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
         readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
-        readonly ConditionalWeakTable<object, DBObjectMetadata> _objMetadata = new ConditionalWeakTable<object,DBObjectMetadata>();
+        readonly ConditionalWeakTable<object, DBObjectMetadata> _objMetadata = new ConditionalWeakTable<object, DBObjectMetadata>();
 
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
@@ -24,28 +24,7 @@ namespace BTDB.ODBLayer
         {
             _objCache.TryAdd(id, new WeakReference(obj));
             _dirtyObjSet.TryAdd(id, obj);
-            _objMetadata.Add(obj,new DBObjectMetadata(id,true));
-        }
-
-        public AbstractBufferedWriter PrepareToWriteObject(ulong id)
-        {
-            var shouldStop = false;
-            try
-            {
-                _keyValueTrProtector.Start(ref shouldStop);
-                _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                var key = new byte[PackUnpack.LengthVUInt(id)];
-                var ofs = 0;
-                PackUnpack.PackVUInt(key, ref ofs, id);
-                _keyValueTr.CreateKey(key);
-                var writer = new KeyValueDBValueProtectedWriter(_keyValueTr, _keyValueTrProtector);
-                shouldStop = false;
-                return writer;
-            }
-            finally
-            {
-                if (shouldStop) _keyValueTrProtector.Stop();
-            }
+            _objMetadata.Add(obj, new DBObjectMetadata(id, true));
         }
 
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)
@@ -150,9 +129,10 @@ namespace BTDB.ODBLayer
         {
             var tableVersion = reader.ReadVUInt32();
             var metadata = new DBObjectMetadata(oid, false);
-            var obj = tableInfo.GetLoader(tableVersion)(this, metadata, reader);
+            var obj = tableInfo.Creator(this, metadata);
             _objCache.TryAdd(oid, new WeakReference(obj));
             _objMetadata.Add(obj, metadata);
+            tableInfo.GetLoader(tableVersion)(this, metadata, reader, obj);
             return obj;
         }
 
@@ -240,7 +220,7 @@ namespace BTDB.ODBLayer
             var ti = AutoRegisterType(@object.GetType());
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
-            if (_objMetadata.TryGetValue(@object,out metadata))
+            if (_objMetadata.TryGetValue(@object, out metadata))
             {
                 metadata.Dirty = true;
                 _dirtyObjSet.TryAdd(metadata.Id, @object);
@@ -372,7 +352,25 @@ namespace BTDB.ODBLayer
             {
                 _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
             }
-            tableInfo.Saver(o);
+            DBObjectMetadata metadata;
+            _objMetadata.TryGetValue(o, out metadata);
+            var shouldStop = false;
+            try
+            {
+                _keyValueTrProtector.Start(ref shouldStop);
+                _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                _keyValueTr.CreateKey(BuildKeyFromOid(metadata.Id));
+                using(var writer = new KeyValueDBValueWriter(_keyValueTr))
+                {
+                    writer.WriteVUInt32(tableInfo.Id);
+                    writer.WriteVUInt32(tableInfo.ClientTypeVersion);
+                    tableInfo.Saver(this, metadata, writer, o);
+                }
+            }
+            finally
+            {
+                if (shouldStop) _keyValueTrProtector.Stop();
+            }
         }
 
         bool PersistTableInfo(TableInfo tableInfo)

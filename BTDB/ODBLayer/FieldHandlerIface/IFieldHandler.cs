@@ -9,9 +9,10 @@ namespace BTDB.ODBLayer.FieldHandlerIface
         byte[] Configuration { get; }
         bool IsCompatibleWith(Type type);
         Type HandledType();
-        void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx);
-        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReader, Action<ILGenerator> pushCtx);
-        void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriter, Action<ILGenerator> pushCtx, Action<ILGenerator> pushValue);
+        bool NeedsCtx();
+        void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
+        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
+        void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
         void InformAboutDestinationHandler(IFieldHandler dstHandler);
     }
 }

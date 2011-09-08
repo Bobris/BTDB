@@ -55,5 +55,10 @@ namespace BTDB.ODBLayer
             }
             return true;
         }
+
+        internal bool NeedsCtx()
+        {
+            return _tableFields.Any(tfi => tfi.Handler.NeedsCtx());
+        }
     }
 }
