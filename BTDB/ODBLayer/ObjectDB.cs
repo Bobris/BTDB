@@ -25,7 +25,7 @@ namespace BTDB.ODBLayer
 
         public ObjectDB()
         {
-            FieldHandlerFactory = new DefaultFieldHandlerFactory();
+            FieldHandlerFactory = new DefaultFieldHandlerFactory(this);
             TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
         }
 
@@ -91,6 +91,11 @@ namespace BTDB.ODBLayer
         public string RegisterType(Type type, string asName)
         {
             return Type2NameRegistry.RegisterType(type, asName);
+        }
+
+        public Type TypeByName(string name)
+        {
+            return Type2NameRegistry.FindTypeByName(name);
         }
 
         public void Dispose()

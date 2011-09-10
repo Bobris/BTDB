@@ -17,6 +17,13 @@ namespace BTDB.ODBLayer.FieldHandlerIface
                 new GuidFieldHandler(),
             };
 
+        readonly IObjectDB _owner;
+
+        public DefaultFieldHandlerFactory(IObjectDB owner)
+        {
+            _owner = owner;
+        }
+
         public IFieldHandler CreateFromType(Type type)
         {
             if (EnumFieldHandler.IsCompatibleWith(type)) return new EnumFieldHandler(type);
@@ -24,7 +31,8 @@ namespace BTDB.ODBLayer.FieldHandlerIface
             {
                 if (fieldHandler.IsCompatibleWith(type)) return fieldHandler;
             }
-            if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(type);
+            if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(_owner, type);
+            if (ListFieldHandler.IsCompatibleWith(type)) return new ListFieldHandler(_owner.FieldHandlerFactory, type);
             return null;
         }
 
@@ -34,7 +42,8 @@ namespace BTDB.ODBLayer.FieldHandlerIface
             {
                 if (fieldHandler.Name == handlerName) return fieldHandler;
             }
-            if (handlerName == DBObjectFieldHandler.HandlerName) return new DBObjectFieldHandler(configuration);
+            if (handlerName == DBObjectFieldHandler.HandlerName) return new DBObjectFieldHandler(_owner, configuration);
+            if (handlerName == ListFieldHandler.HandlerName) return new ListFieldHandler(_owner.FieldHandlerFactory, configuration);
             if (handlerName == EnumFieldHandler.HandlerName) return new EnumFieldHandler(configuration);
             return null;
         }

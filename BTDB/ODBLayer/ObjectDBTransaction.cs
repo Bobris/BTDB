@@ -20,13 +20,6 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
 
-        public void RegisterNewObject(ulong id, object obj)
-        {
-            _objCache.TryAdd(id, new WeakReference(obj));
-            _dirtyObjSet.TryAdd(id, obj);
-            _objMetadata.Add(obj, new DBObjectMetadata(id, true));
-        }
-
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)
         {
             _owner = owner;
@@ -128,7 +121,7 @@ namespace BTDB.ODBLayer
         object ReadObjFinish(ulong oid, TableInfo tableInfo, KeyValueDBValueReader reader)
         {
             var tableVersion = reader.ReadVUInt32();
-            var metadata = new DBObjectMetadata(oid, false);
+            var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
             var obj = tableInfo.Creator(this, metadata);
             _objCache.TryAdd(oid, new WeakReference(obj));
             _objMetadata.Add(obj, metadata);
@@ -201,7 +194,7 @@ namespace BTDB.ODBLayer
                     return obj;
                 }
                 StoreSingletonOid(tableInfo.Id, oid);
-                var metadata = new DBObjectMetadata(oid, true);
+                var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
                 obj = tableInfo.Creator(this, metadata);
                 _objCache.TryAdd(oid, new WeakReference(obj));
                 _dirtyObjSet.TryAdd(oid, obj);
@@ -222,13 +215,38 @@ namespace BTDB.ODBLayer
             DBObjectMetadata metadata;
             if (_objMetadata.TryGetValue(@object, out metadata))
             {
-                metadata.Dirty = true;
+                if (metadata.Id == 0)
+                {
+                    metadata.Id = _owner.AllocateNewOid();
+                    _objCache.TryAdd(metadata.Id, new WeakReference(@object));
+                }
+                metadata.State = DBObjectState.Dirty;
                 _dirtyObjSet.TryAdd(metadata.Id, @object);
                 return metadata.Id;
             }
-            var newOid = _owner.AllocateNewOid();
-            RegisterNewObject(newOid, @object);
-            return newOid;
+            return RegisterNewObject(@object);
+        }
+
+        public ulong StoreIfUnknown(object @object)
+        {
+            var ti = AutoRegisterType(@object.GetType());
+            ti.EnsureClientTypeVersion();
+            DBObjectMetadata metadata;
+            if (_objMetadata.TryGetValue(@object, out metadata))
+            {
+                if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
+                return metadata.Id;
+            }
+            return RegisterNewObject(@object);
+        }
+
+        ulong RegisterNewObject(object obj)
+        {
+            var id = _owner.AllocateNewOid();
+            _objMetadata.Add(obj, new DBObjectMetadata(id, DBObjectState.Dirty));
+            _objCache.TryAdd(id, new WeakReference(obj));
+            _dirtyObjSet.TryAdd(id, obj);
+            return id;
         }
 
         void StoreSingletonOid(uint tableId, ulong oid)
@@ -294,22 +312,28 @@ namespace BTDB.ODBLayer
         public void Delete(object @object)
         {
             if (@object == null) throw new ArgumentNullException("object");
-            var oid = GetOid(@object);
-            if (oid == 0) return;
+            AutoRegisterType(@object.GetType());
+            DBObjectMetadata metadata;
+            if (!_objMetadata.TryGetValue(@object, out metadata))
+            {
+                _objMetadata.Add(@object, new DBObjectMetadata(0, DBObjectState.Deleted));
+                return;
+            }
+            if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             var taken = false;
             try
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+                if (_keyValueTr.FindExactKey(BuildKeyFromOid(metadata.Id)))
                     _keyValueTr.EraseCurrent();
             }
             finally
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
-            _objCache.TryRemove(oid);
-            _dirtyObjSet.TryRemove(oid);
+            _objCache.TryRemove(metadata.Id);
+            _dirtyObjSet.TryRemove(metadata.Id);
         }
 
         public void DeleteAll<T>() where T : class
@@ -360,7 +384,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start(ref shouldStop);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 _keyValueTr.CreateKey(BuildKeyFromOid(metadata.Id));
-                using(var writer = new KeyValueDBValueWriter(_keyValueTr))
+                using (var writer = new KeyValueDBValueWriter(_keyValueTr))
                 {
                     writer.WriteVUInt32(tableInfo.Id);
                     writer.WriteVUInt32(tableInfo.ClientTypeVersion);

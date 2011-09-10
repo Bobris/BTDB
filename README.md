@@ -77,7 +77,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ### Features:
 
 * Builds on top of Key Value Database and Reflection.Emit extensions.
-* Currently it supports storing of interfaces with properties.
+* It stores Plain .Net Objects and only their public properties with getters and setters.
 * All [ACID] and [MVCC] properties are preserved of course.
 * Automatic upgrading of model on read with dynamically generated optimal IL code.
 * Automatic versioning of model changes.
@@ -86,22 +86,20 @@ This help you to write fluent code which generates IL code in runtime. It is use
 
 ### Sample code:
 
-    public interface IPerson
+    public class Person
     {
-        string Name { get; set; }
-        uint Age { get; set; }
+        public string Name { get; set; }
+        public uint Age { get; set; }
     }
 
     using (var tr = _db.StartTransaction())
     {
-        var p = tr.Insert<IPerson>();
-        p.Name = "Bobris";
-        p.Age = 35;
+        tr.Store(new Person { Name = "Bobris", Age = 35 });
         tr.Commit();
     }
     using (var tr = _db.StartTransaction())
     {
-        var p = tr.Enumerate<IPerson>().First();
+        var p = tr.Enumerate<Person>().First();
         Assert.AreEqual("Bobris", p.Name);
         Assert.AreEqual(35, p.Age);
     }
@@ -109,7 +107,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ### Roadmap:
 
 * Support more simple types of properties
-* Add support for IList<T>
+* Finish support for IList<T> where T is simple type
 * Performance tests
 * Add support for IDictionary<K,V>
 * Free text search (far future)

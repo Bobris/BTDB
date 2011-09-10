@@ -24,5 +24,10 @@ namespace BTDB.ODBLayer
         {
             _reader.SkipVInt64();
         }
+
+        public AbstractBufferedReader Reader()
+        {
+            return _reader;
+        }
     }
 }

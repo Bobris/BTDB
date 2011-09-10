@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.KVDBLayer.ReaderWriters
 {
-    public class ByteArrayWriter : AbstractBufferedWriter, IDisposable
+    public sealed class ByteArrayWriter : AbstractBufferedWriter
     {
         byte[] _result;
 
@@ -12,7 +12,33 @@ namespace BTDB.KVDBLayer.ReaderWriters
             End = Buf.Length;
         }
 
-        public byte[] Data { get { return _result; } }
+        public byte[] Data
+        {
+            get
+            {
+                FinalFlushIfNeeded();
+                return _result;
+            }
+        }
+
+        public override void FlushBuffer()
+        {
+            JustFlushWithoutAllocNewBuffer();
+            Buf = new byte[4096];
+            End = Buf.Length;
+            Pos = 0;
+        }
+
+        void FinalFlushIfNeeded()
+        {
+            if (Pos != 0)
+            {
+                JustFlushWithoutAllocNewBuffer();
+                Pos = 0;
+                Buf = null;
+                End = 1;
+            }
+        }
 
         void JustFlushWithoutAllocNewBuffer()
         {
@@ -34,19 +60,6 @@ namespace BTDB.KVDBLayer.ReaderWriters
                 Array.Resize(ref _result, origLength + Pos);
                 Array.Copy(Buf, 0, _result, origLength, Pos);
             }
-        }
-
-        public override void FlushBuffer()
-        {
-            JustFlushWithoutAllocNewBuffer();
-            Buf = new byte[4096];
-            End = Buf.Length;
-            Pos = 0;
-        }
-
-        public virtual void Dispose()
-        {
-            if (Pos != 0) JustFlushWithoutAllocNewBuffer();
         }
     }
 }

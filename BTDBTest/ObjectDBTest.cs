@@ -517,9 +517,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<Root>();
-                root.Persons = new List<Person>();
-                root.Persons.Add(new Person { Name = "P1" });
-                root.Persons.Add(new Person { Name = "P2" });
+                root.Persons = new List<Person> { new Person { Name = "P1" }, new Person { Name = "P2" } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())

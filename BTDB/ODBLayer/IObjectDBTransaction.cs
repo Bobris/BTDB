@@ -10,11 +10,12 @@ namespace BTDB.ODBLayer
 
         object Get(ulong oid);
         ulong GetOid(object @object);
-
+        
         object Singleton(Type type);
         T Singleton<T>() where T : class;
 
         ulong Store(object @object);
+        ulong StoreIfUnknown(object @object);
         void Delete(object @object);
 
         void DeleteAll<T>() where T : class;

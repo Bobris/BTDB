@@ -420,7 +420,6 @@ namespace BTDB.ServiceLayer
                 writer.WriteVUInt32((uint)Command.Subcommand);
                 writer.WriteVUInt32((uint)Subcommand.Bind);
                 bindingInf.Store(writer);
-                writer.Dispose();
                 _channel.Send(ByteBuffer.NewAsync(writer.Data));
                 LocalBuilder resultTaskLocal = null;
                 if (!bindingInf.OneWay)
@@ -718,14 +717,12 @@ namespace BTDB.ServiceLayer
             writer.WriteVUInt32((uint)Subcommand.RegisterType);
             writer.WriteVUInt32(typeId);
             typeInf.Store(writer);
-            writer.Dispose();
             _channel.Send(ByteBuffer.NewAsync(writer.Data));
             writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
             writer.WriteVUInt32((uint)Subcommand.RegisterService);
             writer.WriteVUInt32(serviceId);
             writer.WriteVUInt32(typeId);
-            writer.Dispose();
             _channel.Send(ByteBuffer.NewAsync(writer.Data));
         }
 
@@ -738,7 +735,6 @@ namespace BTDB.ServiceLayer
                 writer.WriteVUInt32((uint)Command.Subcommand);
                 writer.WriteVUInt32((uint)Subcommand.UnregisterService);
                 writer.WriteVUInt32(serviceId);
-                writer.Dispose();
                 _channel.Send(ByteBuffer.NewAsync(writer.Data));
             }
         }
@@ -762,7 +758,6 @@ namespace BTDB.ServiceLayer
 
         public void FinishTwoWayMarshaling(AbstractBufferedWriter writer)
         {
-            ((ByteArrayWriter)writer).Dispose();
             _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
         }
 
@@ -775,7 +770,6 @@ namespace BTDB.ServiceLayer
 
         public void FinishOneWayMarshaling(AbstractBufferedWriter writer)
         {
-            ((ByteArrayWriter)writer).Dispose();
             _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
         }
 
@@ -789,7 +783,6 @@ namespace BTDB.ServiceLayer
 
         public void FinishResultMarshaling(AbstractBufferedWriter writer)
         {
-            ((ByteArrayWriter)writer).Dispose();
             _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
         }
 
@@ -803,7 +796,6 @@ namespace BTDB.ServiceLayer
                 new BinaryFormatter().Serialize(stream, ex);
                 message.WriteByteArray(stream.ToArray());
             }
-            message.Dispose();
             _channel.Send(ByteBuffer.NewAsync(message.Data));
         }
 
@@ -812,7 +804,6 @@ namespace BTDB.ServiceLayer
             var message = new ByteArrayWriter();
             message.WriteVUInt32((uint)Command.Result);
             message.WriteVUInt32(resultId);
-            message.Dispose();
             _channel.Send(ByteBuffer.NewAsync(message.Data));
         }
     }

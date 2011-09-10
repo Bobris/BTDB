@@ -18,9 +18,15 @@ namespace BTDB.ODBLayer
             if (@object==null)
             {
                 _writer.WriteVInt64(0);
+                return;
             }
-            var oid = _transaction.GetOid(@object);
+            var oid = _transaction.StoreIfUnknown(@object);
             _writer.WriteVInt64((long) oid);
+        }
+
+        public AbstractBufferedWriter Writer()
+        {
+            return _writer;
         }
     }
 }

@@ -9,19 +9,27 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 {
     public class DBObjectFieldHandler : IFieldHandler
     {
+        readonly IObjectDB _objectDB;
+        readonly byte[] _configuration;
+        readonly string _typeName;
         Type _type;
-        byte[] _configuration;
 
-        public DBObjectFieldHandler(Type type)
+        public DBObjectFieldHandler(IObjectDB objectDB, Type type)
         {
+            _objectDB = objectDB;
             _type = type;
-            _configuration = new byte[0];
+            _typeName = _objectDB.RegisterType(type);
+            var writer = new ByteArrayWriter();
+            writer.WriteString(_typeName);
+            _configuration = writer.Data;
         }
 
-        public DBObjectFieldHandler(byte[] configuration)
+        public DBObjectFieldHandler(IObjectDB objectDB, byte[] configuration)
         {
-            _type = typeof(object);
+            _objectDB = objectDB;
             _configuration = configuration;
+            _typeName = new ByteArrayReader(configuration).ReadString();
+            _type = _objectDB.TypeByName(_typeName);
         }
 
         public static string HandlerName
@@ -51,7 +59,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public Type HandledType()
         {
-            return _type;
+            return _type ?? typeof(object);
         }
 
         public bool NeedsCtx()
@@ -63,7 +71,8 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
         {
             pushReaderOrCtx(ilGenerator);
             ilGenerator.Callvirt(() => ((IReaderCtx)null).ReadObject());
-            if (_type != typeof(object)) ilGenerator.Isinst(_type);
+            var type = HandledType();
+            if (type != typeof(object)) ilGenerator.Isinst(type);
         }
 
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)

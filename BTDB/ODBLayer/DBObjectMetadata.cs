@@ -2,24 +2,13 @@ namespace BTDB.ODBLayer
 {
     public class DBObjectMetadata
     {
-        readonly ulong _id;
-        bool _dirty;
-
-        public DBObjectMetadata(ulong id, bool dirty)
+        public DBObjectMetadata(ulong id, DBObjectState state)
         {
-            _id = id;
-            _dirty = dirty;
+            Id = id;
+            State = state;
         }
 
-        public bool Dirty
-        {
-            get { return _dirty; }
-            set { _dirty = value; }
-        }
-
-        public ulong Id
-        {
-            get { return _id; }
-        }
+        public ulong Id { get; set; }
+        public DBObjectState State { get; set; }
     }
 }

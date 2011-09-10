@@ -97,7 +97,6 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                     if (_signed) writer.WriteVInt64((long)value);
                     else writer.WriteVUInt64(value);
                 }
-                writer.Dispose();
                 return writer.Data;
             }
 
