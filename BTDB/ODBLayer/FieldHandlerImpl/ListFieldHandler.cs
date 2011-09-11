@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
@@ -11,13 +10,15 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
     public class ListFieldHandler : IFieldHandler
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
+        readonly ITypeConvertorGenerator _typeConvertorGenerator;
         readonly byte[] _configuration;
         readonly IFieldHandler _itemsHandler;
         Type _type;
 
-        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, Type type)
+        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
+            _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
             _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0]);
             var writer = new ByteArrayWriter();
@@ -25,9 +26,10 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             writer.WriteByteArray(_itemsHandler.Configuration);
         }
 
-        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, byte[] configuration)
+        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
+            _typeConvertorGenerator = typeConvertorGenerator;
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
             var itemsHandlerName = reader.ReadString();
@@ -63,7 +65,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public Type HandledType()
         {
-            return _type ?? (_type = typeof (IList<>).MakeGenericType(_itemsHandler.HandledType()));
+            return _type ?? (_type = typeof(IList<>).MakeGenericType(_itemsHandler.HandledType()));
         }
 
         public bool NeedsCtx()
@@ -74,8 +76,10 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
         public static IList<T> LoadCtx<T>(IReaderCtx ctx) where T : class
         {
             var count = ctx.Reader().ReadVUInt32();
-            var result = new List<T>((int) count);
-            while (count-->0)
+            if (count == 0) return null;
+            count--;
+            var result = new List<T>((int)count);
+            while (count-- > 0)
                 result.Add(ctx.ReadObject() as T);
             return result;
         }
@@ -89,14 +93,49 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                     typeof(ListFieldHandler).GetMethod("LoadCtx").MakeGenericMethod(_type.GetGenericArguments()[0]));
                 return;
             }
-            throw new NotImplementedException();
+            var localCount = ilGenerator.DeclareLocal(typeof(uint));
+            var localResult = ilGenerator.DeclareLocal(_type);
+            var finish = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            ilGenerator
+                .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
+                .Stloc(localCount)
+                .Ldloc(localCount)
+                .Brfalse(finish)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .ConvU4()
+                .Stloc(localCount)
+                .Ldloc(localCount)
+                .Newobj(
+                    typeof(List<>).MakeGenericType(_type.GetGenericArguments()[0]).GetConstructor(new[] { typeof(int) }))
+                .Stloc(localResult)
+                .Mark(next)
+                .Ldloc(localCount)
+                .Brfalse(finish)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .ConvU4()
+                .Stloc(localCount)
+                .Ldloc(localResult);
+            _itemsHandler.Load(ilGenerator, pushReaderOrCtx);
+            _typeConvertorGenerator.GenerateConversion(_itemsHandler.HandledType(), _type.GetGenericArguments()[0])(ilGenerator);
+            ilGenerator
+                .Callvirt(_type.GetInterface("ICollection`1").GetMethod("Add"))
+                .Br(next)
+                .Mark(finish)
+                .Ldloc(localResult);
         }
 
         public static void SkipLoadCtx(IReaderCtx ctx)
         {
             var reader = ctx.Reader();
             var count = reader.ReadVUInt32();
-            while (count-->0)
+            if (count <= 1) return;
+            count--;
+            while (count-- > 0)
             {
                 ctx.SkipObject();
             }
@@ -107,7 +146,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             pushReaderOrCtx(ilGenerator);
             if (NeedsCtx())
             {
-                ilGenerator.Call(()=>SkipLoadCtx(null));
+                ilGenerator.Call(() => SkipLoadCtx(null));
                 return;
             }
             throw new NotImplementedException();
@@ -115,7 +154,13 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
 
         public static void SaveCtx<T>(IWriterCtx ctx, IList<T> list) where T : class
         {
-            ctx.Writer().WriteVUInt32((uint) list.Count);
+            var writer = ctx.Writer();
+            if (list == null)
+            {
+                writer.WriteVUInt32(0);
+                return;
+            }
+            writer.WriteVUInt32((uint)list.Count + 1);
             foreach (var t in list)
             {
                 ctx.WriteObject(t);
@@ -129,10 +174,48 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 pushWriterOrCtx(ilGenerator);
                 pushValue(ilGenerator);
                 ilGenerator.Call(
-                    typeof (ListFieldHandler).GetMethod("SaveCtx").MakeGenericMethod(_type.GetGenericArguments()[0]));
+                    typeof(ListFieldHandler).GetMethod("SaveCtx").MakeGenericMethod(_type.GetGenericArguments()[0]));
                 return;
             }
-            throw new NotImplementedException();
+            var finish = ilGenerator.DefineLabel();
+            var isnull = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            var localValue = ilGenerator.DeclareLocal(_type);
+            var localIndex = ilGenerator.DeclareLocal(typeof(int));
+            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            ilGenerator
+                .Do(pushValue)
+                .Stloc(localValue)
+                .Ldloc(localValue)
+                .Brfalse(isnull)
+                .Ldloc(localValue)
+                .Callvirt(_type.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
+                .Stloc(localCount)
+                .Do(pushWriterOrCtx)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Add()
+                .ConvU4()
+                .Callvirt(() => ((AbstractBufferedWriter)null).WriteVUInt32(0))
+                .Mark(next)
+                .Ldloc(localIndex)
+                .Ldloc(localCount)
+                .BgeUn(finish);
+            _itemsHandler.Save(ilGenerator, pushWriterOrCtx, il => il
+                .Ldloc(localValue)
+                .Ldloc(localIndex)
+                .Callvirt(_type.GetMethod("get_Item"))
+                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemsHandler.HandledType())));
+            ilGenerator
+                .Ldloc(localIndex)
+                .LdcI4(1)
+                .Add()
+                .Stloc(localIndex)
+                .Br(next)
+                .Mark(isnull)
+                .Do(pushWriterOrCtx)
+                .Callvirt(() => ((AbstractBufferedWriter)null).WriteByteZero())
+                .Mark(finish);
         }
 
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)

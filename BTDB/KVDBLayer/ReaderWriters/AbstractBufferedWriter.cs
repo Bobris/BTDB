@@ -17,6 +17,15 @@ namespace BTDB.KVDBLayer.ReaderWriters
 
         public abstract void FlushBuffer();
 
+        public void WriteByteZero()
+        {
+            if (Pos >= End)
+            {
+                FlushBuffer();
+            }
+            Buf[Pos++] = 0;
+        }
+
         public void WriteBool(bool value)
         {
             if (Pos >= End)

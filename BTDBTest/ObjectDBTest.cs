@@ -428,6 +428,7 @@ namespace BTDBTest
             public Guid GuidField { get; set; }
             public DateTime DateTimeField { get; set; }
             public TestEnum EnumField { get; set; }
+            public byte[] ByteArrayField { get; set; }
         }
 
         [Test]
@@ -454,6 +455,7 @@ namespace BTDBTest
                 Assert.AreEqual(new DateTime(), o.DateTimeField);
                 Assert.AreEqual(new Guid(), o.GuidField);
                 Assert.AreEqual(TestEnum.Item1, o.EnumField);
+                Assert.AreEqual(null, o.ByteArrayField);
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -473,6 +475,7 @@ namespace BTDBTest
                 o.DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local);
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
+                o.ByteArrayField = new byte[] { 0, 1, 2 };
 
                 AssertContent(o);
                 tr.Commit();
@@ -504,6 +507,7 @@ namespace BTDBTest
             Assert.AreEqual(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
             Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
             Assert.AreEqual(TestEnum.Item2, o.EnumField);
+            Assert.AreEqual(new byte[] { 0, 1, 2 }, o.ByteArrayField);
         }
 
         public class Root
@@ -528,6 +532,33 @@ namespace BTDBTest
                 var p2 = root.Persons[1];
                 Assert.AreEqual("P1", p1.Name);
                 Assert.AreEqual("P2", p2.Name);
+            }
+        }
+
+        public class VariousLists
+        {
+            public IList<int> IntList { get; set; }
+            public IList<string> StringList { get; set; }
+            public IList<byte> ByteList { get; set; }
+        }
+
+        [Test]
+        public void ListOfSimpleValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousLists>();
+                root.IntList = new List<int> { 5, 10, 2000 };
+                root.StringList = new List<string> { "A", null, "AB!" };
+                root.ByteList = new List<byte> { 0, 255 };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousLists>();
+                Assert.AreEqual(new List<int> {5, 10, 2000}, root.IntList);
+                Assert.AreEqual(new List<string> { "A", null, "AB!" }, root.StringList);
+                Assert.AreEqual(new List<byte> { 0, 255 }, root.ByteList);
             }
         }
 

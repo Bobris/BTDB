@@ -7,6 +7,12 @@ namespace BTDB.IL
 {
     public static class ILGeneratorExtensions
     {
+        public static ILGenerator Do(this ILGenerator il, Action<ILGenerator> action)
+        {
+            action(il);
+            return il;
+        }
+
         public static ILGenerator LdcI4(this ILGenerator il, int value)
         {
             switch (value)
@@ -193,6 +199,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Br(this ILGenerator il, Label targetLabel)
+        {
+            il.Emit(OpCodes.Br, targetLabel);
+            return il;
+        }
+
         public static ILGenerator BrS(this ILGenerator il, Label targetLabel)
         {
             il.Emit(OpCodes.Br_S, targetLabel);
@@ -208,6 +220,18 @@ namespace BTDB.IL
         public static ILGenerator BeqS(this ILGenerator il, Label targetLabel)
         {
             il.Emit(OpCodes.Beq_S, targetLabel);
+            return il;
+        }
+
+        public static ILGenerator BgeUnS(this ILGenerator il, Label targetLabel)
+        {
+            il.Emit(OpCodes.Bge_Un_S, targetLabel);
+            return il;
+        }
+
+        public static ILGenerator BgeUn(this ILGenerator il, Label targetLabel)
+        {
+            il.Emit(OpCodes.Bge_Un, targetLabel);
             return il;
         }
 
@@ -392,6 +416,18 @@ namespace BTDB.IL
         public static ILGenerator Catch(this ILGenerator il, Type exceptionType)
         {
             il.BeginCatchBlock(exceptionType);
+            return il;
+        }
+
+        public static ILGenerator Add(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Add);
+            return il;
+        }
+
+        public static ILGenerator Sub(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Sub);
             return il;
         }
 
