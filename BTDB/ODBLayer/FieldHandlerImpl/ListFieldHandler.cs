@@ -24,6 +24,7 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
             var writer = new ByteArrayWriter();
             writer.WriteString(_itemsHandler.Name);
             writer.WriteByteArray(_itemsHandler.Configuration);
+            _configuration = writer.Data;
         }
 
         public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
@@ -149,7 +150,31 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
                 ilGenerator.Call(() => SkipLoadCtx(null));
                 return;
             }
-            throw new NotImplementedException();
+            var localCount = ilGenerator.DeclareLocal(typeof(uint));
+            var finish = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            ilGenerator
+                .Callvirt(() => ((AbstractBufferedReader) null).ReadVUInt32())
+                .Stloc(localCount)
+                .Ldloc(localCount)
+                .Brfalse(finish)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .ConvU4()
+                .Stloc(localCount)
+                .Mark(next)
+                .Ldloc(localCount)
+                .Brfalse(finish)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .ConvU4()
+                .Stloc(localCount);
+            _itemsHandler.SkipLoad(ilGenerator, pushReaderOrCtx);
+            ilGenerator
+                .Br(next)
+                .Mark(finish);
         }
 
         public static void SaveCtx<T>(IWriterCtx ctx, IList<T> list) where T : class

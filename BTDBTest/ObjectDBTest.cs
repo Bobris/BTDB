@@ -36,6 +36,10 @@ namespace BTDBTest
             public string Content { get; set; }
         }
 
+        public class Empty
+        {
+        }
+
         [SetUp]
         public void Setup()
         {
@@ -559,6 +563,49 @@ namespace BTDBTest
                 Assert.AreEqual(new List<int> {5, 10, 2000}, root.IntList);
                 Assert.AreEqual(new List<string> { "A", null, "AB!" }, root.StringList);
                 Assert.AreEqual(new List<byte> { 0, 255 }, root.ByteList);
+                root.IntList = null;
+                root.StringList = null;
+                root.ByteList = null;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousLists>();
+                Assert.AreEqual(null, root.IntList);
+                Assert.AreEqual(null, root.StringList);
+                Assert.AreEqual(null, root.ByteList);
+                root.IntList = new List<int>();
+                root.StringList = new List<string>();
+                root.ByteList = new List<byte>();
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousLists>();
+                Assert.AreEqual(new List<int>(), root.IntList);
+                Assert.AreEqual(new List<string>(), root.StringList);
+                Assert.AreEqual(new List<byte>(), root.ByteList);
+            }
+        }
+
+        [Test]
+        public void ListOfSimpleValuesSkip()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousLists>();
+                root.IntList = new List<int> { 5, 10, 2000 };
+                root.StringList = new List<string>();
+                root.ByteList = null;
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Empty), "VariousLists");
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<Empty>();
             }
         }
 
