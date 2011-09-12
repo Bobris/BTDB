@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
 using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ServiceLayer
 {
@@ -11,7 +12,7 @@ namespace BTDB.ServiceLayer
         readonly string _name;
         readonly MethodInf[] _methodInfs;
 
-        public TypeInf(Type type, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public TypeInf(Type type, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = type.Name;
             var methodInfs = new List<MethodInf>();
@@ -27,7 +28,7 @@ namespace BTDB.ServiceLayer
             _methodInfs = methodInfs.ToArray();
         }
 
-        public TypeInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public TypeInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
             var methodCount = reader.ReadVUInt32();
@@ -58,7 +59,7 @@ namespace BTDB.ServiceLayer
             }
         }
 
-        static bool IsMethodSupported(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
+        static bool IsMethodSupported(MethodInfo method, IFieldHandlerFactory fieldHandlerFactory)
         {
             var syncReturnType = method.ReturnType.UnwrapTask();
             if (syncReturnType != typeof(void))

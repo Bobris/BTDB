@@ -7,6 +7,7 @@ using BTDB.KVDBLayer.ImplementationDetails;
 using BTDB.KVDBLayer.Interface;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.ODBLayer.FieldHandlerImpl;
 
 namespace BTDB.ODBLayer
 {
@@ -25,7 +26,7 @@ namespace BTDB.ODBLayer
 
         public ObjectDB()
         {
-            FieldHandlerFactory = new DefaultFieldHandlerFactory(this);
+            FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
             TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
         }
 

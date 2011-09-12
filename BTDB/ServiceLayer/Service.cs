@@ -13,6 +13,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ODBLayer;
 using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.ODBLayer.FieldHandlerImpl;
 using BTDB.Reactive;
 using BTDB.IL;
 
@@ -54,8 +55,8 @@ namespace BTDB.ServiceLayer
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
         readonly ConditionalWeakTable<Type, WeakReference> _otherServiceCache = new ConditionalWeakTable<Type, WeakReference>();
 
-        readonly ITypeConvertorGenerator _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
-        readonly IServiceFieldHandlerFactory _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory();
+        ITypeConvertorGenerator _typeConvertorGenerator;
+        IFieldHandlerFactory _fieldHandlerFactory;
 
         struct TaskAndBindInf
         {
@@ -71,7 +72,10 @@ namespace BTDB.ServiceLayer
 
         public Service(IChannel channel)
         {
+            _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
             _channel = channel;
+            _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
+            _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
             channel.OnReceive.FastSubscribe(OnReceive);
         }
 
@@ -742,6 +746,18 @@ namespace BTDB.ServiceLayer
         public IChannel Channel
         {
             get { return _channel; }
+        }
+
+        public ITypeConvertorGenerator TypeConvertorGenerator
+        {
+            get { return _typeConvertorGenerator; }
+            set { _typeConvertorGenerator = value; }
+        }
+
+        public IFieldHandlerFactory FieldHandlerFactory
+        {
+            get { return _fieldHandlerFactory; }
+            set { _fieldHandlerFactory = value; }
         }
 
         public AbstractBufferedWriter StartTwoWayMarshaling(ClientBindInf binding, out Task resultReturned)

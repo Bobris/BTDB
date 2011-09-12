@@ -1,7 +1,12 @@
-﻿namespace BTDB.ServiceLayer
+﻿using BTDB.ODBLayer;
+using BTDB.ODBLayer.FieldHandlerIface;
+
+namespace BTDB.ServiceLayer
 {
-    public interface IService : IServiceClient, IServiceServer
+    public interface IService : IServiceClient, IServiceServer, IFieldHandlerFactoryProvider
     {
         IChannel Channel { get; }
+        ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
+        IFieldHandlerFactory FieldHandlerFactory { get; set; }
     }
 }

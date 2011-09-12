@@ -9,13 +9,13 @@ namespace BTDB.ServiceLayer
         readonly string _name;
         readonly IFieldHandler _fieldHandler;
 
-        public ParameterInf(ParameterInfo parameter, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public ParameterInf(ParameterInfo parameter, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = parameter.Name;
             _fieldHandler = fieldHandlerFactory.CreateFromType(parameter.ParameterType);
         }
 
-        public ParameterInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public ParameterInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
             var handlerName = reader.ReadString();

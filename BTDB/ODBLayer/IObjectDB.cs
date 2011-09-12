@@ -5,7 +5,7 @@ using BTDB.ODBLayer.FieldHandlerIface;
 
 namespace BTDB.ODBLayer
 {
-    public interface IObjectDB : IDisposable 
+    public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable 
     {
         void Open(IKeyValueDB keyValueDB, bool dispose);
 

@@ -12,7 +12,7 @@ namespace BTDB.ServiceLayer
         readonly ParameterInf[] _parameters;
         readonly IFieldHandler _resultFieldHandler;
 
-        public MethodInf(MethodInfo method, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public MethodInf(MethodInfo method, IFieldHandlerFactory fieldHandlerFactory)
         {
             MethodInfo = method;
             _name = method.Name;
@@ -29,7 +29,7 @@ namespace BTDB.ServiceLayer
             }
         }
 
-        public MethodInf(AbstractBufferedReader reader, IServiceFieldHandlerFactory fieldHandlerFactory)
+        public MethodInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = reader.ReadString();
             _ifaceName = reader.ReadString();

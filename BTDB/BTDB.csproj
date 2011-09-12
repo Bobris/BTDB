@@ -75,6 +75,7 @@
     <Compile Include="ODBLayer\DBObjectState.cs" />
     <Compile Include="ODBLayer\DBReaderCtx.cs" />
     <Compile Include="ODBLayer\DBWriterCtx.cs" />
+    <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandlerFactoryProvider.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ByteArrayFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DateTimeFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
@@ -90,12 +91,11 @@
     <Compile Include="ServiceLayer\ChannelStatus.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="ServiceLayer\ClientBindInf.cs" />
-    <Compile Include="ServiceLayer\DefaultServiceFieldHandlerFactory.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\DefaultFieldHandlerFactory.cs" />
     <Compile Include="ServiceLayer\IChannel.cs" />
     <Compile Include="ServiceLayer\IServer.cs" />
     <Compile Include="ServiceLayer\IService.cs" />
     <Compile Include="ServiceLayer\IServiceClient.cs" />
-    <Compile Include="ServiceLayer\IServiceFieldHandlerFactory.cs" />
     <Compile Include="ServiceLayer\IServiceInternalClient.cs" />
     <Compile Include="ServiceLayer\IServiceInternalServer.cs" />
     <Compile Include="ServiceLayer\IServiceServer.cs" />
@@ -112,7 +112,7 @@
     <Compile Include="StreamLayer\MemoryPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Interface\ShouldMergeResult.cs" />
     <Compile Include="ODBLayer\DefaultTypeConvertorGenerator.cs" />
-    <Compile Include="ODBLayer\FieldHandlerIface\DefaultFieldHandlerFactory.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\DefaultODBFieldHandlerFactory.cs" />
     <Compile Include="IL\EmitHelpers.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerIface\IFieldHandlerFactory.cs" />
