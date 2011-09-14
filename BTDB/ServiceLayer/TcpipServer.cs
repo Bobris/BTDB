@@ -6,6 +6,7 @@ using System.Reactive.Subjects;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.Helpers;
+using BTDB.Reactive;
 
 namespace BTDB.ServiceLayer
 {
@@ -54,7 +55,6 @@ namespace BTDB.ServiceLayer
                 }
                 var channel = new Client(socket);
                 _newClient(channel);
-                channel.SignalConnected();
                 channel.StartReceiving();
             }
         }
@@ -62,34 +62,24 @@ namespace BTDB.ServiceLayer
         internal class Client : IChannel
         {
             readonly Socket _socket;
-            ChannelStatus _status;
-            Action<IChannel> _statusChanged;
-            readonly Subject<ByteBuffer> _receiver = new Subject<ByteBuffer>();
+            readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
+            bool _disconnected;
 
             public Client(Socket socket)
             {
                 _socket = socket;
                 _socket.Blocking = true;
                 _socket.ReceiveTimeout = -1;
-                _status = ChannelStatus.Connecting;
-                _statusChanged = _ => { };
             }
 
             public void Dispose()
             {
-                if (_status != ChannelStatus.Disconnected)
+                if (!_disconnected)
                 {
-                    _status = ChannelStatus.Disconnecting;
-                    _statusChanged(this);
                     _socket.Shutdown(SocketShutdown.Both);
                     SignalDisconnected();
                 }
                 _socket.Dispose();
-            }
-
-            public Action<IChannel> StatusChanged
-            {
-                set { _statusChanged = value; }
             }
 
             public void Send(ByteBuffer data)
@@ -116,21 +106,8 @@ namespace BTDB.ServiceLayer
 
             void SignalDisconnected()
             {
-                _status = ChannelStatus.Disconnected;
-                _statusChanged(this);
                 _receiver.OnCompleted();
-                _receiver.Dispose();
-            }
-
-            public ChannelStatus Status
-            {
-                get { return _status; }
-            }
-
-            internal void SignalConnected()
-            {
-                _status = ChannelStatus.Connected;
-                _statusChanged(this);
+                _disconnected = true;
             }
 
             void Receive(byte[] buf, int ofs, int len)
@@ -172,7 +149,6 @@ namespace BTDB.ServiceLayer
                                               try
                                               {
                                                   _socket.Connect(connectPoint);
-                                                  SignalConnected();
                                                   ReceiveBody();
                                               }
                                               catch (Exception)
@@ -185,7 +161,7 @@ namespace BTDB.ServiceLayer
             void ReceiveBody()
             {
                 var buf = new byte[9];
-                while (_status == ChannelStatus.Connected)
+                while (!_disconnected)
                 {
                     Receive(buf, 0, 1);
                     var packLen = PackUnpack.LengthVUInt(buf, 0);

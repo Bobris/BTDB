@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Threading;
+using BTDB.Reactive;
 using BTDB.ServiceLayer;
 using NUnit.Framework;
 
@@ -24,14 +25,9 @@ namespace BTDBTest
         public void ConnectNothereFails()
         {
             var e = new AutoResetEvent(false);
-            ChannelStatus status = ChannelStatus.Connecting;
-            var client = new TcpipClient(_ipEndPoint, ch =>
-                {
-                    status = ch.Status;
-                    e.Set();
-                });
+            var client = new TcpipClient(_ipEndPoint);
+            client.OnReceive.FastSubscribe(b=> { },()=>e.Set());
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.AreEqual(ChannelStatus.Disconnected, status);
         }
 
         [Test]
@@ -40,37 +36,25 @@ namespace BTDBTest
             var server = new TcpipServer(_ipEndPoint);
             var e = new AutoResetEvent(false);
             var e2 = new AutoResetEvent(false);
-            var status2 = ChannelStatus.Connecting;
-            IChannel clientOnServer = null;
+            bool servercompleted = false;
+            bool clientcompleted = false;
             server.NewClient = ch =>
                 {
-                    clientOnServer = ch;
-                    ch.StatusChanged = ch2 =>
+                    ch.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
                         {
-                            status2 = ch2.Status;
-                            e2.Set();
-                        };
+                            servercompleted = true; e2.Set();
+                        });
+                    e.Set();
                 };
             server.StartListening();
-
-            var status = ChannelStatus.Connecting;
-            var client = new TcpipClient(_ipEndPoint, ch =>
-                {
-                    status = ch.Status;
-                    e.Set();
-                });
+            var client = new TcpipClient(_ipEndPoint);
+            client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()),
+                                           () => clientcompleted = true);
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.AreEqual(ChannelStatus.Connected, status);
-            Assert.AreEqual(ChannelStatus.Connected, status2);
-            bool completed = false;
-            clientOnServer.OnReceive.Subscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () => completed = true);
             client.Dispose();
-            Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
+            Assert.True(clientcompleted);
             Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.True(completed);
-            Assert.AreEqual(ChannelStatus.Disconnected, status);
-            Assert.AreEqual(ChannelStatus.Disconnected, status2);
+            Assert.True(servercompleted);
             server.StopListening();
         }
     }

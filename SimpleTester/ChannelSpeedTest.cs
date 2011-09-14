@@ -5,7 +5,6 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Reactive;
-using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.Helpers;
@@ -213,15 +212,7 @@ namespace SimpleTester
 
             public void Run()
             {
-                _client = new TcpipClient(new IPEndPoint(IPAddress.Loopback, 12345), ch => { });
-                while (_client.Status != ChannelStatus.Connected)
-                {
-                    if (_client.Status == ChannelStatus.Disconnected)
-                    {
-                        Console.WriteLine("EchoClient cannot connect to server");
-                    }
-                    Thread.Yield();
-                }
+                _client = new TcpipClient(new IPEndPoint(IPAddress.Loopback, 12345));
                 var sender = new Sender(_messageLen, _messageCount, _client);
                 var receiver = new Receiver(_messageLen, _messageCount);
                 receiver.StartReceive(_client);
@@ -253,15 +244,7 @@ namespace SimpleTester
 
             public void Run()
             {
-                _client = new TcpipClient(new IPEndPoint(IPAddress.Loopback, 12345), ch => { });
-                while (_client.Status != ChannelStatus.Connected)
-                {
-                    if (_client.Status == ChannelStatus.Disconnected)
-                    {
-                        Console.WriteLine("EchoClient cannot connect to server");
-                    }
-                    Thread.Yield();
-                }
+                _client = new TcpipClient(new IPEndPoint(IPAddress.Loopback, 12345));
                 var sender = new Sender(_messageLen, _messageCount, _client);
                 sender.MassSend();
                 Console.WriteLine(sender.SummaryInfo("Send"));
@@ -321,7 +304,6 @@ namespace SimpleTester
             {
                 _twoChannels = new PipedTwoChannels();
                 _twoChannels.Second.OnReceive.FastSubscribe(_twoChannels.Second.Send);
-                _twoChannels.Connect();
                 const int messageLen = 1024;
                 var sender = new Sender(messageLen, MessageCount, _twoChannels.First);
                 var receiver = new Receiver(messageLen, MessageCount);

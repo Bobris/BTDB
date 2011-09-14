@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.ServiceLayer;
 using NUnit.Framework;
 
@@ -20,7 +19,6 @@ namespace BTDBTest
             _pipedTwoChannels = new PipedTwoChannels();
             _first = new Service(_pipedTwoChannels.First);
             _second = new Service(_pipedTwoChannels.Second);
-            _pipedTwoChannels.Connect();
         }
 
         [TearDown]
@@ -184,13 +182,11 @@ namespace BTDBTest
         public void ClientServiceDeallocedWhenNotneeded()
         {
             _first.RegisterMyService(new Adder());
-            var adder = _second.QueryOtherService<IAdder>();
-            var weakAdder = new WeakReference(adder);
-            adder = null;
+            var weakAdder = new WeakReference(_second.QueryOtherService<IAdder>());
             GC.Collect();
             GC.WaitForPendingFinalizers();
             Assert.False(weakAdder.IsAlive);
-            adder = _second.QueryOtherService<IAdder>();
+            var adder = _second.QueryOtherService<IAdder>();
             Assert.AreEqual(2, adder.Add(1, 1));
         }
 
