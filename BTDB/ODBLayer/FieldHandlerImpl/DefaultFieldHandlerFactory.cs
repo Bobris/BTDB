@@ -8,6 +8,8 @@ namespace BTDB.ODBLayer.FieldHandlerImpl
         static readonly IFieldHandler[] FieldHandlers = new IFieldHandler[]
             {
                 new StringFieldHandler(),
+                new Uint8FieldHandler(), 
+                new Int8FieldHandler(), 
                 new SignedFieldHandler(),
                 new UnsignedFieldHandler(),
                 new BoolFieldHandler(),

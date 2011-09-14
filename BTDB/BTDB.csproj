@@ -81,8 +81,10 @@
     <Compile Include="ODBLayer\FieldHandlerImpl\DecimalFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\EnumFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\GuidFieldHandler.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\Int8FieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\ListFieldHandler.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\SimpleFieldHandlerBase.cs" />
+    <Compile Include="ODBLayer\FieldHandlerImpl\Uint8FieldHandler.cs" />
     <Compile Include="ODBLayer\IReaderCtx.cs" />
     <Compile Include="ODBLayer\IWriterCtx.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
