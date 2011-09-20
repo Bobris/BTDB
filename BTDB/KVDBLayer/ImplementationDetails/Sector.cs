@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading;
-using BTDB.KVDBLayer.Helpers;
-using BTDB.KVDBLayer.Implementation;
 
-namespace BTDB.KVDBLayer.ImplementationDetails
+namespace BTDB.KVDBLayer
 {
     public sealed class Sector
     {

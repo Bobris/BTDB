@@ -1,6 +1,4 @@
-﻿using BTDB.ODBLayer.FieldHandlerIface;
-
-namespace BTDB.ODBLayer
+﻿namespace BTDB.ODBLayer
 {
     internal interface ITableInfoResolver
     {

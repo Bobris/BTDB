@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Threading;
-using BTDB.KVDBLayer.Interface;
 
-namespace BTDB.KVDBLayer.Helpers
+namespace BTDB.KVDBLayer
 {
     public static class ExtensionMethods
     {

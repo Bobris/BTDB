@@ -1,7 +1,6 @@
 ﻿using System;
-using BTDB.ODBLayer.FieldHandlerIface;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
     {

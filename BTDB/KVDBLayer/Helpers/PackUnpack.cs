@@ -1,4 +1,4 @@
-﻿namespace BTDB.KVDBLayer.Helpers
+﻿namespace BTDB.KVDBLayer
 {
     public static class PackUnpack
     {

@@ -1,7 +1,7 @@
 using System.Reflection;
 using BTDB.IL;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.KVDBLayer;
+using BTDB.ODBLayer;
 
 namespace BTDB.ServiceLayer
 {

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BTDB.ODBLayer.FieldHandlerIface
+namespace BTDB.ODBLayer
 {
     public interface IFieldHandlerFactory
     {

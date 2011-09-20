@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace BTDB.KVDBLayer.ImplementationDetails
+namespace BTDB.KVDBLayer
 {
     internal static class BitArrayManipulation
     {

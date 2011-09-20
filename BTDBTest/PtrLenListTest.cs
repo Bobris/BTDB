@@ -1,5 +1,5 @@
 ﻿using System.Text;
-using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer;
 using NUnit.Framework;
 
 namespace BTDBTest

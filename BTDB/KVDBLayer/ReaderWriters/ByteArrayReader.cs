@@ -1,4 +1,4 @@
-namespace BTDB.KVDBLayer.ReaderWriters
+namespace BTDB.KVDBLayer
 {
     public class ByteArrayReader : AbstractBufferedReader
     {

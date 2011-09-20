@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace BTDB.KVDBLayer.Helpers
+namespace BTDB.KVDBLayer
 {
     public class PtrLenList
     {

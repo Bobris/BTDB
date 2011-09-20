@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.Interface;
-using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {

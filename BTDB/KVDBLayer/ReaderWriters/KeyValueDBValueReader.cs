@@ -1,6 +1,4 @@
-﻿using BTDB.KVDBLayer.Interface;
-
-namespace BTDB.KVDBLayer.ReaderWriters
+﻿namespace BTDB.KVDBLayer
 {
     public class KeyValueDBValueReader : AbstractBufferedReader
     {

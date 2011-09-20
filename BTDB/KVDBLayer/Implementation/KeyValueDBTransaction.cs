@@ -2,11 +2,8 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using BTDB.KVDBLayer.Helpers;
-using BTDB.KVDBLayer.ImplementationDetails;
-using BTDB.KVDBLayer.Interface;
 
-namespace BTDB.KVDBLayer.Implementation
+namespace BTDB.KVDBLayer
 {
     internal sealed class KeyValueDBTransaction : IKeyValueDBTransaction
     {

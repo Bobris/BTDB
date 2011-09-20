@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
-using BTDB.KVDBLayer.Helpers;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Interface;
 
-namespace BTDB.KVDBLayer.ImplementationDetails
+namespace BTDB.KVDBLayer
 {
     internal struct BTreeParentIterator
     {

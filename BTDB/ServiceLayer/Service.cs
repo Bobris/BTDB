@@ -10,10 +10,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using BTDB.Buffer;
-using BTDB.KVDBLayer.ReaderWriters;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using BTDB.ODBLayer.FieldHandlerIface;
-using BTDB.ODBLayer.FieldHandlerImpl;
 using BTDB.Reactive;
 using BTDB.IL;
 

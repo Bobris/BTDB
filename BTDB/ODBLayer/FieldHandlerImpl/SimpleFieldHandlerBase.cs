@@ -2,9 +2,8 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using BTDB.IL;
-using BTDB.ODBLayer.FieldHandlerIface;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public abstract class SimpleFieldHandlerBase : IFieldHandler
     {

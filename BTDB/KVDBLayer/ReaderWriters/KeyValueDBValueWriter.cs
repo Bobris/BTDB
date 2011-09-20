@@ -1,7 +1,6 @@
 ﻿using System;
-using BTDB.KVDBLayer.Interface;
 
-namespace BTDB.KVDBLayer.ReaderWriters
+namespace BTDB.KVDBLayer
 {
     public class KeyValueDBValueWriter : AbstractBufferedWriter, IDisposable
     {

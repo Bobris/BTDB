@@ -7,7 +7,7 @@ using System.Net;
 using System.Reactive;
 using System.Threading.Tasks;
 using BTDB.Buffer;
-using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer;
 using BTDB.Reactive;
 using BTDB.ServiceLayer;
 

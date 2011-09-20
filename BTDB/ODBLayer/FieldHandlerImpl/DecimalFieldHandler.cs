@@ -1,8 +1,7 @@
-﻿using System;
-using BTDB.IL;
-using BTDB.KVDBLayer.ReaderWriters;
+﻿using BTDB.IL;
+using BTDB.KVDBLayer;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public class DecimalFieldHandler : SimpleFieldHandlerBase
     {

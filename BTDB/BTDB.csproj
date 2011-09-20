@@ -47,18 +47,18 @@
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorTypeInit.cs" />
-    <Compile Include="KVDBLayer\ReaderWriters\AbstractBufferedWriter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BitArrayManipulation.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeParentIterator.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\AbstractBufferedReader.cs" />
     <Compile Include="KVDBLayer\Helpers\KeyValueDBExportImporter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\FreeSpaceAllocatorOptimizer.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\AbstractBufferedWriter.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\ByteArrayReader.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\ByteArrayWriter.cs" />
-    <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBKeyReader.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\ByteBufferReader.cs" />
     <Compile Include="KVDBLayer\Implementation\KeyValueDBTransaction.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBKeyReader.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBValueReader.cs" />
-    <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBValueWriter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\Sector.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorPtr.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorType.cs" />
@@ -66,6 +66,7 @@
     <Compile Include="KVDBLayer\Interface\BTDBTransactionRetryException.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeChildIterator.cs" />
     <Compile Include="KVDBLayer\Interface\KeyValueDBStats.cs" />
+    <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBValueWriter.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamReader.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\PositionLessStreamWriter.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayProxy.cs" />
@@ -89,7 +90,6 @@
     <Compile Include="ODBLayer\IWriterCtx.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\Extensions.cs" />
-    <Compile Include="KVDBLayer\ReaderWriters\ByteBufferReader.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="ServiceLayer\ClientBindInf.cs" />
     <Compile Include="ODBLayer\FieldHandlerImpl\DefaultFieldHandlerFactory.cs" />

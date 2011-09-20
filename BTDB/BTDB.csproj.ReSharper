@@ -1,0 +1,12 @@
+<Configuration>
+  <NamespaceFolders>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:Helpers</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:Implementation</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:ImplementationDetails</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:Interface</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:ReaderWriters</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:KVDBLayer/d:ReplayProxy</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:ODBLayer/d:FieldHandlerIface</SkipFolder>
+    <SkipFolder>4B16680A-547C-495F-8BB2-8DA239E34194/d:ODBLayer/d:FieldHandlerImpl</SkipFolder>
+  </NamespaceFolders>
+</Configuration>

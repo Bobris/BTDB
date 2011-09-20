@@ -1,4 +1,4 @@
-﻿namespace BTDB.KVDBLayer.ImplementationDetails
+﻿namespace BTDB.KVDBLayer
 {
     public enum SectorTypeInit
     {

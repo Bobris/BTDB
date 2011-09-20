@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using BTDB.StreamLayer;
 
-namespace BTDB.KVDBLayer.Interface
+namespace BTDB.KVDBLayer
 {
     public interface IKeyValueDB: IDisposable
     {

@@ -5,11 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.Helpers;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.KVDBLayer.ReplayProxy;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace SimpleTester

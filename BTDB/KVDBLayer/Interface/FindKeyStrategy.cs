@@ -1,4 +1,4 @@
-﻿namespace BTDB.KVDBLayer.Interface
+﻿namespace BTDB.KVDBLayer
 {
     public enum FindKeyStrategy
     {

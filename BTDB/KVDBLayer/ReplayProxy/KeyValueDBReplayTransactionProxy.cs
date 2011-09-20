@@ -1,7 +1,4 @@
-﻿using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.ReaderWriters;
-
-namespace BTDB.KVDBLayer.ReplayProxy
+﻿namespace BTDB.KVDBLayer
 {
     internal class KeyValueDBReplayTransactionProxy : IKeyValueDBTransaction
     {

@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using BTDB.IL;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.KVDBLayer;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public class ListFieldHandler : IFieldHandler
     {

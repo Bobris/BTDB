@@ -1,6 +1,4 @@
-﻿using BTDB.KVDBLayer.Helpers;
-
-namespace BTDB.KVDBLayer.ImplementationDetails
+﻿namespace BTDB.KVDBLayer
 {
     internal struct SectorPtr
     {

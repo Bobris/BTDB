@@ -1,8 +1,7 @@
 ﻿using System;
 using System.IO;
-using BTDB.KVDBLayer.Interface;
 
-namespace BTDB.KVDBLayer.Helpers
+namespace BTDB.KVDBLayer
 {
     public static class KeyValueDBExportImporter
     {

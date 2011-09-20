@@ -2,10 +2,9 @@
 using System.Linq;
 using System.Reflection.Emit;
 using BTDB.IL;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.KVDBLayer;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public class DBObjectFieldHandler : IFieldHandler
     {

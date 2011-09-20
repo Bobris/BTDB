@@ -2,10 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.KVDBLayer.ReplayProxy;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace SimpleTester

@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
 using BTDB.Buffer;
-using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer;
 using BTDB.Reactive;
 
 namespace BTDB.ServiceLayer

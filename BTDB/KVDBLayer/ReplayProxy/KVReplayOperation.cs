@@ -1,4 +1,4 @@
-﻿namespace BTDB.KVDBLayer.ReplayProxy
+﻿namespace BTDB.KVDBLayer
 {
     public enum KVReplayOperation
     {

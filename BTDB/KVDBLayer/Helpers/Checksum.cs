@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace BTDB.KVDBLayer.Helpers
+namespace BTDB.KVDBLayer
 {
     public static class Checksum
     {

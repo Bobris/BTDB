@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BTDB.KVDBLayer.Interface
+namespace BTDB.KVDBLayer
 {
     [Serializable]
     public class BTDBException : Exception

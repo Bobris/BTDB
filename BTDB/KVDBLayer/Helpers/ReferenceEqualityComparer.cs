@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace BTDB.KVDBLayer.Helpers
+namespace BTDB.KVDBLayer
 {
     public sealed class ReferenceEqualityComparer<T> : IEqualityComparer<T>
     {

@@ -1,7 +1,6 @@
 ﻿using System.Collections.Generic;
-using BTDB.KVDBLayer.Implementation;
 
-namespace BTDB.KVDBLayer.ImplementationDetails
+namespace BTDB.KVDBLayer
 {
     internal class FreeSpaceAllocatorOptimizer
     {

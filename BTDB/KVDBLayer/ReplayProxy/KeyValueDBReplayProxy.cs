@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.ReaderWriters;
 using BTDB.StreamLayer;
 
-namespace BTDB.KVDBLayer.ReplayProxy
+namespace BTDB.KVDBLayer
 {
     public class KeyValueDBReplayProxy : IKeyValueDB
     {

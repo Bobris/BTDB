@@ -1,9 +1,8 @@
 ﻿using System;
 using System.IO;
 using System.Text;
-using BTDB.KVDBLayer.Helpers;
 
-namespace BTDB.KVDBLayer.ReaderWriters
+namespace BTDB.KVDBLayer
 {
     public abstract class AbstractBufferedReader
     {

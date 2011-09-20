@@ -5,12 +5,9 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.Helpers;
-using BTDB.KVDBLayer.ImplementationDetails;
-using BTDB.KVDBLayer.Interface;
 using BTDB.StreamLayer;
 
-namespace BTDB.KVDBLayer.Implementation
+namespace BTDB.KVDBLayer
 {
     /* 64 bits for offset (55bit offset + 9bit length)
      * 32 bits for http://en.wikipedia.org/wiki/Fletcher%27s_checksum

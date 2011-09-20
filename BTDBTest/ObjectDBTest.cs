@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Interface;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;

@@ -1,9 +1,8 @@
 ﻿using System;
 using BTDB.IL;
-using BTDB.KVDBLayer.ReaderWriters;
-using BTDB.ODBLayer.FieldHandlerIface;
+using BTDB.KVDBLayer;
 
-namespace BTDB.ODBLayer.FieldHandlerImpl
+namespace BTDB.ODBLayer
 {
     public class SignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {

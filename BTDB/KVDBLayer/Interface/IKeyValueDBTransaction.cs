@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BTDB.KVDBLayer.Interface
+namespace BTDB.KVDBLayer
 {
     public interface IKeyValueDBTransaction : IDisposable
     {

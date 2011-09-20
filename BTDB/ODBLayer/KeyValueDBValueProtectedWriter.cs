@@ -1,5 +1,4 @@
-﻿using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.ReaderWriters;
+﻿using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {

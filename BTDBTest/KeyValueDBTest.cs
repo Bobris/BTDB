@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Interface;
-using BTDB.KVDBLayer.Helpers;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 

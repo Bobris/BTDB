@@ -1,6 +1,6 @@
 using System;
 
-namespace BTDB.KVDBLayer.ReaderWriters
+namespace BTDB.KVDBLayer
 {
     public sealed class ByteArrayWriter : AbstractBufferedWriter
     {

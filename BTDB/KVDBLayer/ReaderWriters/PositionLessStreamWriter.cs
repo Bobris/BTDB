@@ -1,7 +1,7 @@
 ﻿using System;
 using BTDB.StreamLayer;
 
-namespace BTDB.KVDBLayer.ReaderWriters
+namespace BTDB.KVDBLayer
 {
     public class PositionLessStreamWriter : AbstractBufferedWriter, IDisposable
     {

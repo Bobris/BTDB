@@ -1,6 +1,4 @@
 ﻿using System;
-using BTDB.KVDBLayer.Implementation;
-using BTDB.KVDBLayer.Helpers;
 using BTDB.StreamLayer;
 
 namespace SimpleTester
