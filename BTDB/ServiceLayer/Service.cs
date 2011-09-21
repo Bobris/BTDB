@@ -74,7 +74,16 @@ namespace BTDB.ServiceLayer
             _channel = channel;
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
             _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
-            channel.OnReceive.FastSubscribe(OnReceive);
+            channel.OnReceive.FastSubscribe(OnReceive,OnDisconnect);
+        }
+
+        void OnDisconnect()
+        {
+            foreach (var clientAck in _clientAcks)
+            {
+                clientAck.Value.Binding.HandleCancellation(clientAck.Value.TaskCompletionSource);
+            }
+            _clientAcks.Clear();
         }
 
         void OnReceive(ByteBuffer obj)
@@ -527,6 +536,7 @@ namespace BTDB.ServiceLayer
                     .Callvirt(resultAsTcs.GetMethod("TrySetResult"))
                     .Pop()
                     .Ret();
+
                 methodBuilder = tb.DefineMethod("HandleException_" + returnType.FullName,
                                                 MethodAttributes.Public | MethodAttributes.Static, typeof(void),
                                                 new[] { typeof(object), typeof(Exception) });
@@ -538,6 +548,18 @@ namespace BTDB.ServiceLayer
                     .Callvirt(resultAsTcs.GetMethod("TrySetException", new[] { typeof(Exception) }))
                     .Pop()
                     .Ret();
+
+                methodBuilder = tb.DefineMethod("HandleCancellation_" + returnType.FullName,
+                                                MethodAttributes.Public | MethodAttributes.Static, typeof(void),
+                                                new[] { typeof(object) });
+                ilGenerator = methodBuilder.GetILGenerator(symbolDocumentWriter, 16);
+                ilGenerator
+                    .Ldarg(0)
+                    .Castclass(resultAsTcs)
+                    .Callvirt(resultAsTcs.GetMethod("TrySetCanceled", Type.EmptyTypes))
+                    .Pop()
+                    .Ret();
+                
                 methodBuilder = tb.DefineMethod("TaskWithSourceCreator_" + returnType.FullName,
                                                 MethodAttributes.Public | MethodAttributes.Static,
                                                 typeof(TaskWithSource), Type.EmptyTypes);
@@ -582,6 +604,8 @@ namespace BTDB.ServiceLayer
                     finalType.GetMethod("HandleResult_" + resultType).CreateDelegate<Action<object, AbstractBufferedReader>>();
                 bindings[i].HandleException =
                     finalType.GetMethod("HandleException_" + resultType).CreateDelegate<Action<object, Exception>>();
+                bindings[i].HandleCancellation =
+                    finalType.GetMethod("HandleCancellation_" + resultType).CreateDelegate<Action<object>>();
                 bindings[i].TaskWithSourceCreator =
                     finalType.GetMethod("TaskWithSourceCreator_" + resultType).CreateDelegate<Func<TaskWithSource>>();
             }

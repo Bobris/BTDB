@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.ServiceLayer;
 using NUnit.Framework;
@@ -24,9 +25,14 @@ namespace BTDBTest
         [TearDown]
         public void TearDown()
         {
-            _pipedTwoChannels.Disconnect();
+            Disconnect();
             _first.Dispose();
             _second.Dispose();
+        }
+
+        public void Disconnect()
+        {
+            _pipedTwoChannels.Disconnect();
         }
 
         public interface IAdder
@@ -302,5 +308,19 @@ namespace BTDBTest
             Assert.That(e.Message, Is.StringStarting("msg"));
             Assert.AreEqual("test", ((ArgumentException)e).ParamName);
         }
+
+        [Test]
+        public void DisconnectionShouldCancelRunningMethods()
+        {
+            var e = new AutoResetEvent(false);
+            _first.RegisterMyService((Func<Task>)(()=>Task.Factory.StartNew(() => e.WaitOne(1000))));
+            var d = _second.QueryOtherService<Func<Task>>();
+            var task = d();
+            task = task.ContinueWith(t => Assert.True(t.IsCanceled));
+            Disconnect();
+            task.Wait(1000);
+            e.Set();
+        }
+
     }
 }
