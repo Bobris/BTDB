@@ -2,6 +2,7 @@
 using System.Linq;
 using BTDB;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using NUnit.Framework;
 
 namespace BTDBTest
@@ -121,6 +122,18 @@ namespace BTDBTest
         static void TestDateTime(DateTime value, byte[] checkResult)
         {
             TestWriteRead(w => w.WriteDateTime(value), checkResult, r => Assert.AreEqual(value, r.ReadDateTime()), s => s.SkipDateTime());
+        }
+
+        [Test]
+        public void TimeSpanTest()
+        {
+            TestTimeSpan(new TimeSpan(1), new byte[] { 0x02 });
+            TestTimeSpan(new TimeSpan(1, 0, 0), new byte[] { 0xf8, 0x10, 0xc3, 0x88, 0xd0, 0x00 });
+        }
+
+        static void TestTimeSpan(TimeSpan value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteTimeSpan(value), checkResult, r => Assert.AreEqual(value, r.ReadTimeSpan()), s => s.SkipTimeSpan());
         }
 
         [Test]
@@ -282,7 +295,7 @@ namespace BTDBTest
 
         static void TestDouble(double value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.AreEqual(value, r.ReadDouble()), s=>s.SkipDouble());
+            TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.AreEqual(value, r.ReadDouble()), s => s.SkipDouble());
         }
 
     }

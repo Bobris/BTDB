@@ -10,6 +10,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.Reactive;
 using BTDB.ServiceLayer;
+using BTDB.StreamLayer;
 
 namespace SimpleTester
 {

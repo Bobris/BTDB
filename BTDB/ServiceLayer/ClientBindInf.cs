@@ -1,5 +1,5 @@
 using System;
-using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ServiceLayer
 {

@@ -15,6 +15,7 @@ namespace BTDB.ODBLayer
                 new DoubleFieldHandler(),
                 new DecimalFieldHandler(),
                 new DateTimeFieldHandler(),
+                new TimeSpanFieldHandler(), 
                 new GuidFieldHandler(),
                 new ByteArrayFieldHandler(),
             };

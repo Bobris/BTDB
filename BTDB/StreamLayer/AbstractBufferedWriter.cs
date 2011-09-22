@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.StreamLayer
 {
     public abstract class AbstractBufferedWriter
     {
@@ -124,6 +124,11 @@ namespace BTDB.KVDBLayer
         public void WriteDateTime(DateTime value)
         {
             WriteInt64(value.ToBinary());
+        }
+
+        public void WriteTimeSpan(TimeSpan value)
+        {
+            WriteVInt64(value.Ticks);
         }
 
         public void WriteString(string value)

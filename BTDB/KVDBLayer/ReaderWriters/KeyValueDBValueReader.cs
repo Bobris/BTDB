@@ -1,4 +1,6 @@
-﻿namespace BTDB.KVDBLayer
+﻿using BTDB.StreamLayer;
+
+namespace BTDB.KVDBLayer
 {
     public class KeyValueDBValueReader : AbstractBufferedReader
     {

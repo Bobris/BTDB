@@ -1,4 +1,4 @@
-﻿namespace BTDB.KVDBLayer
+﻿namespace BTDB.StreamLayer
 {
     public static class PackUnpack
     {

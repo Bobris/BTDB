@@ -430,6 +430,7 @@ namespace BTDBTest
             public decimal DecimalField { get; set; }
             public Guid GuidField { get; set; }
             public DateTime DateTimeField { get; set; }
+            public TimeSpan TimeSpanField { get; set; }
             public TestEnum EnumField { get; set; }
             public byte[] ByteArrayField { get; set; }
         }
@@ -456,6 +457,7 @@ namespace BTDBTest
                 Assert.AreEqual(0f, o.FloatField);
                 Assert.AreEqual(0m, o.DecimalField);
                 Assert.AreEqual(new DateTime(), o.DateTimeField);
+                Assert.AreEqual(new TimeSpan(), o.TimeSpanField);
                 Assert.AreEqual(new Guid(), o.GuidField);
                 Assert.AreEqual(TestEnum.Item1, o.EnumField);
                 Assert.AreEqual(null, o.ByteArrayField);
@@ -476,6 +478,7 @@ namespace BTDBTest
                 o.FloatField = -12.34f;
                 o.DecimalField = 123456.789m;
                 o.DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local);
+                o.TimeSpanField = new TimeSpan(1,2,3,4);
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
                 o.ByteArrayField = new byte[] { 0, 1, 2 };
@@ -508,6 +511,7 @@ namespace BTDBTest
             Assert.AreEqual(-12.34, o.FloatField, 1e-6);
             Assert.AreEqual(123456.789m, o.DecimalField);
             Assert.AreEqual(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
+            Assert.AreEqual(new TimeSpan(1, 2, 3, 4), o.TimeSpanField);
             Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
             Assert.AreEqual(TestEnum.Item2, o.EnumField);
             Assert.AreEqual(new byte[] { 0, 1, 2 }, o.ByteArrayField);

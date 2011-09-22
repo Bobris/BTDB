@@ -1,6 +1,6 @@
 using BTDB.Buffer;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.StreamLayer
 {
     public class ByteBufferReader : AbstractBufferedReader
     {

@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using BTDB.IL;
-using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {

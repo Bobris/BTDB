@@ -2,7 +2,7 @@
 using System.IO;
 using System.Text;
 
-namespace BTDB.KVDBLayer
+namespace BTDB.StreamLayer
 {
     public abstract class AbstractBufferedReader
     {
@@ -237,6 +237,16 @@ namespace BTDB.KVDBLayer
         public void SkipDateTime()
         {
             SkipInt64();
+        }
+
+        public TimeSpan ReadTimeSpan()
+        {
+            return new TimeSpan(ReadVInt64());
+        }
+
+        public void SkipTimeSpan()
+        {
+            SkipVInt64();
         }
 
         public string ReadString()

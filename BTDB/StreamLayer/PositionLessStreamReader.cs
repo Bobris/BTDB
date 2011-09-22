@@ -1,6 +1,4 @@
-﻿using BTDB.StreamLayer;
-
-namespace BTDB.KVDBLayer
+﻿namespace BTDB.StreamLayer
 {
     public class PositionLessStreamReader : AbstractBufferedReader
     {

@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
