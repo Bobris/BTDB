@@ -1,4 +1,4 @@
-using BTDB.ServiceLayer;
+using BTDB.Service;
 using NUnit.Framework;
 
 namespace BTDBTest

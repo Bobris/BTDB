@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
-using BTDB.StreamLayer;
+using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {

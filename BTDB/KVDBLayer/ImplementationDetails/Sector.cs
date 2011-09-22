@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading;
+using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {

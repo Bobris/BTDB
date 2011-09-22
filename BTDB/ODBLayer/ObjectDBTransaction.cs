@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using BTDB.Buffer;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {

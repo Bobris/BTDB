@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using BTDB.StreamLayer;
+using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {

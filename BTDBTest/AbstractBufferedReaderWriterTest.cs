@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Linq;
-using BTDB;
-using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 

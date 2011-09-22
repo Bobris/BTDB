@@ -1,4 +1,4 @@
-﻿using BTDB.StreamLayer;
+﻿using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {

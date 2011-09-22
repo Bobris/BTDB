@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer

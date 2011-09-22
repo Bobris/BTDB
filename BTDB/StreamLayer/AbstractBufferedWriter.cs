@@ -1,4 +1,5 @@
 ﻿using System;
+using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
 {

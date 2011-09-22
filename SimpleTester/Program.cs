@@ -1,7 +1,4 @@
-﻿using System;
-using BTDB.StreamLayer;
-
-namespace SimpleTester
+﻿namespace SimpleTester
 {
     static class Program
     {

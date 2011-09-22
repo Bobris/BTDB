@@ -1,4 +1,6 @@
 ﻿using System.Reflection;
+using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 

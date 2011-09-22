@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection.Emit;
+using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
 

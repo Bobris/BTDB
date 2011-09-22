@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.Buffer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer

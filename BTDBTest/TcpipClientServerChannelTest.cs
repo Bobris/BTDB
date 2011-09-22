@@ -2,7 +2,7 @@
 using System.Net;
 using System.Threading;
 using BTDB.Reactive;
-using BTDB.ServiceLayer;
+using BTDB.Service;
 using NUnit.Framework;
 
 namespace BTDBTest

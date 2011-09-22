@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
