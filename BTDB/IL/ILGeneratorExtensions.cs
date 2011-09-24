@@ -413,9 +413,27 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Try(this ILGenerator il)
+        {
+            il.BeginExceptionBlock();
+            return il;
+        }
+
         public static ILGenerator Catch(this ILGenerator il, Type exceptionType)
         {
             il.BeginCatchBlock(exceptionType);
+            return il;
+        }
+
+        public static ILGenerator Finally(this ILGenerator il)
+        {
+            il.BeginFinallyBlock();
+            return il;
+        }
+
+        public static ILGenerator EndTry(this ILGenerator il)
+        {
+            il.EndExceptionBlock();
             return il;
         }
 

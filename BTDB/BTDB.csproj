@@ -45,6 +45,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
+    <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
+    <Compile Include="FieldHandler\Extensions.cs" />
     <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorTypeInit.cs" />
     <Compile Include="Buffer\BitArrayManipulation.cs" />

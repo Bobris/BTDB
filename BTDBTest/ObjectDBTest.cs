@@ -478,7 +478,7 @@ namespace BTDBTest
                 o.FloatField = -12.34f;
                 o.DecimalField = 123456.789m;
                 o.DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local);
-                o.TimeSpanField = new TimeSpan(1,2,3,4);
+                o.TimeSpanField = new TimeSpan(1, 2, 3, 4);
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
                 o.ByteArrayField = new byte[] { 0, 1, 2 };
@@ -563,7 +563,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                Assert.AreEqual(new List<int> {5, 10, 2000}, root.IntList);
+                Assert.AreEqual(new List<int> { 5, 10, 2000 }, root.IntList);
                 Assert.AreEqual(new List<string> { "A", null, "AB!" }, root.StringList);
                 Assert.AreEqual(new List<byte> { 0, 255 }, root.ByteList);
                 root.IntList = null;
@@ -606,6 +606,60 @@ namespace BTDBTest
             }
             ReopenDB();
             _db.RegisterType(typeof(Empty), "VariousLists");
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<Empty>();
+            }
+        }
+
+        public class VariousDictionaries
+        {
+            public IDictionary<int, string> Int2String { get; set; }
+        }
+
+        [Test]
+        public void DictionariesOfSimpleValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousDictionaries>();
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousDictionaries>();
+                Assert.AreEqual(new Dictionary<int, string> { { 1, "one" }, { 0, null } }, root.Int2String);
+                root.Int2String = null;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousDictionaries>();
+                Assert.AreEqual(null, root.Int2String);
+                root.Int2String = new Dictionary<int,string>();
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousDictionaries>();
+                Assert.AreEqual(new Dictionary<int, string>(), root.Int2String);
+            }
+        }
+
+        [Test]
+        public void DictionariesOfSimpleValuesSkip()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<VariousDictionaries>();
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Empty), "VariousDictionaries");
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<Empty>();

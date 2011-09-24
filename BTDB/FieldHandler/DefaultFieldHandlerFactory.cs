@@ -35,6 +35,7 @@ namespace BTDB.FieldHandler
                 if (fieldHandler.IsCompatibleWith(type)) return true;
             }
             if (ListFieldHandler.IsCompatibleWith(type)) return true;
+            if (DictionaryFieldHandler.IsCompatibleWith(type)) return true;
             return false;
         }
 
@@ -46,6 +47,7 @@ namespace BTDB.FieldHandler
                 if (fieldHandler.IsCompatibleWith(type)) return fieldHandler;
             }
             if (ListFieldHandler.IsCompatibleWith(type)) return new ListFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
+            if (DictionaryFieldHandler.IsCompatibleWith(type)) return new DictionaryFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
             return null;
         }
 
@@ -57,6 +59,7 @@ namespace BTDB.FieldHandler
             }
             if (handlerName == EnumFieldHandler.HandlerName) return new EnumFieldHandler(configuration);
             if (handlerName == ListFieldHandler.HandlerName) return new ListFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, configuration);
+            if (handlerName == DictionaryFieldHandler.HandlerName) return new DictionaryFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, configuration);
             return null;
         }
     }
