@@ -612,7 +612,7 @@ namespace BTDBTest
             }
         }
 
-        public class VariousDictionaries
+        public class SimpleDictionary
         {
             public IDictionary<int, string> Int2String { get; set; }
         }
@@ -622,13 +622,13 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<VariousDictionaries>();
+                var root = tr.Singleton<SimpleDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<VariousDictionaries>();
+                var root = tr.Singleton<SimpleDictionary>();
                 Assert.AreEqual(new Dictionary<int, string> { { 1, "one" }, { 0, null } }, root.Int2String);
                 root.Int2String = null;
                 tr.Store(root);
@@ -636,7 +636,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<VariousDictionaries>();
+                var root = tr.Singleton<SimpleDictionary>();
                 Assert.AreEqual(null, root.Int2String);
                 root.Int2String = new Dictionary<int,string>();
                 tr.Store(root);
@@ -644,7 +644,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<VariousDictionaries>();
+                var root = tr.Singleton<SimpleDictionary>();
                 Assert.AreEqual(new Dictionary<int, string>(), root.Int2String);
             }
         }
@@ -654,17 +654,78 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<VariousDictionaries>();
+                var root = tr.Singleton<SimpleDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
                 tr.Commit();
             }
             ReopenDB();
-            _db.RegisterType(typeof(Empty), "VariousDictionaries");
+            _db.RegisterType(typeof(Empty), "SimpleDictionary");
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<Empty>();
+                tr.Singleton<Empty>();
             }
         }
+
+        public class ComplexDictionary
+        {
+            public IDictionary<string, Person> String2Person { get; set; }
+        }
+
+        [Test]
+        public void DictionariesOfComplexValues()
+        {
+            _db.RegisterType(typeof (Person));
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                root.String2Person = new Dictionary<string, Person> { { "Boris", new Person {Name = "Boris", Age=35} }, { "null", null } };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                Assert.AreEqual(2, root.String2Person.Count);
+                Assert.IsTrue(root.String2Person.ContainsKey("Boris"));
+                Assert.IsTrue(root.String2Person.ContainsKey("null"));
+                Assert.AreEqual("Boris",root.String2Person["Boris"].Name);
+                Assert.AreEqual(35, root.String2Person["Boris"].Age);
+                Assert.AreEqual(null, root.String2Person["null"]);
+                root.String2Person = null;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                Assert.AreEqual(null, root.String2Person);
+                root.String2Person = new Dictionary<string, Person>();
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                Assert.AreEqual(new Dictionary<string, Person>(), root.String2Person);
+            }
+        }
+
+        [Test]
+        public void DictionariesOfComplexValuesSkip()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                root.String2Person = new Dictionary<string, Person> { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Empty), "ComplexDictionary");
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<Empty>();
+            }
+        }
+
 
         public enum TestEnumUlong : ulong
         {

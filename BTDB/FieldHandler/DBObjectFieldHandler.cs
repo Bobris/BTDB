@@ -85,6 +85,7 @@ namespace BTDB.FieldHandler
         {
             pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);
+            ilGenerator.Castclass(typeof (object));
             ilGenerator.Callvirt(() => ((IWriterCtx)null).WriteObject(null));
         }
 

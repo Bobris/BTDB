@@ -75,21 +75,9 @@ namespace BTDB.FieldHandler
             return _keysHandler.NeedsCtx() || _valuesHandler.NeedsCtx();
         }
 
-        public static IList<T> LoadCtx<T>(IReaderCtx ctx) where T : class
-        {
-            var count = ctx.Reader().ReadVUInt32();
-            if (count == 0) return null;
-            count--;
-            var result = new List<T>((int)count);
-            while (count-- > 0)
-                result.Add(ctx.ReadObject() as T);
-            return result;
-        }
-
         public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            bool hasCtx = NeedsCtx();
+            if (NeedsCtx()) PushReaderFromCtx(pushReaderOrCtx)(ilGenerator); else pushReaderOrCtx(ilGenerator);
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var localResult = ilGenerator.DeclareLocal(_type);
             var finish = ilGenerator.DefineLabel();
@@ -118,10 +106,8 @@ namespace BTDB.FieldHandler
                 .ConvU4()
                 .Stloc(localCount)
                 .Ldloc(localResult);
-            _keysHandler.Load(ilGenerator, pushReaderOrCtx);
-            _typeConvertorGenerator.GenerateConversion(_keysHandler.HandledType(), genericArguments[0])(ilGenerator);
-            _valuesHandler.Load(ilGenerator, pushReaderOrCtx);
-            _typeConvertorGenerator.GenerateConversion(_valuesHandler.HandledType(), genericArguments[1])(ilGenerator);
+            GenerateLoad(_keysHandler, genericArguments[0], ilGenerator, pushReaderOrCtx);
+            GenerateLoad(_valuesHandler, genericArguments[1], ilGenerator, pushReaderOrCtx);
             ilGenerator
                 .Callvirt(_type.GetMethod("Add"))
                 .Br(next)
@@ -129,22 +115,22 @@ namespace BTDB.FieldHandler
                 .Ldloc(localResult);
         }
 
-        public static void SkipLoadCtx(IReaderCtx ctx)
+        void GenerateLoad(IFieldHandler fieldHandler, Type typeWanted, ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            var reader = ctx.Reader();
-            var count = reader.ReadVUInt32();
-            if (count <= 1) return;
-            count--;
-            while (count-- > 0)
+            if (!NeedsCtx() || fieldHandler.NeedsCtx())
             {
-                ctx.SkipObject();
+                fieldHandler.Load(ilGenerator, pushReaderOrCtx);
             }
+            else
+            {
+                fieldHandler.Load(ilGenerator, PushReaderFromCtx(pushReaderOrCtx));
+            }
+            _typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), typeWanted)(ilGenerator);
         }
 
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            bool hasCtx = NeedsCtx();
+            if (NeedsCtx()) PushReaderFromCtx(pushReaderOrCtx)(ilGenerator); else pushReaderOrCtx(ilGenerator);
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
@@ -166,26 +152,28 @@ namespace BTDB.FieldHandler
                 .Sub()
                 .ConvU4()
                 .Stloc(localCount);
-            _keysHandler.SkipLoad(ilGenerator, pushReaderOrCtx);
-            _valuesHandler.SkipLoad(ilGenerator, pushReaderOrCtx);
+            GenerateSkip(_keysHandler, ilGenerator, pushReaderOrCtx);
+            GenerateSkip(_valuesHandler, ilGenerator, pushReaderOrCtx);
             ilGenerator
                 .Br(next)
                 .Mark(finish);
         }
 
-        public static void SaveCtx<T>(IWriterCtx ctx, IList<T> list) where T : class
+        void GenerateSkip(IFieldHandler fieldHandler, ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            var writer = ctx.Writer();
-            if (list == null)
+            if (!NeedsCtx() || fieldHandler.NeedsCtx())
             {
-                writer.WriteVUInt32(0);
-                return;
+                fieldHandler.SkipLoad(ilGenerator, pushReaderOrCtx);
             }
-            writer.WriteVUInt32((uint)list.Count + 1);
-            foreach (var t in list)
+            else
             {
-                ctx.WriteObject(t);
+                fieldHandler.SkipLoad(ilGenerator, PushReaderFromCtx(pushReaderOrCtx));
             }
+        }
+
+        static Action<ILGenerator> PushReaderFromCtx(Action<ILGenerator> pushReaderOrCtx)
+        {
+            return il => { pushReaderOrCtx(il); il.Callvirt(() => ((IReaderCtx)null).Reader()); };
         }
 
         public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
@@ -208,7 +196,7 @@ namespace BTDB.FieldHandler
                 .Stloc(localValue)
                 .Ldloc(localValue)
                 .Brfalse(isnull)
-                .Do(pushWriterOrCtx)
+                .Do(PushWriterOrCtxAsNeeded(pushWriterOrCtx, !hasCtx))
                 .Ldloc(localValue)
                 .Callvirt(typeAsICollection.GetProperty("Count").GetGetMethod())
                 .LdcI4(1)
@@ -226,11 +214,11 @@ namespace BTDB.FieldHandler
                 .Ldloc(localEnumerator)
                 .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
                 .Stloc(localPair);
-            _keysHandler.Save(ilGenerator, pushWriterOrCtx, il => il
+            _keysHandler.Save(ilGenerator, PushWriterOrCtxAsNeeded(pushWriterOrCtx, (!hasCtx || _keysHandler.NeedsCtx())), il => il
                 .Ldloca(localPair)
                 .Call(typeKeyValuePair.GetProperty("Key").GetGetMethod())
                 .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _keysHandler.HandledType())));
-            _valuesHandler.Save(ilGenerator, pushWriterOrCtx, il => il
+            _valuesHandler.Save(ilGenerator, PushWriterOrCtxAsNeeded(pushWriterOrCtx, (!hasCtx || _valuesHandler.NeedsCtx())), il => il
                 .Ldloca(localPair)
                 .Call(typeKeyValuePair.GetProperty("Value").GetGetMethod())
                 .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[1], _valuesHandler.HandledType())));
@@ -243,9 +231,19 @@ namespace BTDB.FieldHandler
                 .EndTry()
                 .BrS(realfinish)
                 .Mark(isnull)
-                .Do(pushWriterOrCtx)
+                .Do(PushWriterOrCtxAsNeeded(pushWriterOrCtx, !hasCtx))
                 .Callvirt(() => ((AbstractBufferedWriter) null).WriteByteZero())
                 .Mark(realfinish);
+        }
+
+        static Action<ILGenerator> PushWriterOrCtxAsNeeded(Action<ILGenerator> pushWriterOrCtx, bool noConversion)
+        {
+            return noConversion ? pushWriterOrCtx : PushWriterFromCtx(pushWriterOrCtx);
+        }
+
+        static Action<ILGenerator> PushWriterFromCtx(Action<ILGenerator> pushWriterOrCtx)
+        {
+            return il => { pushWriterOrCtx(il); il.Callvirt(() => ((IWriterCtx)null).Writer()); };
         }
 
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)
