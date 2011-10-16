@@ -4,7 +4,8 @@ namespace BTDB.FieldHandler
 {
     public interface IWriterCtx
     {
-        void WriteObject(object @object);
+        // Return true if actual content needs to be serialized
+        bool WriteObject(object @object);
         AbstractBufferedWriter Writer();
     }
 }

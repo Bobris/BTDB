@@ -1,35 +1,35 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection.Emit;
+using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
-namespace BTDB.FieldHandler
+namespace BTDB.Service
 {
-    public class DBObjectFieldHandler : IFieldHandler
+    public class ServiceObjectFieldHandler : IFieldHandler
     {
-        readonly IObjectDB _objectDB;
+        readonly IServiceInternal _service;
         readonly byte[] _configuration;
         readonly string _typeName;
         Type _type;
 
-        public DBObjectFieldHandler(IObjectDB objectDB, Type type)
+        public ServiceObjectFieldHandler(IServiceInternal service, Type type)
         {
-            _objectDB = objectDB;
+            _service = service;
             _type = type;
-            _typeName = _objectDB.RegisterType(type);
+            _typeName = _service.RegisterType(type);
             var writer = new ByteArrayWriter();
             writer.WriteString(_typeName);
             _configuration = writer.Data;
         }
 
-        public DBObjectFieldHandler(IObjectDB objectDB, byte[] configuration)
+        public ServiceObjectFieldHandler(IServiceInternal service, byte[] configuration)
         {
-            _objectDB = objectDB;
+            _service = service;
             _configuration = configuration;
             _typeName = new ByteArrayReader(configuration).ReadString();
-            _type = _objectDB.TypeByName(_typeName);
+            _type = _service.TypeByName(_typeName);
         }
 
         public static string HandlerName
@@ -49,7 +49,7 @@ namespace BTDB.FieldHandler
 
         public static bool IsCompatibleWith(Type type)
         {
-            return (!type.IsInterface && !type.IsValueType && !type.IsGenericType);
+            return (!type.IsInterface && !type.IsValueType);
         }
 
         bool IFieldHandler.IsCompatibleWith(Type type)
@@ -102,7 +102,7 @@ namespace BTDB.FieldHandler
         public void InformAboutDestinationHandler(IFieldHandler dstHandler)
         {
             if (_type != null) return;
-            if ((dstHandler is DBObjectFieldHandler) == false) return;
+            if ((dstHandler is ServiceObjectFieldHandler) == false) return;
             if (dstHandler.Configuration.SequenceEqual(Configuration))
             {
                 _type = dstHandler.HandledType();

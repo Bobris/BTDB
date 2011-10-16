@@ -525,6 +525,7 @@ namespace BTDBTest
         [Test]
         public void ListOfDBObjectsSimple()
         {
+            _db.RegisterType(typeof (Person));
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<Root>();
@@ -712,6 +713,7 @@ namespace BTDBTest
         [Test]
         public void DictionariesOfComplexValuesSkip()
         {
+            _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();

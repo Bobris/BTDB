@@ -47,11 +47,16 @@
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
+    <Compile Include="Service\IServiceInternal.cs" />
+    <Compile Include="Service\ServiceObjectFieldHandler.cs" />
     <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorTypeInit.cs" />
     <Compile Include="Buffer\BitArrayManipulation.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeParentIterator.cs" />
     <Compile Include="FieldHandler\TimeSpanFieldHandler.cs" />
+    <Compile Include="Service\DefaultServiceFieldHandlerFactory.cs" />
+    <Compile Include="Service\ServiceReaderCtx.cs" />
+    <Compile Include="Service\ServiceWriterCtx.cs" />
     <Compile Include="StreamLayer\AbstractBufferedReader.cs" />
     <Compile Include="KVDBLayer\Helpers\KeyValueDBExportImporter.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\FreeSpaceAllocatorOptimizer.cs" />
@@ -70,6 +75,8 @@
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeChildIterator.cs" />
     <Compile Include="KVDBLayer\Interface\KeyValueDBStats.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBValueWriter.cs" />
+    <Compile Include="StreamLayer\IMemorizedPosition.cs" />
+    <Compile Include="StreamLayer\ICanMemorizePosition.cs" />
     <Compile Include="StreamLayer\PositionLessStreamReader.cs" />
     <Compile Include="StreamLayer\PositionLessStreamWriter.cs" />
     <Compile Include="KVDBLayer\ReplayProxy\KeyValueDBReplayProxy.cs" />

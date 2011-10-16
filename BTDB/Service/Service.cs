@@ -17,7 +17,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
-    public class Service : IService, IServiceInternalClient, IServiceInternalServer
+    public class Service : IService, IServiceInternalClient, IServiceInternalServer, IServiceInternal
     {
         enum Command : uint
         {
@@ -73,8 +73,8 @@ namespace BTDB.Service
             _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
             _channel = channel;
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
-            _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
-            channel.OnReceive.FastSubscribe(OnReceive,OnDisconnect);
+            _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory(this);
+            channel.OnReceive.FastSubscribe(OnReceive, OnDisconnect);
         }
 
         void OnDisconnect()
@@ -179,11 +179,29 @@ namespace BTDB.Service
                     .Stloc(localResultId)
                     .BeginExceptionBlock();
             }
+            var needsCtx = methodInf.Parameters.Any(p => p.FieldHandler.NeedsCtx());
+            LocalBuilder localReaderCtx = null;
+            if (needsCtx)
+            {
+                localReaderCtx = ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                ilGenerator
+                    .Ldarg(1)
+                    .Newobj(() => new ServiceReaderCtx(null))
+                    .Castclass(typeof(IReaderCtx))
+                    .Stloc(localReaderCtx);
+            }
             for (int i = 0; i < methodInf.Parameters.Length; i++)
             {
                 var fieldHandler = methodInf.Parameters[i].FieldHandler;
                 localParams[i] = ilGenerator.DeclareLocal(methodInf.MethodInfo.GetParameters()[i].ParameterType);
-                fieldHandler.Load(ilGenerator, il => il.Ldarg(1));
+                if (fieldHandler.NeedsCtx())
+                {
+                    fieldHandler.Load(ilGenerator, il => il.Ldloc(localReaderCtx));
+                }
+                else
+                {
+                    fieldHandler.Load(ilGenerator, il => il.Ldarg(1));
+                }
                 _typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), localParams[i].LocalType)
                     (ilGenerator);
                 ilGenerator.Stloc(localParams[i]);
@@ -230,7 +248,18 @@ namespace BTDB.Service
                         .Ldloc(localResultId)
                         .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
                         .Stloc(localWriter);
-                    methodInf.ResultFieldHandler.Save(ilGenerator, il => il.Ldloc(localWriter), il => il.Ldloc(localResult));
+                    LocalBuilder localWriterCtx = null;
+                    if (methodInf.ResultFieldHandler.NeedsCtx())
+                    {
+                        localWriterCtx = ilGenerator.DeclareLocal(typeof(IWriterCtx));
+                        ilGenerator
+                            .Ldloc(localWriter)
+                            .Newobj(() => new ServiceWriterCtx(null))
+                            .Castclass(typeof(IWriterCtx))
+                            .Stloc(localWriterCtx);
+
+                    }
+                    methodInf.ResultFieldHandler.Save(ilGenerator, il => il.Ldloc(methodInf.ResultFieldHandler.NeedsCtx() ? localWriterCtx : localWriter), il => il.Ldloc(localResult));
                     ilGenerator
                         .Ldarg(2)
                         .Ldloc(localWriter)
@@ -456,15 +485,29 @@ namespace BTDB.Service
                         .Callvirt(() => ((IServiceInternalClient)null).StartTwoWayMarshaling(null, out placebo));
                 }
                 ilGenerator.Stloc(writerLocal);
+                var needsCtx = targetMethodInf.Parameters.Any(p => p.FieldHandler.NeedsCtx());
+                LocalBuilder writerCtxLocal = null;
+                if (needsCtx)
+                {
+                    writerCtxLocal = ilGenerator.DeclareLocal(typeof(IWriterCtx));
+                    ilGenerator
+                        .Ldloc(writerLocal)
+                        .Newobj(() => new ServiceWriterCtx(null))
+                        .Castclass(typeof(IWriterCtx))
+                        .Stloc(writerCtxLocal);
+                }
                 for (int paramOrder = 0; paramOrder < targetMethodInf.Parameters.Length; paramOrder++)
                 {
                     var parameterInf = targetMethodInf.Parameters[paramOrder];
                     var sourceParamIndex = mapping[sourceMethodIndex][paramOrder + 1];
+                    Action<ILGenerator> pushWriterOrCtx;
+                    if (needsCtx) pushWriterOrCtx = il => il.Ldloc(writerCtxLocal);
+                    else pushWriterOrCtx = il => il.Ldloc(writerLocal);
                     if (sourceParamIndex == uint.MaxValue)
                     {
                         if (parameterInf.FieldHandler.HandledType().IsValueType)
                         {
-                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                            parameterInf.FieldHandler.Save(ilGenerator, pushWriterOrCtx, il =>
                             {
                                 il.LdcI4(0);
                                 _typeConvertorGenerator.GenerateConversion(typeof(int), parameterInf.FieldHandler.HandledType())(il);
@@ -472,14 +515,14 @@ namespace BTDB.Service
                         }
                         else
                         {
-                            parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il => il.Ldnull());
+                            parameterInf.FieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Ldnull());
                         }
                     }
                     else
                     {
                         var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[sourceParamIndex],
                                                                                  parameterInf.FieldHandler.HandledType());
-                        parameterInf.FieldHandler.Save(ilGenerator, il => il.Ldloc(writerLocal), il =>
+                        parameterInf.FieldHandler.Save(ilGenerator, pushWriterOrCtx, il =>
                         {
                             il.Ldarg((ushort)(sourceParamIndex + 1));
                             convGen(il);
@@ -528,7 +571,20 @@ namespace BTDB.Service
                 }
                 else
                 {
-                    targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldarg(1));
+                    if (targetMethodInf.ResultFieldHandler.NeedsCtx())
+                    {
+                        var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                        ilGenerator
+                            .Ldarg(1)
+                            .Newobj(() => new ServiceReaderCtx(null))
+                            .Castclass(typeof(IReaderCtx))
+                            .Stloc(readerCtxLocal);
+                        targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldloc(readerCtxLocal));
+                    }
+                    else
+                    {
+                        targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldarg(1));
+                    }
                     _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.HandledType(), returnType)
                         (ilGenerator);
                 }
@@ -559,7 +615,7 @@ namespace BTDB.Service
                     .Callvirt(resultAsTcs.GetMethod("TrySetCanceled", Type.EmptyTypes))
                     .Pop()
                     .Ret();
-                
+
                 methodBuilder = tb.DefineMethod("TaskWithSourceCreator_" + returnType.FullName,
                                                 MethodAttributes.Public | MethodAttributes.Static,
                                                 typeof(TaskWithSource), Type.EmptyTypes);
@@ -721,8 +777,8 @@ namespace BTDB.Service
         int EvaluateCompatibility(IFieldHandler from, IFieldHandler to)
         {
             if (from.Name == to.Name && (from.Configuration == to.Configuration || from.Configuration.SequenceEqual(to.Configuration))) return 10;
-            var typeFrom=from.HandledType();
-            var typeTo=to.HandledType();
+            var typeFrom = from.HandledType();
+            var typeTo = to.HandledType();
             if (_typeConvertorGenerator.GenerateConversion(typeFrom, typeTo) != null) return 5;
             return int.MinValue;
         }
@@ -843,6 +899,16 @@ namespace BTDB.Service
             message.WriteVUInt32((uint)Command.Result);
             message.WriteVUInt32(resultId);
             _channel.Send(ByteBuffer.NewAsync(message.Data));
+        }
+
+        public string RegisterType(Type type)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Type TypeByName(string name)
+        {
+            throw new NotImplementedException();
         }
     }
 }

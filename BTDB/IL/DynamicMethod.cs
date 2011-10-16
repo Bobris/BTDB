@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-#if ILDEBUG
+#if !ILDEBUG
     using System.Diagnostics.SymbolStore;
     using System.Reflection;
 

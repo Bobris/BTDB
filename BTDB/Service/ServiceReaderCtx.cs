@@ -3,38 +3,31 @@ using System.Diagnostics;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
-namespace BTDB.ODBLayer
+namespace BTDB.Service
 {
-    public class DBReaderCtx : IReaderCtx
+    public class ServiceReaderCtx : IReaderCtx
     {
-        readonly IObjectDBTransaction _transaction;
         readonly AbstractBufferedReader _reader;
         List<object> _objects;
         Stack<IMemorizedPosition> _returningStack;
         int _lastIdOfObj;
 
-        public DBReaderCtx(IObjectDBTransaction transaction, AbstractBufferedReader reader)
+        public ServiceReaderCtx(AbstractBufferedReader reader)
         {
-            _transaction = transaction;
             _reader = reader;
-            _lastIdOfObj = -1;
+            _lastIdOfObj = 0;
         }
 
         public bool ReadObject(out object @object)
         {
-            var id = _reader.ReadVInt64();
+            var id = (int)_reader.ReadVUInt32();
             if (id == 0)
             {
                 @object = null;
                 return false;
             }
-            if (id <= int.MinValue || id > 0)
-            {
-                @object = _transaction.Get((ulong)id);
-                return false;
-            }
-            var ido = (int)(-id) - 1;
-            var o = RetriveObj(ido);
+            id--;
+            var o = RetriveObj(id);
             if (o != null)
             {
                 var mp = o as IMemorizedPosition;
@@ -50,7 +43,7 @@ namespace BTDB.ODBLayer
             {
                 PushReturningPosition(null);
             }
-            _lastIdOfObj = ido;
+            _lastIdOfObj = id;
             @object = null;
             return true;
         }
@@ -82,22 +75,18 @@ namespace BTDB.ODBLayer
 
         public bool SkipObject()
         {
-            var id = _reader.ReadVInt64();
+            var id = (int)_reader.ReadVUInt32();
             if (id == 0)
             {
                 return false;
             }
-            if (id <= int.MinValue || id > 0)
-            {
-                return false;
-            }
-            var ido = (int)(-id) - 1;
-            var o = RetriveObj(ido);
+            id--;
+            var o = RetriveObj(id);
             if (o != null)
             {
                 return false;
             }
-            _objects[ido] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
+            _objects[id] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
             return true;
         }
 

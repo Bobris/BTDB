@@ -67,97 +67,69 @@ namespace BTDB.FieldHandler
 
         public bool NeedsCtx()
         {
-            return _itemsHandler.NeedsCtx();
-        }
-
-        public static IList<T> LoadCtx<T>(IReaderCtx ctx) where T : class
-        {
-            var count = ctx.Reader().ReadVUInt32();
-            if (count == 0) return null;
-            count--;
-            var result = new List<T>((int)count);
-            while (count-- > 0)
-                result.Add(ctx.ReadObject() as T);
-            return result;
+            return true;
         }
 
         public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            if (NeedsCtx())
-            {
-                ilGenerator.Call(
-                    typeof(ListFieldHandler).GetMethod("LoadCtx").MakeGenericMethod(_type.GetGenericArguments()[0]));
-                return;
-            }
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
-            var localResult = ilGenerator.DeclareLocal(_type);
+            var localResultOfObject = ilGenerator.DeclareLocal(typeof(object));
+            var localResult = ilGenerator.DeclareLocal(HandledType());
+            var loadSkipped = ilGenerator.DefineLabel();
+            var loadFinished = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
+            object fake;
             ilGenerator
+                .Do(pushReaderOrCtx)
+                .Ldloca(localResultOfObject)
+                .Callvirt(() => ((IReaderCtx)null).ReadObject(out fake))
+                .Brfalse(loadSkipped)
+                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
                 .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
                 .Stloc(localCount)
                 .Ldloc(localCount)
-                .Brfalse(finish)
-                .Ldloc(localCount)
-                .LdcI4(1)
-                .Sub()
-                .ConvU4()
-                .Stloc(localCount)
-                .Ldloc(localCount)
-                .Newobj(
-                    typeof(List<>).MakeGenericType(_type.GetGenericArguments()[0]).GetConstructor(new[] { typeof(int) }))
+                .Newobj(typeof(List<>).MakeGenericType(_type.GetGenericArguments()[0]).GetConstructor(new[] { typeof(int) }))
                 .Stloc(localResult)
+                .Do(pushReaderOrCtx)
+                .Ldloc(localResult)
+                .Castclass(typeof(object))
+                .Callvirt(() => ((IReaderCtx)null).RegisterObject(null))
                 .Mark(next)
                 .Ldloc(localCount)
-                .Brfalse(finish)
+                .Brfalse(loadFinished)
                 .Ldloc(localCount)
                 .LdcI4(1)
                 .Sub()
                 .ConvU4()
                 .Stloc(localCount)
-                .Ldloc(localResult);
-            _itemsHandler.Load(ilGenerator, pushReaderOrCtx);
-            _typeConvertorGenerator.GenerateConversion(_itemsHandler.HandledType(), _type.GetGenericArguments()[0])(ilGenerator);
-            ilGenerator
+                .Ldloc(localResult)
+                .GenerateLoad(_itemsHandler, _type.GetGenericArguments()[0], pushReaderOrCtx, _typeConvertorGenerator)
                 .Callvirt(_type.GetInterface("ICollection`1").GetMethod("Add"))
                 .Br(next)
+                .Mark(loadFinished)
+                .Do(pushReaderOrCtx)
+                .Callvirt(() => ((IReaderCtx)null).ReadObjectDone())
+                .Br(finish)
+                .Mark(loadSkipped)
+                .Ldloc(localResultOfObject)
+                .Isinst(_type)
+                .Stloc(localResult)
                 .Mark(finish)
                 .Ldloc(localResult);
         }
 
-        public static void SkipLoadCtx(IReaderCtx ctx)
-        {
-            var reader = ctx.Reader();
-            var count = reader.ReadVUInt32();
-            if (count <= 1) return;
-            count--;
-            while (count-- > 0)
-            {
-                ctx.SkipObject();
-            }
-        }
-
         public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            if (NeedsCtx())
-            {
-                ilGenerator.Call(() => SkipLoadCtx(null));
-                return;
-            }
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             ilGenerator
-                .Callvirt(() => ((AbstractBufferedReader) null).ReadVUInt32())
-                .Stloc(localCount)
-                .Ldloc(localCount)
+                .Do(pushReaderOrCtx)
+                .Callvirt(() => ((IReaderCtx)null).SkipObject())
                 .Brfalse(finish)
-                .Ldloc(localCount)
-                .LdcI4(1)
-                .Sub()
-                .ConvU4()
+                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
                 .Stloc(localCount)
                 .Mark(next)
                 .Ldloc(localCount)
@@ -166,40 +138,15 @@ namespace BTDB.FieldHandler
                 .LdcI4(1)
                 .Sub()
                 .ConvU4()
-                .Stloc(localCount);
-            _itemsHandler.SkipLoad(ilGenerator, pushReaderOrCtx);
-            ilGenerator
+                .Stloc(localCount)
+                .GenerateSkip(_itemsHandler, pushReaderOrCtx)
                 .Br(next)
                 .Mark(finish);
         }
 
-        public static void SaveCtx<T>(IWriterCtx ctx, IList<T> list) where T : class
-        {
-            var writer = ctx.Writer();
-            if (list == null)
-            {
-                writer.WriteVUInt32(0);
-                return;
-            }
-            writer.WriteVUInt32((uint)list.Count + 1);
-            foreach (var t in list)
-            {
-                ctx.WriteObject(t);
-            }
-        }
-
         public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
         {
-            if (NeedsCtx())
-            {
-                pushWriterOrCtx(ilGenerator);
-                pushValue(ilGenerator);
-                ilGenerator.Call(
-                    typeof(ListFieldHandler).GetMethod("SaveCtx").MakeGenericMethod(_type.GetGenericArguments()[0]));
-                return;
-            }
             var finish = ilGenerator.DefineLabel();
-            var isnull = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             var localValue = ilGenerator.DeclareLocal(_type);
             var localIndex = ilGenerator.DeclareLocal(typeof(int));
@@ -207,22 +154,23 @@ namespace BTDB.FieldHandler
             ilGenerator
                 .Do(pushValue)
                 .Stloc(localValue)
+                .Do(pushWriterOrCtx)
                 .Ldloc(localValue)
-                .Brfalse(isnull)
+                .Castclass(typeof(object))
+                .Callvirt(() => ((IWriterCtx)null).WriteObject(null))
+                .Brfalse(finish)
                 .Ldloc(localValue)
                 .Callvirt(_type.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
                 .Stloc(localCount)
-                .Do(pushWriterOrCtx)
+                .Do(Extensions.PushWriterFromCtx(pushWriterOrCtx))
                 .Ldloc(localCount)
-                .LdcI4(1)
-                .Add()
                 .ConvU4()
                 .Callvirt(() => ((AbstractBufferedWriter)null).WriteVUInt32(0))
                 .Mark(next)
                 .Ldloc(localIndex)
                 .Ldloc(localCount)
                 .BgeUn(finish);
-            _itemsHandler.Save(ilGenerator, pushWriterOrCtx, il => il
+            _itemsHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _itemsHandler.NeedsCtx()), il => il
                 .Ldloc(localValue)
                 .Ldloc(localIndex)
                 .Callvirt(_type.GetMethod("get_Item"))
@@ -233,9 +181,6 @@ namespace BTDB.FieldHandler
                 .Add()
                 .Stloc(localIndex)
                 .Br(next)
-                .Mark(isnull)
-                .Do(pushWriterOrCtx)
-                .Callvirt(() => ((AbstractBufferedWriter)null).WriteByteZero())
                 .Mark(finish);
         }
 

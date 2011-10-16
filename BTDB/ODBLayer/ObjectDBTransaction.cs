@@ -226,9 +226,13 @@ namespace BTDB.ODBLayer
             return RegisterNewObject(@object);
         }
 
-        public ulong StoreIfUnknown(object @object)
+        public ulong StoreIfUnknownButTypeRegistered(object @object)
         {
-            var ti = AutoRegisterType(@object.GetType());
+            var ti = GetTableInfoFromType(@object.GetType());
+            if (ti == null)
+            {
+                return ulong.MaxValue;
+            }
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objMetadata.TryGetValue(@object, out metadata))
@@ -303,6 +307,18 @@ namespace BTDB.ODBLayer
             if (ti == null)
             {
                 var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+                ti = _owner.TablesInfo.LinkType2Name(type, name);
+            }
+            return ti;
+        }
+
+        TableInfo GetTableInfoFromType(Type type)
+        {
+            var ti = _owner.TablesInfo.FindByType(type);
+            if (ti == null)
+            {
+                var name = _owner.Type2NameRegistry.FindNameByType(type);
+                if (name == null) return null;
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
             return ti;

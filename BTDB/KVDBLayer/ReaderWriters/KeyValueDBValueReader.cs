@@ -2,7 +2,7 @@
 
 namespace BTDB.KVDBLayer
 {
-    public class KeyValueDBValueReader : AbstractBufferedReader
+    public class KeyValueDBValueReader : AbstractBufferedReader, ICanMemorizePosition
     {
         readonly IKeyValueDBTransaction _transaction;
         long _ofs;
@@ -33,6 +33,30 @@ namespace BTDB.KVDBLayer
             _transaction.PeekValue(_ofs, out End, out Buf, out Pos);
             _ofs += End;
             End += Pos;
+        }
+
+        public IMemorizedPosition MemorizeCurrentPosition()
+        {
+            return new MemorizedPosition(this);
+        }
+
+        class MemorizedPosition : IMemorizedPosition
+        {
+            readonly KeyValueDBValueReader _owner;
+            readonly long _ofs;
+
+            public MemorizedPosition(KeyValueDBValueReader owner)
+            {
+                _owner = owner;
+                if (owner.End == -1) _ofs = owner._valueSize;
+                else _ofs = owner._ofs - owner.End + owner.Pos;
+            }
+
+            public void Restore()
+            {
+                _owner._ofs = _ofs;
+                _owner.FillBuffer();
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -302,8 +303,8 @@ namespace BTDBTest
             var d = _second.QueryOtherService<Func<int>>();
             var e = Assert.Catch(() => d());
             Assert.IsInstanceOf<AggregateException>(e);
-            Assert.AreEqual(1, ((AggregateException) e).InnerExceptions.Count);
-            e = ((AggregateException) e).InnerExceptions[0];
+            Assert.AreEqual(1, ((AggregateException)e).InnerExceptions.Count);
+            e = ((AggregateException)e).InnerExceptions[0];
             Assert.IsInstanceOf<ArgumentException>(e);
             Assert.That(e.Message, Is.StringStarting("msg"));
             Assert.AreEqual("test", ((ArgumentException)e).ParamName);
@@ -313,13 +314,39 @@ namespace BTDBTest
         public void DisconnectionShouldCancelRunningMethods()
         {
             var e = new AutoResetEvent(false);
-            _first.RegisterMyService((Func<Task>)(()=>Task.Factory.StartNew(() => e.WaitOne(1000))));
+            _first.RegisterMyService((Func<Task>)(() => Task.Factory.StartNew(() => e.WaitOne(1000))));
             var d = _second.QueryOtherService<Func<Task>>();
             var task = d();
             task = task.ContinueWith(t => Assert.True(t.IsCanceled));
             Disconnect();
             task.Wait(1000);
             e.Set();
+        }
+
+        [Test]
+        public void SupportIListAsParameters()
+        {
+            _first.RegisterMyService((Func<IList<long>, IList<long>>)(p => p.Reverse().ToList()));
+            var d = _second.QueryOtherService<Func<IList<long>, IList<long>>>();
+            Assert.AreEqual(new List<long> { 3, 2, 1 }, d(new List<long> { 1, 2, 3 }));
+        }
+
+        public class SimpleObject
+        {
+            public string Name { get; set; }
+            public double Number { get; set; }
+        }
+
+        [Test, Ignore]
+        public void SupportSimpleObjectsAsParameters()
+        {
+            SimpleObject received = null;
+            _first.RegisterMyService((Action<SimpleObject>)(a => received = a));
+            var d = _second.QueryOtherService<Action<SimpleObject>>();
+            d(new SimpleObject { Name = "Text", Number = 3.14 });
+            Assert.NotNull(received);
+            Assert.AreEqual("Text", received.Name);
+            Assert.AreEqual(3.14, received.Number, 1e-14);
         }
 
     }

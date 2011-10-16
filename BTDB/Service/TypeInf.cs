@@ -16,14 +16,25 @@ namespace BTDB.Service
         {
             _name = type.Name;
             var methodInfs = new List<MethodInf>();
-            var methods = type.GetMethods();
-            foreach (var method in methods)
+            if (type.IsSubclassOf(typeof (Delegate)))
             {
-                var methodBase = method.GetBaseDefinition();
-                if (methodBase.DeclaringType == typeof(object)) continue;
-                if (!methodBase.IsPublic) continue;
-                if (!IsMethodSupported(method, fieldHandlerFactory)) continue;
-                methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
+                var method = type.GetMethod("Invoke");
+                if (IsMethodSupported(method, fieldHandlerFactory))
+                {
+                    methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
+                }
+            }
+            else
+            {
+                var methods = type.GetMethods();
+                foreach (var method in methods)
+                {
+                    var methodBase = method.GetBaseDefinition();
+                    if (methodBase.DeclaringType == typeof(object)) continue;
+                    if (!methodBase.IsPublic) continue;
+                    if (!IsMethodSupported(method, fieldHandlerFactory)) continue;
+                    methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
+                }
             }
             _methodInfs = methodInfs.ToArray();
         }
