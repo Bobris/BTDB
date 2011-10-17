@@ -239,19 +239,26 @@ namespace BTDB.FieldHandler
             }
         }
 
+        public IFieldHandler SpecializeLoadForType(Type type)
+        {
+            if (_enumType==null)
+            {
+                if (_configuration.SequenceEqual(new EnumConfiguration(type).ToConfiguration()))
+                {
+                    _enumType = type;
+                }
+            }
+            return this;
+        }
+
+        public IFieldHandler SpecializeSaveForType(Type type)
+        {
+            return SpecializeLoadForType(type);
+        }
+
         bool IFieldHandler.IsCompatibleWith(Type type)
         {
             return IsCompatibleWith(type);
-        }
-
-        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
-        {
-            if (_enumType != null) return;
-            if ((dstHandler is EnumFieldHandler) == false) return;
-            if (dstHandler.Configuration.SequenceEqual(Configuration))
-            {
-                _enumType = dstHandler.HandledType();
-            }
         }
     }
 }

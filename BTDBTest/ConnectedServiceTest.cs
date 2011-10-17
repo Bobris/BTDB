@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -324,11 +325,27 @@ namespace BTDBTest
         }
 
         [Test]
-        public void SupportIListAsParameters()
+        public void SupportIListLongAsParameters()
         {
             _first.RegisterMyService((Func<IList<long>, IList<long>>)(p => p.Reverse().ToList()));
             var d = _second.QueryOtherService<Func<IList<long>, IList<long>>>();
             Assert.AreEqual(new List<long> { 3, 2, 1 }, d(new List<long> { 1, 2, 3 }));
+        }
+
+        [Test]
+        public void SupportIListIntAsParameters()
+        {
+            _first.RegisterMyService((Func<IList<int>, IList<int>>)(p => p.Reverse().ToList()));
+            var d = _second.QueryOtherService<Func<IList<int>, IList<int>>>();
+            Assert.AreEqual(new List<int> { 3, 2, 1 }, d(new List<int> { 1, 2, 3 }));
+        }
+
+        [Test]
+        public void SupportIDictionaryIntAsParameters()
+        {
+            _first.RegisterMyService((Func<IDictionary<int, int>, IDictionary<int, int>>)(p => p.ToDictionary(kv => kv.Value, kv => kv.Key)));
+            var d = _second.QueryOtherService<Func<IDictionary<int, int>, IDictionary<int, int>>>();
+            Assert.AreEqual(new Dictionary<int, int> { { 1, 5 }, { 2, 6 }, { 3, 7 } }, d(new Dictionary<int, int> { { 5, 1 }, { 6, 2 }, { 7, 3 } }));
         }
 
         public class SimpleObject

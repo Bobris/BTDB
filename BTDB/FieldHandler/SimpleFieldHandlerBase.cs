@@ -59,8 +59,14 @@ namespace BTDB.FieldHandler
             ilGenerator.Call(_saver);
         }
 
-        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        public IFieldHandler SpecializeLoadForType(Type type)
         {
+            return this;
+        }
+
+        public IFieldHandler SpecializeSaveForType(Type type)
+        {
+            return this;
         }
     }
 }

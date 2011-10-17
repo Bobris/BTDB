@@ -520,9 +520,10 @@ namespace BTDB.Service
                     }
                     else
                     {
+                        var specializedSave = parameterInf.FieldHandler.SpecializeSaveForType(parameterTypes[sourceParamIndex]);
                         var convGen = _typeConvertorGenerator.GenerateConversion(parameterTypes[sourceParamIndex],
-                                                                                 parameterInf.FieldHandler.HandledType());
-                        parameterInf.FieldHandler.Save(ilGenerator, pushWriterOrCtx, il =>
+                                                                                 specializedSave.HandledType());
+                        specializedSave.Save(ilGenerator, pushWriterOrCtx, il =>
                         {
                             il.Ldarg((ushort)(sourceParamIndex + 1));
                             convGen(il);
@@ -571,7 +572,8 @@ namespace BTDB.Service
                 }
                 else
                 {
-                    if (targetMethodInf.ResultFieldHandler.NeedsCtx())
+                    var specializedLoad = targetMethodInf.ResultFieldHandler.SpecializeLoadForType(returnType);
+                    if (specializedLoad.NeedsCtx())
                     {
                         var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
                         ilGenerator
@@ -579,14 +581,13 @@ namespace BTDB.Service
                             .Newobj(() => new ServiceReaderCtx(null))
                             .Castclass(typeof(IReaderCtx))
                             .Stloc(readerCtxLocal);
-                        targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldloc(readerCtxLocal));
+                        specializedLoad.Load(ilGenerator, il => il.Ldloc(readerCtxLocal));
                     }
                     else
                     {
-                        targetMethodInf.ResultFieldHandler.Load(ilGenerator, il => il.Ldarg(1));
+                        specializedLoad.Load(ilGenerator, il => il.Ldarg(1));
                     }
-                    _typeConvertorGenerator.GenerateConversion(targetMethodInf.ResultFieldHandler.HandledType(), returnType)
-                        (ilGenerator);
+                    _typeConvertorGenerator.GenerateConversion(specializedLoad.HandledType(), returnType)(ilGenerator);
                 }
                 ilGenerator
                     .Callvirt(resultAsTcs.GetMethod("TrySetResult"))

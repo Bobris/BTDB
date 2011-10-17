@@ -13,6 +13,7 @@ namespace BTDB.FieldHandler
         void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
         void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
         void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
-        void InformAboutDestinationHandler(IFieldHandler dstHandler);
+        IFieldHandler SpecializeLoadForType(Type type);
+        IFieldHandler SpecializeSaveForType(Type type);
     }
 }

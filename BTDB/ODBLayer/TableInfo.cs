@@ -126,7 +126,7 @@ namespace BTDB.ODBLayer
             var anyNeedsCtx = ClientTableVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
             {
-                ilGenerator.DeclareLocal(typeof (IWriterCtx));
+                ilGenerator.DeclareLocal(typeof(IWriterCtx));
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(2)
@@ -229,14 +229,14 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    srcFieldInfo.Handler.InformAboutDestinationHandler(destFieldInfo.Handler);
-                    var willLoad = srcFieldInfo.Handler.HandledType();
+                    var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType());
+                    var willLoad = specializedSrcHandler.HandledType();
                     var fieldInfo = _clientType.GetProperty(destFieldInfo.Name).GetSetMethod();
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.GetParameters()[0].ParameterType);
                     if (converterGenerator != null)
                     {
                         ilGenerator.Ldloc(0);
-                        srcFieldInfo.Handler.Load(ilGenerator, readerOrCtx);
+                        specializedSrcHandler.Load(ilGenerator, readerOrCtx);
                         converterGenerator(ilGenerator);
                         ilGenerator.Call(fieldInfo);
                         continue;

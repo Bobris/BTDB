@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -32,6 +33,14 @@ namespace BTDB.FieldHandler
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
             _itemsHandler = _fieldHandlerFactory.CreateFromReader(reader);
+        }
+
+        ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler itemSpecialized)
+        {
+            _fieldHandlerFactory = fieldHandlerFactory;
+            _typeConvertorGenerator = typeConvertorGenerator;
+            _type = type;
+            _itemsHandler = itemSpecialized;
         }
 
         public static string HandlerName
@@ -184,11 +193,41 @@ namespace BTDB.FieldHandler
                 .Mark(finish);
         }
 
-        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        public IFieldHandler SpecializeLoadForType(Type type)
         {
-            if (_type != null) return;
-            if ((dstHandler is ListFieldHandler) == false) return;
-            _itemsHandler.InformAboutDestinationHandler(((ListFieldHandler)dstHandler)._itemsHandler);
+            if (_type == type) return this;
+            if (!IsCompatibleWith(type))
+            {
+                Debug.Fail("strange");
+                return this;
+            }
+            var wantedItemType = type.GetGenericArguments()[0];
+            var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType);
+            if (_typeConvertorGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
+            {
+                Debug.Fail("even more strange");
+                return this;
+            }
+            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
         }
+
+        public IFieldHandler SpecializeSaveForType(Type type)
+        {
+            if (_type == type) return this;
+            if (!IsCompatibleWith(type))
+            {
+                Debug.Fail("strange");
+                return this;
+            }
+            var wantedItemType = type.GetGenericArguments()[0];
+            var itemSpecialized = _itemsHandler.SpecializeSaveForType(wantedItemType);
+            if (_typeConvertorGenerator.GenerateConversion(wantedItemType, itemSpecialized.HandledType()) == null)
+            {
+                Debug.Fail("even more strange");
+                return this;
+            }
+            return new ListFieldHandler(_fieldHandlerFactory,_typeConvertorGenerator,type,itemSpecialized);
+        }
+
     }
 }

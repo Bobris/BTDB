@@ -99,14 +99,14 @@ namespace BTDB.FieldHandler
                 .Pop();
         }
 
-        public void InformAboutDestinationHandler(IFieldHandler dstHandler)
+        public IFieldHandler SpecializeLoadForType(Type type)
         {
-            if (_type != null) return;
-            if ((dstHandler is DBObjectFieldHandler) == false) return;
-            if (dstHandler.Configuration.SequenceEqual(Configuration))
-            {
-                _type = dstHandler.HandledType();
-            }
+            return this;
+        }
+
+        public IFieldHandler SpecializeSaveForType(Type type)
+        {
+            return this;
         }
     }
 }
