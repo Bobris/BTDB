@@ -24,16 +24,17 @@ namespace SimpleTester
 
         public void RunFastSubject()
         {
-            //Observers  My Fast Original
-            //        0      356     2643
-            //        1      551     2793
-            //        2     1106     2977
-            //        3     1299     3171
-            //        4     1578     3390
-            Console.WriteLine("Observers  My Fast Original");
+            //Observers  My Fast Original Delegate Del+null
+            //        0      490     2882      490       43
+            //        1      589     3090     1794      498
+            //        2     1341     3299     2388     1793
+            //        3     1469     3509     2983     2389
+            //        4     1785     3720     3578     2984
+            Console.WriteLine("Observers  My Fast Original Delegate Del+null");
             for (int observers = 0; observers < 5; observers++)
             {
                 Console.Write("{0,9} ", observers);
+                Stopwatch sw;
                 for (int impl = 0; impl < 2; impl++)
                 {
                     ISubject<int> subj = null;
@@ -46,8 +47,30 @@ namespace SimpleTester
                     }
                     for (int i = 0; i < observers; i++) subj.Subscribe(new EmptyIntObserver());
                     subj.OnNext(0);
-                    var sw = Stopwatch.StartNew();
+                    sw = Stopwatch.StartNew();
                     for (int i = 0; i < 100000000; i++) subj.OnNext(i);
+                    Console.Write("{0,8} ", sw.ElapsedMilliseconds);
+                }
+                {
+                    Action<int> d = p => { };
+                    for (int i = 0; i < observers; i++)
+                    {
+                        d += p => { };
+                    }
+                    d(0);
+                    sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 100000000; i++) d(i);
+                    Console.Write("{0,8} ", sw.ElapsedMilliseconds);
+                }
+                {
+                    Action<int> d = null;
+                    for (int i = 0; i < observers; i++)
+                    {
+                        d += p => { };
+                    }
+                    { var locald = d; if (locald!=null) locald(0); }
+                    sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 100000000; i++) { var locald = d; if (locald != null) locald(i); }
                     Console.Write("{0,8} ", sw.ElapsedMilliseconds);
                 }
                 Console.WriteLine();
