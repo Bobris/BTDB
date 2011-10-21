@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class Uint8FieldHandler : SimpleFieldHandlerBase, IFieldHandler
+    public class Uint8FieldHandler : SimpleFieldOrderableHandlerBase, IFieldHandler
     {
         public Uint8FieldHandler()
             : base(

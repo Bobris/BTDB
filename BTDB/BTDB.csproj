@@ -47,6 +47,7 @@
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
+    <Compile Include="FieldHandler\SimpleFieldOrderableHandlerBase.cs" />
     <Compile Include="Service\IServiceInternal.cs" />
     <Compile Include="Service\ServiceObjectFieldHandler.cs" />
     <Compile Include="IL\DynamicMethod.cs" />

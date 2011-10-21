@@ -53,10 +53,18 @@ namespace BTDB.StreamLayer
             Buf[Pos++] = (byte)value;
         }
 
+        public void WriteInt8Ordered(sbyte value)
+        {
+            if (Pos >= End)
+            {
+                FlushBuffer();
+            }
+            Buf[Pos++] = (byte)(value + 128);
+        }
+
         public void WriteVInt32(int value)
         {
-            if (value < 0) WriteVUInt64(((uint)-(value + 1)) * 2 + 1);
-            else WriteVUInt64((uint)value * 2);
+            WriteVInt64(value);
         }
 
         public void WriteVUInt32(uint value)
@@ -66,8 +74,20 @@ namespace BTDB.StreamLayer
 
         public void WriteVInt64(long value)
         {
-            if (value < 0) WriteVUInt64(((ulong)-(value + 1)) * 2 + 1);
-            else WriteVUInt64((ulong)value * 2);
+            var l = PackUnpack.LengthVInt(value);
+            if (Pos + l > End)
+            {
+                FlushBuffer();
+                if (Pos + l > End)
+                {
+                    var b = new byte[l];
+                    int i = 0;
+                    PackUnpack.PackVInt(b, ref i, value);
+                    WriteBlock(b);
+                    return;
+                }
+            }
+            PackUnpack.PackVInt(Buf, ref Pos, value);
         }
 
         public void WriteVUInt64(ulong value)
@@ -136,7 +156,7 @@ namespace BTDB.StreamLayer
         {
             if (value == null)
             {
-                WriteVUInt64(0);
+                WriteByteZero();
                 return;
             }
             var l = value.Length;
@@ -158,6 +178,34 @@ namespace BTDB.StreamLayer
                 WriteVUInt32(c);
                 i++;
             }
+        }
+
+        public void WriteStringOrdered(string value)
+        {
+            if (value == null)
+            {
+                WriteVUInt32(0x110001);
+                return;
+            }
+            var l = value.Length;
+            int i = 0;
+            while (i < l)
+            {
+                var c = value[i];
+                if (char.IsHighSurrogate(c) && i + 1 < l)
+                {
+                    var c2 = value[i + 1];
+                    if (char.IsLowSurrogate(c2))
+                    {
+                        WriteVUInt32((uint)((((c - 0xD800) * 0x400) + (c2 - 0xDC00)) + 0x10000) + 1);
+                        i += 2;
+                        continue;
+                    }
+                }
+                WriteVUInt32((uint)c + 1);
+                i++;
+            }
+            WriteByteZero();
         }
 
         public void WriteBlock(byte[] data, int offset, int length)

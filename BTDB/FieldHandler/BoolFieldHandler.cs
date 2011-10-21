@@ -3,7 +3,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class BoolFieldHandler : SimpleFieldHandlerBase
+    public class BoolFieldHandler : SimpleFieldOrderableHandlerBase
     {
         public BoolFieldHandler(): base(
             EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadBool()),

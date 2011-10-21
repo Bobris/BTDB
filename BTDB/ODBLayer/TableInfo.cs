@@ -242,7 +242,7 @@ namespace BTDB.ODBLayer
                         continue;
                     }
                 }
-                srcFieldInfo.Handler.SkipLoad(ilGenerator, readerOrCtx);
+                srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
             }
             ilGenerator.Ret();
             return method.Create();

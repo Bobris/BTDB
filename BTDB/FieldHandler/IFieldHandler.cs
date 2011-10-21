@@ -11,9 +11,17 @@ namespace BTDB.FieldHandler
         Type HandledType();
         bool NeedsCtx();
         void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
-        void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
+        void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
         void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
+
         IFieldHandler SpecializeLoadForType(Type type);
         IFieldHandler SpecializeSaveForType(Type type);
+    }
+
+    public interface IFieldHandleOrderable : IFieldHandler
+    {
+        void LoadOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
+        void SkipOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
+        void SaveOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
     }
 }

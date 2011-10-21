@@ -37,7 +37,7 @@ namespace BTDB.StreamLayer
         public bool ReadBool()
         {
             NeedOneByteInBuffer();
-            return Buf[Pos++]!=0;
+            return Buf[Pos++] != 0;
         }
 
         public void SkipBool()
@@ -68,18 +68,28 @@ namespace BTDB.StreamLayer
             SkipUInt8();
         }
 
+        public sbyte ReadInt8Ordered()
+        {
+            NeedOneByteInBuffer();
+            return (sbyte)(Buf[Pos++] - 128);
+        }
+
+        public void SkipInt8Ordered()
+        {
+            SkipUInt8();
+        }
+
         public int ReadVInt32()
         {
-            var res = ReadVUInt64();
-            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Reading VInt32 overflowed with {0}", res));
-            if ((res & 1) == 0) return (int)(res >> 1);
-            return -(int)(res >> 1) - 1;
+            var res = ReadVInt64();
+            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(string.Format("Reading VInt32 overflowed with {0}", res));
+            return (int)res;
         }
 
         public void SkipVInt32()
         {
-            var res = ReadVUInt64();
-            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Reading VInt32 overflowed with {0}", res));
+            var res = ReadVInt64();
+            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(string.Format("Skipping VInt32 overflowed with {0}", res));
         }
 
         public uint ReadVUInt32()
@@ -92,19 +102,54 @@ namespace BTDB.StreamLayer
         public void SkipVUInt32()
         {
             var res = ReadVUInt64();
-            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Reading VUInt32 overflowed with {0}", res));
+            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Skipping VUInt32 overflowed with {0}", res));
         }
 
         public long ReadVInt64()
         {
-            var res = ReadVUInt64();
-            if ((res & 1) == 0) return (long)(res >> 1);
-            return -(long)(res >> 1) - 1;
+            NeedOneByteInBuffer();
+            var l = PackUnpack.LengthVInt(Buf, Pos);
+            long res;
+            if (Pos + l <= End)
+            {
+                res = PackUnpack.UnpackVInt(Buf, ref Pos);
+            }
+            else
+            {
+                res = (Buf[Pos] >= 0x80) ? 0 : -1;
+                if (l < 8) res <<= 8 - l;
+                res += Buf[Pos] & (0xff >> l);
+                do
+                {
+                    Pos++;
+                    res <<= 8;
+                    NeedOneByteInBuffer();
+                    res += Buf[Pos];
+                    l--;
+                } while (l > 1);
+                Pos++;
+            }
+            return res;
         }
 
         public void SkipVInt64()
         {
-            SkipVUInt64();
+            NeedOneByteInBuffer();
+            var l = PackUnpack.LengthVInt(Buf, Pos);
+            if (Pos + l <= End)
+            {
+                Pos += l;
+            }
+            else
+            {
+                do
+                {
+                    Pos++;
+                    NeedOneByteInBuffer();
+                    l--;
+                } while (l > 1);
+                Pos++;
+            }
         }
 
         public ulong ReadVUInt64()
@@ -281,12 +326,39 @@ namespace BTDB.StreamLayer
             return res.ToString();
         }
 
+        public string ReadStringOrdered()
+        {
+            var res = new StringBuilder();
+            while (true)
+            {
+                var c = ReadVUInt32();
+                if (c == 0) break;
+                c--;
+                if (c > 0xffff)
+                {
+                    if (c > 0x10ffff)
+                    {
+                        if (res.Length == 0 && c == 0x110000) return null;
+                        throw new InvalidDataException(string.Format("Reading String unicode value overflowed with {0}", c));
+                    }
+                    c -= 0x10000;
+                    res.Append((char)((c >> 10) + 0xD800));
+                    res.Append((char)((c & 0x3FF) + 0xDC00));
+                }
+                else
+                {
+                    res.Append((char)c);
+                }
+            }
+            return res.ToString();
+        }
+
         public void SkipString()
         {
             var len = ReadVUInt64();
             if (len == 0) return;
             len--;
-            if (len > int.MaxValue) throw new InvalidDataException(string.Format("Reading String length overflowed with {0}", len));
+            if (len > int.MaxValue) throw new InvalidDataException(string.Format("Skipping String length overflowed with {0}", len));
             var l = (int)len;
             if (l == 0) return;
             int i = 0;
@@ -295,13 +367,32 @@ namespace BTDB.StreamLayer
                 var c = ReadVUInt32();
                 if (c > 0xffff)
                 {
-                    if (c > 0x10ffff) throw new InvalidDataException(string.Format("Reading String unicode value overflowed with {0}", c));
-                    i+=2;
+                    if (c > 0x10ffff) throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
+                    i += 2;
                 }
                 else
                 {
                     i++;
                 }
+            }
+        }
+
+        public void SkipStringOrdered()
+        {
+            var c = ReadVUInt32();
+            if (c == 0) return;
+            c--;
+            if (c > 0x10ffff)
+            {
+                if (c == 0x110000) return;
+                throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
+            }
+            while (true)
+            {
+                c = ReadVUInt32();
+                if (c == 0) break;
+                c--;
+                if (c > 0x10ffff) throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
             }
         }
 
@@ -342,7 +433,7 @@ namespace BTDB.StreamLayer
 
         public void SkipBlock(uint length)
         {
-            while (length>int.MaxValue)
+            while (length > int.MaxValue)
             {
                 SkipBlock(int.MaxValue);
                 length -= int.MaxValue;
@@ -427,7 +518,7 @@ namespace BTDB.StreamLayer
         {
             var length = ReadVUInt32();
             if (length == 0) return null;
-            var bytes = new byte[length-1];
+            var bytes = new byte[length - 1];
             ReadBlock(bytes);
             return bytes;
         }
@@ -436,7 +527,7 @@ namespace BTDB.StreamLayer
         {
             var length = ReadVUInt32();
             if (length == 0) return;
-            SkipBlock(length-1);
+            SkipBlock(length - 1);
         }
     }
 }

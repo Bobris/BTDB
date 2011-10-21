@@ -128,7 +128,7 @@ namespace BTDB.FieldHandler
                 .Ldloc(localResult);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();

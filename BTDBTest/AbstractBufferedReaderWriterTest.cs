@@ -125,8 +125,8 @@ namespace BTDBTest
         [Test]
         public void TimeSpanTest()
         {
-            TestTimeSpan(new TimeSpan(1), new byte[] { 0x02 });
-            TestTimeSpan(new TimeSpan(1, 0, 0), new byte[] { 0xf8, 0x10, 0xc3, 0x88, 0xd0, 0x00 });
+            TestTimeSpan(new TimeSpan(1), new byte[] { 0x81 });
+            TestTimeSpan(new TimeSpan(1, 0, 0), new byte[] { 0xfc, 0x08, 0x61, 0xc4, 0x68, 0x00 });
         }
 
         static void TestTimeSpan(TimeSpan value, byte[] checkResult)
@@ -147,6 +147,21 @@ namespace BTDBTest
         static void TestString(string value, byte[] checkResult)
         {
             TestWriteRead(w => w.WriteString(value), checkResult, r => Assert.AreEqual(value, r.ReadString()), s => s.SkipString());
+        }
+
+        [Test]
+        public void StringOrderedTest()
+        {
+            TestStringOrdered(null, new byte[] { 0xd1, 0x0, 0x1 });
+            TestStringOrdered("", new byte[] { 0 });
+            TestStringOrdered("A", new byte[] { 0x42, 0x0 });
+            TestStringOrdered("β", new byte[] { 0x83, 0xB3, 0x0 });
+            TestStringOrdered("A" + (Char)0xD800 + (Char)0xDC01 + "B" + (Char)0xD812, new byte[] { 0x42, 0xC1, 0, 2, 0x43, 0xC0, 0xD8, 0x13, 0x0 });
+        }
+
+        static void TestStringOrdered(string value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteStringOrdered(value), checkResult, r => Assert.AreEqual(value, r.ReadStringOrdered()), s => s.SkipStringOrdered());
         }
 
         [Test]
@@ -232,11 +247,11 @@ namespace BTDBTest
         [Test]
         public void VInt32Test()
         {
-            TestVInt32(0, new byte[] { 0 });
-            TestVInt32(1, new byte[] { 2 });
-            TestVInt32(-1, new byte[] { 1 });
-            TestVInt32(int.MinValue, new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFF });
-            TestVInt32(int.MaxValue, new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFE });
+            TestVInt32(0, new byte[] { 0x80 });
+            TestVInt32(1, new byte[] { 0x81 });
+            TestVInt32(-1, new byte[] { 0x7F });
+            TestVInt32(int.MinValue, new byte[] { 0x07, 0x80, 0x00, 0x00, 0x00 });
+            TestVInt32(int.MaxValue, new byte[] { 0xF8, 0x7F, 0xFF, 0xFF, 0xFF });
         }
 
         static void TestVInt32(int value, byte[] checkResult)
@@ -247,13 +262,13 @@ namespace BTDBTest
         [Test]
         public void VInt64Test()
         {
-            TestVInt64(0, new byte[] { 0 });
-            TestVInt64(1, new byte[] { 2 });
-            TestVInt64(-1, new byte[] { 1 });
-            TestVInt64(int.MinValue, new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFF });
-            TestVInt64(int.MaxValue, new byte[] { 0xF0, 0xFF, 0xFF, 0xFF, 0xFE });
-            TestVInt64(long.MinValue, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
-            TestVInt64(long.MaxValue, new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE });
+            TestVInt64(0, new byte[] { 0x80 });
+            TestVInt64(1, new byte[] { 0x81 });
+            TestVInt64(-1, new byte[] { 0x7F });
+            TestVInt64(int.MinValue, new byte[] { 0x07, 0x80, 0x00, 0x00, 0x00 });
+            TestVInt64(int.MaxValue, new byte[] { 0xF8, 0x7F, 0xFF, 0xFF, 0xFF });
+            TestVInt64(long.MinValue, new byte[] { 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+            TestVInt64(long.MaxValue, new byte[] { 0xFF, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
         }
 
         static void TestVInt64(long value, byte[] checkResult)

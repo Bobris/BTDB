@@ -30,7 +30,7 @@ namespace BTDB.FieldHandler
 
         public static ILGenerator GenerateSkip(this ILGenerator ilGenerator, IFieldHandler fieldHandler, Action<ILGenerator> pushReaderOrCtx)
         {
-            fieldHandler.SkipLoad(ilGenerator,
+            fieldHandler.Skip(ilGenerator,
                                   fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
             return ilGenerator;
         }

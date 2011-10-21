@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class UnsignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
+    public class UnsignedFieldHandler : SimpleFieldOrderableHandlerBase, IFieldHandler
     {
         public UnsignedFieldHandler(): base(
             EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()),

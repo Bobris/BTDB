@@ -81,7 +81,7 @@ namespace BTDB.Service
             if (type != typeof(object)) ilGenerator.Isinst(type);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
             ilGenerator
                 .Do(pushReaderOrCtx)

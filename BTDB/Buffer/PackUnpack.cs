@@ -379,5 +379,272 @@
             ofs += 8;
             return result;
         }
+
+        public static int LengthVInt(int value)
+        {
+            if (-0x40 <= value && value < 0x40) return 1;
+            if (-0x2000 <= value && value < 0x2000) return 2;
+            if (-0x100000 <= value && value < 0x100000) return 3;
+            if (-0x08000000 <= value && value < 0x08000000) return 4;
+            return 5;
+        }
+
+        public static int LengthVInt(long value)
+        {
+            if (-0x40 <= value && value < 0x40) return 1;
+            if (-0x2000 <= value && value < 0x2000) return 2;
+            if (-0x100000 <= value && value < 0x100000) return 3;
+            if (-0x08000000 <= value && value < 0x08000000) return 4;
+            if (-0x0400000000 <= value && value < 0x0400000000) return 5;
+            if (-0x020000000000 <= value && value < 0x020000000000) return 6;
+            if (-0x01000000000000 <= value && value < 0x01000000000000) return 7;
+            return 9;
+        }
+
+        public static int LengthVInt(byte[] data, int ofs)
+        {
+            uint first = data[ofs];
+            if (0x40 <= first && first < 0xC0) return 1;
+            if (0x20 <= first && first < 0xE0) return 2;
+            if (0x10 <= first && first < 0xF0) return 3;
+            if (0x08 <= first && first < 0xF8) return 4;
+            if (0x04 <= first && first < 0xFC) return 5;
+            if (0x02 <= first && first < 0xFE) return 6;
+            if (0x01 <= first && first < 0xFF) return 7;
+            return 9;
+        }
+
+        public static void PackVInt(byte[] data, ref int ofs, long value)
+        {
+            if (-0x40 <= value && value < 0x40)
+            {
+                data[ofs] = (byte)(value + 0x80);
+                ofs++;
+                return;
+            }
+            if (value >= 0)
+            {
+                if (value < 0x2000)
+                {
+                    data[ofs] = (byte)(0xC0 + (value >> 8));
+                    data[ofs + 1] = unchecked((byte)value);
+                    ofs += 2;
+                    return;
+                }
+                if (value < 0x100000)
+                {
+                    data[ofs] = (byte)(0xE0 + (value >> 16));
+                    data[ofs + 1] = unchecked((byte)(value >> 8));
+                    data[ofs + 2] = unchecked((byte)value);
+                    ofs += 3;
+                    return;
+                }
+                if (value < 0x08000000)
+                {
+                    data[ofs] = (byte)(0xF0 + (value >> 24));
+                    data[ofs + 1] = unchecked((byte)(value >> 16));
+                    data[ofs + 2] = unchecked((byte)(value >> 8));
+                    data[ofs + 3] = unchecked((byte)value);
+                    ofs += 4;
+                    return;
+                }
+                if (value < 0x0400000000)
+                {
+                    data[ofs] = (byte)(0xF8 + (value >> 32));
+                    data[ofs + 1] = unchecked((byte)(value >> 24));
+                    data[ofs + 2] = unchecked((byte)(value >> 16));
+                    data[ofs + 3] = unchecked((byte)(value >> 8));
+                    data[ofs + 4] = unchecked((byte)value);
+                    ofs += 5;
+                    return;
+                }
+                if (value < 0x020000000000)
+                {
+                    data[ofs] = (byte)(0xFC + (value >> 40));
+                    data[ofs + 1] = unchecked((byte)(value >> 32));
+                    data[ofs + 2] = unchecked((byte)(value >> 24));
+                    data[ofs + 3] = unchecked((byte)(value >> 16));
+                    data[ofs + 4] = unchecked((byte)(value >> 8));
+                    data[ofs + 5] = unchecked((byte)value);
+                    ofs += 6;
+                    return;
+                }
+                if (value < 0x01000000000000)
+                {
+                    data[ofs] = 0xFE;
+                    data[ofs + 1] = unchecked((byte)(value >> 40));
+                    data[ofs + 2] = unchecked((byte)(value >> 32));
+                    data[ofs + 3] = unchecked((byte)(value >> 24));
+                    data[ofs + 4] = unchecked((byte)(value >> 16));
+                    data[ofs + 5] = unchecked((byte)(value >> 8));
+                    data[ofs + 6] = unchecked((byte)value);
+                    ofs += 7;
+                    return;
+                }
+                data[ofs] = 0xFF;
+            }
+            else
+            {
+                if (value >= -0x2000)
+                {
+                    data[ofs] = (byte)(0x40 + (value >> 8));
+                    data[ofs + 1] = unchecked((byte)value);
+                    ofs += 2;
+                    return;
+                }
+                if (value >= -0x100000)
+                {
+                    data[ofs] = (byte)(0x20 + (value >> 16));
+                    data[ofs + 1] = unchecked((byte)(value >> 8));
+                    data[ofs + 2] = unchecked((byte)value);
+                    ofs += 3;
+                    return;
+                }
+                if (value >= -0x08000000)
+                {
+                    data[ofs] = (byte)(0x10 + (value >> 24));
+                    data[ofs + 1] = unchecked((byte)(value >> 16));
+                    data[ofs + 2] = unchecked((byte)(value >> 8));
+                    data[ofs + 3] = unchecked((byte)value);
+                    ofs += 4;
+                    return;
+                }
+                if (value >= -0x0400000000)
+                {
+                    data[ofs] = (byte)(0x08 + (value >> 32));
+                    data[ofs + 1] = unchecked((byte)(value >> 24));
+                    data[ofs + 2] = unchecked((byte)(value >> 16));
+                    data[ofs + 3] = unchecked((byte)(value >> 8));
+                    data[ofs + 4] = unchecked((byte)value);
+                    ofs += 5;
+                    return;
+                }
+                if (value >= -0x020000000000)
+                {
+                    data[ofs] = (byte)(0x04 + (value >> 40));
+                    data[ofs + 1] = unchecked((byte)(value >> 32));
+                    data[ofs + 2] = unchecked((byte)(value >> 24));
+                    data[ofs + 3] = unchecked((byte)(value >> 16));
+                    data[ofs + 4] = unchecked((byte)(value >> 8));
+                    data[ofs + 5] = unchecked((byte)value);
+                    ofs += 6;
+                    return;
+                }
+                if (value >= -0x01000000000000)
+                {
+                    data[ofs] = 0x01;
+                    data[ofs + 1] = unchecked((byte)(value >> 40));
+                    data[ofs + 2] = unchecked((byte)(value >> 32));
+                    data[ofs + 3] = unchecked((byte)(value >> 24));
+                    data[ofs + 4] = unchecked((byte)(value >> 16));
+                    data[ofs + 5] = unchecked((byte)(value >> 8));
+                    data[ofs + 6] = unchecked((byte)value);
+                    ofs += 7;
+                    return;
+                }
+                data[ofs] = 0;
+            }
+            data[ofs + 1] = unchecked((byte)(value >> 56));
+            data[ofs + 2] = unchecked((byte)(value >> 48));
+            data[ofs + 3] = unchecked((byte)(value >> 40));
+            data[ofs + 4] = unchecked((byte)(value >> 32));
+            data[ofs + 5] = unchecked((byte)(value >> 24));
+            data[ofs + 6] = unchecked((byte)(value >> 16));
+            data[ofs + 7] = unchecked((byte)(value >> 8));
+            data[ofs + 8] = unchecked((byte)value);
+            ofs += 9;
+        }
+
+        public static long UnpackVInt(byte[] data, ref int ofs)
+        {
+            uint first = data[ofs];
+            ofs++;
+            if (0x40 <= first && first < 0xC0) return (long)first - 0x80;
+            long result;
+            if (first >= 0x80)
+            {
+                if (first < 0xE0)
+                {
+                    result = ((first & 0x1F) << 8) + data[ofs];
+                    ofs++;
+                    return result;
+                }
+                if (first < 0xF0)
+                {
+                    result = ((first & 0x0F) << 16) + (data[ofs] << 8) + data[ofs + 1];
+                    ofs += 2;
+                    return result;
+                }
+                if (first < 0xF8)
+                {
+                    result = ((first & 0x07) << 24) + (data[ofs] << 16) + (data[ofs + 1] << 8) + data[ofs + 2];
+                    ofs += 3;
+                    return result;
+                }
+                if (first < 0xFC)
+                {
+                    result = ((long)(first & 0x03) << 32) + ((long)data[ofs] << 24) + (data[ofs + 1] << 16) + (data[ofs + 2] << 8) + data[ofs + 3];
+                    ofs += 4;
+                    return result;
+                }
+                if (first < 0xFE)
+                {
+                    result = ((long)(first & 0x01) << 40) + ((long)data[ofs] << 32) + ((long)data[ofs + 1] << 24) + (data[ofs + 2] << 16) + (data[ofs + 3] << 8) + data[ofs + 4];
+                    ofs += 5;
+                    return result;
+                }
+                if (first < 0xFF)
+                {
+                    result = ((long)data[ofs] << 40) + ((long)data[ofs + 1] << 32) + ((long)data[ofs + 2] << 24) + (data[ofs + 3] << 16) + (data[ofs + 4] << 8) + data[ofs + 5];
+                    ofs += 6;
+                    return result;
+                }
+                result = ((long)data[ofs] << 56) + ((long)data[ofs + 1] << 48) + ((long)data[ofs + 2] << 40) + ((long)data[ofs + 3] << 32)
+                    + ((long)data[ofs + 4] << 24) + (data[ofs + 5] << 16) + (data[ofs + 6] << 8) + data[ofs + 7];
+                ofs += 8;
+                return result;
+            }
+            if (first >= 0x20)
+            {
+                result = ((int)(first - 0x40) << 8) + data[ofs];
+                ofs++;
+                return result;
+            }
+            if (first >= 0x10)
+            {
+                result = ((int)(first - 0x20) << 16) + (data[ofs] << 8) + data[ofs + 1];
+                ofs += 2;
+                return result;
+            }
+            if (first >= 0x08)
+            {
+                result = ((int)(first - 0x10) << 24) + (data[ofs] << 16) + (data[ofs + 1] << 8) + data[ofs + 2];
+                ofs += 3;
+                return result;
+            }
+            if (first >= 0x04)
+            {
+                result = ((long)(first - 0x08) << 32) + ((long)data[ofs] << 24) + (data[ofs + 1] << 16) + (data[ofs + 2] << 8) + data[ofs + 3];
+                ofs += 4;
+                return result;
+            }
+            if (first >= 0x02)
+            {
+                result = ((long)(first - 0x04) << 40) + ((long)data[ofs] << 32) + ((long)data[ofs + 1] << 24) + (data[ofs + 2] << 16) + (data[ofs + 3] << 8) + data[ofs + 4];
+                ofs += 5;
+                return result;
+            }
+            if (first >= 0x01)
+            {
+                result = (-1L << 48) + ((long)data[ofs] << 40) + ((long)data[ofs + 1] << 32) + ((long)data[ofs + 2] << 24) + (data[ofs + 3] << 16) + (data[ofs + 4] << 8) + data[ofs + 5];
+                ofs += 6;
+                return result;
+            }
+            result = ((long)data[ofs] << 56) + ((long)data[ofs + 1] << 48) + ((long)data[ofs + 2] << 40) + ((long)data[ofs + 3] << 32)
+                + ((long)data[ofs + 4] << 24) + (data[ofs + 5] << 16) + (data[ofs + 6] << 8) + data[ofs + 7];
+            ofs += 8;
+            return result;
+        }
     }
 }
+

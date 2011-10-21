@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class EnumFieldHandler : IFieldHandler
+    public class EnumFieldHandler : IFieldHandler, IFieldHandleOrderable
     {
         readonly byte[] _configuration;
         readonly bool _signed;
@@ -208,7 +208,7 @@ namespace BTDB.FieldHandler
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
         }
 
-        public void SkipLoad(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
             pushReaderOrCtx(ilGenerator);
             if (_signed)
@@ -259,6 +259,21 @@ namespace BTDB.FieldHandler
         bool IFieldHandler.IsCompatibleWith(Type type)
         {
             return IsCompatibleWith(type);
+        }
+
+        public void LoadOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        {
+            Load(ilGenerator,pushReaderOrCtx);
+        }
+
+        public void SkipOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        {
+            Skip(ilGenerator,pushReaderOrCtx);
+        }
+
+        public void SaveOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        {
+            Save(ilGenerator,pushWriterOrCtx,pushValue);
         }
     }
 }
