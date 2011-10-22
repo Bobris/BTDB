@@ -13,3 +13,6 @@ TestResults
 *.usertasks
 *.userprefs
 *.origtest-resultsdist
+*.crunchsolution.cache
+*.crunchsolution.local.xml
+*.crunchproject.local.xml
