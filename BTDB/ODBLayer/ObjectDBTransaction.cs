@@ -8,7 +8,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal class ObjectDBTransaction : IObjectDBTransaction
+    internal class ObjectDBTransaction : IObjectDBTransaction, IInternalObjectDBTransaction
     {
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
@@ -30,6 +30,21 @@ namespace BTDB.ODBLayer
             if (_keyValueTr == null) return;
             _keyValueTr.Dispose();
             _keyValueTr = null;
+        }
+
+        public IObjectDB Owner
+        {
+            get { return _owner; }
+        }
+
+        public IKeyValueDBTransaction KeyValueDBTransaction
+        {
+            get { return _keyValueTr; }
+        }
+
+        public KeyValueDBTransactionProtector TransactionProtector
+        {
+            get { return _keyValueTrProtector; }
         }
 
         public IEnumerable<T> Enumerate<T>() where T : class

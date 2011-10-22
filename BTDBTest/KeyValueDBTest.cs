@@ -450,6 +450,40 @@ namespace BTDBTest
         }
 
         [Test]
+        public void SetKeyIndexWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                var key = new byte[2];
+                const int keysCreated = 10000;
+                using (var tr = db.StartTransaction())
+                {
+                    for (int i = 0; i < keysCreated; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        tr.CreateKey(key);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.False(tr.SetKeyIndex(keysCreated));
+                    for (int i = 0; i < keysCreated; i += 5)
+                    {
+                        Assert.True(tr.SetKeyIndex(i));
+                        key = tr.ReadKey();
+                        Assert.AreEqual((byte)(i / 256), key[0]);
+                        Assert.AreEqual((byte)(i % 256), key[1]);
+                        Assert.AreEqual(i, tr.GetKeyIndex());
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void SetValueWorksSameTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
             [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
         {

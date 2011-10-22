@@ -302,10 +302,10 @@ namespace BTDB.KVDBLayer
             {
                 return FindKeyInEmptyBTree(keyBuf, keyOfs, keyLen, strategy, valueBuf, valueOfs, valueLen);
             }
-            Sector sector;
             try
             {
                 long keyIndex = 0;
+                Sector sector;
                 while (true)
                 {
                     sector = LoadBTreeSector(rootBTree);
@@ -522,6 +522,45 @@ namespace BTDB.KVDBLayer
         {
             if (_currentKeyIndex == -1) return -1;
             return _currentKeyIndex - _prefixKeyStart;
+        }
+
+        public bool SetKeyIndex(long index)
+        {
+            if (index<0)
+            {
+                InvalidateCurrentKey();
+                return true;
+            }
+            if (index==0)
+            {
+                return FindFirstKey();
+            }
+            if (index>=GetKeyValueCount())
+            {
+                return false;
+            }
+            index += _prefixKeyStart;
+            try
+            {
+                InvalidateCurrentKey();
+                var rootBTree = GetRootBTreeSectorPtr();
+                long keyIndex = 0;
+                while (true)
+                {
+                    Sector sector = LoadBTreeSector(rootBTree);
+                    if (sector.Type == SectorType.BTreeChild) break;
+                    var iterParent = new BTreeParentIterator(sector.Data);
+                    rootBTree = iterParent.GetChildSectorPtrByKeyIndex(index - keyIndex, ref keyIndex);
+                }
+                _currentKeyIndexInLeaf = (int) (index - keyIndex);
+                _currentKeyIndex = index;
+                return true;
+            }
+            catch
+            {
+                InvalidateCurrentKey();
+                throw;
+            }
         }
 
         Sector LoadBTreeSector(SectorPtr sectorPtr)

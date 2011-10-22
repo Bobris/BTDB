@@ -2,7 +2,7 @@
 
 namespace BTDB.ODBLayer
 {
-    internal class KeyValueDBTransactionProtector
+    public class KeyValueDBTransactionProtector
     {
         readonly object _lock = new object();
         long _protectionCounter;

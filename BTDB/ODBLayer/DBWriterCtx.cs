@@ -4,14 +4,14 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class DBWriterCtx : IWriterCtx
+    public class DBWriterCtx : IWriterCtx, IInstanceRegistry
     {
-        readonly IObjectDBTransaction _transaction;
+        readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
         Dictionary<object, int> _objectIdMap;
         int _lastId;
 
-        public DBWriterCtx(IObjectDBTransaction transaction, AbstractBufferedWriter writer)
+        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
         {
             _transaction = transaction;
             _writer = writer;
@@ -46,6 +46,16 @@ namespace BTDB.ODBLayer
         public AbstractBufferedWriter Writer()
         {
             return _writer;
+        }
+
+        public int RegisterInstance(object content)
+        {
+            return ((IInstanceRegistry)_transaction.Owner).RegisterInstance(content);
+        }
+
+        public object FindInstance(int id)
+        {
+            return ((IInstanceRegistry)_transaction.Owner).FindInstance(id);
         }
     }
 }

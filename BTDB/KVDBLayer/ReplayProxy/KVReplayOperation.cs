@@ -31,6 +31,7 @@
         EraseRange,
         Commit,
         CalculateStats,
-        SetHumanReadableDescriptionInHeader
+        SetHumanReadableDescriptionInHeader,
+        SetKeyIndex
     }
 }

@@ -48,6 +48,11 @@
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
     <Compile Include="FieldHandler\SimpleFieldOrderableHandlerBase.cs" />
+    <Compile Include="ODBLayer\IInstanceRegistry.cs" />
+    <Compile Include="ODBLayer\IInternalObjectDBTransaction.cs" />
+    <Compile Include="ODBLayer\InstanceRegistry.cs" />
+    <Compile Include="ODBLayer\ODBDictionary.cs" />
+    <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
     <Compile Include="Service\IServiceInternal.cs" />
     <Compile Include="Service\ServiceObjectFieldHandler.cs" />
     <Compile Include="IL\DynamicMethod.cs" />

@@ -353,6 +353,31 @@ namespace BTDB.KVDBLayer
             return ChildSectorPtr;
         }
 
+        public SectorPtr GetChildSectorPtrByKeyIndex(long index, ref long keyIndex)
+        {
+            var curKeyCount = FirstChildKeyCount;
+            if (index < curKeyCount)
+            {
+                return FirstChildSectorPtr;
+            }
+            keyIndex += curKeyCount;
+            index -= curKeyCount;
+            var firstOffset = FirstOffset;
+            _ofs = firstOffset;
+            _pos = 0;
+            _keyLen = -1;
+            curKeyCount = ChildKeyCount;
+            while (index >= curKeyCount)
+            {
+                keyIndex += curKeyCount;
+                index -= curKeyCount;
+                _ofs = firstOffset + PackUnpack.UnpackUInt16LE(_data, HeaderSize + _pos * HeaderForEntry);
+                _pos++;
+                curKeyCount = ChildKeyCount;
+            }
+            return ChildSectorPtr;
+        }
+
         internal SectorPtr GetChildSectorPtrWithKeyCount(int index, out long keyCount)
         {
             if (index == 0)

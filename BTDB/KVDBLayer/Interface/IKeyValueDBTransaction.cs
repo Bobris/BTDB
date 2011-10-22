@@ -82,6 +82,12 @@ namespace BTDB.KVDBLayer
         long GetKeyIndex();
 
         /// <summary>
+        /// Sets index of current key in current prefix
+        /// </summary>
+        /// <returns>true if such index exists</returns>
+        bool SetKeyIndex(long index);
+
+        /// <summary>
         /// Find out current key Length minus length of current prefix
         /// </summary>
         /// <returns>-1 if current key does not exist</returns>

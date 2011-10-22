@@ -130,6 +130,18 @@ namespace BTDB.KVDBLayer
             return _tr.GetKeyIndex();
         }
 
+        public bool SetKeyIndex(long index)
+        {
+            lock (_log)
+            {
+                _log.WriteUInt8((byte)KVReplayOperation.SetKeyIndex);
+                _log.WriteVUInt32(TrIndex);
+                _log.WriteVInt64(index);
+                _log.FlushBuffer();
+            }
+            return _tr.SetKeyIndex(index);
+        }
+
         public int GetKeySize()
         {
             LogSimpleOperation(KVReplayOperation.GetKeySize);

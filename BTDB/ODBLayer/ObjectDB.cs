@@ -7,7 +7,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ObjectDB : IObjectDB
+    public class ObjectDB : IObjectDB, IInstanceRegistry
     {
         IKeyValueDB _keyValueDB;
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
@@ -17,6 +17,8 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
         internal static readonly byte[] TableSingletonsPrefix = new byte[] { 0, 2 };
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
+        internal static readonly byte[] AllDictionariesPrefix = new byte[] { 2 };
+        readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
 
@@ -186,6 +188,16 @@ namespace BTDB.ODBLayer
         internal ulong GetLastAllocatedOid()
         {
             return (ulong)System.Threading.Interlocked.Read(ref _lastObjId);
+        }
+
+        public int RegisterInstance(object content)
+        {
+            return _instanceRegistry.RegisterInstance(content);
+        }
+
+        public object FindInstance(int id)
+        {
+            return _instanceRegistry.FindInstance(id);
         }
     }
 }

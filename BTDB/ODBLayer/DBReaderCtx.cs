@@ -5,15 +5,15 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class DBReaderCtx : IReaderCtx
+    public class DBReaderCtx : IReaderCtx, IInstanceRegistry
     {
-        readonly IObjectDBTransaction _transaction;
+        readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedReader _reader;
         List<object> _objects;
         Stack<IMemorizedPosition> _returningStack;
         int _lastIdOfObj;
 
-        public DBReaderCtx(IObjectDBTransaction transaction, AbstractBufferedReader reader)
+        public DBReaderCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader)
         {
             _transaction = transaction;
             _reader = reader;
@@ -111,6 +111,16 @@ namespace BTDB.ODBLayer
         public AbstractBufferedReader Reader()
         {
             return _reader;
+        }
+
+        public int RegisterInstance(object content)
+        {
+            return ((IInstanceRegistry) _transaction.Owner).RegisterInstance(content);
+        }
+
+        public object FindInstance(int id)
+        {
+            return ((IInstanceRegistry) _transaction.Owner).FindInstance(id);
         }
     }
 }
