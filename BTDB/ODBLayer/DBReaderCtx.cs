@@ -5,7 +5,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class DBReaderCtx : IReaderCtx, IInstanceRegistry
+    public class DBReaderCtx : IDBReaderCtx
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedReader _reader;
@@ -121,6 +121,11 @@ namespace BTDB.ODBLayer
         public object FindInstance(int id)
         {
             return ((IInstanceRegistry) _transaction.Owner).FindInstance(id);
+        }
+
+        public IInternalObjectDBTransaction GetTransaction()
+        {
+            return _transaction;
         }
     }
 }

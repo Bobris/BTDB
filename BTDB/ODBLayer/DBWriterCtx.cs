@@ -1,10 +1,9 @@
 using System.Collections.Generic;
-using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class DBWriterCtx : IWriterCtx, IInstanceRegistry
+    public class DBWriterCtx : IDBWriterCtx
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
@@ -56,6 +55,11 @@ namespace BTDB.ODBLayer
         public object FindInstance(int id)
         {
             return ((IInstanceRegistry)_transaction.Owner).FindInstance(id);
+        }
+
+        public IInternalObjectDBTransaction GetTransaction()
+        {
+            return _transaction;
         }
     }
 }

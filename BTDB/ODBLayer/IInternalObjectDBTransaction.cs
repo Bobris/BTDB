@@ -7,5 +7,6 @@ namespace BTDB.ODBLayer
         IObjectDB Owner { get; }
         IKeyValueDBTransaction KeyValueDBTransaction { get; }
         KeyValueDBTransactionProtector TransactionProtector { get; }
+        ulong AllocateDictionaryId();
     }
 }

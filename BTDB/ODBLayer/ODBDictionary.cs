@@ -8,45 +8,19 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionaryConfiguration
-    {
-        readonly IFieldHandler _keyHandler;
-        readonly IFieldHandler _valueHandler;
-
-        public ODBDictionaryConfiguration(IFieldHandler keyHandler, IFieldHandler valueHandler)
-        {
-            _keyHandler = keyHandler;
-            _valueHandler = valueHandler;
-        }
-
-        public IFieldHandler KeyHandler
-        {
-            get { return _keyHandler; }
-        }
-
-        public IFieldHandler ValueHandler
-        {
-            get { return _valueHandler; }
-        }
-
-        public object KeyReader { get; set; }
-        public object KeyWriter { get; set; }
-        public object ValueReader { get; set; }
-        public object ValueWriter { get; set; }
-    }
-
-    public class ODBDictionary<K, V> : IDictionary<K, V>
+    public class ODBDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
         readonly IInternalObjectDBTransaction _tr;
         readonly IFieldHandler _keyHandler;
         readonly IFieldHandler _valueHandler;
-        readonly byte[] _prefix;
-        readonly Func<AbstractBufferedReader, IReaderCtx, K> _keyReader;
-        readonly Action<K, AbstractBufferedWriter, IWriterCtx> _keyWriter;
-        readonly Func<AbstractBufferedReader, IReaderCtx, V> _valueReader;
-        readonly Action<V, AbstractBufferedWriter, IWriterCtx> _valueWriter;
+        readonly Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
+        readonly Action<TKey, AbstractBufferedWriter, IWriterCtx> _keyWriter;
+        readonly Func<AbstractBufferedReader, IReaderCtx, TValue> _valueReader;
+        readonly Action<TValue, AbstractBufferedWriter, IWriterCtx> _valueWriter;
         readonly IKeyValueDBTransaction _keyValueTr;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
+        readonly ulong _id;
+        byte[] _prefix;
         int _count;
 
         public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
@@ -54,20 +28,42 @@ namespace BTDB.ODBLayer
             _tr = tr;
             _keyHandler = config.KeyHandler;
             _valueHandler = config.ValueHandler;
-            int o = ObjectDB.AllDictionariesPrefix.Length;
-            _prefix = new byte[o + PackUnpack.LengthVUInt(id)];
-            Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
-            PackUnpack.PackVUInt(_prefix, ref o, id);
-            _keyReader = (Func<AbstractBufferedReader, IReaderCtx, K>)config.KeyReader;
-            _keyWriter = (Action<K, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter;
-            _valueReader = (Func<AbstractBufferedReader, IReaderCtx, V>)config.ValueReader;
-            _valueWriter = (Action<V, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter;
+            _id = id;
+            GeneratePrefix();
+            _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader;
+            _keyWriter = (Action<TKey, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter;
+            _valueReader = (Func<AbstractBufferedReader, IReaderCtx, TValue>)config.ValueReader;
+            _valueWriter = (Action<TValue, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _count = -1;
         }
 
-        public IEnumerator<KeyValuePair<K, V>> GetEnumerator()
+        public static void DoSave(IWriterCtx ctx, IDictionary<TKey, TValue> dictionary, int cfgId)
+        {
+            var dbctx = (IDBWriterCtx)ctx;
+            var goodDict = dictionary as ODBDictionary<TKey, TValue>;
+            if (goodDict == null)
+            {
+                var tr = dbctx.GetTransaction();
+                var id = tr.AllocateDictionaryId();
+                goodDict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)dbctx.FindInstance(cfgId), id);
+                if (dictionary != null)
+                    foreach (var pair in dictionary)
+                        goodDict.Add(pair.Key, pair.Value);
+            }
+            ctx.Writer().WriteVUInt64(goodDict._id);
+        }
+
+        void GeneratePrefix()
+        {
+            int o = ObjectDB.AllDictionariesPrefix.Length;
+            _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
+            Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
+            PackUnpack.PackVUInt(_prefix, ref o, _id);
+        }
+
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
             bool taken = false;
             try
@@ -98,7 +94,7 @@ namespace BTDB.ODBLayer
                     var key = ByteArrayToKey(_keyValueTr.ReadKey());
                     var value = ByteArrayToValue(_keyValueTr.ReadValue());
                     _keyValueTrProtector.Stop(ref taken);
-                    yield return new KeyValuePair<K, V>(key, value);
+                    yield return new KeyValuePair<TKey, TValue>(key, value);
                     pos++;
                 }
             }
@@ -113,7 +109,7 @@ namespace BTDB.ODBLayer
             return GetEnumerator();
         }
 
-        public void Add(KeyValuePair<K, V> item)
+        public void Add(KeyValuePair<TKey, TValue> item)
         {
             Add(item.Key, item.Value);
         }
@@ -123,14 +119,14 @@ namespace BTDB.ODBLayer
             _count = 0;
         }
 
-        public bool Contains(KeyValuePair<K, V> item)
+        public bool Contains(KeyValuePair<TKey, TValue> item)
         {
-            V value;
+            TValue value;
             if (!TryGetValue(item.Key, out value)) return false;
-            return EqualityComparer<V>.Default.Equals(value, item.Value);
+            return EqualityComparer<TValue>.Default.Equals(value, item.Value);
         }
 
-        public void CopyTo(KeyValuePair<K, V>[] array, int arrayIndex)
+        public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
             if (array == null) throw new ArgumentNullException("array");
             if ((arrayIndex < 0) || (arrayIndex > array.Length))
@@ -147,7 +143,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public bool Remove(KeyValuePair<K, V> item)
+        public bool Remove(KeyValuePair<TKey, TValue> item)
         {
             if (Contains(item))
             {
@@ -184,7 +180,7 @@ namespace BTDB.ODBLayer
             get { return false; }
         }
 
-        byte[] KeyToByteArray(K key)
+        byte[] KeyToByteArray(TKey key)
         {
             var writer = new ByteArrayWriter();
             IWriterCtx ctx = null;
@@ -193,7 +189,7 @@ namespace BTDB.ODBLayer
             return writer.Data;
         }
 
-        byte[] ValueToByteArray(V value)
+        byte[] ValueToByteArray(TValue value)
         {
             var writer = new ByteArrayWriter();
             IWriterCtx ctx = null;
@@ -202,7 +198,7 @@ namespace BTDB.ODBLayer
             return writer.Data;
         }
 
-        K ByteArrayToKey(byte[] data)
+        TKey ByteArrayToKey(byte[] data)
         {
             var reader = new ByteArrayReader(data);
             IReaderCtx ctx = null;
@@ -210,7 +206,7 @@ namespace BTDB.ODBLayer
             return _keyReader(reader, ctx);
         }
 
-        V ByteArrayToValue(byte[] data)
+        TValue ByteArrayToValue(byte[] data)
         {
             var reader = new ByteArrayReader(data);
             IReaderCtx ctx = null;
@@ -218,7 +214,7 @@ namespace BTDB.ODBLayer
             return _valueReader(reader, ctx);
         }
 
-        public bool ContainsKey(K key)
+        public bool ContainsKey(TKey key)
         {
             bool taken = false;
             try
@@ -233,7 +229,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public void Add(K key, V value)
+        public void Add(TKey key, TValue value)
         {
             bool taken = false;
             try
@@ -254,7 +250,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public bool Remove(K key)
+        public bool Remove(TKey key)
         {
             bool taken = false;
             try
@@ -275,7 +271,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public bool TryGetValue(K key, out V value)
+        public bool TryGetValue(TKey key, out TValue value)
         {
             bool taken = false;
             try
@@ -285,7 +281,7 @@ namespace BTDB.ODBLayer
                 bool found = _keyValueTr.FindExactKey(KeyToByteArray(key));
                 if (!found)
                 {
-                    value = default(V);
+                    value = default(TValue);
                     return false;
                 }
                 value = ByteArrayToValue(_keyValueTr.ReadValue());
@@ -297,7 +293,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public V this[K key]
+        public TValue this[TKey key]
         {
             get
             {
@@ -360,12 +356,12 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public ICollection<K> Keys
+        public ICollection<TKey> Keys
         {
             get { throw new NotImplementedException(); }
         }
 
-        public ICollection<V> Values
+        public ICollection<TValue> Values
         {
             get { throw new NotImplementedException(); }
         }

@@ -16,9 +16,9 @@ namespace BTDB.ODBLayer
         uint _clientTypeVersion;
         Type _clientType;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
-        Func<IObjectDBTransaction, DBObjectMetadata, object> _creator;
-        Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
-        readonly ConcurrentDictionary<uint, Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+        Func<IInternalObjectDBTransaction, DBObjectMetadata, object> _creator;
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
         ulong? _singletonOid;
         readonly object _singletonLock = new object();
 
@@ -67,7 +67,7 @@ namespace BTDB.ODBLayer
             private set { _clientTypeVersion = value; }
         }
 
-        internal Func<IObjectDBTransaction, DBObjectMetadata, object> Creator
+        internal Func<IInternalObjectDBTransaction, DBObjectMetadata, object> Creator
         {
             get
             {
@@ -78,7 +78,7 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = new DynamicMethod<Func<IObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Creator_{0}", Name));
+            var method = new DynamicMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Creator_{0}", Name));
             var ilGenerator = method.GetILGenerator();
             ilGenerator
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
@@ -87,7 +87,7 @@ namespace BTDB.ODBLayer
             System.Threading.Interlocked.CompareExchange(ref _creator, creator, null);
         }
 
-        internal Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
         {
             get
             {
@@ -116,7 +116,7 @@ namespace BTDB.ODBLayer
 
         void CreateSaver()
         {
-            var method = new DynamicMethod<Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
+            var method = new DynamicMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
@@ -192,15 +192,15 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _tableInfoResolver.GetLastPesistedVersion(_id);
         }
 
-        internal Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
         {
             return _loaders.GetOrAdd(version, CreateLoader);
         }
 
-        Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
-            var method = new DynamicMethod<Action<IObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
+            var method = new DynamicMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
             var ilGenerator = method.GetILGenerator();
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator

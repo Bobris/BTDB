@@ -16,6 +16,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
         internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
         internal static readonly byte[] TableSingletonsPrefix = new byte[] { 0, 2 };
+        internal static readonly byte[] LastDictIdKey = new byte[] { 0, 3 };
         internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
         internal static readonly byte[] AllDictionariesPrefix = new byte[] { 2 };
         readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();

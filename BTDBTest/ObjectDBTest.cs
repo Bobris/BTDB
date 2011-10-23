@@ -525,7 +525,7 @@ namespace BTDBTest
         [Test]
         public void ListOfDBObjectsSimple()
         {
-            _db.RegisterType(typeof (Person));
+            _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<Root>();
@@ -630,16 +630,10 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleDictionary>();
-                Assert.AreEqual(new Dictionary<int, string> { { 1, "one" }, { 0, null } }, root.Int2String);
+                Assert.AreEqual(2, root.Int2String.Count);
+                Assert.AreEqual("one", root.Int2String[1]);
+                Assert.AreEqual(null, root.Int2String[0]);
                 root.Int2String = null;
-                tr.Store(root);
-                tr.Commit();
-            }
-            using (var tr = _db.StartTransaction())
-            {
-                var root = tr.Singleton<SimpleDictionary>();
-                Assert.AreEqual(null, root.Int2String);
-                root.Int2String = new Dictionary<int,string>();
                 tr.Store(root);
                 tr.Commit();
             }
@@ -675,11 +669,11 @@ namespace BTDBTest
         [Test]
         public void DictionariesOfComplexValues()
         {
-            _db.RegisterType(typeof (Person));
+            _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                root.String2Person = new Dictionary<string, Person> { { "Boris", new Person {Name = "Boris", Age=35} }, { "null", null } };
+                root.String2Person = new Dictionary<string, Person> { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -688,18 +682,12 @@ namespace BTDBTest
                 Assert.AreEqual(2, root.String2Person.Count);
                 Assert.IsTrue(root.String2Person.ContainsKey("Boris"));
                 Assert.IsTrue(root.String2Person.ContainsKey("null"));
-                Assert.AreEqual("Boris",root.String2Person["Boris"].Name);
+                var p = root.String2Person["Boris"];
+                Assert.NotNull(p);
+                Assert.AreEqual("Boris", p.Name);
                 Assert.AreEqual(35, root.String2Person["Boris"].Age);
                 Assert.AreEqual(null, root.String2Person["null"]);
                 root.String2Person = null;
-                tr.Store(root);
-                tr.Commit();
-            }
-            using (var tr = _db.StartTransaction())
-            {
-                var root = tr.Singleton<ComplexDictionary>();
-                Assert.AreEqual(null, root.String2Person);
-                root.String2Person = new Dictionary<string, Person>();
                 tr.Store(root);
                 tr.Commit();
             }

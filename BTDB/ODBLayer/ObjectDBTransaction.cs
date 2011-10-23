@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -45,6 +46,33 @@ namespace BTDB.ODBLayer
         public KeyValueDBTransactionProtector TransactionProtector
         {
             get { return _keyValueTrProtector; }
+        }
+
+        public ulong AllocateDictionaryId()
+        {
+            var taken = false;
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(null);
+                if (_keyValueTr.CreateKey(ObjectDB.LastDictIdKey))
+                {
+                    _keyValueTr.SetValue(new byte[] {1});
+                    return 0;
+                }
+                else
+                {
+                    var id = new ByteArrayReader(_keyValueTr.ReadValue()).ReadVUInt64();
+                    var w = new ByteArrayWriter();
+                    w.WriteVUInt64(id+1);
+                    _keyValueTr.SetValue(w.Data);
+                    return id;
+                }
+            }
+            finally
+            {
+                if (taken) _keyValueTrProtector.Stop();
+            }
         }
 
         public IEnumerable<T> Enumerate<T>() where T : class
@@ -408,18 +436,16 @@ namespace BTDB.ODBLayer
             }
             DBObjectMetadata metadata;
             _objMetadata.TryGetValue(o, out metadata);
+            var writer = new ByteArrayWriter();
+            writer.WriteVUInt32(tableInfo.Id);
+            writer.WriteVUInt32(tableInfo.ClientTypeVersion);
+            tableInfo.Saver(this, metadata, writer, o);
             var shouldStop = false;
             try
             {
                 _keyValueTrProtector.Start(ref shouldStop);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                _keyValueTr.CreateKey(BuildKeyFromOid(metadata.Id));
-                using (var writer = new KeyValueDBValueWriter(_keyValueTr))
-                {
-                    writer.WriteVUInt32(tableInfo.Id);
-                    writer.WriteVUInt32(tableInfo.ClientTypeVersion);
-                    tableInfo.Saver(this, metadata, writer, o);
-                }
+                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id),writer.Data);
             }
             finally
             {
