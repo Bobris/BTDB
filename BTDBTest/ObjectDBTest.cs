@@ -633,14 +633,13 @@ namespace BTDBTest
                 Assert.AreEqual(2, root.Int2String.Count);
                 Assert.AreEqual("one", root.Int2String[1]);
                 Assert.AreEqual(null, root.Int2String[0]);
-                root.Int2String = null;
-                tr.Store(root);
+                root.Int2String.Clear();
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleDictionary>();
-                Assert.AreEqual(new Dictionary<int, string>(), root.Int2String);
+                Assert.AreEqual(0, root.Int2String.Count);
             }
         }
 
@@ -687,14 +686,15 @@ namespace BTDBTest
                 Assert.AreEqual("Boris", p.Name);
                 Assert.AreEqual(35, root.String2Person["Boris"].Age);
                 Assert.AreEqual(null, root.String2Person["null"]);
-                root.String2Person = null;
-                tr.Store(root);
+                Assert.AreEqual(new[] { "Boris", "null" }, root.String2Person.Keys);
+                Assert.AreEqual(p, root.String2Person.Values.First());
+                root.String2Person.Clear();
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                Assert.AreEqual(new Dictionary<string, Person>(), root.String2Person);
+                Assert.AreEqual(0, root.String2Person.Count);
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -22,6 +23,8 @@ namespace BTDB.ODBLayer
         readonly ulong _id;
         byte[] _prefix;
         int _count;
+        KeysCollection _keysCollection;
+        ValuesCollection _valuesCollection;
 
         public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
         {
@@ -116,7 +119,18 @@ namespace BTDB.ODBLayer
 
         public void Clear()
         {
-            _count = 0;
+            bool taken = false;
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(_prefix);
+                _keyValueTr.EraseAll();
+                _count = 0;
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
         }
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
@@ -356,14 +370,218 @@ namespace BTDB.ODBLayer
             }
         }
 
+        class KeysCollection : ICollection<TKey>
+        {
+            readonly ODBDictionary<TKey, TValue> _parent;
+
+            public KeysCollection(ODBDictionary<TKey, TValue> parent)
+            {
+                _parent = parent;
+            }
+
+            public IEnumerator<TKey> GetEnumerator()
+            {
+                bool taken = false;
+                try
+                {
+                    long prevProtectionCounter = 0;
+                    long pos = 0;
+                    while (true)
+                    {
+                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
+                        if (pos == 0)
+                        {
+                            prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                            _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                            if (!_parent._keyValueTr.FindFirstKey()) break;
+                        }
+                        else
+                        {
+                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                            {
+                                _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                                if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
+                            }
+                            else
+                            {
+                                if (!_parent._keyValueTr.FindNextKey()) break;
+                            }
+                        }
+                        var key = _parent.ByteArrayToKey(_parent._keyValueTr.ReadKey());
+                        _parent._keyValueTrProtector.Stop(ref taken);
+                        yield return key;
+                        pos++;
+                    }
+                }
+                finally
+                {
+                    _parent._keyValueTrProtector.Stop(ref taken);
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
+            public void Add(TKey item)
+            {
+                _parent.Add(item, default(TValue));
+            }
+
+            public void Clear()
+            {
+                _parent.Clear();
+            }
+
+            public bool Contains(TKey item)
+            {
+                return _parent.ContainsKey(item);
+            }
+
+            public void CopyTo(TKey[] array, int arrayIndex)
+            {
+                if (array == null) throw new ArgumentNullException("array");
+                if ((arrayIndex < 0) || (arrayIndex > array.Length))
+                {
+                    throw new ArgumentOutOfRangeException("arrayIndex", arrayIndex, "Needs to be nonnegative ");
+                }
+                if ((array.Length - arrayIndex) < Count)
+                {
+                    throw new ArgumentException("Array too small");
+                }
+                foreach (var item in this)
+                {
+                    array[arrayIndex++] = item;
+                }
+            }
+
+            public bool Remove(TKey item)
+            {
+                return _parent.Remove(item);
+            }
+
+            public int Count
+            {
+                get { return _parent.Count; }
+            }
+
+            public bool IsReadOnly
+            {
+                get { return false; }
+            }
+        }
+
         public ICollection<TKey> Keys
         {
-            get { throw new NotImplementedException(); }
+            get { return _keysCollection ?? (_keysCollection = new KeysCollection(this)); }
+        }
+
+        class ValuesCollection : ICollection<TValue>
+        {
+            readonly ODBDictionary<TKey, TValue> _parent;
+
+            public ValuesCollection(ODBDictionary<TKey, TValue> parent)
+            {
+                _parent = parent;
+            }
+
+            public IEnumerator<TValue> GetEnumerator()
+            {
+                bool taken = false;
+                try
+                {
+                    long prevProtectionCounter = 0;
+                    long pos = 0;
+                    while (true)
+                    {
+                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
+                        if (pos == 0)
+                        {
+                            prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                            _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                            if (!_parent._keyValueTr.FindFirstKey()) break;
+                        }
+                        else
+                        {
+                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                            {
+                                _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                                if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
+                            }
+                            else
+                            {
+                                if (!_parent._keyValueTr.FindNextKey()) break;
+                            }
+                        }
+                        var value = _parent.ByteArrayToValue(_parent._keyValueTr.ReadValue());
+                        _parent._keyValueTrProtector.Stop(ref taken);
+                        yield return value;
+                        pos++;
+                    }
+                }
+                finally
+                {
+                    _parent._keyValueTrProtector.Stop(ref taken);
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
+            public void Add(TValue item)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void Clear()
+            {
+                _parent.Clear();
+            }
+
+            public bool Contains(TValue item)
+            {
+                return this.Any(i => EqualityComparer<TValue>.Default.Equals(i, item));
+            }
+
+            public void CopyTo(TValue[] array, int arrayIndex)
+            {
+                if (array == null) throw new ArgumentNullException("array");
+                if ((arrayIndex < 0) || (arrayIndex > array.Length))
+                {
+                    throw new ArgumentOutOfRangeException("arrayIndex", arrayIndex, "Needs to be nonnegative ");
+                }
+                if ((array.Length - arrayIndex) < Count)
+                {
+                    throw new ArgumentException("Array too small");
+                }
+                foreach (var item in this)
+                {
+                    array[arrayIndex++] = item;
+                }
+            }
+
+            public bool Remove(TValue item)
+            {
+                throw new NotSupportedException();
+            }
+
+            public int Count
+            {
+                get { return _parent.Count; }
+            }
+
+            public bool IsReadOnly
+            {
+                get { return true; }
+            }
         }
 
         public ICollection<TValue> Values
         {
-            get { throw new NotImplementedException(); }
+            get { return _valuesCollection ?? (_valuesCollection = new ValuesCollection(this)); }
         }
     }
 }
