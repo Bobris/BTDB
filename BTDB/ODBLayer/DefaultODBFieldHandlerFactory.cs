@@ -15,16 +15,16 @@ namespace BTDB.ODBLayer
 
         public override bool TypeSupported(Type type)
         {
-            if (ODBDictionaryFieldHandler.IsCompatibleWith(type)) return true;
+            if (ODBDictionaryFieldHandler.IsCompatibleWith(type, FieldHandlerOptions.None)) return true;
             if (base.TypeSupported(type)) return true;
             if (DBObjectFieldHandler.IsCompatibleWith(type)) return true;
             return false;
         }
 
-        public override IFieldHandler CreateFromType(Type type)
+        public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
-            if (ODBDictionaryFieldHandler.IsCompatibleWith(type)) return new ODBDictionaryFieldHandler(_odb, type);
-            var result = base.CreateFromType(type);
+            if (ODBDictionaryFieldHandler.IsCompatibleWith(type, options)) return new ODBDictionaryFieldHandler(_odb, type);
+            var result = base.CreateFromType(type, options);
             if (result != null) return result;
             if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(_odb, type);
             return null;

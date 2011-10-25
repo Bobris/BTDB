@@ -20,9 +20,9 @@ namespace BTDB.Service
             return false;
         }
 
-        public override IFieldHandler CreateFromType(Type type)
+        public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
-            var result = base.CreateFromType(type);
+            var result = base.CreateFromType(type, options);
             if (result != null) return result;
             if (ServiceObjectFieldHandler.IsCompatibleWith(type)) return new ServiceObjectFieldHandler(_service, type);
             return null;

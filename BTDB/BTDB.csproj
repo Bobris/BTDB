@@ -47,7 +47,9 @@
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
-    <Compile Include="FieldHandler\SimpleFieldOrderableHandlerBase.cs" />
+    <Compile Include="FieldHandler\FieldHandlerOptions.cs" />
+    <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
+    <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
     <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />

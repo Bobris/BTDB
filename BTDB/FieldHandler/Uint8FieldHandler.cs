@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class Uint8FieldHandler : SimpleFieldOrderableHandlerBase, IFieldHandler
+    public class Uint8FieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public Uint8FieldHandler()
             : base(
@@ -24,7 +24,7 @@ namespace BTDB.FieldHandler
             return type == typeof(byte);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

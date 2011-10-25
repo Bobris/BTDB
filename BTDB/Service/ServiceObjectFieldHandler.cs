@@ -52,7 +52,7 @@ namespace BTDB.Service
             return (!type.IsInterface && !type.IsValueType);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

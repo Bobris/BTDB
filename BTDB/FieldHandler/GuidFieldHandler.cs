@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class GuidFieldHandler : SimpleFieldOrderableHandlerBase
+    public class GuidFieldHandler : SimpleFieldHandlerBase
     {
         public GuidFieldHandler(): base(
             EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadGuid()),

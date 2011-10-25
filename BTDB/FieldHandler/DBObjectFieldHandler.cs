@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -12,7 +11,7 @@ namespace BTDB.FieldHandler
         readonly IObjectDB _objectDB;
         readonly byte[] _configuration;
         readonly string _typeName;
-        Type _type;
+        readonly Type _type;
 
         public DBObjectFieldHandler(IObjectDB objectDB, Type type)
         {
@@ -52,8 +51,9 @@ namespace BTDB.FieldHandler
             return (!type.IsInterface && !type.IsValueType && !type.IsGenericType);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
+            if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
             return IsCompatibleWith(type);
         }
 

@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class EnumFieldHandler : IFieldHandler, IFieldHandleOrderable
+    public class EnumFieldHandler : IFieldHandler
     {
         readonly byte[] _configuration;
         readonly bool _signed;
@@ -119,17 +119,44 @@ namespace BTDB.FieldHandler
                 return enumBuilder.CreateType();
             }
 
-            public static bool operator == (EnumConfiguration left,EnumConfiguration right)
+            public static bool operator ==(EnumConfiguration left, EnumConfiguration right)
             {
-                if (left.Flags != right.Flags) return false;
-                if (!left.Names.SequenceEqual(right.Names)) return false;
-                if (!left.Values.SequenceEqual(right.Values)) return false;
-                return true;
+                if (ReferenceEquals(left, right)) return true;
+                if (ReferenceEquals(left, null)) return false;
+                return left.Equals(right);
             }
 
             public static bool operator !=(EnumConfiguration left, EnumConfiguration right)
             {
                 return !(left == right);
+            }
+
+            public bool Equals(EnumConfiguration other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return other._flags.Equals(_flags) 
+                    && _names.SequenceEqual(other._names)
+                    && _values.SequenceEqual(other._values);
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != typeof(EnumConfiguration)) return false;
+                return Equals((EnumConfiguration)obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int result = _flags.GetHashCode();
+                    result = (result * 397) ^ _names.GetHashCode();
+                    result = (result * 397) ^ _values.GetHashCode();
+                    return result;
+                }
             }
         }
 
@@ -241,7 +268,7 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type)
         {
-            if (_enumType==null)
+            if (_enumType == null)
             {
                 if (_configuration.SequenceEqual(new EnumConfiguration(type).ToConfiguration()))
                 {
@@ -256,24 +283,9 @@ namespace BTDB.FieldHandler
             return SpecializeLoadForType(type);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
-        }
-
-        public void LoadOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
-        {
-            Load(ilGenerator,pushReaderOrCtx);
-        }
-
-        public void SkipOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
-        {
-            Skip(ilGenerator,pushReaderOrCtx);
-        }
-
-        public void SaveOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
-        {
-            Save(ilGenerator,pushWriterOrCtx,pushValue);
         }
     }
 }

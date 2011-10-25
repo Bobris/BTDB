@@ -22,8 +22,8 @@ namespace BTDB.FieldHandler
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
-            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0]);
-            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1]);
+            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0],FieldHandlerOptions.None);
+            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1],FieldHandlerOptions.None);
             var writer = new ByteArrayWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
@@ -70,7 +70,7 @@ namespace BTDB.FieldHandler
             return type.GetGenericTypeDefinition() == typeof(IDictionary<,>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

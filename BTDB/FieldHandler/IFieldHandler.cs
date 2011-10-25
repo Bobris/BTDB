@@ -7,7 +7,7 @@ namespace BTDB.FieldHandler
     {
         string Name { get; }
         byte[] Configuration { get; }
-        bool IsCompatibleWith(Type type);
+        bool IsCompatibleWith(Type type, FieldHandlerOptions options);
         Type HandledType();
         bool NeedsCtx();
         void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
@@ -16,12 +16,5 @@ namespace BTDB.FieldHandler
 
         IFieldHandler SpecializeLoadForType(Type type);
         IFieldHandler SpecializeSaveForType(Type type);
-    }
-
-    public interface IFieldHandleOrderable : IFieldHandler
-    {
-        void LoadOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
-        void SkipOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
-        void SaveOrdered(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
     }
 }

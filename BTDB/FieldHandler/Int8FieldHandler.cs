@@ -4,16 +4,13 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class Int8FieldHandler : SimpleFieldOrderableHandlerBase, IFieldHandler
+    public class Int8FieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public Int8FieldHandler()
             : base(
                 EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadInt8()),
                 EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipInt8()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteInt8(0)),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadInt8Ordered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipInt8Ordered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteInt8Ordered(0)))
+                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteInt8(0)))
         {
         }
 
@@ -27,7 +24,7 @@ namespace BTDB.FieldHandler
             return type == typeof(sbyte);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

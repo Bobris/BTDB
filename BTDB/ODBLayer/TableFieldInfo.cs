@@ -39,7 +39,7 @@ namespace BTDB.ODBLayer
 
         public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory)
         {
-            var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType);
+            var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType, FieldHandlerOptions.None);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
             return new TableFieldInfo(pi.Name, fieldHandler);
         }
@@ -62,7 +62,7 @@ namespace BTDB.ODBLayer
             var cb = hb.Configuration;
             if (ca == cb) return true;
             if (ca == null || cb == null) return false;
-            if (ca.Length!=cb.Length) return false;
+            if (ca.Length != cb.Length) return false;
             if (BitArrayManipulation.CompareByteArray(ca, 0, ca.Length, cb, 0, cb.Length) != 0) return false;
             return true;
         }

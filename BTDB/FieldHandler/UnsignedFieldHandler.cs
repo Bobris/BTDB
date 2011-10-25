@@ -4,7 +4,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class UnsignedFieldHandler : SimpleFieldOrderableHandlerBase, IFieldHandler
+    public class UnsignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public UnsignedFieldHandler(): base(
             EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()),
@@ -27,7 +27,7 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

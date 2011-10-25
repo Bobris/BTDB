@@ -2,12 +2,14 @@ using System;
 
 namespace BTDB.FieldHandler
 {
-    public class DefaultFieldHandlerFactory: IFieldHandlerFactory
+    public class DefaultFieldHandlerFactory : IFieldHandlerFactory
     {
         static readonly IFieldHandler[] FieldHandlers = new IFieldHandler[]
             {
+                new StringOrderableFieldHandler(), 
                 new StringFieldHandler(),
                 new Uint8FieldHandler(), 
+                new Int8OrderableFieldHandler(), 
                 new Int8FieldHandler(), 
                 new SignedFieldHandler(),
                 new UnsignedFieldHandler(),
@@ -32,19 +34,19 @@ namespace BTDB.FieldHandler
             if (EnumFieldHandler.IsCompatibleWith(type)) return true;
             foreach (var fieldHandler in FieldHandlers)
             {
-                if (fieldHandler.IsCompatibleWith(type)) return true;
+                if (fieldHandler.IsCompatibleWith(type, FieldHandlerOptions.None)) return true;
             }
             if (ListFieldHandler.IsCompatibleWith(type)) return true;
             if (DictionaryFieldHandler.IsCompatibleWith(type)) return true;
             return false;
         }
 
-        public virtual IFieldHandler CreateFromType(Type type)
+        public virtual IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
             if (EnumFieldHandler.IsCompatibleWith(type)) return new EnumFieldHandler(type);
             foreach (var fieldHandler in FieldHandlers)
             {
-                if (fieldHandler.IsCompatibleWith(type)) return fieldHandler;
+                if (fieldHandler.IsCompatibleWith(type, options)) return fieldHandler;
             }
             if (ListFieldHandler.IsCompatibleWith(type)) return new ListFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);
             if (DictionaryFieldHandler.IsCompatibleWith(type)) return new DictionaryFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, type);

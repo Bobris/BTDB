@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using BTDB.FieldHandler;
@@ -25,8 +24,8 @@ namespace BTDB.ODBLayer
             _fieldHandlerFactory = odb.FieldHandlerFactory;
             _typeConvertorGenerator = odb.TypeConvertorGenerator;
             _type = type;
-            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0]);
-            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1]);
+            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
             var writer = new ByteArrayWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
@@ -49,19 +48,21 @@ namespace BTDB.ODBLayer
         void CreateConfiguration()
         {
             HandledType();
-            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, _valuesHandler);
-            cfg.KeyReader = CreateReader(_keysHandler, _type.GetGenericArguments()[0], true);
-            cfg.KeyWriter = CreateWriter(_keysHandler, _type.GetGenericArguments()[0], true);
-            cfg.ValueReader = CreateReader(_valuesHandler, _type.GetGenericArguments()[1], false);
-            cfg.ValueWriter = CreateWriter(_valuesHandler, _type.GetGenericArguments()[1], false);
+            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, _valuesHandler)
+                {
+                    KeyReader = CreateReader(_keysHandler, _type.GetGenericArguments()[0]),
+                    KeyWriter = CreateWriter(_keysHandler, _type.GetGenericArguments()[0]),
+                    ValueReader = CreateReader(_valuesHandler, _type.GetGenericArguments()[1]),
+                    ValueWriter = CreateWriter(_valuesHandler, _type.GetGenericArguments()[1])
+                };
             _configurationId = ((IInstanceRegistry)_odb).RegisterInstance(cfg);
         }
 
-        object CreateWriter(IFieldHandler fieldHandler, Type realType, bool ordered)
+        object CreateWriter(IFieldHandler fieldHandler, Type realType)
         {
             //Action<T, AbstractBufferedWriter, IWriterCtx>
             var delegateType = typeof(Action<,,>).MakeGenericType(realType, typeof(AbstractBufferedWriter), typeof(IWriterCtx));
-            var dm = new DynamicMethodSpecific(fieldHandler.Name + (ordered ? "Ordered" : "") + "Writer", delegateType);
+            var dm = new DynamicMethodSpecific(fieldHandler.Name + "Writer", delegateType);
             var ilGenerator = dm.GetILGenerator();
             Action<ILGenerator> pushWriterOrCtx;
             if (fieldHandler.NeedsCtx())
@@ -72,26 +73,18 @@ namespace BTDB.ODBLayer
             {
                 pushWriterOrCtx = il => il.Ldarg(1);
             }
-            if (ordered && fieldHandler is IFieldHandleOrderable)
-            {
-                ((IFieldHandleOrderable)fieldHandler).SaveOrdered(ilGenerator, pushWriterOrCtx,
-                    il => il.Ldarg(0).Do(_typeConvertorGenerator.GenerateConversion(realType, fieldHandler.HandledType())));
-            }
-            else
-            {
-                fieldHandler.Save(ilGenerator, pushWriterOrCtx,
-                    il => il.Ldarg(0).Do(_typeConvertorGenerator.GenerateConversion(realType, fieldHandler.HandledType())));
-            }
+            fieldHandler.Save(ilGenerator, pushWriterOrCtx,
+                il => il.Ldarg(0).Do(_typeConvertorGenerator.GenerateConversion(realType, fieldHandler.HandledType())));
             ilGenerator.Ret();
             return dm.Create();
         }
 
-        object CreateReader(IFieldHandler fieldHandler, Type realType, bool ordered)
+        object CreateReader(IFieldHandler fieldHandler, Type realType)
         {
             //Func<AbstractBufferedReader, IReaderCtx, T>
             var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx),
                                                                  realType);
-            var dm = new DynamicMethodSpecific(fieldHandler.Name + (ordered ? "Ordered" : "") + "Reader", delegateType);
+            var dm = new DynamicMethodSpecific(fieldHandler.Name + "Reader", delegateType);
             var ilGenerator = dm.GetILGenerator();
             Action<ILGenerator> pushReaderOrCtx;
             if (fieldHandler.NeedsCtx())
@@ -102,14 +95,7 @@ namespace BTDB.ODBLayer
             {
                 pushReaderOrCtx = il => il.Ldarg(0);
             }
-            if (ordered && fieldHandler is IFieldHandleOrderable)
-            {
-                ((IFieldHandleOrderable)fieldHandler).LoadOrdered(ilGenerator, pushReaderOrCtx);
-            }
-            else
-            {
-                fieldHandler.Load(ilGenerator, pushReaderOrCtx);
-            }
+            fieldHandler.Load(ilGenerator, pushReaderOrCtx);
             ilGenerator
                 .Do(_typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), realType))
                 .Ret();
@@ -131,15 +117,16 @@ namespace BTDB.ODBLayer
             get { return _configuration; }
         }
 
-        public static bool IsCompatibleWith(Type type)
+        public static bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
+            if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
             if (!type.IsGenericType) return false;
             return type.GetGenericTypeDefinition() == typeof(IDictionary<,>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
-            return IsCompatibleWith(type);
+            return IsCompatibleWith(type, options);
         }
 
         public Type HandledType()

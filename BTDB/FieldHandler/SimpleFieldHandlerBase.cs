@@ -5,6 +5,19 @@ using BTDB.IL;
 
 namespace BTDB.FieldHandler
 {
+    public abstract class SimpleFieldHandlerJustOrderableBase : SimpleFieldHandlerBase
+    {
+        protected SimpleFieldHandlerJustOrderableBase(MethodInfo loader, MethodInfo skipper, MethodInfo saver):base(loader,skipper,saver)
+        {
+        }
+
+        public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)
+        {
+            if (!options.HasFlag(FieldHandlerOptions.Orderable)) return false;
+            return base.IsCompatibleWith(type, options);
+        }
+    }
+
     public abstract class SimpleFieldHandlerBase : IFieldHandler
     {
         readonly MethodInfo _loader;
@@ -25,7 +38,7 @@ namespace BTDB.FieldHandler
             get { return null; }
         }
 
-        public virtual bool IsCompatibleWith(Type type)
+        public virtual bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return _loader.ReturnType == type;
         }

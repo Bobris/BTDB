@@ -12,7 +12,7 @@ namespace BTDB.Service
         public ParameterInf(ParameterInfo parameter, IFieldHandlerFactory fieldHandlerFactory)
         {
             _name = parameter.Name;
-            _fieldHandler = fieldHandlerFactory.CreateFromType(parameter.ParameterType);
+            _fieldHandler = fieldHandlerFactory.CreateFromType(parameter.ParameterType, FieldHandlerOptions.None);
         }
 
         public ParameterInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)

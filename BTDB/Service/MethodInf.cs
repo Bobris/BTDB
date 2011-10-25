@@ -19,7 +19,7 @@ namespace BTDB.Service
             var methodBase = method.GetBaseDefinition();
             var syncReturnType = method.ReturnType.UnwrapTask();
             if (syncReturnType != typeof(void))
-                _resultFieldHandler = fieldHandlerFactory.CreateFromType(syncReturnType);
+                _resultFieldHandler = fieldHandlerFactory.CreateFromType(syncReturnType, FieldHandlerOptions.None);
             if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];

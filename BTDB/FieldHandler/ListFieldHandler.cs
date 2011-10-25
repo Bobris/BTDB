@@ -20,7 +20,7 @@ namespace BTDB.FieldHandler
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
-            _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0]);
+            _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
             var writer = new ByteArrayWriter();
             writer.WriteFieldHandler(_itemsHandler);
             _configuration = writer.Data;
@@ -64,7 +64,7 @@ namespace BTDB.FieldHandler
             return type.GetGenericTypeDefinition() == typeof(IList<>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type)
+        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }
@@ -226,7 +226,7 @@ namespace BTDB.FieldHandler
                 Debug.Fail("even more strange");
                 return this;
             }
-            return new ListFieldHandler(_fieldHandlerFactory,_typeConvertorGenerator,type,itemSpecialized);
+            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
         }
 
     }

@@ -18,7 +18,7 @@ namespace BTDB.FieldHandler
             get { return "Double"; }
         }
 
-        public override bool IsCompatibleWith(Type type)
+        public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return type == typeof(double) || type == typeof(float);
         }
