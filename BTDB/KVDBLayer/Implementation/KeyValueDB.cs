@@ -1215,13 +1215,13 @@ namespace BTDB.KVDBLayer
         void RealSectorAllocate(Sector unallocatedSector)
         {
             Debug.Assert(unallocatedSector.InCache);
+            long newPosition = AllocateSpace(unallocatedSector.Length);
             int ofsInParent = -1;
             if (unallocatedSector.Parent != null)
             {
                 unallocatedSector.Parent = DirtizeSector(unallocatedSector.Parent, unallocatedSector.Parent.Parent, null);
                 ofsInParent = FindOfsInParent(unallocatedSector, unallocatedSector.Parent);
             }
-            long newPosition = AllocateSpace(unallocatedSector.Length);
             using (_cacheLock.WriteLock())
             {
                 _sectorCache.Remove(unallocatedSector.Position);

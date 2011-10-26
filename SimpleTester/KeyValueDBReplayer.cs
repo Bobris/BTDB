@@ -8,10 +8,10 @@ namespace SimpleTester
 {
     class KeyValueDBReplayer
     {
-        AbstractBufferedReader _reader;
-        IKeyValueDB _db = new KeyValueDB();
+        readonly AbstractBufferedReader _reader;
+        readonly IKeyValueDB _db = new KeyValueDB();
         IPositionLessStream _dbstream;
-        Dictionary<uint, IKeyValueDBTransaction> _trs = new Dictionary<uint, IKeyValueDBTransaction>();
+        readonly Dictionary<uint, IKeyValueDBTransaction> _trs = new Dictionary<uint, IKeyValueDBTransaction>();
 
         public KeyValueDBReplayer(string logname)
         {
@@ -32,6 +32,7 @@ namespace SimpleTester
                 int keyLen;
                 int keyOfs;
                 byte[] keyBuf;
+                long ofs;
                 switch (operation)
                 {
                     case KVReplayOperation.Open:
@@ -90,6 +91,20 @@ namespace SimpleTester
                         tr = _trs[tri];
                         tr.GetKeyIndex();
                         break;
+                    case KVReplayOperation.GetKeySize:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        tr.GetKeySize();
+                        break;
+                    case KVReplayOperation.ReadKey:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        ofs = _reader.ReadVInt32();
+                        keyLen = _reader.ReadVInt32();
+                        keyOfs = _reader.ReadVInt32();
+                        keyBuf = new byte[keyOfs + keyLen];
+                        tr.ReadKey((int)ofs, keyLen, keyBuf, keyOfs);
+                        break;
                     case KVReplayOperation.SetValue:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
@@ -99,16 +114,36 @@ namespace SimpleTester
                         _reader.ReadBlock(valBuf, valOfs, valLen);
                         tr.SetValue(valBuf, valOfs, valLen);
                         break;
+                    case KVReplayOperation.GetValueSize:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        tr.GetValueSize();
+                        break;
                     case KVReplayOperation.SetValueSize:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
                         var valueSize = _reader.ReadVInt64();
                         tr.SetValueSize(valueSize);
                         break;
+                    case KVReplayOperation.ReadValue:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        ofs = _reader.ReadVInt64();
+                        valLen = _reader.ReadVInt32();
+                        valOfs = _reader.ReadVInt32();
+                        valBuf = new byte[valOfs + valLen];
+                        tr.ReadValue(ofs, valLen, valBuf, valOfs);
+                        break;
+                    case KVReplayOperation.PeekValue:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        ofs = _reader.ReadVInt64();
+                        tr.PeekValue(ofs, out valLen, out valBuf, out valOfs);
+                        break;
                     case KVReplayOperation.WriteValue:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
-                        var ofs = _reader.ReadVInt64();
+                        ofs = _reader.ReadVInt64();
                         valOfs = _reader.ReadVInt32();
                         valLen = _reader.ReadVInt32();
                         valBuf = new byte[valOfs + valLen];
@@ -153,6 +188,11 @@ namespace SimpleTester
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
                         tr.FindFirstKey();
+                        break;
+                    case KVReplayOperation.FindLastKey:
+                        tri = _reader.ReadVUInt32();
+                        tr = _trs[tri];
+                        tr.FindLastKey();
                         break;
                     case KVReplayOperation.FindPreviousKey:
                         tri = _reader.ReadVUInt32();

@@ -950,6 +950,27 @@ namespace BTDBTest
         }
 
         [Test]
+        public void ALotOf5KBTransactionsWorks()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                for (int i = 0; i < 5000; i++)
+                {
+                    var key = new byte[5000];
+                    using (var tr = db.StartTransaction())
+                    {
+                        key[0] = (byte)(i/256);
+                        key[1] = (byte)(i%256);
+                        Assert.True(tr.CreateKey(key));
+                        tr.Commit();
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void StartWritingTransactionWorks()
         {
             using (var stream = CreateTestStream())
