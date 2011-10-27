@@ -285,5 +285,11 @@ namespace BTDB.StreamLayer
             WriteVUInt32((uint)(value.Length + 1));
             WriteBlock(value);
         }
+
+        public void WriteByteArrayRaw(byte[] value)
+        {
+            if (value == null) return;
+            WriteBlock(value);
+        }
     }
 }

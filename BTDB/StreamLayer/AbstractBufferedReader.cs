@@ -529,5 +529,21 @@ namespace BTDB.StreamLayer
             if (length == 0) return;
             SkipBlock(length - 1);
         }
+
+        public byte[] ReadByteArrayRawTillEof()
+        {
+            byte[] buffer = null;
+            int length = 0;
+            while (!Eof)
+            {
+                var l = End - Pos;
+                Array.Resize(ref buffer, length + l);
+                Array.Copy(Buf, Pos, buffer, length, l);
+                length += l;
+                Pos = End;
+            }
+            if (buffer == null) return BitArrayManipulation.EmptyByteArray;
+            return buffer;
+        }
     }
 }

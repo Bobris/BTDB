@@ -716,6 +716,38 @@ namespace BTDBTest
             }
         }
 
+        public class ByteArrayDictionary
+        {
+            public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; }
+        }
+
+
+        [Test]
+        public void DictionaryOfByteArrayKeysAndValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<ByteArrayDictionary>();
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ByteArrayDictionary>();
+                root.Bytes2Bytes.Add(new byte[] { 2 }, new byte[] { 2, 2 });
+                root.Bytes2Bytes.Add(new byte[] { 1, 0xFF }, new byte[] { 1 });
+                root.Bytes2Bytes.Add(new byte[0], new byte[0]);
+                 
+                AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[0], new byte[0]), root.Bytes2Bytes.First());
+                AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[] { 1, 0xFF }, new byte[] { 1 }), root.Bytes2Bytes.Skip(1).First());
+                AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[] { 2 }, new byte[] { 2, 2 }), root.Bytes2Bytes.Skip(2).First());
+            }
+        }
+
+        void AssertEqual(KeyValuePair<byte[], byte[]> expected, KeyValuePair<byte[], byte[]> actual)
+        {
+            Assert.True(expected.Key.SequenceEqual(actual.Key));
+            Assert.True(expected.Value.SequenceEqual(actual.Value));
+        }
 
         public enum TestEnumUlong : ulong
         {

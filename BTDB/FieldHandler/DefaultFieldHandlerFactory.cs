@@ -19,6 +19,7 @@ namespace BTDB.FieldHandler
                 new DateTimeFieldHandler(),
                 new TimeSpanFieldHandler(), 
                 new GuidFieldHandler(),
+                new ByteArrayLastFieldHandler(), 
                 new ByteArrayFieldHandler(),
             };
 

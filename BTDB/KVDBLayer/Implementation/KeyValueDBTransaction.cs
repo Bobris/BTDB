@@ -19,8 +19,7 @@ namespace BTDB.KVDBLayer
         byte[] _prefix;
         long _prefixKeyStart;
         long _prefixKeyCount;
-        static readonly byte[] EmptyByteArray = new byte[0];
-
+        
         internal KeyValueDBTransaction(KeyValueDB owner, KeyValueDB.ReadTrLink readLink)
         {
             _owner = owner;
@@ -28,7 +27,7 @@ namespace BTDB.KVDBLayer
             _currentKeySector = null;
             _currentKeyIndexInLeaf = -1;
             _currentKeyIndex = -1;
-            _prefix = EmptyByteArray;
+            _prefix = BitArrayManipulation.EmptyByteArray;
             _prefixKeyStart = 0;
             _prefixKeyCount = (long)_readLink.KeyValuePairCount;
         }
@@ -70,7 +69,7 @@ namespace BTDB.KVDBLayer
 
         public void SetKeyPrefix(byte[] prefix, int prefixOfs, int prefixLen)
         {
-            _prefix = EmptyByteArray;
+            _prefix = BitArrayManipulation.EmptyByteArray;
             if (prefixLen == 0)
             {
                 _prefixKeyStart = 0;
@@ -120,7 +119,7 @@ namespace BTDB.KVDBLayer
                 InvalidateCurrentKey();
                 return false;
             }
-            FindKey(EmptyByteArray, 0, 0, FindKeyStrategy.OnlyNext);
+            FindKey(BitArrayManipulation.EmptyByteArray, 0, 0, FindKeyStrategy.OnlyNext);
             return true;
         }
 
@@ -131,7 +130,7 @@ namespace BTDB.KVDBLayer
                 InvalidateCurrentKey();
                 return false;
             }
-            FindKey(EmptyByteArray, -1, 0, FindKeyStrategy.OnlyPrevious);
+            FindKey(BitArrayManipulation.EmptyByteArray, -1, 0, FindKeyStrategy.OnlyPrevious);
             _prefixKeyCount = _currentKeyIndex - _prefixKeyStart + 1;
             return true;
         }
@@ -269,7 +268,7 @@ namespace BTDB.KVDBLayer
         {
             if (_prefix.Length == 0) return true;
             var backupPrefix = _prefix;
-            _prefix = EmptyByteArray;
+            _prefix = BitArrayManipulation.EmptyByteArray;
             try
             {
                 if (GetKeySize() < backupPrefix.Length)

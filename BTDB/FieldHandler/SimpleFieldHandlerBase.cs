@@ -61,6 +61,7 @@ namespace BTDB.FieldHandler
 
         public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
+            if (_skipper == null) return;
             pushReaderOrCtx(ilGenerator);
             ilGenerator.Call(_skipper);
         }

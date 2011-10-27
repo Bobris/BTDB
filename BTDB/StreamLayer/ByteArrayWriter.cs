@@ -1,4 +1,5 @@
 using System;
+using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
 {
@@ -17,7 +18,7 @@ namespace BTDB.StreamLayer
             get
             {
                 FinalFlushIfNeeded();
-                return _result;
+                return _result ?? BitArrayManipulation.EmptyByteArray;
             }
         }
 
