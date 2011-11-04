@@ -613,6 +613,63 @@ namespace BTDBTest
             }
         }
 
+        public class InlineDictionary
+        {
+            public Dictionary<int, string> Int2String { get; set; }
+        }
+
+        [Test]
+        public void InlineDictionariesOfSimpleValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                Assert.AreEqual(2, root.Int2String.Count);
+                Assert.AreEqual("one", root.Int2String[1]);
+                Assert.AreEqual(null, root.Int2String[0]);
+                root.Int2String.Clear();
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                Assert.AreEqual(0, root.Int2String.Count);
+                root.Int2String = null;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                Assert.IsNull(root.Int2String);
+            }
+        }
+
+        [Test]
+        public void InlineDictionariesOfSimpleValuesSkip()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Empty), "InlineDictionary");
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<Empty>();
+            }
+        }
+
+
         public class SimpleDictionary
         {
             public IDictionary<int, string> Int2String { get; set; }

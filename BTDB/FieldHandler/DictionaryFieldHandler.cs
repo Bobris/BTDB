@@ -67,7 +67,7 @@ namespace BTDB.FieldHandler
         public static bool IsCompatibleWith(Type type)
         {
             if (!type.IsGenericType) return false;
-            return type.GetGenericTypeDefinition() == typeof(IDictionary<,>);
+            return type.GetGenericTypeDefinition() == typeof(IDictionary<,>) || type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
         }
 
         bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
