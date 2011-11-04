@@ -78,7 +78,7 @@ namespace BTDB.FieldHandler
                 .Pop();
             ilGenerator.Ldloc(localResultOfObject);
             var type = HandledType();
-            if (type != typeof(object)) ilGenerator.Isinst(type);
+            ilGenerator.Do(_objectDB.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
 
         public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
@@ -94,7 +94,7 @@ namespace BTDB.FieldHandler
             ilGenerator
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
-                .Castclass(typeof(object))
+                .Do(_objectDB.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
                 .Callvirt(() => ((IWriterCtx)null).WriteObject(null))
                 .Pop();
         }

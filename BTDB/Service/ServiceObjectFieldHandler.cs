@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Reflection.Emit;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -12,7 +11,7 @@ namespace BTDB.Service
         readonly IServiceInternal _service;
         readonly byte[] _configuration;
         readonly string _typeName;
-        Type _type;
+        readonly Type _type;
 
         public ServiceObjectFieldHandler(IServiceInternal service, Type type)
         {
@@ -78,7 +77,7 @@ namespace BTDB.Service
                 .Pop();
             ilGenerator.Ldloc(localResultOfObject);
             var type = HandledType();
-            if (type != typeof(object)) ilGenerator.Isinst(type);
+            ilGenerator.Do(_service.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
 
         public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
@@ -94,7 +93,7 @@ namespace BTDB.Service
             ilGenerator
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
-                .Castclass(typeof(object))
+                .Do(_service.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
                 .Callvirt(() => ((IWriterCtx)null).WriteObject(null))
                 .Pop();
         }

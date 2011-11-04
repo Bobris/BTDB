@@ -52,6 +52,14 @@ namespace BTDB.FieldHandler
         public Action<ILGenerator> GenerateConversion(Type from, Type to)
         {
             if (from == to) return ilg => { };
+            if (!from.IsValueType && to == typeof(object))
+            {
+                return i => i.Castclass(to);
+            }
+            if (from == typeof(object) && !to.IsValueType)
+            {
+                return i => i.Isinst(to);
+            }
             Action<ILGenerator> generator;
             if (_conversions.TryGetValue(new Tuple<Type, Type>(from, to), out generator))
             {
@@ -129,7 +137,7 @@ namespace BTDB.FieldHandler
 
         public static bool Convert2Bool(int value)
         {
-            return value!=0;
+            return value != 0;
         }
 
     }
