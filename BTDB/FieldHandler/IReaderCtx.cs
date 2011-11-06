@@ -9,8 +9,10 @@ namespace BTDB.FieldHandler
         // Register last deserialized object
         void RegisterObject(object @object);
         void ReadObjectDone();
+        object ReadNativeObject();
         // Returns true if actual content needs to be deserialized
         bool SkipObject();
+        void SkipNativeObject();
         
         AbstractBufferedReader Reader();
     }

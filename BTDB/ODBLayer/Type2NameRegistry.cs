@@ -19,7 +19,7 @@ namespace BTDB.ODBLayer
                 if (ReferenceEquals(existing, asName)) return existing;
                 if (existing != null)
                 {
-                    throw new BTDBException(string.Format("Type {0} is already registered for {1}. Cannot reregister for {2}.", type, existing, asName));
+                    throw new BTDBException(string.Format("Type {0} is already registered as {1}. Cannot reregister as {2}.", type, existing, asName));
                 }
                 _type2Name.TryAdd(type, asName);
                 _name2Type.TryAdd(asName, type);

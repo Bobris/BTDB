@@ -1,4 +1,5 @@
 using System;
+using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.Service
@@ -9,5 +10,6 @@ namespace BTDB.Service
         void FinishResultMarshaling(AbstractBufferedWriter writer);
         void ExceptionMarshaling(uint resultId, Exception ex);
         void VoidResultMarshaling(uint resultId);
+        object LoadObjectOnServer(IReaderCtx readerCtx);
     }
 }

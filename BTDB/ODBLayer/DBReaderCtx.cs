@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
-using BTDB.FieldHandler;
+using System.IO;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -80,6 +80,14 @@ namespace BTDB.ODBLayer
             if (returnPos != null) returnPos.Restore();
         }
 
+        public object ReadNativeObject()
+        {
+            object @object;
+            var test=ReadObject(out @object);
+            if (test) throw new InvalidDataException();
+            return @object;
+        }
+
         public bool SkipObject()
         {
             var id = _reader.ReadVInt64();
@@ -99,6 +107,12 @@ namespace BTDB.ODBLayer
             }
             _objects[ido] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
             return true;
+        }
+
+        public void SkipNativeObject()
+        {
+            var test = SkipObject();
+            if (test) throw new InvalidDataException();
         }
 
         object RetriveObj(int ido)

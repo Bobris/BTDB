@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BTDB.StreamLayer;
 
@@ -40,6 +41,12 @@ namespace BTDB.ODBLayer
             _objectIdMap.Add(@object, _lastId);
             _writer.WriteVInt64(-_lastId);
             return true;
+        }
+
+        public void WriteNativeObject(object @object)
+        {
+            var test = WriteObject(@object);
+            if (test) throw new InvalidOperationException();
         }
 
         public AbstractBufferedWriter Writer()

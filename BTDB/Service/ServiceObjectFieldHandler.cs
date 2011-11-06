@@ -11,7 +11,7 @@ namespace BTDB.Service
         readonly IServiceInternal _service;
         readonly byte[] _configuration;
         readonly string _typeName;
-        readonly Type _type;
+        Type _type;
 
         public ServiceObjectFieldHandler(IServiceInternal service, Type type)
         {
@@ -58,6 +58,7 @@ namespace BTDB.Service
 
         public Type HandledType()
         {
+            if (_type == null) _type = _service.TypeByName(_typeName);
             return _type ?? typeof(object);
         }
 
@@ -68,14 +69,9 @@ namespace BTDB.Service
 
         public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            var localResultOfObject = ilGenerator.DeclareLocal(typeof(object));
-            object fake;
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Ldloca(localResultOfObject)
-                .Callvirt(() => ((IReaderCtx)null).ReadObject(out fake))
-                .Pop();
-            ilGenerator.Ldloc(localResultOfObject);
+                .Callvirt(() => ((IReaderCtx)null).ReadNativeObject());
             var type = HandledType();
             ilGenerator.Do(_service.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
@@ -84,8 +80,7 @@ namespace BTDB.Service
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Callvirt(() => ((IReaderCtx)null).SkipObject())
-                .Pop();
+                .Callvirt(() => ((IReaderCtx) null).SkipNativeObject());
         }
 
         public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
@@ -94,8 +89,7 @@ namespace BTDB.Service
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
                 .Do(_service.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
-                .Callvirt(() => ((IWriterCtx)null).WriteObject(null))
-                .Pop();
+                .Callvirt(() => ((IWriterCtx)null).WriteNativeObject(null));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type)

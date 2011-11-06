@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.FieldHandler;
@@ -7,13 +8,25 @@ namespace BTDB.Service
 {
     public class ServiceReaderCtx : IReaderCtx
     {
+        readonly IServiceInternalServer _serviceServer;
+        readonly IServiceInternalClient _serviceClient;
         readonly AbstractBufferedReader _reader;
         List<object> _objects;
         Stack<IMemorizedPosition> _returningStack;
         int _lastIdOfObj;
 
-        public ServiceReaderCtx(AbstractBufferedReader reader)
+        public ServiceReaderCtx(IServiceInternalServer serviceServer, AbstractBufferedReader reader)
         {
+            _serviceServer = serviceServer;
+            _serviceClient = null;
+            _reader = reader;
+            _lastIdOfObj = 0;
+        }
+
+        public ServiceReaderCtx(IServiceInternalClient serviceClient, AbstractBufferedReader reader)
+        {
+            _serviceServer = null;
+            _serviceClient = serviceClient;
             _reader = reader;
             _lastIdOfObj = 0;
         }
@@ -73,6 +86,24 @@ namespace BTDB.Service
             if (returnPos != null) returnPos.Restore();
         }
 
+        public object ReadNativeObject()
+        {
+            object @object;
+            if (ReadObject(out @object))
+            {
+                if (_serviceServer != null)
+                {
+                    @object = _serviceServer.LoadObjectOnServer(this);
+                    ReadObjectDone();
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
+            }
+            return @object;
+        }
+
         public bool SkipObject()
         {
             var id = (int)_reader.ReadVUInt32();
@@ -88,6 +119,11 @@ namespace BTDB.Service
             }
             _objects[id] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
             return true;
+        }
+
+        public void SkipNativeObject()
+        {
+            throw new NotImplementedException();
         }
 
         object RetriveObj(int ido)

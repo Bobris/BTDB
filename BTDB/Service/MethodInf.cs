@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -85,6 +86,15 @@ namespace BTDB.Service
             foreach (var parameter in _parameters)
             {
                 parameter.Store(writer);
+            }
+        }
+
+        public IEnumerable<IFieldHandler> EnumerateFieldHandlers()
+        {
+            if (_resultFieldHandler != null) yield return _resultFieldHandler;
+            foreach (var parameterInf in _parameters)
+            {
+                yield return parameterInf.FieldHandler;
             }
         }
     }

@@ -9,9 +9,20 @@ namespace BTDB.Service
         readonly AbstractBufferedWriter _writer;
         Dictionary<object, uint> _objectIdMap;
         uint _lastId;
+        readonly IServiceInternalClient _serviceClient;
+        readonly IServiceInternalServer _serviceServer;
 
-        public ServiceWriterCtx(AbstractBufferedWriter writer)
+        public ServiceWriterCtx(IServiceInternalClient serviceClient, AbstractBufferedWriter writer)
         {
+            _serviceClient = serviceClient;
+            _serviceServer = null;
+            _writer = writer;
+        }
+
+        public ServiceWriterCtx(IServiceInternalServer serviceServer, AbstractBufferedWriter writer)
+        {
+            _serviceClient = null;
+            _serviceServer = serviceServer;
             _writer = writer;
         }
 
@@ -33,6 +44,19 @@ namespace BTDB.Service
             _objectIdMap.Add(@object, _lastId);
             _writer.WriteVUInt32(_lastId);
             return true;
+        }
+
+        public void WriteNativeObject(object @object)
+        {
+            if (WriteObject(@object))
+            {
+                if (_serviceClient != null)
+                {
+                    _serviceClient.WriteObjectForServer(@object, this);
+                    return;
+                }
+                throw new System.NotImplementedException();
+            }
         }
 
         public AbstractBufferedWriter Writer()

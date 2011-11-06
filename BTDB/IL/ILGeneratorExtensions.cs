@@ -449,5 +449,10 @@ namespace BTDB.IL
             return il;
         }
 
+        public static ILGenerator Dup(this ILGenerator il)
+        {
+            il.Emit(OpCodes.Dup);
+            return il;
+        }
     }
 }

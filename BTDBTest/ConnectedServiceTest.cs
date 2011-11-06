@@ -348,19 +348,19 @@ namespace BTDBTest
             Assert.AreEqual(new Dictionary<int, int> { { 1, 5 }, { 2, 6 }, { 3, 7 } }, d(new Dictionary<int, int> { { 5, 1 }, { 6, 2 }, { 7, 3 } }));
         }
 
-        public class SimpleObject
+        public class SimpleDTO
         {
             public string Name { get; set; }
             public double Number { get; set; }
         }
 
-        [Test, Ignore]
-        public void SupportSimpleObjectsAsParameters()
+        [Test]
+        public void SupportSimpleDTOAsParameter()
         {
-            SimpleObject received = null;
-            _first.RegisterMyService((Action<SimpleObject>)(a => received = a));
-            var d = _second.QueryOtherService<Action<SimpleObject>>();
-            d(new SimpleObject { Name = "Text", Number = 3.14 });
+            SimpleDTO received = null;
+            _first.RegisterMyService((Action<SimpleDTO>)(a => received = a));
+            var d = _second.QueryOtherService<Action<SimpleDTO>>();
+            d(new SimpleDTO { Name = "Text", Number = 3.14 });
             Assert.NotNull(received);
             Assert.AreEqual("Text", received.Name);
             Assert.AreEqual(3.14, received.Number, 1e-14);

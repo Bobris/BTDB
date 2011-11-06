@@ -9,7 +9,7 @@ namespace BTDB.Service
         internal uint ServiceId { get; set; }
         internal uint MethodId { get; set; }
         internal bool OneWay { get; set; }
-        internal Action<object, AbstractBufferedReader> HandleResult { get; set; }
+        internal Action<object, AbstractBufferedReader, IServiceInternalClient> HandleResult { get; set; }
         internal Action<object, Exception> HandleException { get; set; }
         internal Action<object> HandleCancellation { get; set; }
         internal Func<TaskWithSource> TaskWithSourceCreator { get; set; }
