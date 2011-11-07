@@ -11,5 +11,6 @@ namespace BTDB.Service
         AbstractBufferedWriter StartOneWayMarshaling(ClientBindInf binding);
         void FinishOneWayMarshaling(AbstractBufferedWriter writer);
         void WriteObjectForServer(object @object, IWriterCtx writerCtx);
+        object LoadObjectOnClient(IReaderCtx readerCtx);
     }
 }

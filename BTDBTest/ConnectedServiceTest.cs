@@ -366,5 +366,16 @@ namespace BTDBTest
             Assert.AreEqual(3.14, received.Number, 1e-14);
         }
 
+        [Test]
+        public void SupportSimpleDTOAsResult()
+        {
+            _first.RegisterMyService((Func<SimpleDTO>)(() => new SimpleDTO { Name = "Text", Number = 3.14 }));
+            var d = _second.QueryOtherService<Func<SimpleDTO>>();
+            var received = d();
+            Assert.NotNull(received);
+            Assert.AreEqual("Text", received.Name);
+            Assert.AreEqual(3.14, received.Number, 1e-14);
+        }
+
     }
 }

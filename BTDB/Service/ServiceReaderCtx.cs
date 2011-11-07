@@ -91,15 +91,8 @@ namespace BTDB.Service
             object @object;
             if (ReadObject(out @object))
             {
-                if (_serviceServer != null)
-                {
-                    @object = _serviceServer.LoadObjectOnServer(this);
-                    ReadObjectDone();
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
+                @object = _serviceServer != null ? _serviceServer.LoadObjectOnServer(this) : _serviceClient.LoadObjectOnClient(this);
+                ReadObjectDone();
             }
             return @object;
         }

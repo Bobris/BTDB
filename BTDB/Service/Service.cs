@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive;
@@ -47,6 +48,7 @@ namespace BTDB.Service
         readonly ConcurrentDictionary<uint, uint> _serverKnownServicesTypes = new ConcurrentDictionary<uint, uint>();
         readonly ConcurrentDictionary<uint, TypeInf> _serverTypeInfs = new ConcurrentDictionary<uint, TypeInf>();
         readonly ConcurrentDictionary<Type, uint> _serverType2Id = new ConcurrentDictionary<Type, uint>();
+        readonly ConcurrentDictionary<Type, Action<object, IWriterCtx>> _serverType2Saver = new ConcurrentDictionary<Type, Action<object, IWriterCtx>>();
         readonly ConcurrentDictionary<uint, Func<IReaderCtx, object>> _serverTypeId2Loader = new ConcurrentDictionary<uint, Func<IReaderCtx, object>>();
         readonly ConcurrentDictionary<uint, ServerBindInf> _serverBindings = new ConcurrentDictionary<uint, ServerBindInf>();
 
@@ -54,6 +56,7 @@ namespace BTDB.Service
         readonly ConcurrentDictionary<uint, uint> _clientKnownServicesTypes = new ConcurrentDictionary<uint, uint>();
         readonly ConcurrentDictionary<uint, ClientBindInf> _clientBindings = new ConcurrentDictionary<uint, ClientBindInf>();
         readonly ConcurrentDictionary<Type, Action<object, IWriterCtx>> _clientType2Saver = new ConcurrentDictionary<Type, Action<object, IWriterCtx>>();
+        readonly ConcurrentDictionary<uint, Func<IReaderCtx, object>> _clientTypeId2Loader = new ConcurrentDictionary<uint, Func<IReaderCtx, object>>();
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
@@ -962,7 +965,7 @@ namespace BTDB.Service
 
         public Type TypeByName(string name)
         {
-            return _type2NameRegistry.FindTypeByName(name);
+            return _type2NameRegistry.FindTypeByName(string.Intern(name));
         }
 
         public void WriteObjectForServer(object @object, IWriterCtx writerCtx)
@@ -1045,7 +1048,7 @@ namespace BTDB.Service
                 .Ldarg(0)
                 .Callvirt(() => ((IReaderCtx)null).Reader())
                 .Stloc(readerLocal)
-                .Newobj(typeInf.OriginalType.GetConstructor(Type.EmptyTypes))
+                .Newobj(type.GetConstructor(Type.EmptyTypes))
                 .Stloc(resultLocal);
             foreach (var propertyInf in typeInf.PropertyInfs)
             {
@@ -1066,6 +1069,102 @@ namespace BTDB.Service
                 .Ret();
             loaderAction = dm.Create();
             _serverTypeId2Loader.TryAdd(typeId, loaderAction);
+            return loaderAction(readerCtx);
+        }
+
+        public void WriteObjectForClient(object @object, IWriterCtx writerCtx)
+        {
+            var type = @object.GetType();
+            Action<object, IWriterCtx> saverAction;
+            if (_serverType2Saver.TryGetValue(type, out saverAction))
+            {
+                saverAction(@object, writerCtx);
+                return;
+            }
+            uint typeId = RegisterMyType(type);
+            TypeInf typeInf;
+            _serverTypeInfs.TryGetValue(typeId, out typeInf);
+            var dm = new DynamicMethod<Action<object, IWriterCtx>>(type.Name + "ServiceSaverBack");
+            var ilGenerator = dm.GetILGenerator();
+            var writerLocal = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            ilGenerator
+                .Ldarg(1)
+                .Callvirt(() => ((IWriterCtx)null).Writer())
+                .Dup()
+                .Stloc(writerLocal)
+                .LdcI4((int)typeId)
+                .ConvU4()
+                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0));
+            foreach (var propertyInf in typeInf.PropertyInfs)
+            {
+                var prop = type.GetProperty(propertyInf.Name);
+                Debug.Assert(prop != null);
+                Type inputType = prop.PropertyType;
+                Action<ILGenerator> loadInput = il => il.Ldarg(0).Castclass(type).Callvirt(prop.GetGetMethod());
+                Action<ILGenerator> pushWriterOrCtx;
+                var fieldHandler = propertyInf.FieldHandler;
+                if (fieldHandler.NeedsCtx()) pushWriterOrCtx = il => il.Ldarg(1);
+                else pushWriterOrCtx = il => il.Ldloc(writerLocal);
+                GenerateOneFieldHandlerSave(loadInput, fieldHandler, inputType, ilGenerator, pushWriterOrCtx);
+            }
+            ilGenerator.Ret();
+            saverAction = dm.Create();
+            _serverType2Saver.TryAdd(type, saverAction);
+            saverAction(@object, writerCtx);
+        }
+
+        public object LoadObjectOnClient(IReaderCtx readerCtx)
+        {
+            var typeId = readerCtx.Reader().ReadVUInt32();
+            Func<IReaderCtx, object> loaderAction;
+            if (_clientTypeId2Loader.TryGetValue(typeId, out loaderAction))
+            {
+                return loaderAction(readerCtx);
+            }
+            TypeInf typeInf;
+            if (!_clientTypeInfs.TryGetValue(typeId, out typeInf))
+            {
+                throw new ArgumentException(string.Format("Received unknown typeId {0}", typeId));
+            }
+            var type = TypeByName(typeInf.Name);
+            if (type == null)
+            {
+                throw new ArgumentException(string.Format("Received type {0}, but it is not registered", typeInf.Name));
+            }
+            var dm = new DynamicMethod<Func<IReaderCtx, object>>(typeInf.Name + "ServiceLoaderBack");
+            var ilGenerator = dm.GetILGenerator();
+            var readerLocal = ilGenerator.DeclareLocal(typeof(AbstractBufferedReader));
+            var resultLocal = ilGenerator.DeclareLocal(type);
+            ilGenerator
+                .Ldarg(0)
+                .Callvirt(() => ((IReaderCtx)null).Reader())
+                .Stloc(readerLocal)
+                .Newobj(type.GetConstructor(Type.EmptyTypes))
+                .Stloc(resultLocal);
+            foreach (var propertyInf in typeInf.PropertyInfs)
+            {
+                var prop = type.GetProperty(propertyInf.Name);
+                Action<ILGenerator> pushReaderOrCtx;
+                if (propertyInf.FieldHandler.NeedsCtx()) pushReaderOrCtx = il => il.Ldarg(0);
+                else pushReaderOrCtx = il => il.Ldloc(readerLocal);
+                if (prop == null)
+                {
+                    propertyInf.FieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+                    continue;
+                }
+                Type inputType = prop.PropertyType;
+                var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType);
+                ilGenerator.Ldloc(resultLocal);
+                fieldHandler.Load(ilGenerator, pushReaderOrCtx);
+                ilGenerator
+                    .Do(_typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), inputType))
+                    .Callvirt(prop.GetSetMethod());
+            }
+            ilGenerator
+                .Ldloc(resultLocal)
+                .Ret();
+            loaderAction = dm.Create();
+            _clientTypeId2Loader.TryAdd(typeId, loaderAction);
             return loaderAction(readerCtx);
         }
     }

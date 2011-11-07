@@ -53,9 +53,11 @@ namespace BTDB.Service
                 if (_serviceClient != null)
                 {
                     _serviceClient.WriteObjectForServer(@object, this);
-                    return;
                 }
-                throw new System.NotImplementedException();
+                else
+                {
+                    _serviceServer.WriteObjectForClient(@object, this);
+                }
             }
         }
 

@@ -11,5 +11,6 @@ namespace BTDB.Service
         void ExceptionMarshaling(uint resultId, Exception ex);
         void VoidResultMarshaling(uint resultId);
         object LoadObjectOnServer(IReaderCtx readerCtx);
+        void WriteObjectForClient(object @object, IWriterCtx writerCtx);
     }
 }
