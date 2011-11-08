@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Reactive;
 using BTDB.Buffer;
 
 namespace BTDB.Service
 {
-    public class TcpipClient : IChannel
+    public class TcpipClient : IChannel, ITcpIpChannel
     {
         readonly TcpipServer.Client _client;
 
@@ -31,5 +32,19 @@ namespace BTDB.Service
             get { return _client.OnReceive; }
         }
 
+        public IObservable<Unit> OnConnect
+        {
+            get { return _client.OnConnect; }
+        }
+
+        public IPEndPoint LocalEndPoint
+        {
+            get { return _client.LocalEndPoint; }
+        }
+
+        public IPEndPoint RemoteEndPoint
+        {
+            get { return _client.RemoteEndPoint; }
+        }
     }
 }

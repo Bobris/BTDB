@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reactive;
 using System.Reactive.Subjects;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -58,10 +59,11 @@ namespace BTDB.Service
             }
         }
 
-        internal class Client : IChannel
+        internal class Client : IChannel, ITcpIpChannel
         {
             readonly Socket _socket;
             readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
+            readonly ISubject<Unit> _connector = new FastSubject<Unit>();
             bool _disconnected;
 
             public Client(Socket socket)
@@ -103,8 +105,14 @@ namespace BTDB.Service
                 get { return _receiver; }
             }
 
+            public IObservable<Unit> OnConnect
+            {
+                get { return _connector; }
+            }
+
             void SignalDisconnected()
             {
+                _connector.OnCompleted();
                 _receiver.OnCompleted();
                 _disconnected = true;
             }
@@ -147,7 +155,15 @@ namespace BTDB.Service
                                           {
                                               try
                                               {
-                                                  _socket.Connect(connectPoint);
+                                                  try
+                                                  {
+                                                      _socket.Connect(connectPoint);
+                                                  }
+                                                  catch (Exception exception)
+                                                  {
+                                                      _connector.OnError(exception);
+                                                      throw;
+                                                  }
                                                   ReceiveBody();
                                               }
                                               catch (Exception)
@@ -159,6 +175,7 @@ namespace BTDB.Service
 
             void ReceiveBody()
             {
+                _connector.OnNext(Unit.Default);
                 var buf = new byte[9];
                 while (!_disconnected)
                 {
@@ -177,6 +194,16 @@ namespace BTDB.Service
             internal void StartReceiving()
             {
                 Task.Factory.StartNew(ReceiveBody,TaskCreationOptions.LongRunning);
+            }
+
+            public IPEndPoint LocalEndPoint
+            {
+                get { return _socket.LocalEndPoint as IPEndPoint; }
+            }
+
+            public IPEndPoint RemoteEndPoint
+            {
+                get { return _socket.RemoteEndPoint as IPEndPoint; }
             }
         }
     }

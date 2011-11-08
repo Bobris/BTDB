@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reactive;
 using System.Reactive.Subjects;
 using BTDB.Buffer;
 using BTDB.Reactive;
@@ -22,6 +23,7 @@ namespace BTDB.Service
         {
             Channel _other;
             readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
+            readonly ISubject<Unit> _connector = new FastSubject<Unit>();
             bool _disposed;
 
             public void Dispose()
@@ -29,6 +31,7 @@ namespace BTDB.Service
                 if (!_disposed)
                 {
                     _disposed = true;
+                    _connector.OnCompleted();
                     _receiver.OnCompleted();
                     _other.Dispose();
                 }
@@ -44,6 +47,11 @@ namespace BTDB.Service
                 get { return _receiver; }
             }
 
+            public IObservable<Unit> OnConnect
+            {
+                get { return _connector; }
+            }
+
             internal Channel Other
             {
                 set
@@ -51,10 +59,21 @@ namespace BTDB.Service
                     _other = value;
                 }
             }
+
+            public void Connect()
+            {
+                _connector.OnNext(Unit.Default);
+            }
         }
 
         public IChannel First { get { return _first; } }
         public IChannel Second { get { return _second; } }
+
+        public void Connect()
+        {
+            _first.Connect();
+            _second.Connect();
+        }
 
         public void Disconnect()
         {
