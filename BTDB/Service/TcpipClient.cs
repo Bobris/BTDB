@@ -9,12 +9,18 @@ namespace BTDB.Service
     public class TcpipClient : IChannel, ITcpIpChannel
     {
         readonly TcpipServer.Client _client;
+        readonly IPEndPoint _endPoint;
 
         public TcpipClient(IPEndPoint endPoint)
         {
+            _endPoint = endPoint;
             var socket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             _client = new TcpipServer.Client(socket);
-            _client.Connect(endPoint);
+        }
+
+        public void ConnectAsync()
+        {
+            _client.Connect(_endPoint);
         }
 
         public void Dispose()

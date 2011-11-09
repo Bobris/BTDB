@@ -32,6 +32,7 @@ namespace BTDBTest
                 ex => connectException = ex,
                 () => Assert.Fail("Connect should end with exception"));
             client.OnReceive.FastSubscribe(b => { }, () => e.Set());
+            client.ConnectAsync();
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.NotNull(connectException);
         }
@@ -76,6 +77,7 @@ namespace BTDBTest
             client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
                                            ex => Assert.Fail(ex.ToString()),
                                            () => clientcompleted = true);
+            client.ConnectAsync();
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
             client.Dispose();
             Assert.True(clientcompleted);
