@@ -60,6 +60,8 @@
     <Compile Include="ODBLayer\ODBDictionary.cs" />
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
+    <Compile Include="Reactive\FastSubject.cs" />
+    <Compile Include="Reactive\FastSubjectHelpers.cs" />
     <Compile Include="Service\IServiceInternal.cs" />
     <Compile Include="Service\ITcpIpChannel.cs" />
     <Compile Include="Service\PropertyInf.cs" />
@@ -115,7 +117,7 @@
     <Compile Include="FieldHandler\IWriterCtx.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\Extensions.cs" />
-    <Compile Include="Reactive\FastSubject.cs" />
+    <Compile Include="Reactive\FastBehaviourSubject.cs" />
     <Compile Include="Service\ClientBindInf.cs" />
     <Compile Include="FieldHandler\DefaultFieldHandlerFactory.cs" />
     <Compile Include="Service\IChannel.cs" />

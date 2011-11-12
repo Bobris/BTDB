@@ -63,7 +63,7 @@ namespace BTDB.Service
         {
             readonly Socket _socket;
             readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
-            readonly ISubject<Unit> _connector = new FastSubject<Unit>();
+            readonly ISubject<Unit> _connector = new FastBehaviourSubject<Unit>();
             bool _disconnected;
 
             public Client(Socket socket)
