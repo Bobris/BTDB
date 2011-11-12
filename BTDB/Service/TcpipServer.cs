@@ -97,7 +97,7 @@ namespace BTDB.Service
                     SignalDisconnected();
                     return;
                 }
-                throw new SocketException((int) socketError);
+                throw new SocketException((int)socketError);
             }
 
             public IObservable<ByteBuffer> OnReceive
@@ -117,7 +117,7 @@ namespace BTDB.Service
                 _disconnected = true;
             }
 
-            void Receive(byte[] buf, int ofs, int len)
+            bool Receive(byte[] buf, int ofs, int len)
             {
                 while (len > 0)
                 {
@@ -125,7 +125,8 @@ namespace BTDB.Service
                     var received = _socket.Receive(buf, ofs, len, SocketFlags.None, out errorCode);
                     if (errorCode != SocketError.Success)
                     {
-                        throw new InvalidDataException();
+                        SignalDisconnected();
+                        return false;
                     }
                     ofs += received;
                     len -= received;
@@ -134,10 +135,11 @@ namespace BTDB.Service
                         if (!IsConnected())
                         {
                             SignalDisconnected();
-                            throw new OperationCanceledException();
+                            return false;
                         }
                     }
                 }
+                return true;
             }
 
             bool IsConnected()
@@ -155,45 +157,47 @@ namespace BTDB.Service
                                           {
                                               try
                                               {
-                                                  try
-                                                  {
-                                                      _socket.Connect(connectPoint);
-                                                  }
-                                                  catch (Exception exception)
-                                                  {
-                                                      _connector.OnError(exception);
-                                                      throw;
-                                                  }
-                                                  ReceiveBody();
+                                                  _socket.Connect(connectPoint);
                                               }
-                                              catch (Exception)
+                                              catch (Exception exception)
                                               {
-                                                  SignalDisconnected();
+                                                  _connector.OnError(exception);
+                                                  _receiver.OnCompleted();
+                                                  return;
                                               }
+                                              ReceiveBody();
                                           });
             }
 
             void ReceiveBody()
             {
-                _connector.OnNext(Unit.Default);
-                var buf = new byte[9];
-                while (!_disconnected)
+                try
                 {
-                    Receive(buf, 0, 1);
-                    var packLen = PackUnpack.LengthVUInt(buf, 0);
-                    if (packLen > 1) Receive(buf, 1, packLen - 1);
-                    int o = 0;
-                    var len = PackUnpack.UnpackVUInt(buf, ref o);
-                    if (len > int.MaxValue) throw new InvalidDataException();
-                    var result = new byte[len];
-                    if (len != 0) Receive(result, 0, (int)len);
-                    _receiver.OnNext(ByteBuffer.NewAsync(result));
+                    _connector.OnNext(Unit.Default);
+                    var buf = new byte[9];
+                    while (!_disconnected)
+                    {
+                        if (!Receive(buf, 0, 1)) return;
+                        var packLen = PackUnpack.LengthVUInt(buf, 0);
+                        if (packLen > 1) if (!Receive(buf, 1, packLen - 1)) return;
+                        int o = 0;
+                        var len = PackUnpack.UnpackVUInt(buf, ref o);
+                        if (len > int.MaxValue) throw new InvalidDataException();
+                        var result = new byte[len];
+                        if (len != 0) if (!Receive(result, 0, (int)len)) return;
+                        _receiver.OnNext(ByteBuffer.NewAsync(result));
+                    }
                 }
+                catch (Exception)
+                {
+                    SignalDisconnected();
+                }
+                SignalDisconnected();
             }
 
             internal void StartReceiving()
             {
-                Task.Factory.StartNew(ReceiveBody,TaskCreationOptions.LongRunning);
+                Task.Factory.StartNew(ReceiveBody, TaskCreationOptions.LongRunning);
             }
 
             public IPEndPoint LocalEndPoint

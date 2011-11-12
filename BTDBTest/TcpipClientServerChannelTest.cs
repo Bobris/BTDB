@@ -38,7 +38,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void ConnectClientToServer()
+        public void ConnectClientToServerClientDisconnects()
         {
             var server = new TcpipServer(_ipEndPoint);
             var e = new AutoResetEvent(false);
@@ -65,30 +65,97 @@ namespace BTDBTest
                     e.Set();
                 };
             server.StartListening();
-            var client = new TcpipClient(_ipEndPoint);
-            client.OnConnect.FastSubscribe(u =>
+            try
+            {
+                var client = new TcpipClient(_ipEndPoint);
+                client.OnConnect.FastSubscribe(u =>
                 {
                     onClientConnected = true;
                     clientEndPoint2 = client.LocalEndPoint;
                     Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
                 },
+                                               ex => Assert.Fail(ex.ToString()),
+                                               () => clientcompleted2 = true);
+                client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
+                                               ex => Assert.Fail(ex.ToString()),
+                                               () => clientcompleted = true);
+                client.ConnectAsync();
+                Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
+                client.Dispose();
+                Assert.True(clientcompleted);
+                Assert.True(clientcompleted2);
+                Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
+                Assert.True(servercompleted);
+                Assert.True(servercompleted2);
+                Assert.True(onClientConnected);
+                Assert.True(onServerConnected);
+                Assert.AreEqual(clientEndPoint, clientEndPoint2);
+            }
+            finally 
+            {
+                server.StopListening();
+            }
+        }
+
+        [Test]
+        public void ConnectClientToServerServerDisconnects()
+        {
+            var server = new TcpipServer(_ipEndPoint);
+            var e = new AutoResetEvent(false);
+            var e2 = new AutoResetEvent(false);
+            bool servercompleted = false;
+            bool servercompleted2 = false;
+            bool clientcompleted = false;
+            bool clientcompleted2 = false;
+            bool onServerConnected = false;
+            bool onClientConnected = false;
+            IPEndPoint clientEndPoint = null;
+            IPEndPoint clientEndPoint2 = null;
+            IChannel serverChannel = null;
+            server.NewClient = ch =>
+            {
+                Assert.AreEqual(_ipEndPoint, (ch as ITcpIpChannel).LocalEndPoint);
+                clientEndPoint = (ch as ITcpIpChannel).RemoteEndPoint;
+                serverChannel = ch;
+                ch.OnConnect.FastSubscribe(u => { onServerConnected = true; e.Set(); },
                                            ex => Assert.Fail(ex.ToString()),
-                                           () => clientcompleted2 = true);
-            client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
-                                           ex => Assert.Fail(ex.ToString()),
-                                           () => clientcompleted = true);
-            client.ConnectAsync();
-            Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
-            client.Dispose();
-            Assert.True(clientcompleted);
-            Assert.True(clientcompleted2);
-            Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
-            Assert.True(servercompleted);
-            Assert.True(servercompleted2);
-            Assert.True(onClientConnected);
-            Assert.True(onServerConnected);
-            Assert.AreEqual(clientEndPoint, clientEndPoint2);
-            server.StopListening();
+                                           () => servercompleted2 = true);
+                ch.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
+                {
+                    servercompleted = true;
+                });
+            };
+            server.StartListening();
+            try
+            {
+                var client = new TcpipClient(_ipEndPoint);
+                client.OnConnect.FastSubscribe(u =>
+                {
+                    onClientConnected = true;
+                    clientEndPoint2 = client.LocalEndPoint;
+                    Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
+                },
+                                               ex => Assert.Fail(ex.ToString()),
+                                               () => clientcompleted2 = true);
+                client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
+                                               ex => Assert.Fail(ex.ToString()),
+                                               () => { clientcompleted = true; e2.Set(); });
+                client.ConnectAsync();
+                Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
+                serverChannel.Dispose();
+                Assert.True(servercompleted);
+                Assert.True(servercompleted2);
+                Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
+                Assert.True(clientcompleted);
+                Assert.True(clientcompleted2);
+                Assert.True(onClientConnected);
+                Assert.True(onServerConnected);
+                Assert.AreEqual(clientEndPoint, clientEndPoint2);
+            }
+            finally
+            {
+                server.StopListening();
+            }
         }
     }
 }
