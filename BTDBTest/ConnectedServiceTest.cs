@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.Reactive;
 using BTDB.Service;
 using NUnit.Framework;
 
@@ -53,8 +54,8 @@ namespace BTDBTest
         [Test]
         public void BasicTest()
         {
-            _first.RegisterMyService(new Adder());
-            Assert.AreEqual(3, _second.QueryOtherService<IAdder>().Add(1, 2));
+            _first.RegisterLocalService(new Adder());
+            Assert.AreEqual(3, _second.QueryRemoteService<IAdder>().Add(1, 2));
         }
 
         public interface IIface1
@@ -102,9 +103,9 @@ namespace BTDBTest
         public void ServiceWithIAdderAndIIface1()
         {
             var service = new Class1();
-            _first.RegisterMyService(service);
-            Assert.AreEqual(5, _second.QueryOtherService<IAdder>().Add(10000, -9995));
-            var i1 = _second.QueryOtherService<IIface1>();
+            _first.RegisterLocalService(service);
+            Assert.AreEqual(5, _second.QueryRemoteService<IAdder>().Add(10000, -9995));
+            var i1 = _second.QueryRemoteService<IIface1>();
             Assert.AreEqual(2, i1.Meth1("Hi"));
             Assert.AreEqual("Hello World", i1.Meth2());
             Assert.AreEqual(true, i1.Meth3(true, true));
@@ -113,11 +114,22 @@ namespace BTDBTest
         }
 
         [Test]
+        public void OnNewServiceNotification()
+        {
+            var service = new Class1();
+            var remoteServiceNames = new List<string>();
+            _second.OnNewRemoteService.FastSubscribe(remoteServiceNames.Add);
+            _first.RegisterLocalService(service);
+            remoteServiceNames.Sort();
+            Assert.AreEqual(new List<string> { "Class1", "IAdder", "IIface1" }, remoteServiceNames);
+        }
+
+        [Test]
         public void AutomaticConversionToAsyncIface()
         {
             var service = new Class1();
-            _first.RegisterMyService(service);
-            var i1 = _second.QueryOtherService<IIface1Async>();
+            _first.RegisterLocalService(service);
+            var i1 = _second.QueryRemoteService<IIface1Async>();
             AssertIIface1Async(i1);
             Assert.True(service.Meth4Called);
         }
@@ -133,8 +145,8 @@ namespace BTDBTest
         [Test]
         public void DelegateAsService()
         {
-            _first.RegisterMyService((Func<double, double, double>)((a, b) => a + b));
-            var d = _second.QueryOtherService<Func<double, double, double>>();
+            _first.RegisterLocalService((Func<double, double, double>)((a, b) => a + b));
+            var d = _second.QueryRemoteService<Func<double, double, double>>();
             Assert.AreEqual(31.0, d(10.5, 20.5), 1e-10);
         }
 
@@ -169,8 +181,8 @@ namespace BTDBTest
         public void AsyncIfaceOnServerSide()
         {
             var service = new Class1Async();
-            _first.RegisterMyService(service);
-            var i1 = _second.QueryOtherService<IIface1Async>();
+            _first.RegisterLocalService(service);
+            var i1 = _second.QueryRemoteService<IIface1Async>();
             AssertIIface1Async(i1);
             Assert.True(service.Meth4Called);
         }
@@ -178,39 +190,39 @@ namespace BTDBTest
         [Test]
         public void MultipleServicesAndIdentity()
         {
-            _first.RegisterMyService(new Adder());
-            _first.RegisterMyService(new Class1Async());
-            var adder = _second.QueryOtherService<IAdder>();
-            Assert.AreSame(adder, _second.QueryOtherService<IAdder>());
-            var i1 = _second.QueryOtherService<IIface1>();
-            Assert.AreSame(i1, _second.QueryOtherService<IIface1>());
+            _first.RegisterLocalService(new Adder());
+            _first.RegisterLocalService(new Class1Async());
+            var adder = _second.QueryRemoteService<IAdder>();
+            Assert.AreSame(adder, _second.QueryRemoteService<IAdder>());
+            var i1 = _second.QueryRemoteService<IIface1>();
+            Assert.AreSame(i1, _second.QueryRemoteService<IIface1>());
         }
 
         [Test]
         public void ClientServiceDeallocedWhenNotneeded()
         {
-            _first.RegisterMyService(new Adder());
-            var weakAdder = new WeakReference(_second.QueryOtherService<IAdder>());
+            _first.RegisterLocalService(new Adder());
+            var weakAdder = new WeakReference(_second.QueryRemoteService<IAdder>());
             GC.Collect();
             GC.WaitForPendingFinalizers();
             Assert.False(weakAdder.IsAlive);
-            var adder = _second.QueryOtherService<IAdder>();
+            var adder = _second.QueryRemoteService<IAdder>();
             Assert.AreEqual(2, adder.Add(1, 1));
         }
 
         [Test]
         public void IfaceToDelegateConversion()
         {
-            _first.RegisterMyService(new Adder());
-            var adder = _second.QueryOtherService<Func<int, int, int>>();
+            _first.RegisterLocalService(new Adder());
+            var adder = _second.QueryRemoteService<Func<int, int, int>>();
             Assert.AreEqual(5, adder(2, 3));
         }
 
         [Test]
         public void DelegateToIfaceConversion()
         {
-            _first.RegisterMyService((Func<int, int, int>)((a, b) => a + b));
-            Assert.AreEqual(30, _second.QueryOtherService<IAdder>().Add(10, 20));
+            _first.RegisterLocalService((Func<int, int, int>)((a, b) => a + b));
+            Assert.AreEqual(30, _second.QueryRemoteService<IAdder>().Add(10, 20));
         }
 
         public interface IIface2
@@ -235,8 +247,8 @@ namespace BTDBTest
         [Test]
         public void BasicMethodOverloading()
         {
-            _first.RegisterMyService(new Class2());
-            var i2 = _second.QueryOtherService<IIface2>();
+            _first.RegisterLocalService(new Class2());
+            var i2 = _second.QueryRemoteService<IIface2>();
             Assert.AreEqual(9, i2.Invoke(3));
             Assert.AreEqual(2, i2.Invoke("Hi"));
         }
@@ -269,14 +281,14 @@ namespace BTDBTest
         [Test]
         public void ChangingNumberAndOrderOfParameters()
         {
-            _first.RegisterMyService(new Class3());
-            var i2 = _second.QueryOtherService<IIface2>();
+            _first.RegisterLocalService(new Class3());
+            var i2 = _second.QueryRemoteService<IIface2>();
             Assert.AreEqual(3, i2.Invoke(3));
             Assert.AreEqual(2, i2.Invoke("Hi"));
-            var i3 = _second.QueryOtherService<IIface3A>();
+            var i3 = _second.QueryRemoteService<IIface3A>();
             Assert.AreEqual(10, i3.Invoke(3, 4));
             Assert.AreEqual(8, i3.Invoke("Hi", "Dev"));
-            var i3O = _second.QueryOtherService<IIface3B>();
+            var i3O = _second.QueryRemoteService<IIface3B>();
             Assert.AreEqual(10, i3O.Invoke(4, 3));
             Assert.AreEqual(7, i3O.Invoke("Hi", "Dev"));
         }
@@ -284,24 +296,24 @@ namespace BTDBTest
         [Test]
         public void ByteArraySupport()
         {
-            _first.RegisterMyService((Func<byte[], byte[]>)(p => p.AsEnumerable().Reverse().ToArray()));
-            var d = _second.QueryOtherService<Func<byte[], byte[]>>();
+            _first.RegisterLocalService((Func<byte[], byte[]>)(p => p.AsEnumerable().Reverse().ToArray()));
+            var d = _second.QueryRemoteService<Func<byte[], byte[]>>();
             Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(new byte[] { 0, 1, 2, 3, 255 }));
         }
 
         [Test]
         public void SimpleConversion()
         {
-            _first.RegisterMyService((Func<int, int>)(p => p * p));
-            var d = _second.QueryOtherService<Func<short, string>>();
+            _first.RegisterLocalService((Func<int, int>)(p => p * p));
+            var d = _second.QueryRemoteService<Func<short, string>>();
             Assert.AreEqual("81", d(9));
         }
 
         [Test]
         public void PassingException()
         {
-            _first.RegisterMyService((Func<int>)(() => { throw new ArgumentException("msg", "te" + "st"); }));
-            var d = _second.QueryOtherService<Func<int>>();
+            _first.RegisterLocalService((Func<int>)(() => { throw new ArgumentException("msg", "te" + "st"); }));
+            var d = _second.QueryRemoteService<Func<int>>();
             var e = Assert.Catch(() => d());
             Assert.IsInstanceOf<AggregateException>(e);
             Assert.AreEqual(1, ((AggregateException)e).InnerExceptions.Count);
@@ -315,8 +327,8 @@ namespace BTDBTest
         public void DisconnectionShouldCancelRunningMethods()
         {
             var e = new AutoResetEvent(false);
-            _first.RegisterMyService((Func<Task>)(() => Task.Factory.StartNew(() => e.WaitOne(1000))));
-            var d = _second.QueryOtherService<Func<Task>>();
+            _first.RegisterLocalService((Func<Task>)(() => Task.Factory.StartNew(() => e.WaitOne(1000))));
+            var d = _second.QueryRemoteService<Func<Task>>();
             var task = d();
             task = task.ContinueWith(t => Assert.True(t.IsCanceled));
             Disconnect();
@@ -327,24 +339,24 @@ namespace BTDBTest
         [Test]
         public void SupportIListLongAsParameters()
         {
-            _first.RegisterMyService((Func<IList<long>, IList<long>>)(p => p.Reverse().ToList()));
-            var d = _second.QueryOtherService<Func<IList<long>, IList<long>>>();
+            _first.RegisterLocalService((Func<IList<long>, IList<long>>)(p => p.Reverse().ToList()));
+            var d = _second.QueryRemoteService<Func<IList<long>, IList<long>>>();
             Assert.AreEqual(new List<long> { 3, 2, 1 }, d(new List<long> { 1, 2, 3 }));
         }
 
         [Test]
         public void SupportIListIntAsParameters()
         {
-            _first.RegisterMyService((Func<IList<int>, IList<int>>)(p => p.Reverse().ToList()));
-            var d = _second.QueryOtherService<Func<IList<int>, IList<int>>>();
+            _first.RegisterLocalService((Func<IList<int>, IList<int>>)(p => p.Reverse().ToList()));
+            var d = _second.QueryRemoteService<Func<IList<int>, IList<int>>>();
             Assert.AreEqual(new List<int> { 3, 2, 1 }, d(new List<int> { 1, 2, 3 }));
         }
 
         [Test]
         public void SupportIDictionaryIntAsParameters()
         {
-            _first.RegisterMyService((Func<IDictionary<int, int>, IDictionary<int, int>>)(p => p.ToDictionary(kv => kv.Value, kv => kv.Key)));
-            var d = _second.QueryOtherService<Func<IDictionary<int, int>, IDictionary<int, int>>>();
+            _first.RegisterLocalService((Func<IDictionary<int, int>, IDictionary<int, int>>)(p => p.ToDictionary(kv => kv.Value, kv => kv.Key)));
+            var d = _second.QueryRemoteService<Func<IDictionary<int, int>, IDictionary<int, int>>>();
             Assert.AreEqual(new Dictionary<int, int> { { 1, 5 }, { 2, 6 }, { 3, 7 } }, d(new Dictionary<int, int> { { 5, 1 }, { 6, 2 }, { 7, 3 } }));
         }
 
@@ -358,8 +370,8 @@ namespace BTDBTest
         public void SupportSimpleDTOAsParameter()
         {
             SimpleDTO received = null;
-            _first.RegisterMyService((Action<SimpleDTO>)(a => received = a));
-            var d = _second.QueryOtherService<Action<SimpleDTO>>();
+            _first.RegisterLocalService((Action<SimpleDTO>)(a => received = a));
+            var d = _second.QueryRemoteService<Action<SimpleDTO>>();
             d(new SimpleDTO { Name = "Text", Number = 3.14 });
             Assert.NotNull(received);
             Assert.AreEqual("Text", received.Name);
@@ -369,8 +381,8 @@ namespace BTDBTest
         [Test]
         public void SupportSimpleDTOAsResult()
         {
-            _first.RegisterMyService((Func<SimpleDTO>)(() => new SimpleDTO { Name = "Text", Number = 3.14 }));
-            var d = _second.QueryOtherService<Func<SimpleDTO>>();
+            _first.RegisterLocalService((Func<SimpleDTO>)(() => new SimpleDTO { Name = "Text", Number = 3.14 }));
+            var d = _second.QueryRemoteService<Func<SimpleDTO>>();
             var received = d();
             Assert.NotNull(received);
             Assert.AreEqual("Text", received.Name);

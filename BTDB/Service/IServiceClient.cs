@@ -4,7 +4,8 @@ namespace BTDB.Service
 {
     public interface IServiceClient : IDisposable
     {
-        T QueryOtherService<T>() where T : class;
-        object QueryOtherService(Type serviceType);
+        T QueryRemoteService<T>() where T : class;
+        object QueryRemoteService(Type serviceType);
+        IObservable<string> OnNewRemoteService { get; }
     }
 }

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -17,16 +19,31 @@ namespace BTDB.Service
         {
             MethodInfo = method;
             _name = method.Name;
-            var methodBase = method.GetBaseDefinition();
+            foreach (var itf in GetInterfacesForMethod(method.DeclaringType, method.GetBaseDefinition()))
+            {
+                _ifaceName = itf.Name;
+                break;
+            }
             var syncReturnType = method.ReturnType.UnwrapTask();
             if (syncReturnType != typeof(void))
                 _resultFieldHandler = fieldHandlerFactory.CreateFromType(syncReturnType, FieldHandlerOptions.None);
-            if (methodBase != method) _ifaceName = methodBase.DeclaringType.Name;
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];
             for (int i = 0; i < parameterInfos.Length; i++)
             {
                 _parameters[i] = new ParameterInf(parameterInfos[i], fieldHandlerFactory);
+            }
+        }
+
+        static IEnumerable<Type> GetInterfacesForMethod(Type type, MethodInfo method)
+        {
+            foreach (var itf in type.GetInterfaces())
+            {
+                var interfaceMap = type.GetInterfaceMap(itf);
+                if (interfaceMap.TargetMethods.Any(m => m == method))
+                {
+                    yield return itf;
+                }
             }
         }
 

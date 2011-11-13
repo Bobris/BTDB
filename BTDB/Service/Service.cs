@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive;
@@ -33,7 +32,6 @@ namespace BTDB.Service
         {
             RegisterType = 0,
             RegisterService = 1,
-            UnregisterService = 2,
             Bind = 3,
         }
 
@@ -60,10 +58,56 @@ namespace BTDB.Service
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
         readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
-        readonly ConditionalWeakTable<Type, WeakReference> _otherServiceCache = new ConditionalWeakTable<Type, WeakReference>();
+        readonly ConditionalWeakTable<Type, WeakReference> _remoteServiceCache = new ConditionalWeakTable<Type, WeakReference>();
 
         ITypeConvertorGenerator _typeConvertorGenerator;
         IFieldHandlerFactory _fieldHandlerFactory;
+        readonly NewRemoteServiceObservable _onNewRemoteService;
+
+        class NewRemoteServiceObservable : IObservable<string>
+        {
+            readonly Service _owner;
+            readonly FastSubject<string> _subject = new FastSubject<string>();
+
+            public NewRemoteServiceObservable(Service owner)
+            {
+                _owner = owner;
+            }
+
+            public IDisposable Subscribe(IObserver<string> observer)
+            {
+                var result = _subject.Subscribe(observer);
+                var typeIdList = _owner._clientKnownServicesTypes.Values.ToList();
+                foreach (var typeId in typeIdList)
+                {
+                    TypeInf typeInf;
+                    if (_owner._clientTypeInfs.TryGetValue(typeId, out typeInf))
+                    {
+                        CallOnNextForAllTypeNames(observer, typeInf);
+                    }
+                }
+                return result;
+            }
+
+            static void CallOnNextForAllTypeNames(IObserver<string> observer, TypeInf typeInf)
+            {
+                observer.OnNext(typeInf.Name);
+                foreach (var name in typeInf.MethodInfs.Select(mi => mi.IfaceName).Where(s => !string.IsNullOrEmpty(s)).Distinct())
+                {
+                    observer.OnNext(name);
+                }
+            }
+
+            public void OnNext(TypeInf typeInf)
+            {
+                CallOnNextForAllTypeNames(_subject, typeInf);
+            }
+
+            public void OnDisconnect()
+            {
+                _subject.OnCompleted();
+            }
+        }
 
         struct TaskAndBindInf
         {
@@ -79,6 +123,7 @@ namespace BTDB.Service
 
         public Service(IChannel channel)
         {
+            _onNewRemoteService = new NewRemoteServiceObservable(this);
             _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
             _channel = channel;
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
@@ -93,6 +138,7 @@ namespace BTDB.Service
                 clientAck.Value.Binding.HandleCancellation(clientAck.Value.TaskCompletionSource);
             }
             _clientAcks.Clear();
+            _onNewRemoteService.OnDisconnect();
         }
 
         void OnReceive(ByteBuffer obj)
@@ -136,18 +182,20 @@ namespace BTDB.Service
         void OnSubcommand(ByteBufferReader reader)
         {
             var c1 = reader.ReadVUInt32();
+            uint typeId;
             switch ((Subcommand)c1)
             {
                 case Subcommand.RegisterType:
-                    var typeId = reader.ReadVUInt32();
+                    typeId = reader.ReadVUInt32();
                     _clientTypeInfs.TryAdd(typeId, new TypeInf(reader, _fieldHandlerFactory));
                     break;
                 case Subcommand.RegisterService:
                     var serviceId = reader.ReadVUInt32();
-                    _clientKnownServicesTypes.TryAdd(serviceId, reader.ReadVUInt32());
-                    break;
-                case Subcommand.UnregisterService:
-                    OnUnregisterService(reader.ReadVUInt32());
+                    typeId = reader.ReadVUInt32();
+                    _clientKnownServicesTypes.TryAdd(serviceId, typeId);
+                    TypeInf typeInf;
+                    if (_clientTypeInfs.TryGetValue(typeId, out typeInf))
+                        _onNewRemoteService.OnNext(typeInf);
                     break;
                 case Subcommand.Bind:
                     OnBind(reader);
@@ -368,38 +416,37 @@ namespace BTDB.Service
             return type.GetConstructors()[0];
         }
 
-        void OnUnregisterService(uint serviceId)
-        {
-            uint placebo;
-            _clientKnownServicesTypes.TryRemove(serviceId, out placebo);
-        }
-
         public void Dispose()
         {
             _channel.Dispose();
         }
 
-        public T QueryOtherService<T>() where T : class
+        public T QueryRemoteService<T>() where T : class
         {
-            return (T)QueryOtherService(typeof(T));
+            return (T)QueryRemoteService(typeof(T));
         }
 
-        public object QueryOtherService(Type serviceType)
+        public object QueryRemoteService(Type serviceType)
         {
             if (serviceType == null) throw new ArgumentNullException("serviceType");
-            var weak = _otherServiceCache.GetValue(serviceType, t => new WeakReference(null, true));
+            var weak = _remoteServiceCache.GetValue(serviceType, t => new WeakReference(null, true));
             lock (weak)
             {
                 var result = weak.Target;
                 if (result == null)
                 {
-                    weak.Target = result = InternalQueryOtherService(serviceType);
+                    weak.Target = result = InternalQueryRemoteService(serviceType);
                 }
                 return result;
             }
         }
 
-        object InternalQueryOtherService(Type serviceType)
+        public IObservable<string> OnNewRemoteService
+        {
+            get { return _onNewRemoteService; }
+        }
+
+        object InternalQueryRemoteService(Type serviceType)
         {
             var typeInf = new TypeInf(serviceType, _fieldHandlerFactory);
             var bestMatch = int.MinValue;
@@ -817,14 +864,14 @@ namespace BTDB.Service
             return int.MinValue;
         }
 
-        public void RegisterMyService(object service)
+        public void RegisterLocalService(object service)
         {
             if (service == null) throw new ArgumentNullException("service");
             var serviceId = _serverObjectNumbers.Allocate();
             _serverObjects.TryAdd(serviceId, service);
             _serverServices.TryAdd(service, serviceId);
             Type type = service.GetType();
-            var typeId = RegisterMyType(type);
+            var typeId = RegisterLocalType(type);
             _serverKnownServicesTypes.TryAdd(serviceId, typeId);
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
@@ -834,7 +881,7 @@ namespace BTDB.Service
             _channel.Send(ByteBuffer.NewAsync(writer.Data));
         }
 
-        uint RegisterMyType(Type type)
+        uint RegisterLocalType(Type type)
         {
             uint typeId;
             while (true)
@@ -853,7 +900,7 @@ namespace BTDB.Service
             {
                 if (fieldHandler is ServiceObjectFieldHandler)
                 {
-                    RegisterMyType(fieldHandler.HandledType());
+                    RegisterLocalType(fieldHandler.HandledType());
                 }
             }
             var writer = new ByteArrayWriter();
@@ -863,19 +910,6 @@ namespace BTDB.Service
             typeInf.Store(writer);
             _channel.Send(ByteBuffer.NewAsync(writer.Data));
             return typeId;
-        }
-
-        public void UnregisterMyService(object service)
-        {
-            uint serviceId;
-            if (_serverServices.TryRemove(service, out serviceId))
-            {
-                var writer = new ByteArrayWriter();
-                writer.WriteVUInt32((uint)Command.Subcommand);
-                writer.WriteVUInt32((uint)Subcommand.UnregisterService);
-                writer.WriteVUInt32(serviceId);
-                _channel.Send(ByteBuffer.NewAsync(writer.Data));
-            }
         }
 
         public IChannel Channel
@@ -1081,7 +1115,7 @@ namespace BTDB.Service
                 saverAction(@object, writerCtx);
                 return;
             }
-            uint typeId = RegisterMyType(type);
+            var typeId = RegisterLocalType(type);
             TypeInf typeInf;
             _serverTypeInfs.TryGetValue(typeId, out typeInf);
             var dm = new DynamicMethod<Action<object, IWriterCtx>>(type.Name + "ServiceSaverBack");
@@ -1098,7 +1132,6 @@ namespace BTDB.Service
             foreach (var propertyInf in typeInf.PropertyInfs)
             {
                 var prop = type.GetProperty(propertyInf.Name);
-                Debug.Assert(prop != null);
                 Type inputType = prop.PropertyType;
                 Action<ILGenerator> loadInput = il => il.Ldarg(0).Castclass(type).Callvirt(prop.GetGetMethod());
                 Action<ILGenerator> pushWriterOrCtx;

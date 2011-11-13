@@ -36,6 +36,7 @@ namespace BTDB.Service
                 {
                     var methodBase = method.GetBaseDefinition();
                     if (methodBase.DeclaringType == typeof(object)) continue;
+                    if (methodBase.GetBaseDefinition().DeclaringType == typeof(IDisposable)) continue;
                     if (!methodBase.IsPublic) continue;
                     if (!IsMethodSupported(method, fieldHandlerFactory)) continue;
                     methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
