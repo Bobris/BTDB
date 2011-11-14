@@ -971,6 +971,42 @@ namespace BTDBTest
         }
 
         [Test]
+        public void SetKeyPrefixInOneTransaction()
+        {
+            using (var stream = CreateTestStream())
+            using (IKeyValueDB db = new KeyValueDB())
+            {
+                db.Open(stream, false);
+                var key = new byte[5];
+                var value = new byte[100];
+                var rnd = new Random();
+                using (var tr = db.StartTransaction())
+                {
+                    for (byte i = 0; i < 100; i++)
+                    {
+                        key[0] = i;
+                        for (byte j = 0; j < 100; j++)
+                        {
+                            key[4] = j;
+                            rnd.NextBytes(value);
+                            tr.CreateOrUpdateKeyValue(key, value);
+                        }
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    for (byte i = 0; i < 100; i++)
+                    {
+                        key[0] = i;
+                        tr.SetKeyPrefix(key, 0, 4);
+                        Assert.AreEqual(100, tr.GetKeyValueCount());
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void StartWritingTransactionWorks()
         {
             using (var stream = CreateTestStream())

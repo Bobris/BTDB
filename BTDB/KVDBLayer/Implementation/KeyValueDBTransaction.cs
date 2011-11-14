@@ -78,6 +78,7 @@ namespace BTDB.KVDBLayer
                 return;
             }
             _prefixKeyStart = 0;
+            _prefixKeyCount = -1;
             FindKey(prefix, prefixOfs, prefixLen, FindKeyStrategy.OnlyNext);
             _prefixKeyStart = _currentKeyIndex;
             _prefixKeyCount = 0;
