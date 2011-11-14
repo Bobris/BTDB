@@ -18,8 +18,7 @@ namespace BTDB.FieldHandler
             get { return "Signed"; }
         }
 
-
-        public new static bool IsCompatibleWith(Type type)
+        public static bool IsCompatibleWith(Type type)
         {
             if (type == typeof(sbyte)) return true;
             if (type == typeof(short)) return true;

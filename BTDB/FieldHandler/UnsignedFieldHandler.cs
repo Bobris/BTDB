@@ -18,7 +18,7 @@ namespace BTDB.FieldHandler
             get { return "Unsigned"; }
         }
 
-        public new static bool IsCompatibleWith(Type type)
+        public static bool IsCompatibleWith(Type type)
         {
             if (type == typeof(byte)) return true;
             if (type == typeof(ushort)) return true;

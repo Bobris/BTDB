@@ -48,7 +48,7 @@ namespace BTDB.FieldHandler
 
         public static bool IsCompatibleWith(Type type)
         {
-            return (!type.IsInterface && !type.IsValueType && !type.IsGenericType);
+            return (!type.IsInterface && !type.IsValueType && !type.IsSubclassOf(typeof(Delegate)));
         }
 
         bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -69,14 +69,9 @@ namespace BTDB.FieldHandler
 
         public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
         {
-            var localResultOfObject = ilGenerator.DeclareLocal(typeof(object));
-            object fake;
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Ldloca(localResultOfObject)
-                .Callvirt(() => ((IReaderCtx)null).ReadObject(out fake))
-                .Pop();
-            ilGenerator.Ldloc(localResultOfObject);
+                .Callvirt(() => ((IReaderCtx)null).ReadNativeObject());
             var type = HandledType();
             ilGenerator.Do(_objectDB.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
@@ -85,8 +80,7 @@ namespace BTDB.FieldHandler
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Callvirt(() => ((IReaderCtx)null).SkipObject())
-                .Pop();
+                .Callvirt(() => ((IReaderCtx)null).SkipNativeObject());
         }
 
         public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
@@ -95,8 +89,7 @@ namespace BTDB.FieldHandler
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
                 .Do(_objectDB.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
-                .Callvirt(() => ((IWriterCtx)null).WriteObject(null))
-                .Pop();
+                .Callvirt(() => ((IWriterCtx)null).WriteNativeObject(null));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type)

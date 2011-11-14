@@ -19,7 +19,7 @@ namespace BTDB.FieldHandler
             get { return "Int8"; }
         }
 
-        public new static bool IsCompatibleWith(Type type)
+        public static bool IsCompatibleWith(Type type)
         {
             return type == typeof(sbyte);
         }
