@@ -896,12 +896,14 @@ namespace BTDB.Service
             }
             var typeInf = new TypeInf(type, _fieldHandlerFactory);
             _serverTypeInfs.TryAdd(typeId, typeInf);
-            foreach (var fieldHandler in typeInf.EnumerateFieldHandlers())
-            {
-                if (fieldHandler is ServiceObjectFieldHandler)
+            foreach (var fieldHandler in typeInf.EnumerateFieldHandlers().Flatten(fh =>
                 {
-                    RegisterLocalType(fieldHandler.HandledType());
-                }
+                    if (fh is IFieldHandlerWithNestedFieldHandlers)
+                        return ((IFieldHandlerWithNestedFieldHandlers)fh).EnumerateNestedFieldHandlers();
+                    return null;
+                }).OfType<ServiceObjectFieldHandler>())
+            {
+                RegisterLocalType(fieldHandler.HandledType());
             }
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);

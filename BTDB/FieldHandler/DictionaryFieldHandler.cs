@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class DictionaryFieldHandler : IFieldHandler
+    public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
         readonly ITypeConvertorGenerator _typeConvertorGenerator;
@@ -265,6 +265,12 @@ namespace BTDB.FieldHandler
                 return this;
             }
             return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized, valueSpecialized);
+        }
+
+        public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
+        {
+            yield return _keysHandler;
+            yield return _valuesHandler;
         }
     }
 }

@@ -7,7 +7,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionaryFieldHandler : IFieldHandler
+    public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
     {
         readonly IObjectDB _odb;
         readonly IFieldHandlerFactory _fieldHandlerFactory;
@@ -187,6 +187,12 @@ namespace BTDB.ODBLayer
         public IFieldHandler SpecializeSaveForType(Type type)
         {
             return this;
+        }
+
+        public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
+        {
+            yield return _keysHandler;
+            yield return _valuesHandler;
         }
     }
 }

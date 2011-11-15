@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -7,13 +8,27 @@ namespace BTDB.FieldHandler
 {
     public static class Extensions
     {
-        static public void WriteFieldHandler(this AbstractBufferedWriter writer, IFieldHandler handler)
+        public static IEnumerable<T> Flatten<T>(this IEnumerable<T> enumerable, Func<T, IEnumerable<T>> childrenSelector)
+        {
+            foreach (var item in enumerable)
+            {
+                yield return item;
+                var nested = childrenSelector(item);
+                if (nested == null) continue;
+                foreach (var nestedItem in nested.Flatten(childrenSelector))
+                {
+                    yield return nestedItem;
+                }
+            }
+        }
+
+        public static void WriteFieldHandler(this AbstractBufferedWriter writer, IFieldHandler handler)
         {
             writer.WriteString(handler.Name);
             writer.WriteByteArray(handler.Configuration);
         }
 
-        static public IFieldHandler CreateFromReader(this IFieldHandlerFactory factory,AbstractBufferedReader reader)
+        public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, AbstractBufferedReader reader)
         {
             var handlerName = reader.ReadString();
             var handlerConfiguration = reader.ReadByteArray();
@@ -40,12 +55,12 @@ namespace BTDB.FieldHandler
             return il => { pushReaderOrCtx(il); il.Callvirt(() => ((IReaderCtx)null).Reader()); };
         }
 
-        static public Action<ILGenerator> PushWriterOrCtxAsNeeded(Action<ILGenerator> pushWriterOrCtx, bool noConversion)
+        public static Action<ILGenerator> PushWriterOrCtxAsNeeded(Action<ILGenerator> pushWriterOrCtx, bool noConversion)
         {
             return noConversion ? pushWriterOrCtx : PushWriterFromCtx(pushWriterOrCtx);
         }
 
-        static public Action<ILGenerator> PushWriterFromCtx(Action<ILGenerator> pushWriterOrCtx)
+        public static Action<ILGenerator> PushWriterFromCtx(Action<ILGenerator> pushWriterOrCtx)
         {
             return il => { pushWriterOrCtx(il); il.Callvirt(() => ((IWriterCtx)null).Writer()); };
         }

@@ -7,7 +7,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class ListFieldHandler : IFieldHandler
+    public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
         readonly ITypeConvertorGenerator _typeConvertorGenerator;
@@ -229,5 +229,9 @@ namespace BTDB.FieldHandler
             return new ListFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
         }
 
+        public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
+        {
+            yield return _itemsHandler;
+        }
     }
 }

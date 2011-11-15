@@ -48,7 +48,7 @@ namespace BTDB.FieldHandler
 
         public static bool IsCompatibleWith(Type type)
         {
-            return (!type.IsInterface && !type.IsValueType && !type.IsSubclassOf(typeof(Delegate)));
+            return (!type.IsInterface && !type.IsValueType && !type.IsArray && !type.IsSubclassOf(typeof(Delegate)));
         }
 
         bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
