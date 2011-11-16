@@ -176,6 +176,7 @@ namespace BTDB.ODBLayer
                 var last = _tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v, Name));
                 if (TableVersionInfo.Equal(last, tvi))
                 {
+                    _tableVersions[LastPersistedVersion] = tvi; // tvi was build from real types and not loaded so it is more exact
                     ClientTypeVersion = LastPersistedVersion;
                 }
                 else

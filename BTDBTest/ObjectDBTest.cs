@@ -725,7 +725,6 @@ namespace BTDBTest
         [Test]
         public void DictionariesOfComplexValues()
         {
-            _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
@@ -748,6 +747,12 @@ namespace BTDBTest
                 root.String2Person.Clear();
                 tr.Commit();
             }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                Assert.AreEqual(0, root.String2Person.Count);
+            }
+            ReopenDB();
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
