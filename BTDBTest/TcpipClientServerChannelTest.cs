@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Threading;
-using BTDB.Reactive;
 using BTDB.Service;
 using NUnit.Framework;
 
@@ -27,11 +26,11 @@ namespace BTDBTest
             var e = new AutoResetEvent(false);
             var client = new TcpipClient(_ipEndPoint);
             Exception connectException = null;
-            client.OnConnect.FastSubscribe(
+            client.OnConnect.Subscribe(
                 u => Assert.Fail("Should not connect"),
                 ex => connectException = ex,
                 () => Assert.Fail("Connect should end with exception"));
-            client.OnReceive.FastSubscribe(b => { }, () => e.Set());
+            client.OnReceive.Subscribe(b => { }, () => e.Set());
             client.ConnectAsync();
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
             Assert.NotNull(connectException);
@@ -55,10 +54,10 @@ namespace BTDBTest
                 {
                     Assert.AreEqual(_ipEndPoint, (ch as ITcpIpChannel).LocalEndPoint);
                     clientEndPoint = (ch as ITcpIpChannel).RemoteEndPoint;
-                    ch.OnConnect.FastSubscribe(u => onServerConnected = true,
-                                               ex => Assert.Fail(ex.ToString()),
-                                               () => servercompleted2 = true);
-                    ch.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
+                    ch.OnConnect.Subscribe(u => onServerConnected = true,
+                                           ex => Assert.Fail(ex.ToString()),
+                                           () => servercompleted2 = true);
+                    ch.OnReceive.Subscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
                         {
                             servercompleted = true; e2.Set();
                         });
@@ -68,17 +67,17 @@ namespace BTDBTest
             try
             {
                 var client = new TcpipClient(_ipEndPoint);
-                client.OnConnect.FastSubscribe(u =>
-                {
-                    onClientConnected = true;
-                    clientEndPoint2 = client.LocalEndPoint;
-                    Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
-                },
-                                               ex => Assert.Fail(ex.ToString()),
-                                               () => clientcompleted2 = true);
-                client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
-                                               ex => Assert.Fail(ex.ToString()),
-                                               () => clientcompleted = true);
+                client.OnConnect.Subscribe(u =>
+                    {
+                        onClientConnected = true;
+                        clientEndPoint2 = client.LocalEndPoint;
+                        Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
+                    },
+                    ex => Assert.Fail(ex.ToString()),
+                    () => clientcompleted2 = true);
+                client.OnReceive.Subscribe(bb => Assert.Fail("receive without send"),
+                                           ex => Assert.Fail(ex.ToString()),
+                                           () => clientcompleted = true);
                 client.ConnectAsync();
                 Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
                 client.Dispose();
@@ -117,10 +116,10 @@ namespace BTDBTest
                 Assert.AreEqual(_ipEndPoint, (ch as ITcpIpChannel).LocalEndPoint);
                 clientEndPoint = (ch as ITcpIpChannel).RemoteEndPoint;
                 serverChannel = ch;
-                ch.OnConnect.FastSubscribe(u => { onServerConnected = true; e.Set(); },
-                                           ex => Assert.Fail(ex.ToString()),
-                                           () => servercompleted2 = true);
-                ch.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
+                ch.OnConnect.Subscribe(u => { onServerConnected = true; e.Set(); },
+                                       ex => Assert.Fail(ex.ToString()),
+                                       () => servercompleted2 = true);
+                ch.OnReceive.Subscribe(bb => Assert.Fail("receive without send"), ex => Assert.Fail(ex.ToString()), () =>
                 {
                     servercompleted = true;
                 });
@@ -129,17 +128,17 @@ namespace BTDBTest
             try
             {
                 var client = new TcpipClient(_ipEndPoint);
-                client.OnConnect.FastSubscribe(u =>
-                {
-                    onClientConnected = true;
-                    clientEndPoint2 = client.LocalEndPoint;
-                    Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
-                },
-                                               ex => Assert.Fail(ex.ToString()),
-                                               () => clientcompleted2 = true);
-                client.OnReceive.FastSubscribe(bb => Assert.Fail("receive without send"),
-                                               ex => Assert.Fail(ex.ToString()),
-                                               () => { clientcompleted = true; e2.Set(); });
+                client.OnConnect.Subscribe(u =>
+                    {
+                        onClientConnected = true;
+                        clientEndPoint2 = client.LocalEndPoint;
+                        Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
+                    },
+                    ex => Assert.Fail(ex.ToString()),
+                    () => clientcompleted2 = true);
+                client.OnReceive.Subscribe(bb => Assert.Fail("receive without send"),
+                                           ex => Assert.Fail(ex.ToString()),
+                                           () => { clientcompleted = true; e2.Set(); });
                 client.ConnectAsync();
                 Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
                 serverChannel.Dispose();

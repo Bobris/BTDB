@@ -118,7 +118,7 @@ namespace BTDBTest
         {
             var service = new Class1();
             var remoteServiceNames = new List<string>();
-            _second.OnNewRemoteService.FastSubscribe(remoteServiceNames.Add);
+            _second.OnNewRemoteService.Subscribe(remoteServiceNames.Add);
             _first.RegisterLocalService(service);
             remoteServiceNames.Sort();
             Assert.AreEqual(new List<string> { "Class1", "IAdder", "IIface1" }, remoteServiceNames);

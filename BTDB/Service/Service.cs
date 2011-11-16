@@ -128,7 +128,7 @@ namespace BTDB.Service
             _channel = channel;
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
             _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory(this);
-            channel.OnReceive.FastSubscribe(OnReceive, OnDisconnect);
+            channel.OnReceive.Subscribe(OnReceive, OnDisconnect);
         }
 
         void OnDisconnect()

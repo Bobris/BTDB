@@ -112,32 +112,8 @@ namespace SimpleTester
             }
         }
 
-        public void RunFastSubscribe()
-        {
-            //Subscribe  My Fast Original
-            //               595      866
-            Console.WriteLine("Subscribe  My Fast Original");
-            Console.Write("          ");
-            for (int impl = 0; impl < 2; impl++)
-            {
-                var subj = new FastSubject<int>();
-                switch (impl)
-                {
-                    case 0: subj.FastSubscribe(i => { });
-                        break;
-                    case 1: subj.Subscribe(i => { });
-                        break;
-                }
-                var sw = Stopwatch.StartNew();
-                for (int i = 0; i < 100000000; i++) subj.OnNext(i);
-                Console.Write("{0,8} ", sw.ElapsedMilliseconds);
-            }
-            Console.WriteLine();
-        }
-
         public void Run()
         {
-            RunFastSubscribe();
             RunFastSubject();
             RunFastBehaviourSubject();
         }
