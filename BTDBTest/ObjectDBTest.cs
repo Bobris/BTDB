@@ -669,6 +669,62 @@ namespace BTDBTest
             }
         }
 
+        public class InlineList
+        {
+            public List<int> IntList { get; set; }
+        }
+
+        [Test]
+        public void InlineListsOfSimpleValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineList>();
+                root.IntList = new List<int> { 1, 2, 3 };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineList>();
+                Assert.AreEqual(3, root.IntList.Count);
+                Assert.AreEqual(1, root.IntList[0]);
+                Assert.AreEqual(2, root.IntList[1]);
+                Assert.AreEqual(3, root.IntList[2]);
+                root.IntList.Clear();
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineList>();
+                Assert.AreEqual(0, root.IntList.Count);
+                root.IntList = null;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineList>();
+                Assert.IsNull(root.IntList);
+            }
+        }
+
+        [Test]
+        public void InlineListsOfSimpleValuesSkip()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineList>();
+                root.IntList = new List<int> { 1, 2 };
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Empty), "InlineList");
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<Empty>();
+            }
+        }
 
         public class SimpleDictionary
         {
