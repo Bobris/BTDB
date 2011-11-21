@@ -19,6 +19,15 @@ namespace BTDB.ODBLayer
 
         public bool WriteObject(object @object)
         {
+            if (!CommonWriteObject(@object)) return false;
+            _lastId++;
+            _objectIdMap.Add(@object, _lastId);
+            _writer.WriteVInt64(-_lastId);
+            return true;
+        }
+
+        bool CommonWriteObject(object @object)
+        {
             if (@object == null)
             {
                 _writer.WriteVInt64(0);
@@ -27,7 +36,7 @@ namespace BTDB.ODBLayer
             var oid = _transaction.StoreIfUnknownButTypeRegistered(@object);
             if (oid != ulong.MaxValue)
             {
-                _writer.WriteVInt64((long)oid);
+                _writer.WriteVInt64((long) oid);
                 return false;
             }
             if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
@@ -37,16 +46,15 @@ namespace BTDB.ODBLayer
                 _writer.WriteVInt64(-cid);
                 return false;
             }
-            _lastId++;
-            _objectIdMap.Add(@object, _lastId);
-            _writer.WriteVInt64(-_lastId);
             return true;
         }
 
         public void WriteNativeObject(object @object)
         {
-            var test = WriteObject(@object);
-            if (test) throw new InvalidOperationException();
+            var test = CommonWriteObject(@object);
+            if (!test) return;
+            var oid = _transaction.Store(@object);
+            _writer.WriteVInt64((long)oid);
         }
 
         public AbstractBufferedWriter Writer()

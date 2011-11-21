@@ -854,7 +854,7 @@ namespace BTDBTest
                 root.Bytes2Bytes.Add(new byte[] { 2 }, new byte[] { 2, 2 });
                 root.Bytes2Bytes.Add(new byte[] { 1, 0xFF }, new byte[] { 1 });
                 root.Bytes2Bytes.Add(new byte[0], new byte[0]);
-                 
+
                 AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[0], new byte[0]), root.Bytes2Bytes.First());
                 AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[] { 1, 0xFF }, new byte[] { 1 }), root.Bytes2Bytes.Skip(1).First());
                 AssertEqual(new KeyValuePair<byte[], byte[]>(new byte[] { 2 }, new byte[] { 2, 2 }), root.Bytes2Bytes.Skip(2).First());
@@ -919,6 +919,41 @@ namespace BTDBTest
                 Assert.AreEqual(to, e.E);
                 tr.Delete(e);
                 tr.Commit();
+            }
+        }
+
+        public class Manager : Person
+        {
+            public List<Person> Managing { get; set; }
+        }
+
+        [Test]
+        public void InheritanceSupportedWithAutoRegistration()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<ComplexDictionary>();
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                var sl1 = new Person {Name = "Poor Slave", Age = 18};
+                var sl2 = new Person {Name = "Poor Poor Slave", Age = 17};
+                root.String2Person.Add("slave", sl1);
+                root.String2Person.Add("slave2", sl2);
+                root.String2Person.Add("master", new Manager { Name = "Chief", Age = 19, Managing = new List<Person> { sl1, sl2 } });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                var dict = root.String2Person;
+                Assert.IsInstanceOf<Person>(dict["slave"]);
+                Assert.IsInstanceOf<Manager>(dict["master"]);
+                Assert.AreEqual(3,dict.Count);
+                Assert.AreEqual("Chief", dict["master"].Name);
+                Assert.AreSame(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
             }
         }
     }
