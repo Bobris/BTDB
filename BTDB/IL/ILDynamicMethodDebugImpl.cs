@@ -1,23 +1,37 @@
 using System;
+using System.Diagnostics.SymbolStore;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILDynamicMethodImpl: IILDynamicMethod
+    internal class ILDynamicMethodDebugImpl : IILDynamicMethod
     {
         readonly Type _delegateType;
         int _expectedLength;
         IILGen _gen;
-        readonly DynamicMethod _dynamicMethod;
+        readonly AssemblyBuilder _assemblyBuilder;
+        readonly ModuleBuilder _moduleBuilder;
+        readonly ISymbolDocumentWriter _symbolDocumentWriter;
+        readonly TypeBuilder _typeBuilder;
+        readonly MethodBuilder _dynamicMethod;
+        readonly SourceCodeWriter _sourceCodeWriter;
 
-        public ILDynamicMethodImpl(string name, Type delegateType)
+        public ILDynamicMethodDebugImpl(string name, Type delegateType)
         {
             _delegateType = delegateType;
             _expectedLength = 64;
             var mi = delegateType.GetMethod("Invoke");
-            _dynamicMethod = new DynamicMethod(name, mi.ReturnType,
-                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + "Asm.dll", true);
+            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + name + "Asm.il");
+            _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
+            _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
+            _sourceCodeWriter.StartMethod(name, mi);
+            _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
         }
 
         public void ExpectedLength(int length)
@@ -27,27 +41,42 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
+            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
         }
 
         public object Create()
         {
-            return _dynamicMethod.CreateDelegate(_delegateType);
+            var finalType = _typeBuilder.CreateType();
+            _assemblyBuilder.Save(_moduleBuilder.ScopeName);
+            _sourceCodeWriter.CloseScope();
+            _sourceCodeWriter.Dispose();
+            return Delegate.CreateDelegate(_delegateType, finalType, "Invoke");
         }
     }
 
-    internal class ILDynamicMethodImpl<T> : IILDynamicMethod<T> where T:class
+    internal class ILDynamicMethodDebugImpl<T> : IILDynamicMethod<T> where T : class
     {
         int _expectedLength;
         IILGen _gen;
-        readonly DynamicMethod _dynamicMethod;
+        readonly AssemblyBuilder _assemblyBuilder;
+        readonly ModuleBuilder _moduleBuilder;
+        readonly ISymbolDocumentWriter _symbolDocumentWriter;
+        readonly TypeBuilder _typeBuilder;
+        readonly MethodBuilder _dynamicMethod;
+        readonly SourceCodeWriter _sourceCodeWriter;
 
-        public ILDynamicMethodImpl(string name)
+        public ILDynamicMethodDebugImpl(string name)
         {
             _expectedLength = 64;
             var mi = typeof(T).GetMethod("Invoke");
-            _dynamicMethod = new DynamicMethod(name, mi.ReturnType,
-                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + "Asm.dll", true);
+            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + name + "Asm.il");
+            _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
+            _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
+            _sourceCodeWriter.StartMethod(name, mi);
+            _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
         }
 
         public void ExpectedLength(int length)
@@ -57,12 +86,16 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
+            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
         }
 
         public T Create()
         {
-            return _dynamicMethod.CreateDelegate<T>();
+            var finalType = _typeBuilder.CreateType();
+            _assemblyBuilder.Save(_moduleBuilder.ScopeName);
+            _sourceCodeWriter.CloseScope();
+            _sourceCodeWriter.Dispose();
+            return (T)(object)Delegate.CreateDelegate(typeof(T), finalType, "Invoke");
         }
     }
 }

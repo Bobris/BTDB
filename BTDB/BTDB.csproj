@@ -53,7 +53,8 @@
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
-    <Compile Include="IL\ILDynamicMethodDebugImpl.cs" />
+    <Compile Include="IL\ILGenDebugImpl.cs" />
+    <Compile Include="IL\ILDynamicMethodImpl.cs" />
     <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="IL\IILBuilder.cs" />
     <Compile Include="IL\IILDynamicMethod.cs" />
@@ -64,9 +65,10 @@
     <Compile Include="IL\IILMethod.cs" />
     <Compile Include="IL\ILBuilder.cs" />
     <Compile Include="IL\ILBuilderImpl.cs" />
-    <Compile Include="IL\ILDynamicMethodImpl.cs" />
+    <Compile Include="IL\ILDynamicMethodDebugImpl.cs" />
     <Compile Include="IL\ILGenExtensions.cs" />
     <Compile Include="IL\ILGenImpl.cs" />
+    <Compile Include="IL\SourceCodeWriter.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />

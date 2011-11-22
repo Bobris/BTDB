@@ -87,5 +87,25 @@ namespace BTDBTest
             var n = action();
             Assert.AreEqual("Test", n.PassedParam);
         }
+
+        [Test]
+        public void ILNewestWayDebug()
+        {
+            ILBuilder.Instance.Debuggable = true;
+            var method = ILBuilder.Instance.NewMethod<Func<Nested>>("SampleCall");
+            var il = method.Generator;
+            var local = il.DeclareLocal(typeof(Nested), "n");
+            il
+                .Newobj(() => new Nested())
+                .Dup()
+                .Stloc(local)
+                .Ldstr("Test")
+                .Call(() => ((Nested)null).Fun(""))
+                .Ldloc(local)
+                .Ret();
+            var action = method.Create();
+            var n = action();
+            Assert.AreEqual("Test", n.PassedParam);
+        }
     }
 }
