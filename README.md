@@ -3,8 +3,9 @@
 Currently this project has 3 main parts:
 
 * Key Value Database
-* Reflection.Emit extensions
+* Wrapped Dynamic IL generation with debugging + extensions
 * Object Database
+* RPC Library
 
 All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.0, code uses Parallel Extensions. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
@@ -50,26 +51,28 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 * Transaction Log for better commit speed (hard and will be less important with SSD drives => low priority)
 
 ---
-## Reflection.Emit extensions
+## Wrapped Dynamic IL generation with debugging + extensions
 
 This help you to write fluent code which generates IL code in runtime. It is used in Object Database part.
 
 ### Sample code:
 
-    var il = method.GetILGenerator();
-    il.DeclareLocal(typeof(Nested));
-    il  .Newobj(() => new Nested())
-        .Stloc(0)
-        .Ldloc(0)
+    var method = ILBuilder.Instance.NewMethod<Func<Nested>>("SampleCall");
+    var il = method.Generator;
+    var local = il.DeclareLocal(typeof(Nested), "n");
+    il
+        .Newobj(() => new Nested())
+        .Dup()
+        .Stloc(local)
         .Ldstr("Test")
         .Call(() => ((Nested)null).Fun(""))
-        .Ldloc(0)
+        .Ldloc(local)
         .Ret();
-    var action = method.CreateDelegate<Func<Nested>>();
+    var action = method.Create();
 
 ### Roadmap:
 
-* Add new IL instructions as needed
+* Add support for all IL instructions as needed
 
 ---
 ## Object Database
@@ -107,10 +110,31 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ### Roadmap:
 
 * Support more simple types of properties
-* Finish support for IList<T> where T is simple type
 * Performance tests
-* Add support for IDictionary<K,V>
 * Free text search (far future)
+
+---
+## RPC Library
+
+### Features:
+
+* TCP/IP comunication, service types negotiation
+* Automatic serialization with dynamically generated optimal IL code.
+* Both Client and Server can register services
+* Async calls, OneWay calls, Exception propagation
+* Services could be interfaces, classes, delegates
+
+### Sample code:
+
+    SimpleDTO received = null;
+    _first.RegisterLocalService((Action<SimpleDTO>)(a => received = a));
+    var d = _second.QueryRemoteService<Action<SimpleDTO>>();
+    d(new SimpleDTO { Name = "Text", Number = 3.14 });
+    Assert.NotNull(received);
+
+### Roadmap:
+
+* Even more speed and event based TCP/IP server channels
 
 [ACID]:http://en.wikipedia.org/wiki/ACID
 [MVCC]:http://en.wikipedia.org/wiki/Multiversion_concurrency_control
