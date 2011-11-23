@@ -4,6 +4,6 @@ namespace BTDB.Service
 {
     public interface IServiceServer : IDisposable
     {
-        void RegisterLocalService(object service);
+        void RegisterLocalService<T>(T service) where T : class;
     }
 }

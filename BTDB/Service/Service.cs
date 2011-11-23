@@ -852,13 +852,13 @@ namespace BTDB.Service
             return int.MinValue;
         }
 
-        public void RegisterLocalService(object service)
+        public void RegisterLocalService<T>(T service) where T : class
         {
             if (service == null) throw new ArgumentNullException("service");
             var serviceId = _serverObjectNumbers.Allocate();
             _serverObjects.TryAdd(serviceId, service);
             _serverServices.TryAdd(service, serviceId);
-            Type type = service.GetType();
+            var type = typeof(T);
             var typeId = RegisterLocalType(type);
             _serverKnownServicesTypes.TryAdd(serviceId, typeId);
             var writer = new ByteArrayWriter();
