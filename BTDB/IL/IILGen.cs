@@ -1,6 +1,5 @@
 using System;
 using System.Reflection;
-using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
@@ -36,6 +35,7 @@ namespace BTDB.IL
         IILGen Call(MethodInfo methodInfo);
         IILGen Call(ConstructorInfo constructorInfo);
         IILGen Ldftn(MethodInfo methodInfo);
+        IILGen Ldftn(IILMethod method);
         IILGen Ldstr(string str);
         IILGen Ldnull();
         IILGen Throw();

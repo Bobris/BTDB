@@ -67,7 +67,7 @@ namespace BTDB.FieldHandler
             return true;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
@@ -76,14 +76,14 @@ namespace BTDB.FieldHandler
             ilGenerator.Do(_objectDB.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
 
-        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => ((IReaderCtx)null).SkipNativeObject());
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             ilGenerator
                 .Do(pushWriterOrCtx)

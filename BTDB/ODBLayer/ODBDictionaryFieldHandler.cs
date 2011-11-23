@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection.Emit;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -62,9 +61,9 @@ namespace BTDB.ODBLayer
         {
             //Action<T, AbstractBufferedWriter, IWriterCtx>
             var delegateType = typeof(Action<,,>).MakeGenericType(realType, typeof(AbstractBufferedWriter), typeof(IWriterCtx));
-            var dm = new DynamicMethodSpecific(fieldHandler.Name + "Writer", delegateType);
-            var ilGenerator = dm.GetILGenerator();
-            Action<ILGenerator> pushWriterOrCtx;
+            var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Writer", delegateType);
+            var ilGenerator = dm.Generator;
+            Action<IILGen> pushWriterOrCtx;
             if (fieldHandler.NeedsCtx())
             {
                 pushWriterOrCtx = il => il.Ldarg(2);
@@ -84,9 +83,9 @@ namespace BTDB.ODBLayer
             //Func<AbstractBufferedReader, IReaderCtx, T>
             var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx),
                                                                  realType);
-            var dm = new DynamicMethodSpecific(fieldHandler.Name + "Reader", delegateType);
-            var ilGenerator = dm.GetILGenerator();
-            Action<ILGenerator> pushReaderOrCtx;
+            var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
+            var ilGenerator = dm.Generator;
+            Action<IILGen> pushReaderOrCtx;
             if (fieldHandler.NeedsCtx())
             {
                 pushReaderOrCtx = il => il.Ldarg(1);
@@ -139,7 +138,7 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var genericArguments = _type.GetGenericArguments();
             var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
@@ -160,7 +159,7 @@ namespace BTDB.ODBLayer
                 .Castclass(_type);
         }
 
-        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             // TODO register dict id for deletion
             ilGenerator
@@ -168,7 +167,7 @@ namespace BTDB.ODBLayer
                 .Callvirt(() => ((AbstractBufferedReader)null).SkipVUInt64());
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             var genericArguments = _type.GetGenericArguments();
             var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);

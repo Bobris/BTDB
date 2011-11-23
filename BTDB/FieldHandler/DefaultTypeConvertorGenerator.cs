@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Reflection.Emit;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler
 {
     public class DefaultTypeConvertorGenerator : ITypeConvertorGenerator
     {
-        readonly Dictionary<Tuple<Type, Type>, Action<ILGenerator>> _conversions = new Dictionary<Tuple<Type, Type>, Action<ILGenerator>>();
+        readonly Dictionary<Tuple<Type, Type>, Action<IILGen>> _conversions = new Dictionary<Tuple<Type, Type>, Action<IILGen>>();
 
         public DefaultTypeConvertorGenerator()
         {
@@ -41,7 +40,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        void AddConversions(IEnumerable<Type> fromList, Type to, Action<ILGenerator> generator)
+        void AddConversions(IEnumerable<Type> fromList, Type to, Action<IILGen> generator)
         {
             foreach (var from in fromList)
             {
@@ -49,7 +48,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public Action<ILGenerator> GenerateConversion(Type from, Type to)
+        public Action<IILGen> GenerateConversion(Type from, Type to)
         {
             if (from == to) return ilg => { };
             if (!from.IsValueType && to == typeof(object))
@@ -60,7 +59,7 @@ namespace BTDB.FieldHandler
             {
                 return i => i.Isinst(to);
             }
-            Action<ILGenerator> generator;
+            Action<IILGen> generator;
             if (_conversions.TryGetValue(new Tuple<Type, Type>(from, to), out generator))
             {
                 return generator;
@@ -69,7 +68,7 @@ namespace BTDB.FieldHandler
             return null;
         }
 
-        Action<ILGenerator> GenerateEnum2EnumConversion(Type from, Type to)
+        Action<IILGen> GenerateEnum2EnumConversion(Type from, Type to)
         {
             var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
             var tocfg = new EnumFieldHandler.EnumConfiguration(to);

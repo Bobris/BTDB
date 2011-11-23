@@ -218,7 +218,7 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             pushReaderOrCtx(ilGenerator);
             Type typeRead;
@@ -235,7 +235,7 @@ namespace BTDB.FieldHandler
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
         }
 
-        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             pushReaderOrCtx(ilGenerator);
             if (_signed)
@@ -248,7 +248,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);

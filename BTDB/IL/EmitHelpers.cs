@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Diagnostics.SymbolStore;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -17,18 +18,6 @@ namespace BTDB.IL
             return (expression.Body as MethodCallExpression).Method;
         }
 
-        public static ILGenerator GetILGenerator(this MethodBuilder mb, ISymbolDocumentWriter symbolDocumentWriter, int ilsize = 64)
-        {
-            var ilGenerator = mb.GetILGenerator(ilsize);
-            if (symbolDocumentWriter != null) ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
-            return ilGenerator;
-        }
-
-        public static T CreateDelegate<T>(this DynamicMethod mi) where T:class 
-        {
-            return (T)(object)mi.CreateDelegate(typeof(T));
-        }
-
         public static T CreateDelegate<T>(this MethodInfo mi) where T : class
         {
             return (T)(object)Delegate.CreateDelegate(typeof(T), mi);
@@ -43,15 +32,45 @@ namespace BTDB.IL
             return type;
         }
 
-        public static MethodBuilder GenerateINotifyPropertyChangedImpl(TypeBuilder typeBuilder, ISymbolDocumentWriter symbolDocumentWriter)
+        public static string ToSimpleName(this Type type)
+        {
+            if (type == null) return "";
+            if (type.IsArray) return string.Format("{0}[{1}]", ToSimpleName(type.GetElementType()), new string(',',type.GetArrayRank()-1));
+            if (type.IsGenericType)
+            {
+                return string.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
+                    type.Namespace, 
+                    type.Name.Substring(0, type.Name.IndexOf('`')), 
+                    string.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
+            }
+            if (type == typeof(byte)) return "byte";
+            if (type == typeof(sbyte)) return "sbyte";
+            if (type == typeof(ushort)) return "ushort";
+            if (type == typeof(short)) return "short";
+            if (type == typeof(int)) return "int";
+            if (type == typeof(uint)) return "uint";
+            if (type == typeof(long)) return "long";
+            if (type == typeof(ulong)) return "ulong";
+            if (type == typeof(float)) return "float";
+            if (type == typeof(double)) return "double";
+            if (type == typeof(string)) return "string";
+            if (type == typeof(char)) return "char";
+            if (type == typeof(bool)) return "bool";
+            if (type == typeof(void)) return "void";
+            if (type == typeof(object)) return "object";
+            if (type == typeof(decimal)) return "decimal";
+            if (string.IsNullOrEmpty(type.Namespace)) return type.Name;
+            return type.Namespace + "." + type.Name;
+        }
+
+        public static IILMethod GenerateINotifyPropertyChangedImpl(IILDynamicType typeBuilder)
         {
             var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
             var eventBuilder = typeBuilder.DefineEvent("PropertyChanged", EventAttributes.None, typeof(PropertyChangedEventHandler));
             eventBuilder.SetAddOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, true));
             eventBuilder.SetRemoveOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, false));
-            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", MethodAttributes.Family, null, new[] { typeof(string) });
-            var ilGenerator = methodBuilder.GetILGenerator();
-            ilGenerator.MarkSequencePoint(symbolDocumentWriter, 1, 1, 1, 1);
+            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", null, new[] { typeof(string) }, MethodAttributes.Family);
+            var ilGenerator = methodBuilder.Generator;
             ilGenerator.DeclareLocal(typeof(PropertyChangedEventHandler));
             var labelRet = ilGenerator.DefineLabel();
             ilGenerator
@@ -70,15 +89,15 @@ namespace BTDB.IL
             return methodBuilder;
         }
 
-        static MethodBuilder GenerateAddRemoveEvent(TypeBuilder typeBuilder, FieldBuilder fieldBuilder, bool add)
+        static IILMethod GenerateAddRemoveEvent(IILDynamicType typeBuilder, FieldBuilder fieldBuilder, bool add)
         {
             Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
             EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");
             var methodBuilder = typeBuilder.DefineMethod((add ? "add" : "remove") + "_PropertyChanged",
+                                                         typeof(void), new[] { typePropertyChangedEventHandler }, 
                                                          MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
-                                                         MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final,
-                                                         typeof(void), new[] { typePropertyChangedEventHandler });
-            var ilGenerator = methodBuilder.GetILGenerator();
+                                                         MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final);
+            var ilGenerator = methodBuilder.Generator;
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
@@ -113,15 +132,16 @@ namespace BTDB.IL
             return methodBuilder;
         }
 
-        public static void GenerateJumpIfEqual(ILGenerator ilGenerator, Type type, Label jumpTo, Action<ILGenerator> loadLeft, Action<ILGenerator> loadRight)
+        public static void GenerateJumpIfEqual(IILGen ilGenerator, Type type, IILLabel jumpTo, Action<IILGen> loadLeft, Action<IILGen> loadRight)
         {
             if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
                 || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
                 || type == typeof(float) || type == typeof(double) || type == typeof(bool) || type.IsEnum)
             {
-                loadLeft(ilGenerator);
-                loadRight(ilGenerator);
-                ilGenerator.BeqS(jumpTo);
+                ilGenerator
+                    .Do(loadLeft)
+                    .Do(loadRight)
+                    .BeqS(jumpTo);
                 return;
             }
             if (type.IsGenericType)
@@ -129,17 +149,17 @@ namespace BTDB.IL
                 var genType = type.GetGenericTypeDefinition();
                 if (genType == typeof(Nullable<>))
                 {
-                    var localLeft = ilGenerator.DeclareLocal(type);
-                    var localRight = ilGenerator.DeclareLocal(type);
+                    var localLeft = ilGenerator.DeclareLocal(type,"left");
+                    var localRight = ilGenerator.DeclareLocal(type,"right");
                     var hasValueMethod = type.GetMethod("get_HasValue");
                     var getValueMethod = type.GetMethod("GetValueOrDefault", Type.EmptyTypes);
-                    loadLeft(ilGenerator);
-                    ilGenerator.Stloc(localLeft);
-                    loadRight(ilGenerator);
-                    ilGenerator.Stloc(localRight);
-                    var labelLeftHasValue = ilGenerator.DefineLabel();
-                    var labelDifferent = ilGenerator.DefineLabel();
+                    var labelLeftHasValue = ilGenerator.DefineLabel("leftHasValue");
+                    var labelDifferent = ilGenerator.DefineLabel("different");
                     ilGenerator
+                        .Do(loadLeft)
+                        .Stloc(localLeft)
+                        .Do(loadRight)
+                        .Stloc(localRight)
                         .Ldloca(localLeft)
                         .Call(hasValueMethod)
                         .BrtrueS(labelLeftHasValue)

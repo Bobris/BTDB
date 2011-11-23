@@ -10,6 +10,7 @@ namespace BTDB.IL
     {
         readonly ILGenerator _ilGenerator;
         readonly SourceCodeWriter _sourceCodeWriter;
+        int _labelCounter;
 
         public ILGenDebugImpl(ILGenerator ilGenerator, SourceCodeWriter sourceCodeWriter)
         {
@@ -19,6 +20,11 @@ namespace BTDB.IL
 
         public IILLabel DefineLabel(string name)
         {
+            if (name == null)
+            {
+                _labelCounter++;
+                name = "label" + _labelCounter;
+            }
             return new ILLabelImpl(_ilGenerator.DefineLabel(), name);
         }
 
@@ -47,7 +53,12 @@ namespace BTDB.IL
         public IILLocal DeclareLocal(Type type, string name, bool pinned = false)
         {
             var localBuilder = _ilGenerator.DeclareLocal(type, pinned);
-            _sourceCodeWriter.WriteLine(string.Format("{3}{0} {1} // index {2}", type.Name, name, localBuilder.LocalIndex, pinned ? "pinned " : ""));
+            if (name == null)
+            {
+                name = "local" + localBuilder.LocalIndex;
+            }
+            localBuilder.SetLocalSymInfo(name);
+            _sourceCodeWriter.WriteLine(string.Format("{3}{0} {1} // index {2}", type.ToSimpleName(), name, localBuilder.LocalIndex, pinned ? "pinned " : ""));
             return new ILLocalImpl(localBuilder, name);
         }
 
@@ -132,36 +143,36 @@ namespace BTDB.IL
 
         void Emit(OpCode opCode, FieldInfo param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} field {1} {2}.{3}", opCode, param.FieldType.Name, param.DeclaringType.Name, param.Name));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} field {1} {2}", opCode, param.FieldType.ToSimpleName(), param.Name));
             _ilGenerator.Emit(opCode, param);
         }
 
         void Emit(OpCode opCode, ConstructorInfo param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} ctor {1}({2})", opCode, param.DeclaringType.Name, FormatParams(param.GetParameters())));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} ctor {1}({2})", opCode, param.DeclaringType.ToSimpleName(), FormatParams(param.GetParameters())));
             _ilGenerator.Emit(opCode, param);
         }
 
         void Emit(OpCode opCode, MethodInfo param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {3} {1}({2})", opCode, param.DeclaringType.Name, FormatParams(param.GetParameters()), param.ReturnType.Name));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {3} {1}({2})", opCode, param.Name, FormatParams(param.GetParameters()), param.ReturnType.ToSimpleName()));
             _ilGenerator.Emit(opCode, param);
         }
 
         void Emit(OpCode opCode, Type type)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, type.FullName));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, type.ToSimpleName()));
             _ilGenerator.Emit(opCode, type);
         }
 
         static string FormatParams(IEnumerable<ParameterInfo> pars)
         {
-            return string.Join(", ", pars.Select(par => string.Format("{0} {1}", par.ParameterType.Name, par.Name)));
+            return string.Join(", ", pars.Select(par => string.Format("{0} {1}", par.ParameterType.ToSimpleName(), par.Name)));
         }
 
         void Emit(OpCode opCode, IILLocal ilLocal)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}:{2} ({3})", opCode, ilLocal.Index, ((ILLocalImpl)ilLocal).Name, ilLocal.LocalType.Name));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1} {3} {2}", opCode, ilLocal.Index, ((ILLocalImpl)ilLocal).Name, ilLocal.LocalType.ToSimpleName()));
             _ilGenerator.Emit(opCode, ((ILLocalImpl)ilLocal).LocalBuilder);
         }
 
@@ -430,6 +441,18 @@ namespace BTDB.IL
         public IILGen Ldftn(MethodInfo methodInfo)
         {
             Emit(OpCodes.Ldftn, methodInfo);
+            return this;
+        }
+
+        public IILGen Ldftn(IILMethod method)
+        {
+            var meth = ((ILMethodDebugImpl)method);
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {2} {1}({3})",
+                OpCodes.Ldftn,
+                meth.Name,
+                meth.ReturnType.ToSimpleName(),
+                string.Join(", ",meth.Parameters.Select(p=>p.ToSimpleName()))));
+            _ilGenerator.Emit(OpCodes.Ldftn, meth.MethodInfo);
             return this;
         }
 

@@ -1,10 +1,10 @@
 ﻿using System;
-using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.FieldHandler
 {
     public interface ITypeConvertorGenerator
     {
-        Action<ILGenerator> GenerateConversion(Type from, Type to);
+        Action<IILGen> GenerateConversion(Type from, Type to);
     }
 }

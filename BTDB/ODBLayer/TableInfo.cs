@@ -78,8 +78,8 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = new DynamicMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Creator_{0}", Name));
-            var ilGenerator = method.GetILGenerator();
+            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Creator_{0}", Name));
+            var ilGenerator = method.Generator;
             ilGenerator
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
                 .Ret();
@@ -116,8 +116,8 @@ namespace BTDB.ODBLayer
 
         void CreateSaver()
         {
-            var method = new DynamicMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
-            var ilGenerator = method.GetILGenerator();
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
+            var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
                 .Ldarg(3)
@@ -137,7 +137,7 @@ namespace BTDB.ODBLayer
             {
                 var field = ClientTableVersionInfo[i];
                 var getter = ClientType.GetProperty(field.Name).GetGetMethod();
-                Action<ILGenerator> writerOrCtx;
+                Action<IILGen> writerOrCtx;
                 if (field.Handler.NeedsCtx())
                     writerOrCtx = il => il.Ldloc(1);
                 else
@@ -201,8 +201,8 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
-            var method = new DynamicMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
-            var ilGenerator = method.GetILGenerator();
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
+            var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
                 .Ldarg(3)
@@ -222,7 +222,7 @@ namespace BTDB.ODBLayer
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
-                Action<ILGenerator> readerOrCtx;
+                Action<IILGen> readerOrCtx;
                 if (srcFieldInfo.Handler.NeedsCtx())
                     readerOrCtx = il => il.Ldloc(1);
                 else

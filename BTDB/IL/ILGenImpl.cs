@@ -338,6 +338,12 @@ namespace BTDB.IL
             return this;
         }
 
+        public IILGen Ldftn(IILMethod method)
+        {
+            _ilGenerator.Emit(OpCodes.Ldftn, ((ILMethodImpl)method).MethodInfo);
+            return this;
+        }
+
         public IILGen Ldstr(string str)
         {
             _ilGenerator.Emit(OpCodes.Ldstr, str);

@@ -35,7 +35,7 @@ namespace BTDB.FieldHandler
             return factory.CreateFromName(handlerName, handlerConfiguration);
         }
 
-        public static ILGenerator GenerateLoad(this ILGenerator ilGenerator, IFieldHandler fieldHandler, Type typeWanted, Action<ILGenerator> pushReaderOrCtx, ITypeConvertorGenerator typeConvertorGenerator)
+        public static IILGen GenerateLoad(this IILGen ilGenerator, IFieldHandler fieldHandler, Type typeWanted, Action<IILGen> pushReaderOrCtx, ITypeConvertorGenerator typeConvertorGenerator)
         {
             fieldHandler.Load(ilGenerator,
                               fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
@@ -43,24 +43,24 @@ namespace BTDB.FieldHandler
             return ilGenerator;
         }
 
-        public static ILGenerator GenerateSkip(this ILGenerator ilGenerator, IFieldHandler fieldHandler, Action<ILGenerator> pushReaderOrCtx)
+        public static IILGen GenerateSkip(this IILGen ilGenerator, IFieldHandler fieldHandler, Action<IILGen> pushReaderOrCtx)
         {
             fieldHandler.Skip(ilGenerator,
                                   fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
             return ilGenerator;
         }
 
-        public static Action<ILGenerator> PushReaderFromCtx(Action<ILGenerator> pushReaderOrCtx)
+        public static Action<IILGen> PushReaderFromCtx(Action<IILGen> pushReaderOrCtx)
         {
             return il => { pushReaderOrCtx(il); il.Callvirt(() => ((IReaderCtx)null).Reader()); };
         }
 
-        public static Action<ILGenerator> PushWriterOrCtxAsNeeded(Action<ILGenerator> pushWriterOrCtx, bool noConversion)
+        public static Action<IILGen> PushWriterOrCtxAsNeeded(Action<IILGen> pushWriterOrCtx, bool noConversion)
         {
             return noConversion ? pushWriterOrCtx : PushWriterFromCtx(pushWriterOrCtx);
         }
 
-        public static Action<ILGenerator> PushWriterFromCtx(Action<ILGenerator> pushWriterOrCtx)
+        public static Action<IILGen> PushWriterFromCtx(Action<IILGen> pushWriterOrCtx)
         {
             return il => { pushWriterOrCtx(il); il.Callvirt(() => ((IWriterCtx)null).Writer()); };
         }

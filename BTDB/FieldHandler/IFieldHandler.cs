@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Reflection.Emit;
+using BTDB.IL;
 
 namespace BTDB.FieldHandler
 {
@@ -10,9 +10,9 @@ namespace BTDB.FieldHandler
         bool IsCompatibleWith(Type type, FieldHandlerOptions options);
         Type HandledType();
         bool NeedsCtx();
-        void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
-        void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx);
-        void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue);
+        void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
+        void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
+        void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue);
 
         IFieldHandler SpecializeLoadForType(Type type);
         IFieldHandler SpecializeSaveForType(Type type);

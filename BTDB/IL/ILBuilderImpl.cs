@@ -1,6 +1,4 @@
 using System;
-using System.Linq;
-using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
@@ -17,7 +15,7 @@ namespace BTDB.IL
 
         public IILDynamicMethod<T> NewMethod<T>(string name) where T : class
         {
-            var t = typeof (T);
+            var t = typeof(T);
             if (!t.IsSubclassOf(typeof(Delegate))) throw new ArgumentException("Generic paramater T must be Delegate");
             if (Debuggable) return new ILDynamicMethodDebugImpl<T>(name);
             return new ILDynamicMethodImpl<T>(name);
@@ -25,7 +23,8 @@ namespace BTDB.IL
 
         public IILDynamicType NewType(string name, Type baseType, Type[] interfaces)
         {
-            throw new NotImplementedException();
+            if (Debuggable) return new ILDynamicTypeDebugImpl(name, baseType, interfaces);
+            return new ILDynamicTypeImpl(name, baseType, interfaces);
         }
     }
 }

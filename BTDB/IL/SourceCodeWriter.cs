@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.SymbolStore;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -60,21 +61,41 @@ namespace BTDB.IL
 
         internal void StartMethod(string name, MethodInfo mi)
         {
-            var pars = mi.GetParameters();
-            if (pars.Length == 0)
-                WriteLine(String.Format("{0} {1}()", mi.ReturnType, name));
-            else
+            StartMethod(name, mi.ReturnType, mi.GetParameters().Select(p => p.ParameterType).ToArray(), MethodAttributes.Static);
+        }
+
+        internal void StartMethod(string name, Type returns, Type[] parameters, MethodAttributes methodAttributes)
+        {
+            var before = "";
+            var firstArgIdx = 1;
+            if (methodAttributes.HasFlag(MethodAttributes.Public)) before += "public ";
+            if (methodAttributes.HasFlag(MethodAttributes.Static))
             {
-                WriteLine(String.Format("{0} {1}(", mi.ReturnType, name));
-                Indent++;
-                int idx = 0;
-                foreach (var par in pars)
-                {
-                    WriteLine(String.Format("{0} arg{1}{2}", par.ParameterType.FullName, idx,
-                                                             idx + 1 == pars.Length ? ')' : ','));
-                    idx++;
-                }
-                Indent--;
+                firstArgIdx = 0;
+                before += "static ";
+            }
+            if (methodAttributes.HasFlag(MethodAttributes.Virtual)) before += "virtual ";
+
+            switch (parameters.Length)
+            {
+                case 0:
+                    WriteLine(String.Format("{2}{0} {1}()", returns.ToSimpleName(), name, before));
+                    break;
+                case 1:
+                    WriteLine(String.Format("{2}{0} {1}({3} arg{4})", returns.ToSimpleName(), name, before, parameters[0].ToSimpleName(), firstArgIdx));
+                    break;
+                default:
+                    WriteLine(String.Format("{2}{0} {1}(", returns.ToSimpleName(), name, before));
+                    Indent++;
+                    int idx = 0;
+                    foreach (var par in parameters)
+                    {
+                        WriteLine(String.Format("{0} arg{1}{2}", par.ToSimpleName(), idx + firstArgIdx,
+                                                idx + 1 == parameters.Length ? ')' : ','));
+                        idx++;
+                    }
+                    Indent--;
+                    break;
             }
             OpenScope();
         }

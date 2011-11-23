@@ -44,6 +44,11 @@ namespace BTDB.IL
             get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
         }
 
+        public MethodInfo MethodInfo
+        {
+            get { throw new InvalidOperationException(); }
+        }
+
         public object Create()
         {
             var finalType = _typeBuilder.CreateType();
@@ -89,12 +94,17 @@ namespace BTDB.IL
             get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
         }
 
+        public MethodInfo MethodInfo
+        {
+            get { throw new InvalidOperationException(); }
+        }
+
         public T Create()
         {
-            var finalType = _typeBuilder.CreateType();
-            _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.Dispose();
+            var finalType = _typeBuilder.CreateType();
+            _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             return (T)(object)Delegate.CreateDelegate(typeof(T), finalType, "Invoke");
         }
     }

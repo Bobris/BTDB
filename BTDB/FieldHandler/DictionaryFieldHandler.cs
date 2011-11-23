@@ -85,7 +85,7 @@ namespace BTDB.FieldHandler
             return true;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var localResultOfObject = ilGenerator.DeclareLocal(typeof(object));
@@ -136,7 +136,7 @@ namespace BTDB.FieldHandler
                 .Ldloc(localResult);
         }
 
-        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
@@ -162,7 +162,7 @@ namespace BTDB.FieldHandler
                 .Mark(finish);
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             var realfinish = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();

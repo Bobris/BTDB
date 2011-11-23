@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace BTDB.IL
 {
     public interface IILMethod

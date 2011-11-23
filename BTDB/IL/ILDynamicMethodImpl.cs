@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace BTDB.IL
@@ -28,6 +29,11 @@ namespace BTDB.IL
         public IILGen Generator
         {
             get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
+        }
+
+        public MethodInfo MethodInfo
+        {
+            get { throw new InvalidOperationException(); }
         }
 
         public object Create()
@@ -60,9 +66,14 @@ namespace BTDB.IL
             get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
         }
 
+        public MethodInfo MethodInfo
+        {
+            get { throw new InvalidOperationException(); }
+        }
+
         public T Create()
         {
-            return _dynamicMethod.CreateDelegate<T>();
+            return (T)(object)_dynamicMethod.CreateDelegate(typeof(T));
         }
     }
 }

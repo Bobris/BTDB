@@ -50,25 +50,6 @@ namespace BTDBTest
         }
 
         [Test]
-        public void ILNewWay()
-        {
-            var method = new DynamicMethod<Func<Nested>>("SampleCall");
-            var il = method.GetILGenerator();
-            il.DeclareLocal(typeof(Nested));
-            il
-                .Newobj(() => new Nested())
-                .Stloc(0)
-                .Ldloc(0)
-                .Ldstr("Test")
-                .Call(() => ((Nested)null).Fun(""))
-                .Ldloc(0)
-                .Ret();
-            var action = method.Create();
-            var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
-        }
-
-        [Test]
         public void ILNewestWayRelease()
         {
             ILBuilder.Instance.Debuggable = false;

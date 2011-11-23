@@ -53,20 +53,20 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        public void Load(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             pushReaderOrCtx(ilGenerator);
             ilGenerator.Call(_loader);
         }
 
-        public void Skip(ILGenerator ilGenerator, Action<ILGenerator> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             if (_skipper == null) return;
             pushReaderOrCtx(ilGenerator);
             ilGenerator.Call(_skipper);
         }
 
-        public void Save(ILGenerator ilGenerator, Action<ILGenerator> pushWriterOrCtx, Action<ILGenerator> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);

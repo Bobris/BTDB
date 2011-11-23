@@ -53,9 +53,15 @@
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
+    <Compile Include="IL\IILEvent.cs" />
+    <Compile Include="IL\ILConstructorDebugImpl.cs" />
+    <Compile Include="IL\ILConstructorImpl.cs" />
+    <Compile Include="IL\ILDynamicTypeDebugImpl.cs" />
+    <Compile Include="IL\ILDynamicTypeImpl.cs" />
+    <Compile Include="IL\ILEventDebugImpl.cs" />
+    <Compile Include="IL\ILEventImpl.cs" />
     <Compile Include="IL\ILGenDebugImpl.cs" />
     <Compile Include="IL\ILDynamicMethodImpl.cs" />
-    <Compile Include="IL\DynamicMethod.cs" />
     <Compile Include="IL\IILBuilder.cs" />
     <Compile Include="IL\IILDynamicMethod.cs" />
     <Compile Include="IL\IILDynamicType.cs" />
@@ -68,6 +74,8 @@
     <Compile Include="IL\ILDynamicMethodDebugImpl.cs" />
     <Compile Include="IL\ILGenExtensions.cs" />
     <Compile Include="IL\ILGenImpl.cs" />
+    <Compile Include="IL\ILMethodDebugImpl.cs" />
+    <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
@@ -83,7 +91,6 @@
     <Compile Include="Service\ITcpIpChannel.cs" />
     <Compile Include="Service\PropertyInf.cs" />
     <Compile Include="Service\ServiceObjectFieldHandler.cs" />
-    <Compile Include="IL\DynamicMethodSpecific.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\SectorTypeInit.cs" />
     <Compile Include="Buffer\BitArrayManipulation.cs" />
     <Compile Include="KVDBLayer\ImplementationDetails\BTreeParentIterator.cs" />
@@ -162,7 +169,6 @@
     <Compile Include="FieldHandler\BoolFieldHandler.cs" />
     <Compile Include="FieldHandler\DoubleFieldHandler.cs" />
     <Compile Include="FieldHandler\DBObjectFieldHandler.cs" />
-    <Compile Include="IL\ILGeneratorExtensions.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="FieldHandler\ITypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\KeyValueDBTransactionProtector.cs" />
