@@ -633,5 +633,11 @@ namespace BTDB.IL
             Emit(OpCodes.Dup);
             return this;
         }
+
+        public IILGen Ldtoken(Type type)
+        {
+            Emit(OpCodes.Ldtoken, type);
+            return this;
+        }
     }
 }

@@ -511,5 +511,11 @@ namespace BTDB.IL
             _ilGenerator.Emit(OpCodes.Dup);
             return this;
         }
+
+        public IILGen Ldtoken(Type type)
+        {
+            _ilGenerator.Emit(OpCodes.Ldtoken, type);
+            return this;
+        }
     }
 }

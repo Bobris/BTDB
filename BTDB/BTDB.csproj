@@ -77,6 +77,13 @@
     <Compile Include="IL\ILMethodDebugImpl.cs" />
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
+    <Compile Include="IOC\BuilderExtensions.cs" />
+    <Compile Include="IOC\ContainerBuilder.cs" />
+    <Compile Include="IOC\ContainerExtensions.cs" />
+    <Compile Include="IOC\ContainerImpl.cs" />
+    <Compile Include="IOC\IContainer.cs" />
+    <Compile Include="IOC\Lifetime.cs" />
+    <Compile Include="IOC\SingleRegistration.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
@@ -203,5 +210,6 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

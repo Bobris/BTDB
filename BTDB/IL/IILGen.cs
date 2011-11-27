@@ -64,5 +64,6 @@ namespace BTDB.IL
         IILGen Mul();
         IILGen Div();
         IILGen Dup();
+        IILGen Ldtoken(Type type);
     }
 }
