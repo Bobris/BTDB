@@ -88,20 +88,5 @@ namespace BTDBTest
             var n = action();
             Assert.AreEqual("Test", n.PassedParam);
         }
-
-        [Test]
-        public void CapturedThis()
-        {
-            var method = ILBuilder.Instance.NewMethod<Func<Nested, string>>("CaptureThis");
-            var il = method.Generator;
-            il
-                .Ldarg(0)
-                .Call(() => default(Nested).PassedParam)
-                .Ret();
-            var n = new Nested();
-            n.Fun("Test");
-            var d = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), n, method.Create().Method);
-            Assert.AreEqual("Test", d());
-        }
     }
 }

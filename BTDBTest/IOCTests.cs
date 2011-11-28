@@ -18,8 +18,8 @@ namespace BTDBTest
 
         public object Main(Type type)
         {
-            var handle = type.TypeHandle;
-            if (handle.Equals(typeof(ILogger).TypeHandle)) return new Logger();
+            var handle = type;
+            if (handle.Equals(typeof(ILogger))) return new Logger();
             return null;
         }
 

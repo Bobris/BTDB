@@ -22,7 +22,7 @@ namespace BTDB.IOC
                         .Ldarg(0)
                         .Ldtoken(asType)
                         .Call(() => Type.GetTypeFromHandle(default(RuntimeTypeHandle)))
-                        .Call(()=>default(Type).Equals(default(Type)))
+                        .Callvirt(()=>default(Type).Equals(default(Type)))
                         .BrfalseS(label)
                         .Newobj(singleReg.ImplementationType.GetConstructor(Type.EmptyTypes))
                         .Ret()
