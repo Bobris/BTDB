@@ -6,9 +6,9 @@ namespace BTDB.FieldHandler
     public class StringFieldHandler : SimpleFieldHandlerBase
     {
         public StringFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadString()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipString()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteString(null)))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadString()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipString()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteString(null)))
         {
         }
 

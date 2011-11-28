@@ -147,14 +147,14 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Castclass(typeof(IDBReaderCtx))
-                .Callvirt(() => ((IDBReaderCtx)null).GetTransaction())
+                .Callvirt(() => default(IDBReaderCtx).GetTransaction())
                 .Do(pushReaderOrCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .LdcI4(_configurationId)
-                .Callvirt(() => ((IDBReaderCtx)null).FindInstance(0))
+                .Callvirt(() => default(IDBReaderCtx).FindInstance(0))
                 .Castclass(typeof(ODBDictionaryConfiguration))
                 .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt64())
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
                 .Newobj(constructorInfo)
                 .Castclass(_type);
         }
@@ -164,7 +164,7 @@ namespace BTDB.ODBLayer
             // TODO register dict id for deletion
             ilGenerator
                 .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                .Callvirt(() => ((AbstractBufferedReader)null).SkipVUInt64());
+                .Callvirt(() => default(AbstractBufferedReader).SkipVUInt64());
         }
 
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)

@@ -8,9 +8,9 @@ namespace BTDB.FieldHandler
     {
         public Uint8FieldHandler()
             : base(
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadUInt8()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipUInt8()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteUInt8(0)))
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadUInt8()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipUInt8()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteUInt8(0)))
         {
         }
 

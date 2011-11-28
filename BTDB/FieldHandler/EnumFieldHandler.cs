@@ -224,12 +224,12 @@ namespace BTDB.FieldHandler
             Type typeRead;
             if (_signed)
             {
-                ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVInt64());
+                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
                 typeRead = typeof(long);
             }
             else
             {
-                ilGenerator.Call(() => ((AbstractBufferedReader)null).ReadVUInt64());
+                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
                 typeRead = typeof(ulong);
             }
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
@@ -240,11 +240,11 @@ namespace BTDB.FieldHandler
             pushReaderOrCtx(ilGenerator);
             if (_signed)
             {
-                ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVInt64());
+                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVInt64());
             }
             else
             {
-                ilGenerator.Call(() => ((AbstractBufferedReader)null).SkipVUInt64());
+                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVUInt64());
             }
         }
 
@@ -256,13 +256,13 @@ namespace BTDB.FieldHandler
             {
                 ilGenerator
                     .ConvI8()
-                    .Call(() => ((AbstractBufferedWriter)null).WriteVInt64(0));
+                    .Call(() => default(AbstractBufferedWriter).WriteVInt64(0));
             }
             else
             {
                 ilGenerator
                     .ConvU8()
-                    .Call(() => ((AbstractBufferedWriter)null).WriteVUInt64(0));
+                    .Call(() => default(AbstractBufferedWriter).WriteVUInt64(0));
             }
         }
 

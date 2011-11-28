@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     public class GuidFieldHandler : SimpleFieldHandlerBase
     {
         public GuidFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadGuid()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipGuid()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteGuid(new Guid())))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadGuid()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipGuid()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteGuid(new Guid())))
         {
         }
 

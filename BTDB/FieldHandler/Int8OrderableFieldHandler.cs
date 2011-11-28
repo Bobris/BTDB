@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     {
         public Int8OrderableFieldHandler()
             : base(
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadInt8Ordered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipInt8Ordered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteInt8Ordered(0)))
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadInt8Ordered()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipInt8Ordered()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteInt8Ordered(0)))
         {
         }
 

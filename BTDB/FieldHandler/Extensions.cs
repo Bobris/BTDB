@@ -52,7 +52,7 @@ namespace BTDB.FieldHandler
 
         public static Action<IILGen> PushReaderFromCtx(Action<IILGen> pushReaderOrCtx)
         {
-            return il => { pushReaderOrCtx(il); il.Callvirt(() => ((IReaderCtx)null).Reader()); };
+            return il => { pushReaderOrCtx(il); il.Callvirt(() => default(IReaderCtx).Reader()); };
         }
 
         public static Action<IILGen> PushWriterOrCtxAsNeeded(Action<IILGen> pushWriterOrCtx, bool noConversion)
@@ -62,7 +62,7 @@ namespace BTDB.FieldHandler
 
         public static Action<IILGen> PushWriterFromCtx(Action<IILGen> pushWriterOrCtx)
         {
-            return il => { pushWriterOrCtx(il); il.Callvirt(() => ((IWriterCtx)null).Writer()); };
+            return il => { pushWriterOrCtx(il); il.Callvirt(() => default(IWriterCtx).Writer()); };
         }
     }
 }

@@ -35,6 +35,10 @@ namespace BTDB.IL
             CloseInScope();
             _sourceCodeWriter.StartMethod(name, returns, parameters, methodAttributes);
             var methodBuilder = _typeBuilder.DefineMethod(name, methodAttributes, returns, parameters);
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
+            }
             _inScope = true;
             return new ILMethodDebugImpl(methodBuilder, _sourceCodeWriter, name, returns, parameters);
         }

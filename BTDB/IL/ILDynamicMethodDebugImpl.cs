@@ -31,7 +31,12 @@ namespace BTDB.IL
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
             _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
-            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+            var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
+            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
+            for (int i = 0; i < parameterTypes.Length; i++)
+            {
+                _dynamicMethod.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
+            }
         }
 
         public void ExpectedLength(int length)
@@ -81,7 +86,12 @@ namespace BTDB.IL
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
             _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
-            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+            var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
+            _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
+            for (int i = 0; i < parameterTypes.Length; i++)
+            {
+                _dynamicMethod.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
+            }
         }
 
         public void ExpectedLength(int length)

@@ -71,7 +71,7 @@ namespace BTDB.FieldHandler
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Callvirt(() => ((IReaderCtx)null).ReadNativeObject());
+                .Callvirt(() => default(IReaderCtx).ReadNativeObject());
             var type = HandledType();
             ilGenerator.Do(_objectDB.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
         }
@@ -80,7 +80,7 @@ namespace BTDB.FieldHandler
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Callvirt(() => ((IReaderCtx)null).SkipNativeObject());
+                .Callvirt(() => default(IReaderCtx).SkipNativeObject());
         }
 
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
@@ -89,7 +89,7 @@ namespace BTDB.FieldHandler
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
                 .Do(_objectDB.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
-                .Callvirt(() => ((IWriterCtx)null).WriteNativeObject(null));
+                .Callvirt(() => default(IWriterCtx).WriteNativeObject(null));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type)

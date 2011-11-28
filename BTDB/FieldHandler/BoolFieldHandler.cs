@@ -6,9 +6,9 @@ namespace BTDB.FieldHandler
     public class BoolFieldHandler : SimpleFieldHandlerBase
     {
         public BoolFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadBool()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipBool()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteBool(false)))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadBool()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipBool()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteBool(false)))
         {
         }
 

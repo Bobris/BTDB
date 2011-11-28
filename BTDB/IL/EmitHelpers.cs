@@ -83,7 +83,7 @@ namespace BTDB.IL
                 .Ldarg(0)
                 .Ldarg(1)
                 .Newobj(() => new PropertyChangedEventArgs(null))
-                .Callvirt(() => ((PropertyChangedEventHandler)null).Invoke(null, null))
+                .Callvirt(() => default(PropertyChangedEventHandler).Invoke(null, null))
                 .Mark(labelRet)
                 .Ret();
             return methodBuilder;

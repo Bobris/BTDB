@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     {
         public ByteArrayFieldHandler()
             : base(
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadByteArray()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipByteArray()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteByteArray(null)))
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadByteArray()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipByteArray()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteByteArray(null)))
         {
         }
 

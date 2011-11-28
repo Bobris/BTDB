@@ -232,7 +232,7 @@ namespace BTDB.Service
                     localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.HandledType());
                 ilGenerator
                     .Ldarg(1)
-                    .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
+                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                     .Stloc(localResultId)
                     .Try();
             }
@@ -294,7 +294,7 @@ namespace BTDB.Service
                         ilGenerator
                             .Ldarg(2)
                             .Ldloc(localResultId)
-                            .Callvirt(() => ((IServiceInternalServer)null).VoidResultMarshaling(0u));
+                            .Callvirt(() => default(IServiceInternalServer).VoidResultMarshaling(0u));
                     }
                 }
                 else
@@ -304,7 +304,7 @@ namespace BTDB.Service
                         .Stloc(localResult)
                         .Ldarg(2)
                         .Ldloc(localResultId)
-                        .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
+                        .Callvirt(() => default(IServiceInternalServer).StartResultMarshaling(0u))
                         .Stloc(localWriter);
                     IILLocal localWriterCtx = null;
                     if (methodInf.ResultFieldHandler.NeedsCtx())
@@ -322,7 +322,7 @@ namespace BTDB.Service
                     ilGenerator
                         .Ldarg(2)
                         .Ldloc(localWriter)
-                        .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+                        .Callvirt(() => default(IServiceInternalServer).FinishResultMarshaling(null));
                 }
                 ilGenerator
                     .Catch(typeof(Exception))
@@ -330,7 +330,7 @@ namespace BTDB.Service
                     .Ldarg(2)
                     .Ldloc(localResultId)
                     .Ldloc(localException)
-                    .Callvirt(() => ((IServiceInternalServer)null).ExceptionMarshaling(0u, null))
+                    .Callvirt(() => default(IServiceInternalServer).ExceptionMarshaling(0u, null))
                     .EndTry();
             }
             ilGenerator.Ret();
@@ -359,7 +359,7 @@ namespace BTDB.Service
                 .Ldfld(resultIdField)
                 .Ldarg(1)
                 .Callvirt(typeof(Task).GetMethod("get_Exception"))
-                .Callvirt(() => ((IServiceInternalServer)null).ExceptionMarshaling(0u, null))
+                .Callvirt(() => default(IServiceInternalServer).ExceptionMarshaling(0u, null))
                 .Ret()
                 .Mark(notFaultedLabel)
                 .Ldarg(0)
@@ -369,12 +369,12 @@ namespace BTDB.Service
             if (resultFieldHandler == null)
             {
                 ilGenerator
-                    .Callvirt(() => ((IServiceInternalServer)null).VoidResultMarshaling(0u));
+                    .Callvirt(() => default(IServiceInternalServer).VoidResultMarshaling(0u));
             }
             else
             {
                 ilGenerator
-                    .Callvirt(() => ((IServiceInternalServer)null).StartResultMarshaling(0u))
+                    .Callvirt(() => default(IServiceInternalServer).StartResultMarshaling(0u))
                     .Stloc(0);
                 resultFieldHandler.Save(ilGenerator, il => il.Ldloc(0), il =>
                     {
@@ -385,7 +385,7 @@ namespace BTDB.Service
                     .Ldarg(0)
                     .Ldfld(ownerField)
                     .Ldloc(0)
-                    .Callvirt(() => ((IServiceInternalServer)null).FinishResultMarshaling(null));
+                    .Callvirt(() => default(IServiceInternalServer).FinishResultMarshaling(null));
             }
             ilGenerator.Ret();
             var constructorBuilder = tb.DefineConstructor(new[] { taskType, typeof(IServiceInternalServer), typeof(uint) });
@@ -524,14 +524,14 @@ namespace BTDB.Service
                 if (bindingInf.OneWay)
                 {
                     ilGenerator
-                        .Callvirt(() => ((IServiceInternalClient)null).StartOneWayMarshaling(null));
+                        .Callvirt(() => default(IServiceInternalClient).StartOneWayMarshaling(null));
                 }
                 else
                 {
                     Task placebo;
                     ilGenerator
                         .Ldloca(resultTaskLocal)
-                        .Callvirt(() => ((IServiceInternalClient)null).StartTwoWayMarshaling(null, out placebo));
+                        .Callvirt(() => default(IServiceInternalClient).StartTwoWayMarshaling(null, out placebo));
                 }
                 ilGenerator.Stloc(writerLocal);
                 var needsCtx = targetMethodInf.Parameters.Any(p => p.FieldHandler.NeedsCtx());
@@ -574,11 +574,11 @@ namespace BTDB.Service
                     .Ldfld(ownerField)
                     .Ldloc(writerLocal);
                 if (bindingInf.OneWay)
-                    ilGenerator.Callvirt(() => ((IServiceInternalClient)null).FinishOneWayMarshaling(null));
+                    ilGenerator.Callvirt(() => default(IServiceInternalClient).FinishOneWayMarshaling(null));
                 else
                 {
                     ilGenerator
-                        .Callvirt(() => ((IServiceInternalClient)null).FinishTwoWayMarshaling(null))
+                        .Callvirt(() => default(IServiceInternalClient).FinishTwoWayMarshaling(null))
                         .Ldloc(resultTaskLocal)
                         .Castclass(resultAsTask);
                     if (!isAsync)
@@ -1022,12 +1022,12 @@ namespace BTDB.Service
             var writerLocal = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter), "writer");
             ilGenerator
                 .Ldarg(1)
-                .Callvirt(() => ((IWriterCtx)null).Writer())
+                .Callvirt(() => default(IWriterCtx).Writer())
                 .Dup()
                 .Stloc(writerLocal)
                 .LdcI4((int)typeId)
                 .ConvU4()
-                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0));
+                .Call(() => default(AbstractBufferedWriter).WriteVUInt32(0));
             foreach (var propertyInf in typeInf.PropertyInfs)
             {
                 var prop = type.GetProperty(propertyInf.Name);
@@ -1070,7 +1070,7 @@ namespace BTDB.Service
             var resultLocal = ilGenerator.DeclareLocal(type);
             ilGenerator
                 .Ldarg(0)
-                .Callvirt(() => ((IReaderCtx)null).Reader())
+                .Callvirt(() => default(IReaderCtx).Reader())
                 .Stloc(readerLocal)
                 .Newobj(type.GetConstructor(Type.EmptyTypes))
                 .Stloc(resultLocal);
@@ -1113,12 +1113,12 @@ namespace BTDB.Service
             var writerLocal = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter), "writer");
             ilGenerator
                 .Ldarg(1)
-                .Callvirt(() => ((IWriterCtx)null).Writer())
+                .Callvirt(() => default(IWriterCtx).Writer())
                 .Dup()
                 .Stloc(writerLocal)
                 .LdcI4((int)typeId)
                 .ConvU4()
-                .Call(() => ((AbstractBufferedWriter)null).WriteVUInt32(0));
+                .Call(() => default(AbstractBufferedWriter).WriteVUInt32(0));
             foreach (var propertyInf in typeInf.PropertyInfs)
             {
                 var prop = type.GetProperty(propertyInf.Name);
@@ -1160,7 +1160,7 @@ namespace BTDB.Service
             var resultLocal = ilGenerator.DeclareLocal(type, "result");
             ilGenerator
                 .Ldarg(0)
-                .Callvirt(() => ((IReaderCtx)null).Reader())
+                .Callvirt(() => default(IReaderCtx).Reader())
                 .Stloc(readerLocal)
                 .Newobj(type.GetConstructor(Type.EmptyTypes))
                 .Stloc(resultLocal);

@@ -8,9 +8,9 @@ namespace BTDB.FieldHandler
     {
         public ByteArrayLastFieldHandler()
             : base(
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadByteArrayRawTillEof()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadByteArrayRawTillEof()),
                 null,
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteByteArrayRaw(null)))
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null)))
         {
         }
 

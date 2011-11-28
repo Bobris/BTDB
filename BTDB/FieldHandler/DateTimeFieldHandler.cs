@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     public class DateTimeFieldHandler : SimpleFieldHandlerBase
     {
         public DateTimeFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadDateTime()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipDateTime()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteDateTime(new DateTime())))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDateTime()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDateTime()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDateTime(new DateTime())))
         {
         }
 

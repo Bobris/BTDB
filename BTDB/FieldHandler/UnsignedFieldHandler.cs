@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     public class UnsignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public UnsignedFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVUInt64()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVUInt64()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVUInt64(0)))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVUInt64()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVUInt64()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVUInt64(0)))
         {
         }
 

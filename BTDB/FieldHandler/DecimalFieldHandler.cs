@@ -6,9 +6,9 @@ namespace BTDB.FieldHandler
     public class DecimalFieldHandler : SimpleFieldHandlerBase
     {
         public DecimalFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadDecimal()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipDecimal()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteDecimal(0)))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDecimal()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDecimal()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDecimal(0)))
         {
         }
 

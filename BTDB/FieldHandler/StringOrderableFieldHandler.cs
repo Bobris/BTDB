@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     {
         public StringOrderableFieldHandler()
             : base(
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadStringOrdered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipStringOrdered()),
-                EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteStringOrdered(null)))
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadStringOrdered()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipStringOrdered()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteStringOrdered(null)))
         {
         }
 

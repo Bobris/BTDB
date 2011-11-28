@@ -7,9 +7,9 @@ namespace BTDB.FieldHandler
     public class SignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
         public SignedFieldHandler(): base(
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).ReadVInt64()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedReader)null).SkipVInt64()),
-            EmitHelpers.GetMethodInfo(() => ((AbstractBufferedWriter)null).WriteVInt64(0)))
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVInt64()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVInt64()),
+            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVInt64(0)))
         {
         }
 
