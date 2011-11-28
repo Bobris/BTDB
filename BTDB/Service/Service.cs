@@ -441,6 +441,11 @@ namespace BTDB.Service
             get { return _onNewRemoteService; }
         }
 
+        public void RegisterRemoteType(Type type)
+        {
+            RegisterType(type);
+        }
+
         object InternalQueryRemoteService(Type serviceType)
         {
             var typeInf = new TypeInf(serviceType, _fieldHandlerFactory);
@@ -601,7 +606,9 @@ namespace BTDB.Service
                 methodBuilder = tb.DefineMethod("HandleResult_" + returnType.FullName, typeof(void),
                                                 new[] { typeof(object), typeof(AbstractBufferedReader), typeof(IServiceInternalClient) }, MethodAttributes.Public | MethodAttributes.Static);
                 ilGenerator = methodBuilder.Generator;
+                var localException = ilGenerator.DeclareLocal(typeof (Exception), "ex");
                 ilGenerator
+                    .Try()
                     .Ldarg(0)
                     .Castclass(resultAsTcs);
                 if (targetMethodInf.ResultFieldHandler == null && returnType == typeof(void))
@@ -627,10 +634,18 @@ namespace BTDB.Service
                         specializedLoad.Load(ilGenerator, il => il.Ldarg(1));
                     }
                     _typeConvertorGenerator.GenerateConversion(specializedLoad.HandledType(), returnType)(ilGenerator);
+
                 }
                 ilGenerator
                     .Callvirt(resultAsTcs.GetMethod("TrySetResult"))
                     .Pop()
+                    .Catch(typeof(Exception))
+                    .Stloc(localException)
+                    .Ldarg(0)
+                    .Castclass(resultAsTcs)
+                    .Ldloc(localException)
+                    .Callvirt(resultAsTcs.GetMethod("TrySetException", new[] { typeof(Exception) }))
+                    .EndTry()
                     .Ret();
 
                 methodBuilder = tb.DefineMethod("HandleException_" + returnType.FullName, typeof(void),
@@ -859,7 +874,7 @@ namespace BTDB.Service
             _serverObjects.TryAdd(serviceId, service);
             _serverServices.TryAdd(service, serviceId);
             var type = typeof(T);
-            var typeId = RegisterLocalType(type);
+            var typeId = RegisterLocalTypeInternal(type);
             _serverKnownServicesTypes.TryAdd(serviceId, typeId);
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
@@ -869,7 +884,12 @@ namespace BTDB.Service
             _channel.Send(ByteBuffer.NewAsync(writer.Data));
         }
 
-        uint RegisterLocalType(Type type)
+        public void RegisterLocalType(Type type)
+        {
+            RegisterLocalTypeInternal(type);
+        }
+
+        uint RegisterLocalTypeInternal(Type type)
         {
             uint typeId;
             while (true)
@@ -891,7 +911,7 @@ namespace BTDB.Service
                     return null;
                 }).OfType<ServiceObjectFieldHandler>())
             {
-                RegisterLocalType(fieldHandler.HandledType());
+                RegisterLocalTypeInternal(fieldHandler.HandledType());
             }
             var writer = new ByteArrayWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
@@ -1105,7 +1125,7 @@ namespace BTDB.Service
                 saverAction(@object, writerCtx);
                 return;
             }
-            var typeId = RegisterLocalType(type);
+            var typeId = RegisterLocalTypeInternal(type);
             TypeInf typeInf;
             _serverTypeInfs.TryGetValue(typeId, out typeInf);
             var dm = ILBuilder.Instance.NewMethod<Action<object, IWriterCtx>>(type.Name + "ServiceSaverBack");

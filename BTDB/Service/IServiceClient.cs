@@ -7,5 +7,6 @@ namespace BTDB.Service
         T QueryRemoteService<T>() where T : class;
         object QueryRemoteService(Type serviceType);
         IObservable<string> OnNewRemoteService { get; }
+        void RegisterRemoteType(Type type);
     }
 }

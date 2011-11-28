@@ -387,5 +387,29 @@ namespace BTDBTest
             Assert.AreEqual(3.14, received.Number, 1e-14);
         }
 
+        [Test]
+        public void CanReturnAndRegisterOtherTypes()
+        {
+            _first.RegisterLocalService((Func<object>)(() => new SimpleDTO { Name = "Text", Number = 3.14 }));
+            var d = _second.QueryRemoteService<Func<object>>();
+            _second.RegisterRemoteType(typeof(SimpleDTO));
+            var received = (SimpleDTO)d();
+            Assert.NotNull(received);
+            Assert.AreEqual("Text", received.Name);
+            Assert.AreEqual(3.14, received.Number, 1e-14);
+        }
+
+        [Test]
+        public void CanSendAndRegisterOtherTypes()
+        {
+            SimpleDTO received = null;
+            _first.RegisterLocalService((Action<object>)(r => received = (SimpleDTO)r));
+            _first.RegisterLocalType(typeof(SimpleDTO));
+            var d = _second.QueryRemoteService<Action<object>>();
+            d(new SimpleDTO { Name = "Text", Number = 3.14 });
+            Assert.NotNull(received);
+            Assert.AreEqual("Text", received.Name);
+            Assert.AreEqual(3.14, received.Number, 1e-14);
+        }
     }
 }
