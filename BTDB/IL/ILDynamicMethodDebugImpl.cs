@@ -24,13 +24,14 @@ namespace BTDB.IL
             _delegateType = delegateType;
             _expectedLength = 64;
             var mi = delegateType.GetMethod("Invoke");
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
-            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + "Asm.dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + name + "Asm.il");
+            var uniqueName = ILDynamicTypeDebugImpl.UniqueName(name);
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
+            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
-            _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, typeof(object), Type.EmptyTypes);
             var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
             _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
             for (int i = 0; i < parameterTypes.Length; i++)
@@ -79,13 +80,14 @@ namespace BTDB.IL
         {
             _expectedLength = 64;
             var mi = typeof(T).GetMethod("Invoke");
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name + "Asm"), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
-            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + "Asm.dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + name + "Asm.il");
+            var uniqueName = ILDynamicTypeDebugImpl.UniqueName(name);
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
+            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
-            _typeBuilder = _moduleBuilder.DefineType(name + "Impl", TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, typeof(object), Type.EmptyTypes);
             var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
             _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
             for (int i = 0; i < parameterTypes.Length; i++)

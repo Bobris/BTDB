@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics.SymbolStore;
 using System.IO;
 using System.Linq;
@@ -9,6 +10,8 @@ namespace BTDB.IL
 {
     internal class ILDynamicTypeDebugImpl : IILDynamicType
     {
+        static readonly ConcurrentDictionary<string, int> UniqueNames = new ConcurrentDictionary<string, int>();
+
         readonly string _name;
         readonly AssemblyBuilder _assemblyBuilder;
         readonly ModuleBuilder _moduleBuilder;
@@ -20,14 +23,23 @@ namespace BTDB.IL
         public ILDynamicTypeDebugImpl(string name, Type baseType, Type[] interfaces)
         {
             _name = name;
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
-            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + ".dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + name + ".il");
+            var uniqueName = UniqueName(name);
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
+            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.WriteLine(string.Format("class {0} : {1}{2}", name, baseType.ToSimpleName(), string.Concat(interfaces.Select(i => ", " + i.ToSimpleName()))));
             _sourceCodeWriter.OpenScope();
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, baseType, interfaces);
+        }
+
+        internal static string UniqueName(string name)
+        {
+            var uniqueName = name;
+            var uniqueIdx = UniqueNames.AddOrUpdate(name, 0, (s, v) => v + 1);
+            if (uniqueIdx != 0) uniqueName = string.Format("{0}__{1}", name, uniqueIdx);
+            return uniqueName;
         }
 
         public IILMethod DefineMethod(string name, Type returns, Type[] parameters, MethodAttributes methodAttributes = MethodAttributes.Public)
