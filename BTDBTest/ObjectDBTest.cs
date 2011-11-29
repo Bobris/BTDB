@@ -21,6 +21,12 @@ namespace BTDBTest
             public uint Age { get; set; }
         }
 
+        public class PersonWithNonStoredProperty
+        {
+            public string Name { get; set; }
+            [NotStored] public uint Age { get; set; }
+        }
+
         public class PersonNew
         {
             public string Name { get; set; }
@@ -954,6 +960,25 @@ namespace BTDBTest
                 Assert.AreEqual(3,dict.Count);
                 Assert.AreEqual("Chief", dict["master"].Name);
                 Assert.AreSame(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
+            }
+        }
+
+        [Test]
+        public void NotStoredProperties()
+        {
+            var personObjDBName = _db.RegisterType(typeof(PersonWithNonStoredProperty));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new PersonWithNonStoredProperty { Name = "Bobris", Age = 35 });
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Person), personObjDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Enumerate<Person>().First();
+                Assert.AreEqual("Bobris", p.Name);
+                Assert.AreEqual(0, p.Age);
             }
         }
     }

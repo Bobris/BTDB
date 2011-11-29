@@ -163,6 +163,7 @@ namespace BTDB.ODBLayer
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
+                if (pi.GetCustomAttributes(typeof(NotStoredAttribute),true).Length!=0) continue;
                 fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory));
             }
             var tvi = new TableVersionInfo(fields.ToArray());

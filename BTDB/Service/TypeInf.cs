@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.Service
@@ -45,8 +46,9 @@ namespace BTDB.Service
                 foreach (var property in properties)
                 {
                     if (!property.CanRead || !property.CanWrite) continue;
-                    if (!property.GetGetMethod().IsPublic) continue;
-                    if (!property.GetSetMethod().IsPublic) continue;
+                    if (property.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) return;
+                    if (property.GetGetMethod()==null) continue;
+                    if (property.GetSetMethod()==null) continue;
                     if (!fieldHandlerFactory.TypeSupported(property.PropertyType)) continue;
                     propertyInfs.Add(new PropertyInf(property, fieldHandlerFactory));
                 }
