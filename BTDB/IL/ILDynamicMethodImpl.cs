@@ -18,7 +18,7 @@ namespace BTDB.IL
             _expectedLength = 64;
             var mi = delegateType.GetMethod("Invoke");
             _dynamicMethod = new DynamicMethod(name, mi.ReturnType,
-                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray(),true);
         }
 
         public void ExpectedLength(int length)
@@ -53,7 +53,7 @@ namespace BTDB.IL
             _expectedLength = 64;
             var mi = typeof(T).GetMethod("Invoke");
             _dynamicMethod = new DynamicMethod(name, mi.ReturnType,
-                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray());
+                                               mi.GetParameters().Select(pi => pi.ParameterType).ToArray(),true);
         }
 
         public void ExpectedLength(int length)
