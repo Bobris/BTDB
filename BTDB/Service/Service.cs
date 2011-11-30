@@ -355,7 +355,7 @@ namespace BTDB.Service
             var resultIdField = tb.DefineField("_resultId", typeof(uint), FieldAttributes.Private);
             var methodBuilder = tb.DefineMethod("Run", typeof(void), new[] { taskType });
             var ilGenerator = methodBuilder.Generator;
-            ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter),"writer");
+            var localWriter = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter), "writer");
             var notFaultedLabel = ilGenerator.DefineLabel();
             ilGenerator
                 .Ldarg(1)
@@ -384,15 +384,28 @@ namespace BTDB.Service
                 ilGenerator
                     .Callvirt(() => default(IServiceInternalServer).StartResultMarshaling(0u))
                     .Stloc(0);
-                resultFieldHandler.Save(ilGenerator, il => il.Ldloc(0), il =>
-                    {
-                        il.Ldarg(1).Callvirt(taskType.GetMethod("get_Result"));
-                        _typeConvertorGenerator.GenerateConversion(taskType.UnwrapTask(), resultFieldHandler.HandledType())(il);
-                    });
+                IILLocal localWriterCtx = null;
+                if (resultFieldHandler.NeedsCtx())
+                {
+                    localWriterCtx = ilGenerator.DeclareLocal(typeof(IWriterCtx), "writerCtx");
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldfld(ownerField)
+                        .Ldloc(localWriter)
+                        .Newobj(() => new ServiceWriterCtx((IServiceInternalServer)null, null))
+                        .Castclass(typeof(IWriterCtx))
+                        .Stloc(localWriterCtx);
+
+                }
+                resultFieldHandler.Save(ilGenerator, il => il.Ldloc(resultFieldHandler.NeedsCtx() ? localWriterCtx : localWriter), il =>
+                {
+                    il.Ldarg(1).Callvirt(taskType.GetMethod("get_Result"));
+                    _typeConvertorGenerator.GenerateConversion(taskType.UnwrapTask(), resultFieldHandler.HandledType())(il);
+                });
                 ilGenerator
                     .Ldarg(0)
                     .Ldfld(ownerField)
-                    .Ldloc(0)
+                    .Ldloc(localWriter)
                     .Callvirt(() => default(IServiceInternalServer).FinishResultMarshaling(null));
             }
             ilGenerator.Ret();
@@ -614,7 +627,7 @@ namespace BTDB.Service
                 methodBuilder = tb.DefineMethod("HandleResult_" + returnType.FullName, typeof(void),
                                                 new[] { typeof(object), typeof(AbstractBufferedReader), typeof(IServiceInternalClient) }, MethodAttributes.Public | MethodAttributes.Static);
                 ilGenerator = methodBuilder.Generator;
-                var localException = ilGenerator.DeclareLocal(typeof (Exception), "ex");
+                var localException = ilGenerator.DeclareLocal(typeof(Exception), "ex");
                 ilGenerator
                     .Try()
                     .Ldarg(0)

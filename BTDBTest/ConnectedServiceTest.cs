@@ -411,5 +411,13 @@ namespace BTDBTest
             Assert.AreEqual("Text", received.Name);
             Assert.AreEqual(3.14, received.Number, 1e-14);
         }
+
+        [Test]
+        public void CanReturnComplexObjectsAsTask()
+        {
+            _first.RegisterLocalService((Func<List<int>, Task<List<int>>>)(p => Task.Factory.StartNew(() => p.AsEnumerable().Reverse().ToList())));
+            var d = _second.QueryRemoteService<Func<List<int>, Task<List<int>>>>();
+            Assert.AreEqual(new List<int> { 3, 2, 1 }, d(new List<int> { 1, 2, 3 }).Result);
+        }
     }
 }
