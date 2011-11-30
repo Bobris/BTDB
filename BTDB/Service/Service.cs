@@ -165,7 +165,15 @@ namespace BTDB.Service
                     if (_clientAcks.TryRemove(ackId, out taskAndBind))
                     {
                         _clientAckNumbers.Deallocate(ackId);
-                        var ex = new BinaryFormatter().Deserialize(new MemoryStream(reader.ReadByteArray())) as Exception;
+                        Exception ex;
+                        try
+                        {
+                            ex = new BinaryFormatter().Deserialize(new MemoryStream(reader.ReadByteArray())) as Exception;
+                        }
+                        catch (Exception e)
+                        {
+                            ex = e;
+                        }
                         taskAndBind.Binding.HandleException(taskAndBind.TaskCompletionSource, ex);
                     }
                     break;

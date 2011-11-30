@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.Serialization;
 
 namespace BTDB.KVDBLayer
 {
@@ -7,6 +8,11 @@ namespace BTDB.KVDBLayer
     {
         public BTDBException(string message)
             : base(message)
+        {
+        }
+ 
+        BTDBException(SerializationInfo info, StreamingContext context) 
+            : base(info, context)
         {
         }
     }
