@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -57,14 +58,14 @@ namespace BTDB.ODBLayer
                 _keyValueTr.SetKeyPrefix(null);
                 if (_keyValueTr.CreateKey(ObjectDB.LastDictIdKey))
                 {
-                    _keyValueTr.SetValue(new byte[] {1});
+                    _keyValueTr.SetValue(new byte[] { 1 });
                     return 0;
                 }
                 else
                 {
                     var id = new ByteArrayReader(_keyValueTr.ReadValue()).ReadVUInt64();
                     var w = new ByteArrayWriter();
-                    w.WriteVUInt64(id+1);
+                    w.WriteVUInt64(id + 1);
                     _keyValueTr.SetValue(w.Data);
                     return id;
                 }
@@ -73,6 +74,31 @@ namespace BTDB.ODBLayer
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
+        }
+
+        public object ReadInlineObject(IReaderCtx readerCtx)
+        {
+            var reader = readerCtx.Reader();
+            var tableId = reader.ReadVUInt32();
+            var tableVersion = reader.ReadVUInt32();
+            var tableInfo = _owner.TablesInfo.FindById(tableId);
+            if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of inline object", tableId));
+            EnsureClientTypeNotNull(tableInfo);
+            var obj = tableInfo.Creator(this, null);
+            readerCtx.RegisterObject(obj);
+            tableInfo.GetLoader(tableVersion)(this, null, reader, obj);
+            readerCtx.ReadObjectDone();
+            return obj;
+        }
+
+        public void WriteInlineObject(object @object, IWriterCtx writerCtx)
+        {
+            var ti = GetTableInfoFromType(@object.GetType());
+            EnsureClientTypeNotNull(ti);
+            var writer = writerCtx.Writer();
+            writer.WriteVUInt32(ti.Id);
+            writer.WriteVUInt32(ti.ClientTypeVersion);
+            ti.Saver(this, null, writer, @object);
         }
 
         public IEnumerable<T> Enumerate<T>() where T : class
@@ -269,12 +295,17 @@ namespace BTDB.ODBLayer
             return RegisterNewObject(@object);
         }
 
-        public ulong StoreIfUnknownButTypeRegistered(object @object)
+        public ulong StoreIfNotInlined(object @object, bool autoRegister)
         {
-            var ti = GetTableInfoFromType(@object.GetType());
-            if (ti == null)
+            TableInfo ti;
+            if (autoRegister)
             {
-                return ulong.MaxValue;
+                ti = AutoRegisterType(@object.GetType());
+            }
+            else
+            {
+                ti = GetTableInfoFromType(@object.GetType());
+                if (ti == null) return ulong.MaxValue;
             }
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
@@ -283,7 +314,7 @@ namespace BTDB.ODBLayer
                 if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
                 return metadata.Id;
             }
-            return RegisterNewObject(@object);
+            return ti.StoredInline ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
         ulong RegisterNewObject(object obj)
@@ -445,7 +476,7 @@ namespace BTDB.ODBLayer
             {
                 _keyValueTrProtector.Start(ref shouldStop);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id),writer.Data);
+                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data);
             }
             finally
             {

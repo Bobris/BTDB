@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using BTDB.StreamLayer;
 
@@ -19,24 +18,20 @@ namespace BTDB.ODBLayer
 
         public bool WriteObject(object @object)
         {
-            if (!CommonWriteObject(@object)) return false;
-            _lastId++;
-            _objectIdMap.Add(@object, _lastId);
-            _writer.WriteVInt64(-_lastId);
-            return true;
+            return CommonWriteObject(@object, false);
         }
 
-        bool CommonWriteObject(object @object)
+        bool CommonWriteObject(object @object, bool autoRegister)
         {
             if (@object == null)
             {
                 _writer.WriteVInt64(0);
                 return false;
             }
-            var oid = _transaction.StoreIfUnknownButTypeRegistered(@object);
+            var oid = _transaction.StoreIfNotInlined(@object, autoRegister);
             if (oid != ulong.MaxValue)
             {
-                _writer.WriteVInt64((long) oid);
+                _writer.WriteVInt64((long)oid);
                 return false;
             }
             if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
@@ -46,15 +41,16 @@ namespace BTDB.ODBLayer
                 _writer.WriteVInt64(-cid);
                 return false;
             }
+            _lastId++;
+            _objectIdMap.Add(@object, _lastId);
+            _writer.WriteVInt64(-_lastId);
             return true;
         }
 
         public void WriteNativeObject(object @object)
         {
-            var test = CommonWriteObject(@object);
-            if (!test) return;
-            var oid = _transaction.Store(@object);
-            _writer.WriteVInt64((long)oid);
+            if (!CommonWriteObject(@object, true)) return;
+            _transaction.WriteInlineObject(@object, this);
         }
 
         public AbstractBufferedWriter Writer()

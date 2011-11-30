@@ -84,7 +84,10 @@ namespace BTDB.ODBLayer
         {
             object @object;
             var test=ReadObject(out @object);
-            if (test) throw new InvalidDataException();
+            if (test)
+            {
+                @object = _transaction.ReadInlineObject(this);
+            }
             return @object;
         }
 

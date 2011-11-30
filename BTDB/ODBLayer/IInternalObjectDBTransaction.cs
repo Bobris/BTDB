@@ -1,3 +1,4 @@
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
@@ -8,5 +9,8 @@ namespace BTDB.ODBLayer
         IKeyValueDBTransaction KeyValueDBTransaction { get; }
         KeyValueDBTransactionProtector TransactionProtector { get; }
         ulong AllocateDictionaryId();
+        object ReadInlineObject(IReaderCtx readerCtx);
+        void WriteInlineObject(object @object, IWriterCtx writerCtx);
+        ulong StoreIfNotInlined(object @object, bool autoRegister);
     }
 }

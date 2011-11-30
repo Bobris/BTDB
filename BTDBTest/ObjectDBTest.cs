@@ -24,7 +24,8 @@ namespace BTDBTest
         public class PersonWithNonStoredProperty
         {
             public string Name { get; set; }
-            [NotStored] public uint Age { get; set; }
+            [NotStored]
+            public uint Age { get; set; }
         }
 
         public class PersonNew
@@ -944,8 +945,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                var sl1 = new Person {Name = "Poor Slave", Age = 18};
-                var sl2 = new Person {Name = "Poor Poor Slave", Age = 17};
+                var sl1 = new Person { Name = "Poor Slave", Age = 18 };
+                var sl2 = new Person { Name = "Poor Poor Slave", Age = 17 };
                 root.String2Person.Add("slave", sl1);
                 root.String2Person.Add("slave2", sl2);
                 root.String2Person.Add("master", new Manager { Name = "Chief", Age = 19, Managing = new List<Person> { sl1, sl2 } });
@@ -957,7 +958,7 @@ namespace BTDBTest
                 var dict = root.String2Person;
                 Assert.IsInstanceOf<Person>(dict["slave"]);
                 Assert.IsInstanceOf<Manager>(dict["master"]);
-                Assert.AreEqual(3,dict.Count);
+                Assert.AreEqual(3, dict.Count);
                 Assert.AreEqual("Chief", dict["master"].Name);
                 Assert.AreSame(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
             }
@@ -981,5 +982,39 @@ namespace BTDBTest
                 Assert.AreEqual(0, p.Age);
             }
         }
+
+        [StoredInline]
+        public class InlinePerson : Person
+        {
+        }
+
+        public class ListOfInlinePersons
+        {
+            public List<InlinePerson> InlinePersons { get; set; }
+        }
+
+        [Test]
+        public void SupportOfInlineObjects()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ListOfInlinePersons>();
+                root.InlinePersons = new List<InlinePerson> { new InlinePerson { Name = "Me" } };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ListOfInlinePersons>();
+                root.InlinePersons[0].Age = 1;
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ListOfInlinePersons>();
+                Assert.AreEqual(1, root.InlinePersons[0].Age);
+            }
+        }
+
     }
 }

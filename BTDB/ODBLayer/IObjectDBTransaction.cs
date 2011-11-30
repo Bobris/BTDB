@@ -15,7 +15,6 @@ namespace BTDB.ODBLayer
         T Singleton<T>() where T : class;
 
         ulong Store(object @object);
-        ulong StoreIfUnknownButTypeRegistered(object @object);
         void Delete(object @object);
 
         void DeleteAll<T>() where T : class;
