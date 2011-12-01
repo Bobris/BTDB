@@ -13,14 +13,16 @@ namespace BTDB.IL
         readonly string _name;
         readonly Type _returnType;
         readonly Type[] _parameters;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
-        public ILMethodDebugImpl(MethodBuilder method, SourceCodeWriter sourceCodeWriter, string name, Type returnType, Type[] parameters)
+        public ILMethodDebugImpl(MethodBuilder method, SourceCodeWriter sourceCodeWriter, string name, Type returnType, Type[] parameters, IILGenForbidenInstructions forbidenInstructions)
         {
             _method = method;
             _sourceCodeWriter = sourceCodeWriter;
             _name = name;
             _returnType = returnType;
             _parameters = parameters;
+            _forbidenInstructions = forbidenInstructions;
             _expectedLength = 64;
         }
 
@@ -31,7 +33,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_method.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
+            get { return _gen ?? (_gen = new ILGenDebugImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
         }
 
         public string Name

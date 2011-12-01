@@ -8,10 +8,12 @@ namespace BTDB.IL
         int _expectedLength;
         IILGen _gen;
         readonly MethodBuilder _method;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
-        public ILMethodImpl(MethodBuilder method)
+        public ILMethodImpl(MethodBuilder method, IILGenForbidenInstructions forbidenInstructions)
         {
             _method = method;
+            _forbidenInstructions = forbidenInstructions;
             _expectedLength = 64;
         }
 
@@ -22,7 +24,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength))); }
+            get { return _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions)); }
         }
 
         public MethodInfo MethodInfo

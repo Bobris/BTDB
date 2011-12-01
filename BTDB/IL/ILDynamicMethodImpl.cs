@@ -28,12 +28,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
-        }
-
-        public MethodInfo MethodInfo
-        {
-            get { throw new InvalidOperationException(); }
+            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers())); }
         }
 
         public object Create()
@@ -63,12 +58,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength))); }
-        }
-
-        public MethodInfo MethodInfo
-        {
-            get { throw new InvalidOperationException(); }
+            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers())); }
         }
 
         public T Create()

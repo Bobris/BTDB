@@ -7,10 +7,12 @@ namespace BTDB.IL
         readonly ConstructorBuilder _constructor;
         int _expectedLength;
         IILGen _gen;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
-        public ILConstructorImpl(ConstructorBuilder constructor)
+        public ILConstructorImpl(ConstructorBuilder constructor, IILGenForbidenInstructions forbidenInstructions)
         {
             _constructor = constructor;
+            _forbidenInstructions = forbidenInstructions;
             _expectedLength = 64;
         }
 
@@ -21,7 +23,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenImpl(_constructor.GetILGenerator(_expectedLength))); }
+            get { return _gen ?? (_gen = new ILGenImpl(_constructor.GetILGenerator(_expectedLength), _forbidenInstructions)); }
         }
     }
 }

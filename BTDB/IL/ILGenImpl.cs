@@ -7,10 +7,12 @@ namespace BTDB.IL
     internal class ILGenImpl : IILGen
     {
         readonly ILGenerator _ilGenerator;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
-        public ILGenImpl(ILGenerator ilGenerator)
+        public ILGenImpl(ILGenerator ilGenerator, IILGenForbidenInstructions forbidenInstructions)
         {
             _ilGenerator = ilGenerator;
+            _forbidenInstructions = forbidenInstructions;
         }
 
         public IILLabel DefineLabel(string name)
@@ -316,13 +318,13 @@ namespace BTDB.IL
         public IILGen Callvirt(MethodInfo methodInfo)
         {
             if (methodInfo.IsStatic) throw new ArgumentException("Method in Callvirt cannot be static");
-            _ilGenerator.Emit(OpCodes.Callvirt, methodInfo);
+            _forbidenInstructions.Emit(_ilGenerator, OpCodes.Callvirt, methodInfo);
             return this;
         }
 
         public IILGen Call(MethodInfo methodInfo)
         {
-            _ilGenerator.Emit(OpCodes.Call, methodInfo);
+            _forbidenInstructions.Emit(_ilGenerator, OpCodes.Call, methodInfo);
             return this;
         }
 

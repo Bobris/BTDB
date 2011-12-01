@@ -18,6 +18,7 @@ namespace BTDB.IL
         readonly TypeBuilder _typeBuilder;
         readonly MethodBuilder _dynamicMethod;
         readonly SourceCodeWriter _sourceCodeWriter;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
         public ILDynamicMethodDebugImpl(string name, Type delegateType)
         {
@@ -32,6 +33,7 @@ namespace BTDB.IL
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
             var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
             _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
             for (int i = 0; i < parameterTypes.Length; i++)
@@ -47,7 +49,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
+            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
         }
 
         public MethodInfo MethodInfo
@@ -58,6 +60,7 @@ namespace BTDB.IL
         public object Create()
         {
             var finalType = _typeBuilder.CreateType();
+            _forbidenInstructions.FinishType(finalType);
             _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.Dispose();
@@ -75,6 +78,7 @@ namespace BTDB.IL
         readonly TypeBuilder _typeBuilder;
         readonly MethodBuilder _dynamicMethod;
         readonly SourceCodeWriter _sourceCodeWriter;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
         public ILDynamicMethodDebugImpl(string name)
         {
@@ -88,6 +92,7 @@ namespace BTDB.IL
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.StartMethod(name, mi);
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, typeof(object), Type.EmptyTypes);
+            _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
             var parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
             _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
             for (int i = 0; i < parameterTypes.Length; i++)
@@ -103,7 +108,7 @@ namespace BTDB.IL
 
         public IILGen Generator
         {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _sourceCodeWriter)); }
+            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
         }
 
         public MethodInfo MethodInfo
@@ -116,6 +121,7 @@ namespace BTDB.IL
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.Dispose();
             var finalType = _typeBuilder.CreateType();
+            _forbidenInstructions.FinishType(finalType);
             _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             return (T)(object)Delegate.CreateDelegate(typeof(T), finalType, "Invoke");
         }

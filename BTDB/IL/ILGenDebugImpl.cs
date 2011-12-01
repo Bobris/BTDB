@@ -9,12 +9,14 @@ namespace BTDB.IL
     internal class ILGenDebugImpl : IILGen
     {
         readonly ILGenerator _ilGenerator;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
         readonly SourceCodeWriter _sourceCodeWriter;
         int _labelCounter;
 
-        public ILGenDebugImpl(ILGenerator ilGenerator, SourceCodeWriter sourceCodeWriter)
+        public ILGenDebugImpl(ILGenerator ilGenerator, IILGenForbidenInstructions forbidenInstructions, SourceCodeWriter sourceCodeWriter)
         {
             _ilGenerator = ilGenerator;
+            _forbidenInstructions = forbidenInstructions;
             _sourceCodeWriter = sourceCodeWriter;
         }
 
@@ -156,7 +158,7 @@ namespace BTDB.IL
         void Emit(OpCode opCode, MethodInfo param)
         {
             _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {3} {1}({2})", opCode, param.Name, FormatParams(param.GetParameters()), param.ReturnType.ToSimpleName()));
-            _ilGenerator.Emit(opCode, param);
+            _forbidenInstructions.Emit(_ilGenerator, opCode, param);
         }
 
         void Emit(OpCode opCode, Type type)
@@ -451,7 +453,7 @@ namespace BTDB.IL
                 OpCodes.Ldftn,
                 meth.Name,
                 meth.ReturnType.ToSimpleName(),
-                string.Join(", ",meth.Parameters.Select(p=>p.ToSimpleName()))));
+                string.Join(", ", meth.Parameters.Select(p => p.ToSimpleName()))));
             _ilGenerator.Emit(OpCodes.Ldftn, meth.MethodInfo);
             return this;
         }

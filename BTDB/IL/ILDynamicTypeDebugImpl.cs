@@ -19,6 +19,7 @@ namespace BTDB.IL
         readonly SourceCodeWriter _sourceCodeWriter;
         readonly TypeBuilder _typeBuilder;
         bool _inScope;
+        readonly IILGenForbidenInstructions _forbidenInstructions;
 
         public ILDynamicTypeDebugImpl(string name, Type baseType, Type[] interfaces)
         {
@@ -32,6 +33,7 @@ namespace BTDB.IL
             _sourceCodeWriter.WriteLine(string.Format("class {0} : {1}{2}", name, baseType.ToSimpleName(), string.Concat(interfaces.Select(i => ", " + i.ToSimpleName()))));
             _sourceCodeWriter.OpenScope();
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, baseType, interfaces);
+            _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
         }
 
         internal static string UniqueName(string name)
@@ -52,7 +54,7 @@ namespace BTDB.IL
                 methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
             }
             _inScope = true;
-            return new ILMethodDebugImpl(methodBuilder, _sourceCodeWriter, name, returns, parameters);
+            return new ILMethodDebugImpl(methodBuilder, _sourceCodeWriter, name, returns, parameters, _forbidenInstructions);
         }
 
         public FieldBuilder DefineField(string name, Type type, FieldAttributes fieldAttributes)
@@ -74,7 +76,7 @@ namespace BTDB.IL
             CloseInScope();
             _sourceCodeWriter.StartMethod(_name, null, parameters, MethodAttributes.Public);
             _inScope = true;
-            return new ILConstructorDebugImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _sourceCodeWriter);
+            return new ILConstructorDebugImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbidenInstructions, _sourceCodeWriter);
         }
 
         void CloseInScope()
@@ -96,6 +98,7 @@ namespace BTDB.IL
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.Dispose();
             var finalType = _typeBuilder.CreateType();
+            _forbidenInstructions.FinishType(finalType);
             _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             return finalType;
         }
