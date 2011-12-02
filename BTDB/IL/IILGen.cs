@@ -13,7 +13,9 @@ namespace BTDB.IL
         IILGen Ldarg(ushort parameterIndex);
         IILGen Ldfld(FieldInfo fieldInfo);
         IILGen Ldflda(FieldInfo fieldInfo);
+        IILGen Ldsfld(FieldInfo fieldInfo);
         IILGen Stfld(FieldInfo fieldInfo);
+        IILGen Stsfld(FieldInfo fieldInfo);
         IILGen Stloc(ushort localVariableIndex);
         IILGen Stloc(IILLocal localBuilder);
         IILGen Ldloc(ushort localVariableIndex);

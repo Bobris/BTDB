@@ -93,9 +93,10 @@ namespace BTDBTest
             Assert.AreEqual("Test", n.PassedParam);
         }
 
-        [Test, Ignore(".Net limitation - currently works only without debugging")]
+        [Test]
         public void CanAccessPrivateProperties()
         {
+            ILBuilder.Instance.Debuggable = true;
             var method = ILBuilder.Instance.NewMethod<Func<int>>("PrivateAccess");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");

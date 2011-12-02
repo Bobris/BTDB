@@ -163,9 +163,21 @@ namespace BTDB.IL
             return this;
         }
 
+        public IILGen Ldsfld(FieldInfo fieldInfo)
+        {
+            _ilGenerator.Emit(OpCodes.Ldsfld, fieldInfo);
+            return this;
+        }
+
         public IILGen Stfld(FieldInfo fieldInfo)
         {
             _ilGenerator.Emit(OpCodes.Stfld, fieldInfo);
+            return this;
+        }
+
+        public IILGen Stsfld(FieldInfo fieldInfo)
+        {
+            _ilGenerator.Emit(OpCodes.Stsfld, fieldInfo);
             return this;
         }
 

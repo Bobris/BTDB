@@ -266,9 +266,21 @@ namespace BTDB.IL
             return this;
         }
 
+        public IILGen Ldsfld(FieldInfo fieldInfo)
+        {
+            Emit(OpCodes.Ldsfld, fieldInfo);
+            return this;
+        }
+
         public IILGen Stfld(FieldInfo fieldInfo)
         {
             Emit(OpCodes.Stfld, fieldInfo);
+            return this;
+        }
+
+        public IILGen Stsfld(FieldInfo fieldInfo)
+        {
+            Emit(OpCodes.Stsfld, fieldInfo);
             return this;
         }
 
