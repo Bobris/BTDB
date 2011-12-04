@@ -57,6 +57,7 @@ namespace BTDB.IL
         IILGen ConvR8();
         IILGen Tail();
         IILGen LdelemRef();
+        IILGen StelemRef();
         IILGen Try();
         IILGen Catch(Type exceptionType);
         IILGen Finally();

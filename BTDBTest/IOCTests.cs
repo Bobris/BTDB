@@ -19,7 +19,7 @@ namespace BTDBTest
         public object Main(Type type)
         {
             var handle = type;
-            if (handle.Equals(typeof(ILogger))) return new Logger();
+            if (handle.Equals(typeof (ILogger))) return new Logger();
             return null;
         }
 
@@ -36,5 +36,18 @@ namespace BTDBTest
             Assert.AreNotSame(log1, log2);
         }
 
+        [Test]
+        public void Singleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            var container = builder.Build();
+            var log1 = container.Resolve<ILogger>();
+            Assert.NotNull(log1);
+            var log2 = container.Resolve<ILogger>();
+            Assert.NotNull(log2);
+            Assert.AreSame(log1, log2);
+        }
     }
+
 }

@@ -585,6 +585,12 @@ namespace BTDB.IL
             return this;
         }
 
+        public IILGen StelemRef()
+        {
+            Emit(OpCodes.Stelem_Ref);
+            return this;
+        }
+
         public IILGen Try()
         {
             _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, "try");

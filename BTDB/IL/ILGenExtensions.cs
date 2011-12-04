@@ -55,5 +55,10 @@ namespace BTDB.IL
             var constructorInfo = (expression.Body as NewExpression).Constructor;
             return il.Newobj(constructorInfo);
         }
+
+        public static IILGen Ldfld<T>(this IILGen il, Expression<Func<T>> expression)
+        {
+            return il.Ldfld((FieldInfo)(expression.Body as MemberExpression).Member);
+        }
     }
 }

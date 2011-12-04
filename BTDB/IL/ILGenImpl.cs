@@ -472,6 +472,12 @@ namespace BTDB.IL
             return this;
         }
 
+        public IILGen StelemRef()
+        {
+            _ilGenerator.Emit(OpCodes.Stelem_Ref);
+            return this;
+        }
+
         public IILGen Try()
         {
             _ilGenerator.BeginExceptionBlock();
