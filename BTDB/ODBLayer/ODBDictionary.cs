@@ -94,9 +94,11 @@ namespace BTDB.ODBLayer
                             if (!_keyValueTr.FindNextKey()) break;
                         }
                     }
-                    var key = ByteArrayToKey(_keyValueTr.ReadKey());
-                    var value = ByteArrayToValue(_keyValueTr.ReadValue());
+                    var keyBytes = _keyValueTr.ReadKey();
+                    var valueBytes = _keyValueTr.ReadValue();
                     _keyValueTrProtector.Stop(ref taken);
+                    var key = ByteArrayToKey(keyBytes);
+                    var value = ByteArrayToValue(valueBytes);
                     yield return new KeyValuePair<TKey, TValue>(key, value);
                     pos++;
                 }
@@ -231,11 +233,12 @@ namespace BTDB.ODBLayer
         public bool ContainsKey(TKey key)
         {
             bool taken = false;
+            var keyBytes = KeyToByteArray(key);
             try
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(_prefix);
-                return _keyValueTr.FindExactKey(KeyToByteArray(key));
+                return _keyValueTr.FindExactKey(keyBytes);
             }
             finally
             {
@@ -246,17 +249,19 @@ namespace BTDB.ODBLayer
         public void Add(TKey key, TValue value)
         {
             bool taken = false;
+            var keyBytes = KeyToByteArray(key);
+            var valueBytes = ValueToByteArray(value);
             try
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(_prefix);
-                bool created = _keyValueTr.CreateKey(KeyToByteArray(key));
+                bool created = _keyValueTr.CreateKey(keyBytes);
                 if (!created)
                 {
                     throw new ArgumentException("Cannot Add duplicate key to Dictionary");
                 }
                 NotifyAdded();
-                _keyValueTr.SetValue(ValueToByteArray(value));
+                _keyValueTr.SetValue(valueBytes);
             }
             finally
             {
@@ -267,11 +272,12 @@ namespace BTDB.ODBLayer
         public bool Remove(TKey key)
         {
             bool taken = false;
+            var keyBytes = KeyToByteArray(key);
             try
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(_prefix);
-                bool found = _keyValueTr.FindExactKey(KeyToByteArray(key));
+                bool found = _keyValueTr.FindExactKey(keyBytes);
                 if (found)
                 {
                     _keyValueTr.EraseCurrent();
@@ -288,17 +294,20 @@ namespace BTDB.ODBLayer
         public bool TryGetValue(TKey key, out TValue value)
         {
             bool taken = false;
+            var keyBytes = KeyToByteArray(key);
             try
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(_prefix);
-                bool found = _keyValueTr.FindExactKey(KeyToByteArray(key));
+                bool found = _keyValueTr.FindExactKey(keyBytes);
                 if (!found)
                 {
                     value = default(TValue);
                     return false;
                 }
-                value = ByteArrayToValue(_keyValueTr.ReadValue());
+                var valueBytes = _keyValueTr.ReadValue();
+                _keyValueTrProtector.Stop(ref taken);
+                value = ByteArrayToValue(valueBytes);
                 return true;
             }
             finally
@@ -312,16 +321,19 @@ namespace BTDB.ODBLayer
             get
             {
                 bool taken = false;
+                var keyBytes = KeyToByteArray(key);
                 try
                 {
                     _keyValueTrProtector.Start(ref taken);
                     _keyValueTr.SetKeyPrefix(_prefix);
-                    bool found = _keyValueTr.FindExactKey(KeyToByteArray(key));
+                    bool found = _keyValueTr.FindExactKey(keyBytes);
                     if (!found)
                     {
                         throw new ArgumentException("Key not found in Dictionary");
                     }
-                    return ByteArrayToValue(_keyValueTr.ReadValue());
+                    var valueBytes = _keyValueTr.ReadValue();
+                    _keyValueTrProtector.Stop(ref taken);
+                    return ByteArrayToValue(valueBytes);
                 }
                 finally
                 {
@@ -331,11 +343,13 @@ namespace BTDB.ODBLayer
             set
             {
                 bool taken = false;
+                var keyBytes = KeyToByteArray(key);
+                var valueBytes = ValueToByteArray(value);
                 try
                 {
                     _keyValueTrProtector.Start(ref taken);
                     _keyValueTr.SetKeyPrefix(_prefix);
-                    if (_keyValueTr.CreateOrUpdateKeyValue(KeyToByteArray(key), ValueToByteArray(value)))
+                    if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                     {
                         NotifyAdded();
                     }
@@ -407,8 +421,9 @@ namespace BTDB.ODBLayer
                                 if (!_parent._keyValueTr.FindNextKey()) break;
                             }
                         }
-                        var key = _parent.ByteArrayToKey(_parent._keyValueTr.ReadKey());
+                        var keyBytes = _parent._keyValueTr.ReadKey();
                         _parent._keyValueTrProtector.Stop(ref taken);
+                        var key = _parent.ByteArrayToKey(keyBytes);
                         yield return key;
                         pos++;
                     }
@@ -514,8 +529,9 @@ namespace BTDB.ODBLayer
                                 if (!_parent._keyValueTr.FindNextKey()) break;
                             }
                         }
-                        var value = _parent.ByteArrayToValue(_parent._keyValueTr.ReadValue());
+                        var valueBytes = _parent._keyValueTr.ReadValue();
                         _parent._keyValueTrProtector.Stop(ref taken);
+                        var value = _parent.ByteArrayToValue(valueBytes);
                         yield return value;
                         pos++;
                     }
