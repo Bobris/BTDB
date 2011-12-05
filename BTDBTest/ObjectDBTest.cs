@@ -791,6 +791,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
+                Assert.NotNull(root.String2Person);
                 root.String2Person = new Dictionary<string, Person> { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
                 tr.Commit();
             }
@@ -937,11 +938,6 @@ namespace BTDBTest
         [Test]
         public void InheritanceSupportedWithAutoRegistration()
         {
-            using (var tr = _db.StartTransaction())
-            {
-                tr.Singleton<ComplexDictionary>();
-                tr.Commit();
-            }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();

@@ -20,6 +20,13 @@ namespace BTDB.ODBLayer
             _lastIdOfObj = -1;
         }
 
+        public DBReaderCtx(IInternalObjectDBTransaction transaction)
+        {
+            _transaction = transaction;
+            _reader = null;
+            _lastIdOfObj = -1;
+        }
+
         public bool ReadObject(out object @object)
         {
             var id = _reader.ReadVInt64();

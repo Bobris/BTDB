@@ -6,7 +6,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
+    public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers, IFieldHandlerWithInit
     {
         readonly IObjectDB _odb;
         readonly IFieldHandlerFactory _fieldHandlerFactory;
@@ -155,6 +155,25 @@ namespace BTDB.ODBLayer
                 .Castclass(typeof(ODBDictionaryConfiguration))
                 .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
+                .Newobj(constructorInfo)
+                .Castclass(_type);
+        }
+
+        public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
+        {
+            var genericArguments = _type.GetGenericArguments();
+            var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+            var constructorInfo = instanceType.GetConstructor(
+                new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration) });
+            ilGenerator
+                .Do(pushReaderCtx)
+                .Castclass(typeof(IDBReaderCtx))
+                .Callvirt(() => default(IDBReaderCtx).GetTransaction())
+                .Do(pushReaderCtx)
+                .Castclass(typeof(IDBReaderCtx))
+                .LdcI4(_configurationId)
+                .Callvirt(() => default(IDBReaderCtx).FindInstance(0))
+                .Castclass(typeof(ODBDictionaryConfiguration))
                 .Newobj(constructorInfo)
                 .Castclass(_type);
         }

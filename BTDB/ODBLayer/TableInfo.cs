@@ -18,6 +18,7 @@ namespace BTDB.ODBLayer
         bool _storedInline;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
         Func<IInternalObjectDBTransaction, DBObjectMetadata, object> _creator;
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
         ulong? _singletonOid;
@@ -94,6 +95,69 @@ namespace BTDB.ODBLayer
                 .Ret();
             var creator = method.Create();
             System.Threading.Interlocked.CompareExchange(ref _creator, creator, null);
+        }
+
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, object> Initializer
+        {
+            get
+            {
+                if (_initializer == null) CreateInitializer();
+                return _initializer;
+            }
+        }
+
+        void CreateInitializer()
+        {
+            EnsureClientTypeVersion();
+            TableVersionInfo tableVersionInfo;
+            _tableVersions.TryGetValue(ClientTypeVersion, out tableVersionInfo);
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Initializer_{0}", Name));
+            var ilGenerator = method.Generator;
+            if (tableVersionInfo.NeedsInit())
+            {
+                ilGenerator.DeclareLocal(ClientType);
+                ilGenerator
+                    .Ldarg(2)
+                    .Castclass(ClientType)
+                    .Stloc(0);
+                var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+                if (anyNeedsCtx)
+                {
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator
+                        .Ldarg(0)
+                        .Newobj(() => new DBReaderCtx(null))
+                        .Stloc(1);
+                }
+                for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+                {
+                    var srcFieldInfo = tableVersionInfo[fi];
+                    if (!(srcFieldInfo.Handler is IFieldHandlerWithInit)) continue;
+                    Action<IILGen> readerOrCtx;
+                    if (srcFieldInfo.Handler.NeedsCtx())
+                        readerOrCtx = il => il.Ldloc(1);
+                    else
+                        readerOrCtx = il => il.Ldnull();
+                    var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
+                    if (destFieldInfo != null)
+                    {
+                        var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType());
+                        var willLoad = specializedSrcHandler.HandledType();
+                        var fieldInfo = _clientType.GetProperty(destFieldInfo.Name).GetSetMethod();
+                        var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.GetParameters()[0].ParameterType);
+                        if (converterGenerator != null)
+                        {
+                            ilGenerator.Ldloc(0);
+                            ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
+                            converterGenerator(ilGenerator);
+                            ilGenerator.Call(fieldInfo);
+                        }
+                    }
+                }
+            }
+            ilGenerator.Ret();
+            var initializer = method.Create();
+            System.Threading.Interlocked.CompareExchange(ref _initializer, initializer, null);
         }
 
         internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver

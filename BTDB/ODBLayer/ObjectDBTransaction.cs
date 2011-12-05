@@ -264,6 +264,7 @@ namespace BTDB.ODBLayer
                 StoreSingletonOid(tableInfo.Id, oid);
                 var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
                 obj = tableInfo.Creator(this, metadata);
+                tableInfo.Initializer(this, metadata, obj);
                 _objCache.TryAdd(oid, new WeakReference(obj));
                 _dirtyObjSet.TryAdd(oid, obj);
                 _objMetadata.Add(obj, metadata);
