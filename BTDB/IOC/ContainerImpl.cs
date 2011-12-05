@@ -165,20 +165,6 @@ namespace BTDB.IOC
                 .Ret();
             return method.Create();
         }
-
-        static object Sing(ContainerImpl c)
-        {
-            var s = c.Singletons[0];
-            if (s != null) return s;
-            lock (c.SingletonLocks[0])
-            {
-                s = c.Singletons[0];
-                if (s != null) return s;
-                s = new object();
-                c.Singletons[0] = s;
-                return s;
-            }
-        }
     }
 
     internal class AlwaysNewImpl : ICReg

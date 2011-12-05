@@ -1,4 +1,3 @@
-using System;
 using BTDB.IOC;
 using NUnit.Framework;
 
@@ -15,14 +14,6 @@ namespace BTDBTest
     [TestFixture]
     public class IOCTests
     {
-
-        public object Main(Type type)
-        {
-            var handle = type;
-            if (handle.Equals(typeof (ILogger))) return new Logger();
-            return null;
-        }
-
         [Test]
         public void AlwaysNew()
         {
