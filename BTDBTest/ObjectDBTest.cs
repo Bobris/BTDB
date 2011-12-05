@@ -1012,5 +1012,32 @@ namespace BTDBTest
             }
         }
 
+        public class PersonWithPrivateAge
+        {
+            public string Name { get; set; }
+            private uint Age { get; set; }
+            [NotStored]
+            public uint PublicAge
+            {
+                get { return Age; }
+                set { Age = value; }
+            }
+        }
+
+        [Test]
+        public void SupportForStorageOfPrivateProperties()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new PersonWithPrivateAge { Name = "Bobris", PublicAge = 35 });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var p = tr.Enumerate<PersonWithPrivateAge>().First();
+                Assert.AreEqual("Bobris", p.Name);
+                Assert.AreEqual(35, p.PublicAge);
+            }
+        }
     }
 }
