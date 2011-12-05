@@ -1039,5 +1039,16 @@ namespace BTDBTest
                 Assert.AreEqual(35, p.PublicAge);
             }
         }
+
+        [Test]
+        public void SingletonShouldNotNeedWritableTransactionIfNotCommited()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<ComplexDictionary>();
+                Assert.False(((IInternalObjectDBTransaction) tr).KeyValueDBTransaction.IsWritting());
+            }
+            
+        }
     }
 }

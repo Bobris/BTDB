@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -31,6 +32,7 @@ namespace BTDB.ODBLayer
             _name = name;
             _tableInfoResolver = tableInfoResolver;
             _storedInline = false;
+            NeedStoreSingletonOid = false;
         }
 
         internal bool StoredInline
@@ -176,8 +178,18 @@ namespace BTDB.ODBLayer
             {
                 if (_singletonOid.HasValue) return _singletonOid.Value;
                 _singletonOid = _tableInfoResolver.GetSingletonOid(_id);
+                if (_singletonOid.HasValue) return _singletonOid.Value;
+                NeedStoreSingletonOid = true;
+                _singletonOid = _tableInfoResolver.AllocateNewOid();
                 return _singletonOid.Value;
             }
+        }
+
+        public bool NeedStoreSingletonOid { get; private set; }
+
+        public void ResetNeedStoreSingletonOid()
+        {
+            NeedStoreSingletonOid = false;
         }
 
         public object SingletonLock
@@ -322,6 +334,15 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             return method.Create();
+        }
+
+        internal static byte[] BuildKeyForTableVersions(uint tableId, uint tableVersion)
+        {
+            var key = new byte[PackUnpack.LengthVUInt(tableId) + PackUnpack.LengthVUInt(tableVersion)];
+            var ofs = 0;
+            PackUnpack.PackVUInt(key, ref ofs, tableId);
+            PackUnpack.PackVUInt(key, ref ofs, tableVersion);
+            return key;
         }
     }
 }

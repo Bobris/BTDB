@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -22,11 +23,17 @@ namespace BTDB.ODBLayer
         readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
+        ulong _lastDictId;
 
         public ObjectDB()
         {
             FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
             TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
+        }
+
+        internal ulong LastDictId
+        {
+            get { return _lastDictId; }
         }
 
         internal Type2NameRegistry Type2NameRegistry
@@ -55,6 +62,23 @@ namespace BTDB.ODBLayer
                     _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
                 }
                 _tablesInfo.LoadTables(LoadTablesEnum(tr));
+                tr.SetKeyPrefix(null);
+                if (tr.FindExactKey(LastDictIdKey))
+                {
+                    _lastDictId = new ByteArrayReader(tr.ReadValue()).ReadVUInt64();
+                }
+            }
+        }
+
+        internal void CommitLastDictId(ulong newLastDictId, IKeyValueDBTransaction tr)
+        {
+            if (_lastDictId != newLastDictId)
+            {
+                tr.SetKeyPrefix(null);
+                var w = new ByteArrayWriter();
+                w.WriteVUInt64(newLastDictId);
+                tr.CreateOrUpdateKeyValue(LastDictIdKey, w.Data);
+                _lastDictId = newLastDictId;
             }
         }
 
@@ -123,13 +147,11 @@ namespace BTDB.ODBLayer
                 using (var tr = _keyValueDB.StartTransaction())
                 {
                     tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = new byte[PackUnpack.LengthVUInt(id) + 1];
-                    var ofs = 0;
-                    PackUnpack.PackVUInt(key, ref ofs, id);
-                    key[ofs] = 0xff;
+                    var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
                     if (tr.FindKey(key, 0, key.Length, FindKeyStrategy.PreferPrevious) == FindKeyResult.NotFound)
                         return 0;
                     var key2 = tr.ReadKey();
+                    var ofs = PackUnpack.LengthVUInt(id);
                     if (key2.Length < ofs) return 0;
                     if (BitArrayManipulation.CompareByteArray(key, 0, ofs, key2, 0, ofs) != 0) return 0;
                     return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
@@ -141,17 +163,14 @@ namespace BTDB.ODBLayer
                 using (var tr = _keyValueDB.StartTransaction())
                 {
                     tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = new byte[PackUnpack.LengthVUInt(id) + PackUnpack.LengthVUInt(version)];
-                    var ofs = 0;
-                    PackUnpack.PackVUInt(key, ref ofs, id);
-                    PackUnpack.PackVUInt(key, ref ofs, version);
+                    var key = TableInfo.BuildKeyForTableVersions(id, version);
                     if (!tr.FindExactKey(key))
                         throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
                     return TableVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, tableName);
                 }
             }
 
-            public ulong GetSingletonOid(uint id)
+            public ulong? GetSingletonOid(uint id)
             {
                 using (var tr = _keyValueDB.StartTransaction())
                 {
@@ -163,8 +182,13 @@ namespace BTDB.ODBLayer
                     {
                         return new KeyValueDBValueReader(tr).ReadVUInt64();
                     }
-                    return _objectDB.AllocateNewOid();
+                    return null;
                 }
+            }
+
+            public ulong AllocateNewOid()
+            {
+                return _objectDB.AllocateNewOid();
             }
 
             public IFieldHandlerFactory FieldHandlerFactory

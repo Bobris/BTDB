@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -20,11 +21,13 @@ namespace BTDB.ODBLayer
 
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
+        long _lastDictId;
 
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)
         {
             _owner = owner;
             _keyValueTr = keyValueTr;
+            _lastDictId = (long)_owner.LastDictId;
         }
 
         public void Dispose()
@@ -51,29 +54,7 @@ namespace BTDB.ODBLayer
 
         public ulong AllocateDictionaryId()
         {
-            var taken = false;
-            try
-            {
-                _keyValueTrProtector.Start(ref taken);
-                _keyValueTr.SetKeyPrefix(null);
-                if (_keyValueTr.CreateKey(ObjectDB.LastDictIdKey))
-                {
-                    _keyValueTr.SetValue(new byte[] { 1 });
-                    return 0;
-                }
-                else
-                {
-                    var id = new ByteArrayReader(_keyValueTr.ReadValue()).ReadVUInt64();
-                    var w = new ByteArrayWriter();
-                    w.WriteVUInt64(id + 1);
-                    _keyValueTr.SetValue(w.Data);
-                    return id;
-                }
-            }
-            finally
-            {
-                if (taken) _keyValueTrProtector.Stop();
-            }
+            return (ulong)(Interlocked.Increment(ref _lastDictId) - 1);
         }
 
         public object ReadInlineObject(IReaderCtx readerCtx)
@@ -261,7 +242,7 @@ namespace BTDB.ODBLayer
                     }
                     return obj;
                 }
-                StoreSingletonOid(tableInfo.Id, oid);
+                _updatedTables.TryRemove(tableInfo);
                 var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
                 obj = tableInfo.Creator(this, metadata);
                 tableInfo.Initializer(this, metadata, obj);
@@ -325,21 +306,6 @@ namespace BTDB.ODBLayer
             _objCache.TryAdd(id, new WeakReference(obj));
             _dirtyObjSet.TryAdd(id, obj);
             return id;
-        }
-
-        void StoreSingletonOid(uint tableId, ulong oid)
-        {
-            bool taken = false;
-            try
-            {
-                _keyValueTrProtector.Start(ref taken);
-                _keyValueTr.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
-                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableId), BuildKeyFromOid(oid));
-            }
-            finally
-            {
-                if (taken) _keyValueTrProtector.Stop();
-            }
         }
 
         void EnsureClientTypeNotNull(TableInfo tableInfo)
@@ -447,22 +413,24 @@ namespace BTDB.ODBLayer
                 {
                     StoreObject(o.Value);
                 }
+                _owner.CommitLastDictId((ulong)_lastDictId, _keyValueTr);
                 _keyValueTr.Commit();
+                foreach (var updatedTable in _updatedTables)
+                {
+                    updatedTable.Key.LastPersistedVersion = updatedTable.Key.ClientTypeVersion;
+                    updatedTable.Key.ResetNeedStoreSingletonOid();
+                }
             }
             finally
             {
                 Dispose();
-            }
-            foreach (var updatedTable in _updatedTables)
-            {
-                updatedTable.Key.LastPersistedVersion = updatedTable.Key.ClientTypeVersion;
             }
         }
 
         void StoreObject(object o)
         {
             var tableInfo = _owner.TablesInfo.FindByType(o.GetType());
-            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
+            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
             {
                 _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
             }
@@ -491,34 +459,33 @@ namespace BTDB.ODBLayer
             try
             {
                 _keyValueTrProtector.Start(ref taken);
-                byte[] key;
-                int ofs;
-                if (tableInfo.LastPersistedVersion <= 0)
+                if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
                 {
-                    _keyValueTr.SetKeyPrefix(ObjectDB.TableNamesPrefix);
-                    key = new byte[PackUnpack.LengthVUInt(tableInfo.Id)];
-                    ofs = 0;
-                    PackUnpack.PackVUInt(key, ref ofs, tableInfo.Id);
-                    if (_keyValueTr.CreateKey(key))
+                    if (tableInfo.LastPersistedVersion <= 0)
                     {
+                        _keyValueTr.SetKeyPrefix(ObjectDB.TableNamesPrefix);
+                        if (_keyValueTr.CreateKey(BuildKeyFromOid(tableInfo.Id)))
+                        {
+                            using (var writer = new KeyValueDBValueWriter(_keyValueTr))
+                            {
+                                writer.WriteString(tableInfo.Name);
+                            }
+                        }
+                    }
+                    _keyValueTr.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
+                    if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
+                    {
+                        var tableVersionInfo = tableInfo.ClientTableVersionInfo;
                         using (var writer = new KeyValueDBValueWriter(_keyValueTr))
                         {
-                            writer.WriteString(tableInfo.Name);
+                            tableVersionInfo.Save(writer);
                         }
                     }
                 }
-                _keyValueTr.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
-                key = new byte[PackUnpack.LengthVUInt(tableInfo.Id) + PackUnpack.LengthVUInt(tableInfo.ClientTypeVersion)];
-                ofs = 0;
-                PackUnpack.PackVUInt(key, ref ofs, tableInfo.Id);
-                PackUnpack.PackVUInt(key, ref ofs, tableInfo.ClientTypeVersion);
-                if (_keyValueTr.CreateKey(key))
+                if (tableInfo.NeedStoreSingletonOid)
                 {
-                    var tableVersionInfo = tableInfo.ClientTableVersionInfo;
-                    using (var writer = new KeyValueDBValueWriter(_keyValueTr))
-                    {
-                        tableVersionInfo.Save(writer);
-                    }
+                    _keyValueTr.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
+                    _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id), BuildKeyFromOid(tableInfo.SingletonOid));
                 }
                 return true;
             }
