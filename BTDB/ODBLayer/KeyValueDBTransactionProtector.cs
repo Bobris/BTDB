@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System.Diagnostics;
+using System.Threading;
 
 namespace BTDB.ODBLayer
 {
@@ -10,6 +11,7 @@ namespace BTDB.ODBLayer
 
         internal void Start(ref bool taken)
         {
+            Debug.Assert(_lockTaken == false);
             _lockTaken = false;
             taken = true;
             Monitor.Enter(_lock, ref _lockTaken);

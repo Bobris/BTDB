@@ -76,10 +76,19 @@ namespace BTDB.ODBLayer
         {
             var ti = GetTableInfoFromType(@object.GetType());
             EnsureClientTypeNotNull(ti);
+            IfNeededPersistTableInfo(ti);
             var writer = writerCtx.Writer();
             writer.WriteVUInt32(ti.Id);
             writer.WriteVUInt32(ti.ClientTypeVersion);
             ti.Saver(this, null, writer, @object);
+        }
+
+        void IfNeededPersistTableInfo(TableInfo tableInfo)
+        {
+            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
+            {
+                _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
+            }
         }
 
         public IEnumerable<T> Enumerate<T>() where T : class
@@ -141,10 +150,10 @@ namespace BTDB.ODBLayer
                         }
                     }
                     TableInfo tableInfo;
-                    KeyValueDBValueReader reader = ReadObjStart(oid, out tableInfo);
+                    var reader = ReadObjStart(oid, out tableInfo);
                     if (type != null && !type.IsAssignableFrom(tableInfo.ClientType)) continue;
-                    object obj = ReadObjFinish(oid, tableInfo, reader);
                     _keyValueTrProtector.Stop(ref taken);
+                    object obj = ReadObjFinish(oid, tableInfo, reader);
                     yield return obj;
                 }
             }
@@ -167,7 +176,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        object ReadObjFinish(ulong oid, TableInfo tableInfo, KeyValueDBValueReader reader)
+        object ReadObjFinish(ulong oid, TableInfo tableInfo, ByteArrayReader reader)
         {
             var tableVersion = reader.ReadVUInt32();
             var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
@@ -178,9 +187,9 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
-        KeyValueDBValueReader ReadObjStart(ulong oid, out TableInfo tableInfo)
+        ByteArrayReader ReadObjStart(ulong oid, out TableInfo tableInfo)
         {
-            var reader = new KeyValueDBValueReader(_keyValueTr);
+            var reader = new ByteArrayReader(_keyValueTr.ReadValue());
             var tableId = reader.ReadVUInt32();
             tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of Oid {1}", tableId, oid));
@@ -210,6 +219,7 @@ namespace BTDB.ODBLayer
                 }
                 TableInfo tableInfo;
                 var reader = ReadObjStart(oid, out tableInfo);
+                _keyValueTrProtector.Stop(ref taken);
                 return ReadObjFinish(oid, tableInfo, reader);
             }
             finally
@@ -430,10 +440,7 @@ namespace BTDB.ODBLayer
         void StoreObject(object o)
         {
             var tableInfo = _owner.TablesInfo.FindByType(o.GetType());
-            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
-            {
-                _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
-            }
+            IfNeededPersistTableInfo(tableInfo);
             DBObjectMetadata metadata;
             _objMetadata.TryGetValue(o, out metadata);
             var writer = new ByteArrayWriter();
