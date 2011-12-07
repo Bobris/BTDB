@@ -60,6 +60,18 @@
   <ItemGroup>
     <Compile Include="AbstractBufferedReaderWriterTest.cs" />
     <Compile Include="ILExtensionsTest.cs" />
+    <Compile Include="IOCDomain\Authenticator.cs" />
+    <Compile Include="IOCDomain\Database.cs" />
+    <Compile Include="IOCDomain\ErrorHandler.cs" />
+    <Compile Include="IOCDomain\IAuthenticator.cs" />
+    <Compile Include="IOCDomain\IDatabase.cs" />
+    <Compile Include="IOCDomain\IErrorHandler.cs" />
+    <Compile Include="IOCDomain\ILogger.cs" />
+    <Compile Include="IOCDomain\IStockQuote.cs" />
+    <Compile Include="IOCDomain\IWebService.cs" />
+    <Compile Include="IOCDomain\Logger.cs" />
+    <Compile Include="IOCDomain\StockQuote.cs" />
+    <Compile Include="IOCDomain\WebService.cs" />
     <Compile Include="IOCTests.cs" />
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
@@ -79,6 +91,7 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
