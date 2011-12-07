@@ -4,13 +4,16 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 
 namespace BTDB.IL
 {
     internal class SourceCodeWriter : IDisposable
     {
+        readonly string _fileName;
         readonly ISymbolDocumentWriter _symbolDocumentWriter;
-        readonly StreamWriter _sourceWriter;
+        readonly StringBuilder _stringBuilder;
+        readonly TextWriter _sourceWriter;
         int _currentLine;
 
         internal SourceCodeWriter(string fileName, ISymbolDocumentWriter symbolDocumentWriter)
@@ -18,7 +21,9 @@ namespace BTDB.IL
             var directoryName = Path.GetDirectoryName(fileName);
             if (!string.IsNullOrEmpty(directoryName))
                 Directory.CreateDirectory(directoryName);
-            _sourceWriter = new StreamWriter(fileName);
+            _stringBuilder = new StringBuilder();
+            _sourceWriter = new StringWriter(_stringBuilder);
+            _fileName = fileName;
             _symbolDocumentWriter = symbolDocumentWriter;
             _currentLine = 1;
             Indent = 0;
@@ -57,6 +62,12 @@ namespace BTDB.IL
         {
             _sourceWriter.Flush();
             _sourceWriter.Dispose();
+            var newSource = _stringBuilder.ToString();
+            var oldSource = File.ReadAllText(_fileName);
+            if (newSource != oldSource)
+            {
+                File.WriteAllText(_fileName, newSource);
+            }
         }
 
         internal void StartMethod(string name, MethodInfo mi)
