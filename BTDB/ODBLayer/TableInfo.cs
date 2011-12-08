@@ -112,8 +112,7 @@ namespace BTDB.ODBLayer
         void CreateInitializer()
         {
             EnsureClientTypeVersion();
-            TableVersionInfo tableVersionInfo;
-            _tableVersions.TryGetValue(ClientTypeVersion, out tableVersionInfo);
+            var tableVersionInfo = ClientTableVersionInfo;
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Initializer_{0}", Name));
             var ilGenerator = method.Generator;
             if (tableVersionInfo.NeedsInit())
@@ -141,21 +140,15 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldloc(1);
                     else
                         readerOrCtx = il => il.Ldnull();
-                    var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
-                    if (destFieldInfo != null)
-                    {
-                        var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType());
-                        var willLoad = specializedSrcHandler.HandledType();
-                        var fieldInfo = _clientType.GetProperty(destFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
-                        var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.GetParameters()[0].ParameterType);
-                        if (converterGenerator != null)
-                        {
-                            ilGenerator.Ldloc(0);
-                            ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
-                            converterGenerator(ilGenerator);
-                            ilGenerator.Call(fieldInfo);
-                        }
-                    }
+                    var specializedSrcHandler = srcFieldInfo.Handler;
+                    var willLoad = specializedSrcHandler.HandledType();
+                    var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
+                    var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
+                    if (converterGenerator == null) continue;
+                    ilGenerator.Ldloc(0);
+                    ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
+                    converterGenerator(ilGenerator);
+                    ilGenerator.Call(setterMethod);
                 }
             }
             ilGenerator.Ret();
@@ -306,6 +299,7 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
+            var clientTableVersionInfo = ClientTableVersionInfo;
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
@@ -314,7 +308,7 @@ namespace BTDB.ODBLayer
                     readerOrCtx = il => il.Ldloc(1);
                 else
                     readerOrCtx = il => il.Ldarg(2);
-                var destFieldInfo = ClientTableVersionInfo[srcFieldInfo.Name];
+                var destFieldInfo = clientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
                     var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType());
@@ -331,6 +325,29 @@ namespace BTDB.ODBLayer
                     }
                 }
                 srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
+            }
+            if (ClientTypeVersion != version)
+            {
+                for (int fi = 0; fi < clientTableVersionInfo.FieldCount; fi++)
+                {
+                    var srcFieldInfo = clientTableVersionInfo[fi];
+                    if (!(srcFieldInfo.Handler is IFieldHandlerWithInit)) continue;
+                    if (tableVersionInfo[srcFieldInfo.Name] != null) continue;
+                    Action<IILGen> readerOrCtx;
+                    if (srcFieldInfo.Handler.NeedsCtx())
+                        readerOrCtx = il => il.Ldloc(1);
+                    else
+                        readerOrCtx = il => il.Ldnull();
+                    var specializedSrcHandler = srcFieldInfo.Handler;
+                    var willLoad = specializedSrcHandler.HandledType();
+                    var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
+                    var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
+                    if (converterGenerator == null) continue;
+                    ilGenerator.Ldloc(0);
+                    ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
+                    converterGenerator(ilGenerator);
+                    ilGenerator.Call(setterMethod);
+                }
             }
             ilGenerator.Ret();
             return method.Create();

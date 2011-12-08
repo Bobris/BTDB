@@ -1048,7 +1048,41 @@ namespace BTDBTest
                 tr.Singleton<ComplexDictionary>();
                 Assert.False(((IInternalObjectDBTransaction) tr).KeyValueDBTransaction.IsWritting());
             }
-            
+        }
+
+        public class TwoComplexDictionary
+        {
+            public IDictionary<string, Person> String2Person { get; set; }
+            public IDictionary<string, PersonNew> String2PersonNew { get; set; }
+        }
+
+        [Test]
+        public void UpgradingWithNewComplexDictionary()
+        {
+            var typeName = _db.RegisterType(typeof (ComplexDictionary));
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ComplexDictionary>();
+                d.String2Person.Add("A",new Person { Name = "A" });
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(TwoComplexDictionary), typeName);
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<TwoComplexDictionary>();
+                tr.Store(d);
+                Assert.AreEqual(1, d.String2Person.Count);
+                Assert.AreEqual("A", d.String2Person["A"].Name);
+                d.String2PersonNew.Add("B", new PersonNew {Name = "B"});
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<TwoComplexDictionary>();
+                Assert.AreEqual("A", d.String2Person["A"].Name);
+                Assert.AreEqual("B", d.String2PersonNew["B"].Name);
+            }
         }
     }
 }

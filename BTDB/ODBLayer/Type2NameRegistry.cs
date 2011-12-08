@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
@@ -29,6 +30,7 @@ namespace BTDB.ODBLayer
 
         internal Type FindTypeByName(string name)
         {
+            Debug.Assert(string.IsInterned(name)!=null);
             Type result;
             if (_name2Type.TryGetValue(name, out result)) return result;
             return null;

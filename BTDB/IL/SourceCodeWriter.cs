@@ -63,7 +63,11 @@ namespace BTDB.IL
             _sourceWriter.Flush();
             _sourceWriter.Dispose();
             var newSource = _stringBuilder.ToString();
-            var oldSource = File.ReadAllText(_fileName);
+            string oldSource = null;
+            if (File.Exists(_fileName))
+            {
+                oldSource = File.ReadAllText(_fileName);
+            }
             if (newSource != oldSource)
             {
                 File.WriteAllText(_fileName, newSource);

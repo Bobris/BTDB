@@ -130,7 +130,7 @@ namespace BTDB.ODBLayer
 
         public Type HandledType()
         {
-            return _type ?? (_type = typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType()));
+            return _type ?? GenerateType();
         }
 
         public bool NeedsCtx()
@@ -199,11 +199,20 @@ namespace BTDB.ODBLayer
 
         public IFieldHandler SpecializeLoadForType(Type type)
         {
+            if (_type != type)
+                GenerateType();
             return this;
+        }
+
+        Type GenerateType()
+        {
+            return _type = typeof (IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
+            if (_type != type)
+                GenerateType();
             return this;
         }
 

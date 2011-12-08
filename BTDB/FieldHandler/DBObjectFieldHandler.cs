@@ -11,7 +11,7 @@ namespace BTDB.FieldHandler
         readonly IObjectDB _objectDB;
         readonly byte[] _configuration;
         readonly string _typeName;
-        readonly Type _type;
+        Type _type;
 
         public DBObjectFieldHandler(IObjectDB objectDB, Type type)
         {
@@ -27,8 +27,13 @@ namespace BTDB.FieldHandler
         {
             _objectDB = objectDB;
             _configuration = configuration;
-            _typeName = new ByteArrayReader(configuration).ReadString();
-            _type = _objectDB.TypeByName(_typeName);
+            _typeName = string.Intern(new ByteArrayReader(configuration).ReadString());
+            CreateType();
+        }
+
+        Type CreateType()
+        {
+            return _type = _objectDB.TypeByName(_typeName);
         }
 
         public static string HandlerName
@@ -59,7 +64,7 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _type ?? typeof(object);
+            return _type ?? CreateType() ?? typeof(object);
         }
 
         public bool NeedsCtx()
