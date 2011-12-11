@@ -7,6 +7,6 @@ namespace BTDB.IOC
     {
         string GenFuncName { get; }
         void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context);
-        void GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context);
+        IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context);
     }
 }

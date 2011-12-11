@@ -68,6 +68,57 @@ namespace BTDBTest
             Assert.AreNotSame(obj.Logger, obj2.Logger);
         }
 
+        [Test]
+        public void InjectionToConstructorWithOneParameterSingleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            var container = builder.Build();
+            var obj = container.Resolve<IErrorHandler>();
+            Assert.NotNull(obj);
+            Assert.NotNull(obj.Logger);
+            var obj2 = container.Resolve<IErrorHandler>();
+            Assert.NotNull(obj2);
+            Assert.NotNull(obj2.Logger);
+            Assert.AreNotSame(obj, obj2);
+            Assert.AreSame(obj.Logger, obj2.Logger);
+        }
+
+        [Test]
+        public void ReusingSingletonMultipleTimesInOneResolve()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            builder.Register<Database>().As<IDatabase>();
+            var container = builder.Build();
+            var obj = container.Resolve<IDatabase>();
+            Assert.NotNull(obj);
+            Assert.NotNull(obj.ErrorHandler);
+            Assert.NotNull(obj.Logger);
+            Assert.AreSame(obj.Logger, obj.ErrorHandler.Logger);
+        }
+
+        [Test]
+        public void ReusingSingletonMultipleTimesInOneResolveOnceInSingleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.Register<ErrorHandler>().As<IErrorHandler>().SingleInstance();
+            builder.Register<Database>().As<IDatabase>();
+            var container = builder.Build();
+            var obj = container.Resolve<IDatabase>();
+            Assert.NotNull(obj);
+            Assert.NotNull(obj.ErrorHandler);
+            Assert.NotNull(obj.Logger);
+            Assert.AreSame(obj.Logger, obj.ErrorHandler.Logger);
+            var obj2 = container.Resolve<IDatabase>();
+            Assert.NotNull(obj2);
+            Assert.AreNotSame(obj, obj2);
+            Assert.AreSame(obj.ErrorHandler, obj2.ErrorHandler);
+            Assert.AreSame(obj.Logger, obj2.Logger);
+        }
     }
 
 }

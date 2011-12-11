@@ -81,6 +81,7 @@
     <Compile Include="IL\ILMethodDebugImpl.cs" />
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
+    <Compile Include="IOC\AlwaysNewImpl.cs" />
     <Compile Include="IOC\BuilderExtensions.cs" />
     <Compile Include="IOC\ContainerBuilder.cs" />
     <Compile Include="IOC\ContainerExtensions.cs" />
@@ -90,6 +91,7 @@
     <Compile Include="IOC\ICRegILGen.cs" />
     <Compile Include="IOC\Lifetime.cs" />
     <Compile Include="IOC\SingleRegistration.cs" />
+    <Compile Include="IOC\SingletonImpl.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
