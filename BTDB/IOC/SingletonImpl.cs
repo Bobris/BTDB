@@ -7,7 +7,7 @@ using BTDB.ODBLayer;
 
 namespace BTDB.IOC
 {
-    internal class SingletonImpl : ICReg, ICRegILGen
+    internal class SingletonImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
         readonly Type _implementationType;
         readonly ConstructorInfo _constructorInfo;
@@ -57,9 +57,20 @@ namespace BTDB.IOC
                 return localSingleton;
             }
             var localSingletons = (IILLocal)context["SingletonsLocal"];
+            localSingleton = il.DeclareLocal(_implementationType, "singleton");
+            var obj = container.Singletons[_singletonIndex];
+            if (obj != null)
+            {
+                il
+                    .Ldloc(localSingletons)
+                    .LdcI4(_singletonIndex)
+                    .LdelemRef()
+                    .Castclass(_implementationType)
+                    .Stloc(localSingleton);
+                return localSingleton;
+            }
             var localLockTaken = il.DeclareLocal(typeof(bool), "lockTaken");
             var localLock = il.DeclareLocal(typeof(object), "lock");
-            localSingleton = il.DeclareLocal(_implementationType, "singleton");
             var labelNull1 = il.DefineLabel();
             var labelNotNull2 = il.DefineLabel();
             var labelNotTaken = il.DefineLabel();
@@ -121,6 +132,31 @@ namespace BTDB.IOC
                 .Mark(labelNull1);
             builtSingletons.Add(this, localSingleton);
             return localSingleton;
+        }
+
+        public object BuildFuncOfT(ContainerImpl container, Type funcType)
+        {
+            var obj = container.Singletons[_singletonIndex];
+            if (obj == null) return null;
+            var result = Delegate.CreateDelegate(funcType,
+                                    typeof(ClosureOfObj<>).MakeGenericType(funcType.GetGenericArguments()[0]).GetConstructors()[0].Invoke
+                                        (new[] { obj }), "Call");
+            return result;
+        }
+
+        public class ClosureOfObj<T>
+        {
+            readonly T _obj;
+
+            public ClosureOfObj(object obj)
+            {
+                _obj = (T)obj;
+            }
+
+            public T Call()
+            {
+                return _obj;
+            }
         }
     }
 }

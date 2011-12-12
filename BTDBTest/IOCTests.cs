@@ -36,7 +36,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void CreatesFuncFactoryAsSingleton()
+        public void CreatesFuncFactory()
         {
             var builder = new ContainerBuilder();
             builder.Register<Logger>().As<ILogger>();
@@ -47,8 +47,6 @@ namespace BTDBTest
             var log2 = logFactory();
             Assert.NotNull(log2);
             Assert.AreNotSame(log1, log2);
-            var logFactory2 = container.Resolve<Func<ILogger>>();
-            Assert.AreSame(logFactory, logFactory2);
         }
 
         [Test]
@@ -119,6 +117,35 @@ namespace BTDBTest
             Assert.AreSame(obj.ErrorHandler, obj2.ErrorHandler);
             Assert.AreSame(obj.Logger, obj2.Logger);
         }
+
+        [Test]
+        public void CreatesFastFuncFactory()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            var container = builder.Build();
+            var obj = container.Resolve<ILogger>();
+            var fastFactory = container.Resolve<Func<ILogger>>();
+            var obj2 = fastFactory();
+            Assert.AreSame(obj, obj2);
+        }
+
+        [Test]
+        public void InjectionToConstructorWithOneParameterSingletonWithOptimization()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            var container = builder.Build();
+            var obj = container.Resolve<ILogger>();
+            Assert.NotNull(obj);
+            var obj2 = container.Resolve<IErrorHandler>();
+            Assert.NotNull(obj2);
+            Assert.NotNull(obj2.Logger);
+            Assert.AreNotSame(obj, obj2);
+            Assert.AreSame(obj, obj2.Logger);
+        }
+
     }
 
 }

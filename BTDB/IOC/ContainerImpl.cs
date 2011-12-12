@@ -90,6 +90,12 @@ namespace BTDB.IOC
             if (type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];
+                if (_registrations.TryGetValue(resultType, out registration))
+                {
+                    var optimizedFuncCreg = registration as ICRegFuncOptimized;
+                    var optimizedFunc = optimizedFuncCreg.BuildFuncOfT(this, type);
+                    if (optimizedFunc != null) return c => optimizedFunc;
+                }
                 var worker = TryBuild(resultType);
                 var result = Delegate.CreateDelegate(type,
                                         typeof(ClosureOfFunc<>).MakeGenericType(resultType).GetConstructors()[0].Invoke
@@ -143,5 +149,10 @@ namespace BTDB.IOC
             }
             throw new ArgumentException("Don't know how to build " + type.ToSimpleName());
         }
+    }
+
+    internal interface ICRegFuncOptimized
+    {
+        object BuildFuncOfT(ContainerImpl container, Type funcType);
     }
 }
