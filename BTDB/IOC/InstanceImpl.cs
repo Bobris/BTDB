@@ -51,10 +51,10 @@ namespace BTDB.IOC
             {
                 return localInstance;
             }
-            var localSingletons = (IILLocal)context["InstancesLocal"];
+            var localInstances = (IILLocal)context["InstancesLocal"];
             localInstance = il.DeclareLocal(_instance.GetType(), "instance");
             il
-                .Ldloc(localSingletons)
+                .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
                 .Castclass(_instance.GetType())
