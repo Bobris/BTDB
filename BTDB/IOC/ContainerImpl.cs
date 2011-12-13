@@ -15,41 +15,25 @@ namespace BTDB.IOC
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
         public readonly object[] Singletons;
+        public object[] Instances;
         // ReSharper restore MemberCanBePrivate.Global
 
         internal ContainerImpl(IEnumerable<IRegistration> registrations)
         {
-            int singletonCount = 0;
+            var context = new ContanerRegistrationContext(this, _registrations);
             foreach (var registration in registrations)
             {
-                var singleReg = registration as SingleRegistration;
-                ICReg reg;
-                switch (singleReg.HasLifetime)
-                {
-                    case Lifetime.AlwaysNew:
-                        reg = new AlwaysNewImpl(singleReg.ImplementationType, FindBestConstructor(singleReg.ImplementationType));
-                        break;
-                    case Lifetime.Singleton:
-                        reg = new SingletonImpl(singleReg.ImplementationType, FindBestConstructor(singleReg.ImplementationType), singletonCount);
-                        singletonCount++;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-                foreach (var asType in singleReg.AsTypes)
-                {
-                    _registrations.Add(asType, reg);
-                }
+                ((IContanerRegistration)registration).Register(context);
             }
-            SingletonLocks = new object[singletonCount];
-            for (int i = 0; i < singletonCount; i++)
+            SingletonLocks = new object[context.SingletonCount];
+            for (int i = 0; i < context.SingletonCount; i++)
             {
                 SingletonLocks[i] = new object();
             }
-            Singletons = new object[singletonCount];
+            Singletons = new object[context.SingletonCount];
         }
 
-        ConstructorInfo FindBestConstructor(Type type)
+        internal static ConstructorInfo FindBestConstructor(Type type)
         {
             return type.GetConstructors().OrderByDescending(ci => ci.GetParameters().Length).First();
         }
@@ -93,8 +77,11 @@ namespace BTDB.IOC
                 if (_registrations.TryGetValue(resultType, out registration))
                 {
                     var optimizedFuncCreg = registration as ICRegFuncOptimized;
-                    var optimizedFunc = optimizedFuncCreg.BuildFuncOfT(this, type);
-                    if (optimizedFunc != null) return c => optimizedFunc;
+                    if (optimizedFuncCreg!=null)
+                    {
+                        var optimizedFunc = optimizedFuncCreg.BuildFuncOfT(this, type);
+                        if (optimizedFunc != null) return c => optimizedFunc;
+                    }
                 }
                 var worker = TryBuild(resultType);
                 var result = Delegate.CreateDelegate(type,
@@ -149,10 +136,5 @@ namespace BTDB.IOC
             }
             throw new ArgumentException("Don't know how to build " + type.ToSimpleName());
         }
-    }
-
-    internal interface ICRegFuncOptimized
-    {
-        object BuildFuncOfT(ContainerImpl container, Type funcType);
     }
 }

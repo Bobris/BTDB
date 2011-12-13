@@ -14,15 +14,16 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public IRegistration RegisterInstance<T>(T instance) where T : class
+        {
+            var registration = new SingleInstanceRegistration(instance, typeof(T));
+            _registrations.Add(registration);
+            return registration;
+        }
+
         public IContainer Build()
         {
             return new ContainerImpl(_registrations);
         }
-    }
-
-    public interface IRegistration
-    {
-        IRegistration As(Type type);
-        IRegistration SingleInstance();
     }
 }

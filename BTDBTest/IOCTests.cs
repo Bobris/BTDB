@@ -146,6 +146,17 @@ namespace BTDBTest
             Assert.AreSame(obj, obj2.Logger);
         }
 
+        [Test]
+        public void CanRegisterInstance()
+        {
+            var builder = new ContainerBuilder();
+            var instance = new Logger();
+            builder.RegisterInstance(instance).As<ILogger>();
+            var container = builder.Build();
+            var obj = container.Resolve<ILogger>();
+            Assert.AreSame(instance, obj);
+        }
+
     }
 
 }

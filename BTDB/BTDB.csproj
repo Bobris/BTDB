@@ -86,10 +86,15 @@
     <Compile Include="IOC\ContainerBuilder.cs" />
     <Compile Include="IOC\ContainerExtensions.cs" />
     <Compile Include="IOC\ContainerImpl.cs" />
+    <Compile Include="IOC\ContanerRegistrationContext.cs" />
     <Compile Include="IOC\IContainer.cs" />
+    <Compile Include="IOC\IContanerRegistration.cs" />
     <Compile Include="IOC\ICReg.cs" />
+    <Compile Include="IOC\ICRegFuncOptimized.cs" />
     <Compile Include="IOC\ICRegILGen.cs" />
+    <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\Lifetime.cs" />
+    <Compile Include="IOC\SingleInstanceRegistration.cs" />
     <Compile Include="IOC\SingleRegistration.cs" />
     <Compile Include="IOC\SingletonImpl.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />

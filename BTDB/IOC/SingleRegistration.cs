@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.IOC
 {
-    internal class SingleRegistration : IRegistration
+    internal class SingleRegistration : IRegistration, IContanerRegistration
     {
         readonly Type _implementationType;
         readonly List<Type> _asTypes = new List<Type>();
@@ -12,21 +12,6 @@ namespace BTDB.IOC
         public SingleRegistration(Type implementationType)
         {
             _implementationType = implementationType;
-        }
-
-        internal Lifetime HasLifetime
-        {
-            get { return _lifetime; }
-        }
-
-        internal Type ImplementationType
-        {
-            get { return _implementationType; }
-        }
-
-        internal IEnumerable<Type> AsTypes
-        {
-            get { return _asTypes; }
         }
 
         public IRegistration As(Type type)
@@ -39,6 +24,27 @@ namespace BTDB.IOC
         {
             _lifetime = Lifetime.Singleton;
             return this;
+        }
+
+        public void Register(ContanerRegistrationContext context)
+        {
+            ICReg reg;
+            switch(_lifetime)
+            {
+                case Lifetime.AlwaysNew:
+                    reg = new AlwaysNewImpl(_implementationType,ContainerImpl.FindBestConstructor(_implementationType));
+                    break;
+                case Lifetime.Singleton:
+                    reg = new SingletonImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType),context.SingletonCount);
+                    context.SingletonCount++;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            foreach (var asType in _asTypes)
+            {
+                context.AddCReg(asType, reg);
+            }
         }
     }
 }
