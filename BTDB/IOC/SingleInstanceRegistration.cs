@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using BTDB.IL;
 
 namespace BTDB.IOC
 {
@@ -30,43 +29,7 @@ namespace BTDB.IOC
         public void Register(ContanerRegistrationContext context)
         {
             var reg = new InstanceImpl(_instance, context.AddInstance(_instance));
-        }
-    }
-
-    internal class InstanceImpl : ICReg, ICRegILGen
-    {
-        readonly object _instance;
-        readonly int _instanceIndex;
-
-        public InstanceImpl(object instance, int instanceIndex)
-        {
-            _instance = instance;
-            _instanceIndex = instanceIndex;
-        }
-
-        public bool Single
-        {
-            get { return true; }
-        }
-
-        public string GenFuncName
-        {
-            get { return "Instance_" + _instance.GetType().ToSimpleName(); }
-        }
-
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
-        {
-        }
-
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
-        {
-
-            il
-                .Ldarg(0)
-                .Ldfld(() => default(ContainerImpl).Instances)
-                .LdelemRef()
-                .Castclass(_instance.GetType());
-            return null;
+            context.AddCReg(_asTypes, reg);
         }
     }
 }

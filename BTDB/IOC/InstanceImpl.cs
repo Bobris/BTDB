@@ -1,0 +1,77 @@
+using System;
+using System.Collections.Generic;
+using BTDB.IL;
+using BTDB.ODBLayer;
+
+namespace BTDB.IOC
+{
+    internal class InstanceImpl : ICReg, ICRegILGen, ICRegFuncOptimized
+    {
+        readonly object _instance;
+        readonly int _instanceIndex;
+
+        public InstanceImpl(object instance, int instanceIndex)
+        {
+            _instance = instance;
+            _instanceIndex = instanceIndex;
+        }
+
+        public bool Single
+        {
+            get { return true; }
+        }
+
+        public string GenFuncName
+        {
+            get { return "Instance_" + _instance.GetType().ToSimpleName(); }
+        }
+
+        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        {
+            if (!context.ContainsKey("InstancesLocal"))
+            {
+                var localInstances = il.DeclareLocal(typeof(object[]), "instances");
+                il
+                    .Ldarg(0)
+                    .Ldfld(() => default(ContainerImpl).Instances)
+                    .Stloc(localInstances);
+                context.Add("InstancesLocal", localInstances);
+            }
+            if (!context.ContainsKey("BuiltSingletons"))
+            {
+                context.Add("BuiltSingletons", new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance));
+            }
+        }
+
+        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        {
+            var builtSingletons = (Dictionary<ICReg, IILLocal>)context["BuiltSingletons"];
+            IILLocal localInstance;
+            if (builtSingletons.TryGetValue(this, out localInstance))
+            {
+                return localInstance;
+            }
+            var localSingletons = (IILLocal)context["InstancesLocal"];
+            localInstance = il.DeclareLocal(_instance.GetType(), "instance");
+            il
+                .Ldloc(localSingletons)
+                .LdcI4(_instanceIndex)
+                .LdelemRef()
+                .Castclass(_instance.GetType())
+                .Stloc(localInstance);
+            return localInstance;
+        }
+
+        public object BuildFuncOfT(ContainerImpl container, Type funcType)
+        {
+            var obj = container.Instances[_instanceIndex];
+            return ClosureOfObjBuilder.Build(funcType, obj);
+        }
+
+        public Func<ContainerImpl, object> BuildFuncContainer2Object(ContainerImpl container)
+        {
+            var instance = container.Instances[_instanceIndex];
+            return c => instance;
+        }
+    }
+}

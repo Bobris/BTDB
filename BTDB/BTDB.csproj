@@ -92,6 +92,7 @@
     <Compile Include="IOC\ICReg.cs" />
     <Compile Include="IOC\ICRegFuncOptimized.cs" />
     <Compile Include="IOC\ICRegILGen.cs" />
+    <Compile Include="IOC\InstanceImpl.cs" />
     <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\Lifetime.cs" />
     <Compile Include="IOC\SingleInstanceRegistration.cs" />

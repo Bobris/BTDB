@@ -17,9 +17,22 @@ namespace BTDB.IOC
 
         internal int SingletonCount { get; set; }
 
+        internal List<object> Instances
+        {
+            get { return _instances; }
+        }
+
         internal void AddCReg(Type asType, ICReg registration)
         {
             _registrations.Add(asType, registration);
+        }
+
+        internal void AddCReg(IEnumerable<Type> asTypes, ICReg registration)
+        {
+            foreach (var asType in asTypes)
+            {
+                AddCReg(asType, registration);
+            }
         }
 
         internal int AddInstance(object instance)

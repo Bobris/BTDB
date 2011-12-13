@@ -29,22 +29,19 @@ namespace BTDB.IOC
         public void Register(ContanerRegistrationContext context)
         {
             ICReg reg;
-            switch(_lifetime)
+            switch (_lifetime)
             {
                 case Lifetime.AlwaysNew:
-                    reg = new AlwaysNewImpl(_implementationType,ContainerImpl.FindBestConstructor(_implementationType));
+                    reg = new AlwaysNewImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType));
                     break;
                 case Lifetime.Singleton:
-                    reg = new SingletonImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType),context.SingletonCount);
+                    reg = new SingletonImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType), context.SingletonCount);
                     context.SingletonCount++;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-            foreach (var asType in _asTypes)
-            {
-                context.AddCReg(asType, reg);
-            }
+            context.AddCReg(_asTypes, reg);
         }
     }
 }

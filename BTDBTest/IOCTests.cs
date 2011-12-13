@@ -50,6 +50,17 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CreatesLazyFactory()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().As<ILogger>();
+            var container = builder.Build();
+            var lazyLog = container.Resolve<Lazy<ILogger>>();
+            var log = lazyLog.Value;
+            Assert.NotNull(log);
+        }
+
+        [Test]
         public void InjectionToConstructorWithOneParameterAlwaysNew()
         {
             var builder = new ContainerBuilder();

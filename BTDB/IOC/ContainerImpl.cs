@@ -15,7 +15,7 @@ namespace BTDB.IOC
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
         public readonly object[] Singletons;
-        public object[] Instances;
+        public readonly object[] Instances;
         // ReSharper restore MemberCanBePrivate.Global
 
         internal ContainerImpl(IEnumerable<IRegistration> registrations)
@@ -31,6 +31,7 @@ namespace BTDB.IOC
                 SingletonLocks[i] = new object();
             }
             Singletons = new object[context.SingletonCount];
+            Instances = context.Instances.ToArray();
         }
 
         internal static ConstructorInfo FindBestConstructor(Type type)
@@ -71,13 +72,13 @@ namespace BTDB.IOC
                 if (registration.Single)
                     return BuildSingle(registration);
             }
-            if (type.GetGenericTypeDefinition() == typeof(Func<>))
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];
                 if (_registrations.TryGetValue(resultType, out registration))
                 {
                     var optimizedFuncCreg = registration as ICRegFuncOptimized;
-                    if (optimizedFuncCreg!=null)
+                    if (optimizedFuncCreg != null)
                     {
                         var optimizedFunc = optimizedFuncCreg.BuildFuncOfT(this, type);
                         if (optimizedFunc != null) return c => optimizedFunc;
@@ -88,6 +89,17 @@ namespace BTDB.IOC
                                         typeof(ClosureOfFunc<>).MakeGenericType(resultType).GetConstructors()[0].Invoke
                                             (new object[] { this, worker }), "Call");
                 return c => result;
+            }
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>))
+            {
+                var resultType = type.GetGenericArguments()[0];
+                var funcType = typeof(Func<>).MakeGenericType(resultType);
+                var funcInstance = TryBuild(funcType)(this);
+                if (funcInstance != null)
+                {
+                    var result = type.GetConstructor(new[] { funcType }).Invoke(new[] { funcInstance });
+                    return c => result;
+                }
             }
             return c => null;
         }
@@ -111,6 +123,15 @@ namespace BTDB.IOC
 
         Func<ContainerImpl, object> BuildSingle(ICReg registration)
         {
+            if (registration is ICRegFuncOptimized)
+            {
+                var regOpt = (ICRegFuncOptimized)registration;
+                var result = regOpt.BuildFuncContainer2Object(this);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
             if (registration is ICRegILGen)
             {
                 var regILGen = (ICRegILGen)registration;

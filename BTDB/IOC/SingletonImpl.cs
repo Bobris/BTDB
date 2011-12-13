@@ -38,14 +38,19 @@ namespace BTDB.IOC
                 var regILGen = container.FindCRegILGen(parameterInfo.ParameterType);
                 regILGen.GenInitialization(container, il, context);
             }
-            if (context.ContainsKey("SingletonsLocal")) return;
-            var localSingletons = il.DeclareLocal(typeof(object[]), "singletons");
-            il
-                .Ldarg(0)
-                .Ldfld(() => default(ContainerImpl).Singletons)
-                .Stloc(localSingletons);
-            context.Add("SingletonsLocal", localSingletons);
-            context.Add("BuiltSingletons", new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance));
+            if (!context.ContainsKey("SingletonsLocal"))
+            {
+                var localSingletons = il.DeclareLocal(typeof(object[]), "singletons");
+                il
+                    .Ldarg(0)
+                    .Ldfld(() => default(ContainerImpl).Singletons)
+                    .Stloc(localSingletons);
+                context.Add("SingletonsLocal", localSingletons);
+            }
+            if (!context.ContainsKey("BuiltSingletons"))
+            {
+                context.Add("BuiltSingletons", new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance));
+            }
         }
 
         public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
@@ -137,11 +142,24 @@ namespace BTDB.IOC
         public object BuildFuncOfT(ContainerImpl container, Type funcType)
         {
             var obj = container.Singletons[_singletonIndex];
+            return obj == null ? null : ClosureOfObjBuilder.Build(funcType, obj);
+        }
+
+        public Func<ContainerImpl, object> BuildFuncContainer2Object(ContainerImpl container)
+        {
+            var obj = container.Singletons[_singletonIndex];
             if (obj == null) return null;
-            var result = Delegate.CreateDelegate(funcType,
-                                    typeof(ClosureOfObj<>).MakeGenericType(funcType.GetGenericArguments()[0]).GetConstructors()[0].Invoke
-                                        (new[] { obj }), "Call");
-            return result;
+            return c => obj;
+        }
+    }
+
+    internal static class ClosureOfObjBuilder
+    {
+        internal static object Build(Type funcType, object toReturn)
+        {
+            return Delegate.CreateDelegate(funcType,
+                typeof(ClosureOfObj<>).MakeGenericType(funcType.GetGenericArguments()[0]).GetConstructors()[0].Invoke(new[] { toReturn }),
+                "Call");
         }
 
         public class ClosureOfObj<T>
