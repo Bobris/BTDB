@@ -74,6 +74,10 @@ namespace BTDB.IOC
                 if (registration.Single)
                     return BuildSingle(registration);
             }
+            if (type == typeof(IContainer))
+            {
+                return c => c;
+            }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];

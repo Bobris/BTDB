@@ -219,6 +219,31 @@ namespace BTDBTest
             var obj2 = obj1.Cycle2;
             Assert.AreSame(obj1, obj2.Cycle1);
         }
+
+        public class InjectingContainer
+        {
+            readonly IContainer _container;
+
+            public InjectingContainer(IContainer container)
+            {
+                _container = container;
+            }
+
+            public IContainer Container
+            {
+                get { return _container; }
+            }
+        }
+
+        [Test]
+        public void CanInjectContainer()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<InjectingContainer>().As<InjectingContainer>();
+            var container = builder.Build();
+            var obj = container.Resolve<InjectingContainer>();
+            Assert.AreSame(container, obj.Container);
+        }
     }
 
 }
