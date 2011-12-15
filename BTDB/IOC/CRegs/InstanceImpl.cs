@@ -43,6 +43,11 @@ namespace BTDB.IOC.CRegs
             }
         }
 
+        public bool CorruptingILStack
+        {
+            get { return false; }
+        }
+
         public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
             var builtSingletons = (Dictionary<ICReg, IILLocal>)context["BuiltSingletons"];

@@ -31,12 +31,15 @@ namespace BTDB.IOC.CRegs
             container.CallInjectingInitializations(_constructorInfo, il, context);
         }
 
+        public bool CorruptingILStack
+        {
+            get { return false; }
+        }
+
         public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
             container.CallInjectedConstructor(_constructorInfo, il, context);
-            var localResult = il.DeclareLocal(_implementationType);
-            il.Stloc(localResult);
-            return localResult;
+            return null;
         }
     }
 }

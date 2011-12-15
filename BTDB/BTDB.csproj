@@ -81,6 +81,7 @@
     <Compile Include="IL\ILMethodDebugImpl.cs" />
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
+    <Compile Include="IOC\CRegs\CRegILGenWrapper.cs" />
     <Compile Include="IOC\CRegs\AlwaysNewImpl.cs" />
     <Compile Include="IOC\BuilderExtensions.cs" />
     <Compile Include="IOC\ContainerBuilder.cs" />

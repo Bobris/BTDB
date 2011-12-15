@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using BTDB.IL;
+using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
@@ -160,7 +161,11 @@ namespace BTDB.IOC
                 var il = method.Generator;
                 regILGen.GenInitialization(this, il, context);
                 var local = regILGen.GenMain(this, il, context);
-                il.Ldloc(local).Ret();
+                if (local!=null)
+                {
+                    il.Ldloc(local);
+                }
+                il.Ret();
                 return method.Create();
             }
             throw new NotImplementedException();
@@ -206,72 +211,32 @@ namespace BTDB.IOC
         internal void CallInjectedConstructor(ConstructorInfo constructorInfo, IILGen il, IDictionary<string, object> context)
         {
             var pars = constructorInfo.GetParameters();
-            var parsLocals = new List<IILLocal>(pars.Length);
+            var regs = new List<ICRegILGen>(pars.Length);
             foreach (var parameterInfo in pars)
             {
-                var regILGen = FindCRegILGen(parameterInfo.ParameterType);
-                parsLocals.Add(regILGen.GenMain(this, il, context));
+                regs.Add(FindCRegILGen(parameterInfo.ParameterType));
             }
-            foreach (var parLocal in parsLocals)
+            var parsLocals = new List<IILLocal>(pars.Length);
+            foreach (var reg in regs)
             {
-                il.Ldloc(parLocal);
+                parsLocals.Add(reg.CorruptingILStack ? reg.GenMain(this, il, context) : null);
+            }
+            for (int i = 0; i < regs.Count; i++)
+            {
+                if (regs[i].CorruptingILStack)
+                {
+                    il.Ldloc(parsLocals[i]);
+                }
+                else
+                {
+                    var local = regs[i].GenMain(this, il, context);
+                    if (local!=null)
+                    {
+                        il.Ldloc(local);
+                    }
+                }
             }
             il.Newobj(constructorInfo);
-        }
-    }
-
-    internal class CRegILGenWrapper : ICReg, ICRegILGen
-    {
-        readonly ContainerImpl _container;
-        readonly Func<ContainerImpl, object> _buildFunc;
-        readonly Type _type;
-        readonly int _instanceIndex;
-
-        public CRegILGenWrapper(ContainerImpl container, Func<ContainerImpl, object> buildFunc, Type type)
-        {
-            _container = container;
-            _buildFunc = buildFunc;
-            _type = type;
-            _instanceIndex = _container.AddInstance(buildFunc);
-        }
-
-        public bool Single
-        {
-            get { return true; }
-        }
-
-        public string GenFuncName
-        {
-            get { return "Wrapper_" + _type.ToSimpleName(); }
-        }
-
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
-        {
-            if (!context.ContainsKey("InstancesLocal"))
-            {
-                var localInstances = il.DeclareLocal(typeof(object[]), "instances");
-                il
-                    .Ldarg(0)
-                    .Ldfld(() => default(ContainerImpl).Instances)
-                    .Stloc(localInstances);
-                context.Add("InstancesLocal", localInstances);
-            }
-        }
-
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
-        {
-            var localInstances = (IILLocal)context["InstancesLocal"];
-            var localInstance = il.DeclareLocal(_type, "instance");
-            il
-                .Ldloc(localInstances)
-                .LdcI4(_instanceIndex)
-                .LdelemRef()
-                .Castclass(typeof(Func<ContainerImpl, object>))
-                .Ldarg(0)
-                .Call(() => default(Func<ContainerImpl, object>).Invoke(null))
-                .Castclass(_type)
-                .Stloc(localInstance);
-            return localInstance;
         }
     }
 }
