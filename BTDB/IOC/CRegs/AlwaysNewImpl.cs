@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
 
-namespace BTDB.IOC
+namespace BTDB.IOC.CRegs
 {
     internal class AlwaysNewImpl : ICReg, ICRegILGen
     {
@@ -28,31 +28,14 @@ namespace BTDB.IOC
 
         public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
-            var pars = _constructorInfo.GetParameters();
-            foreach (var parameterInfo in pars)
-            {
-                var regILGen = container.FindCRegILGen(parameterInfo.ParameterType);
-                regILGen.GenInitialization(container, il, context);
-            }
+            container.CallInjectingInitializations(_constructorInfo, il, context);
         }
 
         public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
-            var pars = _constructorInfo.GetParameters();
-            var parsLocals = new List<IILLocal>(pars.Length);
-            foreach (var parameterInfo in pars)
-            {
-                var regILGen = container.FindCRegILGen(parameterInfo.ParameterType);
-                parsLocals.Add(regILGen.GenMain(container, il, context));
-            }
-            foreach (var parLocal in parsLocals)
-            {
-                il.Ldloc(parLocal);
-            }
+            container.CallInjectedConstructor(_constructorInfo, il, context);
             var localResult = il.DeclareLocal(_implementationType);
-            il
-                .Newobj(_constructorInfo)
-                .Stloc(localResult);
+            il.Stloc(localResult);
             return localResult;
         }
     }

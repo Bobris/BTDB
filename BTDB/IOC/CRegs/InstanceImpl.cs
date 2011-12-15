@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using BTDB.IL;
 using BTDB.ODBLayer;
 
-namespace BTDB.IOC
+namespace BTDB.IOC.CRegs
 {
     internal class InstanceImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {

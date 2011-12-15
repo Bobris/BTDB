@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {

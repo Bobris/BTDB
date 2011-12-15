@@ -5,7 +5,7 @@ using System.Threading;
 using BTDB.IL;
 using BTDB.ODBLayer;
 
-namespace BTDB.IOC
+namespace BTDB.IOC.CRegs
 {
     internal class SingletonImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
@@ -32,12 +32,7 @@ namespace BTDB.IOC
 
         public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
-            var pars = _constructorInfo.GetParameters();
-            foreach (var parameterInfo in pars)
-            {
-                var regILGen = container.FindCRegILGen(parameterInfo.ParameterType);
-                regILGen.GenInitialization(container, il, context);
-            }
+            container.CallInjectingInitializations(_constructorInfo, il, context);
             if (!context.ContainsKey("SingletonsLocal"))
             {
                 var localSingletons = il.DeclareLocal(typeof(object[]), "singletons");
@@ -107,20 +102,9 @@ namespace BTDB.IOC
                 .Stloc(localSingleton)
                 .Brtrue(labelNotNull2);
             context["BuiltSingletons"] = new Dictionary<ICReg, IILLocal>(builtSingletons, ReferenceEqualityComparer<ICReg>.Instance);
-            var pars = _constructorInfo.GetParameters();
-            var parsLocals = new List<IILLocal>(pars.Length);
-            foreach (var parameterInfo in pars)
-            {
-                var regILGen = container.FindCRegILGen(parameterInfo.ParameterType);
-                parsLocals.Add(regILGen.GenMain(container, il, context));
-            }
-            foreach (var parLocal in parsLocals)
-            {
-                il.Ldloc(parLocal);
-            }
+            container.CallInjectedConstructor(_constructorInfo, il, context);
             context["BuiltSingletons"] = builtSingletons;
             il
-                .Newobj(_constructorInfo)
                 .Stloc(localSingleton)
                 .Ldloc(localSingletons)
                 .LdcI4(_singletonIndex)
@@ -152,29 +136,8 @@ namespace BTDB.IOC
             return c => obj;
         }
     }
+}
 
-    internal static class ClosureOfObjBuilder
-    {
-        internal static object Build(Type funcType, object toReturn)
-        {
-            return Delegate.CreateDelegate(funcType,
-                typeof(ClosureOfObj<>).MakeGenericType(funcType.GetGenericArguments()[0]).GetConstructors()[0].Invoke(new[] { toReturn }),
-                "Call");
-        }
-
-        public class ClosureOfObj<T>
-        {
-            readonly T _obj;
-
-            public ClosureOfObj(object obj)
-            {
-                _obj = (T)obj;
-            }
-
-            public T Call()
-            {
-                return _obj;
-            }
-        }
-    }
+namespace BTDB.IOC
+{
 }

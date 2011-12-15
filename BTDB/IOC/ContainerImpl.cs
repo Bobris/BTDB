@@ -192,6 +192,32 @@ namespace BTDB.IOC
             Instances[result] = instance;
             return result;
         }
+
+        internal void CallInjectingInitializations(ConstructorInfo constructorInfo, IILGen il, IDictionary<string, object> context)
+        {
+            var pars = constructorInfo.GetParameters();
+            foreach (var parameterInfo in pars)
+            {
+                var regILGen = FindCRegILGen(parameterInfo.ParameterType);
+                regILGen.GenInitialization(this, il, context);
+            }
+        }
+
+        internal void CallInjectedConstructor(ConstructorInfo constructorInfo, IILGen il, IDictionary<string, object> context)
+        {
+            var pars = constructorInfo.GetParameters();
+            var parsLocals = new List<IILLocal>(pars.Length);
+            foreach (var parameterInfo in pars)
+            {
+                var regILGen = FindCRegILGen(parameterInfo.ParameterType);
+                parsLocals.Add(regILGen.GenMain(this, il, context));
+            }
+            foreach (var parLocal in parsLocals)
+            {
+                il.Ldloc(parLocal);
+            }
+            il.Newobj(constructorInfo);
+        }
     }
 
     internal class CRegILGenWrapper : ICReg, ICRegILGen
