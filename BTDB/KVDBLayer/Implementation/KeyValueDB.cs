@@ -575,7 +575,8 @@ namespace BTDB.KVDBLayer
             ReadTrLink link;
             lock (_readLinkLock)
             {
-                if (_readTrLinkHead == null || _readTrLinkHead.TransactionNumber != _currentState.TransactionCounter)
+                if (_readTrLinkHead == null || 
+                    _writeTr==null && _readTrLinkHead.TransactionNumber != _currentState.TransactionCounter)
                 {
                     link = new ReadTrLink
                                       {
