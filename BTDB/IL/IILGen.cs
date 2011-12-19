@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
@@ -9,64 +10,25 @@ namespace BTDB.IL
         IILLocal DeclareLocal(Type type, string name = null, bool pinned = false);
         IILGen Do(Action<IILGen> action);
         IILGen Comment(string text);
-        IILGen LdcI4(int value);
-        IILGen Ldarg(ushort parameterIndex);
-        IILGen Ldfld(FieldInfo fieldInfo);
-        IILGen Ldflda(FieldInfo fieldInfo);
-        IILGen Ldsfld(FieldInfo fieldInfo);
-        IILGen Stfld(FieldInfo fieldInfo);
-        IILGen Stsfld(FieldInfo fieldInfo);
-        IILGen Stloc(ushort localVariableIndex);
-        IILGen Stloc(IILLocal localBuilder);
-        IILGen Ldloc(ushort localVariableIndex);
-        IILGen Ldloc(IILLocal localBuilder);
-        IILGen Ldloca(IILLocal localBuilder);
         IILGen Mark(IILLabel label);
-        IILGen Brfalse(IILLabel targetLabel);
-        IILGen BrfalseS(IILLabel targetLabel);
-        IILGen Brtrue(IILLabel targetLabel);
-        IILGen BrtrueS(IILLabel targetLabel);
-        IILGen Br(IILLabel targetLabel);
-        IILGen BrS(IILLabel targetLabel);
-        IILGen BneUnS(IILLabel targetLabel);
-        IILGen BeqS(IILLabel targetLabel);
-        IILGen BgeUnS(IILLabel targetLabel);
-        IILGen BgeUn(IILLabel targetLabel);
-        IILGen Newobj(ConstructorInfo constructorInfo);
-        IILGen Callvirt(MethodInfo methodInfo);
-        IILGen Call(MethodInfo methodInfo);
-        IILGen Call(ConstructorInfo constructorInfo);
-        IILGen Ldftn(MethodInfo methodInfo);
         IILGen Ldftn(IILMethod method);
         IILGen Ldstr(string str);
-        IILGen Ldnull();
-        IILGen Throw();
-        IILGen Ret();
-        IILGen Pop();
-        IILGen Castclass(Type toType);
-        IILGen Isinst(Type asType);
-        IILGen ConvU1();
-        IILGen ConvU2();
-        IILGen ConvU4();
-        IILGen ConvU8();
-        IILGen ConvI1();
-        IILGen ConvI2();
-        IILGen ConvI4();
-        IILGen ConvI8();
-        IILGen ConvR4();
-        IILGen ConvR8();
-        IILGen Tail();
-        IILGen LdelemRef();
-        IILGen StelemRef();
         IILGen Try();
         IILGen Catch(Type exceptionType);
         IILGen Finally();
         IILGen EndTry();
-        IILGen Add();
-        IILGen Sub();
-        IILGen Mul();
-        IILGen Div();
-        IILGen Dup();
-        IILGen Ldtoken(Type type);
+
+        // These should not be used directly
+        void Emit(OpCode opCode);
+        void Emit(OpCode opCode, sbyte param);
+        void Emit(OpCode opCode, byte param);
+        void Emit(OpCode opCode, ushort param);
+        void Emit(OpCode opCode, int param);
+        void Emit(OpCode opCode, FieldInfo param);
+        void Emit(OpCode opCode, ConstructorInfo param);
+        void Emit(OpCode opCode, MethodInfo param);
+        void Emit(OpCode opCode, Type type);
+        void Emit(OpCode opCode, IILLocal ilLocal);
+        void Emit(OpCode opCode, IILLabel ilLabel);
     }
 }
