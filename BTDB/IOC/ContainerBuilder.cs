@@ -7,7 +7,7 @@ namespace BTDB.IOC
     {
         readonly List<IRegistration> _registrations = new List<IRegistration>();
 
-        public IRegistration Register(Type type)
+        public IRegistration RegisterType(Type type)
         {
             var registration = new SingleRegistration(type);
             _registrations.Add(registration);

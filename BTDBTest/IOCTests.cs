@@ -13,7 +13,7 @@ namespace BTDBTest
         public void AlwaysNew()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>();
+            builder.RegisterType<Logger>().As<ILogger>();
             var container = builder.Build();
             var log1 = container.Resolve<ILogger>();
             Assert.NotNull(log1);
@@ -26,7 +26,7 @@ namespace BTDBTest
         public void Singleton()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
             var container = builder.Build();
             var log1 = container.Resolve<ILogger>();
             Assert.NotNull(log1);
@@ -39,7 +39,7 @@ namespace BTDBTest
         public void CreatesFuncFactory()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>();
+            builder.RegisterType<Logger>().As<ILogger>();
             var container = builder.Build();
             var logFactory = container.Resolve<Func<ILogger>>();
             var log1 = logFactory();
@@ -53,7 +53,7 @@ namespace BTDBTest
         public void CreatesLazyFactory()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>();
+            builder.RegisterType<Logger>().As<ILogger>();
             var container = builder.Build();
             var lazyLog = container.Resolve<Lazy<ILogger>>();
             var log = lazyLog.Value;
@@ -64,8 +64,8 @@ namespace BTDBTest
         public void InjectionToConstructorWithOneParameterAlwaysNew()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>();
-            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            builder.RegisterType<Logger>().As<ILogger>();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
             var container = builder.Build();
             var obj = container.Resolve<IErrorHandler>();
             Assert.NotNull(obj);
@@ -81,8 +81,8 @@ namespace BTDBTest
         public void InjectionToConstructorWithOneParameterSingleton()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
-            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
             var container = builder.Build();
             var obj = container.Resolve<IErrorHandler>();
             Assert.NotNull(obj);
@@ -98,9 +98,9 @@ namespace BTDBTest
         public void ReusingSingletonMultipleTimesInOneResolve()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
-            builder.Register<ErrorHandler>().As<IErrorHandler>();
-            builder.Register<Database>().As<IDatabase>();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+            builder.RegisterType<Database>().As<IDatabase>();
             var container = builder.Build();
             var obj = container.Resolve<IDatabase>();
             Assert.NotNull(obj);
@@ -113,9 +113,9 @@ namespace BTDBTest
         public void ReusingSingletonMultipleTimesInOneResolveOnceInSingleton()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
-            builder.Register<ErrorHandler>().As<IErrorHandler>().SingleInstance();
-            builder.Register<Database>().As<IDatabase>();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
+            builder.RegisterType<Database>().As<IDatabase>();
             var container = builder.Build();
             var obj = container.Resolve<IDatabase>();
             Assert.NotNull(obj);
@@ -133,7 +133,7 @@ namespace BTDBTest
         public void CreatesFastFuncFactory()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
             var container = builder.Build();
             var obj = container.Resolve<ILogger>();
             var fastFactory = container.Resolve<Func<ILogger>>();
@@ -145,8 +145,8 @@ namespace BTDBTest
         public void InjectionToConstructorWithOneParameterSingletonWithOptimization()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().As<ILogger>().SingleInstance();
-            builder.Register<ErrorHandler>().As<IErrorHandler>();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
             var container = builder.Build();
             var obj = container.Resolve<ILogger>();
             Assert.NotNull(obj);
@@ -212,8 +212,8 @@ namespace BTDBTest
         public void CanBuildLazyCycle()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Cycle1>().As<ICycle1>().SingleInstance();
-            builder.Register<Cycle2>().As<ICycle2>();
+            builder.RegisterType<Cycle1>().As<ICycle1>().SingleInstance();
+            builder.RegisterType<Cycle2>().As<ICycle2>();
             var container = builder.Build();
             var obj1 = container.Resolve<ICycle1>();
             var obj2 = obj1.Cycle2;
@@ -239,7 +239,7 @@ namespace BTDBTest
         public void CanInjectContainer()
         {
             var builder = new ContainerBuilder();
-            builder.Register<InjectingContainer>().As<InjectingContainer>();
+            builder.RegisterType<InjectingContainer>().As<InjectingContainer>();
             var container = builder.Build();
             var obj = container.Resolve<InjectingContainer>();
             Assert.AreSame(container, obj.Container);
@@ -271,7 +271,7 @@ namespace BTDBTest
         public void RegisterAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().AsImplementedInterfaces();
+            builder.RegisterType<Logger>().AsImplementedInterfaces();
             var container = builder.Build();
             var log = container.Resolve<ILogger>();
             Assert.NotNull(log);
@@ -281,7 +281,7 @@ namespace BTDBTest
         public void RegisterAsSelf()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>().AsSelf();
+            builder.RegisterType<Logger>().AsSelf();
             var container = builder.Build();
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
@@ -291,11 +291,14 @@ namespace BTDBTest
         public void RegisterDefaultAsSelf()
         {
             var builder = new ContainerBuilder();
-            builder.Register<Logger>();
+            builder.RegisterType<Logger>();
             var container = builder.Build();
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
         }
+
+        [Test]
+        public void Register
 
     }
 

@@ -2,9 +2,9 @@ namespace BTDB.IOC
 {
     public static class BuilderExtensions
     {
-        public static IRegistration Register<T>(this ContainerBuilder builder)
+        public static IRegistration RegisterType<T>(this ContainerBuilder builder)
         {
-            return builder.Register(typeof (T));
+            return builder.RegisterType(typeof (T));
         }
 
         public static IRegistration As<T>(this IRegistration registration)
