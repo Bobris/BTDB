@@ -13,6 +13,7 @@ namespace BTDB.IOC
         public SingleRegistration(Type implementationType)
         {
             _implementationType = implementationType;
+            _lifetime = Lifetime.AlwaysNew;
         }
 
         public IRegistration As(Type type)
@@ -36,7 +37,7 @@ namespace BTDB.IOC
                     reg = new AlwaysNewImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType));
                     break;
                 case Lifetime.Singleton:
-                    reg = new SingletonImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType), context.SingletonCount);
+                    reg = new SingletonImpl(_implementationType, new AlwaysNewImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType)), context.SingletonCount);
                     context.SingletonCount++;
                     break;
                 default:

@@ -10,13 +10,13 @@ namespace BTDB.IOC.CRegs
     internal class SingletonImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
         readonly Type _implementationType;
-        readonly ConstructorInfo _constructorInfo;
+        readonly ICRegILGen _wrapping;
         readonly int _singletonIndex;
 
-        public SingletonImpl(Type implementationType, ConstructorInfo constructorInfo, int singletonIndex)
+        public SingletonImpl(Type implementationType, ICRegILGen wrapping, int singletonIndex)
         {
             _implementationType = implementationType;
-            _constructorInfo = constructorInfo;
+            _wrapping = wrapping;
             _singletonIndex = singletonIndex;
         }
 
@@ -32,7 +32,7 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
-            container.CallInjectingInitializations(_constructorInfo, il, context);
+            _wrapping.GenInitialization(container,il,context);
             if (!context.ContainsKey("SingletonsLocal"))
             {
                 var localSingletons = il.DeclareLocal(typeof(object[]), "singletons");
@@ -107,7 +107,11 @@ namespace BTDB.IOC.CRegs
                 .Stloc(localSingleton)
                 .Brtrue(labelNotNull2);
             context["BuiltSingletons"] = new Dictionary<ICReg, IILLocal>(builtSingletons, ReferenceEqualityComparer<ICReg>.Instance);
-            container.CallInjectedConstructor(_constructorInfo, il, context);
+            var nestedLocal = _wrapping.GenMain(container, il, context);
+            if (nestedLocal!=null)
+            {
+                il.Ldloc(nestedLocal);
+            }
             context["BuiltSingletons"] = builtSingletons;
             il
                 .Stloc(localSingleton)

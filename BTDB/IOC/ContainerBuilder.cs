@@ -21,9 +21,17 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public IRegistration RegisterFactory<T>(Func<IContainer, T> factory) where T:class
+        {
+            var registration = new SingleFactoryRegistration(factory, typeof (T));
+            _registrations.Add(registration);
+            return registration;
+        }
+
         public IContainer Build()
         {
             return new ContainerImpl(_registrations);
         }
+
     }
 }

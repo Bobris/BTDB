@@ -183,7 +183,7 @@ namespace BTDB.IOC
             var buildFunc = TryBuild(type);
             if (buildFunc != null)
             {
-                var result = new CRegILGenWrapper(this, buildFunc, type);
+                var result = new FactoryImpl(this, buildFunc, type);
                 _registrations.Add(type, result);
                 return result;
             }

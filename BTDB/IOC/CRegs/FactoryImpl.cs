@@ -4,19 +4,21 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class CRegILGenWrapper : ICReg, ICRegILGen
+    internal class FactoryImpl : ICReg, ICRegILGen
     {
-        readonly ContainerImpl _container;
-        readonly Func<ContainerImpl, object> _buildFunc;
         readonly Type _type;
         readonly int _instanceIndex;
 
-        public CRegILGenWrapper(ContainerImpl container, Func<ContainerImpl, object> buildFunc, Type type)
+        public FactoryImpl(ContainerImpl container, Func<ContainerImpl, object> buildFunc, Type type)
         {
-            _container = container;
-            _buildFunc = buildFunc;
             _type = type;
-            _instanceIndex = _container.AddInstance(buildFunc);
+            _instanceIndex = container.AddInstance(buildFunc);
+        }
+
+        public FactoryImpl(int instanceIndex, Type type)
+        {
+            _instanceIndex = instanceIndex;
+            _type = type;
         }
 
         public bool Single
@@ -26,7 +28,7 @@ namespace BTDB.IOC.CRegs
 
         public string GenFuncName
         {
-            get { return "Wrapper_" + _type.ToSimpleName(); }
+            get { return "Factory_" + _type.ToSimpleName(); }
         }
 
         public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)

@@ -83,7 +83,7 @@
     <Compile Include="IL\ILMethodDebugImpl.cs" />
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
-    <Compile Include="IOC\CRegs\CRegILGenWrapper.cs" />
+    <Compile Include="IOC\CRegs\FactoryImpl.cs" />
     <Compile Include="IOC\CRegs\AlwaysNewImpl.cs" />
     <Compile Include="IOC\BuilderExtensions.cs" />
     <Compile Include="IOC\ContainerBuilder.cs" />
@@ -99,6 +99,7 @@
     <Compile Include="IOC\CRegs\InstanceImpl.cs" />
     <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\Lifetime.cs" />
+    <Compile Include="IOC\SingleFactoryRegistration.cs" />
     <Compile Include="IOC\SingleInstanceRegistration.cs" />
     <Compile Include="IOC\SingleRegistration.cs" />
     <Compile Include="IOC\CRegs\SingletonImpl.cs" />

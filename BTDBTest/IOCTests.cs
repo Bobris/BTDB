@@ -244,6 +244,28 @@ namespace BTDBTest
             var obj = container.Resolve<InjectingContainer>();
             Assert.AreSame(container, obj.Container);
         }
+
+        [Test]
+        public void RegisterFactory()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>();
+            var container = builder.Build();
+            var obj = container.Resolve<InjectingContainer>();
+            Assert.AreSame(container, obj.Container);
+            Assert.AreNotSame(obj, container.Resolve<InjectingContainer>());
+        }
+
+        [Test]
+        public void RegisterFactoryAsSingleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>().SingleInstance();
+            var container = builder.Build();
+            var obj = container.Resolve<InjectingContainer>();
+            Assert.AreSame(obj, container.Resolve<InjectingContainer>());
+        }
+
     }
 
 }
