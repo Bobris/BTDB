@@ -296,10 +296,6 @@ namespace BTDBTest
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
         }
-
-        [Test]
-        public void Register
-
     }
 
 }
