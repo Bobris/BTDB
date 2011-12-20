@@ -263,7 +263,38 @@ namespace BTDBTest
             builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>().SingleInstance();
             var container = builder.Build();
             var obj = container.Resolve<InjectingContainer>();
+            Assert.AreSame(container, obj.Container);
             Assert.AreSame(obj, container.Resolve<InjectingContainer>());
+        }
+
+        [Test]
+        public void RegisterAsImplementedInterfaces()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().AsImplementedInterfaces();
+            var container = builder.Build();
+            var log = container.Resolve<ILogger>();
+            Assert.NotNull(log);
+        }
+
+        [Test]
+        public void RegisterAsSelf()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>().AsSelf();
+            var container = builder.Build();
+            var log = container.Resolve<Logger>();
+            Assert.NotNull(log);
+        }
+
+        [Test]
+        public void RegisterDefaultAsSelf()
+        {
+            var builder = new ContainerBuilder();
+            builder.Register<Logger>();
+            var container = builder.Build();
+            var log = container.Resolve<Logger>();
+            Assert.NotNull(log);
         }
 
     }

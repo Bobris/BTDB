@@ -6,5 +6,7 @@ namespace BTDB.IOC
     {
         IRegistration As(Type type);
         IRegistration SingleInstance();
+        IRegistration AsSelf();
+        IRegistration AsImplementedInterfaces();
     }
 }

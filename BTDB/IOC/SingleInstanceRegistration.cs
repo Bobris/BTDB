@@ -1,36 +1,22 @@
 using System;
-using System.Collections.Generic;
 using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
-    internal class SingleInstanceRegistration : IRegistration, IContanerRegistration
+    internal class SingleInstanceRegistration : SingleRegistrationBase, IContanerRegistration
     {
         readonly object _instance;
-        readonly Type _type;
-        readonly List<Type> _asTypes = new List<Type>();
 
-        public SingleInstanceRegistration(object instance, Type type)
+        public SingleInstanceRegistration(object instance, Type type): base(type)
         {
             _instance = instance;
-            _type = type;
-        }
-
-        public IRegistration As(Type type)
-        {
-            _asTypes.Add(type);
-            return this;
-        }
-
-        public IRegistration SingleInstance()
-        {
-            return this;
         }
 
         public void Register(ContanerRegistrationContext context)
         {
+            FinalizeAsTypes();
             var reg = new InstanceImpl(_instance, context.AddInstance(_instance));
-            context.AddCReg(_asTypes, reg);
+            context.AddCReg(AsTypes, reg);
         }
     }
 }

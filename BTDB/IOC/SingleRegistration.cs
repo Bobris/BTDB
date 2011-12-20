@@ -1,49 +1,31 @@
 using System;
-using System.Collections.Generic;
 using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
-    internal class SingleRegistration : IRegistration, IContanerRegistration
+    internal class SingleRegistration : SingleRegistrationBase, IContanerRegistration
     {
-        readonly Type _implementationType;
-        readonly List<Type> _asTypes = new List<Type>();
-        Lifetime _lifetime;
-
-        public SingleRegistration(Type implementationType)
+        public SingleRegistration(Type implementationType): base(implementationType)
         {
-            _implementationType = implementationType;
-            _lifetime = Lifetime.AlwaysNew;
-        }
-
-        public IRegistration As(Type type)
-        {
-            _asTypes.Add(type);
-            return this;
-        }
-
-        public IRegistration SingleInstance()
-        {
-            _lifetime = Lifetime.Singleton;
-            return this;
         }
 
         public void Register(ContanerRegistrationContext context)
         {
+            FinalizeAsTypes();
             ICReg reg;
-            switch (_lifetime)
+            switch (Lifetime)
             {
                 case Lifetime.AlwaysNew:
-                    reg = new AlwaysNewImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType));
+                    reg = new AlwaysNewImpl(ImplementationType, ContainerImpl.FindBestConstructor(ImplementationType));
                     break;
                 case Lifetime.Singleton:
-                    reg = new SingletonImpl(_implementationType, new AlwaysNewImpl(_implementationType, ContainerImpl.FindBestConstructor(_implementationType)), context.SingletonCount);
+                    reg = new SingletonImpl(ImplementationType, new AlwaysNewImpl(ImplementationType, ContainerImpl.FindBestConstructor(ImplementationType)), context.SingletonCount);
                     context.SingletonCount++;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-            context.AddCReg(_asTypes, reg);
+            context.AddCReg(AsTypes, reg);
         }
     }
 }
