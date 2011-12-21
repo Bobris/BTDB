@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using BTDB.IL;
 using BTDB.IOC.CRegs;
 
@@ -53,7 +51,13 @@ namespace BTDB.IOC
             {
                 worker = TryBuild(type);
             }
+            if (worker == null) throwNotResolvable(type);
             return worker(this);
+        }
+
+        void throwNotResolvable(Type type)
+        {
+            throw new ArgumentException(string.Format("Type " + type.ToSimpleName() + " cannot be resolved"));
         }
 
         Func<ContainerImpl, object> TryBuild(Type type)
@@ -62,6 +66,7 @@ namespace BTDB.IOC
             if (!_workers.TryGetValue(type, out worker))
             {
                 worker = Build(type);
+                if (worker == null) return null;
                 _workers.TryAdd(type, worker);
             }
             return worker;
@@ -105,7 +110,7 @@ namespace BTDB.IOC
                 return ((IFuncBuilder)
                         typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build();
             }
-            return c => null;
+            return null;
         }
 
         public interface IFuncBuilder

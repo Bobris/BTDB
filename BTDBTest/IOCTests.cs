@@ -296,6 +296,14 @@ namespace BTDBTest
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
         }
+
+        [Test]
+        public void UnresolvableThrowsExcaption()
+        {
+            var builder = new ContainerBuilder();
+            var container = builder.Build();
+            Assert.Throws<ArgumentException>(() => container.Resolve<string>());
+        }
     }
 
 }
