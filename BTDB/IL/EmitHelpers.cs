@@ -1,6 +1,5 @@
 ﻿using System;
 using System.ComponentModel;
-using System.Diagnostics.SymbolStore;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -30,6 +29,11 @@ namespace BTDB.IL
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
                 return type.GetGenericArguments()[0];
             return type;
+        }
+
+        public static bool IsDelegate(this Type type)
+        {
+            return type.IsSubclassOf(typeof(Delegate));
         }
 
         public static string ToSimpleName(this Type type)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace BTDB.IOC
 {
@@ -24,6 +25,18 @@ namespace BTDB.IOC
         public IRegistration RegisterFactory<T>(Func<IContainer, T> factory) where T:class
         {
             var registration = new SingleFactoryRegistration(factory, typeof (T));
+            _registrations.Add(registration);
+            return registration;
+        }
+
+        public IMultiRegistration RegisterAssemblyTypes(Assembly from)
+        {
+            return RegisterAssemblyTypes(new[] {from});
+        }
+
+        public IMultiRegistration RegisterAssemblyTypes(params Assembly[] froms)
+        {
+            var registration = new MultiRegistration(froms);
             _registrations.Add(registration);
             return registration;
         }

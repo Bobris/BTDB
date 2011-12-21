@@ -304,6 +304,16 @@ namespace BTDBTest
             var container = builder.Build();
             Assert.Throws<ArgumentException>(() => container.Resolve<string>());
         }
+
+        [Test]
+        public void RegisterAssemblyTypes()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly);
+            var container = builder.Build();
+            var log = container.Resolve<Logger>();
+            Assert.NotNull(log);
+        }
     }
 
 }

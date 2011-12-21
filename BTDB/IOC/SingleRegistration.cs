@@ -13,13 +13,15 @@ namespace BTDB.IOC
         {
             FinalizeAsTypes();
             ICReg reg;
+            var bestConstructor = ContainerImpl.FindBestConstructor(ImplementationType);
+            if (bestConstructor == null) return;
             switch (Lifetime)
             {
                 case Lifetime.AlwaysNew:
-                    reg = new AlwaysNewImpl(ImplementationType, ContainerImpl.FindBestConstructor(ImplementationType));
+                    reg = new AlwaysNewImpl(ImplementationType, bestConstructor);
                     break;
                 case Lifetime.Singleton:
-                    reg = new SingletonImpl(ImplementationType, new AlwaysNewImpl(ImplementationType, ContainerImpl.FindBestConstructor(ImplementationType)), context.SingletonCount);
+                    reg = new SingletonImpl(ImplementationType, new AlwaysNewImpl(ImplementationType, bestConstructor), context.SingletonCount);
                     context.SingletonCount++;
                     break;
                 default:
