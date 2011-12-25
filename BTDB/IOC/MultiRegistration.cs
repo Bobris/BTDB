@@ -4,33 +4,16 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal class MultiRegistration : IMultiRegistration, IContanerRegistration
+    internal class MultiRegistration : RegistrationBaseImpl<IAsTraitAndLiveScopeTraitAndScanTrait>, IContanerRegistration
     {
+        readonly AsTraitImpl _asTrait = new AsTraitImpl();
+        readonly LiveScopeTraitImpl _liveScopeTrait = new LiveScopeTraitImpl();
+        readonly ScanTraitImpl _scanTrait = new ScanTraitImpl();
         readonly Assembly[] _froms;
 
         public MultiRegistration(Assembly[] froms)
         {
             _froms = froms;
-        }
-
-        public IRegistration As(Type type)
-        {
-            throw new NotImplementedException();
-        }
-
-        public IRegistration SingleInstance()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IRegistration AsSelf()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IRegistration AsImplementedInterfaces()
-        {
-            throw new NotImplementedException();
         }
 
         public void Register(ContanerRegistrationContext context)
@@ -43,9 +26,18 @@ namespace BTDB.IOC
                     if (type.IsAbstract) continue;
                     if (type.IsGenericTypeDefinition) continue;
                     if (type.IsDelegate()) continue;
-                    ((IContanerRegistration)new SingleRegistration(type)).Register(context);
+                    if (!_scanTrait.MatchFilter(type)) continue;
+                    ((IContanerRegistration)new SingleRegistration(type,_asTrait,_liveScopeTrait)).Register(context);
                 }
             }
+        }
+
+        public override object InternalTraits(Type trait)
+        {
+            if (trait == typeof(IAsTrait)) return _asTrait;
+            if (trait == typeof(ILiveScopeTrait)) return _liveScopeTrait;
+            if (trait == typeof(IScanTrait)) return _scanTrait;
+            throw new ArgumentOutOfRangeException();
         }
     }
 }

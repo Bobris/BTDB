@@ -4,9 +4,11 @@ namespace BTDB.IOC
 {
     public interface IRegistration
     {
-        IRegistration As(Type type);
-        IRegistration SingleInstance();
-        IRegistration AsSelf();
-        IRegistration AsImplementedInterfaces();
+        object InternalTraits(Type trait);
+    }
+
+    public interface IRegistration<TTraits> : IRegistration
+    {
+        IRegistration<TTraits> As<T>();
     }
 }

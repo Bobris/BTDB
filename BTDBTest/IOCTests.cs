@@ -298,7 +298,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void UnresolvableThrowsExcaption()
+        public void UnresolvableThrowsException()
         {
             var builder = new ContainerBuilder();
             var container = builder.Build();
@@ -313,6 +313,17 @@ namespace BTDBTest
             var container = builder.Build();
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
+        }
+
+        [Test]
+        public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t=>t.Namespace=="BTDBTest.IOCDomain").AsImplementedInterfaces();
+            var container = builder.Build();
+            var root = container.Resolve<IWebService>();
+            Assert.NotNull(root);
+            Assert.NotNull(root.Authenticator.Database.Logger);
         }
     }
 
