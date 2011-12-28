@@ -324,7 +324,20 @@ namespace BTDBTest
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
             Assert.NotNull(root.Authenticator.Database.Logger);
-        }
+			Assert.AreNotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+		}
+		
+		[Test]
+		public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
+		{
+            var builder = new ContainerBuilder();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t=>t.Namespace=="BTDBTest.IOCDomain").AsImplementedInterfaces().SingleInstance();
+            var container = builder.Build();
+            var root = container.Resolve<IWebService>();
+            Assert.NotNull(root);
+            Assert.NotNull(root.Authenticator.Database.Logger);
+			Assert.AreSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+		}
     }
 
 }
