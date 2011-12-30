@@ -15,6 +15,24 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public static IRegistration<TTraits> As<TTraits>(this IRegistration<TTraits> registration, Type serviceType) where TTraits : IAsTrait
+        {
+            ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).As(serviceType);
+            return registration;
+        }
+
+        public static IRegistration<TTraits> Named<TTraits>(this IRegistration<TTraits> registration, string serviceName, Type serviceType) where TTraits : IAsTrait
+        {
+            ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).Keyed(serviceName, serviceType);
+            return registration;
+        }
+
+        public static IRegistration<TTraits> Keyed<TTraits>(this IRegistration<TTraits> registration, object serviceKey, Type serviceType) where TTraits : IAsTrait
+        {
+            ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).Keyed(serviceKey, serviceType);
+            return registration;
+        }
+
         public static IRegistration<TTraits> AsSelf<TTraits>(this IRegistration<TTraits> registration) where TTraits : IAsTrait
         {
             ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).AsSelf();

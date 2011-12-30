@@ -104,7 +104,6 @@
     <Compile Include="IOC\CRegs\InstanceImpl.cs" />
     <Compile Include="IOC\ILiveScopeTrait.cs" />
     <Compile Include="IOC\ILiveScopeTraitImpl.cs" />
-    <Compile Include="IOC\IMultiRegistration.cs" />
     <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\IScanTrait.cs" />
     <Compile Include="IOC\IScanTraitImpl.cs" />

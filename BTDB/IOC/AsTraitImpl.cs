@@ -5,13 +5,18 @@ namespace BTDB.IOC
 {
     internal class AsTraitImpl : IAsTrait, IAsTraitImpl
     {
-        readonly List<Type> _asTypes = new List<Type>();
+        readonly List<KeyValuePair<object, Type>> _asTypes = new List<KeyValuePair<object, Type>>();
         bool _asSelf;
         bool _asImplementedInterfaces;
 
         public void As(Type type)
         {
-            _asTypes.Add(type);
+            _asTypes.Add(new KeyValuePair<object, Type>(null, type));
+        }
+
+        public void Keyed(object serviceKey, Type type)
+        {
+            _asTypes.Add(new KeyValuePair<object, Type>(serviceKey, type));
         }
 
         public void AsSelf()
@@ -24,12 +29,12 @@ namespace BTDB.IOC
             _asImplementedInterfaces = true;
         }
 
-        public IEnumerable<Type> GetAsTypesFor(Type implementationType)
+        public IEnumerable<KeyValuePair<object, Type>> GetAsTypesFor(Type implementationType)
         {
             var defaultNeeded = true;
             foreach (var asType in _asTypes)
             {
-                if (!asType.IsAssignableFrom(implementationType)) continue;
+                if (!asType.Value.IsAssignableFrom(implementationType)) continue;
                 yield return asType;
                 defaultNeeded = false;
             }
@@ -38,13 +43,13 @@ namespace BTDB.IOC
                 foreach (var type in implementationType.GetInterfaces())
                 {
                     if (type == typeof (IDisposable)) continue;
-                    yield return type;
+                    yield return new KeyValuePair<object, Type>(null, type);
                     defaultNeeded = false;
                 }
             }
             if (_asSelf || defaultNeeded)
             {
-                yield return implementationType;
+                yield return new KeyValuePair<object, Type>(null, implementationType);
             }
         }
     }

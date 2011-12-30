@@ -10,9 +10,9 @@ namespace BTDB.IOC
 {
     public class ContainerImpl : IContainer
     {
-        readonly ConcurrentDictionary<Type, Func<ContainerImpl, object>> _workers = new ConcurrentDictionary<Type, Func<ContainerImpl, object>>();
+        readonly ConcurrentDictionary<KeyValuePair<object, Type>, Func<ContainerImpl, object>> _workers = new ConcurrentDictionary<KeyValuePair<object, Type>, Func<ContainerImpl, object>>();
         readonly object _buildingLock = new object();
-        readonly Dictionary<Type, ICReg> _registrations = new Dictionary<Type, ICReg>();
+        readonly Dictionary<KeyValuePair<object, Type>, ICReg> _registrations = new Dictionary<KeyValuePair<object, Type>, ICReg>();
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
         public readonly object[] Singletons;
@@ -42,40 +42,54 @@ namespace BTDB.IOC
 
         public object Resolve(Type type)
         {
+            return ResolveKeyed(null, type);
+        }
+
+        public object ResolveNamed(string name, Type type)
+        {
+            return ResolveKeyed(name, type);
+        }
+
+        public object ResolveKeyed(object key, Type type)
+        {
             Func<ContainerImpl, object> worker;
-            if (_workers.TryGetValue(type, out worker))
+            if (_workers.TryGetValue(new KeyValuePair<object, Type>(key, type), out worker))
             {
                 return worker(this);
             }
             lock (_buildingLock)
             {
-                worker = TryBuild(type);
+                worker = TryBuild(key, type);
             }
-            if (worker == null) throwNotResolvable(type);
+            if (worker == null) throwNotResolvable(key, type);
             return worker(this);
         }
 
-        void throwNotResolvable(Type type)
+        void throwNotResolvable(object key, Type type)
         {
-            throw new ArgumentException(string.Format("Type " + type.ToSimpleName() + " cannot be resolved"));
+            if (key == null)
+            {
+                throw new ArgumentException(string.Format("Type {0} cannot be resolved", type.ToSimpleName()));
+            }
+            throw new ArgumentException(string.Format("Type {0} with key {1} cannot be resolved", type.ToSimpleName(), key));
         }
 
-        Func<ContainerImpl, object> TryBuild(Type type)
+        Func<ContainerImpl, object> TryBuild(object key, Type type)
         {
             Func<ContainerImpl, object> worker;
-            if (!_workers.TryGetValue(type, out worker))
+            if (!_workers.TryGetValue(new KeyValuePair<object, Type>(key, type), out worker))
             {
-                worker = Build(type);
+                worker = Build(key, type);
                 if (worker == null) return null;
-                _workers.TryAdd(type, worker);
+                _workers.TryAdd(new KeyValuePair<object, Type>(key, type), worker);
             }
             return worker;
         }
 
-        Func<ContainerImpl, object> Build(Type type)
+        Func<ContainerImpl, object> Build(object key, Type type)
         {
             ICReg registration;
-            if (_registrations.TryGetValue(type, out registration))
+            if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, type), out registration))
             {
                 if (registration.Single)
                     return BuildSingle(registration);
@@ -87,7 +101,7 @@ namespace BTDB.IOC
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];
-                if (_registrations.TryGetValue(resultType, out registration))
+                if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, resultType), out registration))
                 {
                     var optimizedFuncCreg = registration as ICRegFuncOptimized;
                     if (optimizedFuncCreg != null)
@@ -96,7 +110,7 @@ namespace BTDB.IOC
                         if (optimizedFunc != null) return c => optimizedFunc;
                     }
                 }
-                var worker = TryBuild(resultType);
+                var worker = TryBuild(key, resultType);
                 if (worker != null)
                 {
                     var result = Delegate.CreateDelegate(type,
@@ -176,20 +190,20 @@ namespace BTDB.IOC
             throw new NotImplementedException();
         }
 
-        internal ICRegILGen FindCRegILGen(Type type)
+        internal ICRegILGen FindCRegILGen(object key, Type type)
         {
             ICReg registration;
-            if (_registrations.TryGetValue(type, out registration))
+            if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, type), out registration))
             {
                 var result = registration as ICRegILGen;
                 if (result != null) return result;
                 throw new ArgumentException("Builder for " + type.ToSimpleName() + " is not ILGen capable");
             }
-            var buildFunc = TryBuild(type);
+            var buildFunc = TryBuild(key, type);
             if (buildFunc != null)
             {
                 var result = new FactoryImpl(this, buildFunc, type);
-                _registrations.Add(type, result);
+                _registrations.Add(new KeyValuePair<object, Type>(key, type), result);
                 return result;
             }
             throw new ArgumentException("Don't know how to build " + type.ToSimpleName());
@@ -208,7 +222,7 @@ namespace BTDB.IOC
             var pars = constructorInfo.GetParameters();
             foreach (var parameterInfo in pars)
             {
-                var regILGen = FindCRegILGen(parameterInfo.ParameterType);
+                var regILGen = FindCRegILGen(null, parameterInfo.ParameterType);
                 regILGen.GenInitialization(this, il, context);
             }
         }
@@ -219,7 +233,7 @@ namespace BTDB.IOC
             var regs = new List<ICRegILGen>(pars.Length);
             foreach (var parameterInfo in pars)
             {
-                regs.Add(FindCRegILGen(parameterInfo.ParameterType));
+                regs.Add(FindCRegILGen(null, parameterInfo.ParameterType));
             }
             var parsLocals = new List<IILLocal>(pars.Length);
             foreach (var reg in regs)

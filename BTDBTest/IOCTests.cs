@@ -338,6 +338,27 @@ namespace BTDBTest
             Assert.NotNull(root.Authenticator.Database.Logger);
 			Assert.AreSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
 		}
+
+        [Test]
+        public void RegisterNamedService()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().Named<ILogger>("log");
+            var container = builder.Build();
+            var log = container.ResolveNamed<ILogger>("log");
+            Assert.NotNull(log);
+        }
+
+        [Test]
+        public void RegisterKeyedService()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().Keyed<ILogger>(true);
+            var container = builder.Build();
+            var log = container.ResolveKeyed<ILogger>(true);
+            Assert.NotNull(log);
+        }
+    
     }
 
 }
