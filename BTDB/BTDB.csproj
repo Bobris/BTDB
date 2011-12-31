@@ -102,6 +102,7 @@
     <Compile Include="IOC\ICRegFuncOptimized.cs" />
     <Compile Include="IOC\ICRegILGen.cs" />
     <Compile Include="IOC\CRegs\InstanceImpl.cs" />
+    <Compile Include="IOC\ICRegMulti.cs" />
     <Compile Include="IOC\ILiveScopeTrait.cs" />
     <Compile Include="IOC\ILiveScopeTraitImpl.cs" />
     <Compile Include="IOC\IRegistration.cs" />

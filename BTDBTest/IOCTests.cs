@@ -358,6 +358,26 @@ namespace BTDBTest
             var log = container.ResolveKeyed<ILogger>(true);
             Assert.NotNull(log);
         }
+
+        [Test]
+        public void LastRegisteredHasPriority()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().As<ILogger>();
+            builder.RegisterInstance(default(ILogger)).As<ILogger>();
+            var container = builder.Build();
+            Assert.IsNull(container.Resolve<ILogger>());
+        }
+
+        [Test]
+        public void CanPreserveExistingDefaults()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().As<ILogger>();
+            builder.RegisterInstance(default(ILogger)).As<ILogger>().PreserveExistingDefaults();
+            var container = builder.Build();
+            Assert.NotNull(container.Resolve<ILogger>());
+        }
     
     }
 

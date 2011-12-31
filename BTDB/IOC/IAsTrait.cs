@@ -8,5 +8,6 @@ namespace BTDB.IOC
         void Keyed(object serviceKey, Type type);
         void AsSelf();
         void AsImplementedInterfaces();
+        void SetPreserveExistingDefaults();
     }
 }

@@ -21,6 +21,12 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public static IRegistration<TTraits> PreserveExistingDefaults<TTraits>(this IRegistration<TTraits> registration) where TTraits : IAsTrait
+        {
+            ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).SetPreserveExistingDefaults();
+            return registration;
+        }
+
         public static IRegistration<TTraits> Named<TTraits>(this IRegistration<TTraits> registration, string serviceName, Type serviceType) where TTraits : IAsTrait
         {
             ((IAsTrait)registration.InternalTraits(typeof(IAsTrait))).Keyed(serviceName, serviceType);

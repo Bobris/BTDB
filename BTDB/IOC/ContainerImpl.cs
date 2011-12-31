@@ -91,8 +91,9 @@ namespace BTDB.IOC
             ICReg registration;
             if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, type), out registration))
             {
-                if (registration.Single)
-                    return BuildSingle(registration);
+                var multi = registration as ICRegMulti;
+                if (multi != null) registration = multi.ChosenOne;
+                return BuildSingle(registration);
             }
             if (type == typeof(IContainer))
             {

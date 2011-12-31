@@ -18,7 +18,7 @@ namespace BTDB.IOC
         public void Register(ContanerRegistrationContext context)
         {
             var reg = new InstanceImpl(_instance, context.AddInstance(_instance));
-            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), reg);
+            context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, reg);
         }
 
         public override object InternalTraits(Type trait)

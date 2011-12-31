@@ -8,6 +8,7 @@ namespace BTDB.IOC
         readonly List<KeyValuePair<object, Type>> _asTypes = new List<KeyValuePair<object, Type>>();
         bool _asSelf;
         bool _asImplementedInterfaces;
+        bool _preserveExistingDefaults;
 
         public void As(Type type)
         {
@@ -27,6 +28,11 @@ namespace BTDB.IOC
         public void AsImplementedInterfaces()
         {
             _asImplementedInterfaces = true;
+        }
+
+        public void SetPreserveExistingDefaults()
+        {
+            _preserveExistingDefaults = true;
         }
 
         public IEnumerable<KeyValuePair<object, Type>> GetAsTypesFor(Type implementationType)
@@ -51,6 +57,11 @@ namespace BTDB.IOC
             {
                 yield return new KeyValuePair<object, Type>(null, implementationType);
             }
+        }
+
+        public bool PreserveExistingDefaults
+        {
+            get { return _preserveExistingDefaults; }
         }
     }
 }

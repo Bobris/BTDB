@@ -21,11 +21,6 @@ namespace BTDB.IOC.CRegs
             _type = type;
         }
 
-        public bool Single
-        {
-            get { return true; }
-        }
-
         public string GenFuncName
         {
             get { return "Factory_" + _type.ToSimpleName(); }

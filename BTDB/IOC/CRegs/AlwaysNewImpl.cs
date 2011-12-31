@@ -16,11 +16,6 @@ namespace BTDB.IOC.CRegs
             _constructorInfo = constructorInfo;
         }
 
-        public bool Single
-        {
-            get { return true; }
-        }
-
         public string GenFuncName
         {
             get { return "AlwaysNew_" + _implementationType.ToSimpleName(); }

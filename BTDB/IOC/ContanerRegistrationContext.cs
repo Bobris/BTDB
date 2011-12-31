@@ -28,17 +28,32 @@ namespace BTDB.IOC
             return _instances.Count - 1;
         }
 
-        public void AddCReg(IEnumerable<KeyValuePair<object, Type>> asTypes, ICReg registration)
+        public void AddCReg(IEnumerable<KeyValuePair<object, Type>> asTypes, bool preserveExistingDefaults, ICReg registration)
         {
             foreach (var asType in asTypes)
             {
-                AddCReg(asType, registration);
+                AddCReg(asType, preserveExistingDefaults, registration);
             }
         }
 
-        void AddCReg(KeyValuePair<object, Type> asType, ICReg registration)
+        void AddCReg(KeyValuePair<object, Type> asType, bool preserveExistingDefaults, ICReg registration)
         {
-            _registrations.Add(asType, registration);
+            ICReg currentReg;
+            if (!_registrations.TryGetValue(asType, out currentReg))
+            {
+                _registrations.Add(asType, registration);
+                return;
+            }
+            var multi = currentReg as ICRegMulti;
+            if (multi != null)
+            {
+                multi.Add(registration, preserveExistingDefaults);
+                return;
+            }
+            multi = new CRegMulti();
+            multi.Add(currentReg, false);
+            multi.Add(registration, preserveExistingDefaults);
+            _registrations[asType] = multi;
         }
     }
 }

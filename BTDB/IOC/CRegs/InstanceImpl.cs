@@ -16,11 +16,6 @@ namespace BTDB.IOC.CRegs
             _instanceIndex = instanceIndex;
         }
 
-        public bool Single
-        {
-            get { return true; }
-        }
-
         public string GenFuncName
         {
             get { return "Instance_" + _instance.GetType().ToSimpleName(); }

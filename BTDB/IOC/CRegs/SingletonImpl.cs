@@ -20,11 +20,6 @@ namespace BTDB.IOC.CRegs
             _singletonIndex = singletonIndex;
         }
 
-        public bool Single
-        {
-            get { return true; }
-        }
-
         public string GenFuncName
         {
             get { return "Singleton_" + _implementationType.ToSimpleName(); }
