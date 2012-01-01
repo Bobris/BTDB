@@ -6,10 +6,10 @@ namespace BTDB.IOC
     internal class ContanerRegistrationContext
     {
         readonly ContainerImpl _container;
-        readonly Dictionary<KeyValuePair<object, Type>, ICReg> _registrations;
+        readonly Dictionary<KeyAndType, ICReg> _registrations;
         readonly List<object> _instances = new List<object>();
 
-        internal ContanerRegistrationContext(ContainerImpl container, Dictionary<KeyValuePair<object, Type>, ICReg> registrations)
+        internal ContanerRegistrationContext(ContainerImpl container, Dictionary<KeyAndType, ICReg> registrations)
         {
             _container = container;
             _registrations = registrations;
@@ -28,7 +28,7 @@ namespace BTDB.IOC
             return _instances.Count - 1;
         }
 
-        public void AddCReg(IEnumerable<KeyValuePair<object, Type>> asTypes, bool preserveExistingDefaults, ICReg registration)
+        public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, ICReg registration)
         {
             foreach (var asType in asTypes)
             {
@@ -36,7 +36,7 @@ namespace BTDB.IOC
             }
         }
 
-        void AddCReg(KeyValuePair<object, Type> asType, bool preserveExistingDefaults, ICReg registration)
+        void AddCReg(KeyAndType asType, bool preserveExistingDefaults, ICReg registration)
         {
             ICReg currentReg;
             if (!_registrations.TryGetValue(asType, out currentReg))

@@ -5,7 +5,7 @@ namespace BTDB.IOC
 {
     internal interface IAsTraitImpl
     {
-        IEnumerable<KeyValuePair<object, Type>> GetAsTypesFor(Type implementationType);
+        IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType);
         bool PreserveExistingDefaults { get; }
     }
 }

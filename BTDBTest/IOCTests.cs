@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using BTDB.IOC;
 using NUnit.Framework;
 
@@ -319,25 +321,25 @@ namespace BTDBTest
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t=>t.Namespace=="BTDBTest.IOCDomain").AsImplementedInterfaces();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").AsImplementedInterfaces();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
             Assert.NotNull(root.Authenticator.Database.Logger);
-			Assert.AreNotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
-		}
-		
-		[Test]
-		public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
-		{
+            Assert.AreNotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+        }
+
+        [Test]
+        public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
+        {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t=>t.Namespace=="BTDBTest.IOCDomain").AsImplementedInterfaces().SingleInstance();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").AsImplementedInterfaces().SingleInstance();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
             Assert.NotNull(root.Authenticator.Database.Logger);
-			Assert.AreSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
-		}
+            Assert.AreSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+        }
 
         [Test]
         public void RegisterNamedService()
@@ -378,7 +380,18 @@ namespace BTDBTest
             var container = builder.Build();
             Assert.NotNull(container.Resolve<ILogger>());
         }
-    
+
+        [Test]
+        public void BasicEnumerableResolve()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance("one").Keyed<string>(true);
+            builder.RegisterInstance("bad").Keyed<string>(false);
+            builder.RegisterInstance("two").Keyed<string>(true);
+            var container = builder.Build();
+            var result = container.ResolveKeyed<IEnumerable<string>>(true);
+            Assert.AreEqual(new[] { "one", "two" }, result.ToArray());
+        }
     }
 
 }

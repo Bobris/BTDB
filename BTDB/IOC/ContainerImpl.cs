@@ -10,9 +10,10 @@ namespace BTDB.IOC
 {
     public class ContainerImpl : IContainer
     {
-        readonly ConcurrentDictionary<KeyValuePair<object, Type>, Func<ContainerImpl, object>> _workers = new ConcurrentDictionary<KeyValuePair<object, Type>, Func<ContainerImpl, object>>();
+
+        readonly ConcurrentDictionary<KeyAndType, Func<ContainerImpl, object>> _workers = new ConcurrentDictionary<KeyAndType, Func<ContainerImpl, object>>();
         readonly object _buildingLock = new object();
-        readonly Dictionary<KeyValuePair<object, Type>, ICReg> _registrations = new Dictionary<KeyValuePair<object, Type>, ICReg>();
+        readonly Dictionary<KeyAndType, ICReg> _registrations = new Dictionary<KeyAndType, ICReg>();
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
         public readonly object[] Singletons;
@@ -53,7 +54,7 @@ namespace BTDB.IOC
         public object ResolveKeyed(object key, Type type)
         {
             Func<ContainerImpl, object> worker;
-            if (_workers.TryGetValue(new KeyValuePair<object, Type>(key, type), out worker))
+            if (_workers.TryGetValue(new KeyAndType(key, type), out worker))
             {
                 return worker(this);
             }
@@ -77,22 +78,32 @@ namespace BTDB.IOC
         Func<ContainerImpl, object> TryBuild(object key, Type type)
         {
             Func<ContainerImpl, object> worker;
-            if (!_workers.TryGetValue(new KeyValuePair<object, Type>(key, type), out worker))
+            if (!_workers.TryGetValue(new KeyAndType(key, type), out worker))
             {
                 worker = Build(key, type);
                 if (worker == null) return null;
-                _workers.TryAdd(new KeyValuePair<object, Type>(key, type), worker);
+                _workers.TryAdd(new KeyAndType(key, type), worker);
             }
             return worker;
         }
 
-        Func<ContainerImpl, object> Build(object key, Type type)
+        ICReg FindChosenReg(object key, Type type)
         {
             ICReg registration;
-            if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, type), out registration))
+            if (_registrations.TryGetValue(new KeyAndType(key, type), out registration))
             {
                 var multi = registration as ICRegMulti;
                 if (multi != null) registration = multi.ChosenOne;
+                return registration;
+            }
+            return null;
+        }
+
+        Func<ContainerImpl, object> Build(object key, Type type)
+        {
+            var registration = FindChosenReg(key, type);
+            if (registration != null)
+            {
                 return BuildSingle(registration);
             }
             if (type == typeof(IContainer))
@@ -102,7 +113,8 @@ namespace BTDB.IOC
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];
-                if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, resultType), out registration))
+                registration = FindChosenReg(key, resultType);
+                if (registration != null)
                 {
                     var optimizedFuncCreg = registration as ICRegFuncOptimized;
                     if (optimizedFuncCreg != null)
@@ -124,6 +136,46 @@ namespace BTDB.IOC
                 var resultType = type.GetGenericArguments()[0];
                 return ((IFuncBuilder)
                         typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build();
+            }
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var resultType = type.GetGenericArguments()[0];
+                if (_registrations.TryGetValue(new KeyAndType(key, resultType), out registration))
+                {
+                    var multi = registration as ICRegMulti;
+                    var regs = multi != null ? multi.Regs.ToArray() : new[] {registration};
+                    var context = new Dictionary<string, object>();
+                    var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(type.ToSimpleName());
+                    var il = method.Generator;
+                    var resultLocal = il.DeclareLocal(typeof (List<>).MakeGenericType(resultType));
+                    var itemLocal = il.DeclareLocal(resultType);
+                    il
+                        .LdcI4(regs.Length)
+                        .Newobj(resultLocal.LocalType.GetConstructor(new[] {typeof (int)}))
+                        .Stloc(resultLocal);
+                    foreach (var cReg in regs)
+                    {
+                        var regILGen = (ICRegILGen)cReg;
+                        regILGen.GenInitialization(this, il, context);
+                    }
+                    foreach (var cReg in regs)
+                    {
+                        var regILGen = (ICRegILGen) cReg;
+                        var local = regILGen.GenMain(this, il, context);
+                        if (local == null)
+                        {
+                            il.Stloc(itemLocal);
+                            local = itemLocal;
+                        }
+                        il.Ldloc(resultLocal).Ldloc(local).Callvirt(resultLocal.LocalType.GetMethod("Add"));
+                    }
+                    il
+                        .Ldloc(resultLocal)
+                        .Castclass(type)
+                        .Ret();
+                    return method.Create();
+
+                }
             }
             return null;
         }
@@ -181,7 +233,7 @@ namespace BTDB.IOC
                 var il = method.Generator;
                 regILGen.GenInitialization(this, il, context);
                 var local = regILGen.GenMain(this, il, context);
-                if (local!=null)
+                if (local != null)
                 {
                     il.Ldloc(local);
                 }
@@ -193,8 +245,8 @@ namespace BTDB.IOC
 
         internal ICRegILGen FindCRegILGen(object key, Type type)
         {
-            ICReg registration;
-            if (_registrations.TryGetValue(new KeyValuePair<object, Type>(key, type), out registration))
+            var registration = FindChosenReg(key, type);
+            if (registration != null)
             {
                 var result = registration as ICRegILGen;
                 if (result != null) return result;
@@ -204,7 +256,7 @@ namespace BTDB.IOC
             if (buildFunc != null)
             {
                 var result = new FactoryImpl(this, buildFunc, type);
-                _registrations.Add(new KeyValuePair<object, Type>(key, type), result);
+                _registrations.Add(new KeyAndType(key, type), result);
                 return result;
             }
             throw new ArgumentException("Don't know how to build " + type.ToSimpleName());
@@ -250,7 +302,7 @@ namespace BTDB.IOC
                 else
                 {
                     var local = regs[i].GenMain(this, il, context);
-                    if (local!=null)
+                    if (local != null)
                     {
                         il.Ldloc(local);
                     }

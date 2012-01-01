@@ -108,6 +108,7 @@
     <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\IScanTrait.cs" />
     <Compile Include="IOC\IScanTraitImpl.cs" />
+    <Compile Include="IOC\KeyAndType.cs" />
     <Compile Include="IOC\Lifetime.cs" />
     <Compile Include="IOC\LiveScopeTraitImpl.cs" />
     <Compile Include="IOC\MultiRegistration.cs" />

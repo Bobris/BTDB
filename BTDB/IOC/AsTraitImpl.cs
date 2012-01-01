@@ -5,19 +5,19 @@ namespace BTDB.IOC
 {
     internal class AsTraitImpl : IAsTrait, IAsTraitImpl
     {
-        readonly List<KeyValuePair<object, Type>> _asTypes = new List<KeyValuePair<object, Type>>();
+        readonly List<KeyAndType> _asTypes = new List<KeyAndType>();
         bool _asSelf;
         bool _asImplementedInterfaces;
         bool _preserveExistingDefaults;
 
         public void As(Type type)
         {
-            _asTypes.Add(new KeyValuePair<object, Type>(null, type));
+            _asTypes.Add(new KeyAndType(null, type));
         }
 
         public void Keyed(object serviceKey, Type type)
         {
-            _asTypes.Add(new KeyValuePair<object, Type>(serviceKey, type));
+            _asTypes.Add(new KeyAndType(serviceKey, type));
         }
 
         public void AsSelf()
@@ -35,12 +35,12 @@ namespace BTDB.IOC
             _preserveExistingDefaults = true;
         }
 
-        public IEnumerable<KeyValuePair<object, Type>> GetAsTypesFor(Type implementationType)
+        public IEnumerable<KeyAndType> GetAsTypesFor(Type implementationType)
         {
             var defaultNeeded = true;
             foreach (var asType in _asTypes)
             {
-                if (!asType.Value.IsAssignableFrom(implementationType)) continue;
+                if (!asType.Type.IsAssignableFrom(implementationType)) continue;
                 yield return asType;
                 defaultNeeded = false;
             }
@@ -49,13 +49,13 @@ namespace BTDB.IOC
                 foreach (var type in implementationType.GetInterfaces())
                 {
                     if (type == typeof (IDisposable)) continue;
-                    yield return new KeyValuePair<object, Type>(null, type);
+                    yield return new KeyAndType(null, type);
                     defaultNeeded = false;
                 }
             }
             if (_asSelf || defaultNeeded)
             {
-                yield return new KeyValuePair<object, Type>(null, implementationType);
+                yield return new KeyAndType(null, implementationType);
             }
         }
 
