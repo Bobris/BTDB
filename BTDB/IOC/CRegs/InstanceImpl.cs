@@ -67,11 +67,5 @@ namespace BTDB.IOC.CRegs
             var obj = container.Instances[_instanceIndex];
             return ClosureOfObjBuilder.Build(funcType, obj);
         }
-
-        public Func<ContainerImpl, object> BuildFuncContainer2Object(ContainerImpl container)
-        {
-            var instance = container.Instances[_instanceIndex];
-            return c => instance;
-        }
     }
 }

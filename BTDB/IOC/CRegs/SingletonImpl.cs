@@ -132,12 +132,5 @@ namespace BTDB.IOC.CRegs
             var obj = container.Singletons[_singletonIndex];
             return obj == null ? null : ClosureOfObjBuilder.Build(funcType, obj);
         }
-
-        public Func<ContainerImpl, object> BuildFuncContainer2Object(ContainerImpl container)
-        {
-            var obj = container.Singletons[_singletonIndex];
-            if (obj == null) return null;
-            return c => obj;
-        }
     }
 }

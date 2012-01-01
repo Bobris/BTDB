@@ -219,7 +219,7 @@ namespace BTDB.IOC
             if (registration is ICRegFuncOptimized)
             {
                 var regOpt = (ICRegFuncOptimized)registration;
-                var result = regOpt.BuildFuncContainer2Object(this);
+                var result = (Func<ContainerImpl, object>)regOpt.BuildFuncOfT(this, typeof(Func<ContainerImpl, object>));
                 if (result != null)
                 {
                     return result;
