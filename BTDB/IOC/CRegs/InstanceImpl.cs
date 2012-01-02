@@ -23,6 +23,7 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
+            if (_instance == null) return;
             if (!context.ContainsKey("InstancesLocal"))
             {
                 var localInstances = il.DeclareLocal(typeof(object[]), "instances");
@@ -45,6 +46,11 @@ namespace BTDB.IOC.CRegs
 
         public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
         {
+            if (_instance==null)
+            {
+                il.Ldnull();
+                return null;
+            }
             var builtSingletons = (Dictionary<ICReg, IILLocal>)context["BuiltSingletons"];
             IILLocal localInstance;
             if (builtSingletons.TryGetValue(this, out localInstance))
