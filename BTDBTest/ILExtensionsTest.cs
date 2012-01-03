@@ -114,5 +114,46 @@ namespace BTDBTest
             var d = method.Create();
             Assert.AreEqual(42, d());
         }
+
+        [Test]
+        public void CanFixFirstParameterRelease()
+        {
+            ILBuilder.Instance.Debuggable = false;
+            var method = ILBuilder.Instance.NewMethod("SampleCall", typeof(Func<Nested>),typeof(string));
+            var il = method.Generator;
+            var local = il.DeclareLocal(typeof(Nested), "n");
+            il
+                .Newobj(() => new Nested())
+                .Dup()
+                .Stloc(local)
+                .Ldarg(0)
+                .Call(() => default(Nested).Fun(""))
+                .Ldloc(local)
+                .Ret();
+            var action = (Func<Nested>)method.Create("Test");
+            var n = action();
+            Assert.AreEqual("Test", n.PassedParam);
+        }
+
+        [Test]
+        public void CanFixFirstParameterDebug()
+        {
+            ILBuilder.Instance.Debuggable = true;
+            var method = ILBuilder.Instance.NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
+            var il = method.Generator;
+            var local = il.DeclareLocal(typeof(Nested), "n");
+            il
+                .Newobj(() => new Nested())
+                .Dup()
+                .Stloc(local)
+                .Ldarg(0)
+                .Call(() => default(Nested).Fun(""))
+                .Ldloc(local)
+                .Ret();
+            var action = (Func<Nested>)method.Create("Test");
+            var n = action();
+            Assert.AreEqual("Test", n.PassedParam);
+        }
+    
     }
 }

@@ -7,7 +7,9 @@ namespace BTDB.IL
         bool Debuggable { get; set; }
 
         IILDynamicMethod NewMethod(string name, Type @delegate);
-        IILDynamicMethod<T> NewMethod<T>(string name) where T : class;
+        IILDynamicMethod<TDelegate> NewMethod<TDelegate>(string name) where TDelegate : class;
+        IILDynamicMethodWithThis NewMethod(string name, Type @delegate, Type thisType);
+
         IILDynamicType NewType(string name, Type baseType, Type[] interfaces);
     }
 }

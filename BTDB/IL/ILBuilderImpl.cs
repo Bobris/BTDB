@@ -8,17 +8,25 @@ namespace BTDB.IL
 
         public IILDynamicMethod NewMethod(string name, Type @delegate)
         {
-            if (!@delegate.IsSubclassOf(typeof(Delegate))) throw new ArgumentException("Generic paramater T must be Delegate");
-            if (Debuggable) return new ILDynamicMethodDebugImpl(name, @delegate);
-            return new ILDynamicMethodImpl(name, @delegate);
+            if (!@delegate.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
+            if (Debuggable) return new ILDynamicMethodDebugImpl(name, @delegate, null);
+            return new ILDynamicMethodImpl(name, @delegate, null);
         }
 
-        public IILDynamicMethod<T> NewMethod<T>(string name) where T : class
+        public IILDynamicMethod<TDelegate> NewMethod<TDelegate>(string name) where TDelegate : class
         {
-            var t = typeof(T);
-            if (!t.IsSubclassOf(typeof(Delegate))) throw new ArgumentException("Generic paramater T must be Delegate");
-            if (Debuggable) return new ILDynamicMethodDebugImpl<T>(name);
-            return new ILDynamicMethodImpl<T>(name);
+            var t = typeof(TDelegate);
+            if (!t.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
+            if (Debuggable) return new ILDynamicMethodDebugImpl<TDelegate>(name);
+            return new ILDynamicMethodImpl<TDelegate>(name);
+        }
+
+        public IILDynamicMethodWithThis NewMethod(string name, Type @delegate, Type thisType)
+        {
+            if (thisType == null) throw new ArgumentNullException("thisType");
+            if (!@delegate.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
+            if (Debuggable) return new ILDynamicMethodDebugImpl(name, @delegate, thisType);
+            return new ILDynamicMethodImpl(name, @delegate, thisType);
         }
 
         public IILDynamicType NewType(string name, Type baseType, Type[] interfaces)

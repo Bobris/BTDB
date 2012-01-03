@@ -61,7 +61,7 @@ namespace BTDB.IL
 
             public void FinishType(Type finalType)
             {
-                var method = new ILDynamicMethodImpl("proxy", _delegateType);
+                var method = new ILDynamicMethodImpl("proxy", _delegateType, null);
                 var il = method.Generator;
                 for (ushort i = 0; i < _parametersCount; i++)
                 {

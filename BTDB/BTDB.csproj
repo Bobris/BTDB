@@ -56,10 +56,12 @@
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
+    <Compile Include="IL\IILDynamicMethodWithThis.cs" />
     <Compile Include="IL\IILEvent.cs" />
     <Compile Include="IL\IILGenForbidenInstructions.cs" />
     <Compile Include="IL\ILConstructorDebugImpl.cs" />
     <Compile Include="IL\ILConstructorImpl.cs" />
+    <Compile Include="IL\ILDynamicMethodWithThisImpl.cs" />
     <Compile Include="IL\ILDynamicTypeDebugImpl.cs" />
     <Compile Include="IL\ILDynamicTypeImpl.cs" />
     <Compile Include="IL\ILEventDebugImpl.cs" />
