@@ -72,7 +72,7 @@ namespace BTDB.FieldHandler
         {
             var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
             var tocfg = new EnumFieldHandler.EnumConfiguration(to);
-            if (fromcfg == tocfg)
+            if (fromcfg.IsSubsetOf(tocfg))
             {
                 return GenerateConversion(from.GetEnumUnderlyingType(), to.GetEnumUnderlyingType());
             }

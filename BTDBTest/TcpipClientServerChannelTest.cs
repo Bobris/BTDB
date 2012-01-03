@@ -142,9 +142,9 @@ namespace BTDBTest
                 client.ConnectAsync();
                 Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
                 serverChannel.Dispose();
+                Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
                 Assert.True(servercompleted);
                 Assert.True(servercompleted2);
-                Assert.True(e2.WaitOne(TimeSpan.FromSeconds(10)));
                 Assert.True(clientcompleted);
                 Assert.True(clientcompleted2);
                 Assert.True(onClientConnected);

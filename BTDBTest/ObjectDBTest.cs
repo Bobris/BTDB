@@ -930,6 +930,33 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void EnumUpgradeAddItem()
+        {
+            TestEnum2TestEnumEx(TestEnum.Item1, TestEnumEx.Item1);
+            TestEnum2TestEnumEx(TestEnum.Item2, TestEnumEx.Item2);
+        }
+
+        void TestEnum2TestEnumEx(TestEnum from, TestEnumEx to)
+        {
+            ReopenDB();
+            var testEnumObjDBName = _db.RegisterType(typeof(CTestEnum));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new CTestEnum { E = from });
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(CTestEnumEx), testEnumObjDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var e = tr.Enumerate<CTestEnumEx>().First();
+                Assert.AreEqual(to, e.E);
+                tr.Delete(e);
+                tr.Commit();
+            }
+        }
+
         public class Manager : Person
         {
             public List<Person> Managing { get; set; }

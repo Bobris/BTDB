@@ -158,6 +158,21 @@ namespace BTDB.FieldHandler
                     return result;
                 }
             }
+
+            public bool IsSubsetOf(EnumConfiguration targetCfg)
+            {
+                if (_flags != targetCfg._flags) return false;
+                var targetDict =
+                    targetCfg.Names.Zip(targetCfg.Values, (k, v) => new KeyValuePair<string, ulong>(k, v))
+                    .ToDictionary(p => p.Key, p => p.Value);
+                for (int i = 0; i < _names.Length; i++)
+                {
+                    ulong targetValue;
+                    if (!targetDict.TryGetValue(_names[i], out targetValue)) return false;
+                    if (_values[i] != targetValue) return false;
+                }
+                return true;
+            }
         }
 
         public EnumFieldHandler(Type enumType)
