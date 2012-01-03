@@ -392,6 +392,17 @@ namespace BTDBTest
             var result = container.ResolveKeyed<IEnumerable<string>>(true);
             Assert.AreEqual(new[] { "one", "two" }, result.ToArray());
         }
+
+        [Test]
+        public void NullInstanceResovedAsConstructorParameter()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance<ILogger>(null);
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+            var container = builder.Build();
+            var obj = container.Resolve<IErrorHandler>();
+            Assert.IsNull(obj.Logger);
+        }
     }
 
 }
