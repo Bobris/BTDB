@@ -25,9 +25,9 @@ namespace BTDB.IOC.CRegs
             context.Container.CallInjectingInitializations(context, _constructorInfo);
         }
 
-        public bool IsCorruptingILStack(IGenerationContext content)
+        public bool IsCorruptingILStack(IGenerationContext context)
         {
-            return false;
+            return context.Container.AnyOfInjectedCorruptingStack(context, _constructorInfo);
         }
 
         public IILLocal GenMain(IGenerationContext context)

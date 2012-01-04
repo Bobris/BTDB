@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using BTDB.IL;
-using BTDB.ODBLayer;
 
 namespace BTDB.IOC.CRegs
 {
@@ -33,7 +31,7 @@ namespace BTDB.IOC.CRegs
             context.GetSpecific<FactoryImpl.InstancesLocal>().Prepare();
         }
 
-        public bool IsCorruptingILStack(IGenerationContext content)
+        public bool IsCorruptingILStack(IGenerationContext context)
         {
             return false;
         }

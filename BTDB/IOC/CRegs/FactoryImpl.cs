@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
@@ -54,7 +53,7 @@ namespace BTDB.IOC.CRegs
         }
 
 
-        public bool IsCorruptingILStack(IGenerationContext content)
+        public bool IsCorruptingILStack(IGenerationContext context)
         {
             return false;
         }

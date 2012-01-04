@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -61,7 +60,7 @@ namespace BTDB.IOC.CRegs
 
             public void Add(ICReg key, IILLocal local)
             {
-                _map.Add(key,local);
+                _map.Add(key, local);
             }
         }
 
@@ -87,9 +86,13 @@ namespace BTDB.IOC.CRegs
             internal IILLocal MainLocal { get; private set; }
         }
 
-
-        public bool IsCorruptingILStack(IGenerationContext content)
+        public bool IsCorruptingILStack(IGenerationContext context)
         {
+            var buildCRegLocals = context.GetSpecific<BuildCRegLocals>();
+            var localSingleton = buildCRegLocals.Get(this);
+            if (localSingleton != null) return false;
+            var obj = context.Container.Singletons[_singletonIndex];
+            if (obj != null) return false;
             return true;
         }
 
@@ -98,7 +101,7 @@ namespace BTDB.IOC.CRegs
             var il = context.IL;
             var buildCRegLocals = context.GetSpecific<BuildCRegLocals>();
             var localSingleton = buildCRegLocals.Get(this);
-            if (localSingleton!=null)
+            if (localSingleton != null)
             {
                 return localSingleton;
             }

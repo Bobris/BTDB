@@ -143,16 +143,16 @@ namespace BTDB.IOC
                 if (_registrations.TryGetValue(new KeyAndType(key, resultType), out registration))
                 {
                     var multi = registration as ICRegMulti;
-                    var regs = multi != null ? multi.Regs.ToArray() : new[] {registration};
+                    var regs = multi != null ? multi.Regs.ToArray() : new[] { registration };
                     var context = new GenerationContext(this);
                     var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(type.ToSimpleName());
                     var il = method.Generator;
                     context.IL = il;
-                    var resultLocal = il.DeclareLocal(typeof (List<>).MakeGenericType(resultType));
+                    var resultLocal = il.DeclareLocal(typeof(List<>).MakeGenericType(resultType));
                     var itemLocal = il.DeclareLocal(resultType);
                     il
                         .LdcI4(regs.Length)
-                        .Newobj(resultLocal.LocalType.GetConstructor(new[] {typeof (int)}))
+                        .Newobj(resultLocal.LocalType.GetConstructor(new[] { typeof(int) }))
                         .Stloc(resultLocal);
                     foreach (var cReg in regs)
                     {
@@ -161,7 +161,7 @@ namespace BTDB.IOC
                     }
                     foreach (var cReg in regs)
                     {
-                        var regILGen = (ICRegILGen) cReg;
+                        var regILGen = (ICRegILGen)cReg;
                         var local = regILGen.GenMain(context);
                         if (local == null)
                         {
@@ -291,13 +291,28 @@ namespace BTDB.IOC
                 regs.Add(FindCRegILGen(null, parameterInfo.ParameterType));
             }
             var parsLocals = new List<IILLocal>(pars.Length);
+            int index = 0;
             foreach (var reg in regs)
             {
-                parsLocals.Add(reg.IsCorruptingILStack(context) ? reg.GenMain(context) : null);
+                if (reg.IsCorruptingILStack(context))
+                {
+                    var local = reg.GenMain(context);
+                    if (local == null)
+                    {
+                        local = context.IL.DeclareLocal(pars[index].ParameterType);
+                        context.IL.Stloc(local);
+                    }
+                    parsLocals.Add(local);
+                }
+                else
+                {
+                    parsLocals.Add(null);
+                }
+                index++;
             }
             for (int i = 0; i < regs.Count; i++)
             {
-                if (regs[i].IsCorruptingILStack(context))
+                if (parsLocals[i] != null)
                 {
                     context.IL.Ldloc(parsLocals[i]);
                 }
@@ -311,6 +326,17 @@ namespace BTDB.IOC
                 }
             }
             context.IL.Newobj(constructorInfo);
+        }
+
+        internal bool AnyOfInjectedCorruptingStack(IGenerationContext context, ConstructorInfo constructorInfo)
+        {
+            var pars = constructorInfo.GetParameters();
+            foreach (var parameterInfo in pars)
+            {
+                var regILGen = FindCRegILGen(null, parameterInfo.ParameterType);
+                if (regILGen.IsCorruptingILStack(context)) return true;
+            }
+            return false;
         }
     }
 }

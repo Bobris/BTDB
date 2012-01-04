@@ -111,6 +111,23 @@ namespace BTDBTest
             Assert.AreSame(obj.Logger, obj.ErrorHandler.Logger);
         }
 
+        public class SpecialCase
+        {
+            public SpecialCase(IErrorHandler simple, IDatabase complex) { }
+        }
+
+        [Test]
+        public void SingletonInSecondParameterTransientAsSecondParameterToTransient()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterInstance<IErrorHandler>(null);
+            builder.RegisterType<Database>().As<IDatabase>();
+            builder.RegisterType<SpecialCase>();
+            var container = builder.Build();
+            container.Resolve<SpecialCase>();
+        }
+
         [Test]
         public void ReusingSingletonMultipleTimesInOneResolveOnceInSingleton()
         {

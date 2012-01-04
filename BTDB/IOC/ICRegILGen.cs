@@ -6,7 +6,7 @@ namespace BTDB.IOC
     {
         string GenFuncName(IGenerationContext context);
         void GenInitialization(IGenerationContext context);
-        bool IsCorruptingILStack(IGenerationContext content);
+        bool IsCorruptingILStack(IGenerationContext context);
         IILLocal GenMain(IGenerationContext context);
     }
 }
