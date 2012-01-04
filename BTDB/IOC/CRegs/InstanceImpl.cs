@@ -16,62 +16,51 @@ namespace BTDB.IOC.CRegs
             _instanceIndex = instanceIndex;
         }
 
-        public string GenFuncName
+        public object BuildFuncOfT(ContainerImpl container, Type funcType)
         {
-            get { return "Instance_" + _instance.GetType().ToSimpleName(); }
+            var obj = container.Instances[_instanceIndex];
+            return ClosureOfObjBuilder.Build(funcType, obj);
         }
 
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        string ICRegILGen.GenFuncName(IGenerationContext context)
+        {
+            return "Instance_" + _instance.GetType().ToSimpleName();
+        }
+
+        public void GenInitialization(IGenerationContext context)
         {
             if (_instance == null) return;
-            if (!context.ContainsKey("InstancesLocal"))
-            {
-                var localInstances = il.DeclareLocal(typeof(object[]), "instances");
-                il
-                    .Ldarg(0)
-                    .Ldfld(() => default(ContainerImpl).Instances)
-                    .Stloc(localInstances);
-                context.Add("InstancesLocal", localInstances);
-            }
-            if (!context.ContainsKey("BuiltSingletons"))
-            {
-                context.Add("BuiltSingletons", new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance));
-            }
+            context.GetSpecific<FactoryImpl.InstancesLocal>().Prepare();
         }
 
-        public bool CorruptingILStack
+        public bool IsCorruptingILStack(IGenerationContext content)
         {
-            get { return false; }
+            return false;
         }
 
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public IILLocal GenMain(IGenerationContext context)
         {
-            if (_instance==null)
+            if (_instance == null)
             {
-                il.Ldnull();
+                context.IL.Ldnull();
                 return null;
             }
-            var builtSingletons = (Dictionary<ICReg, IILLocal>)context["BuiltSingletons"];
-            IILLocal localInstance;
-            if (builtSingletons.TryGetValue(this, out localInstance))
+            var buildCRegLocals = context.GetSpecific<SingletonImpl.BuildCRegLocals>();
+            var localInstance = buildCRegLocals.Get(this);
+            if (localInstance != null)
             {
                 return localInstance;
             }
-            var localInstances = (IILLocal)context["InstancesLocal"];
-            localInstance = il.DeclareLocal(_instance.GetType(), "instance");
-            il
+            var localInstances = context.GetSpecific<FactoryImpl.InstancesLocal>().MainLocal;
+            localInstance = context.IL.DeclareLocal(_instance.GetType(), "instance");
+            context.IL
                 .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
                 .Castclass(_instance.GetType())
                 .Stloc(localInstance);
+            buildCRegLocals.Add(this, localInstance);
             return localInstance;
-        }
-
-        public object BuildFuncOfT(ContainerImpl container, Type funcType)
-        {
-            var obj = container.Instances[_instanceIndex];
-            return ClosureOfObjBuilder.Build(funcType, obj);
         }
     }
 }

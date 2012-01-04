@@ -20,45 +20,91 @@ namespace BTDB.IOC.CRegs
             _singletonIndex = singletonIndex;
         }
 
-        public string GenFuncName
+        public object BuildFuncOfT(ContainerImpl container, Type funcType)
         {
-            get { return "Singleton_" + _implementationType.ToSimpleName(); }
+            var obj = container.Singletons[_singletonIndex];
+            return obj == null ? null : ClosureOfObjBuilder.Build(funcType, obj);
         }
 
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        string ICRegILGen.GenFuncName(IGenerationContext context)
         {
-            _wrapping.GenInitialization(container,il,context);
-            if (!context.ContainsKey("SingletonsLocal"))
+            return "Singleton_" + _implementationType.ToSimpleName();
+        }
+
+        public void GenInitialization(IGenerationContext context)
+        {
+            _wrapping.GenInitialization(context);
+            context.GetSpecific<SingletonsLocal>().Prepare();
+        }
+
+        internal class BuildCRegLocals
+        {
+            Dictionary<ICReg, IILLocal> _map = new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance);
+            readonly Stack<Dictionary<ICReg, IILLocal>> _stack = new Stack<Dictionary<ICReg, IILLocal>>();
+
+            internal void Push()
             {
-                var localSingletons = il.DeclareLocal(typeof(object[]), "singletons");
-                il
+                _stack.Push(_map);
+                _map = new Dictionary<ICReg, IILLocal>(_map, ReferenceEqualityComparer<ICReg>.Instance);
+            }
+
+            internal void Pop()
+            {
+                _map = _stack.Pop();
+            }
+
+            internal IILLocal Get(ICReg key)
+            {
+                IILLocal result;
+                return _map.TryGetValue(key, out result) ? result : null;
+            }
+
+            public void Add(ICReg key, IILLocal local)
+            {
+                _map.Add(key,local);
+            }
+        }
+
+        internal class SingletonsLocal : IGenerationContextSetter
+        {
+            IGenerationContext _context;
+
+            public void Set(IGenerationContext context)
+            {
+                _context = context;
+            }
+
+            internal void Prepare()
+            {
+                if (MainLocal != null) return;
+                MainLocal = _context.IL.DeclareLocal(typeof(object[]), "singletons");
+                _context.IL
                     .Ldarg(0)
                     .Ldfld(() => default(ContainerImpl).Singletons)
-                    .Stloc(localSingletons);
-                context.Add("SingletonsLocal", localSingletons);
+                    .Stloc(MainLocal);
             }
-            if (!context.ContainsKey("BuiltSingletons"))
-            {
-                context.Add("BuiltSingletons", new Dictionary<ICReg, IILLocal>(ReferenceEqualityComparer<ICReg>.Instance));
-            }
+
+            internal IILLocal MainLocal { get; private set; }
         }
 
-        public bool CorruptingILStack
+
+        public bool IsCorruptingILStack(IGenerationContext content)
         {
-            get { return true; }
+            return true;
         }
 
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public IILLocal GenMain(IGenerationContext context)
         {
-            var builtSingletons = (Dictionary<ICReg, IILLocal>)context["BuiltSingletons"];
-            IILLocal localSingleton;
-            if (builtSingletons.TryGetValue(this, out localSingleton))
+            var il = context.IL;
+            var buildCRegLocals = context.GetSpecific<BuildCRegLocals>();
+            var localSingleton = buildCRegLocals.Get(this);
+            if (localSingleton!=null)
             {
                 return localSingleton;
             }
-            var localSingletons = (IILLocal)context["SingletonsLocal"];
+            var localSingletons = context.GetSpecific<SingletonsLocal>().MainLocal;
             localSingleton = il.DeclareLocal(_implementationType, "singleton");
-            var obj = container.Singletons[_singletonIndex];
+            var obj = context.Container.Singletons[_singletonIndex];
             if (obj != null)
             {
                 il
@@ -101,13 +147,13 @@ namespace BTDB.IOC.CRegs
                 .Castclass(_implementationType)
                 .Stloc(localSingleton)
                 .Brtrue(labelNotNull2);
-            context["BuiltSingletons"] = new Dictionary<ICReg, IILLocal>(builtSingletons, ReferenceEqualityComparer<ICReg>.Instance);
-            var nestedLocal = _wrapping.GenMain(container, il, context);
-            if (nestedLocal!=null)
+            buildCRegLocals.Push();
+            var nestedLocal = _wrapping.GenMain(context);
+            if (nestedLocal != null)
             {
                 il.Ldloc(nestedLocal);
             }
-            context["BuiltSingletons"] = builtSingletons;
+            buildCRegLocals.Pop();
             il
                 .Stloc(localSingleton)
                 .Ldloc(localSingletons)
@@ -123,14 +169,8 @@ namespace BTDB.IOC.CRegs
                 .Mark(labelNotTaken)
                 .EndTry()
                 .Mark(labelNull1);
-            builtSingletons.Add(this, localSingleton);
+            buildCRegLocals.Add(this, localSingleton);
             return localSingleton;
-        }
-
-        public object BuildFuncOfT(ContainerImpl container, Type funcType)
-        {
-            var obj = container.Singletons[_singletonIndex];
-            return obj == null ? null : ClosureOfObjBuilder.Build(funcType, obj);
         }
     }
 }

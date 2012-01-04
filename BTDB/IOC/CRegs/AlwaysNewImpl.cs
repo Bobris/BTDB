@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
 
@@ -16,24 +15,24 @@ namespace BTDB.IOC.CRegs
             _constructorInfo = constructorInfo;
         }
 
-        public string GenFuncName
+        string ICRegILGen.GenFuncName(IGenerationContext context)
         {
-            get { return "AlwaysNew_" + _implementationType.ToSimpleName(); }
+            return "AlwaysNew_" + _implementationType.ToSimpleName();
         }
 
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public void GenInitialization(IGenerationContext context)
         {
-            container.CallInjectingInitializations(_constructorInfo, il, context);
+            context.Container.CallInjectingInitializations(context, _constructorInfo);
         }
 
-        public bool CorruptingILStack
+        public bool IsCorruptingILStack(IGenerationContext content)
         {
-            get { return false; }
+            return false;
         }
 
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public IILLocal GenMain(IGenerationContext context)
         {
-            container.CallInjectedConstructor(_constructorInfo, il, context);
+            context.Container.CallInjectedConstructor(context, _constructorInfo);
             return null;
         }
     }

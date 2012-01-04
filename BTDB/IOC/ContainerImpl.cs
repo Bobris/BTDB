@@ -144,9 +144,10 @@ namespace BTDB.IOC
                 {
                     var multi = registration as ICRegMulti;
                     var regs = multi != null ? multi.Regs.ToArray() : new[] {registration};
-                    var context = new Dictionary<string, object>();
+                    var context = new GenerationContext(this);
                     var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(type.ToSimpleName());
                     var il = method.Generator;
+                    context.IL = il;
                     var resultLocal = il.DeclareLocal(typeof (List<>).MakeGenericType(resultType));
                     var itemLocal = il.DeclareLocal(resultType);
                     il
@@ -156,12 +157,12 @@ namespace BTDB.IOC
                     foreach (var cReg in regs)
                     {
                         var regILGen = (ICRegILGen)cReg;
-                        regILGen.GenInitialization(this, il, context);
+                        regILGen.GenInitialization(context);
                     }
                     foreach (var cReg in regs)
                     {
                         var regILGen = (ICRegILGen) cReg;
-                        var local = regILGen.GenMain(this, il, context);
+                        var local = regILGen.GenMain(context);
                         if (local == null)
                         {
                             il.Stloc(itemLocal);
@@ -228,11 +229,12 @@ namespace BTDB.IOC
             if (registration is ICRegILGen)
             {
                 var regILGen = (ICRegILGen)registration;
-                var context = new Dictionary<string, object>();
-                var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(regILGen.GenFuncName);
+                var context = new GenerationContext(this);
+                var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(regILGen.GenFuncName(context));
                 var il = method.Generator;
-                regILGen.GenInitialization(this, il, context);
-                var local = regILGen.GenMain(this, il, context);
+                context.IL = il;
+                regILGen.GenInitialization(context);
+                var local = regILGen.GenMain(context);
                 if (local != null)
                 {
                     il.Ldloc(local);
@@ -270,17 +272,17 @@ namespace BTDB.IOC
             return result;
         }
 
-        internal void CallInjectingInitializations(ConstructorInfo constructorInfo, IILGen il, IDictionary<string, object> context)
+        internal void CallInjectingInitializations(IGenerationContext context, ConstructorInfo constructorInfo)
         {
             var pars = constructorInfo.GetParameters();
             foreach (var parameterInfo in pars)
             {
                 var regILGen = FindCRegILGen(null, parameterInfo.ParameterType);
-                regILGen.GenInitialization(this, il, context);
+                regILGen.GenInitialization(context);
             }
         }
 
-        internal void CallInjectedConstructor(ConstructorInfo constructorInfo, IILGen il, IDictionary<string, object> context)
+        internal void CallInjectedConstructor(IGenerationContext context, ConstructorInfo constructorInfo)
         {
             var pars = constructorInfo.GetParameters();
             var regs = new List<ICRegILGen>(pars.Length);
@@ -291,24 +293,24 @@ namespace BTDB.IOC
             var parsLocals = new List<IILLocal>(pars.Length);
             foreach (var reg in regs)
             {
-                parsLocals.Add(reg.CorruptingILStack ? reg.GenMain(this, il, context) : null);
+                parsLocals.Add(reg.IsCorruptingILStack(context) ? reg.GenMain(context) : null);
             }
             for (int i = 0; i < regs.Count; i++)
             {
-                if (regs[i].CorruptingILStack)
+                if (regs[i].IsCorruptingILStack(context))
                 {
-                    il.Ldloc(parsLocals[i]);
+                    context.IL.Ldloc(parsLocals[i]);
                 }
                 else
                 {
-                    var local = regs[i].GenMain(this, il, context);
+                    var local = regs[i].GenMain(context);
                     if (local != null)
                     {
-                        il.Ldloc(local);
+                        context.IL.Ldloc(local);
                     }
                 }
             }
-            il.Newobj(constructorInfo);
+            context.IL.Newobj(constructorInfo);
         }
     }
 }

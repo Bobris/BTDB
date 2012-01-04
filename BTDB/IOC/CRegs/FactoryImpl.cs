@@ -21,34 +21,49 @@ namespace BTDB.IOC.CRegs
             _type = type;
         }
 
-        public string GenFuncName
+        string ICRegILGen.GenFuncName(IGenerationContext context)
         {
-            get { return "Factory_" + _type.ToSimpleName(); }
+            return "Factory_" + _type.ToSimpleName();
         }
 
-        public void GenInitialization(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public void GenInitialization(IGenerationContext context)
         {
-            if (!context.ContainsKey("InstancesLocal"))
+            context.GetSpecific<InstancesLocal>().Prepare();
+        }
+
+        internal class InstancesLocal : IGenerationContextSetter
+        {
+            IGenerationContext _context;
+
+            public void Set(IGenerationContext context)
             {
-                var localInstances = il.DeclareLocal(typeof(object[]), "instances");
-                il
+                _context = context;
+            }
+
+            internal void Prepare()
+            {
+                if (MainLocal != null) return;
+                MainLocal = _context.IL.DeclareLocal(typeof(object[]), "instances");
+                _context.IL
                     .Ldarg(0)
                     .Ldfld(() => default(ContainerImpl).Instances)
-                    .Stloc(localInstances);
-                context.Add("InstancesLocal", localInstances);
+                    .Stloc(MainLocal);
             }
+
+            internal IILLocal MainLocal { get; private set; }
         }
 
-        public bool CorruptingILStack
+
+        public bool IsCorruptingILStack(IGenerationContext content)
         {
-            get { return false; }
+            return false;
         }
 
-        public IILLocal GenMain(ContainerImpl container, IILGen il, IDictionary<string, object> context)
+        public IILLocal GenMain(IGenerationContext context)
         {
-            var localInstances = (IILLocal)context["InstancesLocal"];
-            var localInstance = il.DeclareLocal(_type, "instance");
-            il
+            var localInstances = context.GetSpecific<InstancesLocal>().MainLocal;
+            var localInstance = context.IL.DeclareLocal(_type, "instance");
+            context.IL
                 .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
