@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive;
@@ -46,6 +47,7 @@ namespace BTDB.Service
         readonly ConcurrentDictionary<uint, uint> _serverKnownServicesTypes = new ConcurrentDictionary<uint, uint>();
         readonly ConcurrentDictionary<uint, TypeInf> _serverTypeInfs = new ConcurrentDictionary<uint, TypeInf>();
         readonly ConcurrentDictionary<Type, uint> _serverType2Id = new ConcurrentDictionary<Type, uint>();
+        readonly object _serverType2IdLocker = new object();
         readonly ConcurrentDictionary<Type, Action<object, IWriterCtx>> _serverType2Saver = new ConcurrentDictionary<Type, Action<object, IWriterCtx>>();
         readonly ConcurrentDictionary<uint, Func<IReaderCtx, object>> _serverTypeId2Loader = new ConcurrentDictionary<uint, Func<IReaderCtx, object>>();
         readonly ConcurrentDictionary<uint, ServerBindInf> _serverBindings = new ConcurrentDictionary<uint, ServerBindInf>();
@@ -913,18 +915,27 @@ namespace BTDB.Service
         uint RegisterLocalTypeInternal(Type type)
         {
             uint typeId;
-            while (true)
+            if (_serverType2Id.TryGetValue(type, out typeId))
             {
-                if (_serverType2Id.TryGetValue(type, out typeId))
-                {
-                    return typeId;
-                }
-                typeId = _serverTypeNumbers.Allocate();
-                if (_serverType2Id.TryAdd(type, typeId)) break;
-                _serverTypeNumbers.Deallocate(typeId);
+                return typeId;
             }
+            lock(_serverType2IdLocker)
+            {
+                return RegisterLocalTypeInternalUnlocked(type, new HashSet<Type>());
+            }
+        }
+
+        uint RegisterLocalTypeInternalUnlocked(Type type, HashSet<Type> registeringStack)
+        {
+            uint typeId;
+            if (registeringStack.Contains(type)) return uint.MaxValue;
+            if (_serverType2Id.TryGetValue(type, out typeId))
+            {
+                return typeId;
+            }
+            registeringStack.Add(type);
+            typeId = _serverTypeNumbers.Allocate();
             var typeInf = new TypeInf(type, _fieldHandlerFactory);
-            _serverTypeInfs.TryAdd(typeId, typeInf);
             foreach (var fieldHandler in typeInf.EnumerateFieldHandlers().Flatten(fh =>
                 {
                     if (fh is IFieldHandlerWithNestedFieldHandlers)
@@ -932,7 +943,7 @@ namespace BTDB.Service
                     return null;
                 }).OfType<ServiceObjectFieldHandler>())
             {
-                RegisterLocalTypeInternal(fieldHandler.HandledType());
+                RegisterLocalTypeInternalUnlocked(fieldHandler.HandledType(), registeringStack);
             }
             var writer = new ByteBufferWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
@@ -940,6 +951,9 @@ namespace BTDB.Service
             writer.WriteVUInt32(typeId);
             typeInf.Store(writer);
             _channel.Send(writer.Data);
+            registeringStack.Remove(type);
+            _serverTypeInfs.TryAdd(typeId, typeInf);
+            if (!_serverType2Id.TryAdd(type, typeId)) Debug.Fail("Already registered");
             return typeId;
         }
 
