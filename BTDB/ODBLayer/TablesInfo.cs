@@ -58,7 +58,7 @@ namespace BTDB.ODBLayer
             {
                 lock (_lock)
                 {
-                    t = PrivateCreateTable(name);
+                    t = FindByName(name) ?? PrivateCreateTable(name);
                 }
             }
             if (_clientType2Table.TryAdd(type, t))

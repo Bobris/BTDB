@@ -239,9 +239,9 @@ namespace BTDB.ODBLayer
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type);
-            tableInfo.EnsureClientTypeVersion();
             lock (tableInfo.SingletonLock)
             {
+                tableInfo.EnsureClientTypeVersion();
                 var oid = tableInfo.SingletonOid;
                 var obj = Get(oid);
                 if (obj != null)
