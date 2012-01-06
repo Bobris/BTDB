@@ -53,8 +53,11 @@ namespace BTDB.StreamLayer
                 var origLength = _result.Length;
                 var newLength = origLength + Pos;
                 var b = _result.Buffer;
-                _result = new ByteBuffer();
-                Array.Resize(ref b, Math.Max(origLength * 2, newLength));
+                if (newLength > b.Length)
+                {
+                    _result = new ByteBuffer();
+                    Array.Resize(ref b, Math.Max(origLength*2, newLength));
+                }
                 Array.Copy(Buf, 0, b, origLength, Pos);
                 _result = ByteBuffer.NewAsync(b, 0, newLength);
             }
