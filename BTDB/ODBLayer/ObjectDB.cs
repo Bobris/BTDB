@@ -75,9 +75,9 @@ namespace BTDB.ODBLayer
             if (_lastDictId != newLastDictId)
             {
                 tr.SetKeyPrefix(null);
-                var w = new ByteArrayWriter();
+                var w = new ByteBufferWriter();
                 w.WriteVUInt64(newLastDictId);
-                tr.CreateOrUpdateKeyValue(LastDictIdKey, w.Data);
+                tr.CreateOrUpdateKeyValue(LastDictIdKey, w.Data.ToByteArray());
                 _lastDictId = newLastDictId;
             }
         }

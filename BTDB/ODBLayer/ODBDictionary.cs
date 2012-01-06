@@ -214,20 +214,20 @@ namespace BTDB.ODBLayer
 
         byte[] KeyToByteArray(TKey key)
         {
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _keyWriter(key, writer, ctx);
-            return writer.Data;
+            return writer.Data.ToByteArray();
         }
 
         byte[] ValueToByteArray(TValue value)
         {
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
             if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _valueWriter(value, writer, ctx);
-            return writer.Data;
+            return writer.Data.ToByteArray();
         }
 
         TKey ByteArrayToKey(byte[] data)

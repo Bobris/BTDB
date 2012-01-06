@@ -85,7 +85,7 @@ namespace BTDB.FieldHandler
 
             public byte[] ToConfiguration()
             {
-                var writer = new ByteArrayWriter();
+                var writer = new ByteBufferWriter();
                 writer.WriteVUInt32((_signed ? 1u : 0) + (Flags ? 2u : 0) + 4u * (uint)Names.Length);
                 foreach (var name in Names)
                 {
@@ -96,7 +96,7 @@ namespace BTDB.FieldHandler
                     if (_signed) writer.WriteVInt64((long)value);
                     else writer.WriteVUInt64(value);
                 }
-                return writer.Data;
+                return writer.Data.ToByteArray();
             }
 
             public Type ToType()

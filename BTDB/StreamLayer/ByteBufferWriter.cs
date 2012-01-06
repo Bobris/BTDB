@@ -3,29 +3,29 @@ using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
 {
-    public sealed class ByteArrayWriter : AbstractBufferedWriter
+    public sealed class ByteBufferWriter : AbstractBufferedWriter
     {
-        byte[] _result;
+        ByteBuffer _result;
 
-        public ByteArrayWriter()
+        public ByteBufferWriter()
         {
             Buf = new byte[4096];
             End = Buf.Length;
         }
 
-        public byte[] Data
+        public ByteBuffer Data
         {
             get
             {
                 FinalFlushIfNeeded();
-                return _result ?? BitArrayManipulation.EmptyByteArray;
+                return _result;
             }
         }
 
         public override void FlushBuffer()
         {
             JustFlushWithoutAllocNewBuffer();
-            Buf = new byte[4096];
+            if (Buf == null) Buf = new byte[4096];
             End = Buf.Length;
             Pos = 0;
         }
@@ -43,23 +43,20 @@ namespace BTDB.StreamLayer
 
         void JustFlushWithoutAllocNewBuffer()
         {
-            if (_result == null)
+            if (_result.Buffer == null || _result.Length == 0)
             {
-                if (Pos == Buf.Length)
-                {
-                    _result = Buf;
-                }
-                else
-                {
-                    _result = new byte[Pos];
-                    Array.Copy(Buf, _result, Pos);
-                }
+                _result = ByteBuffer.NewAsync(Buf, 0, Pos);
+                Buf = null;
             }
             else
             {
                 var origLength = _result.Length;
-                Array.Resize(ref _result, origLength + Pos);
-                Array.Copy(Buf, 0, _result, origLength, Pos);
+                var newLength = origLength + Pos;
+                var b = _result.Buffer;
+                _result = new ByteBuffer();
+                Array.Resize(ref b, Math.Max(origLength * 2, newLength));
+                Array.Copy(Buf, 0, b, origLength, Pos);
+                _result = ByteBuffer.NewAsync(b, 0, newLength);
             }
         }
     }

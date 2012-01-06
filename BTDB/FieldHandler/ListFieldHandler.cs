@@ -20,9 +20,9 @@ namespace BTDB.FieldHandler
             _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
             _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_itemsHandler);
-            _configuration = writer.Data;
+            _configuration = writer.Data.ToByteArray();
         }
 
         public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)

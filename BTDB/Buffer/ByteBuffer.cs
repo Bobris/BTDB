@@ -61,5 +61,18 @@ namespace BTDB.Buffer
         {
             return new ArraySegment<byte>(Buffer, Offset, Length);
         }
+
+        internal byte[] ToByteArray()
+        {
+            var safeSelf = ToAsyncSafe();
+            var buf = safeSelf.Buffer ?? BitArrayManipulation.EmptyByteArray;
+            if (safeSelf.Offset == 0 && safeSelf.Length == buf.Length)
+            {
+                return buf;
+            }
+            var copy = new byte[safeSelf.Length];
+            Array.Copy(safeSelf.Buffer, safeSelf.Offset, copy, 0, safeSelf.Length);
+            return copy;
+        }
     }
 }

@@ -18,9 +18,9 @@ namespace BTDB.FieldHandler
             _objectDB = objectDB;
             _type = type;
             _typeName = _objectDB.RegisterType(type);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteString(_typeName);
-            _configuration = writer.Data;
+            _configuration = writer.Data.ToByteArray();
         }
 
         public DBObjectFieldHandler(IObjectDB objectDB, byte[] configuration)

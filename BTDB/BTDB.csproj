@@ -151,7 +151,7 @@
     <Compile Include="KVDBLayer\ImplementationDetails\FreeSpaceAllocatorOptimizer.cs" />
     <Compile Include="StreamLayer\AbstractBufferedWriter.cs" />
     <Compile Include="StreamLayer\ByteArrayReader.cs" />
-    <Compile Include="StreamLayer\ByteArrayWriter.cs" />
+    <Compile Include="StreamLayer\ByteBufferWriter.cs" />
     <Compile Include="StreamLayer\ByteBufferReader.cs" />
     <Compile Include="KVDBLayer\Implementation\KeyValueDBTransaction.cs" />
     <Compile Include="KVDBLayer\ReaderWriters\KeyValueDBKeyReader.cs" />

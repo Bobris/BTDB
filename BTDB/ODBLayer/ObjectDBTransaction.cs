@@ -443,7 +443,7 @@ namespace BTDB.ODBLayer
             IfNeededPersistTableInfo(tableInfo);
             DBObjectMetadata metadata;
             _objMetadata.TryGetValue(o, out metadata);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
             tableInfo.Saver(this, metadata, writer, o);
@@ -452,7 +452,7 @@ namespace BTDB.ODBLayer
             {
                 _keyValueTrProtector.Start(ref shouldStop);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data);
+                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data.ToByteArray());
             }
             finally
             {

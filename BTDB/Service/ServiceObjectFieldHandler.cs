@@ -18,9 +18,9 @@ namespace BTDB.Service
             _service = service;
             _type = type;
             _typeName = _service.RegisterType(type);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteString(_typeName);
-            _configuration = writer.Data;
+            _configuration = writer.Data.ToByteArray();
         }
 
         public ServiceObjectFieldHandler(IServiceInternal service, byte[] configuration)

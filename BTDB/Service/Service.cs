@@ -531,11 +531,11 @@ namespace BTDB.Service
                     };
                 _clientBindings.TryAdd(bindingId, bindingInf);
                 bindings.Add(bindingInf);
-                var writer = new ByteArrayWriter();
+                var writer = new ByteBufferWriter();
                 writer.WriteVUInt32((uint)Command.Subcommand);
                 writer.WriteVUInt32((uint)Subcommand.Bind);
                 bindingInf.Store(writer);
-                _channel.Send(ByteBuffer.NewAsync(writer.Data));
+                _channel.Send(writer.Data);
                 IILLocal resultTaskLocal = null;
                 if (!bindingInf.OneWay)
                 {
@@ -897,12 +897,12 @@ namespace BTDB.Service
             var type = typeof(T);
             var typeId = RegisterLocalTypeInternal(type);
             _serverKnownServicesTypes.TryAdd(serviceId, typeId);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
             writer.WriteVUInt32((uint)Subcommand.RegisterService);
             writer.WriteVUInt32(serviceId);
             writer.WriteVUInt32(typeId);
-            _channel.Send(ByteBuffer.NewAsync(writer.Data));
+            _channel.Send(writer.Data);
         }
 
         public void RegisterLocalType(Type type)
@@ -934,12 +934,12 @@ namespace BTDB.Service
             {
                 RegisterLocalTypeInternal(fieldHandler.HandledType());
             }
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteVUInt32((uint)Command.Subcommand);
             writer.WriteVUInt32((uint)Subcommand.RegisterType);
             writer.WriteVUInt32(typeId);
             typeInf.Store(writer);
-            _channel.Send(ByteBuffer.NewAsync(writer.Data));
+            _channel.Send(writer.Data);
             return typeId;
         }
 
@@ -962,7 +962,7 @@ namespace BTDB.Service
 
         public AbstractBufferedWriter StartTwoWayMarshaling(ClientBindInf binding, out Task resultReturned)
         {
-            var message = new ByteArrayWriter();
+            var message = new ByteBufferWriter();
             message.WriteVUInt32(binding.BindingId);
             var taskWithSource = binding.TaskWithSourceCreator();
             resultReturned = taskWithSource.Task;
@@ -974,24 +974,24 @@ namespace BTDB.Service
 
         public void FinishTwoWayMarshaling(AbstractBufferedWriter writer)
         {
-            _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
+            _channel.Send(((ByteBufferWriter)writer).Data);
         }
 
         public AbstractBufferedWriter StartOneWayMarshaling(ClientBindInf binding)
         {
-            var message = new ByteArrayWriter();
+            var message = new ByteBufferWriter();
             message.WriteVUInt32(binding.BindingId);
             return message;
         }
 
         public void FinishOneWayMarshaling(AbstractBufferedWriter writer)
         {
-            _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
+            _channel.Send(((ByteBufferWriter)writer).Data);
         }
 
         public AbstractBufferedWriter StartResultMarshaling(uint resultId)
         {
-            var message = new ByteArrayWriter();
+            var message = new ByteBufferWriter();
             message.WriteVUInt32((uint)Command.Result);
             message.WriteVUInt32(resultId);
             return message;
@@ -999,12 +999,12 @@ namespace BTDB.Service
 
         public void FinishResultMarshaling(AbstractBufferedWriter writer)
         {
-            _channel.Send(ByteBuffer.NewAsync(((ByteArrayWriter)writer).Data));
+            _channel.Send(((ByteBufferWriter)writer).Data);
         }
 
         public void ExceptionMarshaling(uint resultId, Exception ex)
         {
-            var message = new ByteArrayWriter();
+            var message = new ByteBufferWriter();
             message.WriteVUInt32((uint)Command.Exception);
             message.WriteVUInt32(resultId);
             using (var stream = new MemoryStream())
@@ -1012,15 +1012,15 @@ namespace BTDB.Service
                 new BinaryFormatter().Serialize(stream, ex);
                 message.WriteByteArray(stream.ToArray());
             }
-            _channel.Send(ByteBuffer.NewAsync(message.Data));
+            _channel.Send(message.Data);
         }
 
         public void VoidResultMarshaling(uint resultId)
         {
-            var message = new ByteArrayWriter();
+            var message = new ByteBufferWriter();
             message.WriteVUInt32((uint)Command.Result);
             message.WriteVUInt32(resultId);
-            _channel.Send(ByteBuffer.NewAsync(message.Data));
+            _channel.Send(message.Data);
         }
 
         public string RegisterType(Type type)

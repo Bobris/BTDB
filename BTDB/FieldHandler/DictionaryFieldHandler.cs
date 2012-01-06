@@ -24,10 +24,10 @@ namespace BTDB.FieldHandler
             _type = type;
             _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0],FieldHandlerOptions.None);
             _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1],FieldHandlerOptions.None);
-            var writer = new ByteArrayWriter();
+            var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
-            _configuration = writer.Data;
+            _configuration = writer.Data.ToByteArray();
         }
 
         public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
