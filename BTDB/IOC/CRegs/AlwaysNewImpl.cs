@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using BTDB.IL;
 
@@ -22,18 +24,27 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(IGenerationContext context)
         {
-            context.Container.CallInjectingInitializations(context, _constructorInfo);
+            foreach (var regILGen in GetNeeds(context).Select(context.ResolveNeed))
+            {
+                regILGen.GenInitialization(context);
+            }
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)
         {
-            return context.Container.AnyOfInjectedCorruptingStack(context, _constructorInfo);
+            return context.AnyCorruptingStack(context.NeedsForConstructor(_constructorInfo));
         }
 
         public IILLocal GenMain(IGenerationContext context)
         {
-            context.Container.CallInjectedConstructor(context, _constructorInfo);
+            context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
+            context.IL.Newobj(_constructorInfo);
             return null;
+        }
+
+        public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+        {
+            return context.NeedsForConstructor(_constructorInfo);
         }
     }
 }

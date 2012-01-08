@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
@@ -72,6 +73,11 @@ namespace BTDB.IOC.CRegs
                 .Castclass(_type)
                 .Stloc(localInstance);
             return localInstance;
+        }
+
+        public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+        {
+            yield break;
         }
     }
 }

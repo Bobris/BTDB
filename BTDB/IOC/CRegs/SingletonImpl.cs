@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -133,8 +134,9 @@ namespace BTDB.IOC.CRegs
                 .Stloc(localSingleton)
                 .Brtrue(labelNull1)
                 .LdcI4(0)
-                .Stloc(localLockTaken)
-                .Ldarg(0)
+                .Stloc(localLockTaken);
+            context.PushToILStack(Need.ContainerNeed);
+            il
                 .Ldfld(() => default(ContainerImpl).SingletonLocks)
                 .LdcI4(_singletonIndex)
                 .LdelemRef()
@@ -174,6 +176,11 @@ namespace BTDB.IOC.CRegs
                 .Mark(labelNull1);
             buildCRegLocals.Add(this, localSingleton);
             return localSingleton;
+        }
+
+        public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+        {
+            return _wrapping.GetNeeds(context).Concat(Enumerable.Repeat(Need.ContainerNeed,1));
         }
     }
 }

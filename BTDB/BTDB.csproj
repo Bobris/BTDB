@@ -86,6 +86,7 @@
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
     <Compile Include="IOC\AsTraitImpl.cs" />
+    <Compile Include="IOC\ContainerInArg0Impl.cs" />
     <Compile Include="IOC\CRegs\FactoryImpl.cs" />
     <Compile Include="IOC\CRegs\AlwaysNewImpl.cs" />
     <Compile Include="IOC\BuilderExtensions.cs" />
@@ -110,6 +111,7 @@
     <Compile Include="IOC\IGenerationContext.cs" />
     <Compile Include="IOC\ILiveScopeTrait.cs" />
     <Compile Include="IOC\ILiveScopeTraitImpl.cs" />
+    <Compile Include="IOC\INeed.cs" />
     <Compile Include="IOC\IRegistration.cs" />
     <Compile Include="IOC\IScanTrait.cs" />
     <Compile Include="IOC\IScanTraitImpl.cs" />
@@ -117,6 +119,8 @@
     <Compile Include="IOC\Lifetime.cs" />
     <Compile Include="IOC\LiveScopeTraitImpl.cs" />
     <Compile Include="IOC\MultiRegistration.cs" />
+    <Compile Include="IOC\Need.cs" />
+    <Compile Include="IOC\NeedKind.cs" />
     <Compile Include="IOC\RegistrationBaseImpl.cs" />
     <Compile Include="IOC\ScanTraitImpl.cs" />
     <Compile Include="IOC\SingleFactoryRegistration.cs" />
