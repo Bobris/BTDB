@@ -67,8 +67,9 @@ namespace BTDB.IOC.CRegs
                 .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
-                .Castclass(typeof(Func<ContainerImpl, object>))
-                .Ldarg(0)
+                .Castclass(typeof(Func<ContainerImpl, object>));
+            context.PushToILStack(Need.ContainerNeed);
+            context.IL
                 .Call(() => default(Func<ContainerImpl, object>).Invoke(null))
                 .Castclass(_type)
                 .Stloc(localInstance);
@@ -77,7 +78,7 @@ namespace BTDB.IOC.CRegs
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
-            yield break;
+            yield return Need.ContainerNeed;
         }
     }
 }

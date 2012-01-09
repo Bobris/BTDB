@@ -420,6 +420,18 @@ namespace BTDBTest
             var obj = container.Resolve<IErrorHandler>();
             Assert.IsNull(obj.Logger);
         }
+
+        [Test, Ignore]
+        public void FuncWithOneObjectParameter()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
+            var container = builder.Build();
+            var factory = container.Resolve<Func<ILogger,IErrorHandler>>();
+            var logger = new Logger();
+            var obj = factory(logger);
+            Assert.AreEqual(logger,obj.Logger);
+        }
     }
 
 }

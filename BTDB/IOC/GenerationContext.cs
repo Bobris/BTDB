@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTDB.IL;
+using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {

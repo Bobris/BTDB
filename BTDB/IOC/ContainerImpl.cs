@@ -34,6 +34,7 @@ namespace BTDB.IOC
             }
             Singletons = new object[context.SingletonCount];
             Instances = context.Instances.ToArray();
+            context.AddCReg(Enumerable.Repeat(new KeyAndType(null,typeof(IContainer)), 1),true,new ContainerInjectImpl());
         }
 
         internal static ConstructorInfo FindBestConstructor(Type type)
@@ -106,10 +107,12 @@ namespace BTDB.IOC
             {
                 return BuildSingle(registration);
             }
-            if (type == typeof(IContainer))
+            /*if (type.IsDelegate())
             {
-                return c => c;
-            }
+                var methodInfo = type.GetMethod("Invoke");
+                var resultType = methodInfo.ReturnType;
+                registration = FindChosenReg(key, resultType);
+            }*/
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
             {
                 var resultType = type.GetGenericArguments()[0];
