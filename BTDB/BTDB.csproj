@@ -86,8 +86,8 @@
     <Compile Include="IL\ILMethodImpl.cs" />
     <Compile Include="IL\SourceCodeWriter.cs" />
     <Compile Include="IOC\AsTraitImpl.cs" />
-    <Compile Include="IOC\CRegs\ContainerInArg0Impl.cs" />
-    <Compile Include="IOC\CRegs\ContainterInjectImpl.cs" />
+    <Compile Include="IOC\CRegs\ArgXImpl.cs" />
+    <Compile Include="IOC\CRegs\ContainerInjectImpl.cs" />
     <Compile Include="IOC\CRegs\FactoryImpl.cs" />
     <Compile Include="IOC\CRegs\AlwaysNewImpl.cs" />
     <Compile Include="IOC\BuilderExtensions.cs" />

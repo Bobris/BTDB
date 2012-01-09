@@ -3,17 +3,23 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class ContainerInArg0Impl : ICRegILGen
+    internal class ArgXImpl : ICRegILGen
     {
-        internal static readonly ICRegILGen Instance = new ContainerInArg0Impl();
-
-        ContainerInArg0Impl()
+        internal static ICRegILGen GetInstance(ushort x)
         {
+            return new ArgXImpl(x);
+        }
+
+        readonly ushort _x;
+
+        ArgXImpl(ushort x)
+        {
+            _x = x;
         }
 
         public string GenFuncName(IGenerationContext context)
         {
-            return "ContainerInArg0";
+            return "Arg"+_x;
         }
 
         public void GenInitialization(IGenerationContext context)
@@ -27,7 +33,7 @@ namespace BTDB.IOC.CRegs
 
         public IILLocal GenMain(IGenerationContext context)
         {
-            context.IL.Ldarg(0);
+            context.IL.Ldarg(_x);
             return null;
         }
 

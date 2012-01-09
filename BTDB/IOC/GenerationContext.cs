@@ -11,10 +11,18 @@ namespace BTDB.IOC
     {
         readonly ContainerImpl _container;
         readonly Dictionary<Type, object> _specifics = new Dictionary<Type, object>();
+        readonly ParameterInfo[] _parameterInfos;
 
         public GenerationContext(ContainerImpl container)
         {
             _container = container;
+            _parameterInfos = null;
+        }
+
+        public GenerationContext(ContainerImpl container, ParameterInfo[] parameterInfos)
+        {
+            _container = container;
+            _parameterInfos = parameterInfos;
         }
 
         public IILGen IL { get; internal set; }
@@ -58,7 +66,7 @@ namespace BTDB.IOC
         {
             var regIL = ResolveNeed(need);
             var local = regIL.GenMain(this);
-            if (local!=null)
+            if (local != null)
             {
                 IL.Ldloc(local);
             }
@@ -118,7 +126,20 @@ namespace BTDB.IOC
         {
             if (need == Need.ContainerNeed)
             {
-                return ContainerInArg0Impl.Instance;
+                return ArgXImpl.GetInstance(0);
+            }
+            if (_parameterInfos != null)
+            {
+                foreach (var parameterInfo in _parameterInfos)
+                {
+                    if (need.Kind == NeedKind.ConstructorParameter)
+                    {
+                        if (need.ClrType == parameterInfo.ParameterType)
+                        {
+                            return ArgXImpl.GetInstance((ushort)(parameterInfo.Position + 1));
+                        }
+                    }
+                }
             }
             return _container.FindCRegILGen(null, need.ClrType);
         }

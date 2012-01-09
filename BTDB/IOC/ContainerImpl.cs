@@ -34,7 +34,7 @@ namespace BTDB.IOC
             }
             Singletons = new object[context.SingletonCount];
             Instances = context.Instances.ToArray();
-            context.AddCReg(Enumerable.Repeat(new KeyAndType(null,typeof(IContainer)), 1),true,new ContainerInjectImpl());
+            context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true, new ContainerInjectImpl());
         }
 
         internal static ConstructorInfo FindBestConstructor(Type type)
@@ -105,17 +105,12 @@ namespace BTDB.IOC
             var registration = FindChosenReg(key, type);
             if (registration != null)
             {
-                return BuildSingle(registration);
+                return BuildCReg(registration);
             }
-            /*if (type.IsDelegate())
+            if (type.IsDelegate())
             {
                 var methodInfo = type.GetMethod("Invoke");
                 var resultType = methodInfo.ReturnType;
-                registration = FindChosenReg(key, resultType);
-            }*/
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Func<>))
-            {
-                var resultType = type.GetGenericArguments()[0];
                 registration = FindChosenReg(key, resultType);
                 if (registration != null)
                 {
@@ -126,12 +121,22 @@ namespace BTDB.IOC
                         if (optimizedFunc != null) return c => optimizedFunc;
                     }
                 }
-                var worker = TryBuild(key, resultType);
-                if (worker != null)
+                if (registration is ICRegILGen)
                 {
-                    var result = Delegate.CreateDelegate(type,
-                        typeof(ClosureOfFunc<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[] { this, worker }), "Call");
-                    return c => result;
+                    var regILGen = (ICRegILGen)registration;
+                    var context = new GenerationContext(this, methodInfo.GetParameters());
+                    var method = ILBuilder.Instance.NewMethod(regILGen.GenFuncName(context), type, typeof(ContainerImpl));
+                    var il = method.Generator;
+                    context.IL = il;
+                    regILGen.GenInitialization(context);
+                    var local = regILGen.GenMain(context);
+                    if (local != null)
+                    {
+                        il.Ldloc(local);
+                    }
+                    il.Ret();
+                    var func = method.Create(this);
+                    return c => func;
                 }
             }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>))
@@ -218,7 +223,7 @@ namespace BTDB.IOC
             }
         }
 
-        Func<ContainerImpl, object> BuildSingle(ICReg registration)
+        Func<ContainerImpl, object> BuildCReg(ICReg registration)
         {
             if (registration is ICRegFuncOptimized)
             {

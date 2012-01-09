@@ -421,17 +421,19 @@ namespace BTDBTest
             Assert.IsNull(obj.Logger);
         }
 
-        [Test, Ignore]
-        public void FuncWithOneObjectParameter()
+        [Test, TestCase(false), TestCase(true)]
+        public void FuncWithOneObjectParameter(bool overload)
         {
             var builder = new ContainerBuilder();
+            if (overload) builder.RegisterType<Logger>().As<ILogger>();
             builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
             var container = builder.Build();
-            var factory = container.Resolve<Func<ILogger,IErrorHandler>>();
+            var factory = container.Resolve<Func<ILogger, IErrorHandler>>();
             var logger = new Logger();
             var obj = factory(logger);
-            Assert.AreEqual(logger,obj.Logger);
+            Assert.AreEqual(logger, obj.Logger);
         }
+
     }
 
 }
