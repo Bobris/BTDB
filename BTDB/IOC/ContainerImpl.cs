@@ -127,13 +127,7 @@ namespace BTDB.IOC
                     var context = new GenerationContext(this, methodInfo.GetParameters());
                     var method = ILBuilder.Instance.NewMethod(regILGen.GenFuncName(context), type, typeof(ContainerImpl));
                     var il = method.Generator;
-                    context.IL = il;
-                    regILGen.GenInitialization(context);
-                    var local = regILGen.GenMain(context);
-                    if (local != null)
-                    {
-                        il.Ldloc(local);
-                    }
+                    context.GenerateBody(il, regILGen);
                     il.Ret();
                     var func = method.Create(this);
                     return c => func;
@@ -240,13 +234,7 @@ namespace BTDB.IOC
                 var context = new GenerationContext(this);
                 var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(regILGen.GenFuncName(context));
                 var il = method.Generator;
-                context.IL = il;
-                regILGen.GenInitialization(context);
-                var local = regILGen.GenMain(context);
-                if (local != null)
-                {
-                    il.Ldloc(local);
-                }
+                context.GenerateBody(il, regILGen);
                 il.Ret();
                 return method.Create();
             }
@@ -269,7 +257,7 @@ namespace BTDB.IOC
                 _registrations.Add(new KeyAndType(key, type), result);
                 return result;
             }
-            throw new ArgumentException("Don't know how to build " + type.ToSimpleName());
+            return null;
         }
 
         public int AddInstance(object instance)

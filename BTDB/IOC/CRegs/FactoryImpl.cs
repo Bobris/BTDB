@@ -68,7 +68,7 @@ namespace BTDB.IOC.CRegs
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
                 .Castclass(typeof(Func<ContainerImpl, object>));
-            context.PushToILStack(Need.ContainerNeed);
+            context.PushToILStack(this, Need.ContainerNeed);
             context.IL
                 .Call(() => default(Func<ContainerImpl, object>).Invoke(null))
                 .Castclass(_type)

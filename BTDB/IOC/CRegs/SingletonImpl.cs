@@ -135,7 +135,7 @@ namespace BTDB.IOC.CRegs
                 .Brtrue(labelNull1)
                 .LdcI4(0)
                 .Stloc(localLockTaken);
-            context.PushToILStack(Need.ContainerNeed);
+            context.PushToILStack(this, Need.ContainerNeed);
             il
                 .Ldfld(() => default(ContainerImpl).SingletonLocks)
                 .LdcI4(_singletonIndex)
@@ -180,7 +180,12 @@ namespace BTDB.IOC.CRegs
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
-            return _wrapping.GetNeeds(context).Concat(Enumerable.Repeat(Need.ContainerNeed,1));
+            yield return new Need
+                {
+                    Kind = NeedKind.CReg,
+                    Key = _wrapping
+                };
+            yield return Need.ContainerNeed;
         }
     }
 }

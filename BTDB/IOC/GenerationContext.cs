@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using BTDB.IL;
 using BTDB.IOC.CRegs;
+using BTDB.ODBLayer;
 
 namespace BTDB.IOC
 {
@@ -24,6 +25,7 @@ namespace BTDB.IOC
             _container = container;
             _parameterInfos = parameterInfos;
         }
+
 
         public IILGen IL { get; internal set; }
 
@@ -62,9 +64,9 @@ namespace BTDB.IOC
             }
         }
 
-        public void PushToILStack(INeed need)
+        public void PushToILStack(ICRegILGen inCReg, INeed need)
         {
-            var regIL = ResolveNeed(need);
+            var regIL = ResolveNeed(inCReg, need);
             var local = regIL.GenMain(this);
             if (local != null)
             {
@@ -72,10 +74,10 @@ namespace BTDB.IOC
             }
         }
 
-        public void PushToILStack(IEnumerable<INeed> needsEnumerable)
+        public void PushToILStack(ICRegILGen inCReg, IEnumerable<INeed> needsEnumerable)
         {
             var needs = needsEnumerable.ToArray();
-            var regs = needs.Select(ResolveNeed).ToArray();
+            var regs = needs.Select(n => ResolveNeed(inCReg, n)).ToArray();
             var parsLocals = new List<IILLocal>(regs.Length);
             int index = 0;
             foreach (var reg in regs)
@@ -113,35 +115,100 @@ namespace BTDB.IOC
             }
         }
 
-        public bool AnyCorruptingStack(IEnumerable<INeed> needs)
+        public bool AnyCorruptingStack(ICRegILGen inCReg, IEnumerable<INeed> needs)
         {
-            foreach (var regILGen in needs.Select(ResolveNeed))
+            foreach (var regILGen in needs.Select(n => ResolveNeed(inCReg, n)))
             {
                 if (regILGen.IsCorruptingILStack(this)) return true;
             }
             return false;
         }
 
-        public ICRegILGen ResolveNeed(INeed need)
+        public ICRegILGen ResolveNeed(ICRegILGen inCReg, INeed need)
         {
-            if (need == Need.ContainerNeed)
+            return _resolvers[new Tuple<ICRegILGen, INeed>(inCReg, need)];
+        }
+
+        public void GenerateBody(IILGen il, ICRegILGen regILGen)
+        {
+            IL = il;
+            GatherNeeds(regILGen, new HashSet<ICRegILGen>());
+            regILGen.GenInitialization(this);
+            var local = regILGen.GenMain(this);
+            if (local != null)
             {
-                return ArgXImpl.GetInstance(0);
+                il.Ldloc(local);
             }
+        }
+
+        readonly Dictionary<Tuple<ICRegILGen, INeed>, ICRegILGen> _resolvers = new Dictionary<Tuple<ICRegILGen, INeed>, ICRegILGen>(new Comparer());
+
+        class Comparer : IEqualityComparer<Tuple<ICRegILGen, INeed>>
+        {
+            public bool Equals(Tuple<ICRegILGen, INeed> x, Tuple<ICRegILGen, INeed> y)
+            {
+                if (x.Item1 != y.Item1) return false;
+                var nx = x.Item2;
+                var ny = y.Item2;
+                if (nx.Kind != ny.Kind) return false;
+                if (nx.ClrType != ny.ClrType) return false;
+                if (nx.Key != ny.Key) return false;
+                if (nx.ForcedKey != ny.ForcedKey) return false;
+                if (nx.Optional != ny.Optional) return false;
+                if (nx.ParentType != ny.ParentType) return false;
+                return true;
+            }
+
+            public int GetHashCode(Tuple<ICRegILGen, INeed> obj)
+            {
+                return obj.Item1.GetHashCode()*33 + obj.Item2.ClrType.GetHashCode();
+            }
+        }
+
+        void GatherNeeds(ICRegILGen regILGen, HashSet<ICRegILGen> processed)
+        {
+            if (processed.Contains(regILGen)) return;
+            processed.Add(regILGen);
+            foreach (var need in regILGen.GetNeeds(this))
+            {
+                if (need == Need.ContainerNeed)
+                {
+                    _resolvers.Add(new Tuple<ICRegILGen, INeed>(regILGen, need), ArgXImpl.GetInstance(0));
+                    continue;
+                }
+                if (need.Kind == NeedKind.CReg)
+                {
+                    GatherNeeds((ICRegILGen) need.Key, processed);
+                    continue;
+                }
+                if (need.Kind == NeedKind.ConstructorParameter)
+                {
+                    var reg = ResolveNeedBy(need.ClrType, need.Key, need.ParentType);
+                    if (reg == null && !need.ForcedKey)
+                        reg = ResolveNeedBy(need.ClrType, null, need.ParentType);
+                    if (reg == null)
+                    {
+                        throw new ArgumentException(string.Format("Cannot resolve {0} in {1} with key {2}", need.ClrType.ToSimpleName(), need.ParentType.ToSimpleName(), need.Key));
+                    }
+                    _resolvers.Add(new Tuple<ICRegILGen, INeed>(regILGen, need), reg);
+                    GatherNeeds(reg, processed);
+                }
+            }
+        }
+
+        ICRegILGen ResolveNeedBy(Type clrType, object key, Type parentType)
+        {
             if (_parameterInfos != null)
             {
                 foreach (var parameterInfo in _parameterInfos)
                 {
-                    if (need.Kind == NeedKind.ConstructorParameter)
+                    if (clrType == parameterInfo.ParameterType && (key as string == parameterInfo.Name || key == null))
                     {
-                        if (need.ClrType == parameterInfo.ParameterType)
-                        {
-                            return ArgXImpl.GetInstance((ushort)(parameterInfo.Position + 1));
-                        }
+                        return ArgXImpl.GetInstance((ushort)(parameterInfo.Position + 1));
                     }
                 }
             }
-            return _container.FindCRegILGen(null, need.ClrType);
+            return _container.FindCRegILGen(key, clrType);
         }
     }
 }

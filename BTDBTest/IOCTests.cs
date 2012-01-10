@@ -434,6 +434,42 @@ namespace BTDBTest
             Assert.AreEqual(logger, obj.Logger);
         }
 
+        [Test]
+        public void FuncWithTwoObjectParameters()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Database>().As<IDatabase>();
+            var container = builder.Build();
+            var factory = container.Resolve<Func<IErrorHandler, ILogger, IDatabase>>();
+            var obj = factory(null, null);
+            Assert.NotNull(obj);
+        }
+
+        public class KlassWith2IntParams
+        {
+            public int Param1 { get; private set; }
+            public int Param2 { get; private set; }
+
+            public KlassWith2IntParams(int param1, int param2)
+            {
+                Param1 = param1;
+                Param2 = param2;
+            }
+        }
+
+        delegate KlassWith2IntParams KlassWith2IntParamsFactory(int param2, int param1);
+
+        [Test]
+        public void DelegateWithNamedParameters()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<KlassWith2IntParams>();
+            var container = builder.Build();
+            var factory = container.Resolve<KlassWith2IntParamsFactory>();
+            var obj = factory(22, 11);
+            Assert.AreEqual(11, obj.Param1);
+            Assert.AreEqual(22, obj.Param2);
+        }
     }
 
 }
