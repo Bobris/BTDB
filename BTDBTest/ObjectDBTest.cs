@@ -847,7 +847,6 @@ namespace BTDBTest
             public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; }
         }
 
-
         [Test]
         public void DictionaryOfByteArrayKeysAndValues()
         {
@@ -1073,7 +1072,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 tr.Singleton<ComplexDictionary>();
-                Assert.False(((IInternalObjectDBTransaction) tr).KeyValueDBTransaction.IsWritting());
+                Assert.False(((IInternalObjectDBTransaction)tr).KeyValueDBTransaction.IsWritting());
             }
         }
 
@@ -1086,11 +1085,11 @@ namespace BTDBTest
         [Test]
         public void UpgradingWithNewComplexDictionary()
         {
-            var typeName = _db.RegisterType(typeof (ComplexDictionary));
+            var typeName = _db.RegisterType(typeof(ComplexDictionary));
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<ComplexDictionary>();
-                d.String2Person.Add("A",new Person { Name = "A" });
+                d.String2Person.Add("A", new Person { Name = "A" });
                 tr.Commit();
             }
             ReopenDB();
@@ -1101,7 +1100,7 @@ namespace BTDBTest
                 tr.Store(d);
                 Assert.AreEqual(1, d.String2Person.Count);
                 Assert.AreEqual("A", d.String2Person["A"].Name);
-                d.String2PersonNew.Add("B", new PersonNew {Name = "B"});
+                d.String2PersonNew.Add("B", new PersonNew { Name = "B" });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -1109,6 +1108,44 @@ namespace BTDBTest
                 var d = tr.Singleton<TwoComplexDictionary>();
                 Assert.AreEqual("A", d.String2Person["A"].Name);
                 Assert.AreEqual("B", d.String2PersonNew["B"].Name);
+            }
+        }
+
+        public class ObjectWithDictWithInlineKey
+        {
+            public IDictionary<InlinePerson, int> Dict { get; set; }
+        }
+
+        [StoredInline]
+        public class InlinePersonNew : PersonNew
+        {
+        }
+
+        public class ObjectWithDictWithInlineKeyNew
+        {
+            public IDictionary<InlinePersonNew, int> Dict { get; set; }
+        }
+
+        [Test, Ignore]
+        public void UpgradingKeyInDictionary()
+        {
+            var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
+            var persName = _db.RegisterType(typeof(InlinePerson));
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictWithInlineKey>();
+                d.Dict.Add(new InlinePerson { Name = "A" }, 1);
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(ObjectWithDictWithInlineKeyNew), singName);
+            _db.RegisterType(typeof(InlinePersonNew), persName);
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictWithInlineKeyNew>();
+                var p = d.Dict.Keys.First();
+                Assert.AreEqual("A", p.Name);
+                Assert.AreEqual(1, d.Dict[p]);
             }
         }
     }

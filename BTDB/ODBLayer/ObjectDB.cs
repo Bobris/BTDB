@@ -107,7 +107,9 @@ namespace BTDB.ODBLayer
         public string RegisterType(Type type)
         {
             if (type == null) throw new ArgumentNullException("type");
-            string name = type.Name;
+            var name = Type2NameRegistry.FindNameByType(type);
+            if (name != null) return name;
+            name = type.Name;
             if (type.IsInterface && name.StartsWith("I")) name = name.Substring(1);
             return RegisterType(type, name);
         }
