@@ -128,6 +128,9 @@
     <Compile Include="IOC\SingleInstanceRegistration.cs" />
     <Compile Include="IOC\SingleRegistration.cs" />
     <Compile Include="IOC\CRegs\SingletonImpl.cs" />
+    <Compile Include="KV2DBLayer\IFileCollection.cs" />
+    <Compile Include="KV2DBLayer\IKeyValue2DB.cs" />
+    <Compile Include="KV2DBLayer\InMemoryFileCollection.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
