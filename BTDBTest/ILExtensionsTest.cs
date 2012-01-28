@@ -56,8 +56,7 @@ namespace BTDBTest
         [Test]
         public void ILNewestWayRelease()
         {
-            ILBuilder.Instance.Debuggable = false;
-            var method = ILBuilder.Instance.NewMethod<Func<Nested>>("SampleCall");
+            var method = new ILBuilderRelease().NewMethod<Func<Nested>>("SampleCall");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -76,8 +75,7 @@ namespace BTDBTest
         [Test]
         public void ILNewestWayDebug()
         {
-            ILBuilder.Instance.Debuggable = true;
-            var method = ILBuilder.Instance.NewMethod<Func<Nested>>("SampleCall");
+            var method = new ILBuilderDebug().NewMethod<Func<Nested>>("SampleCall");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -96,8 +94,7 @@ namespace BTDBTest
         [Test]
         public void CanAccessPrivateProperties()
         {
-            ILBuilder.Instance.Debuggable = true;
-            var method = ILBuilder.Instance.NewMethod<Func<int>>("PrivateAccess");
+            var method = new ILBuilderDebug().NewMethod<Func<int>>("PrivateAccess");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             var propertyInfos = typeof(Nested).GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
@@ -118,8 +115,7 @@ namespace BTDBTest
         [Test]
         public void CanFixFirstParameterRelease()
         {
-            ILBuilder.Instance.Debuggable = false;
-            var method = ILBuilder.Instance.NewMethod("SampleCall", typeof(Func<Nested>),typeof(string));
+            var method = new ILBuilderRelease().NewMethod("SampleCall", typeof(Func<Nested>),typeof(string));
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -138,8 +134,7 @@ namespace BTDBTest
         [Test]
         public void CanFixFirstParameterDebug()
         {
-            ILBuilder.Instance.Debuggable = true;
-            var method = ILBuilder.Instance.NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
+            var method = new ILBuilderDebug().NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il

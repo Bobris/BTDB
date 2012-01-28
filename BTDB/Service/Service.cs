@@ -126,10 +126,9 @@ namespace BTDB.Service
         public Service(IChannel channel)
         {
             _onNewRemoteService = new NewRemoteServiceObservable(this);
-            _fieldHandlerFactory = new DefaultFieldHandlerFactory(this);
-            _channel = channel;
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
             _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory(this);
+            _channel = channel;
             channel.OnReceive.Subscribe(OnReceive, OnDisconnect);
         }
 

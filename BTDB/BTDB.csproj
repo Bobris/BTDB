@@ -56,9 +56,11 @@
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
+    <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\IILDynamicMethodWithThis.cs" />
     <Compile Include="IL\IILEvent.cs" />
     <Compile Include="IL\IILGenForbidenInstructions.cs" />
+    <Compile Include="IL\ILBuilderDebug.cs" />
     <Compile Include="IL\ILConstructorDebugImpl.cs" />
     <Compile Include="IL\ILConstructorImpl.cs" />
     <Compile Include="IL\ILDynamicMethodWithThisImpl.cs" />
@@ -76,7 +78,7 @@
     <Compile Include="IL\IILLocal.cs" />
     <Compile Include="IL\IILMethod.cs" />
     <Compile Include="IL\ILBuilder.cs" />
-    <Compile Include="IL\ILBuilderImpl.cs" />
+    <Compile Include="IL\ILBuilderRelease.cs" />
     <Compile Include="IL\ILDynamicMethodDebugImpl.cs" />
     <Compile Include="IL\ILGenExtensions.cs" />
     <Compile Include="IL\ILGenForbidenInstructionsCheating.cs" />

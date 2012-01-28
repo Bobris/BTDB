@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using BTDB.IL.Caching;
 
 namespace BTDB.IL
 {
@@ -6,9 +7,9 @@ namespace BTDB.IL
     {
         static ILBuilder()
         {
-            Instance = new ILBuilderImpl { Debuggable = Debugger.IsAttached };
+            Instance = Debugger.IsAttached ? new CachingILBuilder(new ILBuilderDebug()) : new CachingILBuilder(new ILBuilderRelease());
         }
 
-        public static IILBuilder Instance { get; set; }
+        public static IILBuilder Instance { get; private set; }
     }
 }
