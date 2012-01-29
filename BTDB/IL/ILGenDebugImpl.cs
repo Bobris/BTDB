@@ -101,12 +101,6 @@ namespace BTDB.IL
             }
         }
 
-        public IILGen Do(Action<IILGen> action)
-        {
-            action(this);
-            return this;
-        }
-
         public IILGen Comment(string text)
         {
             _sourceCodeWriter.WriteLine("// " + text);

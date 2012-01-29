@@ -57,6 +57,9 @@
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
+    <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />
+    <Compile Include="IL\Caching\CachingILGen.cs" />
+    <Compile Include="IL\Caching\IReplayILGen.cs" />
     <Compile Include="IL\IILDynamicMethodWithThis.cs" />
     <Compile Include="IL\IILEvent.cs" />
     <Compile Include="IL\IILGenForbidenInstructions.cs" />

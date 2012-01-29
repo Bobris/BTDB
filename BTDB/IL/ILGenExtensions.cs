@@ -7,6 +7,12 @@ namespace BTDB.IL
 {
     public static class ILGenExtensions
     {
+        public static IILGen Do(this IILGen il, Action<IILGen> action)
+        {
+            action(il);
+            return il;
+        }
+
         public static IILGen LdcI4(this IILGen il, int value)
         {
             switch (value)
