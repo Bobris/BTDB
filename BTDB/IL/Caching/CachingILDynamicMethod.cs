@@ -44,7 +44,7 @@ namespace BTDB.IL.Caching
             }
         }
 
-        class CacheItem
+        internal class CacheItem
         {
             readonly string _name;
             readonly Type _delegate;
@@ -67,11 +67,21 @@ namespace BTDB.IL.Caching
             {
                 var v = obj as CacheItem;
                 if (v == null) return false;
-                if (_name != v._name) return false;
-                if (_delegate != v._delegate) return false;
-                if (_ilGen.Equals(v._ilGen)) return false;
-                return true;
+                return _name == v._name && _delegate == v._delegate && _ilGen.Equals(v._ilGen);
             }
+        }
+    }
+
+    class CachingILDynamicMethod<TDelegate> : CachingILDynamicMethod, IILDynamicMethod<TDelegate> where TDelegate : class
+    {
+        public CachingILDynamicMethod(CachingILBuilder cachingILBuilder, string name)
+            : base(cachingILBuilder, name, typeof(TDelegate))
+        {
+        }
+
+        public new TDelegate Create()
+        {
+            return (TDelegate)base.Create();
         }
     }
 }
