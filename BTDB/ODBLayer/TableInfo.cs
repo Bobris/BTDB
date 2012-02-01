@@ -289,7 +289,8 @@ namespace BTDB.ODBLayer
                 .Castclass(ClientType)
                 .Stloc(0);
             var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
-            var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+            var clientTableVersionInfo = ClientTableVersionInfo;
+            var anyNeedsCtx = tableVersionInfo.NeedsCtx() || clientTableVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
             {
                 ilGenerator.DeclareLocal(typeof(IReaderCtx));
@@ -299,7 +300,6 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
-            var clientTableVersionInfo = ClientTableVersionInfo;
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
