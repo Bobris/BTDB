@@ -398,6 +398,7 @@ namespace BTDB.KVDBLayer
                 {
                     if (_currentState.TransactionCounter != _newState.TransactionCounter)
                     {
+                        _wasAnyCommits = true;
                         if (_currentState.TransactionCounter > _newState.TransactionCounter)
                         {
                             SwapCurrentAndNewState();
