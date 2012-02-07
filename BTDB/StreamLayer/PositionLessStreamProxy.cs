@@ -17,7 +17,7 @@ namespace BTDB.StreamLayer
         public PositionLessStreamProxy(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) throw new ArgumentOutOfRangeException("fileName");
-            _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.RandomAccess);
+            _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
             _dispose = true;
             _position = 0;
             _writeBufUsed = 0;
