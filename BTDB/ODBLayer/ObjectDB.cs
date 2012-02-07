@@ -82,14 +82,16 @@ namespace BTDB.ODBLayer
             }
         }
 
-        static IEnumerable<string> LoadTablesEnum(IKeyValueDBTransaction tr)
+        static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
             tr.SetKeyPrefix(TableNamesPrefix);
+            var keyReader = new KeyValueDBKeyReader(tr);
             var valueReader = new KeyValueDBValueReader(tr);
             while (tr.Enumerate())
             {
+                keyReader.Restart();
                 valueReader.Restart();
-                yield return valueReader.ReadString();
+                yield return new KeyValuePair<uint, string>(keyReader.ReadVUInt32(), valueReader.ReadString());
             }
         }
 

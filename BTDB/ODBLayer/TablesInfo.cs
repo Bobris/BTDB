@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
@@ -40,13 +41,13 @@ namespace BTDB.ODBLayer
             return null;
         }
 
-        internal void LoadTables(IEnumerable<string> tableNames)
+        internal void LoadTables(IEnumerable<KeyValuePair<uint, string>> tableNames)
         {
             lock (_lock)
             {
                 foreach (var tableName in tableNames)
                 {
-                    PrivateCreateTable(tableName);
+                    PrivateCreateTable(tableName.Key, tableName.Value);
                 }
             }
         }
@@ -77,10 +78,15 @@ namespace BTDB.ODBLayer
 
         TableInfo PrivateCreateTable(string name)
         {
+            return PrivateCreateTable((_id2Table.Count == 0) ? 1 : (_id2Table.Keys.Max() + 1), name);
+        }
+
+        TableInfo PrivateCreateTable(uint id, string name)
+        {
             name = string.Intern(name);
-            var t = new TableInfo((uint)(_id2Table.Count + 1), name, _tableInfoResolver);
-            _id2Table.TryAdd(t.Id, t);
-            _name2Table.TryAdd(t.Name, t);
+            var t = new TableInfo(id, name, _tableInfoResolver);
+            _id2Table.TryAdd(id, t);
+            _name2Table.TryAdd(name, t);
             return t;
         }
     }
