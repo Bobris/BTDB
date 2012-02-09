@@ -1,43 +1,49 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using BTDB.StreamLayer;
 
 namespace BTDB.KV2DBLayer
 {
     public class InMemoryFileCollection : IFileCollection
     {
-        readonly List<IPositionLessStream> _list = new List<IPositionLessStream>();
+        readonly ConcurrentDictionary<int, IPositionLessStream> _files = new ConcurrentDictionary<int, IPositionLessStream>();
+        int _maxFileId;
 
-        public int AddFile()
+        public InMemoryFileCollection()
         {
-            lock (_list)
-            {
-                _list.Add(new MemoryPositionLessStream());
-                return _list.Count - 1;
-            }
+            _maxFileId = -1;
+        }
+
+        public int AddFile(string humanHint)
+        {
+            var index = Interlocked.Increment(ref _maxFileId) + 1;
+            var stream = new MemoryPositionLessStream();
+            _files.TryAdd(index, stream);
+            return index;
         }
 
         public int GetCount()
         {
-            lock (_list)
-            {
-                return _list.Count;
-            }
+            return _maxFileId + 1;
         }
 
         public IPositionLessStream GetFile(int index)
         {
-            lock (_list)
-            {
-                return _list[index];
-            }
+            IPositionLessStream value;
+            return _files.TryGetValue(index, out value) ? value : null;
         }
 
         public void RemoveFile(int index)
         {
-            lock (_list)
-            {
-                _list[index] = null;
-            }
+            IPositionLessStream value;
+            if (!_files.TryRemove(index, out value)) return;
+            value.Dispose();
+        }
+
+        public IEnumerable<int> Enumerate()
+        {
+            return _files.Keys;
         }
     }
 }
