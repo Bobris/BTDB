@@ -15,7 +15,6 @@ namespace BTDB.KV2DBLayer.BTree
             if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>(Levels + 2);
             else ctx.Stack.Clear();
             ctx.Stack.Add(new NodeIdxPair { Node = this, Idx = 0 });
-            ctx.Depth = 0;
             if (Levels == 0)
             {
                 RootNode = BTreeLeaf.CreateFirst(ctx);
@@ -27,6 +26,7 @@ namespace BTDB.KV2DBLayer.BTree
                 return;
             }
             ctx.Stack.Add(new NodeIdxPair { Node = RootNode, Idx = 0 });
+            ctx.Depth = 1;
             RootNode.CreateOrUpdate(ctx);
             if (ctx.Split)
             {

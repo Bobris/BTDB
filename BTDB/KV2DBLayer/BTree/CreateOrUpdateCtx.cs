@@ -15,6 +15,9 @@ namespace BTDB.KV2DBLayer.BTree
         internal bool Created;
         internal List<NodeIdxPair> Stack;
         internal long KeyIndex;
+        internal int OldValueFileId;
+        internal int OldValueOfs;
+        internal int OldValueSize;
 
         internal int Depth;
         internal long TransactionId;
