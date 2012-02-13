@@ -22,6 +22,7 @@ namespace BTDB.KV2DBLayer.BTree
         internal int Depth;
         internal long TransactionId;
         internal bool Split; // Node1+Node2 set
+        internal bool SplitInRight; // false key is in Node1, true key is in Node2
         internal bool Update; // Node1 set
         internal IBTreeNode Node1;
         internal IBTreeNode Node2;

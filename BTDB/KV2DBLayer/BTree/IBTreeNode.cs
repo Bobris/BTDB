@@ -4,5 +4,6 @@ namespace BTDB.KV2DBLayer.BTree
     {
         void CreateOrUpdate(CreateOrUpdateCtx ctx);
         long CalcKeyCount();
+        byte[] GetLeftMostKey();
     }
 }

@@ -108,13 +108,7 @@ namespace BTDB.KV2DBLayer.BTree
             {
                 var newKeyValues = new Member[_keyvalues.Length + 1];
                 Array.Copy(_keyvalues, 0, newKeyValues, 0, index);
-                _keyvalues[index] = new Member
-                    {
-                        Key = ctx.WholeKey(),
-                        ValueFileId = ctx.ValueFileId,
-                        ValueOfs = ctx.OldValueOfs,
-                        ValueSize = ctx.ValueSize
-                    };
+                _keyvalues[index] = NewMemberFromCtx(ctx);
                 Array.Copy(_keyvalues, index, newKeyValues, index + 1, _keyvalues.Length - index);
                 var leaf = this;
                 if (ctx.TransactionId != TransactionId)
@@ -131,15 +125,51 @@ namespace BTDB.KV2DBLayer.BTree
                 return;
             }
             ctx.Split = true;
-            var keyCountLeft = (_keyvalues.Length + 1)/2;
+            var keyCountLeft = (_keyvalues.Length + 1) / 2;
             var keyCountRight = _keyvalues.Length + 1 - keyCountLeft;
+            var leftNode = new BTreeLeaf(ctx.TransactionId, keyCountLeft);
+            var rightNode = new BTreeLeaf(ctx.TransactionId, keyCountRight);
+            ctx.Node1 = leftNode;
+            ctx.Node2 = rightNode;
+            if (index < keyCountLeft)
+            {
+                Array.Copy(_keyvalues, 0, leftNode._keyvalues, 0, index);
+                leftNode._keyvalues[index] = NewMemberFromCtx(ctx);
+                Array.Copy(_keyvalues, index, leftNode._keyvalues, index + 1, keyCountLeft - index - 1);
+                Array.Copy(_keyvalues, keyCountLeft - 1, rightNode._keyvalues, 0, keyCountRight);
+                ctx.Stack.Add(new NodeIdxPair { Node = leftNode, Idx = index });
+                ctx.SplitInRight = false;
+            }
+            else
+            {
+                Array.Copy(_keyvalues, 0, leftNode._keyvalues, 0, keyCountLeft);
+                Array.Copy(_keyvalues, keyCountLeft, rightNode._keyvalues, 0, index - keyCountLeft);
+                rightNode._keyvalues[index - keyCountLeft] = NewMemberFromCtx(ctx);
+                Array.Copy(_keyvalues, index, rightNode._keyvalues, index - keyCountLeft + 1, keyCountLeft + keyCountRight - 1 - index);
+                ctx.Stack.Add(new NodeIdxPair { Node = rightNode, Idx = index - keyCountLeft });
+                ctx.SplitInRight = true;
+            }
+        }
 
-            throw new NotImplementedException();
+        static Member NewMemberFromCtx(CreateOrUpdateCtx ctx)
+        {
+            return new Member
+                {
+                    Key = ctx.WholeKey(),
+                    ValueFileId = ctx.ValueFileId,
+                    ValueOfs = ctx.OldValueOfs,
+                    ValueSize = ctx.ValueSize
+                };
         }
 
         public long CalcKeyCount()
         {
             return _keyvalues.Length;
+        }
+
+        public byte[] GetLeftMostKey()
+        {
+            return _keyvalues[0].Key;
         }
     }
 }

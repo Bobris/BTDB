@@ -25,12 +25,12 @@ namespace BTDB.KV2DBLayer.BTree
                 ctx.Created = true;
                 return;
             }
-            ctx.Stack.Add(new NodeIdxPair { Node = RootNode, Idx = 0 });
             ctx.Depth = 1;
             RootNode.CreateOrUpdate(ctx);
             if (ctx.Split)
             {
-                RootNode = BTreeBranch.CreateFromTwo(ctx.Node1, ctx.Node2);
+                RootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
+                ctx.Stack.Insert(1, new NodeIdxPair { Node = RootNode, Idx = ctx.SplitInRight ? 1 : 0 });
                 Levels++;
             }
             else if (ctx.Update)
@@ -46,6 +46,11 @@ namespace BTDB.KV2DBLayer.BTree
         public long CalcKeyCount()
         {
             return KeyValueCount;
+        }
+
+        public byte[] GetLeftMostKey()
+        {
+            return RootNode.GetLeftMostKey();
         }
     }
 }
