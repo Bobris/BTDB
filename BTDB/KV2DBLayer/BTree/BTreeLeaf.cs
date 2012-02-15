@@ -1,9 +1,10 @@
 using System;
+using System.Collections.Generic;
 using BTDB.Buffer;
 
 namespace BTDB.KV2DBLayer.BTree
 {
-    internal class BTreeLeaf : IBTreeNode
+    internal class BTreeLeaf : IBTreeLeafNode, IBTreeNode
     {
         internal readonly long TransactionId;
         Member[] _keyvalues;
@@ -151,6 +152,25 @@ namespace BTDB.KV2DBLayer.BTree
             }
         }
 
+        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key)
+        {
+            var idx = Find(prefix, key);
+            FindResult result;
+            if ((idx & 1) == 1)
+            {
+                result = FindResult.Exact;
+                idx = idx / 2;
+            }
+            else
+            {
+                result = FindResult.Previous;
+                idx = idx/2 - 1;
+            }
+            stack.Add(new NodeIdxPair { Node = this, Idx = idx });
+            keyIndex = idx;
+            return result;
+        }
+
         static Member NewMemberFromCtx(CreateOrUpdateCtx ctx)
         {
             return new Member
@@ -170,6 +190,11 @@ namespace BTDB.KV2DBLayer.BTree
         public byte[] GetLeftMostKey()
         {
             return _keyvalues[0].Key;
+        }
+
+        public byte[] GetKey(int idx)
+        {
+            return _keyvalues[idx].Key;
         }
     }
 }

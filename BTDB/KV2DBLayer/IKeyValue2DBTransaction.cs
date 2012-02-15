@@ -68,6 +68,11 @@ namespace BTDB.KV2DBLayer
         void InvalidateCurrentKey();
 
         /// <summary>
+        /// returns true if current key is valid
+        /// </summary>
+        bool IsValidKey();
+
+        /// <summary>
         /// Return current key.
         /// </summary>
         ByteBuffer GetKey();

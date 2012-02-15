@@ -28,6 +28,11 @@ namespace BTDB.Buffer
             return new ByteBuffer(buffer, (((uint)offset) | 0x80000000u), length);
         }
 
+        public static ByteBuffer NewEmpty()
+        {
+            return new ByteBuffer(BitArrayManipulation.EmptyByteArray, 0, 0);
+        }
+
         private ByteBuffer(byte[] buffer, uint offset, int length)
         {
             _buffer = buffer;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
 
@@ -168,6 +169,15 @@ namespace BTDB.KV2DBLayer.BTree
             {
                 pairCounts[i]++;
             }
+        }
+
+        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key)
+        {
+            var idx = Find(prefix, key);
+            stack.Add(new NodeIdxPair { Node = this, Idx = idx });
+            var result = _children[idx].FindKey(stack, out keyIndex, prefix, key);
+            if (idx > 0) keyIndex += _pairCounts[idx - 1];
+            return result;
         }
 
         public long CalcKeyCount()
