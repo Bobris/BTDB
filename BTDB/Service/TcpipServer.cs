@@ -85,6 +85,7 @@ namespace BTDB.Service
 
             public void Send(ByteBuffer data)
             {
+                if (_disconnected) throw new SocketException((int)SocketError.NotConnected);
                 var vuLen = PackUnpack.LengthVUInt((uint)data.Length);
                 var vuBuf = new byte[vuLen];
                 int o = 0;
@@ -95,7 +96,6 @@ namespace BTDB.Service
                 if (!IsConnected())
                 {
                     SignalDisconnected();
-                    return;
                 }
                 throw new SocketException((int)socketError);
             }

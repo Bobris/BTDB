@@ -7,7 +7,8 @@
             //new KeyValueDBReplayer("bug.log").Replay();
             //new SpeedTest1().Test();
             //new ChannelSpeedTest().Run(args);
-            new RxSpeedTest().Run();
+            //new RxSpeedTest().Run();
+            new ComplexServiceTest().Run();
         }
     }
 }

@@ -65,6 +65,7 @@ namespace BTDB.Service
         ITypeConvertorGenerator _typeConvertorGenerator;
         IFieldHandlerFactory _fieldHandlerFactory;
         readonly NewRemoteServiceObservable _onNewRemoteService;
+        bool _disconnected;
 
         class NewRemoteServiceObservable : IObservable<string>
         {
@@ -134,6 +135,7 @@ namespace BTDB.Service
 
         void OnDisconnect()
         {
+            _disconnected = true;
             foreach (var clientAck in _clientAcks)
             {
                 clientAck.Value.Binding.HandleCancellation(clientAck.Value.TaskCompletionSource);
@@ -973,8 +975,14 @@ namespace BTDB.Service
             set { _fieldHandlerFactory = value; }
         }
 
+        void ThrowOnDisconnected()
+        {
+            if (_disconnected) throw new InvalidOperationException("Already disconnected");
+        }
+
         public AbstractBufferedWriter StartTwoWayMarshaling(ClientBindInf binding, out Task resultReturned)
         {
+            ThrowOnDisconnected();
             var message = new ByteBufferWriter();
             message.WriteVUInt32(binding.BindingId);
             var taskWithSource = binding.TaskWithSourceCreator();
@@ -987,11 +995,13 @@ namespace BTDB.Service
 
         public void FinishTwoWayMarshaling(AbstractBufferedWriter writer)
         {
+            ThrowOnDisconnected();
             _channel.Send(((ByteBufferWriter)writer).Data);
         }
 
         public AbstractBufferedWriter StartOneWayMarshaling(ClientBindInf binding)
         {
+            ThrowOnDisconnected();
             var message = new ByteBufferWriter();
             message.WriteVUInt32(binding.BindingId);
             return message;
@@ -999,6 +1009,7 @@ namespace BTDB.Service
 
         public void FinishOneWayMarshaling(AbstractBufferedWriter writer)
         {
+            ThrowOnDisconnected();
             _channel.Send(((ByteBufferWriter)writer).Data);
         }
 

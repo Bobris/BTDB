@@ -93,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ChannelSpeedTest.cs" />
+    <Compile Include="ComplexServiceTest.cs" />
     <Compile Include="KeyValueDBReplayer.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
