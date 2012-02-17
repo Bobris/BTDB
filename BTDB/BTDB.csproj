@@ -136,6 +136,7 @@
     <Compile Include="IOC\CRegs\SingletonImpl.cs" />
     <Compile Include="KV2DBLayer\BTree\BTreeBranch.cs" />
     <Compile Include="KV2DBLayer\BTree\BTreeLeaf.cs" />
+    <Compile Include="KV2DBLayer\BTree\BTreeLeafMember.cs" />
     <Compile Include="KV2DBLayer\BTree\BTreeRoot.cs" />
     <Compile Include="KV2DBLayer\BTree\CreateOrUpdateCtx.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeLeafNode.cs" />

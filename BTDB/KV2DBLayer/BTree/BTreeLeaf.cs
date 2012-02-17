@@ -7,16 +7,16 @@ namespace BTDB.KV2DBLayer.BTree
     internal class BTreeLeaf : IBTreeLeafNode, IBTreeNode
     {
         internal readonly long TransactionId;
-        Member[] _keyvalues;
+        BTreeLeafMember[] _keyvalues;
         const int MaxLength = 10;
 
         BTreeLeaf(long transactionId, int length)
         {
             TransactionId = transactionId;
-            _keyvalues = new Member[length];
+            _keyvalues = new BTreeLeafMember[length];
         }
 
-        BTreeLeaf(long transactionId, Member[] newKeyValues)
+        BTreeLeaf(long transactionId, BTreeLeafMember[] newKeyValues)
         {
             TransactionId = transactionId;
             _keyvalues = newKeyValues;
@@ -25,7 +25,7 @@ namespace BTDB.KV2DBLayer.BTree
         internal static IBTreeNode CreateFirst(CreateOrUpdateCtx ctx)
         {
             var result = new BTreeLeaf(ctx.TransactionId, 1);
-            result._keyvalues[0] = new Member
+            result._keyvalues[0] = new BTreeLeafMember
                 {
                     Key = ctx.WholeKey(),
                     ValueFileId = ctx.ValueFileId,
@@ -33,14 +33,6 @@ namespace BTDB.KV2DBLayer.BTree
                     ValueSize = ctx.ValueSize
                 };
             return result;
-        }
-
-        struct Member
-        {
-            internal byte[] Key;
-            internal int ValueFileId;
-            internal int ValueOfs;
-            internal int ValueSize;
         }
 
         int Find(byte[] prefix, ByteBuffer key)
@@ -107,7 +99,7 @@ namespace BTDB.KV2DBLayer.BTree
             ctx.KeyIndex = index;
             if (_keyvalues.Length < MaxLength)
             {
-                var newKeyValues = new Member[_keyvalues.Length + 1];
+                var newKeyValues = new BTreeLeafMember[_keyvalues.Length + 1];
                 Array.Copy(_keyvalues, 0, newKeyValues, 0, index);
                 _keyvalues[index] = NewMemberFromCtx(ctx);
                 Array.Copy(_keyvalues, index, newKeyValues, index + 1, _keyvalues.Length - index);
@@ -164,16 +156,16 @@ namespace BTDB.KV2DBLayer.BTree
             else
             {
                 result = FindResult.Previous;
-                idx = idx/2 - 1;
+                idx = idx / 2 - 1;
             }
             stack.Add(new NodeIdxPair { Node = this, Idx = idx });
             keyIndex = idx;
             return result;
         }
 
-        static Member NewMemberFromCtx(CreateOrUpdateCtx ctx)
+        static BTreeLeafMember NewMemberFromCtx(CreateOrUpdateCtx ctx)
         {
-            return new Member
+            return new BTreeLeafMember
                 {
                     Key = ctx.WholeKey(),
                     ValueFileId = ctx.ValueFileId,
@@ -192,9 +184,19 @@ namespace BTDB.KV2DBLayer.BTree
             return _keyvalues[0].Key;
         }
 
+        public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+        {
+            stack.Add(new NodeIdxPair { Node = this, Idx = (int)keyIndex });
+        }
+
         public byte[] GetKey(int idx)
         {
             return _keyvalues[idx].Key;
+        }
+
+        public BTreeLeafMember GetMember(int idx)
+        {
+            return _keyvalues[idx];
         }
     }
 }

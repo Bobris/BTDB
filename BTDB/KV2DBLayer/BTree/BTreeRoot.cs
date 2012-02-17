@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using BTDB.Buffer;
 
 namespace BTDB.KV2DBLayer.BTree
@@ -67,6 +68,13 @@ namespace BTDB.KV2DBLayer.BTree
         public byte[] GetLeftMostKey()
         {
             return _rootNode.GetLeftMostKey();
+        }
+
+        public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+        {
+            Debug.Assert(keyIndex >= 0 && keyIndex < _keyValueCount);
+            stack.Clear();
+            _rootNode.FillStackByIndex(stack, keyIndex);
         }
 
         public long TransactionId

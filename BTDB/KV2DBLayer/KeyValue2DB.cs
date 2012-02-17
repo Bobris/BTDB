@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KV2DBLayer.BTree;
+using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer
 {
@@ -11,6 +13,9 @@ namespace BTDB.KV2DBLayer
         readonly IFileCollection _fileCollection;
         IBTreeRootNode _lastCommited;
         KeyValue2DBTransaction _writingTransaction;
+        readonly object _writeLock = new object();
+
+
 
         public KeyValue2DB(IFileCollection fileCollection)
         {
@@ -30,12 +35,42 @@ namespace BTDB.KV2DBLayer
         {
             throw new NotImplementedException();
         }
+
+        internal IBTreeRootNode MakeWrittableTransaction(KeyValue2DBTransaction keyValue2DBTransaction, IBTreeRootNode btreeRoot)
+        {
+            lock (_writeLock)
+            {
+                if (_writingTransaction != null) throw new BTDBTransactionRetryException("Another writting transaction already running");
+                if (_lastCommited != btreeRoot) throw new BTDBTransactionRetryException("Another writting transaction already finished");
+                _writingTransaction = keyValue2DBTransaction;
+                return btreeRoot.NewTransactionRoot();
+            }
+        }
+
+        internal void CommitWrittingTransaction(KeyValue2DBTransaction keyValue2DBTransaction, IBTreeRootNode btreeRoot)
+        {
+            Debug.Assert(_writingTransaction == keyValue2DBTransaction);
+            lock (_writeLock)
+            {
+                _writingTransaction = null;
+                _lastCommited = btreeRoot;
+            }
+        }
+
+        internal void RevertWrittingTransaction(KeyValue2DBTransaction keyValue2DBTransaction)
+        {
+            Debug.Assert(_writingTransaction == keyValue2DBTransaction);
+            lock (_writeLock)
+            {
+                _writingTransaction = null;
+            }
+        }
     }
 
     internal class KeyValue2DBTransaction : IKeyValue2DBTransaction
     {
         readonly KeyValue2DB _keyValue2DB;
-        readonly IBTreeRootNode _btreeRoot;
+        IBTreeRootNode _btreeRoot;
         List<NodeIdxPair> _stack = new List<NodeIdxPair>();
         byte[] _prefix;
         bool _writting;
@@ -62,7 +97,7 @@ namespace BTDB.KV2DBLayer
 
         public bool FindFirstKey()
         {
-            throw new NotImplementedException();
+            return SetKeyIndex(0);
         }
 
         public bool FindLastKey()
@@ -87,6 +122,7 @@ namespace BTDB.KV2DBLayer
 
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
+            MakeWrittable();
             var ctx = new CreateOrUpdateCtx();
             ctx.KeyPrefix = _prefix;
             ctx.Key = key;
@@ -97,6 +133,14 @@ namespace BTDB.KV2DBLayer
             _btreeRoot.CreateOrUpdate(ctx);
             _keyIndex = ctx.KeyIndex;
             return ctx.Created;
+        }
+
+        void MakeWrittable()
+        {
+            if (_writting) return;
+            _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, _btreeRoot);
+            _writting = true;
+            InvalidateCurrentKey();
         }
 
         public long GetKeyValueCount()
@@ -140,7 +184,34 @@ namespace BTDB.KV2DBLayer
                 return false;
             }
             _keyIndex = index + _prefixKeyStart;
-            throw new NotImplementedException();
+            if (_keyIndex >= _btreeRoot.CalcKeyCount())
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
+            _btreeRoot.FillStackByIndex(_stack, _keyIndex);
+            if (_prefixKeyCount >= 0)
+                return true;
+            var key = GetCurrentKeyFromStack();
+            if (CheckPrefixIn(key))
+            {
+                return true;
+            }
+            InvalidateCurrentKey();
+            return false;
+        }
+
+        bool CheckPrefixIn(byte[] key)
+        {
+            return BitArrayManipulation.CompareByteArray(
+                key, 0, Math.Min(key.Length, _prefix.Length),
+                _prefix, 0, _prefix.Length) == 0;
+        }
+
+        byte[] GetCurrentKeyFromStack()
+        {
+            var nodeIdxPair = _stack[_stack.Count - 1];
+            return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
         }
 
         public void InvalidateCurrentKey()
@@ -157,8 +228,7 @@ namespace BTDB.KV2DBLayer
         public ByteBuffer GetKey()
         {
             EnsureValidKey();
-            var nodeAndIdx = _stack[_stack.Count - 1];
-            var wholeKey = ((IBTreeLeafNode)nodeAndIdx.Node).GetKey(nodeAndIdx.Idx);
+            var wholeKey = GetCurrentKeyFromStack();
             return ByteBuffer.NewAsync(wholeKey, _prefix.Length, wholeKey.Length - _prefix.Length);
         }
 
@@ -173,12 +243,20 @@ namespace BTDB.KV2DBLayer
         public ByteBuffer GetValue()
         {
             EnsureValidKey();
+            var nodeIdxPair = _stack[_stack.Count - 1];
+            ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
             throw new NotImplementedException();
         }
 
         public void SetValue(ByteBuffer value)
         {
             EnsureValidKey();
+            var keyIndexBackup = _keyIndex;
+            MakeWrittable();
+            if (_keyIndex != keyIndexBackup)
+            {
+                _btreeRoot.FillStackByIndex(_stack, _keyIndex);
+            }
             throw new NotImplementedException();
         }
 
@@ -195,7 +273,15 @@ namespace BTDB.KV2DBLayer
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
         {
+            if (firstKeyIndex < 0) firstKeyIndex = 0;
+            if (lastKeyIndex >= GetKeyValueCount()) lastKeyIndex = _prefixKeyCount - 1;
             if (lastKeyIndex < firstKeyIndex) return;
+            MakeWrittable();
+            firstKeyIndex += _prefixKeyStart;
+            lastKeyIndex += _prefixKeyStart;
+            InvalidateCurrentKey();
+            _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
+
             throw new NotImplementedException();
         }
 
@@ -206,7 +292,22 @@ namespace BTDB.KV2DBLayer
 
         public void Commit()
         {
-            throw new NotImplementedException();
+            if (_btreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
+            if (!_writting) return;
+            InvalidateCurrentKey();
+            _keyValue2DB.CommitWrittingTransaction(this, _btreeRoot);
+            _writting = false;
+            _btreeRoot = null;
+        }
+
+        public void Dispose()
+        {
+            if (_writting)
+            {
+                _keyValue2DB.RevertWrittingTransaction(this);
+                _writting = false;
+            }
+            _btreeRoot = null;
         }
     }
 }

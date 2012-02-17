@@ -1,8 +1,9 @@
+using System;
 using BTDB.Buffer;
 
 namespace BTDB.KV2DBLayer
 {
-    public interface IKeyValue2DBTransaction
+    public interface IKeyValue2DBTransaction : IDisposable
     {
         /// <summary>
         /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key

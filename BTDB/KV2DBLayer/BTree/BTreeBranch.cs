@@ -189,5 +189,26 @@ namespace BTDB.KV2DBLayer.BTree
         {
             return _children[0].GetLeftMostKey();
         }
+
+        public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
+        {
+            var left = 0;
+            var right = _pairCounts.Length - 1;
+            while (left < right)
+            {
+                var middle = (left + right) / 2;
+                var currentIndex = _pairCounts[middle];
+                if (keyIndex < currentIndex)
+                {
+                    right = middle - 1;
+                }
+                else
+                {
+                    left = middle;
+                }
+            }
+            stack.Add(new NodeIdxPair {Node = this,Idx = left});
+            _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
+        }
     }
 }
