@@ -45,5 +45,9 @@ namespace BTDB.KV2DBLayer
         {
             return _files.Keys;
         }
+
+        public void Dispose()
+        {
+        }
     }
 }

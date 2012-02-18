@@ -149,6 +149,7 @@
     <Compile Include="KV2DBLayer\IKeyValue2DBTransaction.cs" />
     <Compile Include="KV2DBLayer\InMemoryFileCollection.cs" />
     <Compile Include="KV2DBLayer\KeyValue2DB.cs" />
+    <Compile Include="KV2DBLayer\KeyValue2DBTransaction.cs" />
     <Compile Include="KV2DBLayer\OnDiskFileCollection.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />

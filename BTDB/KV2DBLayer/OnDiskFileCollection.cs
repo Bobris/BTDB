@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -7,7 +6,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KV2DBLayer
 {
-    public class OnDiskFileCollection : IFileCollection, IDisposable
+    public class OnDiskFileCollection : IFileCollection
     {
         readonly string _directory;
         readonly ConcurrentDictionary<int, KeyValuePair<string, IPositionLessStream>> _files = new ConcurrentDictionary<int, KeyValuePair<string, IPositionLessStream>>();

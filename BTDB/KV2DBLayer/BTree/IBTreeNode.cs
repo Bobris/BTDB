@@ -10,5 +10,6 @@ namespace BTDB.KV2DBLayer.BTree
         long CalcKeyCount();
         byte[] GetLeftMostKey();
         void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex);
+        long FindLastWithPrefix(byte[] prefix);
     }
 }

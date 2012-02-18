@@ -77,6 +77,12 @@ namespace BTDB.KV2DBLayer.BTree
             _rootNode.FillStackByIndex(stack, keyIndex);
         }
 
+        public long FindLastWithPrefix(byte[] prefix)
+        {
+            if (_rootNode == null) return -1;
+            return _rootNode.FindLastWithPrefix(prefix);
+        }
+
         public long TransactionId
         {
             get { return _transactionId; }
@@ -84,11 +90,7 @@ namespace BTDB.KV2DBLayer.BTree
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            var result = new BTreeRoot(_transactionId + 1);
-            result._levels = _levels;
-            result._keyValueCount = _keyValueCount;
-            result._rootNode = _rootNode;
-            return result;
+            return new BTreeRoot(_transactionId + 1) { _levels = _levels, _keyValueCount = _keyValueCount, _rootNode = _rootNode };
         }
     }
 }

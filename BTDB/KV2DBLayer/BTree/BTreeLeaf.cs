@@ -189,6 +189,35 @@ namespace BTDB.KV2DBLayer.BTree
             stack.Add(new NodeIdxPair { Node = this, Idx = (int)keyIndex });
         }
 
+        public long FindLastWithPrefix(byte[] prefix)
+        {
+            var left = 0;
+            var right = _keyvalues.Length;
+            byte[] currentKey;
+            int result;
+            while (left < right)
+            {
+                var middle = (left + right) / 2;
+                currentKey = _keyvalues[middle].Key;
+                result = BitArrayManipulation.CompareByteArray(prefix, 0, prefix.Length,
+                                                               currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
+                if (result < 0)
+                {
+                    right = middle;
+                }
+                else
+                {
+                    left = middle + 1;
+                }
+
+            }
+            currentKey = _keyvalues[left].Key;
+            result = BitArrayManipulation.CompareByteArray(prefix, 0, prefix.Length,
+                                                           currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
+            if (result < 0) left--;
+            return left;
+        }
+
         public byte[] GetKey(int idx)
         {
             return _keyvalues[idx].Key;

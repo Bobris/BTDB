@@ -207,8 +207,30 @@ namespace BTDB.KV2DBLayer.BTree
                     left = middle;
                 }
             }
-            stack.Add(new NodeIdxPair {Node = this,Idx = left});
+            stack.Add(new NodeIdxPair { Node = this, Idx = left });
             _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
+        }
+
+        public long FindLastWithPrefix(byte[] prefix)
+        {
+            var left = 0;
+            var right = _keys.Length;
+            while (left < right)
+            {
+                var middle = (left + right) / 2;
+                var currentKey = _keys[middle];
+                var result = BitArrayManipulation.CompareByteArray(prefix, 0, prefix.Length,
+                                                                   currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
+                if (result < 0)
+                {
+                    right = middle;
+                }
+                else
+                {
+                    left = middle + 1;
+                }
+            }
+            return _children[left].FindLastWithPrefix(prefix) + (left > 0 ? _pairCounts[left] : 0);
         }
     }
 }
