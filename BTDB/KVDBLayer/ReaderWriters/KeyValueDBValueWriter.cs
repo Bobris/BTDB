@@ -23,6 +23,11 @@ namespace BTDB.KVDBLayer
             Pos = 0;
         }
 
+        public override long GetCurrentPosition()
+        {
+            return _ofs + Pos;
+        }
+
         public virtual void Dispose()
         {
             if (Pos != 0) FlushBuffer();

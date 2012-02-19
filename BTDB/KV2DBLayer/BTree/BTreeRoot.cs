@@ -57,7 +57,17 @@ namespace BTDB.KV2DBLayer.BTree
                 keyIndex = -1;
                 return FindResult.NotFound;
             }
-            return _rootNode.FindKey(stack, out keyIndex, prefix, key);
+            var result = _rootNode.FindKey(stack, out keyIndex, prefix, key);
+            if (result == FindResult.Previous)
+            {
+                if (keyIndex < 0)
+                {
+                    keyIndex = 0;
+                    stack[stack.Count - 1] = new NodeIdxPair { Node = stack[stack.Count - 1].Node, Idx = stack[stack.Count - 1].Idx - 1 };
+                    result = FindResult.Next;
+                }
+            }
+            return result;
         }
 
         public long CalcKeyCount()

@@ -35,6 +35,11 @@ namespace BTDBTest
                 Pos = 0;
                 End = Buf.Length;
             }
+
+            public override long GetCurrentPosition()
+            {
+                throw new AssertionException("Should not be called");
+            }
         }
 
         class BufferedReaderStub : AbstractBufferedReader

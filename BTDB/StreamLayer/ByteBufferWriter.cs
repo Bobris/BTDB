@@ -30,6 +30,11 @@ namespace BTDB.StreamLayer
             Pos = 0;
         }
 
+        public override long GetCurrentPosition()
+        {
+            return _result.Length + Pos;
+        }
+
         void FinalFlushIfNeeded()
         {
             if (Pos != 0)

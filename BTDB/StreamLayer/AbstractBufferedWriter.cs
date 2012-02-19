@@ -16,6 +16,7 @@ namespace BTDB.StreamLayer
         protected int End;
 
         public abstract void FlushBuffer();
+        public abstract long GetCurrentPosition();
 
         public void WriteByteZero()
         {
@@ -290,6 +291,11 @@ namespace BTDB.StreamLayer
         {
             if (value == null) return;
             WriteBlock(value);
+        }
+
+        public void WriteBlock(ByteBuffer data)
+        {
+            WriteBlock(data.Buffer,data.Offset,data.Length);
         }
     }
 }

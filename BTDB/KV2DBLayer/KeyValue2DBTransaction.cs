@@ -13,13 +13,14 @@ namespace BTDB.KV2DBLayer
         readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
         byte[] _prefix;
         bool _writting;
+        bool _preapprovedWritting;
         long _prefixKeyStart;
         long _prefixKeyCount;
         long _keyIndex;
 
         public KeyValue2DBTransaction(KeyValue2DB keyValue2DB, IBTreeRootNode btreeRoot, bool writting)
         {
-            _writting = writting;
+            _preapprovedWritting = writting;
             _keyValue2DB = keyValue2DB;
             _btreeRoot = btreeRoot;
             _prefix = BitArrayManipulation.EmptyByteArray;
@@ -67,26 +68,39 @@ namespace BTDB.KV2DBLayer
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWrittable();
+            int valueFileId;
+            int valueOfs;
+            int valueSize;
+            _keyValue2DB.WriteCreateOrUpdateCommand(key, value, out valueFileId, out valueOfs, out valueSize);
             var ctx = new CreateOrUpdateCtx
                 {
                     KeyPrefix = _prefix,
                     Key = key,
-                    ValueFileId = 0,
-                    ValueOfs = 0,
-                    ValueSize = value.Length,
+                    ValueFileId = valueFileId,
+                    ValueOfs = valueOfs,
+                    ValueSize = valueSize,
                     Stack = _stack
                 };
             _btreeRoot.CreateOrUpdate(ctx);
             _keyIndex = ctx.KeyIndex;
+            if (ctx.Created && _prefixKeyCount >= 0) _prefixKeyCount++;
             return ctx.Created;
         }
 
         void MakeWrittable()
         {
             if (_writting) return;
+            if (_preapprovedWritting)
+            {
+                _writting = true;
+                _preapprovedWritting = false;
+                _keyValue2DB.WriteStartTransaction(_btreeRoot.TransactionId);
+                return;
+            }
             _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, _btreeRoot);
             _writting = true;
             InvalidateCurrentKey();
+            _keyValue2DB.WriteStartTransaction(_btreeRoot.TransactionId);
         }
 
         public long GetKeyValueCount()
@@ -198,7 +212,7 @@ namespace BTDB.KV2DBLayer
             EnsureValidKey();
             var nodeIdxPair = _stack[_stack.Count - 1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-            throw new NotImplementedException();
+            return _keyValue2DB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
         }
 
         public void SetValue(ByteBuffer value)
@@ -210,7 +224,10 @@ namespace BTDB.KV2DBLayer
             {
                 _btreeRoot.FillStackByIndex(_stack, _keyIndex);
             }
-            throw new NotImplementedException();
+            var nodeIdxPair = _stack[_stack.Count - 1];
+            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
+            _keyValue2DB.WriteCreateOrUpdateCommand(ByteBuffer.NewAsync(leafMember.Key),value,out leafMember.ValueFileId, out leafMember.ValueOfs, out leafMember.ValueSize);
+            ((IBTreeLeafNode) nodeIdxPair.Node).SetMember(nodeIdxPair.Idx, leafMember);
         }
 
         public void EraseCurrent()
@@ -246,19 +263,27 @@ namespace BTDB.KV2DBLayer
         public void Commit()
         {
             if (_btreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
-            if (!_writting) return;
             InvalidateCurrentKey();
-            _keyValue2DB.CommitWrittingTransaction(_btreeRoot);
-            _writting = false;
+            if (_preapprovedWritting)
+            {
+                _preapprovedWritting = false;
+                _keyValue2DB.RevertWrittingTransaction(true);
+            }
+            else if (_writting)
+            {
+                _keyValue2DB.CommitWrittingTransaction(_btreeRoot);
+                _writting = false;
+            }
             _btreeRoot = null;
         }
 
         public void Dispose()
         {
-            if (_writting)
+            if (_writting || _preapprovedWritting)
             {
-                _keyValue2DB.RevertWrittingTransaction();
+                _keyValue2DB.RevertWrittingTransaction(_preapprovedWritting);
                 _writting = false;
+                _preapprovedWritting = false;
             }
             _btreeRoot = null;
         }

@@ -101,7 +101,7 @@ namespace BTDB.KV2DBLayer.BTree
             {
                 var newKeyValues = new BTreeLeafMember[_keyvalues.Length + 1];
                 Array.Copy(_keyvalues, 0, newKeyValues, 0, index);
-                _keyvalues[index] = NewMemberFromCtx(ctx);
+                newKeyValues[index] = NewMemberFromCtx(ctx);
                 Array.Copy(_keyvalues, index, newKeyValues, index + 1, _keyvalues.Length - index);
                 var leaf = this;
                 if (ctx.TransactionId != TransactionId)
@@ -226,6 +226,11 @@ namespace BTDB.KV2DBLayer.BTree
         public BTreeLeafMember GetMember(int idx)
         {
             return _keyvalues[idx];
+        }
+
+        public void SetMember(int idx, BTreeLeafMember value)
+        {
+            _keyvalues[idx] = value;
         }
     }
 }
