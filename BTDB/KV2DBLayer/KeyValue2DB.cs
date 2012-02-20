@@ -78,7 +78,7 @@ namespace BTDB.KV2DBLayer
 
         internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot)
         {
-
+            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EndOfTransaction);
             lock (_writeLock)
             {
                 _writingTransaction = null;
@@ -172,6 +172,22 @@ namespace BTDB.KV2DBLayer
             var file = _fileCollection.GetFile(valueFileId);
             file.Read(result.Buffer, 0, valueSize, (ulong) valueOfs);
             return result;
+        }
+
+        public void WriteEraseOneCommand(byte[] key)
+        {
+            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EraseOne);
+            _writerWithTransactionLog.WriteVInt32(key.Length);
+            _writerWithTransactionLog.WriteBlock(key);
+        }
+
+        public void WriteEraseRangeCommand(byte[] firstKey, byte[] secondKey)
+        {
+            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EraseRange);
+            _writerWithTransactionLog.WriteVInt32(firstKey.Length);
+            _writerWithTransactionLog.WriteVInt32(secondKey.Length);
+            _writerWithTransactionLog.WriteBlock(firstKey);
+            _writerWithTransactionLog.WriteBlock(secondKey);
         }
     }
 }

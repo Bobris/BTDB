@@ -251,8 +251,18 @@ namespace BTDB.KV2DBLayer
             lastKeyIndex += _prefixKeyStart;
             InvalidateCurrentKey();
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
-
-            throw new NotImplementedException();
+            _btreeRoot.FillStackByIndex(_stack,firstKeyIndex);
+            if (firstKeyIndex==lastKeyIndex)
+            {
+                _keyValue2DB.WriteEraseOneCommand(GetCurrentKeyFromStack());
+            }
+            else
+            {
+                var firstKey = GetCurrentKeyFromStack();
+                _btreeRoot.FillStackByIndex(_stack,lastKeyIndex);
+                _keyValue2DB.WriteEraseRangeCommand(firstKey, GetCurrentKeyFromStack());
+            }
+            _btreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);
         }
 
         public bool IsWritting()
