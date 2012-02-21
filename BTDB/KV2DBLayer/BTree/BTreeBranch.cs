@@ -84,7 +84,7 @@ namespace BTDB.KV2DBLayer.BTree
                 for (var i = index; i < newPairCounts.Length; i++)
                 {
                     previousPairCount += newChildren[i].CalcKeyCount();
-                    _pairCounts[i] = previousPairCount;
+                    newPairCounts[i] = previousPairCount;
                 }
                 ctx.Node1 = null;
                 ctx.Node2 = null;
@@ -110,7 +110,7 @@ namespace BTDB.KV2DBLayer.BTree
                 ctx.Split = true;
 
                 var keyCountLeft = (newChildren.Length + 1) / 2;
-                var keyCountRight = newChildren.Length + 1 - keyCountLeft;
+                var keyCountRight = newChildren.Length - keyCountLeft;
 
                 var splitKeys = new byte[keyCountLeft - 1][];
                 var splitChildren = new IBTreeNode[keyCountLeft];
@@ -149,7 +149,7 @@ namespace BTDB.KV2DBLayer.BTree
                     var newPairCounts = new long[_children.Length];
                     Array.Copy(_keys, newKeys, _keys.Length);
                     Array.Copy(_children, newChildren, _children.Length);
-                    _children[index] = ctx.Node1;
+                    newChildren[index] = ctx.Node1;
                     Array.Copy(_pairCounts, newPairCounts, _pairCounts.Length);
                     newBranch = new BTreeBranch(ctx.TransactionId, newKeys, newChildren, newPairCounts);
                     ctx.Node1 = newBranch;
@@ -158,8 +158,8 @@ namespace BTDB.KV2DBLayer.BTree
                 {
                     _children[index] = ctx.Node1;
                     ctx.Update = false;
+                    ctx.Node1 = null;
                 }
-                ctx.Node1 = null;
                 ctx.Stack[ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
             }
             Debug.Assert(newBranch.TransactionId == ctx.TransactionId);
@@ -231,6 +231,18 @@ namespace BTDB.KV2DBLayer.BTree
                 }
             }
             return _children[left].FindLastWithPrefix(prefix) + (left > 0 ? _pairCounts[left] : 0);
+        }
+
+        public bool NextIdxValid(int idx)
+        {
+            return idx + 1 < _children.Length;
+        }
+
+        public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+        {
+            var leftMost = _children[idx];
+            stack.Add(new NodeIdxPair {Node = leftMost, Idx = 0});
+            leftMost.FillStackByLeftMost(stack, 0);
         }
     }
 }

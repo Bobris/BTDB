@@ -413,7 +413,7 @@ namespace SimpleTester
 
         public void Test()
         {
-            DoWork4();
+            DoWork5(true);
         }
     }
 }

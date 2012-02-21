@@ -169,7 +169,7 @@ namespace BTDB.KV2DBLayer.BTree
                 {
                     Key = ctx.WholeKey(),
                     ValueFileId = ctx.ValueFileId,
-                    ValueOfs = ctx.OldValueOfs,
+                    ValueOfs = ctx.ValueOfs,
                     ValueSize = ctx.ValueSize
                 };
         }
@@ -216,6 +216,16 @@ namespace BTDB.KV2DBLayer.BTree
                                                            currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
             if (result < 0) left--;
             return left;
+        }
+
+        public bool NextIdxValid(int idx)
+        {
+            return idx + 1 < _keyvalues.Length;
+        }
+
+        public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+        {
+            // Nothing to do
         }
 
         public byte[] GetKey(int idx)

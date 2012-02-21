@@ -95,6 +95,7 @@
     <Compile Include="ChannelSpeedTest.cs" />
     <Compile Include="ComplexServiceTest.cs" />
     <Compile Include="KeyValueDBReplayer.cs" />
+    <Compile Include="KV2SpeedTest.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RxSpeedTest.cs" />

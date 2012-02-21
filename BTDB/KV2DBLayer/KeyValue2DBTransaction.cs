@@ -57,7 +57,17 @@ namespace BTDB.KV2DBLayer
         public bool FindNextKey()
         {
             if (_keyIndex < 0) return FindFirstKey();
-            throw new NotImplementedException();
+            if (_btreeRoot.FindNextKey(_stack))
+            {
+                if (!CheckPrefixIn(GetCurrentKeyFromStack()))
+                {
+                    InvalidateCurrentKey();
+                    return false;
+                }
+                _keyIndex++;
+                return true;
+            }
+            return false;
         }
 
         public FindResult Find(ByteBuffer key)

@@ -11,5 +11,7 @@ namespace BTDB.KV2DBLayer.BTree
         byte[] GetLeftMostKey();
         void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex);
         long FindLastWithPrefix(byte[] prefix);
+        bool NextIdxValid(int idx);
+        void FillStackByLeftMost(List<NodeIdxPair> stack, int i);
     }
 }

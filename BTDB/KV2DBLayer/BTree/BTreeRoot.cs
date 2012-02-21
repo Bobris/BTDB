@@ -31,7 +31,7 @@ namespace BTDB.KV2DBLayer.BTree
                 ctx.Created = true;
                 return;
             }
-            ctx.Depth = 1;
+            ctx.Depth = 0;
             _rootNode.CreateOrUpdate(ctx);
             if (ctx.Split)
             {
@@ -93,6 +93,17 @@ namespace BTDB.KV2DBLayer.BTree
             return _rootNode.FindLastWithPrefix(prefix);
         }
 
+        public bool NextIdxValid(int idx)
+        {
+            return false;
+        }
+
+        public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
+        {
+            stack.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
+            _rootNode.FillStackByLeftMost(stack, 0);
+        }
+
         public long TransactionId
         {
             get { return _transactionId; }
@@ -106,6 +117,24 @@ namespace BTDB.KV2DBLayer.BTree
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
         {
             throw new System.NotImplementedException();
+        }
+
+        public bool FindNextKey(List<NodeIdxPair> stack)
+        {
+            int idx = stack.Count - 1;
+            while (idx>=0)
+            {
+                var pair = stack[idx];
+                if (pair.Node.NextIdxValid(pair.Idx))
+                {
+                    stack.RemoveRange(idx + 1, stack.Count - idx - 1);
+                    stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx + 1 };
+                    pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
+                    return true;
+                }
+                idx--;
+            }
+            return false;
         }
     }
 }
