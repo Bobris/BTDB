@@ -142,6 +142,7 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeLeafNode.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
+    <Compile Include="KV2DBLayer\ExtensionMethods.cs" />
     <Compile Include="KV2DBLayer\FindResult.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeRootNode.cs" />
     <Compile Include="KV2DBLayer\IFileCollection.cs" />

@@ -125,7 +125,10 @@ namespace BTDB.KV2DBLayer.BTree
                 splitPairCounts = new long[keyCountRight];
                 Array.Copy(newKeys, keyCountLeft, splitKeys, 0, splitKeys.Length);
                 Array.Copy(newChildren, keyCountLeft, splitChildren, 0, splitChildren.Length);
-                Array.Copy(newPairCounts, keyCountLeft, splitPairCounts, 0, splitPairCounts.Length);
+                for (int i = 0; i < splitPairCounts.Length; i++)
+                {
+                    splitPairCounts[i] = newPairCounts[keyCountLeft + i] - newPairCounts[keyCountLeft - 1];
+                }
                 ctx.Node2 = new BTreeBranch(ctx.TransactionId, splitKeys, splitChildren, splitPairCounts);
 
                 if (index < keyCountLeft)
@@ -200,11 +203,11 @@ namespace BTDB.KV2DBLayer.BTree
                 var currentIndex = _pairCounts[middle];
                 if (keyIndex < currentIndex)
                 {
-                    right = middle - 1;
+                    right = middle;
                 }
                 else
                 {
-                    left = middle;
+                    left = middle+1;
                 }
             }
             stack.Add(new NodeIdxPair { Node = this, Idx = left });
