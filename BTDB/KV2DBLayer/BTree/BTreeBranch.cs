@@ -207,7 +207,7 @@ namespace BTDB.KV2DBLayer.BTree
                 }
                 else
                 {
-                    left = middle+1;
+                    left = middle + 1;
                 }
             }
             stack.Add(new NodeIdxPair { Node = this, Idx = left });
@@ -233,7 +233,7 @@ namespace BTDB.KV2DBLayer.BTree
                     left = middle + 1;
                 }
             }
-            return _children[left].FindLastWithPrefix(prefix) + (left > 0 ? _pairCounts[left] : 0);
+            return _children[left].FindLastWithPrefix(prefix) + (left > 0 ? _pairCounts[left - 1] : 0);
         }
 
         public bool NextIdxValid(int idx)
@@ -244,8 +244,21 @@ namespace BTDB.KV2DBLayer.BTree
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
             var leftMost = _children[idx];
-            stack.Add(new NodeIdxPair {Node = leftMost, Idx = 0});
+            stack.Add(new NodeIdxPair { Node = leftMost, Idx = 0 });
             leftMost.FillStackByLeftMost(stack, 0);
+        }
+
+        public void FillStackByRightMost(List<NodeIdxPair> stack, int idx)
+        {
+            var rightMost = _children[idx];
+            var lastIdx = rightMost.GetLastChildrenIdx();
+            stack.Add(new NodeIdxPair { Node = rightMost, Idx = lastIdx });
+            rightMost.FillStackByRightMost(stack, lastIdx);
+        }
+
+        public int GetLastChildrenIdx()
+        {
+            return _children.Length - 1;
         }
     }
 }

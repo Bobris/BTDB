@@ -8,5 +8,6 @@ namespace BTDB.KV2DBLayer.BTree
         IBTreeRootNode NewTransactionRoot();
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
         bool FindNextKey(List<NodeIdxPair> stack);
+        bool FindPreviousKey(List<NodeIdxPair> stack);
     }
 }

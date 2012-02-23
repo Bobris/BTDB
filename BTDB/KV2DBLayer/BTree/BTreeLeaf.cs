@@ -25,13 +25,7 @@ namespace BTDB.KV2DBLayer.BTree
         internal static IBTreeNode CreateFirst(CreateOrUpdateCtx ctx)
         {
             var result = new BTreeLeaf(ctx.TransactionId, 1);
-            result._keyvalues[0] = new BTreeLeafMember
-                {
-                    Key = ctx.WholeKey(),
-                    ValueFileId = ctx.ValueFileId,
-                    ValueOfs = ctx.ValueOfs,
-                    ValueSize = ctx.ValueSize
-                };
+            result._keyvalues[0] = NewMemberFromCtx(ctx);
             return result;
         }
 
@@ -192,7 +186,7 @@ namespace BTDB.KV2DBLayer.BTree
         public long FindLastWithPrefix(byte[] prefix)
         {
             var left = 0;
-            var right = _keyvalues.Length;
+            var right = _keyvalues.Length-1;
             byte[] currentKey;
             int result;
             while (left < right)
@@ -226,6 +220,16 @@ namespace BTDB.KV2DBLayer.BTree
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
             // Nothing to do
+        }
+
+        public void FillStackByRightMost(List<NodeIdxPair> stack, int i)
+        {
+            // Nothing to do
+        }
+
+        public int GetLastChildrenIdx()
+        {
+            return _keyvalues.Length - 1;
         }
 
         public byte[] GetKey(int idx)

@@ -79,6 +79,8 @@ namespace BTDB.KV2DBLayer
         internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot)
         {
             _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EndOfTransaction);
+            _writerWithTransactionLog.FlushBuffer();
+            _fileWithTransactionLog.Flush();
             lock (_writeLock)
             {
                 _writingTransaction = null;
@@ -164,6 +166,7 @@ namespace BTDB.KV2DBLayer
             valueOfs = (int)_writerWithTransactionLog.GetCurrentPosition();
             valueSize = value.Length;
             _writerWithTransactionLog.WriteBlock(value);
+            _writerWithTransactionLog.FlushBuffer();
         }
 
         public ByteBuffer ReadValue(int valueFileId, int valueOfs, int valueSize)

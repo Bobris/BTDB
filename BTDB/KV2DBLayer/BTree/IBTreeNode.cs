@@ -13,5 +13,7 @@ namespace BTDB.KV2DBLayer.BTree
         long FindLastWithPrefix(byte[] prefix);
         bool NextIdxValid(int idx);
         void FillStackByLeftMost(List<NodeIdxPair> stack, int i);
+        void FillStackByRightMost(List<NodeIdxPair> stack, int i);
+        int GetLastChildrenIdx();
     }
 }

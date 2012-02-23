@@ -51,7 +51,16 @@ namespace BTDB.KV2DBLayer
         public bool FindPreviousKey()
         {
             if (_keyIndex < 0) return FindLastKey();
-            throw new NotImplementedException();
+            if (_btreeRoot.FindPreviousKey(_stack))
+            {
+                if (CheckPrefixIn(GetCurrentKeyFromStack()))
+                {
+                    _keyIndex--;
+                    return true;
+                }
+            }
+            InvalidateCurrentKey();
+            return false;
         }
 
         public bool FindNextKey()
@@ -59,14 +68,13 @@ namespace BTDB.KV2DBLayer
             if (_keyIndex < 0) return FindFirstKey();
             if (_btreeRoot.FindNextKey(_stack))
             {
-                if (!CheckPrefixIn(GetCurrentKeyFromStack()))
+                if (CheckPrefixIn(GetCurrentKeyFromStack()))
                 {
-                    InvalidateCurrentKey();
-                    return false;
+                    _keyIndex++;
+                    return true;
                 }
-                _keyIndex++;
-                return true;
             }
+            InvalidateCurrentKey();
             return false;
         }
 

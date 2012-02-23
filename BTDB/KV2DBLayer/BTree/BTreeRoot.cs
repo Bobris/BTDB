@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
@@ -63,11 +64,39 @@ namespace BTDB.KV2DBLayer.BTree
                 if (keyIndex < 0)
                 {
                     keyIndex = 0;
-                    stack[stack.Count - 1] = new NodeIdxPair { Node = stack[stack.Count - 1].Node, Idx = stack[stack.Count - 1].Idx - 1 };
+                    stack[stack.Count - 1] = new NodeIdxPair { Node = stack[stack.Count - 1].Node, Idx = 0 };
                     result = FindResult.Next;
+                }
+                else
+                {
+                    if (!KeyStartsWithPrefix(prefix, GetKeyFromStack(stack)))
+                    {
+                        result = FindResult.Next;
+                        keyIndex++;
+                        if (!FindNextKey(stack))
+                        {
+                            return FindResult.NotFound;
+                        }
+                    }
+                }
+                if (!KeyStartsWithPrefix(prefix, GetKeyFromStack(stack)))
+                {
+                    return FindResult.NotFound;
                 }
             }
             return result;
+        }
+
+        static bool KeyStartsWithPrefix(byte[] prefix, byte[] curkey)
+        {
+            return BitArrayManipulation.CompareByteArray(
+                curkey, 0, Math.Min(curkey.Length, prefix.Length),
+                prefix, 0, prefix.Length) == 0;
+        }
+
+        static byte[] GetKeyFromStack(List<NodeIdxPair> stack)
+        {
+            return ((IBTreeLeafNode) stack[stack.Count - 1].Node).GetKey(stack[stack.Count - 1].Idx);
         }
 
         public long CalcKeyCount()
@@ -100,8 +129,18 @@ namespace BTDB.KV2DBLayer.BTree
 
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
-            stack.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
+            stack.Add(new NodeIdxPair { Node = _rootNode, Idx = 0 });
             _rootNode.FillStackByLeftMost(stack, 0);
+        }
+
+        public void FillStackByRightMost(List<NodeIdxPair> stack, int idx)
+        {
+            throw new ArgumentException();
+        }
+
+        public int GetLastChildrenIdx()
+        {
+            return 0;
         }
 
         public long TransactionId
@@ -122,7 +161,7 @@ namespace BTDB.KV2DBLayer.BTree
         public bool FindNextKey(List<NodeIdxPair> stack)
         {
             int idx = stack.Count - 1;
-            while (idx>=0)
+            while (idx >= 0)
             {
                 var pair = stack[idx];
                 if (pair.Node.NextIdxValid(pair.Idx))
@@ -130,6 +169,24 @@ namespace BTDB.KV2DBLayer.BTree
                     stack.RemoveRange(idx + 1, stack.Count - idx - 1);
                     stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx + 1 };
                     pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
+                    return true;
+                }
+                idx--;
+            }
+            return false;
+        }
+
+        public bool FindPreviousKey(List<NodeIdxPair> stack)
+        {
+            int idx = stack.Count - 1;
+            while (idx >= 0)
+            {
+                var pair = stack[idx];
+                if (pair.Idx > 0)
+                {
+                    stack.RemoveRange(idx + 1, stack.Count - idx - 1);
+                    stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx - 1 };
+                    pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
                     return true;
                 }
                 idx--;

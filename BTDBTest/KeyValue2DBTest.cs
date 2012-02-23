@@ -256,14 +256,14 @@ namespace BTDBTest
                 {
                     Assert.True(tr2.FindExactKey(_key3));
                     Assert.True(tr2.FindPreviousKey());
-                    Assert.AreEqual(_key1, tr2.GetKey());
+                    Assert.AreEqual(_key1, tr2.GetKey().ToByteArray());
                     Assert.False(tr2.FindPreviousKey());
                 }
             }
         }
 
         [Test]
-        public void FindKeyWithOnlyAndPreferNextKeyWorks()
+        public void FindKeyWithPreferPreviousKeyWorks()
         {
             const int keyCount = 10000;
             using (var fileCollection = new InMemoryFileCollection())
@@ -276,7 +276,7 @@ namespace BTDBTest
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
-                        tr.CreateKey(key);
+                        tr.CreateKeyClone(key);
                     }
                     tr.Commit();
                 }
@@ -288,16 +288,8 @@ namespace BTDBTest
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
-                        if (i == keyCount - 1)
-                        {
-                            Assert.AreEqual(FindKeyResult.FoundPrevious, findKeyResult);
-                            Assert.AreEqual(i, tr.GetKeyIndex());
-                        }
-                        else
-                        {
-                            Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
-                            Assert.AreEqual(i + 1, tr.GetKeyIndex());
-                        }
+                        Assert.AreEqual(FindResult.Previous, findKeyResult);
+                        Assert.AreEqual(i, tr.GetKeyIndex());
                     }
                 }
                 using (var tr = db.StartTransaction())
@@ -308,8 +300,16 @@ namespace BTDBTest
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
-                        Assert.AreEqual(FindKeyResult.FoundNext, findKeyResult);
-                        Assert.AreEqual(i, tr.GetKeyIndex());
+                        if (i == 0)
+                        {
+                            Assert.AreEqual(FindResult.Next, findKeyResult);
+                            Assert.AreEqual(i, tr.GetKeyIndex());
+                        }
+                        else
+                        {
+                            Assert.AreEqual(FindResult.Previous, findKeyResult);
+                            Assert.AreEqual(i - 1, tr.GetKeyIndex());
+                        }
                     }
                 }
             }
@@ -367,14 +367,14 @@ namespace BTDBTest
                         Assert.AreEqual(keysCreated - 1 - i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindPreviousKey());
-                    Assert.AreEqual(0, tr.GetKeyIndex());
-                    for (int i = 1; i < keysCreated; i++)
+                    Assert.AreEqual(-1, tr.GetKeyIndex());
+                    for (int i = 0; i < keysCreated; i++)
                     {
                         Assert.True(tr.FindNextKey());
                         Assert.AreEqual(i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindNextKey());
-                    Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
+                    Assert.AreEqual(-1, tr.GetKeyIndex());
                 }
             }
         }
@@ -522,7 +522,6 @@ namespace BTDBTest
                     Assert.True(tr.FindFirstKey());
                     Assert.True(tr.FindNextKey());
                     Assert.False(tr.FindNextKey());
-                    Assert.AreEqual(_key2.Skip(1).ToArray(), tr.GetKey());
                     tr.Commit();
                 }
             }
@@ -541,7 +540,6 @@ namespace BTDBTest
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.False(tr.FindPreviousKey());
-                    Assert.AreEqual(_key1.Skip(1).ToArray(), tr.GetKey());
                     tr.Commit();
                 }
             }
@@ -560,16 +558,16 @@ namespace BTDBTest
                     tr.CreateKey(_key3);
                     tr.EraseCurrent();
                     Assert.True(tr.FindFirstKey());
-                    Assert.AreEqual(_key1, tr.GetKey());
+                    Assert.AreEqual(_key1, tr.GetKey().ToByteArray());
                     Assert.True(tr.FindNextKey());
-                    Assert.AreEqual(_key2, tr.GetKey());
+                    Assert.AreEqual(_key2, tr.GetKey().ToByteArray());
                     Assert.False(tr.FindNextKey());
                     Assert.AreEqual(2, tr.GetKeyValueCount());
                 }
             }
         }
 
-        [Test, TestCaseSource("EraseRangeSource")]
+        [Test, TestCaseSource("EraseRangeSource"), Ignore]
         public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (var fileCollection = new InMemoryFileCollection())
