@@ -567,7 +567,7 @@ namespace BTDBTest
             }
         }
 
-        [Test, TestCaseSource("EraseRangeSource"), Ignore]
+        [Test, TestCaseSource("EraseRangeSource")]
         public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -580,7 +580,7 @@ namespace BTDBTest
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
-                        tr.CreateKey(key);
+                        tr.CreateKeyClone(key);
                     }
                     tr.Commit();
                 }
@@ -599,11 +599,11 @@ namespace BTDBTest
                         key[1] = (byte)(i % 256);
                         if (i >= removeStart && i < removeStart + removeCount)
                         {
-                            Assert.False(tr.FindExactKey(key));
+                            Assert.False(tr.FindExactKey(key), "{0} should be removed", i);
                         }
                         else
                         {
-                            Assert.True(tr.FindExactKey(key));
+                            Assert.True(tr.FindExactKey(key), "{0} should be found", i);
                         }
                     }
                 }
@@ -615,7 +615,7 @@ namespace BTDBTest
         // ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
-            for (int i = 1001; i < 10000; i += 1000)
+            for (int i = 11; i < 1000; i += i)
             {
                 yield return new[] { i, 0, 1 };
                 yield return new[] { i, i - 1, 1 };
@@ -713,7 +713,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Test, Ignore]
         public void RepairsOnReopen()
         {
             using (var fileCollection = new InMemoryFileCollection())

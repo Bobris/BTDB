@@ -96,7 +96,7 @@ namespace BTDB.KV2DBLayer.BTree
 
         static byte[] GetKeyFromStack(List<NodeIdxPair> stack)
         {
-            return ((IBTreeLeafNode) stack[stack.Count - 1].Node).GetKey(stack[stack.Count - 1].Idx);
+            return ((IBTreeLeafNode)stack[stack.Count - 1].Node).GetKey(stack[stack.Count - 1].Idx);
         }
 
         public long CalcKeyCount()
@@ -143,6 +143,11 @@ namespace BTDB.KV2DBLayer.BTree
             return 0;
         }
 
+        public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
+        {
+            throw new ArgumentException();
+        }
+
         public long TransactionId
         {
             get { return _transactionId; }
@@ -155,7 +160,17 @@ namespace BTDB.KV2DBLayer.BTree
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
         {
-            throw new System.NotImplementedException();
+            Debug.Assert(firstKeyIndex >= 0);
+            Debug.Assert(lastKeyIndex < _keyValueCount);
+            if (firstKeyIndex == 0 && lastKeyIndex == _keyValueCount - 1)
+            {
+                _levels = 0;
+                _rootNode = null;
+                _keyValueCount = 0;
+                return;
+            }
+            _keyValueCount -= lastKeyIndex - firstKeyIndex + 1;
+            _rootNode = _rootNode.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
         }
 
         public bool FindNextKey(List<NodeIdxPair> stack)

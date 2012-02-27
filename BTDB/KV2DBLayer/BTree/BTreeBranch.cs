@@ -46,7 +46,7 @@ namespace BTDB.KV2DBLayer.BTree
                     result = BitArrayManipulation.CompareByteArray(key.Buffer, key.Offset, key.Length,
                                                                    currentKey, prefix.Length, currentKey.Length - prefix.Length);
                 }
-                if (result <= 0)
+                if (result < 0)
                 {
                     right = middle;
                 }
@@ -259,6 +259,88 @@ namespace BTDB.KV2DBLayer.BTree
         public int GetLastChildrenIdx()
         {
             return _children.Length - 1;
+        }
+
+        public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
+        {
+
+            int firstRemoved = -1;
+            int lastRemoved = -1;
+            IBTreeNode firstPartialNode = null;
+            IBTreeNode lastPartialNode = null;
+
+            for (int i = 0; i < _pairCounts.Length; i++)
+            {
+                var prevPairCount = i > 0 ? _pairCounts[i - 1] : 0;
+                if (lastKeyIndex < prevPairCount) break;
+                var nextPairCount = _pairCounts[i];
+                if (nextPairCount <= firstKeyIndex) continue;
+                if (firstKeyIndex <= prevPairCount && nextPairCount - 1 <= lastKeyIndex)
+                {
+                    if (firstRemoved == -1) firstRemoved = i;
+                    lastRemoved = i;
+                    continue;
+                }
+                if (prevPairCount <= firstKeyIndex && lastKeyIndex < nextPairCount)
+                {
+                    firstRemoved = i;
+                    lastRemoved = i;
+                    firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
+                                                               lastKeyIndex - prevPairCount);
+                    lastPartialNode = firstPartialNode;
+                    break;
+                }
+                if (firstRemoved == -1 && firstKeyIndex < nextPairCount)
+                {
+                    if (prevPairCount > firstKeyIndex) throw new InvalidOperationException();
+                    if (nextPairCount > lastKeyIndex) throw new InvalidOperationException();
+                    firstRemoved = i;
+                    firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
+                                                               nextPairCount - 1 - prevPairCount);
+                    continue;
+                }
+                if (lastKeyIndex >= nextPairCount - 1) throw new InvalidOperationException();
+                lastRemoved = i;
+                lastPartialNode = _children[i].EraseRange(transactionId, 0, lastKeyIndex - prevPairCount);
+                break;
+            }
+            var finalChildrenCount = firstRemoved - (firstPartialNode == null ? 1 : 0)
+                                   + _children.Length + 1 - lastRemoved - (lastPartialNode == null ? 1 : 0)
+                                   - (firstPartialNode == lastPartialNode && firstPartialNode != null ? 1 : 0);
+            var newKeys = new byte[finalChildrenCount - 1][];
+            var newChildren = new IBTreeNode[finalChildrenCount];
+            var newPairCounts = new long[finalChildrenCount];
+            Array.Copy(_children, 0, newChildren, 0, firstRemoved);
+            var idx = firstRemoved;
+            if (firstPartialNode != null && firstPartialNode != lastPartialNode)
+            {
+                newChildren[idx] = firstPartialNode;
+                idx++;
+            }
+            if (lastPartialNode != null)
+            {
+                newChildren[idx] = lastPartialNode;
+                idx++;
+            }
+            Array.Copy(_children, lastRemoved + 1, newChildren, idx, finalChildrenCount - idx);
+            var previousPairCount = 0L;
+            for (var i = 0; i < finalChildrenCount; i++)
+            {
+                previousPairCount += newChildren[i].CalcKeyCount();
+                newPairCounts[i] = previousPairCount;
+            }
+            for (var i = 0; i < finalChildrenCount - 1; i++)
+            {
+                newKeys[i] = newChildren[i + 1].GetLeftMostKey();
+            }
+            if (transactionId == TransactionId)
+            {
+                _keys = newKeys;
+                _children = newChildren;
+                _pairCounts = newPairCounts;
+                return this;
+            }
+            return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
         }
     }
 }

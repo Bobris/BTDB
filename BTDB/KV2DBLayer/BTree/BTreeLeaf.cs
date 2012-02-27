@@ -186,7 +186,7 @@ namespace BTDB.KV2DBLayer.BTree
         public long FindLastWithPrefix(byte[] prefix)
         {
             var left = 0;
-            var right = _keyvalues.Length-1;
+            var right = _keyvalues.Length - 1;
             byte[] currentKey;
             int result;
             while (left < right)
@@ -230,6 +230,19 @@ namespace BTDB.KV2DBLayer.BTree
         public int GetLastChildrenIdx()
         {
             return _keyvalues.Length - 1;
+        }
+
+        public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
+        {
+            var newKeyValues = new BTreeLeafMember[_keyvalues.Length + firstKeyIndex - lastKeyIndex - 1];
+            Array.Copy(_keyvalues, 0, newKeyValues, 0, (int)firstKeyIndex);
+            Array.Copy(_keyvalues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex, newKeyValues.Length - (int)firstKeyIndex);
+            if (TransactionId == transactionId)
+            {
+                _keyvalues = newKeyValues;
+                return this;
+            }
+            return new BTreeLeaf(transactionId, newKeyValues);
         }
 
         public byte[] GetKey(int idx)
