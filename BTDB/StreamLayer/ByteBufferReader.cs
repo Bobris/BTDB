@@ -4,10 +4,13 @@ namespace BTDB.StreamLayer
 {
     public class ByteBufferReader : AbstractBufferedReader
     {
+        readonly int _startPos;
+
         public ByteBufferReader(ByteBuffer byteBuffer)
         {
             Buf = byteBuffer.Buffer;
             Pos = byteBuffer.Offset;
+            _startPos = Pos;
             End = Pos + byteBuffer.Length;
         }
 
@@ -15,6 +18,11 @@ namespace BTDB.StreamLayer
         {
             Pos = 0;
             End = -1;
+        }
+
+        public override long GetCurrentPosition()
+        {
+            return Pos - _startPos;
         }
     }
 }

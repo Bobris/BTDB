@@ -15,6 +15,11 @@ namespace BTDB.StreamLayer
             End = -1;
         }
 
+        public override long GetCurrentPosition()
+        {
+            return Pos;
+        }
+
         public IMemorizedPosition MemorizeCurrentPosition()
         {
             return new MemorizedPosition(this, Pos, End);

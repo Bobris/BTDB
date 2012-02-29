@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -23,12 +24,158 @@ namespace BTDB.KV2DBLayer
         readonly byte[] _magicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
         readonly byte[] _magicStartOfTransaction = new[] { (byte)'t', (byte)'R', (byte)'s', (byte)'T' };
         const long MaxTrLogFileSize = 2000000000;
+        readonly ConcurrentDictionary<int, IFileInfo> _fileInfos = new ConcurrentDictionary<int, IFileInfo>();
 
         public KeyValue2DB(IFileCollection fileCollection)
         {
             _fileCollection = fileCollection;
             _lastCommited = new BTreeRoot(0);
             _fileIdWithTransactionLog = -1;
+            LoadInfoAboutFiles();
+        }
+
+        void LoadInfoAboutFiles()
+        {
+            foreach (var fileId in _fileCollection.Enumerate())
+            {
+                try
+                {
+                    var reader = new PositionLessStreamReader(_fileCollection.GetFile(fileId));
+                    var magicCheck = new byte[_magicStartOfFile.Length];
+                    reader.ReadBlock(magicCheck);
+                    if (BitArrayManipulation.CompareByteArray(magicCheck, 0, magicCheck.Length, _magicStartOfFile, 0, _magicStartOfFile.Length) == 0)
+                    {
+                        var fileType = (KV2FileType)reader.ReadUInt8();
+                        switch (fileType)
+                        {
+                            case KV2FileType.TransactionLog:
+                                _fileInfos.TryAdd(fileId, new FileTransactionLog(reader));
+                                break;
+                            default:
+                                _fileInfos.TryAdd(fileId, new UnknownFile());
+                                break;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    _fileInfos.TryAdd(fileId, new UnknownFile());
+                }
+            }
+            long lastestStartingTransactionId = -1;
+            int lastestTrLogFileId = -1;
+            foreach (var fileInfo in _fileInfos)
+            {
+                var trLog = fileInfo.Value as IFileTransactionLog;
+                if (trLog != null)
+                {
+                    if (trLog.StartingTransactionId > lastestStartingTransactionId)
+                    {
+                        lastestStartingTransactionId = trLog.StartingTransactionId;
+                        lastestTrLogFileId = fileInfo.Key;
+                    }
+                }
+            }
+            var firstTrLogId = LinkTransactionLogFileIds(lastestTrLogFileId);
+            LoadTransactionLogs(firstTrLogId);
+        }
+
+        void LoadTransactionLogs(int firstTrLogId)
+        {
+            while (firstTrLogId != -1)
+            {
+                LoadTransactionLog(firstTrLogId);
+                IFileInfo fileInfo;
+                _fileInfos.TryGetValue(firstTrLogId, out fileInfo);
+                firstTrLogId = ((IFileTransactionLog)fileInfo).NextFileId;
+            }
+        }
+
+        void LoadTransactionLog(int fileId)
+        {
+            var reader = new PositionLessStreamReader(_fileCollection.GetFile(fileId));
+            reader.SkipBlock(_magicStartOfFile.Length);
+            var fileType = (KV2FileType) reader.ReadUInt8();
+            if (fileType!=KV2FileType.TransactionLog)
+                throw new NotImplementedException();
+            reader.SkipVInt32();
+            reader.SkipVInt64();
+            while (!reader.Eof)
+            {
+                if (!CheckMagic(reader,_magicStartOfTransaction))
+                {
+                    throw new BTDBException("corrupted db");
+                }
+                var trId = reader.ReadVUInt64();
+                while (!reader.Eof)
+                {
+                    switch ((KV2CommandType)reader.ReadUInt8())
+                    {
+                        case KV2CommandType.CreateOrUpdate:
+                            {
+                                var keyLen = reader.ReadVInt32();
+                                var valueLen = reader.ReadVInt32();
+                                var key = new byte[keyLen];
+                                reader.ReadBlock(key);
+                                var ctx = new CreateOrUpdateCtx();
+                                ctx.KeyPrefix = BitArrayManipulation.EmptyByteArray;
+                                ctx.Key = ByteBuffer.NewAsync(key);
+                                ctx.ValueFileId = fileId;
+                                ctx.ValueOfs = (int) reader.GetCurrentPosition();
+                                ctx.ValueSize = valueLen;
+                                _lastCommited.CreateOrUpdate(ctx);
+                                reader.SkipBlock(valueLen);
+                            }
+                            break;
+                        case KV2CommandType.EraseOne:
+                            break;
+                        case KV2CommandType.EraseRange:
+                            break;
+                        case KV2CommandType.EndOfTransaction:
+                            goto EndTr;
+                        default:
+                            throw new BTDBException("corrupted db");
+                    }
+                }
+            EndTr:
+                ;
+            }
+        }
+
+        bool CheckMagic(AbstractBufferedReader reader, byte[] magic)
+        {
+            try
+            {
+                var buf = new byte[magic.Length];
+                reader.ReadBlock(buf);
+                if (BitArrayManipulation.CompareByteArray(buf,0,buf.Length,magic,0,magic.Length)==0)
+                {
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            return false;
+        }
+
+        int LinkTransactionLogFileIds(int lastestTrLogFileId)
+        {
+            var nextId = -1;
+            var currentId = lastestTrLogFileId;
+            while (currentId != -1)
+            {
+                IFileInfo fileInfo;
+                if (_fileInfos.TryGetValue(currentId, out fileInfo))
+                {
+                    var fileTransactionLog = fileInfo as IFileTransactionLog;
+                    fileTransactionLog.NextFileId = nextId;
+                    nextId = currentId;
+                    currentId = fileTransactionLog.PreviousFileId;
+                }
+            }
+            return nextId;
         }
 
         public void Dispose()
@@ -132,11 +279,11 @@ namespace BTDB.KV2DBLayer
         {
             if (_fileIdWithTransactionLog == -1)
             {
-                WriteStartOfNewTransactionLogFile();
+                WriteStartOfNewTransactionLogFile(transactionId);
             }
             else if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
             {
-                WriteStartOfNewTransactionLogFile();
+                WriteStartOfNewTransactionLogFile(transactionId);
             }
             _fileIdWithTransactionLogStartOfTr = _fileIdWithTransactionLog;
             _positionOfStartOfTr = _writerWithTransactionLog.GetCurrentPosition();
@@ -144,7 +291,7 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteVUInt64((ulong)transactionId);
         }
 
-        void WriteStartOfNewTransactionLogFile()
+        void WriteStartOfNewTransactionLogFile(long transactionId)
         {
             var previousTrLogFileId = _fileIdWithTransactionLog;
             _fileIdWithTransactionLog = _fileCollection.AddFile("trl");
@@ -153,7 +300,7 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteByteArrayRaw(_magicStartOfFile);
             _writerWithTransactionLog.WriteUInt8((byte)KV2FileType.TransactionLog);
             _writerWithTransactionLog.WriteVInt64(previousTrLogFileId);
-            _writerWithTransactionLog.WriteDateTime(DateTime.UtcNow);
+            _writerWithTransactionLog.WriteVInt64(transactionId);
         }
 
         public void WriteCreateOrUpdateCommand(ByteBuffer key, ByteBuffer value, out int valueFileId, out int valueOfs, out int valueSize)
@@ -173,7 +320,7 @@ namespace BTDB.KV2DBLayer
         {
             var result = ByteBuffer.NewAsync(new byte[valueSize]);
             var file = _fileCollection.GetFile(valueFileId);
-            file.Read(result.Buffer, 0, valueSize, (ulong) valueOfs);
+            file.Read(result.Buffer, 0, valueSize, (ulong)valueOfs);
             return result;
         }
 

@@ -35,6 +35,12 @@ namespace BTDB.KVDBLayer
             End += Pos;
         }
 
+        public override long GetCurrentPosition()
+        {
+            if (End == -1) return _valueSize;
+            return _ofs - End + Pos;
+        }
+
         public IMemorizedPosition MemorizeCurrentPosition()
         {
             return new MemorizedPosition(this);

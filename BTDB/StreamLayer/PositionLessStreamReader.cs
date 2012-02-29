@@ -27,5 +27,10 @@
             _ofs += (ulong)End;
             Pos = 0;
         }
+
+        public override long GetCurrentPosition()
+        {
+            return (long)_ofs - End + Pos;
+        }
     }
 }

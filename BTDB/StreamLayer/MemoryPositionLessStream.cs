@@ -24,6 +24,7 @@ namespace BTDB.StreamLayer
                     var buf = _data[(int)(position / OneBufSize)];
                     var startOfs = (int)(position % OneBufSize);
                     var rest = buf.Length - startOfs;
+                    if (_size - position < (ulong)rest) rest = (int) (_size - position);
                     if (size < rest) rest = size;
                     Array.Copy(buf, startOfs, data, offset, rest);
                     position += (ulong)rest;

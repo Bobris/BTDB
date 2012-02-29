@@ -65,6 +65,11 @@ namespace BTDBTest
                 Array.Copy(_input, _pos, Buf, 0, End);
                 if (End == 0) End = -1;
             }
+
+            public override long GetCurrentPosition()
+            {
+                throw new AssertionException("Should not be called");
+            }
         }
 
         static void TestWriteRead(Action<AbstractBufferedWriter> writeAction, byte[] checkResult,

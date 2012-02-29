@@ -20,6 +20,8 @@ namespace BTDB.StreamLayer
 
         protected abstract void FillBuffer();
 
+        public abstract long GetCurrentPosition();
+
         public bool Eof
         {
             get

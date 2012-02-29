@@ -713,7 +713,7 @@ namespace BTDBTest
             }
         }
 
-        [Test, Ignore]
+        [Test]
         public void RepairsOnReopen()
         {
             using (var fileCollection = new InMemoryFileCollection())

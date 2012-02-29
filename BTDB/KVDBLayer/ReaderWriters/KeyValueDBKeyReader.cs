@@ -34,5 +34,11 @@ namespace BTDB.KVDBLayer
             _ofs += End;
             End += Pos;
         }
+
+        public override long GetCurrentPosition()
+        {
+            if (End == -1) return _keySize;
+            return _ofs - End + Pos;
+        }
     }
 }

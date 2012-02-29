@@ -143,9 +143,12 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
     <Compile Include="KV2DBLayer\ExtensionMethods.cs" />
+    <Compile Include="KV2DBLayer\FileTransactionLog.cs" />
     <Compile Include="KV2DBLayer\FindResult.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeRootNode.cs" />
     <Compile Include="KV2DBLayer\IFileCollection.cs" />
+    <Compile Include="KV2DBLayer\IFileInfo.cs" />
+    <Compile Include="KV2DBLayer\IFileTransactionLog.cs" />
     <Compile Include="KV2DBLayer\IKeyValue2DB.cs" />
     <Compile Include="KV2DBLayer\IKeyValue2DBTransaction.cs" />
     <Compile Include="KV2DBLayer\InMemoryFileCollection.cs" />
@@ -154,6 +157,7 @@
     <Compile Include="KV2DBLayer\KV2CommandType.cs" />
     <Compile Include="KV2DBLayer\KV2FileType.cs" />
     <Compile Include="KV2DBLayer\OnDiskFileCollection.cs" />
+    <Compile Include="KV2DBLayer\UnknownFile.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
