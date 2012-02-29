@@ -93,16 +93,17 @@ namespace BTDB.KV2DBLayer
 
         void LoadTransactionLog(int fileId)
         {
+            var stack = new List<NodeIdxPair>();
             var reader = new PositionLessStreamReader(_fileCollection.GetFile(fileId));
             reader.SkipBlock(_magicStartOfFile.Length);
-            var fileType = (KV2FileType) reader.ReadUInt8();
-            if (fileType!=KV2FileType.TransactionLog)
+            var fileType = (KV2FileType)reader.ReadUInt8();
+            if (fileType != KV2FileType.TransactionLog)
                 throw new NotImplementedException();
             reader.SkipVInt32();
             reader.SkipVInt64();
             while (!reader.Eof)
             {
-                if (!CheckMagic(reader,_magicStartOfTransaction))
+                if (!CheckMagic(reader, _magicStartOfTransaction))
                 {
                     throw new BTDBException("corrupted db");
                 }
@@ -121,15 +122,48 @@ namespace BTDB.KV2DBLayer
                                 ctx.KeyPrefix = BitArrayManipulation.EmptyByteArray;
                                 ctx.Key = ByteBuffer.NewAsync(key);
                                 ctx.ValueFileId = fileId;
-                                ctx.ValueOfs = (int) reader.GetCurrentPosition();
+                                ctx.ValueOfs = (int)reader.GetCurrentPosition();
                                 ctx.ValueSize = valueLen;
                                 _lastCommited.CreateOrUpdate(ctx);
                                 reader.SkipBlock(valueLen);
                             }
                             break;
                         case KV2CommandType.EraseOne:
+                            {
+                                var keyLen = reader.ReadVInt32();
+                                var key = new byte[keyLen];
+                                reader.ReadBlock(key);
+                                long keyIndex;
+                                var findResult = _lastCommited.FindKey(stack, out keyIndex,
+                                                                       BitArrayManipulation.EmptyByteArray,
+                                                                       ByteBuffer.NewAsync(key));
+                                if (findResult != FindResult.Exact)
+                                    throw new BTDBException("corrupted db");
+                                _lastCommited.EraseRange(keyIndex, keyIndex);
+                            }
                             break;
                         case KV2CommandType.EraseRange:
+                            {
+                                var keyLen1 = reader.ReadVInt32();
+                                var keyLen2 = reader.ReadVInt32();
+                                var key = new byte[keyLen1];
+                                reader.ReadBlock(key);
+                                long keyIndex1;
+                                var findResult = _lastCommited.FindKey(stack, out keyIndex1,
+                                                                       BitArrayManipulation.EmptyByteArray,
+                                                                       ByteBuffer.NewAsync(key));
+                                if (findResult != FindResult.Exact)
+                                    throw new BTDBException("corrupted db");
+                                key = new byte[keyLen2];
+                                reader.ReadBlock(key);
+                                long keyIndex2;
+                                findResult = _lastCommited.FindKey(stack, out keyIndex2,
+                                                                       BitArrayManipulation.EmptyByteArray,
+                                                                       ByteBuffer.NewAsync(key));
+                                if (findResult != FindResult.Exact)
+                                    throw new BTDBException("corrupted db");
+                                _lastCommited.EraseRange(keyIndex1, keyIndex2);
+                            }
                             break;
                         case KV2CommandType.EndOfTransaction:
                             goto EndTr;
@@ -148,7 +182,7 @@ namespace BTDB.KV2DBLayer
             {
                 var buf = new byte[magic.Length];
                 reader.ReadBlock(buf);
-                if (BitArrayManipulation.CompareByteArray(buf,0,buf.Length,magic,0,magic.Length)==0)
+                if (BitArrayManipulation.CompareByteArray(buf, 0, buf.Length, magic, 0, magic.Length) == 0)
                 {
                     return true;
                 }

@@ -643,7 +643,7 @@ namespace BTDBTest
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
-                        Assert.True(tr.CreateKey(key));
+                        Assert.True(tr.CreateKeyClone(key));
                         tr.Commit();
                     }
                 }
@@ -748,6 +748,48 @@ namespace BTDBTest
                     }
                 }
             }
+        }
+
+        [Test]
+        public void MoreComplexReopen()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                {
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var key = new byte[100];
+                        using (var tr = db.StartTransaction())
+                        {
+                            key[0] = (byte)(i / 256);
+                            key[1] = (byte)(i % 256);
+                            Assert.True(tr.CreateOrUpdateKeyValueClone(key, key));
+                            tr.Commit();
+                        }
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.SetKeyIndex(0);
+                        tr.EraseCurrent();
+                        tr.EraseRange(1, 3);
+                        tr.Commit();
+                    }
+                }
+                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        var key = new byte[100];
+                        key[1] = 1;
+                        Assert.True(tr.FindExactKey(key));
+                        tr.FindNextKey();
+                        Assert.AreEqual(5, tr.GetKey().ToByteArray()[1]);
+                        Assert.AreEqual(96,tr.GetKeyValueCount());
+                    }
+                }
+            }
+           
         }
 
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
