@@ -414,6 +414,7 @@ namespace SimpleTester
         public void Test()
         {
             DoWork5(true);
+            DoWork5ReadCheck();
         }
     }
 }

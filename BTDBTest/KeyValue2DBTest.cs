@@ -730,12 +730,18 @@ namespace BTDBTest
                         tr.CreateKey(_key2);
                         tr.Commit();
                     }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateKey(_key3);
+                        // rollback
+                    }
                     using (IKeyValue2DB db2 = new KeyValue2DB(fileCollection))
                     {
                         using (var tr = db2.StartTransaction())
                         {
                             Assert.True(tr.FindExactKey(_key1));
                             Assert.True(tr.FindExactKey(_key2));
+                            Assert.False(tr.FindExactKey(_key3));
                         }
                     }
                 }
@@ -745,6 +751,7 @@ namespace BTDBTest
                     {
                         Assert.True(tr.FindExactKey(_key1));
                         Assert.True(tr.FindExactKey(_key2));
+                        Assert.False(tr.FindExactKey(_key3));
                     }
                 }
             }

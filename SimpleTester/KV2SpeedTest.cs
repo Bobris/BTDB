@@ -12,7 +12,7 @@ namespace SimpleTester
 
         static IFileCollection CreateTestFileCollection()
         {
-            if (true)
+            if (false)
             {
                 const string dbfilename = "data";
                 if (Directory.Exists(dbfilename))

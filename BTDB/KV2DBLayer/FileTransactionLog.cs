@@ -6,18 +6,23 @@ namespace BTDB.KV2DBLayer
     {
         readonly int _previousFileId;
         int _nextFileId;
-        long _startingTransactionId;
+        readonly long _generation;
 
         public FileTransactionLog(AbstractBufferedReader reader)
         {
+            _generation = reader.ReadVInt64();
             _previousFileId = reader.ReadVInt32();
-            _startingTransactionId = reader.ReadVInt64();
             _nextFileId = -2;
         }
 
         public KV2FileType FileType
         {
             get { return KV2FileType.TransactionLog; }
+        }
+
+        public long Generation
+        {
+            get { return _generation; }
         }
 
         public int PreviousFileId
@@ -29,12 +34,6 @@ namespace BTDB.KV2DBLayer
         {
             get { return _nextFileId; }
             set { _nextFileId = value; }
-        }
-
-        public long StartingTransactionId
-        {
-            get { return _startingTransactionId; }
-            set { _startingTransactionId = value; }
         }
     }
 }

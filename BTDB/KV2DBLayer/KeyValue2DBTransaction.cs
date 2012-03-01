@@ -112,13 +112,13 @@ namespace BTDB.KV2DBLayer
             {
                 _writting = true;
                 _preapprovedWritting = false;
-                _keyValue2DB.WriteStartTransaction(_btreeRoot.TransactionId);
+                _keyValue2DB.WriteStartTransaction();
                 return;
             }
             _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, _btreeRoot);
             _writting = true;
             InvalidateCurrentKey();
-            _keyValue2DB.WriteStartTransaction(_btreeRoot.TransactionId);
+            _keyValue2DB.WriteStartTransaction();
         }
 
         public long GetKeyValueCount()
@@ -188,9 +188,7 @@ namespace BTDB.KV2DBLayer
 
         bool CheckPrefixIn(byte[] key)
         {
-            return BitArrayManipulation.CompareByteArray(
-                key, 0, Math.Min(key.Length, _prefix.Length),
-                _prefix, 0, _prefix.Length) == 0;
+            return BTreeRoot.KeyStartsWithPrefix(_prefix, key);
         }
 
         byte[] GetCurrentKeyFromStack()

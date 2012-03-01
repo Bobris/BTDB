@@ -87,11 +87,14 @@ namespace BTDB.KV2DBLayer.BTree
             return result;
         }
 
-        static bool KeyStartsWithPrefix(byte[] prefix, byte[] curkey)
+        internal static bool KeyStartsWithPrefix(byte[] prefix, byte[] key)
         {
-            return BitArrayManipulation.CompareByteArray(
-                curkey, 0, Math.Min(curkey.Length, prefix.Length),
-                prefix, 0, prefix.Length) == 0;
+            if (key.Length < prefix.Length) return false;
+            for (int i = 0; i < prefix.Length; i++)
+            {
+                if (key[i] != prefix[i]) return false;
+            }
+            return true;
         }
 
         static byte[] GetKeyFromStack(List<NodeIdxPair> stack)

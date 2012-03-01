@@ -5,6 +5,7 @@ namespace BTDB.KV2DBLayer
         CreateOrUpdate,
         EraseOne,
         EraseRange,
-        EndOfTransaction
+        Commit,
+        Rollback,
     }
 }

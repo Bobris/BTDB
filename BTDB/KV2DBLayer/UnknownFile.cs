@@ -6,5 +6,10 @@ namespace BTDB.KV2DBLayer
         {
             get { return KV2FileType.Unknown; }
         }
+
+        public long Generation
+        {
+            get { return -1; }
+        }
     }
 }

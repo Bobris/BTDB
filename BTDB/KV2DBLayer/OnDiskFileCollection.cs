@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -9,7 +8,11 @@ namespace BTDB.KV2DBLayer
     public class OnDiskFileCollection : IFileCollection
     {
         readonly string _directory;
-        readonly ConcurrentDictionary<int, KeyValuePair<string, IPositionLessStream>> _files = new ConcurrentDictionary<int, KeyValuePair<string, IPositionLessStream>>();
+
+        // disable invalid warning about using volatile inside Interlocked.CompareExchange
+#pragma warning disable 420
+
+        volatile Dictionary<int, KeyValuePair<string, IPositionLessStream>> _files = new Dictionary<int, KeyValuePair<string, IPositionLessStream>>();
         int _maxFileId;
 
         public OnDiskFileCollection(string directory)
@@ -22,7 +25,7 @@ namespace BTDB.KV2DBLayer
                 int id = GetFileId(fileName);
                 if (id < 0) continue;
                 var stream = new PositionLessStreamProxy(filePath);
-                _files.TryAdd(id, new KeyValuePair<string, IPositionLessStream>(fileName, stream));
+                _files.Add(id, new KeyValuePair<string, IPositionLessStream>(fileName, stream));
                 if (id > _maxFileId) _maxFileId = id;
             }
         }
@@ -30,7 +33,7 @@ namespace BTDB.KV2DBLayer
         static int GetFileId(string fileName)
         {
             int result;
-            if (int.TryParse(fileName,out result))
+            if (int.TryParse(fileName, out result))
             {
                 return result;
             }
@@ -40,9 +43,16 @@ namespace BTDB.KV2DBLayer
         public int AddFile(string humanHint)
         {
             var index = Interlocked.Increment(ref _maxFileId) + 1;
-            var fileName = index.ToString("D8")+"."+(humanHint??"");
+            var fileName = index.ToString("D8") + "." + (humanHint ?? "");
             var stream = new PositionLessStreamProxy(Path.Combine(_directory, fileName));
-            _files.TryAdd(index, new KeyValuePair<string, IPositionLessStream>(fileName, stream));
+            Dictionary<int, KeyValuePair<string, IPositionLessStream>> newFiles;
+            Dictionary<int, KeyValuePair<string, IPositionLessStream>> oldFiles;
+            do
+            {
+                oldFiles = _files;
+                newFiles = new Dictionary<int, KeyValuePair<string, IPositionLessStream>>(oldFiles) 
+                    { { index, new KeyValuePair<string, IPositionLessStream>(fileName, stream) } };
+            } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
             return index;
         }
 
@@ -60,9 +70,17 @@ namespace BTDB.KV2DBLayer
         public void RemoveFile(int index)
         {
             KeyValuePair<string, IPositionLessStream> value;
-            if (!_files.TryRemove(index, out value)) return;
+            Dictionary<int, KeyValuePair<string, IPositionLessStream>> newFiles;
+            Dictionary<int, KeyValuePair<string, IPositionLessStream>> oldFiles;
+            do
+            {
+                oldFiles = _files;
+                if (!oldFiles.TryGetValue(index, out value)) return;
+                newFiles = new Dictionary<int, KeyValuePair<string, IPositionLessStream>>(oldFiles);
+                newFiles.Remove(index);
+            } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
             value.Value.Dispose();
-            File.Delete(Path.Combine(_directory,value.Key));
+            File.Delete(Path.Combine(_directory, value.Key));
         }
 
         public IEnumerable<int> Enumerate()
