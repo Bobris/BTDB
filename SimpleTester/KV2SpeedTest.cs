@@ -12,11 +12,11 @@ namespace SimpleTester
 
         static IFileCollection CreateTestFileCollection()
         {
-            if (false)
+            if (true)
             {
                 const string dbfilename = "data";
                 if (Directory.Exists(dbfilename))
-                    Directory.Delete(dbfilename,true);
+                    Directory.Delete(dbfilename, true);
                 Directory.CreateDirectory(dbfilename);
                 return new OnDiskFileCollection(dbfilename);
             }
@@ -93,9 +93,36 @@ namespace SimpleTester
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
 
+        public void HugeTest()
+        {
+            using (var fileCollection = CreateTestFileCollection())
+            {
+                _sw.Start();
+                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                {
+                    var key = new byte[100];
+                    var value = new byte[1000000000];
+                    for (int i = 0; i < 10; i++)
+                    {
+                        using (var tr = db.StartTransaction())
+                        {
+                            key[0] = (byte)(i / 100);
+                            key[1] = (byte)(i % 100);
+                            value[100] = (byte)(i / 100);
+                            value[200] = (byte)(i % 100);
+                            tr.CreateOrUpdateKeyValue(key, value);
+                        }
+                    }
+                }
+                _sw.Stop();
+                Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+            }
+        }
+
         public void Run()
         {
-            DoWork5(true);
+            HugeTest();
+            //DoWork5(true);
             //DoWork5ReadCheck();
         }
     }
