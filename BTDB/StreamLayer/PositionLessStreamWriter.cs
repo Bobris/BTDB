@@ -10,7 +10,7 @@ namespace BTDB.StreamLayer
         public PositionLessStreamWriter(IPositionLessStream stream, bool atEnd = false)
         {
             _stream = stream;
-            Buf = new byte[4096];
+            Buf = new byte[8192];
             End = Buf.Length;
             if (atEnd)
             {
@@ -26,9 +26,20 @@ namespace BTDB.StreamLayer
         public override void FlushBuffer()
         {
             _stream.Write(Buf, 0, Pos, _ofs);
-            _stream.Flush();
             _ofs += (ulong)Pos;
             Pos = 0;
+        }
+
+        public override void WriteBlock(byte[] data, int offset, int length)
+        {
+            if (length < Buf.Length)
+            {
+                base.WriteBlock(data, offset, length);
+                return;
+            }
+            if (Pos != 0) FlushBuffer();
+            _stream.Write(data, offset, length, _ofs);
+            _ofs += (ulong)length;
         }
 
         public override long GetCurrentPosition()

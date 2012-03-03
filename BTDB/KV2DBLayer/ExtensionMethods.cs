@@ -4,7 +4,7 @@ namespace BTDB.KV2DBLayer
 {
     public static class ExtensionMethods
     {
-        public static bool CreateKeyNoClone(this IKeyValue2DBTransaction transaction, byte[] keyBuf)
+        public static bool CreateKeyUnsafe(this IKeyValue2DBTransaction transaction, byte[] keyBuf)
         {
             if (FindExactKey(transaction, keyBuf)) return false;
             return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(keyBuf), ByteBuffer.NewEmpty());
@@ -21,7 +21,7 @@ namespace BTDB.KV2DBLayer
             return transaction.Find(ByteBuffer.NewSync(keyBuf)) == FindResult.Exact;
         }
 
-        public static bool CreateOrUpdateKeyValueNoClone(this IKeyValue2DBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        public static bool CreateOrUpdateKeyValueUnsafe(this IKeyValue2DBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
         {
             return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(keyBuf), ByteBuffer.NewAsync(valueBuf));
         }
@@ -36,7 +36,7 @@ namespace BTDB.KV2DBLayer
             transaction.SetValue(ByteBuffer.NewSync(valueBuf));
         }
 
-        public static void SetKeyPrefixNoClone(this IKeyValue2DBTransaction transaction, byte[] prefix)
+        public static void SetKeyPrefixUnsafe(this IKeyValue2DBTransaction transaction, byte[] prefix)
         {
             transaction.SetKeyPrefix(prefix==null?ByteBuffer.NewEmpty():ByteBuffer.NewAsync(prefix));
         }

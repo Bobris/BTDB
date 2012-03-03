@@ -101,22 +101,46 @@ namespace SimpleTester
                 using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
                 {
                     var key = new byte[100];
-                    var value = new byte[1000000000];
-                    for (int i = 0; i < 10; i++)
+                    var value = new byte[100000000];
+                    for (int i = 0; i < 100; i++)
                     {
                         using (var tr = db.StartTransaction())
                         {
-                            key[0] = (byte)(i / 100);
-                            key[1] = (byte)(i % 100);
-                            value[100] = (byte)(i / 100);
-                            value[200] = (byte)(i % 100);
+                            key[0] = (byte) (i/100);
+                            key[1] = (byte) (i%100);
+                            value[100] = (byte) (i/100);
+                            value[200] = (byte) (i%100);
                             tr.CreateOrUpdateKeyValue(key, value);
+                            tr.Commit();
                         }
                     }
                 }
                 _sw.Stop();
                 Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                _sw.Start();
+                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                {
+                    _sw.Stop();
+                    Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    _sw.Start();
+                    var key = new byte[100];
+                    for (int i = 0; i < 100; i++)
+                    {
+                        using (var tr = db.StartTransaction())
+                        {
+                            key[0] = (byte)(i / 100);
+                            key[1] = (byte)(i % 100);
+                            tr.FindExactKey(key);
+                            var value = tr.GetValueAsByteArray();
+                            if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                            if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
+                        }
+                    }
+                    _sw.Stop();
+                    Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                }
             }
+            
         }
 
         public void Run()

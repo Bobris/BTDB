@@ -209,7 +209,7 @@ namespace BTDB.StreamLayer
             WriteByteZero();
         }
 
-        public void WriteBlock(byte[] data, int offset, int length)
+        public virtual void WriteBlock(byte[] data, int offset, int length)
         {
             while (length > 0)
             {

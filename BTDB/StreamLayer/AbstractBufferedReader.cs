@@ -398,7 +398,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public void ReadBlock(byte[] data, int offset, int length)
+        public virtual void ReadBlock(byte[] data, int offset, int length)
         {
             while (length > 0)
             {
@@ -417,7 +417,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public void SkipBlock(int length)
+        public virtual void SkipBlock(int length)
         {
             while (length > 0)
             {

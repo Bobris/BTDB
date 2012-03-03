@@ -64,7 +64,7 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
+                    tr1.CreateKeyUnsafe(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
                         Assert.False(tr2.FindExactKey(_key1));
@@ -86,7 +86,7 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
+                    tr1.CreateKeyUnsafe(_key1);
                     // Rollback because of missing commit
                 }
                 using (var tr2 = db.StartTransaction())
@@ -104,11 +104,11 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
+                    tr1.CreateKeyUnsafe(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
                         Assert.False(tr2.FindExactKey(_key1));
-                        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKeyNoClone(_key2));
+                        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKeyUnsafe(_key2));
                     }
                 }
             }
@@ -121,13 +121,13 @@ namespace BTDBTest
             using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
             {
                 var tr1 = db.StartTransaction();
-                tr1.CreateKeyNoClone(_key1);
+                tr1.CreateKeyUnsafe(_key1);
                 using (var tr2 = db.StartTransaction())
                 {
                     tr1.Commit();
                     tr1.Dispose();
                     Assert.False(tr2.FindExactKey(_key1));
-                    Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKeyNoClone(_key2));
+                    Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKeyUnsafe(_key2));
                 }
             }
         }
@@ -142,7 +142,7 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(key);
+                    tr1.CreateKeyUnsafe(key);
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -161,12 +161,12 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
+                    tr1.CreateKeyUnsafe(_key1);
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
                 {
-                    tr2.CreateKeyNoClone(_key2);
+                    tr2.CreateKeyUnsafe(_key2);
                     Assert.True(tr2.FindExactKey(_key1));
                     Assert.True(tr2.FindExactKey(_key2));
                     Assert.False(tr2.FindExactKey(_key3));
@@ -194,7 +194,7 @@ namespace BTDBTest
                     key[1] = (byte)(i % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKeyNoClone(key);
+                        tr1.CreateKeyUnsafe(key);
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
@@ -223,7 +223,7 @@ namespace BTDBTest
                     key[1] = (byte)((transactionCount - i) % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKeyNoClone(key);
+                        tr1.CreateKeyUnsafe(key);
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
@@ -247,9 +247,9 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
-                    tr1.CreateKeyNoClone(_key2);
-                    tr1.CreateKeyNoClone(_key3);
+                    tr1.CreateKeyUnsafe(_key1);
+                    tr1.CreateKeyUnsafe(_key2);
+                    tr1.CreateKeyUnsafe(_key3);
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -323,9 +323,9 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKeyNoClone(_key1);
-                    tr1.CreateKeyNoClone(_key2);
-                    tr1.CreateKeyNoClone(_key3);
+                    tr1.CreateKeyUnsafe(_key1);
+                    tr1.CreateKeyUnsafe(_key2);
+                    tr1.CreateKeyUnsafe(_key3);
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -422,9 +422,9 @@ namespace BTDBTest
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    Assert.True(tr1.CreateOrUpdateKeyValueNoClone(_key1, valbuf));
-                    Assert.False(tr1.CreateOrUpdateKeyValueNoClone(_key1, valbuf));
-                    Assert.True(tr1.CreateOrUpdateKeyValueNoClone(_key2, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
+                    Assert.False(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key2, valbuf));
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -456,9 +456,9 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     Assert.False(tr.FindFirstKey());
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
-                    tr.CreateKeyNoClone(_key3);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
+                    tr.CreateKeyUnsafe(_key3);
                     Assert.True(tr.FindFirstKey());
                     Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
                     tr.Commit();
@@ -475,9 +475,9 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     Assert.False(tr.FindLastKey());
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
-                    tr.CreateKeyNoClone(_key3);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
+                    tr.CreateKeyUnsafe(_key3);
                     Assert.True(tr.FindLastKey());
                     Assert.AreEqual(_key2, tr.GetKeyAsByteArray());
                     tr.Commit();
@@ -493,9 +493,9 @@ namespace BTDBTest
             {
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
-                    tr.CreateKeyNoClone(_key3);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
+                    tr.CreateKeyUnsafe(_key3);
                     Assert.AreEqual(3, tr.GetKeyValueCount());
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key1, 0, 3));
                     Assert.AreEqual(2, tr.GetKeyValueCount());
@@ -516,8 +516,8 @@ namespace BTDBTest
             {
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.True(tr.FindNextKey());
@@ -535,8 +535,8 @@ namespace BTDBTest
             {
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.False(tr.FindPreviousKey());
@@ -553,9 +553,9 @@ namespace BTDBTest
             {
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateKeyNoClone(_key1);
-                    tr.CreateKeyNoClone(_key2);
-                    tr.CreateKeyNoClone(_key3);
+                    tr.CreateKeyUnsafe(_key1);
+                    tr.CreateKeyUnsafe(_key2);
+                    tr.CreateKeyUnsafe(_key3);
                     tr.EraseCurrent();
                     Assert.True(tr.FindFirstKey());
                     Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
@@ -697,11 +697,11 @@ namespace BTDBTest
                 {
                     var tr2 = tr2Task.Result;
                     Assert.True(tr2.FindExactKey(_key1));
-                    tr2.CreateKeyNoClone(_key2);
+                    tr2.CreateKeyUnsafe(_key2);
                     tr2.Commit();
                     tr2.Dispose();
                 });
-                tr1.CreateKeyNoClone(_key1);
+                tr1.CreateKeyUnsafe(_key1);
                 tr1.Commit();
                 tr1.Dispose();
                 task.Wait(1000);
@@ -722,17 +722,17 @@ namespace BTDBTest
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateKeyNoClone(_key1);
+                        tr.CreateKeyUnsafe(_key1);
                         tr.Commit();
                     }
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateKeyNoClone(_key2);
+                        tr.CreateKeyUnsafe(_key2);
                         tr.Commit();
                     }
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateKeyNoClone(_key3);
+                        tr.CreateKeyUnsafe(_key3);
                         // rollback
                     }
                     using (IKeyValue2DB db2 = new KeyValue2DB(fileCollection))

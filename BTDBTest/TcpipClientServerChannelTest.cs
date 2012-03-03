@@ -41,6 +41,7 @@ namespace BTDBTest
         {
             var server = new TcpipServer(_ipEndPoint);
             var e = new AutoResetEvent(false);
+            var e1 = new AutoResetEvent(false);
             var e2 = new AutoResetEvent(false);
             bool servercompleted = false;
             bool servercompleted2 = false;
@@ -72,6 +73,7 @@ namespace BTDBTest
                         onClientConnected = true;
                         clientEndPoint2 = client.LocalEndPoint;
                         Assert.AreEqual(_ipEndPoint, client.RemoteEndPoint);
+                        e1.Set();
                     },
                     ex => Assert.Fail(ex.ToString()),
                     () => clientcompleted2 = true);
@@ -80,6 +82,7 @@ namespace BTDBTest
                                            () => clientcompleted = true);
                 client.ConnectAsync();
                 Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));
+                Assert.True(e1.WaitOne(TimeSpan.FromSeconds(10)));
                 client.Dispose();
                 Assert.True(clientcompleted);
                 Assert.True(clientcompleted2);
