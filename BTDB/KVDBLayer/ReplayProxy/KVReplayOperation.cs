@@ -17,14 +17,6 @@
         CreateOrUpdateKeyValue,
         GetKeyValueCount,
         GetKeyIndex,
-        GetKeySize,
-        GetValueSize,
-        PeekKey,
-        ReadKey,
-        PeekValue,
-        ReadValue,
-        WriteValue,
-        SetValueSize,
         SetValue,
         EraseCurrent,
         EraseAll,
@@ -32,6 +24,8 @@
         Commit,
         CalculateStats,
         SetHumanReadableDescriptionInHeader,
-        SetKeyIndex
+        SetKeyIndex,
+        GetKey,
+        GetValue,
     }
 }

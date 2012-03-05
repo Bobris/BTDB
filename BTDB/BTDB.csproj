@@ -142,15 +142,12 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeLeafNode.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
-    <Compile Include="KV2DBLayer\ExtensionMethods.cs" />
     <Compile Include="KV2DBLayer\FileTransactionLog.cs" />
-    <Compile Include="KV2DBLayer\FindResult.cs" />
+    <Compile Include="KVDBLayer\Interface\FindResult.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeRootNode.cs" />
     <Compile Include="KV2DBLayer\IFileCollection.cs" />
     <Compile Include="KV2DBLayer\IFileInfo.cs" />
     <Compile Include="KV2DBLayer\IFileTransactionLog.cs" />
-    <Compile Include="KV2DBLayer\IKeyValue2DB.cs" />
-    <Compile Include="KV2DBLayer\IKeyValue2DBTransaction.cs" />
     <Compile Include="KV2DBLayer\InMemoryFileCollection.cs" />
     <Compile Include="KV2DBLayer\KeyValue2DB.cs" />
     <Compile Include="KV2DBLayer\KeyValue2DBTransaction.cs" />
@@ -158,6 +155,7 @@
     <Compile Include="KV2DBLayer\KV2FileType.cs" />
     <Compile Include="KV2DBLayer\OnDiskFileCollection.cs" />
     <Compile Include="KV2DBLayer\UnknownFile.cs" />
+    <Compile Include="KVDBLayer\Interface\IKeyValueDBInOneFile.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
@@ -270,8 +268,6 @@
     <Compile Include="FieldHandler\UnsignedFieldHandler.cs" />
     <Compile Include="Buffer\Checksum.cs" />
     <Compile Include="KVDBLayer\Helpers\ExtensionMethods.cs" />
-    <Compile Include="KVDBLayer\Interface\FindKeyResult.cs" />
-    <Compile Include="KVDBLayer\Interface\FindKeyStrategy.cs" />
     <Compile Include="KVDBLayer\Interface\IKeyValueDBTransaction.cs" />
     <Compile Include="StreamLayer\LoggingPositionLessStream.cs" />
     <Compile Include="KVDBLayer\Implementation\KeyValueDB.cs" />

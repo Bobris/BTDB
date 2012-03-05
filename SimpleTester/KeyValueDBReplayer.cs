@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -9,7 +10,7 @@ namespace SimpleTester
     class KeyValueDBReplayer
     {
         readonly AbstractBufferedReader _reader;
-        readonly IKeyValueDB _db = new KeyValueDB();
+        IKeyValueDB _db;
         IPositionLessStream _dbstream;
         readonly Dictionary<uint, IKeyValueDBTransaction> _trs = new Dictionary<uint, IKeyValueDBTransaction>();
 
@@ -47,7 +48,7 @@ namespace SimpleTester
                             _dbstream.Write(buf, 0, r, pos);
                             pos += (ulong)r;
                         }
-                        _db.Open(_dbstream, true);
+                        _db = new KeyValueDB(_dbstream);
                         break;
                     case KVReplayOperation.KeyValueDBDispose:
                         _db.Dispose();
@@ -62,11 +63,6 @@ namespace SimpleTester
                         tri = _reader.ReadVUInt32();
                         _trs[tri] = tr;
                         break;
-                    case KVReplayOperation.CalculateStats:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        tr.CalculateStats();
-                        break;
                     case KVReplayOperation.SetKeyPrefix:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
@@ -74,7 +70,7 @@ namespace SimpleTester
                         int prefixOfs = _reader.ReadVInt32();
                         var prefixBuf = new byte[prefixOfs + prefixLen];
                         _reader.ReadBlock(prefixBuf, prefixOfs, prefixLen);
-                        tr.SetKeyPrefix(prefixBuf, prefixOfs, prefixLen);
+                        tr.SetKeyPrefix(ByteBuffer.NewAsync(prefixBuf, prefixOfs, prefixLen));
                         break;
                     case KVReplayOperation.FindKey:
                         tri = _reader.ReadVUInt32();
@@ -83,27 +79,17 @@ namespace SimpleTester
                         keyOfs = _reader.ReadVInt32();
                         keyBuf = new byte[keyOfs + keyLen];
                         _reader.ReadBlock(keyBuf, keyOfs, keyLen);
-                        var strategy = (FindKeyStrategy)_reader.ReadVUInt32();
-                        tr.FindKey(keyBuf, keyOfs, keyLen, strategy);
+                        tr.Find(ByteBuffer.NewSync(keyBuf, keyOfs, keyLen));
                         break;
                     case KVReplayOperation.GetKeyIndex:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
                         tr.GetKeyIndex();
                         break;
-                    case KVReplayOperation.GetKeySize:
+                    case KVReplayOperation.GetKey:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
-                        tr.GetKeySize();
-                        break;
-                    case KVReplayOperation.ReadKey:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        ofs = _reader.ReadVInt32();
-                        keyLen = _reader.ReadVInt32();
-                        keyOfs = _reader.ReadVInt32();
-                        keyBuf = new byte[keyOfs + keyLen];
-                        tr.ReadKey((int)ofs, keyLen, keyBuf, keyOfs);
+                        tr.GetKey();
                         break;
                     case KVReplayOperation.SetValue:
                         tri = _reader.ReadVUInt32();
@@ -112,43 +98,12 @@ namespace SimpleTester
                         valLen = _reader.ReadVInt32();
                         valBuf = new byte[valOfs + valLen];
                         _reader.ReadBlock(valBuf, valOfs, valLen);
-                        tr.SetValue(valBuf, valOfs, valLen);
+                        tr.SetValue(ByteBuffer.NewSync(valBuf, valOfs, valLen));
                         break;
-                    case KVReplayOperation.GetValueSize:
+                    case KVReplayOperation.GetValue:
                         tri = _reader.ReadVUInt32();
                         tr = _trs[tri];
-                        tr.GetValueSize();
-                        break;
-                    case KVReplayOperation.SetValueSize:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        var valueSize = _reader.ReadVInt64();
-                        tr.SetValueSize(valueSize);
-                        break;
-                    case KVReplayOperation.ReadValue:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        ofs = _reader.ReadVInt64();
-                        valLen = _reader.ReadVInt32();
-                        valOfs = _reader.ReadVInt32();
-                        valBuf = new byte[valOfs + valLen];
-                        tr.ReadValue(ofs, valLen, valBuf, valOfs);
-                        break;
-                    case KVReplayOperation.PeekValue:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        ofs = _reader.ReadVInt64();
-                        tr.PeekValue(ofs, out valLen, out valBuf, out valOfs);
-                        break;
-                    case KVReplayOperation.WriteValue:
-                        tri = _reader.ReadVUInt32();
-                        tr = _trs[tri];
-                        ofs = _reader.ReadVInt64();
-                        valOfs = _reader.ReadVInt32();
-                        valLen = _reader.ReadVInt32();
-                        valBuf = new byte[valOfs + valLen];
-                        _reader.ReadBlock(valBuf, valOfs, valLen);
-                        tr.WriteValue(ofs, valLen, valBuf, valOfs);
+                        tr.GetValue();
                         break;
                     case KVReplayOperation.CreateOrUpdateKeyValue:
                         tri = _reader.ReadVUInt32();
@@ -161,7 +116,7 @@ namespace SimpleTester
                         valOfs = _reader.ReadVInt32();
                         valBuf = new byte[valOfs + valLen];
                         _reader.ReadBlock(valBuf, valOfs, valLen);
-                        tr.CreateOrUpdateKeyValue(keyBuf, keyOfs, keyLen, valBuf, valOfs, valLen);
+                        tr.CreateOrUpdateKeyValue(ByteBuffer.NewSync(keyBuf, keyOfs, keyLen), ByteBuffer.NewSync(valBuf, valOfs, valLen));
                         break;
                     case KVReplayOperation.Commit:
                         tri = _reader.ReadVUInt32();
@@ -256,7 +211,6 @@ namespace SimpleTester
                             int keyOfs = _reader.ReadVInt32();
                             var keyBuf = new byte[keyLen];
                             _reader.ReadBlock(keyBuf, 0, keyLen);
-                            var strategy = (FindKeyStrategy)_reader.ReadVUInt32();
                             var content = new StringBuilder();
                             content.Append("{");
                             if (keyBuf.Length != 0)
@@ -269,14 +223,7 @@ namespace SimpleTester
                                 content.Length--;
                             }
                             content.Append("}");
-                            if (strategy == FindKeyStrategy.Create)
-                            {
-                                os.WriteLine(string.Format("tr{0}.CreateKey(new byte[] {1});", tri, content));
-                            }
-                            else
-                            {
-                                throw new NotImplementedException();
-                            }
+                            throw new NotImplementedException();
                             break;
                         case KVReplayOperation.GetKeyIndex:
                             tri = _reader.ReadVUInt32();

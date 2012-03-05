@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.KVDBLayer;
+using BTDB.KV2DBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
@@ -12,6 +13,7 @@ namespace BTDBTest
     public class ObjectDBTest
     {
         IPositionLessStream _dbstream;
+        IFileCollection _fileCollection;
         IKeyValueDB _lowDB;
         IObjectDB _db;
 
@@ -50,6 +52,7 @@ namespace BTDBTest
         public void Setup()
         {
             _dbstream = new MemoryPositionLessStream();
+            _fileCollection = new InMemoryFileCollection();
             OpenDB();
         }
 
@@ -58,6 +61,7 @@ namespace BTDBTest
         {
             _db.Dispose();
             _dbstream.Dispose();
+            _fileCollection.Dispose();
         }
 
         void ReopenDB()
@@ -68,8 +72,8 @@ namespace BTDBTest
 
         void OpenDB()
         {
-            _lowDB = new KeyValueDB();
-            _lowDB.Open(_dbstream, false);
+            //_lowDB = new KeyValueDB(_dbstream);
+            _lowDB = new KeyValue2DB(_fileCollection);
             _db = new ObjectDB();
             _db.Open(_lowDB, true);
         }

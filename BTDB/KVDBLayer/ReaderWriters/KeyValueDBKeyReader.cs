@@ -2,43 +2,19 @@
 
 namespace BTDB.KVDBLayer
 {
-    public class KeyValueDBKeyReader : AbstractBufferedReader
+    public class KeyValueDBKeyReader : ByteBufferReader
     {
         readonly IKeyValueDBTransaction _transaction;
-        int _ofs;
-        int _keySize;
 
         public KeyValueDBKeyReader(IKeyValueDBTransaction transaction)
+            : base(transaction.GetKey())
         {
             _transaction = transaction;
-            Restart();
         }
 
         public void Restart()
         {
-            _keySize = _transaction.GetKeySize();
-            if (_keySize < 0) _keySize = 0;
-            _ofs = 0;
-            FillBuffer();
-        }
-
-        protected override sealed void FillBuffer()
-        {
-            if (_ofs == _keySize)
-            {
-                Pos = 0;
-                End = -1;
-                return;
-            }
-            _transaction.PeekKey(_ofs, out End, out Buf, out Pos);
-            _ofs += End;
-            End += Pos;
-        }
-
-        public override long GetCurrentPosition()
-        {
-            if (End == -1) return _keySize;
-            return _ofs - End + Pos;
+            Restart(_transaction.GetKey());
         }
     }
 }

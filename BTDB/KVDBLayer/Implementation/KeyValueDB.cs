@@ -36,7 +36,7 @@ namespace BTDB.KVDBLayer
      *    4 - Checksum
      */
 
-    public sealed class KeyValueDB : IKeyValueDB
+    public sealed class KeyValueDB : IKeyValueDB, IKeyValueDBInOneFile
     {
         internal class State
         {
@@ -82,7 +82,6 @@ namespace BTDB.KVDBLayer
         internal const int MaskOfGranLength = AllocationGranularity - 1;
 
         IPositionLessStream _positionLessStream;
-        bool _disposeStream;
         int _cacheSizeInMB = 10;
 
         readonly ReaderWriterLockSlim _cacheLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
@@ -146,9 +145,9 @@ namespace BTDB.KVDBLayer
 
         void FixChildParentPointer(long childSectorPtr, Sector parent)
         {
-            Sector res;
             using (_cacheLock.ReadLock())
             {
+                Sector res;
                 if (_sectorCache.TryGetValue(childSectorPtr & MaskOfPosition, out res))
                 {
                     res.Parent = parent;
@@ -362,19 +361,16 @@ namespace BTDB.KVDBLayer
             set { _durableTransactions = value; }
         }
 
-        public bool Open(IPositionLessStream positionLessStream, bool dispose)
+        public KeyValueDB(IPositionLessStream positionLessStream)
         {
             if (positionLessStream == null) throw new ArgumentNullException("positionLessStream");
             _positionLessStream = positionLessStream;
-            _disposeStream = dispose;
             _spaceSoonReusable = null;
             _freeSpaceAllocatorOptimizer.GlobalInvalidate();
             _wasAnyCommits = false;
-            bool newDB = false;
             if (positionLessStream.GetSize() == 0)
             {
                 InitEmptyDB();
-                newDB = true;
             }
             else
             {
@@ -441,7 +437,6 @@ namespace BTDB.KVDBLayer
             {
                 throw new BTDBException("TransactionLog is not supported");
             }
-            return newDB;
         }
 
         static void ThrowDatabaseCorrupted()
@@ -623,6 +618,11 @@ namespace BTDB.KVDBLayer
             return taskCompletionSource.Task;
         }
 
+        public string CalcStats()
+        {
+            return CalculateStats(_readTrLinkHead).ToString();
+        }
+
         private void DereferenceReadLink(ReadTrLink link)
         {
             lock (_readLinkLock)
@@ -681,11 +681,6 @@ namespace BTDB.KVDBLayer
                 _totalBytesWritten += RootSize;
                 _positionLessStream.Write(_headerData, (int)_newState.Position, RootSize, _newState.Position);
                 _positionLessStream.Flush();
-            }
-            if (_disposeStream)
-            {
-                var disposable = _positionLessStream as IDisposable;
-                if (disposable != null) disposable.Dispose();
             }
             _positionLessStream = null;
         }
@@ -1996,7 +1991,7 @@ namespace BTDB.KVDBLayer
 
         void NewSectorAddedToCache(int sectorsInCache, int bytesInCache)
         {
-            Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 1);
+            Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 2);
         }
 
         bool CheckDB(State state)

@@ -110,8 +110,8 @@ namespace BTDB.ODBLayer
                             if (!_keyValueTr.FindNextKey()) break;
                         }
                     }
-                    var keyBytes = _keyValueTr.ReadKey();
-                    var valueBytes = _keyValueTr.ReadValue();
+                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
                     _keyValueTrProtector.Stop(ref taken);
                     var key = ByteArrayToKey(keyBytes);
                     var value = ByteArrayToValue(valueBytes);
@@ -321,7 +321,7 @@ namespace BTDB.ODBLayer
                     value = default(TValue);
                     return false;
                 }
-                var valueBytes = _keyValueTr.ReadValue();
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
                 _keyValueTrProtector.Stop(ref taken);
                 value = ByteArrayToValue(valueBytes);
                 return true;
@@ -347,7 +347,7 @@ namespace BTDB.ODBLayer
                     {
                         throw new ArgumentException("Key not found in Dictionary");
                     }
-                    var valueBytes = _keyValueTr.ReadValue();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
                     _keyValueTrProtector.Stop(ref taken);
                     return ByteArrayToValue(valueBytes);
                 }
@@ -437,7 +437,7 @@ namespace BTDB.ODBLayer
                                 if (!_parent._keyValueTr.FindNextKey()) break;
                             }
                         }
-                        var keyBytes = _parent._keyValueTr.ReadKey();
+                        var keyBytes = _parent._keyValueTr.GetKeyAsByteArray();
                         _parent._keyValueTrProtector.Stop(ref taken);
                         var key = _parent.ByteArrayToKey(keyBytes);
                         yield return key;
@@ -545,7 +545,7 @@ namespace BTDB.ODBLayer
                                 if (!_parent._keyValueTr.FindNextKey()) break;
                             }
                         }
-                        var valueBytes = _parent._keyValueTr.ReadValue();
+                        var valueBytes = _parent._keyValueTr.GetValueAsByteArray();
                         _parent._keyValueTrProtector.Stop(ref taken);
                         var value = _parent.ByteArrayToValue(valueBytes);
                         yield return value;

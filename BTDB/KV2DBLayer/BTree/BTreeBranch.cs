@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
+using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer.BTree
 {

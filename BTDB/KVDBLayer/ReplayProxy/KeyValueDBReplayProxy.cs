@@ -4,44 +4,15 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    public class KeyValueDBReplayProxy : IKeyValueDB
+    public class KeyValueDBReplayProxy : IKeyValueDB, IKeyValueDBInOneFile
     {
         readonly IKeyValueDB _db;
         readonly AbstractBufferedWriter _log;
         int _trCounter;
 
-        public KeyValueDBReplayProxy(IKeyValueDB db, AbstractBufferedWriter log)
+        public KeyValueDBReplayProxy(IPositionLessStream positionLessStream, AbstractBufferedWriter log)
         {
-            _db = db;
             _log = log;
-        }
-
-        public void Dispose()
-        {
-            lock (_log)
-            {
-                _log.WriteUInt8((byte)KVReplayOperation.KeyValueDBDispose);
-                _log.FlushBuffer();
-            }
-            var disposableLog = _log as IDisposable;
-            if (disposableLog != null) disposableLog.Dispose();
-            _db.Dispose();
-        }
-
-        public int CacheSizeInMB
-        {
-            get { return _db.CacheSizeInMB; }
-            set { _db.CacheSizeInMB = value; }
-        }
-
-        public bool DurableTransactions
-        {
-            get { return _db.DurableTransactions; }
-            set { _db.DurableTransactions = value; }
-        }
-
-        public bool Open(IPositionLessStream positionLessStream, bool dispose)
-        {
             lock (_log)
             {
                 _log.WriteUInt8((byte)KVReplayOperation.Open);
@@ -65,12 +36,36 @@ namespace BTDB.KVDBLayer
                 }
                 _log.FlushBuffer();
             }
-            return _db.Open(positionLessStream, dispose);
+            _db = new KeyValueDB(positionLessStream);
+        }
+
+        public void Dispose()
+        {
+            lock (_log)
+            {
+                _log.WriteUInt8((byte)KVReplayOperation.KeyValueDBDispose);
+                _log.FlushBuffer();
+            }
+            var disposableLog = _log as IDisposable;
+            if (disposableLog != null) disposableLog.Dispose();
+            _db.Dispose();
+        }
+
+        public bool DurableTransactions
+        {
+            get { return _db.DurableTransactions; }
+            set { _db.DurableTransactions = value; }
+        }
+
+        public int CacheSizeInMB
+        {
+            get { return ((IKeyValueDBInOneFile)_db).CacheSizeInMB; }
+            set { ((IKeyValueDBInOneFile)_db).CacheSizeInMB = value; }
         }
 
         public string HumanReadableDescriptionInHeader
         {
-            get { return _db.HumanReadableDescriptionInHeader; }
+            get { return ((IKeyValueDBInOneFile)_db).HumanReadableDescriptionInHeader; }
             set
             {
                 lock (_log)
@@ -79,7 +74,7 @@ namespace BTDB.KVDBLayer
                     _log.WriteString(value);
                     _log.FlushBuffer();
                 }
-                _db.HumanReadableDescriptionInHeader = value;
+                ((IKeyValueDBInOneFile)_db).HumanReadableDescriptionInHeader = value;
             }
         }
 
@@ -108,6 +103,16 @@ namespace BTDB.KVDBLayer
                     }
                     return result;
                 }, TaskContinuationOptions.ExecuteSynchronously);
+        }
+
+        public string CalcStats()
+        {
+            lock (_log)
+            {
+                _log.WriteUInt8((byte)KVReplayOperation.CalculateStats);
+                _log.FlushBuffer();
+            }
+            return _db.CalcStats();
         }
     }
 }

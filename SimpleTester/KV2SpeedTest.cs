@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using BTDB.Buffer;
 using BTDB.KV2DBLayer;
+using BTDB.KVDBLayer;
 
 namespace SimpleTester
 {
@@ -31,7 +32,7 @@ namespace SimpleTester
             _sw.Restart();
             long pureDataLength = 0;
             using (var fileCollection = CreateTestFileCollection())
-            using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+            using (IKeyValueDB db = new KeyValue2DB(fileCollection))
             {
                 for (int i = 0; i < 200; i++)
                 {
@@ -71,7 +72,7 @@ namespace SimpleTester
         {
             _sw.Restart();
             using (var fileCollection = new OnDiskFileCollection("data"))
-            using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+            using (IKeyValueDB db = new KeyValue2DB(fileCollection))
             {
                 using (var trCheck = db.StartTransaction())
                 {
@@ -98,7 +99,7 @@ namespace SimpleTester
             using (var fileCollection = CreateTestFileCollection())
             {
                 _sw.Start();
-                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
                 {
                     var key = new byte[100];
                     var value = new byte[100000000];
@@ -118,7 +119,7 @@ namespace SimpleTester
                 _sw.Stop();
                 Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 _sw.Start();
-                using (IKeyValue2DB db = new KeyValue2DB(fileCollection))
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
                 {
                     _sw.Stop();
                     Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);

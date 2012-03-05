@@ -6,7 +6,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer
 {
-    internal class KeyValue2DBTransaction : IKeyValue2DBTransaction
+    internal class KeyValue2DBTransaction : IKeyValueDBTransaction
     {
         readonly KeyValue2DB _keyValue2DB;
         IBTreeRootNode _btreeRoot;
@@ -34,6 +34,7 @@ namespace BTDB.KV2DBLayer
             _prefix = prefix.ToByteArray();
             _prefixKeyStart = -1;
             _prefixKeyCount = -1;
+            InvalidateCurrentKey();
         }
 
         public bool FindFirstKey()
@@ -89,7 +90,7 @@ namespace BTDB.KV2DBLayer
             int valueFileId;
             int valueOfs;
             int valueSize;
-            _keyValue2DB.WriteCreateOrUpdateCommand(key, value, out valueFileId, out valueOfs, out valueSize);
+            _keyValue2DB.WriteCreateOrUpdateCommand(_prefix, key, value, out valueFileId, out valueOfs, out valueSize);
             var ctx = new CreateOrUpdateCtx
                 {
                     KeyPrefix = _prefix,
@@ -210,9 +211,17 @@ namespace BTDB.KV2DBLayer
 
         public ByteBuffer GetKey()
         {
-            EnsureValidKey();
+            if (!IsValidKey()) return ByteBuffer.NewEmpty();
             var wholeKey = GetCurrentKeyFromStack();
             return ByteBuffer.NewAsync(wholeKey, _prefix.Length, wholeKey.Length - _prefix.Length);
+        }
+
+        public ByteBuffer GetValue()
+        {
+            if (!IsValidKey()) return ByteBuffer.NewEmpty();
+            var nodeIdxPair = _stack[_stack.Count - 1];
+            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
+            return _keyValue2DB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
         }
 
         void EnsureValidKey()
@@ -223,14 +232,6 @@ namespace BTDB.KV2DBLayer
             }
         }
 
-        public ByteBuffer GetValue()
-        {
-            EnsureValidKey();
-            var nodeIdxPair = _stack[_stack.Count - 1];
-            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-            return _keyValue2DB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
-        }
-
         public void SetValue(ByteBuffer value)
         {
             EnsureValidKey();
@@ -238,12 +239,13 @@ namespace BTDB.KV2DBLayer
             MakeWrittable();
             if (_keyIndex != keyIndexBackup)
             {
+                _keyIndex = keyIndexBackup;
                 _btreeRoot.FillStackByIndex(_stack, _keyIndex);
             }
             var nodeIdxPair = _stack[_stack.Count - 1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-            _keyValue2DB.WriteCreateOrUpdateCommand(ByteBuffer.NewAsync(leafMember.Key),value,out leafMember.ValueFileId, out leafMember.ValueOfs, out leafMember.ValueSize);
-            ((IBTreeLeafNode) nodeIdxPair.Node).SetMember(nodeIdxPair.Idx, leafMember);
+            _keyValue2DB.WriteCreateOrUpdateCommand(BitArrayManipulation.EmptyByteArray, ByteBuffer.NewAsync(leafMember.Key), value, out leafMember.ValueFileId, out leafMember.ValueOfs, out leafMember.ValueSize);
+            ((IBTreeLeafNode)nodeIdxPair.Node).SetMember(nodeIdxPair.Idx, leafMember);
         }
 
         public void EraseCurrent()
@@ -267,15 +269,15 @@ namespace BTDB.KV2DBLayer
             lastKeyIndex += _prefixKeyStart;
             InvalidateCurrentKey();
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
-            _btreeRoot.FillStackByIndex(_stack,firstKeyIndex);
-            if (firstKeyIndex==lastKeyIndex)
+            _btreeRoot.FillStackByIndex(_stack, firstKeyIndex);
+            if (firstKeyIndex == lastKeyIndex)
             {
                 _keyValue2DB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             }
             else
             {
                 var firstKey = GetCurrentKeyFromStack();
-                _btreeRoot.FillStackByIndex(_stack,lastKeyIndex);
+                _btreeRoot.FillStackByIndex(_stack, lastKeyIndex);
                 _keyValue2DB.WriteEraseRangeCommand(firstKey, GetCurrentKeyFromStack());
             }
             _btreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);

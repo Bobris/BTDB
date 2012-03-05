@@ -3,7 +3,7 @@ using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
 {
-    public sealed class ByteBufferWriter : AbstractBufferedWriter
+    public class ByteBufferWriter : AbstractBufferedWriter
     {
         ByteBuffer _result;
 

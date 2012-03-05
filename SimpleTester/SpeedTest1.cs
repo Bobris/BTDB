@@ -32,14 +32,11 @@ namespace SimpleTester
         void WarmUp()
         {
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 using (var tr = db.StartTransaction())
                 {
-                    tr.CreateKey(new byte[10000]);
-                    tr.SetValueSize(10000);
-                    tr.SetValue(new byte[1000], 0, 1000);
+                    tr.CreateOrUpdateKeyValueUnsafe(new byte[10000],new byte[10000]);
                     tr.Commit();
                 }
             }
@@ -50,9 +47,8 @@ namespace SimpleTester
             var key = new byte[1000];
 
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 _sw.Restart();
                 for (int i = 0; i < 100000; i++)
                 {
@@ -62,8 +58,7 @@ namespace SimpleTester
                     key[501] = (byte)(i / 256 / 256 / 256);
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateKey(key);
-                        tr.SetValueSize(10000);
+                        tr.CreateOrUpdateKeyValue(key, new byte[10000]);
                         tr.Commit();
                     }
                     _sw.Stop();
@@ -72,11 +67,8 @@ namespace SimpleTester
                     _sw.Start();
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Total miliseconds:   {0,15}", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Total miliseconds:   {0,15}", _sw.Elapsed.TotalMilliseconds);
             }
         }
 
@@ -85,9 +77,8 @@ namespace SimpleTester
             var key = new byte[4];
 
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 _sw.Restart();
                 using (var tr = db.StartTransaction())
                 {
@@ -102,11 +93,8 @@ namespace SimpleTester
                     tr.Commit();
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Insert:              {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Insert:              {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 _sw.Restart();
                 for (int i = 0; i < 1000000; i++)
                 {
@@ -117,15 +105,12 @@ namespace SimpleTester
                     using (var tr = db.StartTransaction())
                     {
                         tr.FindExactKey(key);
-                        tr.ReadValue();
+                        tr.GetValueAsByteArray();
                     }
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Find+Get in sep tr:  {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Find+Get in sep tr:  {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 _sw.Restart();
                 using (var tr = db.StartTransaction())
                 {
@@ -136,15 +121,12 @@ namespace SimpleTester
                         key[1] = (byte)(i / 256 / 256 % 256);
                         key[0] = (byte)(i / 256 / 256 / 256);
                         tr.FindExactKey(key);
-                        tr.ReadValue();
+                        tr.GetValueAsByteArray();
                     }
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Find+Get in whole tr:{0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Find+Get in whole tr:{0,15}ms", _sw.Elapsed.TotalMilliseconds);
             }
         }
 
@@ -153,9 +135,8 @@ namespace SimpleTester
             var key = new byte[4000];
 
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 _sw.Restart();
                 for (int i = 0; i < 30000; i++)
                 {
@@ -171,11 +152,8 @@ namespace SimpleTester
                     }
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Insert CaS:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Insert CaS:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
             }
         }
 
@@ -184,10 +162,9 @@ namespace SimpleTester
             var key = new byte[4];
 
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
                 db.DurableTransactions = false;
-                db.Open(stream, false);
                 _sw.Restart();
                 for (int i = 0; i < 100000; i++)
                 {
@@ -202,11 +179,8 @@ namespace SimpleTester
                     }
                 }
                 _sw.Stop();
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                    Console.WriteLine("Insert COU:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                }
+                Console.WriteLine(db.CalcStats());
+                Console.WriteLine("Insert COU:          {0,15}ms", _sw.Elapsed.TotalMilliseconds);
             }
         }
 
@@ -216,16 +190,15 @@ namespace SimpleTester
             var random = new Random();
             using (var stream = CreateTestStream())
             //using (IKeyValueDB db = new KeyValueDBReplayProxy(new KeyValueDB(), new PositionLessStreamWriter(new PositionLessStreamProxy("btdb.log"))))
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 IKeyValueDBTransaction tr = db.StartTransaction();
                 while (opCounter < 100000)
                 {
                     if (opCounter % 1000 == 0)
                     {
                         Console.WriteLine(string.Format("Operation {0}", opCounter));
-                        Console.WriteLine(tr.CalculateStats().ToString());
+                        Console.WriteLine(db.CalcStats());
                     }
                     opCounter++;
                     var action = random.Next(100);
@@ -280,9 +253,8 @@ namespace SimpleTester
         void DoParallelTest()
         {
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
                 using (var tr = db.StartTransaction())
                 {
                     var key = new byte[4000];
@@ -321,11 +293,10 @@ namespace SimpleTester
             _sw.Restart();
             long pureDataLength = 0;
             using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
                 db.DurableTransactions = true;
-                db.CacheSizeInMB = 40;
-                db.Open(stream, false);
+                (db as IKeyValueDBInOneFile).CacheSizeInMB = 40;
                 for (int i = 0; i < 200; i++)
                 {
                     long pureDataLengthPrevTr = pureDataLength;
@@ -343,7 +314,7 @@ namespace SimpleTester
                                 {
                                     do
                                     {
-                                        pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
+                                        pureDataLengthCheck += trCheck.GetKeyAsByteArray().Length + trCheck.GetValueAsByteArray().Length;
                                     } while (trCheck.FindNextKey());
                                 }
                                 if (pureDataLengthCheck != pureDataLengthPrevTr)
@@ -354,10 +325,7 @@ namespace SimpleTester
                         tr.Commit();
                     }
                 }
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                }
+                Console.WriteLine(db.CalcStats());
             }
             _sw.Stop();
             Console.WriteLine("Pure data length: {0}", pureDataLength);
@@ -368,13 +336,9 @@ namespace SimpleTester
         {
             _sw.Restart();
             using (var stream = new PositionLessStreamProxy("data.btdb"))
-            using (IKeyValueDB db = new KeyValueDB())
+            using (IKeyValueDB db = new KeyValueDB(stream))
             {
-                db.Open(stream, false);
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                }
+                Console.WriteLine(db.CalcStats());
                 using (var trCheck = db.StartTransaction())
                 {
                     long pureDataLengthCheck = 0;
@@ -382,7 +346,7 @@ namespace SimpleTester
                     {
                         do
                         {
-                            pureDataLengthCheck += trCheck.ReadKey().Length + trCheck.ReadValue().Length;
+                            pureDataLengthCheck += trCheck.GetKeyAsByteArray().Length + trCheck.GetValueAsByteArray().Length;
                         } while (trCheck.FindNextKey());
                     }
                     if (pureDataLengthCheck != 396130000)
@@ -390,10 +354,7 @@ namespace SimpleTester
                         throw new Exception("Bug");
                     }
                 }
-                using (var trStat = db.StartTransaction())
-                {
-                    Console.WriteLine(trStat.CalculateStats().ToString());
-                }
+                Console.WriteLine(db.CalcStats());
             }
             _sw.Stop();
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);

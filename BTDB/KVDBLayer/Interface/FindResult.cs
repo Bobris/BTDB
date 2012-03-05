@@ -1,4 +1,4 @@
-namespace BTDB.KV2DBLayer
+namespace BTDB.KVDBLayer
 {
     public enum FindResult
     {

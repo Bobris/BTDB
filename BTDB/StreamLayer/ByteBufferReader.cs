@@ -4,9 +4,17 @@ namespace BTDB.StreamLayer
 {
     public class ByteBufferReader : AbstractBufferedReader
     {
-        readonly int _startPos;
+        int _startPos;
 
         public ByteBufferReader(ByteBuffer byteBuffer)
+        {
+            Buf = byteBuffer.Buffer;
+            Pos = byteBuffer.Offset;
+            _startPos = Pos;
+            End = Pos + byteBuffer.Length;
+        }
+
+        public void Restart(ByteBuffer byteBuffer)
         {
             Buf = byteBuffer.Buffer;
             Pos = byteBuffer.Offset;

@@ -10,13 +10,13 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KV2DBLayer
 {
-    public class KeyValue2DB : IKeyValue2DB
+    public class KeyValue2DB : IKeyValueDB
     {
         readonly IFileCollection _fileCollection;
         IBTreeRootNode _lastCommited;
         IBTreeRootNode _nextRoot;
         KeyValue2DBTransaction _writingTransaction;
-        readonly Queue<TaskCompletionSource<IKeyValue2DBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValue2DBTransaction>>();
+        readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
         readonly object _writeLock = new object();
         int _fileIdWithTransactionLog;
         long _fileGeneration;
@@ -29,6 +29,7 @@ namespace BTDB.KV2DBLayer
 
         public KeyValue2DB(IFileCollection fileCollection)
         {
+            DurableTransactions = false;
             _fileCollection = fileCollection;
             _lastCommited = new BTreeRoot(0);
             _fileIdWithTransactionLog = -1;
@@ -229,16 +230,18 @@ namespace BTDB.KV2DBLayer
             }
         }
 
-        public IKeyValue2DBTransaction StartTransaction()
+        public bool DurableTransactions { get; set; }
+
+        public IKeyValueDBTransaction StartTransaction()
         {
             return new KeyValue2DBTransaction(this, _lastCommited, false);
         }
 
-        public Task<IKeyValue2DBTransaction> StartWritingTransaction()
+        public Task<IKeyValueDBTransaction> StartWritingTransaction()
         {
             lock (_writeLock)
             {
-                var tcs = new TaskCompletionSource<IKeyValue2DBTransaction>();
+                var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
                 if (_writingTransaction == null)
                 {
                     NewWrittingTransactionUnsafe(tcs);
@@ -249,6 +252,13 @@ namespace BTDB.KV2DBLayer
                 }
                 return tcs.Task;
             }
+        }
+
+        public string CalcStats()
+        {
+            return "KeyValueCount:" + _lastCommited.CalcKeyCount() + Environment.NewLine
+                   + "FileCount:" + _fileCollection.GetCount() + Environment.NewLine
+                   + "FileGeneration:" + _fileGeneration;
         }
 
         internal IBTreeRootNode MakeWrittableTransaction(KeyValue2DBTransaction keyValue2DBTransaction, IBTreeRootNode btreeRoot)
@@ -282,7 +292,7 @@ namespace BTDB.KV2DBLayer
             NewWrittingTransactionUnsafe(tcs);
         }
 
-        void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValue2DBTransaction> tcs)
+        void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
         {
             var newTransactionRoot = _lastCommited.NewTransactionRoot();
             _writingTransaction = new KeyValue2DBTransaction(this, newTransactionRoot, true);
@@ -345,15 +355,16 @@ namespace BTDB.KV2DBLayer
             return Interlocked.Increment(ref _fileGeneration) + 1;
         }
 
-        public void WriteCreateOrUpdateCommand(ByteBuffer key, ByteBuffer value, out int valueFileId, out int valueOfs, out int valueSize)
+        public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out int valueFileId, out int valueOfs, out int valueSize)
         {
-            if (_writerWithTransactionLog.GetCurrentPosition() + key.Length + 16 > int.MaxValue)
+            if (_writerWithTransactionLog.GetCurrentPosition() + prefix.Length+key.Length + 16 > int.MaxValue)
             {
                 WriteStartOfNewTransactionLogFile();
             }
             _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.CreateOrUpdate);
-            _writerWithTransactionLog.WriteVInt32(key.Length);
+            _writerWithTransactionLog.WriteVInt32(prefix.Length+key.Length);
             _writerWithTransactionLog.WriteVInt32(value.Length);
+            _writerWithTransactionLog.WriteBlock(prefix);
             _writerWithTransactionLog.WriteBlock(key);
             valueFileId = _fileIdWithTransactionLog;
             valueOfs = (int)_writerWithTransactionLog.GetCurrentPosition();

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
+using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer.BTree
 {
@@ -37,7 +38,7 @@ namespace BTDB.KV2DBLayer.BTree
             if (ctx.Split)
             {
                 _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
-                ctx.Stack.Insert(1, new NodeIdxPair { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
+                ctx.Stack.Insert(0, new NodeIdxPair { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
                 _levels++;
             }
             else if (ctx.Update)

@@ -65,7 +65,7 @@ namespace BTDB.ODBLayer
                 tr.SetKeyPrefix(null);
                 if (tr.FindExactKey(LastDictIdKey))
                 {
-                    _lastDictId = new ByteArrayReader(tr.ReadValue()).ReadVUInt64();
+                    _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
                 }
             }
         }
@@ -84,10 +84,10 @@ namespace BTDB.ODBLayer
 
         static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
-            tr.SetKeyPrefix(TableNamesPrefix);
+            tr.SetKeyPrefixUnsafe(TableNamesPrefix);
             var keyReader = new KeyValueDBKeyReader(tr);
             var valueReader = new KeyValueDBValueReader(tr);
-            while (tr.Enumerate())
+            while (tr.FindNextKey())
             {
                 keyReader.Restart();
                 valueReader.Restart();
@@ -152,9 +152,9 @@ namespace BTDB.ODBLayer
                 {
                     tr.SetKeyPrefix(TableVersionsPrefix);
                     var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
-                    if (tr.FindKey(key, 0, key.Length, FindKeyStrategy.PreferPrevious) == FindKeyResult.NotFound)
+                    if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
                         return 0;
-                    var key2 = tr.ReadKey();
+                    var key2 = tr.GetKeyAsByteArray();
                     var ofs = PackUnpack.LengthVUInt(id);
                     if (key2.Length < ofs) return 0;
                     if (BitArrayManipulation.CompareByteArray(key, 0, ofs, key2, 0, ofs) != 0) return 0;

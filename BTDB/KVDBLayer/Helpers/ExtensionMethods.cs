@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {
@@ -8,54 +9,48 @@ namespace BTDB.KVDBLayer
     {
         public static bool CreateKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
         {
-            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.Create) == FindKeyResult.Created;
+            if (FindExactKey(transaction, keyBuf)) return false;
+            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(keyBuf), ByteBuffer.NewEmpty());
         }
 
         public static bool FindExactKey(this IKeyValueDBTransaction transaction, byte[] keyBuf)
         {
-            return transaction.FindKey(keyBuf, 0, keyBuf.Length, FindKeyStrategy.ExactMatch) == FindKeyResult.FoundExact;
+            return transaction.Find(ByteBuffer.NewSync(keyBuf)) == FindResult.Exact;
+        }
+
+        public static bool CreateOrUpdateKeyValueUnsafe(this IKeyValueDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
+        {
+            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(keyBuf), ByteBuffer.NewAsync(valueBuf));
         }
 
         public static bool CreateOrUpdateKeyValue(this IKeyValueDBTransaction transaction, byte[] keyBuf, byte[] valueBuf)
         {
-            return transaction.CreateOrUpdateKeyValue(keyBuf, 0, keyBuf.Length, valueBuf, 0, valueBuf.Length);
+            return transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(keyBuf), ByteBuffer.NewSync(valueBuf));
         }
 
         public static void SetValue(this IKeyValueDBTransaction transaction, byte[] valueBuf)
         {
-            transaction.SetValue(valueBuf, 0, valueBuf.Length);
+            transaction.SetValue(ByteBuffer.NewSync(valueBuf));
         }
 
-        public static byte[] ReadKey(this IKeyValueDBTransaction transaction)
+        public static byte[] GetKeyAsByteArray(this IKeyValueDBTransaction transaction)
         {
-            int keySize = transaction.GetKeySize();
-            if (keySize < 0) return null;
-            var result = new byte[keySize];
-            transaction.ReadKey(0, keySize, result, 0);
-            return result;
+            return transaction.GetKey().ToByteArray();
         }
 
-        public static byte[] ReadValue(this IKeyValueDBTransaction transaction)
+        public static byte[] GetValueAsByteArray(this IKeyValueDBTransaction transaction)
         {
-            long valueSize = transaction.GetValueSize();
-            if (valueSize < 0) return null;
-            if ((int)valueSize != valueSize) throw new BTDBException("Value is bigger then 2GB does not fit in byte[]");
-            var result = new byte[valueSize];
-            transaction.ReadValue(0, (int)valueSize, result, 0);
-            return result;
+            return transaction.GetValue().ToByteArray();
+        }
+
+        public static void SetKeyPrefixUnsafe(this IKeyValueDBTransaction transaction, byte[] prefix)
+        {
+            transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewAsync(prefix));
         }
 
         public static void SetKeyPrefix(this IKeyValueDBTransaction transaction, byte[] prefix)
         {
-            transaction.SetKeyPrefix(prefix, 0, prefix == null ? 0 : prefix.Length);
-        }
-
-        public static bool Enumerate(this IKeyValueDBTransaction transaction)
-        {
-            if (transaction.GetKeyIndex() < 0) return transaction.FindFirstKey();
-            if (transaction.FindNextKey()) return true;
-            transaction.InvalidateCurrentKey();
-            return false;
+            transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewSync(prefix));
         }
 
         public static bool TryRemove<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dict, TKey key)

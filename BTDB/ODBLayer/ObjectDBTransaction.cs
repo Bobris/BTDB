@@ -122,7 +122,15 @@ namespace BTDB.ODBLayer
                             _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                             oid++;
                             byte[] key = BuildKeyFromOid(oid);
-                            if (_keyValueTr.FindKey(key, 0, key.Length, FindKeyStrategy.OnlyNext) == FindKeyResult.NotFound)
+                            var result = _keyValueTr.Find(ByteBuffer.NewSync(key));
+                            if (result == FindResult.Previous)
+                            {
+                                if (!_keyValueTr.FindNextKey())
+                                {
+                                    result = FindResult.NotFound;
+                                }
+                            }
+                            if (result == FindResult.NotFound)
                             {
                                 oid--;
                                 break;
@@ -189,7 +197,7 @@ namespace BTDB.ODBLayer
 
         ByteArrayReader ReadObjStart(ulong oid, out TableInfo tableInfo)
         {
-            var reader = new ByteArrayReader(_keyValueTr.ReadValue());
+            var reader = new ByteArrayReader(_keyValueTr.GetValueAsByteArray());
             var tableId = reader.ReadVUInt32();
             tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of Oid {1}", tableId, oid));
@@ -336,11 +344,9 @@ namespace BTDB.ODBLayer
 
         ulong ReadOidFromCurrentKeyInTransaction()
         {
-            int len;
-            byte[] buf;
-            int bufOfs;
-            _keyValueTr.PeekKey(0, out len, out buf, out bufOfs);
-            ulong oid = PackUnpack.UnpackVUInt(buf, ref bufOfs);
+            var key = _keyValueTr.GetKey();
+            var bufOfs = key.Offset;
+            var oid = PackUnpack.UnpackVUInt(key.Buffer, ref bufOfs);
             return oid;
         }
 

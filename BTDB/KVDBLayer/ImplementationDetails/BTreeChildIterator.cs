@@ -11,7 +11,7 @@ namespace BTDB.KVDBLayer
         internal const int HeaderSize = 2;
         internal const int HeaderForEntry = 2;
 
-        long _valueLen;
+        int _valueLen;
         byte[] _data;
         readonly int _count;
         int _ofs;
@@ -67,7 +67,7 @@ namespace BTDB.KVDBLayer
                    (keyLen > MaxKeyLenInline ? KeyValueDB.PtrDownSize : 0);
         }
 
-        internal static int CalcEntrySizeWOLengths(int keyLen, long valueLen)
+        static int CalcEntrySizeWOLengths(int keyLen, long valueLen)
         {
             return CalcKeyLenInline(keyLen) +
                    (keyLen > MaxKeyLenInline ? KeyValueDB.PtrDownSize : 0) +
@@ -90,7 +90,7 @@ namespace BTDB.KVDBLayer
         {
             int ofs = _ofs;
             _keyLen = (int)PackUnpack.UnpackVUInt(_data, ref ofs);
-            _valueLen = (long)PackUnpack.UnpackVUInt(_data, ref ofs);
+            _valueLen = (int)PackUnpack.UnpackVUInt(_data, ref ofs);
             _ofsAfterKeyAndValueLen = ofs;
         }
 
@@ -129,7 +129,7 @@ namespace BTDB.KVDBLayer
             get { return _keyLen; }
         }
 
-        internal long ValueLen
+        internal int ValueLen
         {
             get { return _valueLen; }
         }
@@ -208,11 +208,6 @@ namespace BTDB.KVDBLayer
             {
                 if (!HasValueSectorPtr) throw new InvalidOperationException();
                 return SectorPtr.Unpack(_data, ValueSectorPtrOffset);
-            }
-            set
-            {
-                if (!HasValueSectorPtr) throw new InvalidOperationException();
-                SectorPtr.Pack(_data, ValueSectorPtrOffset, value);
             }
         }
 
@@ -321,7 +316,7 @@ namespace BTDB.KVDBLayer
             return l * 2;
         }
 
-        internal void ResizeValue(byte[] newData, long newSize)
+        internal void ResizeValue(byte[] newData, int newSize)
         {
             var currentEntrySize = CurrentEntrySize;
             var newEntrySize = CalcEntrySize(KeyLen, newSize);
