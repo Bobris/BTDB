@@ -1991,7 +1991,7 @@ namespace BTDB.KVDBLayer
 
         void NewSectorAddedToCache(int sectorsInCache, int bytesInCache)
         {
-            Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 2);
+            //Debug.Assert((sectorsInCache * 64 + bytesInCache) / (1024 * 1024) < _cacheSizeInMB + 2);
         }
 
         bool CheckDB(State state)
