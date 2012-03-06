@@ -1023,7 +1023,7 @@ namespace BTDB.Service
 
         public void FinishResultMarshaling(AbstractBufferedWriter writer)
         {
-            _channel.Send(((ByteBufferWriter)writer).Data);
+            SendDataIgnoringExceptions(((ByteBufferWriter)writer).Data);
         }
 
         public void ExceptionMarshaling(uint resultId, Exception ex)
@@ -1036,7 +1036,19 @@ namespace BTDB.Service
                 new BinaryFormatter().Serialize(stream, ex);
                 message.WriteByteArray(stream.ToArray());
             }
-            _channel.Send(message.Data);
+            SendDataIgnoringExceptions(message.Data);
+        }
+
+        void SendDataIgnoringExceptions(ByteBuffer dataToSend)
+        {
+            try
+            {
+                _channel.Send(dataToSend);
+            }
+            catch
+            {
+                // Client disconnected there is nobody to inform about result
+            }
         }
 
         public void VoidResultMarshaling(uint resultId)
@@ -1044,7 +1056,7 @@ namespace BTDB.Service
             var message = new ByteBufferWriter();
             message.WriteVUInt32((uint)Command.Result);
             message.WriteVUInt32(resultId);
-            _channel.Send(message.Data);
+            SendDataIgnoringExceptions(message.Data);
         }
 
         public string RegisterType(Type type)
