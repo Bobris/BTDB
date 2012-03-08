@@ -4,7 +4,7 @@ using BTDB.Buffer;
 
 namespace BTDB.SnappyCompression
 {
-    public class SnappyDecompress
+    public static class SnappyDecompress
     {
         public static int DecompressedSize(ByteBuffer compressedBytes, out int length)
         {
@@ -117,14 +117,14 @@ namespace BTDB.SnappyCompression
                         continue;
                     case 1:
                         if (sL < 1) return false;
-                        len = 4 + b >> 2 & 7;
+                        len = 4 + ((b >> 2) & 7);
                         o = (b & 0xe0) << 3 | src[s];
                         s++;
                         sL--;
                         break;
                     case 2:
                         if (sL < 2) return false;
-                        len = 1 + b >> 2;
+                        len = 1 + (b >> 2);
                         o = src[s] + src[s + 1] * 0x100;
                         s += 2;
                         sL -= 2;

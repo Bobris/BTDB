@@ -179,6 +179,7 @@
     <Compile Include="Service\DefaultServiceFieldHandlerFactory.cs" />
     <Compile Include="Service\ServiceReaderCtx.cs" />
     <Compile Include="Service\ServiceWriterCtx.cs" />
+    <Compile Include="SnappyCompression\SnappyCompress.cs" />
     <Compile Include="SnappyCompression\SnappyDecompress.cs" />
     <Compile Include="StreamLayer\AbstractBufferedReader.cs" />
     <Compile Include="KVDBLayer\Helpers\KeyValueDBExportImporter.cs" />
