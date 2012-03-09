@@ -93,6 +93,7 @@ namespace BTDB.SnappyCompression
                 dst[d + 2] = (byte)(offset >> 8);
                 d += 3;
                 dL -= 3;
+                length -= x;
             }
             return true;
         }
