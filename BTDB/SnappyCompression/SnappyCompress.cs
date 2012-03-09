@@ -172,15 +172,21 @@ namespace BTDB.SnappyCompression
             var lit = s;
             while (sL > 3)
             {
-                var h = src[s] | ((uint)src[s + 1]) << 8 | ((uint)src[s + 2]) << 16 | ((uint)src[s + 3]) << 24;
-                h = (h * 0x1e35a7bd) >> shift;
+                var v = src[s] | ((uint)src[s + 1]) << 8 | ((uint)src[s + 2]) << 16 | ((uint)src[s + 3]) << 24;
+            nextfast:
+                var h = (v * 0x1e35a7bd) >> shift;
                 var t = table[h];
                 table[h] = s;
                 if (t < 0 || s - t >= MaxOffset || !Equal4(src, t, s))
                 {
                     s++;
                     sL--;
-                    continue;
+                    if (sL>3)
+                    {
+                        v = (v >> 8) | ((uint)src[s + 3]) << 24;
+                        goto nextfast;
+                    }
+                    break;
                 }
                 if (lit != s)
                 {
