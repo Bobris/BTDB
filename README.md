@@ -1,17 +1,19 @@
 # BTDB
 
-Currently this project has 3 main parts:
+Currently this project these parts:
 
-* Key Value Database
+* Key Value Database (2 flavors)
 * Wrapped Dynamic IL generation with debugging + extensions
+* IOC Container
 * Object Database
 * RPC Library
+* Snappy Compression
 
 All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.0, code uses Parallel Extensions. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 
 ---
-## Key Value Database
+## Key Value Database (Single File Flavor)
 
 ### Features:
 
@@ -26,20 +28,18 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 ### Design limits:
 
 * Maximum Key length is limited by 31bits (2GB). Best performance has keys with length smaller than 524 bytes.
-* Maximum value length is limited by 63bits (8EB = 8 Exa Bytes).
+* Maximum value length is limited by 31bits (2GB).
 * Total pairs count is limited by 63bits.
 * Total size of database file is limited by 63bits (8EB).
 
 ### Sample code:
 
     using (var stream = new MemoryPositionLessStream())
-    using (IKeyValueDB db = new KeyValueDB())
+    using (IKeyValueDB db = new KeyValueDB(stream))
     {
-        db.Open(stream, false);
         using (var tr = db.StartTransaction())
         {
-            tr.CreateKey(new byte[] { 1 });
-            tr.SetValue(new byte[100000]);
+            tr.CreateOrUpdateKeyValue(new byte[] { 1 }, new byte[100000]);
             tr.Commit();
         }
     }
@@ -48,7 +48,44 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 
 * More tests, especially multi-threaded
 * Bug fixing stabilization
-* Transaction Log for better commit speed (hard and will be less important with SSD drives => low priority)
+
+---
+## Key Value Database (Multiple Files Flavor)
+
+### Features:
+
+* This is Key Value store written in C# without using any native code.
+* It is easily embeddable. 
+* One storage is just one directory.
+* It has [ACID] properties with [MVCC].
+* At one time there could be multiple read only transactions and one read/write transaction.
+* Export/Import to stream - could be used for compaction
+* Inspired by Bitcask [http://wiki.basho.com/Bitcask.html]
+
+### Design limits:
+
+* All keys data needs to fit in RAM
+* Maximum Key length is limited by 31bits (2GB).
+* Maximum value length is limited by 31bits (2GB).
+
+### Sample code:
+
+    using (var fileCollection = new InMemoryFileCollection())
+    using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+    {
+        using (var tr = db.StartTransaction())
+        {
+            tr.CreateOrUpdateKeyValue(new byte[] { 1 }, new byte[100000]);
+            tr.Commit();
+        }
+    }
+
+### Roadmap:
+
+* Compression using Snappy
+* Key info file for faster DB open
+* Automatic compaction
+* Bug fixing stabilization
 
 ---
 ## Wrapped Dynamic IL generation with debugging + extensions
@@ -135,6 +172,20 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ### Roadmap:
 
 * Even more speed and event based TCP/IP server channels
+
+---
+## Snappy Compression
+
+### Features:
+
+* Ported and inspired mainly by Go version of Snappy Compression [http://code.google.com/p/snappy/]
+* Fully compatible with original
+* Fully managed and safe implementation
+* Compression is aborted when target buffer size is not enough
+
+### Roadmap:
+
+* Slower but better compressors options
 
 [ACID]:http://en.wikipedia.org/wiki/ACID
 [MVCC]:http://en.wikipedia.org/wiki/Multiversion_concurrency_control
