@@ -71,9 +71,6 @@ namespace BTDB.KV2DBLayer.BTree
                 ctx.Created = false;
                 ctx.KeyIndex = index;
                 var m = _keyvalues[index];
-                ctx.OldValueFileId = m.ValueFileId;
-                ctx.OldValueOfs = m.ValueOfs;
-                ctx.OldValueSize = m.ValueSize;
                 m.ValueFileId = ctx.ValueFileId;
                 m.ValueOfs = ctx.ValueOfs;
                 m.ValueSize = ctx.ValueSize;

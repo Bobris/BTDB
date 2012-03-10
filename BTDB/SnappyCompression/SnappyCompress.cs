@@ -212,5 +212,14 @@ namespace BTDB.SnappyCompression
             }
             return d - dstBuf.Offset;
         }
+
+        public static bool TryCompress(ref ByteBuffer data, int maxSizeInPercent)
+        {
+            var compressed = ByteBuffer.NewAsync(new byte[data.Length * (long)maxSizeInPercent / 100]);
+            var compressedLength = Compress(compressed, data);
+            if (compressedLength < 0) return false;
+            data = ByteBuffer.NewAsync(compressed.Buffer, 0, compressedLength);
+            return true;
+        }
     }
 }

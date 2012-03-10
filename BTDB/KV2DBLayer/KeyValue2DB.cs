@@ -26,9 +26,18 @@ namespace BTDB.KV2DBLayer
         readonly byte[] _magicStartOfTransaction = new[] { (byte)'t', (byte)'R', (byte)'s', (byte)'T' };
         const long MaxTrLogFileSize = 2000000000;
         readonly ConcurrentDictionary<int, IFileInfo> _fileInfos = new ConcurrentDictionary<int, IFileInfo>();
+        readonly ICompressionStrategy _compression;
 
         public KeyValue2DB(IFileCollection fileCollection)
+            : this(fileCollection, new SnappyCompressionStrategy())
         {
+        }
+
+        public KeyValue2DB(IFileCollection fileCollection, ICompressionStrategy compression)
+        {
+            if (fileCollection == null) throw new ArgumentNullException("fileCollection");
+            if (compression == null) throw new ArgumentNullException("compression");
+            _compression = compression;
             DurableTransactions = false;
             _fileCollection = fileCollection;
             _lastCommited = new BTreeRoot(0);
@@ -112,7 +121,8 @@ namespace BTDB.KV2DBLayer
                 _nextRoot = _lastCommited.NewTransactionRoot();
                 while (!reader.Eof)
                 {
-                    switch ((KV2CommandType)reader.ReadUInt8())
+                    var command = (KV2CommandType)reader.ReadUInt8();
+                    switch (command & KV2CommandType.CommandMask)
                     {
                         case KV2CommandType.CreateOrUpdate:
                             {
@@ -120,13 +130,18 @@ namespace BTDB.KV2DBLayer
                                 var valueLen = reader.ReadVInt32();
                                 var key = new byte[keyLen];
                                 reader.ReadBlock(key);
+                                var keyBuf = ByteBuffer.NewAsync(key);
+                                if ((command & KV2CommandType.FirstParamCompressed) != 0)
+                                {
+                                    _compression.DecompressKeyFromTransactionLog(ref keyBuf);
+                                }
                                 var ctx = new CreateOrUpdateCtx
                                     {
                                         KeyPrefix = BitArrayManipulation.EmptyByteArray,
-                                        Key = ByteBuffer.NewAsync(key),
+                                        Key = keyBuf,
                                         ValueFileId = fileId,
                                         ValueOfs = (int)reader.GetCurrentPosition(),
-                                        ValueSize = valueLen
+                                        ValueSize = NegateIf((command & KV2CommandType.SecondParamCompressed) != 0, valueLen)
                                     };
                                 _nextRoot.CreateOrUpdate(ctx);
                                 reader.SkipBlock(valueLen);
@@ -137,10 +152,13 @@ namespace BTDB.KV2DBLayer
                                 var keyLen = reader.ReadVInt32();
                                 var key = new byte[keyLen];
                                 reader.ReadBlock(key);
+                                var keyBuf = ByteBuffer.NewAsync(key);
+                                if ((command & KV2CommandType.FirstParamCompressed) != 0)
+                                {
+                                    _compression.DecompressKeyFromTransactionLog(ref keyBuf);
+                                }
                                 long keyIndex;
-                                var findResult = _nextRoot.FindKey(stack, out keyIndex,
-                                                                   BitArrayManipulation.EmptyByteArray,
-                                                                   ByteBuffer.NewAsync(key));
+                                var findResult = _nextRoot.FindKey(stack, out keyIndex, BitArrayManipulation.EmptyByteArray, keyBuf);
                                 if (findResult == FindResult.Exact)
                                     _nextRoot.EraseRange(keyIndex, keyIndex);
                             }
@@ -151,17 +169,23 @@ namespace BTDB.KV2DBLayer
                                 var keyLen2 = reader.ReadVInt32();
                                 var key = new byte[keyLen1];
                                 reader.ReadBlock(key);
+                                var keyBuf = ByteBuffer.NewAsync(key);
+                                if ((command & KV2CommandType.FirstParamCompressed) != 0)
+                                {
+                                    _compression.DecompressKeyFromTransactionLog(ref keyBuf);
+                                }
                                 long keyIndex1;
-                                var findResult = _nextRoot.FindKey(stack, out keyIndex1,
-                                                                   BitArrayManipulation.EmptyByteArray,
-                                                                   ByteBuffer.NewAsync(key));
+                                var findResult = _nextRoot.FindKey(stack, out keyIndex1, BitArrayManipulation.EmptyByteArray, keyBuf);
                                 if (findResult == FindResult.Previous) keyIndex1++;
                                 key = new byte[keyLen2];
                                 reader.ReadBlock(key);
+                                keyBuf = ByteBuffer.NewAsync(key);
+                                if ((command & KV2CommandType.SecondParamCompressed) != 0)
+                                {
+                                    _compression.DecompressKeyFromTransactionLog(ref keyBuf);
+                                }
                                 long keyIndex2;
-                                findResult = _nextRoot.FindKey(stack, out keyIndex2,
-                                                               BitArrayManipulation.EmptyByteArray,
-                                                               ByteBuffer.NewAsync(key));
+                                findResult = _nextRoot.FindKey(stack, out keyIndex2, BitArrayManipulation.EmptyByteArray, keyBuf);
                                 if (findResult == FindResult.Next) keyIndex2--;
                                 _nextRoot.EraseRange(keyIndex1, keyIndex2);
                             }
@@ -180,6 +204,12 @@ namespace BTDB.KV2DBLayer
             EndTr:
                 ;
             }
+        }
+
+        static int NegateIf(bool condition, int value)
+        {
+            if (condition) return -value;
+            return value;
         }
 
         static bool CheckMagic(AbstractBufferedReader reader, byte[] magic)
@@ -357,12 +387,32 @@ namespace BTDB.KV2DBLayer
 
         public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out int valueFileId, out int valueOfs, out int valueSize)
         {
-            if (_writerWithTransactionLog.GetCurrentPosition() + prefix.Length+key.Length + 16 > int.MaxValue)
+            var command = KV2CommandType.CreateOrUpdate;
+            if (_compression.ShouldTryToCompressKeyToTransactionLog(prefix.Length + key.Length))
+            {
+                if (prefix.Length != 0)
+                {
+                    var fullkey = new byte[prefix.Length + key.Length];
+                    Array.Copy(prefix, 0, fullkey, 0, prefix.Length);
+                    Array.Copy(key.Buffer, prefix.Length + key.Offset, fullkey, prefix.Length, key.Length);
+                    prefix = BitArrayManipulation.EmptyByteArray;
+                    key = ByteBuffer.NewAsync(fullkey);
+                }
+                if (_compression.CompressKeyToTransactionLog(ref key))
+                {
+                    command |= KV2CommandType.FirstParamCompressed;
+                }
+            }
+            if (_compression.CompressValueToTransactionLog(ref value))
+            {
+                command |= KV2CommandType.SecondParamCompressed;
+            }
+            if (_writerWithTransactionLog.GetCurrentPosition() + prefix.Length + key.Length + 16 > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
-            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.CreateOrUpdate);
-            _writerWithTransactionLog.WriteVInt32(prefix.Length+key.Length);
+            _writerWithTransactionLog.WriteUInt8((byte)command);
+            _writerWithTransactionLog.WriteVInt32(prefix.Length + key.Length);
             _writerWithTransactionLog.WriteVInt32(value.Length);
             _writerWithTransactionLog.WriteBlock(prefix);
             _writerWithTransactionLog.WriteBlock(key);
@@ -375,34 +425,68 @@ namespace BTDB.KV2DBLayer
 
         public ByteBuffer ReadValue(int valueFileId, int valueOfs, int valueSize)
         {
+            var compressed = false;
+            if (valueSize<0)
+            {
+                compressed = true;
+                valueSize = -valueSize;
+            }
             var result = ByteBuffer.NewAsync(new byte[valueSize]);
             var file = _fileCollection.GetFile(valueFileId);
             file.Read(result.Buffer, 0, valueSize, (ulong)valueOfs);
+            if (compressed)
+                _compression.DecompressValueFromTransactionLog(ref result);
             return result;
         }
 
         public void WriteEraseOneCommand(byte[] key)
         {
+            var command = KV2CommandType.EraseOne;
+            var keyBuf = ByteBuffer.NewSync(key);
+            if (_compression.ShouldTryToCompressKeyToTransactionLog(keyBuf.Length))
+            {
+                if (_compression.CompressKeyToTransactionLog(ref keyBuf))
+                {
+                    command |= KV2CommandType.FirstParamCompressed;
+                }
+            }
             if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
-            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EraseOne);
-            _writerWithTransactionLog.WriteVInt32(key.Length);
-            _writerWithTransactionLog.WriteBlock(key);
+            _writerWithTransactionLog.WriteUInt8((byte)command);
+            _writerWithTransactionLog.WriteVInt32(keyBuf.Length);
+            _writerWithTransactionLog.WriteBlock(keyBuf);
         }
 
         public void WriteEraseRangeCommand(byte[] firstKey, byte[] secondKey)
         {
+            var command = KV2CommandType.EraseRange;
+            var firstKeyBuf = ByteBuffer.NewSync(firstKey);
+            var secondKeyBuf = ByteBuffer.NewSync(secondKey);
+            if (_compression.ShouldTryToCompressKeyToTransactionLog(firstKeyBuf.Length))
+            {
+                if (_compression.CompressKeyToTransactionLog(ref firstKeyBuf))
+                {
+                    command |= KV2CommandType.FirstParamCompressed;
+                }
+            }
+            if (_compression.ShouldTryToCompressKeyToTransactionLog(secondKeyBuf.Length))
+            {
+                if (_compression.CompressKeyToTransactionLog(ref secondKeyBuf))
+                {
+                    command |= KV2CommandType.SecondParamCompressed;
+                }
+            }
             if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
-            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EraseRange);
-            _writerWithTransactionLog.WriteVInt32(firstKey.Length);
-            _writerWithTransactionLog.WriteVInt32(secondKey.Length);
-            _writerWithTransactionLog.WriteBlock(firstKey);
-            _writerWithTransactionLog.WriteBlock(secondKey);
+            _writerWithTransactionLog.WriteUInt8((byte)command);
+            _writerWithTransactionLog.WriteVInt32(firstKeyBuf.Length);
+            _writerWithTransactionLog.WriteVInt32(secondKeyBuf.Length);
+            _writerWithTransactionLog.WriteBlock(firstKeyBuf);
+            _writerWithTransactionLog.WriteBlock(secondKeyBuf);
         }
     }
 }

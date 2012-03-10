@@ -139,6 +139,7 @@ namespace SimpleTester
                     }
                     _sw.Stop();
                     Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    Console.WriteLine(db.CalcStats());
                 }
             }
             

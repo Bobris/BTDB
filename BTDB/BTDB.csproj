@@ -143,6 +143,9 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
     <Compile Include="KV2DBLayer\FileTransactionLog.cs" />
+    <Compile Include="KV2DBLayer\ICompressionStrategy.cs" />
+    <Compile Include="KV2DBLayer\NoCompressionStrategy.cs" />
+    <Compile Include="KV2DBLayer\SnappyCompressionStrategy.cs" />
     <Compile Include="KVDBLayer\Interface\FindResult.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeRootNode.cs" />
     <Compile Include="KV2DBLayer\IFileCollection.cs" />
