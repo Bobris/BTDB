@@ -23,12 +23,12 @@ namespace BTDB.KV2DBLayer
 
         public void DecompressKeyFromTransactionLog(ref ByteBuffer data)
         {
-            data = SnappyCompression.SnappyDecompress.Decompress(data);
+            data = SnappyDecompress.Decompress(data);
         }
 
         public void DecompressValueFromTransactionLog(ref ByteBuffer data)
         {
-            data = SnappyCompression.SnappyDecompress.Decompress(data);
+            data = SnappyDecompress.Decompress(data);
         }
     }
 }

@@ -8,8 +8,10 @@ namespace BTDB.KV2DBLayer
         CreateOrUpdate,
         EraseOne,
         EraseRange,
+        TransactionStart,
         Commit,
         Rollback,
+        EndOfFile,
         CommandMask = 31,
         FirstParamCompressed = 32,
         SecondParamCompressed = 64

@@ -792,12 +792,63 @@ namespace BTDBTest
                         Assert.True(tr.FindExactKey(key));
                         tr.FindNextKey();
                         Assert.AreEqual(5, tr.GetKeyAsByteArray()[1]);
-                        Assert.AreEqual(96,tr.GetKeyValueCount());
+                        Assert.AreEqual(96, tr.GetKeyValueCount());
                     }
                 }
             }
-           
         }
+        [Test]
+        public void AddingContinueToSameFileAfterReopen()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, _key1);
+                        tr.Commit();
+                    }
+                }
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(1, fileCollection.GetCount());
+            }
+        }
+
+        [Test]
+        public void AddingContinueToNewFileAfterReopenWithCorruption()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, _key1);
+                        tr.Commit();
+                    }
+                }
+                fileCollection.GetFile(fileCollection.Enumerate().First()).SetSize(20);
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        Assert.AreEqual(0, tr.GetKeyValueCount());
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(2, fileCollection.GetCount());
+            }
+        }
+
 
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };

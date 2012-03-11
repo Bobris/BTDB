@@ -35,5 +35,12 @@ namespace BTDB.KV2DBLayer
             get { return _nextFileId; }
             set { _nextFileId = value; }
         }
+
+        internal static void SkipHeader(AbstractBufferedReader reader)
+        {
+            reader.SkipBlock(KeyValue2DB.MagicStartOfFile.Length + 1); // magic + type of file
+            reader.SkipVInt64(); // generation
+            reader.SkipVInt32(); // previous file id
+        }
     }
 }

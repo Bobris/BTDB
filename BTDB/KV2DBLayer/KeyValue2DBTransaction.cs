@@ -32,7 +32,14 @@ namespace BTDB.KV2DBLayer
         public void SetKeyPrefix(ByteBuffer prefix)
         {
             _prefix = prefix.ToByteArray();
-            _prefixKeyStart = -1;
+            if (_prefix.Length==0)
+            {
+                _prefixKeyStart = 0;
+            }
+            else
+            {
+                _prefixKeyStart = -1;
+            }
             _prefixKeyCount = -1;
             InvalidateCurrentKey();
         }
@@ -150,11 +157,6 @@ namespace BTDB.KV2DBLayer
         void CalcPrefixKeyStart()
         {
             if (_prefixKeyStart >= 0) return;
-            if (_prefix.Length == 0)
-            {
-                _prefixKeyStart = 0;
-                return;
-            }
             if (_btreeRoot.FindKey(new List<NodeIdxPair>(), out _prefixKeyStart, _prefix, ByteBuffer.NewEmpty()) == FindResult.NotFound)
             {
                 _prefixKeyStart = -1;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -22,9 +23,9 @@ namespace BTDB.KV2DBLayer
         long _fileGeneration;
         IPositionLessStream _fileWithTransactionLog;
         AbstractBufferedWriter _writerWithTransactionLog;
-        readonly byte[] _magicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
-        readonly byte[] _magicStartOfTransaction = new[] { (byte)'t', (byte)'R', (byte)'s', (byte)'T' };
-        const long MaxTrLogFileSize = 2000000000;
+        internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
+        static readonly byte[] MagicStartOfTransaction = new[] { (byte)'t', (byte)'R' };
+        const long MaxTrLogFileSize = int.MaxValue;
         readonly ConcurrentDictionary<int, IFileInfo> _fileInfos = new ConcurrentDictionary<int, IFileInfo>();
         readonly ICompressionStrategy _compression;
 
@@ -53,9 +54,9 @@ namespace BTDB.KV2DBLayer
                 try
                 {
                     var reader = new PositionLessStreamReader(_fileCollection.GetFile(fileId));
-                    var magicCheck = new byte[_magicStartOfFile.Length];
+                    var magicCheck = new byte[MagicStartOfFile.Length];
                     reader.ReadBlock(magicCheck);
-                    if (BitArrayManipulation.CompareByteArray(magicCheck, 0, magicCheck.Length, _magicStartOfFile, 0, _magicStartOfFile.Length) == 0)
+                    if (BitArrayManipulation.CompareByteArray(magicCheck, 0, magicCheck.Length, MagicStartOfFile, 0, MagicStartOfFile.Length) == 0)
                     {
                         var fileType = (KV2FileType)reader.ReadUInt8();
                         switch (fileType)
@@ -97,28 +98,28 @@ namespace BTDB.KV2DBLayer
         {
             while (firstTrLogId != -1)
             {
-                _fileIdWithTransactionLog = firstTrLogId;
-                LoadTransactionLog(firstTrLogId);
+                _fileIdWithTransactionLog = -1;
+                if (LoadTransactionLog(firstTrLogId))
+                {
+                    _fileIdWithTransactionLog = firstTrLogId;
+                }
+                else
+                {
+                    _nextRoot = null;
+                }
                 IFileInfo fileInfo;
                 _fileInfos.TryGetValue(firstTrLogId, out fileInfo);
                 firstTrLogId = ((IFileTransactionLog)fileInfo).NextFileId;
             }
         }
 
-        void LoadTransactionLog(int fileId)
+        bool LoadTransactionLog(int fileId)
         {
             var stack = new List<NodeIdxPair>();
             var reader = new PositionLessStreamReader(_fileCollection.GetFile(fileId));
-            reader.SkipBlock(_magicStartOfFile.Length + 1);
-            reader.SkipVInt64(); // generation
-            reader.SkipVInt32(); // previous file id
-            while (!reader.Eof)
+            try
             {
-                if (!CheckMagic(reader, _magicStartOfTransaction))
-                {
-                    throw new BTDBException("corrupted db");
-                }
-                _nextRoot = _lastCommited.NewTransactionRoot();
+                FileTransactionLog.SkipHeader(reader);
                 while (!reader.Eof)
                 {
                     var command = (KV2CommandType)reader.ReadUInt8();
@@ -136,13 +137,13 @@ namespace BTDB.KV2DBLayer
                                     _compression.DecompressKeyFromTransactionLog(ref keyBuf);
                                 }
                                 var ctx = new CreateOrUpdateCtx
-                                    {
-                                        KeyPrefix = BitArrayManipulation.EmptyByteArray,
-                                        Key = keyBuf,
-                                        ValueFileId = fileId,
-                                        ValueOfs = (int)reader.GetCurrentPosition(),
-                                        ValueSize = NegateIf((command & KV2CommandType.SecondParamCompressed) != 0, valueLen)
-                                    };
+                                {
+                                    KeyPrefix = BitArrayManipulation.EmptyByteArray,
+                                    Key = keyBuf,
+                                    ValueFileId = fileId,
+                                    ValueOfs = (int)reader.GetCurrentPosition(),
+                                    ValueSize = NegateIf((command & KV2CommandType.SecondParamCompressed) != 0, valueLen)
+                                };
                                 _nextRoot.CreateOrUpdate(ctx);
                                 reader.SkipBlock(valueLen);
                             }
@@ -190,19 +191,29 @@ namespace BTDB.KV2DBLayer
                                 _nextRoot.EraseRange(keyIndex1, keyIndex2);
                             }
                             break;
+                        case KV2CommandType.TransactionStart:
+                            if (!CheckMagic(reader, MagicStartOfTransaction))
+                                return false;
+                            _nextRoot = _lastCommited.NewTransactionRoot();
+                            break;
                         case KV2CommandType.Commit:
                             _lastCommited = _nextRoot;
                             _nextRoot = null;
-                            goto EndTr;
+                            break;
                         case KV2CommandType.Rollback:
                             _nextRoot = null;
-                            goto EndTr;
+                            break;
+                        case KV2CommandType.EndOfFile:
+                            return true;
                         default:
-                            throw new BTDBException("corrupted db");
+                            return false;
                     }
                 }
-            EndTr:
-                ;
+                return _nextRoot == null;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
             }
         }
 
@@ -360,13 +371,15 @@ namespace BTDB.KV2DBLayer
                     WriteStartOfNewTransactionLogFile();
                 }
             }
-            _writerWithTransactionLog.WriteByteArrayRaw(_magicStartOfTransaction);
+            _writerWithTransactionLog.WriteUInt8((byte) KV2CommandType.TransactionStart);
+            _writerWithTransactionLog.WriteByteArrayRaw(MagicStartOfTransaction);
         }
 
         void WriteStartOfNewTransactionLogFile()
         {
             if (_writerWithTransactionLog != null)
             {
+                _writerWithTransactionLog.WriteUInt8((byte) KV2CommandType.EndOfFile);
                 _writerWithTransactionLog.FlushBuffer();
                 _fileWithTransactionLog.HardFlush();
             }
@@ -374,7 +387,7 @@ namespace BTDB.KV2DBLayer
             _fileIdWithTransactionLog = _fileCollection.AddFile("trl");
             _fileWithTransactionLog = _fileCollection.GetFile(_fileIdWithTransactionLog);
             _writerWithTransactionLog = new PositionLessStreamWriter(_fileWithTransactionLog);
-            _writerWithTransactionLog.WriteByteArrayRaw(_magicStartOfFile);
+            _writerWithTransactionLog.WriteByteArrayRaw(MagicStartOfFile);
             _writerWithTransactionLog.WriteUInt8((byte)KV2FileType.TransactionLog);
             _writerWithTransactionLog.WriteVInt64(NextGeneration());
             _writerWithTransactionLog.WriteVInt64(previousTrLogFileId);
