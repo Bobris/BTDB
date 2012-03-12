@@ -38,6 +38,7 @@ namespace BTDB.KVDBLayer
                 var value = transaction.GetValue();
                 PackUnpack.PackInt32LE(tempbuf, 0, value.Length);
                 stream.Write(tempbuf, 0, 4);
+                stream.Write(value.Buffer, value.Offset, value.Length);
                 transaction.FindNextKey();
             }
         }
@@ -73,7 +74,7 @@ namespace BTDB.KVDBLayer
                 if (valueSize < 0) throw new BTDBException("Negative value size");
                 if (valueSize > tempbuf2.Length) tempbuf2 = new byte[valueSize]; 
                 if (stream.Read(tempbuf2, 0, valueSize) != valueSize) throw new EndOfStreamException();
-                transaction.CreateOrUpdateKeyValue(tempbuf,tempbuf2);
+                transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(tempbuf,0,keySize),ByteBuffer.NewSync(tempbuf2,0,valueSize));
             }
         }
     }
