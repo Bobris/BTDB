@@ -64,6 +64,9 @@ namespace BTDB.KV2DBLayer
                             case KV2FileType.TransactionLog:
                                 _fileInfos.TryAdd(fileId, new FileTransactionLog(reader));
                                 break;
+                            case KV2FileType.KeyIndex:
+                                _fileInfos.TryAdd(fileId, new FileKeyIndex(reader));
+                                break;
                             default:
                                 _fileInfos.TryAdd(fileId, new UnknownFile());
                                 break;
@@ -77,6 +80,7 @@ namespace BTDB.KV2DBLayer
             }
             long latestGeneration = -1;
             int lastestTrLogFileId = -1;
+            var keyIndexes = new List<IKeyIndex>();
             foreach (var fileInfo in _fileInfos)
             {
                 var trLog = fileInfo.Value as IFileTransactionLog;
@@ -87,8 +91,16 @@ namespace BTDB.KV2DBLayer
                         latestGeneration = trLog.Generation;
                         lastestTrLogFileId = fileInfo.Key;
                     }
+                    continue;
+                }
+                var keyIndex = fileInfo.Value as IKeyIndex;
+                if (keyIndex != null)
+                {
+                    keyIndexes.Add(keyIndex);
+                    continue;
                 }
             }
+
             _fileGeneration = latestGeneration;
             var firstTrLogId = LinkTransactionLogFileIds(lastestTrLogFileId);
             LoadTransactionLogs(firstTrLogId);
@@ -368,7 +380,7 @@ namespace BTDB.KV2DBLayer
                     WriteStartOfNewTransactionLogFile();
                 }
             }
-            _writerWithTransactionLog.WriteUInt8((byte) KV2CommandType.TransactionStart);
+            _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.TransactionStart);
             _writerWithTransactionLog.WriteByteArrayRaw(MagicStartOfTransaction);
         }
 
@@ -376,7 +388,7 @@ namespace BTDB.KV2DBLayer
         {
             if (_writerWithTransactionLog != null)
             {
-                _writerWithTransactionLog.WriteUInt8((byte) KV2CommandType.EndOfFile);
+                _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.EndOfFile);
                 _writerWithTransactionLog.FlushBuffer();
                 _fileWithTransactionLog.HardFlush();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
@@ -436,7 +448,7 @@ namespace BTDB.KV2DBLayer
         public ByteBuffer ReadValue(int valueFileId, int valueOfs, int valueSize)
         {
             var compressed = false;
-            if (valueSize<0)
+            if (valueSize < 0)
             {
                 compressed = true;
                 valueSize = -valueSize;
@@ -498,5 +510,39 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteBlock(firstKeyBuf);
             _writerWithTransactionLog.WriteBlock(secondKeyBuf);
         }
+
+        void CreateKeyIndexFile(IBTreeRootNode root)
+        {
+            var fileId = _fileCollection.AddFile("kvi");
+            var stream = _fileCollection.GetFile(fileId);
+            var writer = new PositionLessStreamWriter(stream);
+            writer.WriteByteArrayRaw(MagicStartOfFile);
+            writer.WriteUInt8((byte)KV2FileType.KeyIndex);
+            writer.WriteVInt64(NextGeneration());
+            writer.WriteVUInt32((uint)root.TrLogFileId);
+            writer.WriteVUInt32((uint)root.TrLogOffset);
+            var keyCount = root.CalcKeyCount();
+            writer.WriteVUInt64((ulong)keyCount);
+            if (keyCount == 0) return;
+            var stack = new List<NodeIdxPair>();
+            root.FillStackByIndex(stack, 0);
+            do
+            {
+                var nodeIdxPair = stack[stack.Count - 1];
+                var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
+                var key = ByteBuffer.NewSync(leafMember.Key);
+                bool keyCompressed = false;
+                if (_compression.ShouldTryToCompressKeyToTransactionLog(leafMember.Key.Length))
+                {
+                    keyCompressed = _compression.CompressKeyToTransactionLog(ref key);
+                }
+                writer.WriteVInt32(keyCompressed ? -key.Length : key.Length);
+                writer.WriteBlock(key);
+                writer.WriteVUInt32((uint)leafMember.ValueFileId);
+                writer.WriteVUInt32((uint)leafMember.ValueOfs);
+                writer.WriteVInt32(leafMember.ValueSize);
+            } while (root.FindNextKey(stack));
+        }
+
     }
 }

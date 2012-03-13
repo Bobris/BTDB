@@ -157,6 +157,9 @@ namespace BTDB.KV2DBLayer.BTree
             get { return _transactionId; }
         }
 
+        public int TrLogFileId { get; set; }
+        public int TrLogOffset { get; set; }
+
         public IBTreeRootNode NewTransactionRoot()
         {
             return new BTreeRoot(_transactionId + 1) { _levels = _levels, _keyValueCount = _keyValueCount, _rootNode = _rootNode };

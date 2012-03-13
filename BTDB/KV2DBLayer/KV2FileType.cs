@@ -4,6 +4,7 @@ namespace BTDB.KV2DBLayer
     {
         TransactionLog,
         KeyIndex,
+        PureValues,
         Unknown
     }
 }
