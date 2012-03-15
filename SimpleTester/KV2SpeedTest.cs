@@ -96,14 +96,15 @@ namespace SimpleTester
 
         public void HugeTest()
         {
+            const int keyCount = 100;
             using (var fileCollection = CreateTestFileCollection())
             {
                 _sw.Start();
-                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy()))
                 {
                     var key = new byte[100];
                     var value = new byte[100000000];
-                    for (int i = 0; i < 100; i++)
+                    for (int i = 0; i < keyCount; i++)
                     {
                         using (var tr = db.StartTransaction())
                         {
@@ -118,14 +119,14 @@ namespace SimpleTester
                 }
                 _sw.Stop();
                 Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                _sw.Start();
+                _sw.Restart();
                 using (IKeyValueDB db = new KeyValue2DB(fileCollection))
                 {
                     _sw.Stop();
                     Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                    _sw.Start();
+                    _sw.Restart();
                     var key = new byte[100];
-                    for (int i = 0; i < 100; i++)
+                    for (int i = 0; i < keyCount; i++)
                     {
                         using (var tr = db.StartTransaction())
                         {
@@ -139,6 +140,29 @@ namespace SimpleTester
                     }
                     _sw.Stop();
                     Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    Console.WriteLine(db.CalcStats());
+                }
+                _sw.Restart();
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    _sw.Stop();
+                    Console.WriteLine("Time to open2 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    _sw.Restart();
+                    var key = new byte[100];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        using (var tr = db.StartTransaction())
+                        {
+                            key[0] = (byte)(i / 100);
+                            key[1] = (byte)(i % 100);
+                            tr.FindExactKey(key);
+                            var value = tr.GetValueAsByteArray();
+                            if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                            if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
+                        }
+                    }
+                    _sw.Stop();
+                    Console.WriteLine("Time to read2 all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                     Console.WriteLine(db.CalcStats());
                 }
             }

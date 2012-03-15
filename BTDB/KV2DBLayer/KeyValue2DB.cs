@@ -109,8 +109,11 @@ namespace BTDB.KV2DBLayer
                 var keyIndex = keyIndexes[keyIndexes.Count - 1];
                 keyIndexes.RemoveAt(keyIndexes.Count - 1);
                 var info = (IKeyIndex)_fileInfos[keyIndex.Key];
-                if (LoadKeyIndex(keyIndex.Key,info))
+                _nextRoot = _lastCommited.NewTransactionRoot();
+                if (LoadKeyIndex(keyIndex.Key, info))
                 {
+                    _lastCommited = _nextRoot;
+                    _nextRoot = null;
                     firstTrLogId = info.TrLogFileId;
                     firstTrLogOffset = info.TrLogOffset;
                     break;
@@ -124,15 +127,52 @@ namespace BTDB.KV2DBLayer
                 _fileInfos[keyIndex.Key] = new UnknownFile();
             }
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
+            if (lastestTrLogFileId != firstTrLogId)
+            {
+                CreateKeyIndexFile(_lastCommited);
+            }
+            foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KV2FileType.Unknown).Select(fi => fi.Key).ToArray())
+            {
+                _fileCollection.RemoveFile(fileId);
+                _fileInfos.TryRemove(fileId);
+            }
         }
 
         bool LoadKeyIndex(int fileId, IKeyIndex info)
         {
-            var stream = _fileCollection.GetFile(fileId);
-            var reader = new PositionLessStreamReader(stream);
-            FileKeyIndex.SkipHeader(reader);
-
-            throw new NotImplementedException();
+            try
+            {
+                var stream = _fileCollection.GetFile(fileId);
+                var reader = new PositionLessStreamReader(stream);
+                FileKeyIndex.SkipHeader(reader);
+                var keyCount = info.KeyValueCount;
+                _nextRoot.TrLogFileId = info.TrLogFileId;
+                _nextRoot.TrLogOffset = info.TrLogOffset;
+                for (var keyIndex = 0L; keyIndex < keyCount; keyIndex++)
+                {
+                    var keyLength = reader.ReadVInt32();
+                    ByteBuffer key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
+                    reader.ReadBlock(key);
+                    if (keyLength < 0)
+                    {
+                        _compression.DecompressKeyFromTransactionLog(ref key);
+                    }
+                    var ctx = new CreateOrUpdateCtx
+                        {
+                            KeyPrefix = BitArrayManipulation.EmptyByteArray,
+                            Key = key,
+                            ValueFileId = (int)reader.ReadVUInt32(),
+                            ValueOfs = (int)reader.ReadVUInt32(),
+                            ValueSize = reader.ReadVInt32()
+                        };
+                    _nextRoot.CreateOrUpdate(ctx);
+                }
+                return reader.Eof;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         void LoadTransactionLogs(int firstTrLogId, int firstTrLogOffset)
@@ -445,7 +485,7 @@ namespace BTDB.KV2DBLayer
 
         long NextGeneration()
         {
-            return Interlocked.Increment(ref _fileGeneration) + 1;
+            return Interlocked.Increment(ref _fileGeneration);
         }
 
         public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out int valueFileId, out int valueOfs, out int valueSize)
@@ -583,6 +623,8 @@ namespace BTDB.KV2DBLayer
                 writer.WriteVUInt32((uint)leafMember.ValueOfs);
                 writer.WriteVInt32(leafMember.ValueSize);
             } while (root.FindNextKey(stack));
+            writer.FlushBuffer();
+            stream.HardFlush();
         }
 
     }

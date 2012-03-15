@@ -448,6 +448,11 @@ namespace BTDB.StreamLayer
             ReadBlock(data, 0, data.Length);
         }
 
+        public void ReadBlock(ByteBuffer buffer)
+        {
+            ReadBlock(buffer.Buffer, buffer.Offset, buffer.Length);
+        }
+
         public Guid ReadGuid()
         {
             var res = new byte[16];
