@@ -60,23 +60,29 @@ namespace BTDB.KV2DBLayer
                     if (CheckMagic(reader, MagicStartOfFile))
                     {
                         var fileType = (KV2FileType)reader.ReadUInt8();
+                        IFileInfo fileInfo;
                         switch (fileType)
                         {
                             case KV2FileType.TransactionLog:
-                                _fileInfos.TryAdd(fileId, new FileTransactionLog(reader));
+                                fileInfo = new FileTransactionLog(reader);
                                 break;
                             case KV2FileType.KeyIndex:
-                                _fileInfos.TryAdd(fileId, new FileKeyIndex(reader));
+                                fileInfo = new FileKeyIndex(reader);
+                                break;
+                            case KV2FileType.PureValues:
+                                fileInfo = new FilePureValues(reader);
                                 break;
                             default:
-                                _fileInfos.TryAdd(fileId, new UnknownFile());
+                                fileInfo = UnknownFile.Instance;
                                 break;
                         }
+                        if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
+                        _fileInfos.TryAdd(fileId, fileInfo);
                     }
                 }
                 catch (Exception)
                 {
-                    _fileInfos.TryAdd(fileId, new UnknownFile());
+                    _fileInfos.TryAdd(fileId, UnknownFile.Instance);
                 }
             }
             long latestGeneration = -1;
@@ -100,8 +106,6 @@ namespace BTDB.KV2DBLayer
             }
             if (keyIndexes.Count > 1)
                 keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Value, r.Value));
-            if (_fileInfos.Count > 0)
-                _fileGeneration = _fileInfos.Values.Max(fi => fi.Generation);
             var firstTrLogId = LinkTransactionLogFileIds(lastestTrLogFileId);
             var firstTrLogOffset = 0;
             while (keyIndexes.Count > 0)
@@ -118,19 +122,24 @@ namespace BTDB.KV2DBLayer
                     firstTrLogOffset = info.TrLogOffset;
                     break;
                 }
-                _fileInfos[keyIndex.Key] = new UnknownFile();
+                _fileInfos[keyIndex.Key] = UnknownFile.Instance;
             }
             while (keyIndexes.Count > 0)
             {
                 var keyIndex = keyIndexes[keyIndexes.Count - 1];
                 keyIndexes.RemoveAt(keyIndexes.Count - 1);
-                _fileInfos[keyIndex.Key] = new UnknownFile();
+                _fileInfos[keyIndex.Key] = UnknownFile.Instance;
             }
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
             if (lastestTrLogFileId != firstTrLogId)
             {
                 CreateKeyIndexFile(_lastCommited);
             }
+            DeleteAllUnknownFiles();
+        }
+
+        void DeleteAllUnknownFiles()
+        {
             foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KV2FileType.Unknown).Select(fi => fi.Key).ToArray())
             {
                 _fileCollection.RemoveFile(fileId);
@@ -339,6 +348,7 @@ namespace BTDB.KV2DBLayer
                 if (_fileInfos.TryGetValue(currentId, out fileInfo))
                 {
                     var fileTransactionLog = fileInfo as IFileTransactionLog;
+                    if (fileTransactionLog == null) break;
                     fileTransactionLog.NextFileId = nextId;
                     nextId = currentId;
                     currentId = fileTransactionLog.PreviousFileId;
@@ -536,7 +546,7 @@ namespace BTDB.KV2DBLayer
                 valueSize = -valueSize;
             }
             var result = ByteBuffer.NewAsync(new byte[valueSize]);
-            var file = _fileCollection.GetFile((int) valueFileId);
+            var file = _fileCollection.GetFile((int)valueFileId);
             file.Read(result.Buffer, 0, valueSize, valueOfs);
             if (compressed)
                 _compression.DecompressValue(ref result);
@@ -620,8 +630,8 @@ namespace BTDB.KV2DBLayer
                 }
                 writer.WriteVInt32(keyCompressed ? -key.Length : key.Length);
                 writer.WriteBlock(key);
-                writer.WriteVUInt32((uint)leafMember.ValueFileId);
-                writer.WriteVUInt32((uint)leafMember.ValueOfs);
+                writer.WriteVUInt32(leafMember.ValueFileId);
+                writer.WriteVUInt32(leafMember.ValueOfs);
                 writer.WriteVInt32(leafMember.ValueSize);
             } while (root.FindNextKey(stack));
             writer.FlushBuffer();
