@@ -506,9 +506,11 @@ namespace BTDB.KV2DBLayer
                     command |= KV2CommandType.FirstParamCompressed;
                 }
             }
+            valueSize = value.Length;
             if (_compression.CompressValueToTransactionLog(ref value))
             {
                 command |= KV2CommandType.SecondParamCompressed;
+                valueSize = -value.Length;
             }
             if (_writerWithTransactionLog.GetCurrentPosition() + prefix.Length + key.Length + 16 > MaxTrLogFileSize)
             {
@@ -521,7 +523,6 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteBlock(key);
             valueFileId = _fileIdWithTransactionLog;
             valueOfs = (int)_writerWithTransactionLog.GetCurrentPosition();
-            valueSize = value.Length;
             _writerWithTransactionLog.WriteBlock(value);
             _writerWithTransactionLog.FlushBuffer();
         }
