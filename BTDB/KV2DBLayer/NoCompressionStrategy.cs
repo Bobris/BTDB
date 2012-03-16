@@ -5,27 +5,27 @@ namespace BTDB.KV2DBLayer
 {
     public class NoCompressionStrategy : ICompressionStrategy
     {
-        public bool ShouldTryToCompressKeyToTransactionLog(int length)
+        public bool ShouldTryToCompressKey(int length)
         {
             return false;
         }
 
-        public bool CompressKeyToTransactionLog(ref ByteBuffer data)
+        public bool CompressKey(ref ByteBuffer data)
         {
             return false;
         }
 
-        public bool CompressValueToTransactionLog(ref ByteBuffer data)
+        public bool CompressValue(ref ByteBuffer data)
         {
             return false;
         }
 
-        public void DecompressKeyFromTransactionLog(ref ByteBuffer data)
+        public void DecompressKey(ref ByteBuffer data)
         {
             throw new BTDBException("Compression not supported");
         }
 
-        public void DecompressValueFromTransactionLog(ref ByteBuffer data)
+        public void DecompressValue(ref ByteBuffer data)
         {
             throw new BTDBException("Compression not supported");
         }

@@ -4,10 +4,12 @@ namespace BTDB.KV2DBLayer
 {
     public interface ICompressionStrategy
     {
-        bool ShouldTryToCompressKeyToTransactionLog(int length);
-        bool CompressKeyToTransactionLog(ref ByteBuffer data);
-        bool CompressValueToTransactionLog(ref ByteBuffer data);
-        void DecompressKeyFromTransactionLog(ref ByteBuffer data);
-        void DecompressValueFromTransactionLog(ref ByteBuffer data);
+        bool ShouldTryToCompressKey(int length);
+        // Return true if it was compressed
+        bool CompressKey(ref ByteBuffer data);
+        // Return true if it was compressed
+        bool CompressValue(ref ByteBuffer data);
+        void DecompressKey(ref ByteBuffer data);
+        void DecompressValue(ref ByteBuffer data);
     }
 }

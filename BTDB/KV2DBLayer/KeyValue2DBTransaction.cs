@@ -94,8 +94,8 @@ namespace BTDB.KV2DBLayer
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWrittable();
-            int valueFileId;
-            int valueOfs;
+            uint valueFileId;
+            uint valueOfs;
             int valueSize;
             _keyValue2DB.WriteCreateOrUpdateCommand(_prefix, key, value, out valueFileId, out valueOfs, out valueSize);
             var ctx = new CreateOrUpdateCtx

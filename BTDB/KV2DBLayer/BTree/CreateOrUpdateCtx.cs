@@ -8,8 +8,8 @@ namespace BTDB.KV2DBLayer.BTree
     {
         internal byte[] KeyPrefix;
         internal ByteBuffer Key;
-        internal int ValueFileId;
-        internal int ValueOfs;
+        internal uint ValueFileId;
+        internal uint ValueOfs;
         internal int ValueSize;
 
         internal bool Created;

@@ -849,6 +849,22 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void CompressibleValueLoad()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
+                        Assert.AreEqual(new byte[1000],tr.GetValueAsByteArray());
+                        tr.Commit();
+                    }
+                }
+            }
+        }
 
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
