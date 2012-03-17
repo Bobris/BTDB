@@ -157,25 +157,23 @@ namespace BTDB.KV2DBLayer
                 var keyCount = info.KeyValueCount;
                 _nextRoot.TrLogFileId = info.TrLogFileId;
                 _nextRoot.TrLogOffset = info.TrLogOffset;
-                for (var keyIndex = 0L; keyIndex < keyCount; keyIndex++)
-                {
-                    var keyLength = reader.ReadVInt32();
-                    ByteBuffer key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
-                    reader.ReadBlock(key);
-                    if (keyLength < 0)
+                _nextRoot.BuildTree(keyCount, () =>
                     {
-                        _compression.DecompressKey(ref key);
-                    }
-                    var ctx = new CreateOrUpdateCtx
+                        var keyLength = reader.ReadVInt32();
+                        var key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
+                        reader.ReadBlock(key);
+                        if (keyLength < 0)
                         {
-                            KeyPrefix = BitArrayManipulation.EmptyByteArray,
-                            Key = key,
-                            ValueFileId = reader.ReadVUInt32(),
-                            ValueOfs = reader.ReadVUInt32(),
-                            ValueSize = reader.ReadVInt32()
-                        };
-                    _nextRoot.CreateOrUpdate(ctx);
-                }
+                            _compression.DecompressKey(ref key);
+                        }
+                        return new BTreeLeafMember
+                            {
+                                Key = key.ToByteArray(),
+                                ValueFileId = reader.ReadVUInt32(),
+                                ValueOfs = reader.ReadVUInt32(),
+                                ValueSize = reader.ReadVInt32()
+                            };
+                    });
                 return reader.Eof;
             }
             catch (Exception)
@@ -615,25 +613,27 @@ namespace BTDB.KV2DBLayer
             writer.WriteVUInt32((uint)root.TrLogOffset);
             var keyCount = root.CalcKeyCount();
             writer.WriteVUInt64((ulong)keyCount);
-            if (keyCount == 0) return;
-            var stack = new List<NodeIdxPair>();
-            root.FillStackByIndex(stack, 0);
-            do
+            if (keyCount > 0)
             {
-                var nodeIdxPair = stack[stack.Count - 1];
-                var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-                var key = ByteBuffer.NewSync(leafMember.Key);
-                var keyCompressed = false;
-                if (_compression.ShouldTryToCompressKey(leafMember.Key.Length))
+                var stack = new List<NodeIdxPair>();
+                root.FillStackByIndex(stack, 0);
+                do
                 {
-                    keyCompressed = _compression.CompressKey(ref key);
-                }
-                writer.WriteVInt32(keyCompressed ? -key.Length : key.Length);
-                writer.WriteBlock(key);
-                writer.WriteVUInt32(leafMember.ValueFileId);
-                writer.WriteVUInt32(leafMember.ValueOfs);
-                writer.WriteVInt32(leafMember.ValueSize);
-            } while (root.FindNextKey(stack));
+                    var nodeIdxPair = stack[stack.Count - 1];
+                    var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
+                    var key = ByteBuffer.NewSync(leafMember.Key);
+                    var keyCompressed = false;
+                    if (_compression.ShouldTryToCompressKey(leafMember.Key.Length))
+                    {
+                        keyCompressed = _compression.CompressKey(ref key);
+                    }
+                    writer.WriteVInt32(keyCompressed ? -key.Length : key.Length);
+                    writer.WriteBlock(key);
+                    writer.WriteVUInt32(leafMember.ValueFileId);
+                    writer.WriteVUInt32(leafMember.ValueOfs);
+                    writer.WriteVInt32(leafMember.ValueSize);
+                } while (root.FindNextKey(stack));
+            }
             writer.FlushBuffer();
             stream.HardFlush();
         }

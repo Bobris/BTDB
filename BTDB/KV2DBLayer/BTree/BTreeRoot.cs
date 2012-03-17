@@ -9,7 +9,6 @@ namespace BTDB.KV2DBLayer.BTree
     internal class BTreeRoot : IBTreeRootNode
     {
         readonly long _transactionId;
-        int _levels;
         long _keyValueCount;
         IBTreeNode _rootNode;
 
@@ -21,12 +20,11 @@ namespace BTDB.KV2DBLayer.BTree
         public void CreateOrUpdate(CreateOrUpdateCtx ctx)
         {
             ctx.TransactionId = _transactionId;
-            if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>(_levels + 1);
+            if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>();
             else ctx.Stack.Clear();
-            if (_levels == 0)
+            if (_rootNode == null)
             {
                 _rootNode = BTreeLeaf.CreateFirst(ctx);
-                _levels = 1;
                 _keyValueCount = 1;
                 ctx.Stack.Add(new NodeIdxPair { Node = _rootNode, Idx = 0 });
                 ctx.KeyIndex = 0;
@@ -39,7 +37,6 @@ namespace BTDB.KV2DBLayer.BTree
             {
                 _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
                 ctx.Stack.Insert(0, new NodeIdxPair { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
-                _levels++;
             }
             else if (ctx.Update)
             {
@@ -162,7 +159,7 @@ namespace BTDB.KV2DBLayer.BTree
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            return new BTreeRoot(_transactionId + 1) { _levels = _levels, _keyValueCount = _keyValueCount, _rootNode = _rootNode };
+            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
@@ -171,7 +168,6 @@ namespace BTDB.KV2DBLayer.BTree
             Debug.Assert(lastKeyIndex < _keyValueCount);
             if (firstKeyIndex == 0 && lastKeyIndex == _keyValueCount - 1)
             {
-                _levels = 0;
                 _rootNode = null;
                 _keyValueCount = 0;
                 return;
@@ -214,6 +210,52 @@ namespace BTDB.KV2DBLayer.BTree
                 idx--;
             }
             return false;
+        }
+
+        public void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator)
+        {
+            _keyValueCount = keyCount;
+            if (keyCount == 0)
+            {
+                _rootNode = null;
+                return;
+            }
+            _rootNode = BuildTreeNode(keyCount, memberGenerator);
+        }
+
+        IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
+        {
+            if (keyCount <= BTreeLeaf.MaxMembers)
+            {
+                return new BTreeLeaf(_transactionId, (int)keyCount, memberGenerator);
+            }
+            var leafs = (keyCount + BTreeLeaf.MaxMembers - 1)/BTreeLeaf.MaxMembers;
+            var order = 0L;
+            var done = 0L;
+            return BuildBranchNode(leafs, () =>
+                {
+                    order++;
+                    var reach = keyCount*order/leafs;
+                    var todo = (int) (reach - done);
+                    done = reach;
+                    return new BTreeLeaf(_transactionId, todo, memberGenerator);
+                });
+        }
+
+        IBTreeNode BuildBranchNode(long count, Func<IBTreeNode> generator)
+        {
+            if (count == 1) return generator();
+            var children = (count + BTreeBranch.MaxChildren - 1) / BTreeBranch.MaxChildren;
+            var order = 0L;
+            var done = 0L;
+            return BuildBranchNode(children, () =>
+            {
+                order++;
+                var reach = count * order / children;
+                var todo = (int)(reach - done);
+                done = reach;
+                return new BTreeBranch(_transactionId, todo, generator);
+            });
         }
     }
 }

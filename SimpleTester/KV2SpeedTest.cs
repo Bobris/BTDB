@@ -27,6 +27,12 @@ namespace SimpleTester
             }
         }
 
+        static IFileCollection OpenTestFileCollection()
+        {
+            const string dbfilename = "data";
+            return new OnDiskFileCollection(dbfilename);
+        }
+
         void DoWork5(bool alsoDoReads)
         {
             _sw.Restart();
@@ -108,10 +114,10 @@ namespace SimpleTester
                     {
                         using (var tr = db.StartTransaction())
                         {
-                            key[0] = (byte) (i/100);
-                            key[1] = (byte) (i%100);
-                            value[100] = (byte) (i/100);
-                            value[200] = (byte) (i%100);
+                            key[0] = (byte)(i / 100);
+                            key[1] = (byte)(i % 100);
+                            value[100] = (byte)(i / 100);
+                            value[200] = (byte)(i % 100);
                             tr.CreateOrUpdateKeyValue(key, value);
                             tr.Commit();
                         }
@@ -166,14 +172,89 @@ namespace SimpleTester
                     Console.WriteLine(db.CalcStats());
                 }
             }
-            
+
+        }
+
+        void CreateTestDB(int keys)
+        {
+            var rnd = new Random(1234);
+            using (var fileCollection = CreateTestFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int i = 0; i < keys; i++)
+                        {
+                            var key = new byte[rnd.Next(10, 50)];
+                            rnd.NextBytes(key);
+                            var value = new byte[rnd.Next(50, 500)];
+                            rnd.NextBytes(value);
+                            tr.CreateOrUpdateKeyValueUnsafe(key, value);
+                        }
+                        tr.Commit();
+                    }
+                }
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                }
+            }
+        }
+
+        void OpenDBSpeedTest()
+        {
+            _sw.Start();
+            using (var fileCollection = OpenTestFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    _sw.Stop();
+                    Console.WriteLine("Time to open DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    _sw.Restart();
+                }
+            }
+            _sw.Stop();
+            Console.WriteLine("Time to close DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+        }
+
+        void CheckDBTest(int keys)
+        {
+            var rnd = new Random(1234);
+            using (var fileCollection = OpenTestFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        if (tr.GetKeyValueCount() != keys) throw new Exception("KeyCount does not match");
+                        for (var i = 0; i < keys; i++)
+                        {
+                            var key = new byte[rnd.Next(10, 50)];
+                            rnd.NextBytes(key);
+                            var value = new byte[rnd.Next(50, 500)];
+                            rnd.NextBytes(value);
+                            if (!tr.FindExactKey(key)) throw new Exception("Key not found");
+                            var value2 = tr.GetValueAsByteArray();
+                            if (value.Length != value2.Length) throw new Exception("value length different");
+                            for (var j = 0; j < value.Length; j++)
+                            {
+                                if (value[j] != value2[j]) throw new Exception("value different");
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         public void Run()
         {
-            HugeTest();
+            CreateTestDB(9999999);
+            OpenDBSpeedTest();
+            CheckDBTest(9999999);
+            //HugeTest();
             //DoWork5(true);
             //DoWork5ReadCheck();
         }
+
     }
 }

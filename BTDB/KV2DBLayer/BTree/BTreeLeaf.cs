@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
@@ -9,12 +10,23 @@ namespace BTDB.KV2DBLayer.BTree
     {
         internal readonly long TransactionId;
         BTreeLeafMember[] _keyvalues;
-        const int MaxLength = 10;
+        internal const int MaxMembers = 10;
 
         BTreeLeaf(long transactionId, int length)
         {
             TransactionId = transactionId;
             _keyvalues = new BTreeLeafMember[length];
+        }
+
+        internal BTreeLeaf(long transactionId, int length, Func<BTreeLeafMember> memberGenerator)
+        {
+            Debug.Assert(length > 0 && length <= MaxMembers);
+            TransactionId = transactionId;
+            _keyvalues = new BTreeLeafMember[length];
+            for (int i = 0; i < _keyvalues.Length; i++)
+            {
+                _keyvalues[i] = memberGenerator();
+            }
         }
 
         BTreeLeaf(long transactionId, BTreeLeafMember[] newKeyValues)
@@ -89,7 +101,7 @@ namespace BTDB.KV2DBLayer.BTree
             index = index / 2;
             ctx.Created = true;
             ctx.KeyIndex = index;
-            if (_keyvalues.Length < MaxLength)
+            if (_keyvalues.Length < MaxMembers)
             {
                 var newKeyValues = new BTreeLeafMember[_keyvalues.Length + 1];
                 Array.Copy(_keyvalues, 0, newKeyValues, 0, index);

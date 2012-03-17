@@ -797,6 +797,7 @@ namespace BTDBTest
                 }
             }
         }
+
         [Test]
         public void AddingContinueToSameFileAfterReopen()
         {

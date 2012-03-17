@@ -12,7 +12,7 @@ namespace BTDB.KV2DBLayer.BTree
         byte[][] _keys;
         IBTreeNode[] _children;
         long[] _pairCounts;
-        const int MaxChildren = 10;
+        internal const int MaxChildren = 10;
 
         internal BTreeBranch(long transactionId, IBTreeNode node1, IBTreeNode node2)
         {
@@ -30,6 +30,27 @@ namespace BTDB.KV2DBLayer.BTree
             _keys = newKeys;
             _children = newChildren;
             _pairCounts = newPairCounts;
+        }
+
+        public BTreeBranch(long transactionId, int count, Func<IBTreeNode> generator)
+        {
+            Debug.Assert(count > 0 && count <= MaxChildren);
+            TransactionId = transactionId;
+            _keys = new byte[count - 1][];
+            _pairCounts = new long[count];
+            _children = new IBTreeNode[count];
+            long pairs = 0;
+            for (var i = 0; i < _children.Length; i++)
+            {
+                var child = generator();
+                _children[i] = child;
+                pairs += child.CalcKeyCount();
+                _pairCounts[i] = pairs;
+                if (i > 0)
+                {
+                    _keys[i - 1] = child.GetLeftMostKey();
+                }
+            }
         }
 
         int Find(byte[] prefix, ByteBuffer key)
