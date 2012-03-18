@@ -4,6 +4,8 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer.BTree
 {
+    internal delegate void BTreeIterateAction(ref BTreeLeafMember member);
+
     internal interface IBTreeNode
     {
         void CreateOrUpdate(CreateOrUpdateCtx ctx);
@@ -17,5 +19,6 @@ namespace BTDB.KV2DBLayer.BTree
         void FillStackByRightMost(List<NodeIdxPair> stack, int i);
         int GetLastChildrenIdx();
         IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
+        void Iterate(BTreeIterateAction action);
     }
 }

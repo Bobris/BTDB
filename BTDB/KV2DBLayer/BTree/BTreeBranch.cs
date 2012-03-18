@@ -364,5 +364,13 @@ namespace BTDB.KV2DBLayer.BTree
             }
             return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
         }
+
+        public void Iterate(BTreeIterateAction action)
+        {
+            foreach (var child in _children)
+            {
+                child.Iterate(action);
+            }
+        }
     }
 }

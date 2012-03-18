@@ -149,6 +149,12 @@ namespace BTDB.KV2DBLayer.BTree
             throw new ArgumentException();
         }
 
+        public void Iterate(BTreeIterateAction action)
+        {
+            if (_rootNode == null) return;
+            _rootNode.Iterate(action);
+        }
+
         public long TransactionId
         {
             get { return _transactionId; }

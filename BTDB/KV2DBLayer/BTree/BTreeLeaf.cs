@@ -255,6 +255,15 @@ namespace BTDB.KV2DBLayer.BTree
             return new BTreeLeaf(transactionId, newKeyValues);
         }
 
+        public void Iterate(BTreeIterateAction action)
+        {
+            var kv = _keyvalues;
+            for (var i = 0; i < kv.Length; i++)
+            {
+                action(ref kv[i]);
+            }
+        }
+
         public byte[] GetKey(int idx)
         {
             return _keyvalues[idx].Key;
