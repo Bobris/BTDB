@@ -248,9 +248,9 @@ namespace SimpleTester
 
         public void Run()
         {
-            CreateTestDB(9999999);
+            //CreateTestDB(9999999);
             OpenDBSpeedTest();
-            CheckDBTest(9999999);
+            //CheckDBTest(9999999);
             //HugeTest();
             //DoWork5(true);
             //DoWork5ReadCheck();

@@ -5,8 +5,8 @@ namespace BTDB.KV2DBLayer
     internal class FileKeyIndex : IFileInfo, IKeyIndex
     {
         readonly long _generation;
-        readonly int _trLogFileId;
-        readonly int _trLogOffset;
+        readonly uint _trLogFileId;
+        readonly uint _trLogOffset;
         readonly long _keyValueCount;
 
         public KV2FileType FileType
@@ -19,12 +19,12 @@ namespace BTDB.KV2DBLayer
             get { return _generation; }
         }
 
-        public int TrLogFileId
+        public uint TrLogFileId
         {
             get { return _trLogFileId; }
         }
 
-        public int TrLogOffset
+        public uint TrLogOffset
         {
             get { return _trLogOffset; }
         }
@@ -37,9 +37,17 @@ namespace BTDB.KV2DBLayer
         public FileKeyIndex(AbstractBufferedReader reader)
         {
             _generation = reader.ReadVInt64();
-            _trLogFileId = (int) reader.ReadVUInt32();
-            _trLogOffset = (int) reader.ReadVUInt32();
+            _trLogFileId = reader.ReadVUInt32();
+            _trLogOffset = reader.ReadVUInt32();
             _keyValueCount = (long) reader.ReadVUInt64();
+        }
+
+        public FileKeyIndex(long generation, uint trLogFileId, uint trLogOffset, long keyCount)
+        {
+            _generation = generation;
+            _trLogFileId = trLogFileId;
+            _trLogOffset = trLogOffset;
+            _keyValueCount = keyCount;
         }
 
         internal static void SkipHeader(AbstractBufferedReader reader)
@@ -51,5 +59,14 @@ namespace BTDB.KV2DBLayer
             reader.SkipVUInt64(); // keyValueCount
         }
 
+        internal void WriteHeader(PositionLessStreamWriter writer)
+        {
+            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
+            writer.WriteUInt8((byte)KV2FileType.KeyIndex);
+            writer.WriteVInt64(_generation);
+            writer.WriteVUInt32(_trLogFileId);
+            writer.WriteVUInt32(_trLogOffset);
+            writer.WriteVUInt64((ulong)_keyValueCount);
+        }
     }
 }

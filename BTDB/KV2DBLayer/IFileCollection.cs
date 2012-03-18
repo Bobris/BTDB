@@ -6,10 +6,10 @@ namespace BTDB.KV2DBLayer
 {
     public interface IFileCollection : IDisposable
     {
-        int AddFile(string humanHint);
-        int GetCount();
-        IPositionLessStream GetFile(int index);
-        void RemoveFile(int index);
-        IEnumerable<int> Enumerate();
+        uint AddFile(string humanHint);
+        uint GetCount();
+        IPositionLessStream GetFile(uint index);
+        void RemoveFile(uint index);
+        IEnumerable<uint> Enumerate();
     }
 }

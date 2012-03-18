@@ -4,15 +4,19 @@ namespace BTDB.KV2DBLayer
 {
     internal class FileTransactionLog : IFileInfo, IFileTransactionLog
     {
-        readonly int _previousFileId;
-        int _nextFileId;
+        readonly uint _previousFileId;
         readonly long _generation;
 
         public FileTransactionLog(AbstractBufferedReader reader)
         {
             _generation = reader.ReadVInt64();
-            _previousFileId = reader.ReadVInt32();
-            _nextFileId = -2;
+            _previousFileId = (uint) reader.ReadVInt32();
+        }
+
+        public FileTransactionLog(long generation, uint fileIdWithPreviousTransactionLog)
+        {
+            _generation = generation;
+            _previousFileId = fileIdWithPreviousTransactionLog;
         }
 
         public KV2FileType FileType
@@ -25,22 +29,26 @@ namespace BTDB.KV2DBLayer
             get { return _generation; }
         }
 
-        public int PreviousFileId
+        public uint PreviousFileId
         {
             get { return _previousFileId; }
         }
 
-        public int NextFileId
-        {
-            get { return _nextFileId; }
-            set { _nextFileId = value; }
-        }
+        public uint NextFileId { get; set; }
 
         internal static void SkipHeader(AbstractBufferedReader reader)
         {
             reader.SkipBlock(KeyValue2DB.MagicStartOfFile.Length + 1); // magic + type of file
             reader.SkipVInt64(); // generation
             reader.SkipVInt32(); // previous file id
+        }
+
+        internal void WriteHeader(AbstractBufferedWriter writer)
+        {
+            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
+            writer.WriteUInt8((byte)KV2FileType.TransactionLog);
+            writer.WriteVInt64(_generation);
+            writer.WriteVInt32((int) _previousFileId);
         }
     }
 }
