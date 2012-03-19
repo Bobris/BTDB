@@ -11,6 +11,11 @@ namespace BTDB.KV2DBLayer
             _generation = reader.ReadVInt64();
         }
 
+        public FilePureValues(long generation)
+        {
+            _generation = generation;
+        }
+
         public KV2FileType FileType
         {
             get { return KV2FileType.PureValues; }
@@ -19,6 +24,13 @@ namespace BTDB.KV2DBLayer
         public long Generation
         {
             get { return _generation; }
+        }
+
+        public void WriteHeader(AbstractBufferedWriter writer)
+        {
+            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
+            writer.WriteUInt8((byte)KV2FileType.PureValues);
+            writer.WriteVInt64(_generation);
         }
     }
 }

@@ -5,11 +5,19 @@ namespace BTDB.StreamLayer
     public class PositionLessStreamWriter : AbstractBufferedWriter, IDisposable
     {
         readonly IPositionLessStream _stream;
+        readonly Action _onDispose;
         ulong _ofs;
 
         public PositionLessStreamWriter(IPositionLessStream stream, bool atEnd = false)
+            : this(stream, null, atEnd)
+        {
+        }
+
+        public PositionLessStreamWriter(IPositionLessStream stream, Action onDispose, bool atEnd = false)
         {
             _stream = stream;
+            if (onDispose == null) onDispose = DisposeStream;
+            _onDispose = onDispose;
             Buf = new byte[8192];
             End = Buf.Length;
             if (atEnd)
@@ -21,6 +29,11 @@ namespace BTDB.StreamLayer
                 _ofs = 0;
                 _stream.SetSize(0);
             }
+        }
+
+        void DisposeStream()
+        {
+            _stream.Dispose();
         }
 
         public override void FlushBuffer()
@@ -50,7 +63,7 @@ namespace BTDB.StreamLayer
         public void Dispose()
         {
             if (Pos != 0) FlushBuffer();
-            _stream.Dispose();
+            _onDispose();
         }
     }
 }
