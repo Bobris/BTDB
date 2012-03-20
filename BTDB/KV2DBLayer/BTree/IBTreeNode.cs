@@ -6,6 +6,8 @@ namespace BTDB.KV2DBLayer.BTree
 {
     internal delegate void BTreeIterateAction(ref BTreeLeafMember member);
 
+    internal delegate bool BTreeRemappingIterateAction(ref BTreeLeafMember member, out uint fileId, out uint offset);
+
     internal interface IBTreeNode
     {
         void CreateOrUpdate(CreateOrUpdateCtx ctx);
@@ -20,5 +22,6 @@ namespace BTDB.KV2DBLayer.BTree
         int GetLastChildrenIdx();
         IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
         void Iterate(BTreeIterateAction action);
+        IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action);
     }
 }

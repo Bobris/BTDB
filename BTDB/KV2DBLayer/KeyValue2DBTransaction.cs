@@ -29,6 +29,11 @@ namespace BTDB.KV2DBLayer
             _keyIndex = -1;
         }
 
+        internal IBTreeRootNode BtreeRoot
+        {
+            get { return _btreeRoot; }
+        }
+
         public void SetKeyPrefix(ByteBuffer prefix)
         {
             _prefix = prefix.ToByteArray();
@@ -59,7 +64,7 @@ namespace BTDB.KV2DBLayer
         public bool FindPreviousKey()
         {
             if (_keyIndex < 0) return FindLastKey();
-            if (_btreeRoot.FindPreviousKey(_stack))
+            if (BtreeRoot.FindPreviousKey(_stack))
             {
                 if (CheckPrefixIn(GetCurrentKeyFromStack()))
                 {
@@ -74,7 +79,7 @@ namespace BTDB.KV2DBLayer
         public bool FindNextKey()
         {
             if (_keyIndex < 0) return FindFirstKey();
-            if (_btreeRoot.FindNextKey(_stack))
+            if (BtreeRoot.FindNextKey(_stack))
             {
                 if (CheckPrefixIn(GetCurrentKeyFromStack()))
                 {
@@ -88,7 +93,7 @@ namespace BTDB.KV2DBLayer
 
         public FindResult Find(ByteBuffer key)
         {
-            return _btreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
+            return BtreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
         }
 
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
@@ -107,7 +112,7 @@ namespace BTDB.KV2DBLayer
                     ValueSize = valueSize,
                     Stack = _stack
                 };
-            _btreeRoot.CreateOrUpdate(ctx);
+            BtreeRoot.CreateOrUpdate(ctx);
             _keyIndex = ctx.KeyIndex;
             if (ctx.Created && _prefixKeyCount >= 0) _prefixKeyCount++;
             return ctx.Created;
@@ -123,7 +128,7 @@ namespace BTDB.KV2DBLayer
                 _keyValue2DB.WriteStartTransaction();
                 return;
             }
-            _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, _btreeRoot);
+            _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, BtreeRoot);
             _writting = true;
             InvalidateCurrentKey();
             _keyValue2DB.WriteStartTransaction();
@@ -134,7 +139,7 @@ namespace BTDB.KV2DBLayer
             if (_prefixKeyCount >= 0) return _prefixKeyCount;
             if (_prefix.Length == 0)
             {
-                _prefixKeyCount = _btreeRoot.CalcKeyCount();
+                _prefixKeyCount = BtreeRoot.CalcKeyCount();
                 return _prefixKeyCount;
             }
             CalcPrefixKeyStart();
@@ -143,7 +148,7 @@ namespace BTDB.KV2DBLayer
                 _prefixKeyCount = 0;
                 return 0;
             }
-            _prefixKeyCount = _btreeRoot.FindLastWithPrefix(_prefix) - _prefixKeyStart + 1;
+            _prefixKeyCount = BtreeRoot.FindLastWithPrefix(_prefix) - _prefixKeyStart + 1;
             return _prefixKeyCount;
         }
 
@@ -157,7 +162,7 @@ namespace BTDB.KV2DBLayer
         void CalcPrefixKeyStart()
         {
             if (_prefixKeyStart >= 0) return;
-            if (_btreeRoot.FindKey(new List<NodeIdxPair>(), out _prefixKeyStart, _prefix, ByteBuffer.NewEmpty()) == FindResult.NotFound)
+            if (BtreeRoot.FindKey(new List<NodeIdxPair>(), out _prefixKeyStart, _prefix, ByteBuffer.NewEmpty()) == FindResult.NotFound)
             {
                 _prefixKeyStart = -1;
             }
@@ -172,12 +177,12 @@ namespace BTDB.KV2DBLayer
                 return false;
             }
             _keyIndex = index + _prefixKeyStart;
-            if (_keyIndex >= _btreeRoot.CalcKeyCount())
+            if (_keyIndex >= BtreeRoot.CalcKeyCount())
             {
                 InvalidateCurrentKey();
                 return false;
             }
-            _btreeRoot.FillStackByIndex(_stack, _keyIndex);
+            BtreeRoot.FillStackByIndex(_stack, _keyIndex);
             if (_prefixKeyCount >= 0)
                 return true;
             var key = GetCurrentKeyFromStack();
@@ -242,7 +247,7 @@ namespace BTDB.KV2DBLayer
             if (_keyIndex != keyIndexBackup)
             {
                 _keyIndex = keyIndexBackup;
-                _btreeRoot.FillStackByIndex(_stack, _keyIndex);
+                BtreeRoot.FillStackByIndex(_stack, _keyIndex);
             }
             var nodeIdxPair = _stack[_stack.Count - 1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
@@ -271,7 +276,7 @@ namespace BTDB.KV2DBLayer
             lastKeyIndex += _prefixKeyStart;
             InvalidateCurrentKey();
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
-            _btreeRoot.FillStackByIndex(_stack, firstKeyIndex);
+            BtreeRoot.FillStackByIndex(_stack, firstKeyIndex);
             if (firstKeyIndex == lastKeyIndex)
             {
                 _keyValue2DB.WriteEraseOneCommand(GetCurrentKeyFromStack());
@@ -279,10 +284,10 @@ namespace BTDB.KV2DBLayer
             else
             {
                 var firstKey = GetCurrentKeyFromStack();
-                _btreeRoot.FillStackByIndex(_stack, lastKeyIndex);
+                BtreeRoot.FillStackByIndex(_stack, lastKeyIndex);
                 _keyValue2DB.WriteEraseRangeCommand(firstKey, GetCurrentKeyFromStack());
             }
-            _btreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);
+            BtreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);
         }
 
         public bool IsWritting()
@@ -292,7 +297,7 @@ namespace BTDB.KV2DBLayer
 
         public void Commit()
         {
-            if (_btreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
+            if (BtreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
             InvalidateCurrentKey();
             if (_preapprovedWritting)
             {
@@ -301,7 +306,7 @@ namespace BTDB.KV2DBLayer
             }
             else if (_writting)
             {
-                _keyValue2DB.CommitWrittingTransaction(_btreeRoot);
+                _keyValue2DB.CommitWrittingTransaction(BtreeRoot);
                 _writting = false;
             }
             _btreeRoot = null;

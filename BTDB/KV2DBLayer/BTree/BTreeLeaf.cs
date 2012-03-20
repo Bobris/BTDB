@@ -264,6 +264,30 @@ namespace BTDB.KV2DBLayer.BTree
             }
         }
 
+        public IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action)
+        {
+            var result = this;
+            var keyvalues = _keyvalues;
+            for (var i = 0; i < keyvalues.Length; i++)
+            {
+                uint newFileId;
+                uint newOffset;
+                if (action(ref keyvalues[i], out newFileId, out newOffset))
+                {
+                    if (result.TransactionId != transactionId)
+                    {
+                        var newKeyValues = new BTreeLeafMember[keyvalues.Length];
+                        Array.Copy(keyvalues, newKeyValues, newKeyValues.Length);
+                        result = new BTreeLeaf(transactionId, newKeyValues);
+                        keyvalues = newKeyValues;
+                    }
+                    keyvalues[i].ValueFileId = newFileId;
+                    keyvalues[i].ValueOfs = newOffset;
+                }
+            }
+            return result;
+        }
+
         public byte[] GetKey(int idx)
         {
             return _keyvalues[idx].Key;

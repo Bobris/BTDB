@@ -155,6 +155,11 @@ namespace BTDB.KV2DBLayer.BTree
             _rootNode.Iterate(action);
         }
 
+        public IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action)
+        {
+            throw new ArgumentException();
+        }
+
         public long TransactionId
         {
             get { return _transactionId; }
@@ -229,20 +234,26 @@ namespace BTDB.KV2DBLayer.BTree
             _rootNode = BuildTreeNode(keyCount, memberGenerator);
         }
 
+        public void RemappingIterate(BTreeRemappingIterateAction action)
+        {
+            if (_rootNode == null) return;
+            _rootNode = _rootNode.RemappingIterate(TransactionId, action);
+        }
+
         IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
         {
             if (keyCount <= BTreeLeaf.MaxMembers)
             {
                 return new BTreeLeaf(_transactionId, (int)keyCount, memberGenerator);
             }
-            var leafs = (keyCount + BTreeLeaf.MaxMembers - 1)/BTreeLeaf.MaxMembers;
+            var leafs = (keyCount + BTreeLeaf.MaxMembers - 1) / BTreeLeaf.MaxMembers;
             var order = 0L;
             var done = 0L;
             return BuildBranchNode(leafs, () =>
                 {
                     order++;
-                    var reach = keyCount*order/leafs;
-                    var todo = (int) (reach - done);
+                    var reach = keyCount * order / leafs;
+                    var todo = (int)(reach - done);
                     done = reach;
                     return new BTreeLeaf(_transactionId, todo, memberGenerator);
                 });

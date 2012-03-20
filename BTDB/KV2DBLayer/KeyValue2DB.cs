@@ -130,12 +130,17 @@ namespace BTDB.KV2DBLayer
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
             if (lastestTrLogFileId != firstTrLogId)
             {
-                CreateKeyIndexFile(LastCommited);
+                CreateIndexFile();
             }
             DeleteAllUnknownFiles();
         }
 
-        void DeleteAllUnknownFiles()
+        internal void CreateIndexFile()
+        {
+            CreateKeyIndexFile(LastCommited);
+        }
+
+        internal void DeleteAllUnknownFiles()
         {
             foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KV2FileType.Unknown).Select(fi => fi.Key).ToArray())
             {
@@ -677,6 +682,19 @@ namespace BTDB.KV2DBLayer
                 });
             pureValues.WriteHeader(writer);
             return writer;
+        }
+
+        internal void AtomicallyChangeBTree(Action<IBTreeRootNode> action)
+        {
+            using (var tr=StartWritingTransaction().Result)
+            {
+                var newRoot = (tr as KeyValue2DBTransaction).BtreeRoot;
+                action(newRoot);
+                lock(_writeLock)
+                {
+                    _lastCommited = newRoot;
+                }
+            }
         }
     }
 }
