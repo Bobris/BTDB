@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -849,6 +850,46 @@ namespace BTDBTest
                 Assert.AreEqual(2, fileCollection.GetCount());
             }
         }
+
+        [Test]
+        public void AddingContinueToSameFileAfterReopenOfDBWith2TransactionLogFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection,new NoCompressionStrategy(),1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(2, fileCollection.GetCount());
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key3, new byte[10]);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(4, fileCollection.GetCount());
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                    //(db as KeyValue2DB).Compact();
+                    //Trace.Write(db.CalcStats());
+                }
+                Assert.AreEqual(4, fileCollection.GetCount());
+            }
+        }
+
 
         [Test]
         public void CompressibleValueLoad()

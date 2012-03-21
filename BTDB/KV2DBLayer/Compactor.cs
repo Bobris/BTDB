@@ -36,6 +36,11 @@ namespace BTDB.KV2DBLayer
                 if (_totalLength == 0) return 0;
                 return _totalLength - _valueLength;
             }
+
+            internal uint CalcUsed()
+            {
+                return _valueLength;
+            }
         }
 
         public Compactor(KeyValue2DB keyValue2DB)
@@ -50,23 +55,27 @@ namespace BTDB.KV2DBLayer
             InitFileStats();
             CalculateFileUsefullness();
             var totalWaste = CalcTotalWaste();
-            if (totalWaste < 10240) return;
+            if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return;
             uint valueFileId;
             var writer = _keyValue2DB.StartPureValuesFile(out valueFileId);
             _newPositionMap = new Dictionary<ulong, uint>();
-            var wastefullFileId = FindMostWastefullFile();
-            while (wastefullFileId != 0)
+            var removedFileIds = new List<uint>();
+            while (true)
             {
+                var wastefullFileId = FindMostWastefullFile(_keyValue2DB.MaxTrLogFileSize - writer.GetCurrentPosition());
+                if (wastefullFileId == 0) break;
                 MoveValuesContent(writer, wastefullFileId);
-                wastefullFileId = FindMostWastefullFile();
+                _fileStats[wastefullFileId] = new FileStat(0);
+                removedFileIds.Add(wastefullFileId);
             }
             ((IDisposable)writer).Dispose();
-            _keyValue2DB.AtomicallyChangeBTree(root=> root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset)=>
+            _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset) =>
                 {
                     newFileId = valueFileId;
-                    return _newPositionMap.TryGetValue(((ulong) m.ValueFileId << 32) | m.ValueOfs, out newOffset);
+                    return _newPositionMap.TryGetValue(((ulong)m.ValueFileId << 32) | m.ValueOfs, out newOffset);
                 }));
             _keyValue2DB.CreateIndexFile();
+            _keyValue2DB.MarkAsUnknown(removedFileIds);
             _keyValue2DB.DeleteAllUnknownFiles();
         }
 
@@ -111,14 +120,15 @@ namespace BTDB.KV2DBLayer
             return total;
         }
 
-        uint FindMostWastefullFile()
+        uint FindMostWastefullFile(long space)
         {
+            if (space <= 0) return 0;
             var bestWaste = 0u;
             var bestFile = 0u;
             for (var index = 0u; index < _fileStats.Length; index++)
             {
                 var waste = _fileStats[index].CalcWaste();
-                if (waste <= bestWaste) continue;
+                if (waste <= bestWaste || space < _fileStats[index].CalcUsed()) continue;
                 bestWaste = waste;
                 bestFile = index;
             }

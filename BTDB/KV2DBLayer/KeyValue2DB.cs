@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -27,7 +28,7 @@ namespace BTDB.KV2DBLayer
         AbstractBufferedWriter _writerWithTransactionLog;
         internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
         static readonly byte[] MagicStartOfTransaction = new[] { (byte)'t', (byte)'R' };
-        const long MaxTrLogFileSize = int.MaxValue;
+        internal readonly long MaxTrLogFileSize;
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         readonly ICompressionStrategy _compression;
 
@@ -36,10 +37,12 @@ namespace BTDB.KV2DBLayer
         {
         }
 
-        public KeyValue2DB(IFileCollection fileCollection, ICompressionStrategy compression)
+        public KeyValue2DB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = int.MaxValue)
         {
             if (fileCollection == null) throw new ArgumentNullException("fileCollection");
             if (compression == null) throw new ArgumentNullException("compression");
+            if (fileSplitSize < 1024 || fileSplitSize > int.MaxValue) throw new ArgumentOutOfRangeException("fileSplitSize", "Allowed range 1024 - 2G");
+            MaxTrLogFileSize = fileSplitSize;
             _compression = compression;
             DurableTransactions = false;
             _fileCollection = fileCollection;
@@ -137,7 +140,8 @@ namespace BTDB.KV2DBLayer
 
         internal void CreateIndexFile()
         {
-            CreateKeyIndexFile(LastCommited);
+            var idxFileId = CreateKeyIndexFile(LastCommited);
+            MarkAsUnknown(_fileInfos.Where(p => p.Value.FileType == KV2FileType.KeyIndex && p.Key != idxFileId).Select(p => p.Key));
         }
 
         internal void DeleteAllUnknownFiles()
@@ -407,9 +411,17 @@ namespace BTDB.KV2DBLayer
 
         public string CalcStats()
         {
-            return "KeyValueCount:" + LastCommited.CalcKeyCount() + Environment.NewLine
-                   + "FileCount:" + FileCollection.GetCount() + Environment.NewLine
-                   + "FileGeneration:" + _fileGeneration;
+            var sb = new StringBuilder("KeyValueCount:" + LastCommited.CalcKeyCount() + Environment.NewLine
+                                       + "FileCount:" + FileCollection.GetCount() + Environment.NewLine
+                                       + "FileGeneration:" + _fileGeneration + Environment.NewLine);
+            foreach (var fileId in _fileCollection.Enumerate())
+            {
+                IFileInfo fileInfo;
+                _fileInfos.TryGetValue(fileId, out fileInfo);
+                sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}{4}", fileId, _fileCollection.GetFile(fileId).GetSize(),
+                                fileInfo.FileType, fileInfo.Generation, Environment.NewLine);
+            }
+            return sb.ToString();
         }
 
         internal IBTreeRootNode MakeWrittableTransaction(KeyValue2DBTransaction keyValue2DBTransaction, IBTreeRootNode btreeRoot)
@@ -542,7 +554,7 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteVInt32(value.Length);
             _writerWithTransactionLog.WriteBlock(prefix);
             _writerWithTransactionLog.WriteBlock(key);
-            if (valueSize!=0)
+            if (valueSize != 0)
             {
                 valueFileId = _fileIdWithTransactionLog;
                 valueOfs = (uint)_writerWithTransactionLog.GetCurrentPosition();
@@ -623,7 +635,7 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteBlock(secondKeyBuf);
         }
 
-        void CreateKeyIndexFile(IBTreeRootNode root)
+        uint CreateKeyIndexFile(IBTreeRootNode root)
         {
             var fileId = FileCollection.AddFile("kvi");
             var stream = FileCollection.GetFile(fileId);
@@ -655,9 +667,10 @@ namespace BTDB.KV2DBLayer
             writer.FlushBuffer();
             stream.HardFlush();
             _fileInfos.TryAdd(fileId, keyIndex);
+            return fileId;
         }
 
-        void Compact()
+        internal void Compact()
         {
             new Compactor(this).Run();
         }
@@ -675,7 +688,7 @@ namespace BTDB.KV2DBLayer
             fileId = fId;
             var stream = FileCollection.GetFile(fId);
             var pureValues = new FilePureValues(NextGeneration());
-            var writer = new PositionLessStreamWriter(stream,()=>
+            var writer = new PositionLessStreamWriter(stream, () =>
                 {
                     stream.HardFlush();
                     _fileInfos[fId] = pureValues;
@@ -686,14 +699,22 @@ namespace BTDB.KV2DBLayer
 
         internal void AtomicallyChangeBTree(Action<IBTreeRootNode> action)
         {
-            using (var tr=StartWritingTransaction().Result)
+            using (var tr = StartWritingTransaction().Result)
             {
                 var newRoot = (tr as KeyValue2DBTransaction).BtreeRoot;
                 action(newRoot);
-                lock(_writeLock)
+                lock (_writeLock)
                 {
                     _lastCommited = newRoot;
                 }
+            }
+        }
+
+        internal void MarkAsUnknown(IEnumerable<uint> fileIds)
+        {
+            foreach (var fileId in fileIds)
+            {
+                _fileInfos[fileId] = UnknownFile.Instance;
             }
         }
     }
