@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -134,7 +133,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void BiggerKey([Values(0, 1, 268, 269, 270, 4364, 4365, 4366, 1200000)] int keyLength)
+        public void BiggerKey([Values(0, 1, 2, 5000, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
@@ -414,7 +413,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int length)
+        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 2, 3, 4, 5, 256, 5000, 10000000)] int length)
         {
             var valbuf = new byte[length];
             new Random(0).NextBytes(valbuf);
@@ -687,6 +686,23 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CompressibleValueLoad()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
+                        Assert.AreEqual(new byte[1000], tr.GetValueAsByteArray());
+                        tr.Commit();
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void StartWritingTransactionWorks()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -856,7 +872,7 @@ namespace BTDBTest
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
-                using (IKeyValueDB db = new KeyValue2DB(fileCollection,new NoCompressionStrategy(),1024))
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -883,28 +899,8 @@ namespace BTDBTest
                         tr.CreateOrUpdateKeyValue(_key2, _key2);
                         tr.Commit();
                     }
-                    //(db as KeyValue2DB).Compact();
-                    //Trace.Write(db.CalcStats());
                 }
                 Assert.AreEqual(4, fileCollection.GetCount());
-            }
-        }
-
-
-        [Test]
-        public void CompressibleValueLoad()
-        {
-            using (var fileCollection = new InMemoryFileCollection())
-            {
-                using (IKeyValueDB db = new KeyValue2DB(fileCollection))
-                {
-                    using (var tr = db.StartTransaction())
-                    {
-                        tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
-                        Assert.AreEqual(new byte[1000],tr.GetValueAsByteArray());
-                        tr.Commit();
-                    }
-                }
             }
         }
 

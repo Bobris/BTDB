@@ -675,10 +675,11 @@ namespace BTDB.KV2DBLayer
             new Compactor(this).Run();
         }
 
-        internal bool ContainsValues(uint fileId)
+        internal bool ContainsValuesAndDoesNotTouchGneration(uint fileId, long dontTouchGeneration)
         {
             IFileInfo info;
             if (!_fileInfos.TryGetValue(fileId, out info)) return false;
+            if (info.Generation >= dontTouchGeneration) return false;
             return (info.FileType == KV2FileType.TransactionLog || info.FileType == KV2FileType.PureValues);
         }
 
@@ -716,6 +717,16 @@ namespace BTDB.KV2DBLayer
             {
                 _fileInfos[fileId] = UnknownFile.Instance;
             }
+        }
+
+        internal long GetGeneration(uint fileId)
+        {
+            IFileInfo fileInfo;
+            if (!_fileInfos.TryGetValue(fileId, out fileInfo))
+            {
+                throw new ArgumentOutOfRangeException("fileId");
+            }
+            return fileInfo.Generation;
         }
     }
 }

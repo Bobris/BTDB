@@ -52,7 +52,8 @@ namespace BTDB.KV2DBLayer
         {
             if (_keyValue2DB.FileCollection.GetCount() == 0) return;
             _root = _keyValue2DB.LastCommited;
-            InitFileStats();
+            var dontTouchGeneration = _keyValue2DB.GetGeneration(_root.TrLogFileId);
+            InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness();
             var totalWaste = CalcTotalWaste();
             if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return;
@@ -135,13 +136,13 @@ namespace BTDB.KV2DBLayer
             return bestFile;
         }
 
-        void InitFileStats()
+        void InitFileStats(long dontTouchGeneration)
         {
             _fileStats = new FileStat[_keyValue2DB.FileCollection.Enumerate().Max()];
             foreach (var id in _keyValue2DB.FileCollection.Enumerate())
             {
                 if (id >= _fileStats.Length) continue;
-                if (!_keyValue2DB.ContainsValues(id)) continue;
+                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGneration(id, dontTouchGeneration)) continue;
                 _fileStats[id] = new FileStat((uint)_keyValue2DB.FileCollection.GetFile(id).GetSize());
             }
         }
