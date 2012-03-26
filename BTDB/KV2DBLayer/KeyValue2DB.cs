@@ -79,6 +79,10 @@ namespace BTDB.KV2DBLayer
                         if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
                         _fileInfos.TryAdd(fileId, fileInfo);
                     }
+                    else
+                    {
+                        _fileInfos.TryAdd(fileId, UnknownFile.Instance);
+                    }
                 }
                 catch (Exception)
                 {
@@ -131,7 +135,7 @@ namespace BTDB.KV2DBLayer
                 _fileInfos[keyIndex.Key] = UnknownFile.Instance;
             }
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
-            if (lastestTrLogFileId != firstTrLogId)
+            if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0)
             {
                 CreateIndexFile();
             }
@@ -722,6 +726,7 @@ namespace BTDB.KV2DBLayer
         internal long GetGeneration(uint fileId)
         {
             IFileInfo fileInfo;
+            if (fileId == 0) return -1;
             if (!_fileInfos.TryGetValue(fileId, out fileInfo))
             {
                 throw new ArgumentOutOfRangeException("fileId");

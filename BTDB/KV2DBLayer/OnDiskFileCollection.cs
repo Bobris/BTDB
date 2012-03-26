@@ -21,8 +21,8 @@ namespace BTDB.KV2DBLayer
             _maxFileId = 0;
             foreach (var filePath in Directory.EnumerateFiles(directory))
             {
-                var fileName = Path.GetFileNameWithoutExtension(filePath);
-                var id = GetFileId(fileName);
+                var fileName = Path.GetFileName(filePath);
+                var id = GetFileId(Path.GetFileNameWithoutExtension(filePath));
                 if (id == 0) continue;
                 var stream = new PositionLessStreamProxy(filePath);
                 _files.Add(id, new KeyValuePair<string, IPositionLessStream>(fileName, stream));

@@ -13,7 +13,6 @@ namespace BTDB.KV2DBLayer
         IBTreeRootNode _root;
         FileStat[] _fileStats;
         Dictionary<ulong, uint> _newPositionMap;
-        byte[] _buf;
 
         struct FileStat
         {
@@ -56,7 +55,7 @@ namespace BTDB.KV2DBLayer
             InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness();
             var totalWaste = CalcTotalWaste();
-            if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return;
+            if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 8) return;
             uint valueFileId;
             var writer = _keyValue2DB.StartPureValuesFile(out valueFileId);
             _newPositionMap = new Dictionary<ulong, uint>();
@@ -82,32 +81,40 @@ namespace BTDB.KV2DBLayer
 
         void MoveValuesContent(AbstractBufferedWriter writer, uint wastefullFileId)
         {
+            const uint blockSize = 128 * 1024;
             var wasteFullStream = _keyValue2DB.FileCollection.GetFile(wastefullFileId);
+            var totalSize = wasteFullStream.GetSize();
+            var blocks = (int)((totalSize + blockSize - 1) / blockSize);
+            var wasteInMemory = new byte[blocks][];
+            var pos = 0UL;
+            for (var i = 0; i < blocks; i++)
+            {
+                wasteInMemory[i] = new byte[blockSize];
+                var readSize = totalSize - pos;
+                if (readSize > blockSize) readSize = blockSize;
+                if (wasteFullStream.Read(wasteInMemory[i], 0, (int)readSize, pos) != (int)readSize)
+                    throw new BTDBException("Corrupted DB");
+                pos += readSize;
+            }
             _root.Iterate((ref BTreeLeafMember m) =>
                 {
                     if (m.ValueFileId == wastefullFileId)
                     {
-                        var size = Math.Abs(m.ValueSize);
-                        GrowBuffer(ref _buf, size);
-                        if (wasteFullStream.Read(_buf, 0, size, m.ValueOfs) != size)
-                            throw new BTDBException("Corrupted DB");
+                        var size = (uint)Math.Abs(m.ValueSize);
                         _newPositionMap.Add(((ulong)wastefullFileId << 32) | m.ValueOfs, (uint)writer.GetCurrentPosition());
-                        writer.WriteBlock(_buf, 0, size);
+                        pos = m.ValueOfs;
+                        while (size > 0)
+                        {
+                            var blockId = pos/blockSize;
+                            var blockStart = pos % blockSize;
+                            var writeSize = (uint)(blockSize - blockStart);
+                            if (writeSize > size) writeSize = size;
+                            writer.WriteBlock(wasteInMemory[blockId], (int) blockStart, (int)writeSize);
+                            size -= writeSize;
+                            pos += writeSize;
+                        }
                     }
                 });
-        }
-
-        static void GrowBuffer(ref byte[] buf, int size)
-        {
-            if (buf == null)
-            {
-                buf = new byte[size];
-                return;
-            }
-            if (buf.Length >= size) return;
-            var newSize = buf.Length * 2;
-            if (newSize < size) newSize = size;
-            buf = new byte[newSize];
         }
 
         ulong CalcTotalWaste()
