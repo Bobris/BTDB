@@ -137,14 +137,14 @@ namespace BTDB.KV2DBLayer
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
             if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0)
             {
-                CreateIndexFile();
+                CreateIndexFile(CancellationToken.None);
             }
             DeleteAllUnknownFiles();
         }
 
-        internal void CreateIndexFile()
+        internal void CreateIndexFile(CancellationToken cancellation)
         {
-            var idxFileId = CreateKeyIndexFile(LastCommited);
+            var idxFileId = CreateKeyIndexFile(LastCommited, cancellation);
             MarkAsUnknown(_fileInfos.Where(p => p.Value.FileType == KV2FileType.KeyIndex && p.Key != idxFileId).Select(p => p.Key));
         }
 
@@ -639,7 +639,7 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteBlock(secondKeyBuf);
         }
 
-        uint CreateKeyIndexFile(IBTreeRootNode root)
+        uint CreateKeyIndexFile(IBTreeRootNode root, CancellationToken cancellation)
         {
             var fileId = FileCollection.AddFile("kvi");
             var stream = FileCollection.GetFile(fileId);
@@ -653,6 +653,7 @@ namespace BTDB.KV2DBLayer
                 root.FillStackByIndex(stack, 0);
                 do
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     var nodeIdxPair = stack[stack.Count - 1];
                     var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
                     var key = ByteBuffer.NewSync(leafMember.Key);
