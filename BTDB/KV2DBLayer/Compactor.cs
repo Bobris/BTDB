@@ -15,7 +15,7 @@ namespace BTDB.KV2DBLayer
         IBTreeRootNode _root;
         FileStat[] _fileStats;
         Dictionary<ulong, uint> _newPositionMap;
-        object _lock = new object();
+        readonly object _lock = new object();
         CancellationTokenSource _cancellationSource;
         CancellationToken _cancellation;
         Task _task;

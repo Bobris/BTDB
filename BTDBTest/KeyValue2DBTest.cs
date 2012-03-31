@@ -413,7 +413,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 2, 3, 4, 5, 256, 5000, 10000000)] int length)
+        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 256, 5000, 10000000)] int length)
         {
             var valbuf = new byte[length];
             new Random(0).NextBytes(valbuf);

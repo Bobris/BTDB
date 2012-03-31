@@ -15,6 +15,7 @@ namespace BTDB.KV2DBLayer
 {
     public class KeyValue2DB : IKeyValueDB
     {
+        const int MaxValueSizeInlineInMemory = 7;
         readonly IFileCollection _fileCollection;
         IBTreeRootNode _lastCommited;
         IBTreeRootNode _nextRoot;
@@ -213,6 +214,7 @@ namespace BTDB.KV2DBLayer
         // Return true if it is suitable for continuing writing new transactions
         bool LoadTransactionLog(uint fileId, uint logOffset)
         {
+            var inlineValueBuf = new byte[MaxValueSizeInlineInMemory];
             var stack = new List<NodeIdxPair>();
             var reader = new PositionLessStreamReader(FileCollection.GetFile(fileId));
             try
@@ -250,8 +252,17 @@ namespace BTDB.KV2DBLayer
                                     ValueOfs = (uint)reader.GetCurrentPosition(),
                                     ValueSize = (command & KV2CommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen
                                 };
+                                if (valueLen <= MaxValueSizeInlineInMemory && (command & KV2CommandType.SecondParamCompressed) == 0)
+                                {
+                                    reader.ReadBlock(inlineValueBuf, 0, valueLen);
+                                    StoreValueInlineInMemory(ByteBuffer.NewSync(inlineValueBuf, 0, valueLen), out ctx.ValueOfs, out ctx.ValueSize);
+                                    ctx.ValueFileId = 0;
+                                }
+                                else
+                                {
+                                    reader.SkipBlock(valueLen);
+                                }
                                 _nextRoot.CreateOrUpdate(ctx);
-                                reader.SkipBlock(valueLen);
                             }
                             break;
                         case KV2CommandType.EraseOne:
@@ -326,6 +337,50 @@ namespace BTDB.KV2DBLayer
             {
                 _nextRoot = null;
                 return false;
+            }
+        }
+
+        void StoreValueInlineInMemory(ByteBuffer value, out uint valueOfs, out int valueSize)
+        {
+            var inlineValueBuf = value.Buffer;
+            var valueLen = value.Length;
+            var ofs = value.Offset;
+            switch (valueLen)
+            {
+                case 0:
+                    valueOfs = 0;
+                    valueSize = 0;
+                    break;
+                case 1:
+                    valueOfs = 0;
+                    valueSize = 0x1000000 | (inlineValueBuf[ofs] << 16);
+                    break;
+                case 2:
+                    valueOfs = 0;
+                    valueSize = 0x2000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8);
+                    break;
+                case 3:
+                    valueOfs = 0;
+                    valueSize = 0x3000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
+                    break;
+                case 4:
+                    valueOfs = inlineValueBuf[ofs + 3];
+                    valueSize = 0x4000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
+                    break;
+                case 5:
+                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8));
+                    valueSize = 0x5000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
+                    break;
+                case 6:
+                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8) | (inlineValueBuf[ofs + 5] << 16));
+                    valueSize = 0x6000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
+                    break;
+                case 7:
+                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8) | (inlineValueBuf[ofs + 5] << 16) | ((uint)inlineValueBuf[ofs + 6] << 24));
+                    valueSize = 0x7000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
 
@@ -560,8 +615,16 @@ namespace BTDB.KV2DBLayer
             _writerWithTransactionLog.WriteBlock(key);
             if (valueSize != 0)
             {
-                valueFileId = _fileIdWithTransactionLog;
-                valueOfs = (uint)_writerWithTransactionLog.GetCurrentPosition();
+                if (valueSize > 0 && valueSize < MaxValueSizeInlineInMemory)
+                {
+                    StoreValueInlineInMemory(value, out valueOfs, out valueSize);
+                    valueFileId = 0;
+                }
+                else
+                {
+                    valueFileId = _fileIdWithTransactionLog;
+                    valueOfs = (uint)_writerWithTransactionLog.GetCurrentPosition();
+                }
                 _writerWithTransactionLog.WriteBlock(value);
             }
             else
@@ -575,6 +638,38 @@ namespace BTDB.KV2DBLayer
         public ByteBuffer ReadValue(uint valueFileId, uint valueOfs, int valueSize)
         {
             if (valueSize == 0) return ByteBuffer.NewEmpty();
+            if (valueFileId == 0)
+            {
+                var len = valueSize >> 24;
+                var buf = new byte[len];
+                switch (len)
+                {
+                    case 7:
+                        buf[6] = (byte)(valueOfs >> 24);
+                        goto case 6;
+                    case 6:
+                        buf[5] = (byte)(valueOfs >> 16);
+                        goto case 5;
+                    case 5:
+                        buf[4] = (byte) (valueOfs >> 8);
+                        goto case 4;
+                    case 4:
+                        buf[3] = (byte) valueOfs;
+                        goto case 3;
+                    case 3:
+                        buf[2] = (byte)valueSize;
+                        goto case 2;
+                    case 2:
+                        buf[1] = (byte)(valueSize >> 8);
+                        goto case 1;
+                    case 1:
+                        buf[0] = (byte)(valueSize >> 16);
+                        break;
+                    default:
+                        throw new BTDBException("Corrupted DB");
+                }
+                return ByteBuffer.NewAsync(buf);
+            }
             var compressed = false;
             if (valueSize < 0)
             {
