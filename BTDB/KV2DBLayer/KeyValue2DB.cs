@@ -32,6 +32,7 @@ namespace BTDB.KV2DBLayer
         internal readonly long MaxTrLogFileSize;
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         readonly ICompressionStrategy _compression;
+        CompactorScheduler _compactorScheduler;
 
         public KeyValue2DB(IFileCollection fileCollection)
             : this(fileCollection, new SnappyCompressionStrategy())
@@ -48,6 +49,7 @@ namespace BTDB.KV2DBLayer
             DurableTransactions = false;
             _fileCollection = fileCollection;
             _lastCommited = new BTreeRoot(0);
+            _compactorScheduler = new CompactorScheduler(token => new Compactor(this, token).Run());
             LoadInfoAboutFiles();
         }
 
@@ -141,6 +143,7 @@ namespace BTDB.KV2DBLayer
                 CreateIndexFile(CancellationToken.None);
             }
             DeleteAllUnknownFiles();
+            _compactorScheduler.AdviceRunning();
         }
 
         internal void CreateIndexFile(CancellationToken cancellation)
@@ -424,6 +427,7 @@ namespace BTDB.KV2DBLayer
 
         public void Dispose()
         {
+            if (_compactorScheduler != null) _compactorScheduler.Dispose();
             lock (_writeLock)
             {
                 if (_writingTransaction != null) throw new BTDBException("Cannot dispose KeyValue2DB when writting transaction still running");
@@ -498,8 +502,7 @@ namespace BTDB.KV2DBLayer
         {
             _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.Commit);
             _writerWithTransactionLog.FlushBuffer();
-            btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
-            btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
+            UpdateTransactionLogInBTreeRoot(btreeRoot);
             _fileWithTransactionLog.Flush();
             lock (_writeLock)
             {
@@ -507,6 +510,16 @@ namespace BTDB.KV2DBLayer
                 _lastCommited = btreeRoot;
                 TryDequeWaiterForWrittingTransaction();
             }
+        }
+
+        void UpdateTransactionLogInBTreeRoot(IBTreeRootNode btreeRoot)
+        {
+            if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog)
+            {
+                _compactorScheduler.AdviceRunning();
+            }
+            btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
+            btreeRoot.TrLogOffset = (uint) _writerWithTransactionLog.GetCurrentPosition();
         }
 
         void TryDequeWaiterForWrittingTransaction()
@@ -529,6 +542,7 @@ namespace BTDB.KV2DBLayer
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KV2CommandType.Rollback);
             }
+            UpdateTransactionLogInBTreeRoot(_lastCommited);
             lock (_writeLock)
             {
                 _writingTransaction = null;
@@ -651,10 +665,10 @@ namespace BTDB.KV2DBLayer
                         buf[5] = (byte)(valueOfs >> 16);
                         goto case 5;
                     case 5:
-                        buf[4] = (byte) (valueOfs >> 8);
+                        buf[4] = (byte)(valueOfs >> 8);
                         goto case 4;
                     case 4:
-                        buf[3] = (byte) valueOfs;
+                        buf[3] = (byte)valueOfs;
                         goto case 3;
                     case 3:
                         buf[2] = (byte)valueSize;
@@ -772,7 +786,7 @@ namespace BTDB.KV2DBLayer
 
         internal void Compact()
         {
-            new Compactor(this).Run();
+            _compactorScheduler.AdviceRunning();
         }
 
         internal bool ContainsValuesAndDoesNotTouchGneration(uint fileId, long dontTouchGeneration)

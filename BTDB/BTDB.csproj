@@ -143,6 +143,7 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
     <Compile Include="KV2DBLayer\Compactor.cs" />
+    <Compile Include="KV2DBLayer\CompactorScheduler.cs" />
     <Compile Include="KV2DBLayer\FileKeyIndex.cs" />
     <Compile Include="KV2DBLayer\FilePureValues.cs" />
     <Compile Include="KV2DBLayer\FileTransactionLog.cs" />

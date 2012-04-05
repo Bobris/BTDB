@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using BTDB.KV2DBLayer.BTree;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -15,10 +14,7 @@ namespace BTDB.KV2DBLayer
         IBTreeRootNode _root;
         FileStat[] _fileStats;
         Dictionary<ulong, uint> _newPositionMap;
-        readonly object _lock = new object();
-        CancellationTokenSource _cancellationSource;
         CancellationToken _cancellation;
-        Task _task;
 
         struct FileStat
         {
@@ -48,70 +44,21 @@ namespace BTDB.KV2DBLayer
             }
         }
 
-        public Compactor(KeyValue2DB keyValue2DB)
+        internal Compactor(KeyValue2DB keyValue2DB, CancellationToken cancellation)
         {
             _keyValue2DB = keyValue2DB;
+            _cancellation = cancellation;
         }
 
-        public void Start()
+        internal bool Run()
         {
-            lock (_lock)
-            {
-                if (_task != null) return;
-                _cancellationSource = new CancellationTokenSource();
-                _cancellation = _cancellationSource.Token;
-                _task = Task.Factory.StartNew(WrappedRun);
-            }
-        }
-
-        void WrappedRun()
-        {
-            try
-            {
-                Run();
-            }
-            finally
-            {
-                lock (_lock)
-                {
-                    if (!_cancellationSource.IsCancellationRequested)
-                    {
-                        new Timer(_ => Start(), null, TimeSpan.FromMinutes(5), TimeSpan.FromMilliseconds(-1));
-                    }
-                    _cancellationSource = null;
-                    _task = null;
-                }
-            }
-        }
-
-        public void WaitForFinish()
-        {
-            var task = _task;
-            if (task != null)
-            {
-                task.Wait();
-            }
-        }
-
-        public void Abort()
-        {
-            lock (_lock)
-            {
-                if (_cancellationSource != null)
-                    _cancellationSource.Cancel();
-            }
-            WaitForFinish();
-        }
-
-        public void Run()
-        {
-            if (_keyValue2DB.FileCollection.GetCount() == 0) return;
+            if (_keyValue2DB.FileCollection.GetCount() == 0) return false;
             _root = _keyValue2DB.LastCommited;
             var dontTouchGeneration = _keyValue2DB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness();
             var totalWaste = CalcTotalWaste();
-            if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return;
+            if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return false;
             uint valueFileId;
             var writer = _keyValue2DB.StartPureValuesFile(out valueFileId);
             _newPositionMap = new Dictionary<ulong, uint>();
@@ -134,6 +81,7 @@ namespace BTDB.KV2DBLayer
             _keyValue2DB.CreateIndexFile(_cancellation);
             _keyValue2DB.MarkAsUnknown(removedFileIds);
             _keyValue2DB.DeleteAllUnknownFiles();
+            return true;
         }
 
         void MoveValuesContent(AbstractBufferedWriter writer, uint wastefullFileId)
