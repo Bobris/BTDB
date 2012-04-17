@@ -12,6 +12,7 @@ namespace BTDB.IL
         {
             readonly OpCode _opCode;
             readonly MethodInfo _methodInfo;
+            readonly ConstructorInfo _constructorInfo;
             string _name;
             Type _delegateType;
             static readonly Type[][] GenericDelegates = new[]
@@ -28,21 +29,45 @@ namespace BTDB.IL
             {
                 _opCode = opCode;
                 _methodInfo = methodInfo;
+                _constructorInfo = null;
+            }
+
+            public Call(OpCode opCode, ConstructorInfo constructorInfo)
+            {
+                _opCode = opCode;
+                _methodInfo = null;
+                _constructorInfo = constructorInfo;
             }
 
             public void GenerateStaticParts(TypeBuilder typeBuilder)
             {
                 _name = string.Format("{0}_{1}", _opCode, _methodInfo);
-                var isFunction = _methodInfo.ReturnType != typeof(void);
-                var genDelType = GenericDelegates[isFunction ? 1 : 0][(_methodInfo.IsStatic ? 0 : 1) + _methodInfo.GetParameters().Length];
-                var paramTypes = new List<Type>();
-                if (!_methodInfo.IsStatic) paramTypes.Add(_methodInfo.DeclaringType);
-                paramTypes.AddRange(_methodInfo.GetParameters().Select(p => p.ParameterType));
-                var paramTypesWithoutResult = paramTypes.ToArray();
-                if (isFunction) paramTypes.Add(_methodInfo.ReturnType);
-                _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
-                _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Public | FieldAttributes.Static);
-                _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, _methodInfo.ReturnType, paramTypesWithoutResult);
+                Type[] paramTypesWithoutResult;
+                if (_methodInfo != null)
+                {
+                    var isFunction = _methodInfo.ReturnType != typeof(void);
+                    var genDelType = GenericDelegates[isFunction ? 1 : 0][(_methodInfo.IsStatic ? 0 : 1) + _methodInfo.GetParameters().Length];
+                    var paramTypes = new List<Type>();
+                    if (!_methodInfo.IsStatic) paramTypes.Add(_methodInfo.DeclaringType);
+                    paramTypes.AddRange(_methodInfo.GetParameters().Select(p => p.ParameterType));
+                    paramTypesWithoutResult = paramTypes.ToArray();
+                    if (isFunction) paramTypes.Add(_methodInfo.ReturnType);
+                    _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
+                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Public | FieldAttributes.Static);
+                    _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, _methodInfo.ReturnType, paramTypesWithoutResult);
+                }
+                else if (_constructorInfo != null)
+                {
+                    var genDelType = GenericDelegates[1][_constructorInfo.GetParameters().Length];
+                    var paramTypes = new List<Type>();
+                    paramTypes.AddRange(_constructorInfo.GetParameters().Select(p => p.ParameterType));
+                    paramTypesWithoutResult = paramTypes.ToArray();
+                    paramTypes.Add(_constructorInfo.DeclaringType);
+                    _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
+                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Public | FieldAttributes.Static);
+                    _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, _constructorInfo.DeclaringType, paramTypesWithoutResult);
+                }
+                else throw new InvalidOperationException();
                 var ilGen = new ILGenImpl(_staticMethod.GetILGenerator(), new ILGenForbidenInstructionsGodPowers());
                 ilGen.Ldsfld(_fieldBuilder);
                 _parametersCount = paramTypesWithoutResult.Length;
@@ -69,6 +94,7 @@ namespace BTDB.IL
                 }
                 if (_opCode == OpCodes.Call) il.Call(_methodInfo);
                 else if (_opCode == OpCodes.Callvirt) il.Callvirt(_methodInfo);
+                else if (_opCode == OpCodes.Newobj) il.Newobj(_constructorInfo);
                 else throw new InvalidOperationException();
                 il.Ret();
                 finalType.GetField("_" + _name, BindingFlags.Public | BindingFlags.Static).SetValue(null, method.Create());
@@ -81,7 +107,9 @@ namespace BTDB.IL
 
             public override int GetHashCode()
             {
-                return _opCode.GetHashCode() * 33 + _methodInfo.GetHashCode();
+                if (_methodInfo != null)
+                    return _opCode.GetHashCode() * 33 + _methodInfo.GetHashCode() * 2;
+                return _opCode.GetHashCode() * 33 + _constructorInfo.GetHashCode() * 2 + 1;
             }
         }
 
@@ -110,6 +138,25 @@ namespace BTDB.IL
                 }
             }
             ilGen.Emit(opCode, methodInfo);
+        }
+
+        public void Emit(ILGenerator ilGen, OpCode opCode, ConstructorInfo constructorInfo)
+        {
+            if (opCode == OpCodes.Newobj)
+            {
+                if (!constructorInfo.IsPublic)
+                {
+                    var call = new Call(opCode, constructorInfo);
+                    if (!_calls.Contains(call))
+                    {
+                        _calls.Add(call);
+                        call.GenerateStaticParts(_typeBuilder);
+                    }
+                    call.EmitCheat(ilGen);
+                    return;
+                }
+            }
+            ilGen.Emit(opCode, constructorInfo);
         }
 
         public void FinishType(Type finalType)

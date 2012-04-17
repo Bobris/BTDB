@@ -150,5 +150,31 @@ namespace BTDBTest
             Assert.AreEqual("Test", n.PassedParam);
         }
     
+        public class PrivateConstructor
+        {
+            int _a;
+
+            private PrivateConstructor(int a)
+            {
+                _a = a;
+            }
+
+            public int A
+            {
+                get { return _a; }
+            }
+        }
+
+        [Test]
+        public void CanCallPrivateConstructor()
+        {
+            var method = new ILBuilderDebug().NewMethod<Func<PrivateConstructor>>("PrivateConstructorCall");
+            var il = method.Generator;
+            il
+                .LdcI4(42)
+                .Newobj(typeof (PrivateConstructor).GetConstructors(BindingFlags.NonPublic|BindingFlags.Instance)[0]);
+            Assert.AreEqual(42, method.Create()().A);
+        }
+
     }
 }

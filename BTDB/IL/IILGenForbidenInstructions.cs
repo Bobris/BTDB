@@ -7,6 +7,7 @@ namespace BTDB.IL
     internal interface IILGenForbidenInstructions
     {
         void Emit(ILGenerator ilGen, OpCode opCode, MethodInfo methodInfo);
+        void Emit(ILGenerator ilGen, OpCode opCode, ConstructorInfo constructorInfo);
         void FinishType(Type finalType);
     }
 }

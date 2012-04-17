@@ -146,7 +146,7 @@ namespace BTDB.IL
         public void Emit(OpCode opCode, ConstructorInfo param)
         {
             _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} ctor {1}({2})", opCode, param.DeclaringType.ToSimpleName(), FormatParams(param.GetParameters())));
-            _ilGenerator.Emit(opCode, param);
+            _forbidenInstructions.Emit(_ilGenerator, opCode, param);
         }
 
         public void Emit(OpCode opCode, MethodInfo param)

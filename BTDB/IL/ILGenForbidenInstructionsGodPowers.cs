@@ -11,6 +11,11 @@ namespace BTDB.IL
             ilGen.Emit(opCode, methodInfo);
         }
 
+        public void Emit(ILGenerator ilGen, OpCode opCode, ConstructorInfo constructorInfo)
+        {
+            ilGen.Emit(opCode, constructorInfo);
+        }
+
         public void FinishType(Type finalType)
         {
         }
