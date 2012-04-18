@@ -295,6 +295,29 @@ namespace BTDB.ODBLayer
             return RegisterNewObject(@object);
         }
 
+        public ulong StoreAndFlush(object @object)
+        {
+            var ti = AutoRegisterType(@object.GetType());
+            ti.EnsureClientTypeVersion();
+            DBObjectMetadata metadata;
+            if (_objMetadata.TryGetValue(@object, out metadata))
+            {
+                if (metadata.Id == 0)
+                {
+                    metadata.Id = _owner.AllocateNewOid();
+                    _objCache.TryAdd(metadata.Id, new WeakReference(@object));
+                }
+                StoreObject(@object);
+                metadata.State = DBObjectState.Read;
+                return metadata.Id;
+            }
+            var id = _owner.AllocateNewOid();
+            _objMetadata.Add(@object, new DBObjectMetadata(id, DBObjectState.Read));
+            _objCache.TryAdd(id, new WeakReference(@object));
+            StoreObject(@object);
+            return id;
+        }
+
         public ulong StoreIfNotInlined(object @object, bool autoRegister)
         {
             TableInfo ti;
