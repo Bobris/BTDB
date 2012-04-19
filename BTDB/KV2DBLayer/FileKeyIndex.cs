@@ -59,7 +59,7 @@ namespace BTDB.KV2DBLayer
             reader.SkipVUInt64(); // keyValueCount
         }
 
-        internal void WriteHeader(PositionLessStreamWriter writer)
+        internal void WriteHeader(AbstractBufferedWriter writer)
         {
             writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
             writer.WriteUInt8((byte)KV2FileType.KeyIndex);

@@ -53,12 +53,9 @@ namespace SimpleTester
                         if (alsoDoReads) using (var trCheck = db.StartTransaction())
                             {
                                 long pureDataLengthCheck = 0;
-                                if (trCheck.FindFirstKey())
+                                while (trCheck.FindNextKey())
                                 {
-                                    do
-                                    {
-                                        pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
-                                    } while (trCheck.FindNextKey());
+                                    pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
                                 }
                                 if (pureDataLengthCheck != pureDataLengthPrevTr)
                                 {
@@ -83,12 +80,9 @@ namespace SimpleTester
                 using (var trCheck = db.StartTransaction())
                 {
                     long pureDataLengthCheck = 0;
-                    if (trCheck.FindFirstKey())
+                    while (trCheck.FindNextKey())
                     {
-                        do
-                        {
-                            pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
-                        } while (trCheck.FindNextKey());
+                        pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
                     }
                     if (pureDataLengthCheck != 396130000)
                     {
@@ -249,11 +243,11 @@ namespace SimpleTester
         public void Run()
         {
             //CreateTestDB(9999999);
-            OpenDBSpeedTest();
+            //OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
-            //DoWork5(true);
-            //DoWork5ReadCheck();
+            DoWork5(true);
+            DoWork5ReadCheck();
         }
 
     }

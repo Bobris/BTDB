@@ -148,6 +148,7 @@
     <Compile Include="KV2DBLayer\FilePureValues.cs" />
     <Compile Include="KV2DBLayer\FileTransactionLog.cs" />
     <Compile Include="KV2DBLayer\ICompressionStrategy.cs" />
+    <Compile Include="KV2DBLayer\IFileCollectionFile.cs" />
     <Compile Include="KV2DBLayer\IKeyIndex.cs" />
     <Compile Include="KV2DBLayer\NoCompressionStrategy.cs" />
     <Compile Include="KV2DBLayer\SnappyCompressionStrategy.cs" />

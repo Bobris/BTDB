@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using BTDB.KV2DBLayer.BTree;
-using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KV2DBLayer
@@ -59,6 +58,7 @@ namespace BTDB.KV2DBLayer
             CalculateFileUsefullness();
             var totalWaste = CalcTotalWaste();
             if (totalWaste < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return false;
+            _cancellation.ThrowIfCancellationRequested();
             uint valueFileId;
             var writer = _keyValue2DB.StartPureValuesFile(out valueFileId);
             _newPositionMap = new Dictionary<ulong, uint>();
@@ -71,7 +71,7 @@ namespace BTDB.KV2DBLayer
                 _fileStats[wastefullFileId] = new FileStat(0);
                 removedFileIds.Add(wastefullFileId);
             }
-            ((IDisposable)writer).Dispose();
+            _keyValue2DB.FileCollection.GetFile(valueFileId).HardFlush();
             _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset) =>
                 {
                     newFileId = valueFileId;
@@ -98,8 +98,7 @@ namespace BTDB.KV2DBLayer
                 wasteInMemory[i] = new byte[blockSize];
                 var readSize = totalSize - pos;
                 if (readSize > blockSize) readSize = blockSize;
-                if (wasteFullStream.Read(wasteInMemory[i], 0, (int)readSize, pos) != (int)readSize)
-                    throw new BTDBException("Corrupted DB");
+                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos);
                 pos += readSize;
             }
             _root.Iterate((ref BTreeLeafMember m) =>
@@ -152,18 +151,24 @@ namespace BTDB.KV2DBLayer
 
         void InitFileStats(long dontTouchGeneration)
         {
-            _fileStats = new FileStat[_keyValue2DB.FileCollection.Enumerate().Max()];
-            foreach (var id in _keyValue2DB.FileCollection.Enumerate())
+            _fileStats = new FileStat[_keyValue2DB.FileCollection.Enumerate().Max(f => f.Index) + 1];
+            foreach (var file in _keyValue2DB.FileCollection.Enumerate())
             {
-                if (id >= _fileStats.Length) continue;
-                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGneration(id, dontTouchGeneration)) continue;
-                _fileStats[id] = new FileStat((uint)_keyValue2DB.FileCollection.GetFile(id).GetSize());
+                if (file.Index >= _fileStats.Length) continue;
+                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGneration(file.Index, dontTouchGeneration)) continue;
+                _fileStats[file.Index] = new FileStat((uint)file.GetSize());
             }
         }
 
         void CalculateFileUsefullness()
         {
-            _root.Iterate((ref BTreeLeafMember m) => _fileStats[m.ValueFileId].AddLength((uint)Math.Abs(m.ValueSize)));
+            _root.Iterate((ref BTreeLeafMember m) =>
+                {
+                    var id = m.ValueFileId;
+                    var fileStats = _fileStats;
+                    _cancellation.ThrowIfCancellationRequested();
+                    if (id < fileStats.Length) fileStats[id].AddLength((uint)Math.Abs(m.ValueSize));
+                });
         }
     }
 }
