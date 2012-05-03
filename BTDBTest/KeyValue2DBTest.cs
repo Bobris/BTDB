@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KV2DBLayer;
@@ -901,6 +902,37 @@ namespace BTDBTest
                     }
                 }
                 Assert.AreEqual(4, fileCollection.GetCount());
+            }
+        }
+
+        [Test]
+        public void CompactionWaitsForFinishingOldTransactionsBeforeRemovingFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.Commit();
+                    }
+                    var longTr = db.StartTransaction();
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.FindExactKey(_key1);
+                        tr.EraseCurrent();
+                        tr.Commit();
+                    }
+                    db.Compact();
+                    Thread.Sleep(2000);
+                    Assert.AreEqual(4, fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex
+                    longTr.Dispose();
+                    Thread.Sleep(1000);
+                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Logs, 1 KeyIndex
+                }
+
             }
         }
 

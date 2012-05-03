@@ -27,6 +27,7 @@ namespace BTDB.KV2DBLayer
             _prefixKeyStart = 0;
             _prefixKeyCount = -1;
             _keyIndex = -1;
+            _keyValue2DB.StartedUsingBTreeRoot(_btreeRoot);
         }
 
         internal IBTreeRootNode BtreeRoot
@@ -37,7 +38,7 @@ namespace BTDB.KV2DBLayer
         public void SetKeyPrefix(ByteBuffer prefix)
         {
             _prefix = prefix.ToByteArray();
-            if (_prefix.Length==0)
+            if (_prefix.Length == 0)
             {
                 _prefixKeyStart = 0;
             }
@@ -128,7 +129,10 @@ namespace BTDB.KV2DBLayer
                 _keyValue2DB.WriteStartTransaction();
                 return;
             }
-            _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, BtreeRoot);
+            var oldBTreeRoot = BtreeRoot;
+            _btreeRoot = _keyValue2DB.MakeWrittableTransaction(this, oldBTreeRoot);
+            _keyValue2DB.StartedUsingBTreeRoot(_btreeRoot);
+            _keyValue2DB.FinishedUsingBTreeRoot(oldBTreeRoot);
             _writting = true;
             InvalidateCurrentKey();
             _keyValue2DB.WriteStartTransaction();
@@ -309,6 +313,7 @@ namespace BTDB.KV2DBLayer
                 _keyValue2DB.CommitWrittingTransaction(BtreeRoot);
                 _writting = false;
             }
+            _keyValue2DB.FinishedUsingBTreeRoot(_btreeRoot);
             _btreeRoot = null;
         }
 
@@ -320,6 +325,8 @@ namespace BTDB.KV2DBLayer
                 _writting = false;
                 _preapprovedWritting = false;
             }
+            if (_btreeRoot == null) return;
+            _keyValue2DB.FinishedUsingBTreeRoot(_btreeRoot);
             _btreeRoot = null;
         }
     }

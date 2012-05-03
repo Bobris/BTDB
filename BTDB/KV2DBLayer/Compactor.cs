@@ -72,13 +72,18 @@ namespace BTDB.KV2DBLayer
                 removedFileIds.Add(wastefullFileId);
             }
             _keyValue2DB.FileCollection.GetFile(valueFileId).HardFlush();
-            _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset) =>
+            var btreesCorrectInTransactionId = _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset) =>
                 {
                     newFileId = valueFileId;
                     _cancellation.ThrowIfCancellationRequested();
                     return _newPositionMap.TryGetValue(((ulong)m.ValueFileId << 32) | m.ValueOfs, out newOffset);
                 }));
             _keyValue2DB.CreateIndexFile(_cancellation);
+            _keyValue2DB.WaitForFinishingTransactionsBefore(btreesCorrectInTransactionId, _cancellation);
+            if (_newPositionMap.Count == 0)
+            {
+                removedFileIds.Add(valueFileId);
+            }
             _keyValue2DB.MarkAsUnknown(removedFileIds);
             _keyValue2DB.DeleteAllUnknownFiles();
             return true;
@@ -155,7 +160,7 @@ namespace BTDB.KV2DBLayer
             foreach (var file in _keyValue2DB.FileCollection.Enumerate())
             {
                 if (file.Index >= _fileStats.Length) continue;
-                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGneration(file.Index, dontTouchGeneration)) continue;
+                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGeneration(file.Index, dontTouchGeneration)) continue;
                 _fileStats[file.Index] = new FileStat((uint)file.GetSize());
             }
         }

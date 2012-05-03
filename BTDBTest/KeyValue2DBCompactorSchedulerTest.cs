@@ -34,7 +34,7 @@ namespace BTDBTest
             {
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
-                Assert.True(e.WaitOne(100));
+                Assert.True(e.WaitOne(1000));
             }
         }
 
@@ -56,7 +56,7 @@ namespace BTDBTest
             {
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
-                Assert.True(e.WaitOne(100));
+                Assert.True(e.WaitOne(1000));
                 Assert.False(first);
             }
         }
@@ -80,9 +80,9 @@ namespace BTDBTest
             {
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
-                Assert.True(e.WaitOne(100));
+                Assert.True(e.WaitOne(1000));
             }
-            Assert.True(e.WaitOne(100));
+            Assert.True(e.WaitOne(1000));
         }
     }
 }

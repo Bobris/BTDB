@@ -33,6 +33,8 @@ namespace BTDB.KV2DBLayer
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         readonly ICompressionStrategy _compression;
         readonly CompactorScheduler _compactorScheduler;
+        readonly Dictionary<long, IBTreeRootNode> _usedBTreeRootNodes = new Dictionary<long, IBTreeRootNode>();
+        readonly object _usedBTreeRootNodesLock = new object();
 
         public KeyValue2DB(IFileCollection fileCollection)
             : this(fileCollection, new SnappyCompressionStrategy())
@@ -518,7 +520,7 @@ namespace BTDB.KV2DBLayer
                 _compactorScheduler.AdviceRunning();
             }
             btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
-            btreeRoot.TrLogOffset = (uint) _writerWithTransactionLog.GetCurrentPosition();
+            btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
         }
 
         void TryDequeWaiterForWrittingTransaction()
@@ -786,7 +788,7 @@ namespace BTDB.KV2DBLayer
             _compactorScheduler.AdviceRunning();
         }
 
-        internal bool ContainsValuesAndDoesNotTouchGneration(uint fileId, long dontTouchGeneration)
+        internal bool ContainsValuesAndDoesNotTouchGeneration(uint fileId, long dontTouchGeneration)
         {
             IFileInfo info;
             if (!_fileInfos.TryGetValue(fileId, out info)) return false;
@@ -805,7 +807,7 @@ namespace BTDB.KV2DBLayer
             return writer;
         }
 
-        internal void AtomicallyChangeBTree(Action<IBTreeRootNode> action)
+        internal long AtomicallyChangeBTree(Action<IBTreeRootNode> action)
         {
             using (var tr = StartWritingTransaction().Result)
             {
@@ -815,6 +817,7 @@ namespace BTDB.KV2DBLayer
                 {
                     _lastCommited = newRoot;
                 }
+                return newRoot.TransactionId;
             }
         }
 
@@ -835,6 +838,57 @@ namespace BTDB.KV2DBLayer
                 throw new ArgumentOutOfRangeException("fileId");
             }
             return fileInfo.Generation;
+        }
+
+        internal void StartedUsingBTreeRoot(IBTreeRootNode btreeRoot)
+        {
+            lock (_usedBTreeRootNodesLock)
+            {
+                var uses = btreeRoot.UseCount;
+                uses++;
+                btreeRoot.UseCount = uses;
+                if (uses == 1)
+                {
+                    _usedBTreeRootNodes.Add(btreeRoot.TransactionId, btreeRoot);
+                }
+            }
+        }
+
+        internal void FinishedUsingBTreeRoot(IBTreeRootNode btreeRoot)
+        {
+            lock (_usedBTreeRootNodesLock)
+            {
+                var uses = btreeRoot.UseCount;
+                uses--;
+                btreeRoot.UseCount = uses;
+                if (uses == 0)
+                {
+                    _usedBTreeRootNodes.Remove(btreeRoot.TransactionId);
+                    Monitor.PulseAll(_usedBTreeRootNodesLock);
+                }
+            }
+        }
+
+        internal void WaitForFinishingTransactionsBefore(long transactionId, CancellationToken cancellation)
+        {
+            lock(_usedBTreeRootNodesLock)
+            {
+                while(true)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    var oldStillRuns = false;
+                    foreach (var usedTransactionId in _usedBTreeRootNodes.Keys)
+                    {
+                        if (usedTransactionId-transactionId<0)
+                        {
+                            oldStillRuns = true;
+                            break;
+                        }
+                    }
+                    if (!oldStillRuns) return;
+                    Monitor.Wait(_usedBTreeRootNodesLock, 100);
+                }
+            }
         }
     }
 }
