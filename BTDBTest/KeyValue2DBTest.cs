@@ -927,12 +927,39 @@ namespace BTDBTest
                     }
                     db.Compact();
                     Thread.Sleep(2000);
-                    Assert.AreEqual(4, fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex
+                    Console.WriteLine(db.CalcStats());
+                    Assert.LessOrEqual(4, fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex, (optinal 1 Unknown (old KeyIndex))
                     longTr.Dispose();
                     Thread.Sleep(1000);
-                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Logs, 1 KeyIndex
+                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
                 }
+            }
+        }
 
+        [Test]
+        public void FastCleanUpOnStartRemovesUselessFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.Commit();
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.EraseAll();
+                        tr.Commit();
+                    }
+                    Assert.AreEqual(3, fileCollection.GetCount()); // 3 Logs
+                }
+                using (var db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
+                }
             }
         }
 

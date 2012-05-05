@@ -117,6 +117,7 @@ namespace BTDB.KV2DBLayer
                 keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Value, r.Value));
             var firstTrLogId = LinkTransactionLogFileIds(lastestTrLogFileId);
             var firstTrLogOffset = 0u;
+            var hasKeyIndex = false;
             while (keyIndexes.Count > 0)
             {
                 var keyIndex = keyIndexes[keyIndexes.Count - 1];
@@ -129,6 +130,7 @@ namespace BTDB.KV2DBLayer
                     _nextRoot = null;
                     firstTrLogId = info.TrLogFileId;
                     firstTrLogOffset = info.TrLogOffset;
+                    hasKeyIndex = true;
                     break;
                 }
                 _fileInfos[keyIndex.Key] = UnknownFile.Instance;
@@ -143,6 +145,11 @@ namespace BTDB.KV2DBLayer
             if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0)
             {
                 CreateIndexFile(CancellationToken.None);
+                hasKeyIndex = true;
+            }
+            if (hasKeyIndex)
+            {
+                new Compactor(this, CancellationToken.None).FastStartCleanUp();
             }
             DeleteAllUnknownFiles();
             _compactorScheduler.AdviceRunning();
@@ -871,24 +878,34 @@ namespace BTDB.KV2DBLayer
 
         internal void WaitForFinishingTransactionsBefore(long transactionId, CancellationToken cancellation)
         {
-            lock(_usedBTreeRootNodesLock)
+            lock (_usedBTreeRootNodesLock)
             {
-                while(true)
+                while (true)
                 {
                     cancellation.ThrowIfCancellationRequested();
                     var oldStillRuns = false;
                     foreach (var usedTransactionId in _usedBTreeRootNodes.Keys)
                     {
-                        if (usedTransactionId-transactionId<0)
-                        {
-                            oldStillRuns = true;
-                            break;
-                        }
+                        if (usedTransactionId - transactionId >= 0) continue;
+                        oldStillRuns = true;
+                        break;
                     }
                     if (!oldStillRuns) return;
                     Monitor.Wait(_usedBTreeRootNodesLock, 100);
                 }
             }
+        }
+
+        internal ulong DistanceFromLastKeyIndex(IBTreeRootNode root)
+        {
+            var keyIndex = _fileInfos.Where(p => p.Value.FileType == KV2FileType.KeyIndex).Select(p => (IKeyIndex)p.Value).FirstOrDefault();
+            if (keyIndex == null)
+            {
+                if (_fileInfos.Count > 1) return ulong.MaxValue;
+                return root.TrLogOffset;
+            }
+            if (root.TrLogFileId != keyIndex.TrLogFileId) return ulong.MaxValue;
+            return root.TrLogOffset - keyIndex.TrLogOffset;
         }
     }
 }
