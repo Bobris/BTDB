@@ -8,11 +8,11 @@ namespace BTDB.KV2DBLayer.BTree
 {
     internal class BTreeBranch : IBTreeNode
     {
-        internal long TransactionId;
+        internal readonly long TransactionId;
         byte[][] _keys;
         IBTreeNode[] _children;
         long[] _pairCounts;
-        internal const int MaxChildren = 10;
+        internal const int MaxChildren = 30;
 
         internal BTreeBranch(long transactionId, IBTreeNode node1, IBTreeNode node2)
         {

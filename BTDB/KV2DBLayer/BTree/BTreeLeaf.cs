@@ -10,7 +10,7 @@ namespace BTDB.KV2DBLayer.BTree
     {
         internal readonly long TransactionId;
         BTreeLeafMember[] _keyvalues;
-        internal const int MaxMembers = 10;
+        internal const int MaxMembers = 30;
 
         BTreeLeaf(long transactionId, int length)
         {
