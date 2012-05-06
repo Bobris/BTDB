@@ -89,6 +89,7 @@ namespace BTDB.KV2DBLayer
                     Monitor.Wait(_lock);
                 }
             }
+            _timer.Dispose();
         }
     }
 }

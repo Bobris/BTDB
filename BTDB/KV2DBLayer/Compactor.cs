@@ -56,6 +56,7 @@ namespace BTDB.KV2DBLayer
 
         internal void FastStartCleanUp()
         {
+            if (_keyValue2DB.FileCollection.GetCount() == 0) return;
             _root = _keyValue2DB.LastCommited;
             var dontTouchGeneration = _keyValue2DB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);

@@ -836,8 +836,9 @@ namespace BTDBTest
                         tr.CreateOrUpdateKeyValue(_key2, _key2);
                         tr.Commit();
                     }
+                    Console.WriteLine(db.CalcStats());
                 }
-                Assert.AreEqual(1, fileCollection.GetCount());
+                Assert.AreEqual(2, fileCollection.GetCount()); // Log + Index
             }
         }
 
@@ -863,8 +864,9 @@ namespace BTDBTest
                         tr.CreateOrUpdateKeyValue(_key2, _key2);
                         tr.Commit();
                     }
+                    Console.WriteLine(db.CalcStats());
                 }
-                Assert.AreEqual(2, fileCollection.GetCount());
+                Assert.LessOrEqual(2, fileCollection.GetCount());
             }
         }
 

@@ -1,0 +1,12 @@
+InMemory: True
+CreateSequence:19003,0036
+Time to open DB :      21071,6803ms Memory: 867873KB
+KeyValueCount:10000000
+FileCount:2
+FileGeneration:2
+BTDB.KV2DBLayer.InMemoryFileCollection+File Size:167886348 Type:TransactionLog Gen:1
+BTDB.KV2DBLayer.InMemoryFileCollection+File Size:107753140 Type:KeyIndex Gen:2
+Time to close DB:          8,5482ms
+Time to open DB :       3327,6529ms Memory: 641495KB
+Time to close DB:          0,1663ms
+CheckSequence:223,1561

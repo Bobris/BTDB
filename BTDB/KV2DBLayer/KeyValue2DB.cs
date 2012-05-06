@@ -142,15 +142,11 @@ namespace BTDB.KV2DBLayer
                 _fileInfos[keyIndex.Key] = UnknownFile.Instance;
             }
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
-            if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0)
+            if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileInfos.Count != 0)
             {
                 CreateIndexFile(CancellationToken.None);
-                hasKeyIndex = true;
             }
-            if (hasKeyIndex)
-            {
-                new Compactor(this, CancellationToken.None).FastStartCleanUp();
-            }
+            new Compactor(this, CancellationToken.None).FastStartCleanUp();
             DeleteAllUnknownFiles();
             _compactorScheduler.AdviceRunning();
         }

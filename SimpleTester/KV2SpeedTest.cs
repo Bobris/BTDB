@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.KV2DBLayer;
 using BTDB.KVDBLayer;
@@ -10,25 +11,34 @@ namespace SimpleTester
     class KV2SpeedTest
     {
         readonly Stopwatch _sw = new Stopwatch();
+        readonly bool _inMemory;
+        IFileCollection _fileCollection;
 
-        static IFileCollection CreateTestFileCollection()
+        public KV2SpeedTest(bool inMemory)
         {
-            if (true)
-            {
-                const string dbfilename = "data";
-                if (Directory.Exists(dbfilename))
-                    Directory.Delete(dbfilename, true);
-                Directory.CreateDirectory(dbfilename);
-                return new OnDiskFileCollection(dbfilename);
-            }
-            else
-            {
-                return new InMemoryFileCollection();
-            }
+            _inMemory = inMemory;
         }
 
-        static IFileCollection OpenTestFileCollection()
+        IFileCollection CreateTestFileCollection()
         {
+            if (_inMemory)
+            {
+                _fileCollection = new InMemoryFileCollection();
+                return _fileCollection;
+            }
+            const string dbfilename = "data";
+            if (Directory.Exists(dbfilename))
+                Directory.Delete(dbfilename, true);
+            Directory.CreateDirectory(dbfilename);
+            return new OnDiskFileCollection(dbfilename);
+        }
+
+        IFileCollection OpenTestFileCollection()
+        {
+            if (_inMemory)
+            {
+                return _fileCollection;
+            }
             const string dbfilename = "data";
             return new OnDiskFileCollection(dbfilename);
         }
@@ -197,13 +207,18 @@ namespace SimpleTester
 
         void OpenDBSpeedTest()
         {
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); 
+            var memStart = GC.GetTotalMemory(false);
             _sw.Start();
             using (var fileCollection = OpenTestFileCollection())
             {
                 using (IKeyValueDB db = new KeyValue2DB(fileCollection))
                 {
                     _sw.Stop();
-                    Console.WriteLine("Time to open DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                    GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); 
+                    var memFinish = GC.GetTotalMemory(false);
+                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB", _sw.Elapsed.TotalMilliseconds, (memFinish-memStart)/1024);
+                    Console.WriteLine(db.CalcStats());
                     _sw.Restart();
                 }
             }
@@ -240,15 +255,68 @@ namespace SimpleTester
             }
         }
 
+        void CreateKeySequence(int keys)
+        {
+            var sw = Stopwatch.StartNew();
+            var key = new byte[8];
+            var value = new byte[10];
+
+            using (var fileCollection = CreateTestFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy()))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int i = 0; i < keys; i++)
+                        {
+                            int o = 0;
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            tr.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, o), ByteBuffer.NewSync(value));
+                        }
+                        tr.Commit();
+                    }
+                }
+            }
+            Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds);
+        }
+
+        void CheckKeySequence(int keys)
+        {
+            var sw = Stopwatch.StartNew();
+            var key = new byte[8];
+
+            using (var fileCollection = CreateTestFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValue2DB(fileCollection, new NoCompressionStrategy()))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int i = 0; i < keys; i++)
+                        {
+                            int o = 0;
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            tr.Find(ByteBuffer.NewSync(key, 0, o));
+                        }
+                        tr.Commit();
+                    }
+                }
+            }
+            Console.WriteLine("CheckSequence:" + sw.Elapsed.TotalMilliseconds);
+        }
+
         public void Run()
         {
+            Console.WriteLine("InMemory: {0}", _inMemory);
+            CreateKeySequence(10000000);
+            OpenDBSpeedTest();
+            OpenDBSpeedTest();
+            CheckKeySequence(10000000);
             //CreateTestDB(9999999);
             //OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
-            DoWork5(true);
-            DoWork5ReadCheck();
+            //DoWork5(true);
+            //DoWork5ReadCheck();
         }
-
     }
 }
