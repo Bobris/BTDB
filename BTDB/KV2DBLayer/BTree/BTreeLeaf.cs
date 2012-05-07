@@ -260,7 +260,8 @@ namespace BTDB.KV2DBLayer.BTree
             var kv = _keyvalues;
             for (var i = 0; i < kv.Length; i++)
             {
-                action(ref kv[i]);
+                var member = kv[i];
+                action(member.ValueFileId, member.ValueOfs, member.ValueSize);
             }
         }
 
@@ -272,7 +273,7 @@ namespace BTDB.KV2DBLayer.BTree
             {
                 uint newFileId;
                 uint newOffset;
-                if (action(ref keyvalues[i], out newFileId, out newOffset))
+                if (action(keyvalues[i].ValueFileId, keyvalues[i].ValueOfs, out newFileId, out newOffset))
                 {
                     if (result.TransactionId != transactionId)
                     {

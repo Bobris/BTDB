@@ -98,11 +98,11 @@ namespace BTDB.KV2DBLayer
                 toRemoveFileIds.Add(wastefullFileId);
             }
             _keyValue2DB.FileCollection.GetFile(valueFileId).HardFlush();
-            var btreesCorrectInTransactionId = _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((ref BTreeLeafMember m, out uint newFileId, out uint newOffset) =>
+            var btreesCorrectInTransactionId = _keyValue2DB.AtomicallyChangeBTree(root => root.RemappingIterate((uint oldFileId, uint oldOffset, out uint newFileId, out uint newOffset) =>
                 {
                     newFileId = valueFileId;
                     _cancellation.ThrowIfCancellationRequested();
-                    return _newPositionMap.TryGetValue(((ulong)m.ValueFileId << 32) | m.ValueOfs, out newOffset);
+                    return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
                 }));
             _keyValue2DB.CreateIndexFile(_cancellation);
             _keyValue2DB.WaitForFinishingTransactionsBefore(btreesCorrectInTransactionId, _cancellation);
@@ -132,24 +132,22 @@ namespace BTDB.KV2DBLayer
                 wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos);
                 pos += readSize;
             }
-            _root.Iterate((ref BTreeLeafMember m) =>
+            _root.Iterate((valueFileId, valueOfs, valueSize) =>
                 {
-                    if (m.ValueFileId == wastefullFileId)
+                    if (valueFileId != wastefullFileId) return;
+                    var size = (uint)Math.Abs(valueSize);
+                    _newPositionMap.Add(((ulong)wastefullFileId << 32) | valueOfs, (uint)writer.GetCurrentPosition());
+                    pos = valueOfs;
+                    while (size > 0)
                     {
-                        var size = (uint)Math.Abs(m.ValueSize);
-                        _newPositionMap.Add(((ulong)wastefullFileId << 32) | m.ValueOfs, (uint)writer.GetCurrentPosition());
-                        pos = m.ValueOfs;
-                        while (size > 0)
-                        {
-                            _cancellation.ThrowIfCancellationRequested();
-                            var blockId = pos / blockSize;
-                            var blockStart = pos % blockSize;
-                            var writeSize = (uint)(blockSize - blockStart);
-                            if (writeSize > size) writeSize = size;
-                            writer.WriteBlock(wasteInMemory[blockId], (int)blockStart, (int)writeSize);
-                            size -= writeSize;
-                            pos += writeSize;
-                        }
+                        _cancellation.ThrowIfCancellationRequested();
+                        var blockId = pos / blockSize;
+                        var blockStart = pos % blockSize;
+                        var writeSize = (uint)(blockSize - blockStart);
+                        if (writeSize > size) writeSize = size;
+                        writer.WriteBlock(wasteInMemory[blockId], (int)blockStart, (int)writeSize);
+                        size -= writeSize;
+                        pos += writeSize;
                     }
                 });
         }
@@ -193,12 +191,12 @@ namespace BTDB.KV2DBLayer
 
         void CalculateFileUsefullness()
         {
-            _root.Iterate((ref BTreeLeafMember m) =>
+            _root.Iterate((valueFileId, valueOfs, valueSize) =>
                 {
-                    var id = m.ValueFileId;
+                    var id = valueFileId;
                     var fileStats = _fileStats;
                     _cancellation.ThrowIfCancellationRequested();
-                    if (id < fileStats.Length) fileStats[id].AddLength((uint)Math.Abs(m.ValueSize));
+                    if (id < fileStats.Length) fileStats[id].AddLength((uint)Math.Abs(valueSize));
                 });
         }
     }

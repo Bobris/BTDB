@@ -4,9 +4,9 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer.BTree
 {
-    internal delegate void BTreeIterateAction(ref BTreeLeafMember member);
+    internal delegate void BTreeIterateAction(uint valueFileId, uint valueOfs, int valueSize);
 
-    internal delegate bool BTreeRemappingIterateAction(ref BTreeLeafMember member, out uint fileId, out uint offset);
+    internal delegate bool BTreeRemappingIterateAction(uint oldFileId, uint oldOffset, out uint fileId, out uint offset);
 
     internal interface IBTreeNode
     {
