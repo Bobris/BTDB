@@ -158,11 +158,13 @@ namespace BTDB.Buffer
 
         internal static int CompareByteArray(byte[] a1, int o1, int l1, byte[] a2, int o2, int l2)
         {
-            int commonLength = Math.Min(l1, l2);
-            for (int i = 0; i < commonLength; i++)
+            var commonLength = Math.Min(l1, l2);
+            for (var i = 0; i < commonLength; i++)
             {
-                if (a1[o1 + i] < a2[o2 + i]) return -1;
-                if (a1[o1 + i] > a2[o2 + i]) return 1;
+                var b1 = a1[o1 + i];
+                var b2 = a2[o2 + i];
+                if (b1 < b2) return -1;
+                if (b1 > b2) return 1;
             }
             if (l1 < l2) return -1;
             if (l1 > l2) return 1;

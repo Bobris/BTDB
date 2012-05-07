@@ -46,3 +46,15 @@ Time to open DB :      17728,6976ms Memory: 668467KB
 Time to close DB:          8,5576ms
 Time to open DB :       2787,2783ms Memory: 554839KB
 CheckSequence:221,7163
+
+==================================================================
+After optimization of CompareByteArray
+
+Branch 30, Leaf 30
+InMemory: True
+CreateSequence:15898,4947
+Time to open DB :      17123,4848ms Memory: 710929KB
+Time to close DB:          8,5647ms
+Time to open DB :        3006,457ms Memory: 574625KB
+Time to close DB:          0,1576ms
+CheckSequence:221,7054
