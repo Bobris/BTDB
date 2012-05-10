@@ -24,7 +24,7 @@ namespace BTDB.KV2DBLayer.BTree
             else ctx.Stack.Clear();
             if (_rootNode == null)
             {
-                _rootNode = BTreeLeaf.CreateFirst(ctx);
+                _rootNode = ctx.WholeKeyLen > BTreeLeafComp.MaxTotalLen ? BTreeLeaf.CreateFirst(ctx) : BTreeLeafComp.CreateFirst(ctx);
                 _keyValueCount = 1;
                 ctx.Stack.Add(new NodeIdxPair { Node = _rootNode, Idx = 0 });
                 ctx.KeyIndex = 0;
@@ -85,17 +85,19 @@ namespace BTDB.KV2DBLayer.BTree
             return result;
         }
 
-        internal static bool KeyStartsWithPrefix(byte[] prefix, byte[] key)
+        internal static bool KeyStartsWithPrefix(byte[] prefix, ByteBuffer key)
         {
             if (key.Length < prefix.Length) return false;
+            var keyBuffer = key.Buffer;
+            var offset = key.Offset;
             for (int i = 0; i < prefix.Length; i++)
             {
-                if (key[i] != prefix[i]) return false;
+                if (keyBuffer[offset + i] != prefix[i]) return false;
             }
             return true;
         }
 
-        static byte[] GetKeyFromStack(List<NodeIdxPair> stack)
+        static ByteBuffer GetKeyFromStack(List<NodeIdxPair> stack)
         {
             return ((IBTreeLeafNode)stack[stack.Count - 1].Node).GetKey(stack[stack.Count - 1].Idx);
         }
@@ -244,11 +246,7 @@ namespace BTDB.KV2DBLayer.BTree
 
         IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
         {
-            if (keyCount <= BTreeLeaf.MaxMembers)
-            {
-                return new BTreeLeaf(_transactionId, (int)keyCount, memberGenerator);
-            }
-            var leafs = (keyCount + BTreeLeaf.MaxMembers - 1) / BTreeLeaf.MaxMembers;
+            var leafs = (keyCount + BTreeLeafComp.MaxMembers - 1) / BTreeLeafComp.MaxMembers;
             var order = 0L;
             var done = 0L;
             return BuildBranchNode(leafs, () =>
@@ -257,7 +255,18 @@ namespace BTDB.KV2DBLayer.BTree
                     var reach = keyCount * order / leafs;
                     var todo = (int)(reach - done);
                     done = reach;
-                    return new BTreeLeaf(_transactionId, todo, memberGenerator);
+                    var keyvalues = new BTreeLeafMember[todo];
+                    long totalKeyLen = 0;
+                    for (int i = 0; i < keyvalues.Length; i++)
+                    {
+                        keyvalues[i] = memberGenerator();
+                        totalKeyLen += keyvalues[i].Key.Length;
+                    }
+                    if (totalKeyLen > BTreeLeafComp.MaxTotalLen)
+                    {
+                        return new BTreeLeaf(_transactionId, keyvalues);
+                    }
+                    return new BTreeLeafComp(_transactionId, keyvalues);
                 });
         }
 

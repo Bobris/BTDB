@@ -198,12 +198,12 @@ namespace BTDB.KV2DBLayer
             return false;
         }
 
-        bool CheckPrefixIn(byte[] key)
+        bool CheckPrefixIn(ByteBuffer key)
         {
             return BTreeRoot.KeyStartsWithPrefix(_prefix, key);
         }
 
-        byte[] GetCurrentKeyFromStack()
+        ByteBuffer GetCurrentKeyFromStack()
         {
             var nodeIdxPair = _stack[_stack.Count - 1];
             return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
@@ -224,14 +224,14 @@ namespace BTDB.KV2DBLayer
         {
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
             var wholeKey = GetCurrentKeyFromStack();
-            return ByteBuffer.NewAsync(wholeKey, _prefix.Length, wholeKey.Length - _prefix.Length);
+            return ByteBuffer.NewAsync(wholeKey.Buffer, wholeKey.Offset + _prefix.Length, wholeKey.Length - _prefix.Length);
         }
 
         public ByteBuffer GetValue()
         {
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
             var nodeIdxPair = _stack[_stack.Count - 1];
-            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
+            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
             return _keyValue2DB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
         }
 
@@ -254,9 +254,10 @@ namespace BTDB.KV2DBLayer
                 BtreeRoot.FillStackByIndex(_stack, _keyIndex);
             }
             var nodeIdxPair = _stack[_stack.Count - 1];
-            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-            _keyValue2DB.WriteCreateOrUpdateCommand(BitArrayManipulation.EmptyByteArray, ByteBuffer.NewAsync(leafMember.Key), value, out leafMember.ValueFileId, out leafMember.ValueOfs, out leafMember.ValueSize);
-            ((IBTreeLeafNode)nodeIdxPair.Node).SetMember(nodeIdxPair.Idx, leafMember);
+            var memberValue = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+            var memberKey = ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
+            _keyValue2DB.WriteCreateOrUpdateCommand(BitArrayManipulation.EmptyByteArray, memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs, out memberValue.ValueSize);
+            ((IBTreeLeafNode)nodeIdxPair.Node).SetMemberValue(nodeIdxPair.Idx, memberValue);
         }
 
         public void EraseCurrent()

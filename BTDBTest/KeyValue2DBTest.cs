@@ -188,21 +188,21 @@ namespace BTDBTest
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = new KeyValue2DB(fileCollection))
             {
-                var key = new byte[2];
+                var key = new byte[2 + transactionCount * 10];
                 for (int i = 0; i < transactionCount; i++)
                 {
                     key[0] = (byte)(i / 256);
                     key[1] = (byte)(i % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKey(key);
+                        tr1.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, 2 + i * 10), ByteBuffer.NewEmpty());
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
                             {
                                 key[0] = (byte)(j / 256);
                                 key[1] = (byte)(j % 256);
-                                Assert.True(tr1.FindExactKey(key));
+                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -217,21 +217,21 @@ namespace BTDBTest
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = new KeyValue2DB(fileCollection))
             {
-                var key = new byte[2];
+                var key = new byte[2 + transactionCount * 10];
                 for (int i = 0; i < transactionCount; i++)
                 {
                     key[0] = (byte)((transactionCount - i) / 256);
                     key[1] = (byte)((transactionCount - i) % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKey(key);
+                        tr1.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, 2 + i * 10), ByteBuffer.NewEmpty());
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
                             {
                                 key[0] = (byte)((transactionCount - j) / 256);
                                 key[1] = (byte)((transactionCount - j) % 256);
-                                Assert.True(tr1.FindExactKey(key));
+                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -960,6 +960,7 @@ namespace BTDBTest
                 }
                 using (var db = new KeyValue2DB(fileCollection, new NoCompressionStrategy(), 1024))
                 {
+                    Console.WriteLine(db.CalcStats());
                     Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
                 }
             }

@@ -701,13 +701,12 @@ namespace BTDB.KV2DBLayer
             return result;
         }
 
-        public void WriteEraseOneCommand(byte[] key)
+        public void WriteEraseOneCommand(ByteBuffer key)
         {
             var command = KV2CommandType.EraseOne;
-            var keyBuf = ByteBuffer.NewSync(key);
-            if (_compression.ShouldTryToCompressKey(keyBuf.Length))
+            if (_compression.ShouldTryToCompressKey(key.Length))
             {
-                if (_compression.CompressKey(ref keyBuf))
+                if (_compression.CompressKey(ref key))
                 {
                     command |= KV2CommandType.FirstParamCompressed;
                 }
@@ -717,25 +716,23 @@ namespace BTDB.KV2DBLayer
                 WriteStartOfNewTransactionLogFile();
             }
             _writerWithTransactionLog.WriteUInt8((byte)command);
-            _writerWithTransactionLog.WriteVInt32(keyBuf.Length);
-            _writerWithTransactionLog.WriteBlock(keyBuf);
+            _writerWithTransactionLog.WriteVInt32(key.Length);
+            _writerWithTransactionLog.WriteBlock(key);
         }
 
-        public void WriteEraseRangeCommand(byte[] firstKey, byte[] secondKey)
+        public void WriteEraseRangeCommand(ByteBuffer firstKey, ByteBuffer secondKey)
         {
             var command = KV2CommandType.EraseRange;
-            var firstKeyBuf = ByteBuffer.NewSync(firstKey);
-            var secondKeyBuf = ByteBuffer.NewSync(secondKey);
-            if (_compression.ShouldTryToCompressKey(firstKeyBuf.Length))
+            if (_compression.ShouldTryToCompressKey(firstKey.Length))
             {
-                if (_compression.CompressKey(ref firstKeyBuf))
+                if (_compression.CompressKey(ref firstKey))
                 {
                     command |= KV2CommandType.FirstParamCompressed;
                 }
             }
-            if (_compression.ShouldTryToCompressKey(secondKeyBuf.Length))
+            if (_compression.ShouldTryToCompressKey(secondKey.Length))
             {
-                if (_compression.CompressKey(ref secondKeyBuf))
+                if (_compression.CompressKey(ref secondKey))
                 {
                     command |= KV2CommandType.SecondParamCompressed;
                 }
@@ -745,10 +742,10 @@ namespace BTDB.KV2DBLayer
                 WriteStartOfNewTransactionLogFile();
             }
             _writerWithTransactionLog.WriteUInt8((byte)command);
-            _writerWithTransactionLog.WriteVInt32(firstKeyBuf.Length);
-            _writerWithTransactionLog.WriteVInt32(secondKeyBuf.Length);
-            _writerWithTransactionLog.WriteBlock(firstKeyBuf);
-            _writerWithTransactionLog.WriteBlock(secondKeyBuf);
+            _writerWithTransactionLog.WriteVInt32(firstKey.Length);
+            _writerWithTransactionLog.WriteVInt32(secondKey.Length);
+            _writerWithTransactionLog.WriteBlock(firstKey);
+            _writerWithTransactionLog.WriteBlock(secondKey);
         }
 
         uint CreateKeyIndexFile(IBTreeRootNode root, CancellationToken cancellation)
@@ -766,18 +763,18 @@ namespace BTDB.KV2DBLayer
                 {
                     cancellation.ThrowIfCancellationRequested();
                     var nodeIdxPair = stack[stack.Count - 1];
-                    var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMember(nodeIdxPair.Idx);
-                    var key = ByteBuffer.NewSync(leafMember.Key);
+                    var memberValue = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+                    var key = ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
                     var keyCompressed = false;
-                    if (_compression.ShouldTryToCompressKey(leafMember.Key.Length))
+                    if (_compression.ShouldTryToCompressKey(key.Length))
                     {
                         keyCompressed = _compression.CompressKey(ref key);
                     }
                     writer.WriteVInt32(keyCompressed ? -key.Length : key.Length);
                     writer.WriteBlock(key);
-                    writer.WriteVUInt32(leafMember.ValueFileId);
-                    writer.WriteVUInt32(leafMember.ValueOfs);
-                    writer.WriteVInt32(leafMember.ValueSize);
+                    writer.WriteVUInt32(memberValue.ValueFileId);
+                    writer.WriteVUInt32(memberValue.ValueOfs);
+                    writer.WriteVInt32(memberValue.ValueSize);
                 } while (root.FindNextKey(stack));
             }
             writer.FlushBuffer();

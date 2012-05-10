@@ -19,6 +19,7 @@ namespace BTDB.KV2DBLayer
             _coreAction = coreAction;
             _timer = new Timer(OnTimer);
             _firstTime = true;
+            WaitTime = TimeSpan.FromMinutes(5);
         }
 
         internal void AdviceRunning()

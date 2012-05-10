@@ -29,7 +29,7 @@ namespace BTDB.KV2DBLayer.BTree
             }
         }
 
-        BTreeLeaf(long transactionId, BTreeLeafMember[] newKeyValues)
+        internal BTreeLeaf(long transactionId, BTreeLeafMember[] newKeyValues)
         {
             TransactionId = transactionId;
             _keyvalues = newKeyValues;
@@ -289,19 +289,29 @@ namespace BTDB.KV2DBLayer.BTree
             return result;
         }
 
-        public byte[] GetKey(int idx)
+        public ByteBuffer GetKey(int idx)
         {
-            return _keyvalues[idx].Key;
+            return ByteBuffer.NewAsync(_keyvalues[idx].Key);
         }
 
-        public BTreeLeafMember GetMember(int idx)
+        public BTreeValue GetMemberValue(int idx)
         {
-            return _keyvalues[idx];
+            var kv = _keyvalues[idx];
+            return new BTreeValue
+                {
+                    ValueFileId = kv.ValueFileId,
+                    ValueOfs = kv.ValueOfs,
+                    ValueSize = kv.ValueSize
+                };
         }
 
-        public void SetMember(int idx, BTreeLeafMember value)
+        public void SetMemberValue(int idx, BTreeValue value)
         {
-            _keyvalues[idx] = value;
+            var kv = _keyvalues[idx];
+            kv.ValueFileId = value.ValueFileId;
+            kv.ValueOfs = value.ValueOfs;
+            kv.ValueSize = value.ValueSize;
+            _keyvalues[idx] = kv;
         }
     }
 }
