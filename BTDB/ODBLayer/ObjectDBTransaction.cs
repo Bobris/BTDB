@@ -18,7 +18,7 @@ namespace BTDB.ODBLayer
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
         readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
         readonly ConditionalWeakTable<object, DBObjectMetadata> _objMetadata = new ConditionalWeakTable<object, DBObjectMetadata>();
-
+        int _lastGCIndex;
         readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
         readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
         long _lastDictId;
@@ -189,10 +189,30 @@ namespace BTDB.ODBLayer
             var tableVersion = reader.ReadVUInt32();
             var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
             var obj = tableInfo.Creator(this, metadata);
+            CompactObjCacheIfNeeded();
             _objCache.TryAdd(oid, new WeakReference(obj));
             _objMetadata.Add(obj, metadata);
             tableInfo.GetLoader(tableVersion)(this, metadata, reader, obj);
             return obj;
+        }
+
+        void CompactObjCacheIfNeeded()
+        {
+            var gcIndex = GC.CollectionCount(0);
+            if (_lastGCIndex == gcIndex) return;
+            _lastGCIndex = gcIndex;
+            CompactObjCache();
+        }
+
+        void CompactObjCache()
+        {
+            foreach (var pair in _objCache)
+            {
+                if (!pair.Value.IsAlive)
+                {
+                    _objCache.TryRemove(pair.Key);
+                }
+            }
         }
 
         ByteArrayReader ReadObjStart(ulong oid, out TableInfo tableInfo)
@@ -264,6 +284,7 @@ namespace BTDB.ODBLayer
                 var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
                 obj = tableInfo.Creator(this, metadata);
                 tableInfo.Initializer(this, metadata, obj);
+                CompactObjCacheIfNeeded();
                 _objCache.TryAdd(oid, new WeakReference(obj));
                 _dirtyObjSet.TryAdd(oid, obj);
                 _objMetadata.Add(obj, metadata);
@@ -286,6 +307,7 @@ namespace BTDB.ODBLayer
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
+                    CompactObjCacheIfNeeded();
                     _objCache.TryAdd(metadata.Id, new WeakReference(@object));
                 }
                 metadata.State = DBObjectState.Dirty;
@@ -305,6 +327,7 @@ namespace BTDB.ODBLayer
                 if (metadata.Id == 0)
                 {
                     metadata.Id = _owner.AllocateNewOid();
+                    CompactObjCacheIfNeeded();
                     _objCache.TryAdd(metadata.Id, new WeakReference(@object));
                 }
                 StoreObject(@object);
@@ -312,6 +335,7 @@ namespace BTDB.ODBLayer
                 return metadata.Id;
             }
             var id = _owner.AllocateNewOid();
+            CompactObjCacheIfNeeded();
             _objMetadata.Add(@object, new DBObjectMetadata(id, DBObjectState.Read));
             _objCache.TryAdd(id, new WeakReference(@object));
             StoreObject(@object);
@@ -342,6 +366,7 @@ namespace BTDB.ODBLayer
 
         ulong RegisterNewObject(object obj)
         {
+            CompactObjCacheIfNeeded();
             var id = _owner.AllocateNewOid();
             _objMetadata.Add(obj, new DBObjectMetadata(id, DBObjectState.Dirty));
             _objCache.TryAdd(id, new WeakReference(obj));
