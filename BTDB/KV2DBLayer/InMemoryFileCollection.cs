@@ -58,7 +58,7 @@ namespace BTDB.KV2DBLayer
                 {
                     if (_ofs == _totalSize)
                     {
-                        Pos = 0;
+                        Pos = -1;
                         End = -1;
                         return;
                     }
@@ -70,7 +70,6 @@ namespace BTDB.KV2DBLayer
 
                 public override long GetCurrentPosition()
                 {
-                    if (End < 0) return (long)_totalSize;
                     return (long)_ofs - End + Pos;
                 }
             }

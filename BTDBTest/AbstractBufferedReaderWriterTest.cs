@@ -58,12 +58,17 @@ namespace BTDBTest
 
             protected override void FillBuffer()
             {
+                if (End == -1) return;
                 _pos += Pos;
                 Pos = 0;
                 End = _bufLength;
                 if (_pos + End > _input.Length) End = _input.Length - _pos;
                 Array.Copy(_input, _pos, Buf, 0, End);
-                if (End == 0) End = -1;
+                if (End == 0)
+                {
+                    Pos = -1;
+                    End = -1; 
+                }
             }
 
             public override long GetCurrentPosition()

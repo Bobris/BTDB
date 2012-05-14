@@ -15,7 +15,7 @@ namespace BTDB.StreamLayer
         }
 
         protected byte[] Buf;
-        protected int Pos; // 0 for eof
+        protected int Pos; // -1 for eof
         protected int End; // -1 for eof
 
         protected abstract void FillBuffer();
@@ -26,7 +26,8 @@ namespace BTDB.StreamLayer
         {
             get
             {
-                if (Pos == End) FillBuffer();
+                if (Pos != End) return false;
+                FillBuffer();
                 return End == -1;
             }
         }
@@ -305,11 +306,22 @@ namespace BTDB.StreamLayer
             if (len > int.MaxValue) throw new InvalidDataException(string.Format("Reading String length overflowed with {0}", len));
             var l = (int)len;
             if (l == 0) return "";
-            var res = new StringBuilder(l) { Length = l };
-            int i = 0;
+            var res = new char[l];
+            var i = 0;
             while (i < l)
             {
-                var c = ReadVUInt32();
+                if (Pos!=End)
+                {
+                    var b = Buf[Pos];
+                    if (b<0x80)
+                    {
+                        res[i] = (char)b;
+                        i++;
+                        Pos++;
+                        continue;
+                    }
+                }
+                var c = ReadVUInt64();
                 if (c > 0xffff)
                 {
                     if (c > 0x10ffff) throw new InvalidDataException(string.Format("Reading String unicode value overflowed with {0}", c));
@@ -325,7 +337,7 @@ namespace BTDB.StreamLayer
                     i++;
                 }
             }
-            return res.ToString();
+            return new string(res);
         }
 
         public string ReadStringOrdered()
@@ -366,7 +378,7 @@ namespace BTDB.StreamLayer
             int i = 0;
             while (i < l)
             {
-                var c = ReadVUInt32();
+                var c = ReadVUInt64();
                 if (c > 0xffff)
                 {
                     if (c > 0x10ffff) throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));

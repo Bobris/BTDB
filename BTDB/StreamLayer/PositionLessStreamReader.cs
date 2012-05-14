@@ -22,7 +22,7 @@ namespace BTDB.StreamLayer
         {
             if (_ofs == _valueSize)
             {
-                Pos = 0;
+                Pos = -1;
                 End = -1;
                 return;
             }
@@ -46,6 +46,9 @@ namespace BTDB.StreamLayer
             var read = _stream.Read(data, offset, length, _ofs);
             if (read != length)
             {
+                _ofs = _valueSize;
+                Pos = -1;
+                End = -1;
                 throw new EndOfStreamException();
             }
             _ofs += (ulong)read;
@@ -61,7 +64,7 @@ namespace BTDB.StreamLayer
             if (GetCurrentPosition() + length > (long)_valueSize)
             {
                 _ofs = _valueSize;
-                Pos = 0;
+                Pos = -1;
                 End = -1;
                 throw new EndOfStreamException();
             }
@@ -73,7 +76,6 @@ namespace BTDB.StreamLayer
 
         public override long GetCurrentPosition()
         {
-            if (End < 0) return (long)_valueSize;
             return (long)_ofs - End + Pos;
         }
     }

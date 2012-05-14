@@ -11,7 +11,7 @@ namespace BTDB.StreamLayer
 
         protected override sealed void FillBuffer()
         {
-            Pos = 0;
+            Pos = -1;
             End = -1;
         }
 
