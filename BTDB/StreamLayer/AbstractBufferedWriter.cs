@@ -162,21 +162,32 @@ namespace BTDB.StreamLayer
             }
             var l = value.Length;
             WriteVUInt64((ulong)l + 1);
-            int i = 0;
+            var i = 0;
             while (i < l)
             {
                 var c = value[i];
-                if (char.IsHighSurrogate(c) && i + 1 < l)
+                if (c < 0x80)
                 {
-                    var c2 = value[i + 1];
-                    if (char.IsLowSurrogate(c2))
+                    if (Pos >= End)
                     {
-                        WriteVUInt32((uint)((((c - 0xD800) * 0x400) + (c2 - 0xDC00)) + 0x10000));
-                        i += 2;
-                        continue;
+                        FlushBuffer();
                     }
+                    Buf[Pos++] = (byte) c;
                 }
-                WriteVUInt32(c);
+                else
+                {
+                    if (char.IsHighSurrogate(c) && i + 1 < l)
+                    {
+                        var c2 = value[i + 1];
+                        if (char.IsLowSurrogate(c2))
+                        {
+                            WriteVUInt32((uint)((((c - 0xD800) * 0x400) + (c2 - 0xDC00)) + 0x10000));
+                            i += 2;
+                            continue;
+                        }
+                    }
+                    WriteVUInt32(c);
+                }
                 i++;
             }
         }
@@ -295,7 +306,7 @@ namespace BTDB.StreamLayer
 
         public void WriteBlock(ByteBuffer data)
         {
-            WriteBlock(data.Buffer,data.Offset,data.Length);
+            WriteBlock(data.Buffer, data.Offset, data.Length);
         }
     }
 }
