@@ -485,7 +485,7 @@ namespace BTDB.KV2DBLayer
             {
                 IFileInfo fileInfo;
                 _fileInfos.TryGetValue(file.Index, out fileInfo);
-                sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}{4}", file, file.GetSize(),
+                sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}{4}", file.Index, file.GetSize(),
                                 fileInfo.FileType, fileInfo.Generation, Environment.NewLine);
             }
             return sb.ToString();
