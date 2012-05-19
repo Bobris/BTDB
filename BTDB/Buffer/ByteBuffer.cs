@@ -79,5 +79,22 @@ namespace BTDB.Buffer
             Array.Copy(safeSelf.Buffer, safeSelf.Offset, copy, 0, safeSelf.Length);
             return copy;
         }
+
+        public ByteBuffer ResizingAppend(ByteBuffer append)
+        {
+            if (AsyncSafe)
+            {
+                if (Offset + Length + append.Length <= Buffer.Length)
+                {
+                    Array.Copy(append.Buffer, append.Offset, Buffer, Offset + Length, append.Length);
+                    return NewAsync(Buffer, Offset, Length + append.Length);
+                }
+            }
+            var newCapacity = Math.Max(Length + append.Length, Length * 2);
+            var newBuffer = new byte[newCapacity];
+            Array.Copy(Buffer, Offset, newBuffer, 0, Length);
+            Array.Copy(append.Buffer, append.Offset, newBuffer, Length, append.Length);
+            return NewAsync(newBuffer, 0, Length + append.Length);
+        }
     }
 }
