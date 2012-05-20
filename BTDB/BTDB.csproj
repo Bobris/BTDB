@@ -49,7 +49,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
+    <Compile Include="ChunkCache\DiskChunkCache.cs" />
+    <Compile Include="ChunkCache\IChunkCache.cs" />
     <Compile Include="ChunkedFile\IChunkedFile.cs" />
+    <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
+    <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
