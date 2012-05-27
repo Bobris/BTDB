@@ -271,13 +271,12 @@ namespace BTDB.ODBLayer
             {
                 _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(_prefix);
-                bool created = _keyValueTr.CreateKey(keyBytes);
-                if (!created)
+                if (_keyValueTr.FindExactKey(keyBytes))
                 {
                     throw new ArgumentException("Cannot Add duplicate key to Dictionary");
                 }
+                _keyValueTr.CreateOrUpdateKeyValueUnsafe(keyBytes, valueBytes);
                 NotifyAdded();
-                _keyValueTr.SetValue(valueBytes);
             }
             finally
             {
