@@ -145,6 +145,7 @@ namespace BTDB.ODBLayer
                     var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
+                    if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
                     ilGenerator.Ldloc(0);
                     ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
                     converterGenerator(ilGenerator);
@@ -343,6 +344,7 @@ namespace BTDB.ODBLayer
                     var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
+                    if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
                     ilGenerator.Ldloc(0);
                     ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
                     converterGenerator(ilGenerator);

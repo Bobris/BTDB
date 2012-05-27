@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.KV2DBLayer;
 using BTDB.ODBLayer;
@@ -1077,6 +1078,32 @@ namespace BTDBTest
             {
                 tr.Singleton<ComplexDictionary>();
                 Assert.False(((IInternalObjectDBTransaction)tr).KeyValueDBTransaction.IsWritting());
+            }
+        }
+
+        public class IndirectTree
+        {
+            public IIndirect<IndirectTree> Parent { get; set; }
+            public IIndirect<IndirectTree> Left { get; set; }
+            public IIndirect<IndirectTree> Right { get; set; }
+            public string Content { get; set; }
+        }
+
+        [Test]
+        public void IndirectLazyReferencesWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                Assert.NotNull(t.Parent);
+                t.Left.Value = new IndirectTree();
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                Assert.Null(t.Parent.Value);
+                Assert.NotNull(t.Left.Value);
             }
         }
 

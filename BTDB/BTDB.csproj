@@ -55,11 +55,13 @@
     <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
+    <Compile Include="FieldHandler\DBIndirect.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
     <Compile Include="FieldHandler\FieldHandlerOptions.cs" />
     <Compile Include="FieldHandler\IFieldHandlerWithInit.cs" />
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
+    <Compile Include="FieldHandler\IIndirect.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />

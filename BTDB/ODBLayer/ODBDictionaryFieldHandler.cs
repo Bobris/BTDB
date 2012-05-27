@@ -159,6 +159,11 @@ namespace BTDB.ODBLayer
                 .Castclass(_type);
         }
 
+        public bool NeedInit()
+        {
+            return true;
+        }
+
         public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
         {
             var genericArguments = _type.GetGenericArguments();
