@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -16,11 +15,15 @@ namespace BTDB.ODBLayer
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
-        readonly ConcurrentDictionary<ulong, WeakReference> _objCache = new ConcurrentDictionary<ulong, WeakReference>();
-        readonly ConditionalWeakTable<object, DBObjectMetadata> _objMetadata = new ConditionalWeakTable<object, DBObjectMetadata>();
+
+        Dictionary<ulong, object> _objSmallCache;
+        Dictionary<object, DBObjectMetadata> _objSmallMetadata;
+        Dictionary<ulong, WeakReference> _objBigCache;
+        ConditionalWeakTable<object, DBObjectMetadata> _objBigMetadata;
         int _lastGCIndex;
-        readonly ConcurrentDictionary<ulong, object> _dirtyObjSet = new ConcurrentDictionary<ulong, object>();
-        readonly ConcurrentDictionary<TableInfo, bool> _updatedTables = new ConcurrentDictionary<TableInfo, bool>();
+
+        Dictionary<ulong, object> _dirtyObjSet;
+        HashSet<TableInfo> _updatedTables;
         long _lastDictId;
 
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)
@@ -87,7 +90,11 @@ namespace BTDB.ODBLayer
         {
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
             {
-                _updatedTables.GetOrAdd(tableInfo, PersistTableInfo);
+                if (_updatedTables == null) _updatedTables = new HashSet<TableInfo>();
+                if (_updatedTables.Add(tableInfo))
+                {
+                    PersistTableInfo(tableInfo);
+                }
             }
         }
 
@@ -142,20 +149,16 @@ namespace BTDB.ODBLayer
                         }
                     }
                     oid = ReadOidFromCurrentKeyInTransaction();
-                    WeakReference weakObj;
-                    if (_objCache.TryGetValue(oid, out weakObj))
+                    var o = GetObjFromObjCacheByOid(oid);
+                    if (o != null)
                     {
-                        var o = weakObj.Target;
-                        if (o != null)
+                        if (type == null || type.IsAssignableFrom(o.GetType()))
                         {
-                            if (type == null || type.IsAssignableFrom(o.GetType()))
-                            {
-                                _keyValueTrProtector.Stop(ref taken);
-                                yield return o;
-                                continue;
-                            }
+                            _keyValueTrProtector.Stop(ref taken);
+                            yield return o;
                             continue;
                         }
+                        continue;
                     }
                     TableInfo tableInfo;
                     var reader = ReadObjStart(oid, out tableInfo);
@@ -169,6 +172,7 @@ namespace BTDB.ODBLayer
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
+            if (_dirtyObjSet == null) yield break;
             var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid && p.Key <= finalOid).ToList();
             dirtyObjsToEnum.Sort((p1, p2) =>
                                      {
@@ -184,20 +188,73 @@ namespace BTDB.ODBLayer
             }
         }
 
+        object GetObjFromObjCacheByOid(ulong oid)
+        {
+            if (_objSmallCache != null)
+            {
+                object result;
+                return !_objSmallCache.TryGetValue(oid, out result) ? null : result;
+            }
+            if (_objBigCache != null)
+            {
+                WeakReference weakObj;
+                if (_objBigCache.TryGetValue(oid, out weakObj))
+                {
+                    return weakObj.Target;
+                }
+            }
+            return null;
+        }
+
         object ReadObjFinish(ulong oid, TableInfo tableInfo, ByteArrayReader reader)
         {
             var tableVersion = reader.ReadVUInt32();
             var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
             var obj = tableInfo.Creator(this, metadata);
-            CompactObjCacheIfNeeded();
-            _objCache.TryAdd(oid, new WeakReference(obj));
-            _objMetadata.Add(obj, metadata);
+            AddToObjCache(oid, obj, metadata);
             tableInfo.GetLoader(tableVersion)(this, metadata, reader, obj);
             return obj;
         }
 
+        void AddToObjCache(ulong oid, object obj, DBObjectMetadata metadata)
+        {
+            if (_objBigCache != null)
+            {
+                CompactObjCacheIfNeeded();
+                _objBigCache.Add(oid, new WeakReference(obj));
+                _objBigMetadata.Add(obj, metadata);
+                return;
+            }
+            if (_objSmallCache == null)
+            {
+                _objSmallCache = new Dictionary<ulong, object>();
+                _objSmallMetadata = new Dictionary<object, DBObjectMetadata>();
+            }
+            else if (_objSmallCache.Count > 30)
+            {
+                _objBigCache = new Dictionary<ulong, WeakReference>();
+                _objBigMetadata = new ConditionalWeakTable<object, DBObjectMetadata>();
+                foreach (var pair in _objSmallCache)
+                {
+                    _objBigCache.Add(pair.Key, new WeakReference(pair.Value));
+                }
+                _objSmallCache = null;
+                foreach (var pair in _objSmallMetadata)
+                {
+                    _objBigMetadata.Add(pair.Key, pair.Value);
+                }
+                _objSmallMetadata = null;
+                _objBigCache.Add(oid, new WeakReference(obj));
+                _objBigMetadata.Add(obj, metadata);
+                return;
+            }
+            _objSmallCache.Add(oid, obj);
+            _objSmallMetadata.Add(obj, metadata);
+        }
+
         void CompactObjCacheIfNeeded()
         {
+            if (_objBigCache == null) return;
             var gcIndex = GC.CollectionCount(0);
             if (_lastGCIndex == gcIndex) return;
             _lastGCIndex = gcIndex;
@@ -206,11 +263,11 @@ namespace BTDB.ODBLayer
 
         void CompactObjCache()
         {
-            foreach (var pair in _objCache)
+            foreach (var pair in _objBigCache)
             {
                 if (!pair.Value.IsAlive)
                 {
-                    _objCache.TryRemove(pair.Key);
+                    _objBigCache.Remove(pair.Key);
                 }
             }
         }
@@ -227,14 +284,10 @@ namespace BTDB.ODBLayer
 
         public object Get(ulong oid)
         {
-            WeakReference weakObj;
-            if (_objCache.TryGetValue(oid, out weakObj))
+            var o = GetObjFromObjCacheByOid(oid);
+            if (o != null)
             {
-                var o = weakObj.Target;
-                if (o != null)
-                {
-                    return o;
-                }
+                return o;
             }
             bool taken = false;
             try
@@ -260,8 +313,15 @@ namespace BTDB.ODBLayer
         {
             if (obj == null) return 0;
             DBObjectMetadata meta;
-            if (!_objMetadata.TryGetValue(obj, out meta)) return 0;
-            return meta.Id;
+            if (_objSmallMetadata != null)
+            {
+                return !_objSmallMetadata.TryGetValue(obj, out meta) ? 0 : meta.Id;
+            }
+            if (_objBigMetadata != null)
+            {
+                return !_objBigMetadata.TryGetValue(obj, out meta) ? 0 : meta.Id;
+            }
+            return 0;
         }
 
         public object Singleton(Type type)
@@ -280,16 +340,20 @@ namespace BTDB.ODBLayer
                     }
                     return obj;
                 }
-                _updatedTables.TryRemove(tableInfo);
+                if (_updatedTables != null) _updatedTables.Remove(tableInfo);
                 var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
                 obj = tableInfo.Creator(this, metadata);
                 tableInfo.Initializer(this, metadata, obj);
-                CompactObjCacheIfNeeded();
-                _objCache.TryAdd(oid, new WeakReference(obj));
-                _dirtyObjSet.TryAdd(oid, obj);
-                _objMetadata.Add(obj, metadata);
+                AddToObjCache(oid, obj, metadata);
+                AddToDirtySet(oid, obj);
                 return obj;
             }
+        }
+
+        void AddToDirtySet(ulong oid, object obj)
+        {
+            if (_dirtyObjSet == null) _dirtyObjSet = new Dictionary<ulong, object>();
+            _dirtyObjSet.Add(oid, obj);
         }
 
         public T Singleton<T>() where T : class
@@ -302,17 +366,40 @@ namespace BTDB.ODBLayer
             var ti = AutoRegisterType(@object.GetType());
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
-            if (_objMetadata.TryGetValue(@object, out metadata))
+            if (_objSmallMetadata != null)
             {
-                if (metadata.Id == 0)
+                if (_objSmallMetadata.TryGetValue(@object, out metadata))
                 {
-                    metadata.Id = _owner.AllocateNewOid();
-                    CompactObjCacheIfNeeded();
-                    _objCache.TryAdd(metadata.Id, new WeakReference(@object));
+                    if (metadata.Id == 0)
+                    {
+                        metadata.Id = _owner.AllocateNewOid();
+                        _objSmallCache.Add(metadata.Id, @object);
+                    }
+                    if (metadata.State != DBObjectState.Dirty)
+                    {
+                        metadata.State = DBObjectState.Dirty;
+                        AddToDirtySet(metadata.Id, @object);
+                    }
+                    return metadata.Id;
                 }
-                metadata.State = DBObjectState.Dirty;
-                _dirtyObjSet.TryAdd(metadata.Id, @object);
-                return metadata.Id;
+            }
+            else if (_objBigMetadata != null)
+            {
+                if (_objBigMetadata.TryGetValue(@object, out metadata))
+                {
+                    if (metadata.Id == 0)
+                    {
+                        metadata.Id = _owner.AllocateNewOid();
+                        CompactObjCacheIfNeeded();
+                        _objBigCache.Add(metadata.Id, new WeakReference(@object));
+                    }
+                    if (metadata.State != DBObjectState.Dirty)
+                    {
+                        metadata.State = DBObjectState.Dirty;
+                        AddToDirtySet(metadata.Id, @object);
+                    }
+                    return metadata.Id;
+                }
             }
             return RegisterNewObject(@object);
         }
@@ -322,22 +409,37 @@ namespace BTDB.ODBLayer
             var ti = AutoRegisterType(@object.GetType());
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
-            if (_objMetadata.TryGetValue(@object, out metadata))
+            if (_objSmallMetadata != null)
             {
-                if (metadata.Id == 0)
+                if (_objSmallMetadata.TryGetValue(@object, out metadata))
                 {
-                    metadata.Id = _owner.AllocateNewOid();
-                    CompactObjCacheIfNeeded();
-                    _objCache.TryAdd(metadata.Id, new WeakReference(@object));
+                    if (metadata.Id == 0)
+                    {
+                        metadata.Id = _owner.AllocateNewOid();
+                        _objSmallCache.Add(metadata.Id, @object);
+                    }
+                    StoreObject(@object);
+                    metadata.State = DBObjectState.Read;
+                    return metadata.Id;
                 }
-                StoreObject(@object);
-                metadata.State = DBObjectState.Read;
-                return metadata.Id;
+            }
+            else if (_objBigMetadata != null)
+            {
+                if (_objBigMetadata.TryGetValue(@object, out metadata))
+                {
+                    if (metadata.Id == 0)
+                    {
+                        metadata.Id = _owner.AllocateNewOid();
+                        CompactObjCacheIfNeeded();
+                        _objBigCache.Add(metadata.Id, new WeakReference(@object));
+                    }
+                    StoreObject(@object);
+                    metadata.State = DBObjectState.Read;
+                    return metadata.Id;
+                }
             }
             var id = _owner.AllocateNewOid();
-            CompactObjCacheIfNeeded();
-            _objMetadata.Add(@object, new DBObjectMetadata(id, DBObjectState.Read));
-            _objCache.TryAdd(id, new WeakReference(@object));
+            AddToObjCache(id, @object, new DBObjectMetadata(id, DBObjectState.Read));
             StoreObject(@object);
             return id;
         }
@@ -356,21 +458,30 @@ namespace BTDB.ODBLayer
             }
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
-            if (_objMetadata.TryGetValue(@object, out metadata))
+            if (_objSmallMetadata != null)
             {
-                if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
-                return metadata.Id;
+                if (_objSmallMetadata.TryGetValue(@object, out metadata))
+                {
+                    if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
+                    return metadata.Id;
+                }
+            }
+            else if (_objBigMetadata != null)
+            {
+                if (_objBigMetadata.TryGetValue(@object, out metadata))
+                {
+                    if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
+                    return metadata.Id;
+                }
             }
             return ti.StoredInline ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
         ulong RegisterNewObject(object obj)
         {
-            CompactObjCacheIfNeeded();
             var id = _owner.AllocateNewOid();
-            _objMetadata.Add(obj, new DBObjectMetadata(id, DBObjectState.Dirty));
-            _objCache.TryAdd(id, new WeakReference(obj));
-            _dirtyObjSet.TryAdd(id, obj);
+            AddToObjCache(id, obj, new DBObjectMetadata(id, DBObjectState.Dirty));
+            AddToDirtySet(id, obj);
             return id;
         }
 
@@ -434,11 +545,23 @@ namespace BTDB.ODBLayer
             if (@object == null) throw new ArgumentNullException("object");
             AutoRegisterType(@object.GetType());
             DBObjectMetadata metadata;
-            if (!_objMetadata.TryGetValue(@object, out metadata))
+            if (_objSmallMetadata != null)
             {
-                _objMetadata.Add(@object, new DBObjectMetadata(0, DBObjectState.Deleted));
-                return;
+                if (!_objSmallMetadata.TryGetValue(@object, out metadata))
+                {
+                    _objSmallMetadata.Add(@object, new DBObjectMetadata(0, DBObjectState.Deleted));
+                    return;
+                }
             }
+            else if (_objBigMetadata != null)
+            {
+                if (!_objBigMetadata.TryGetValue(@object, out metadata))
+                {
+                    _objBigMetadata.Add(@object, new DBObjectMetadata(0, DBObjectState.Deleted));
+                    return;
+                }
+            }
+            else return;
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             var taken = false;
             try
@@ -452,8 +575,15 @@ namespace BTDB.ODBLayer
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
-            _objCache.TryRemove(metadata.Id);
-            _dirtyObjSet.TryRemove(metadata.Id);
+            if (_objSmallCache != null)
+            {
+                _objSmallCache.Remove(metadata.Id);
+            }
+            else if (_objBigCache != null)
+            {
+                _objBigCache.Remove(metadata.Id);
+            }
+            if (_dirtyObjSet != null) _dirtyObjSet.Remove(metadata.Id);
         }
 
         public void DeleteAll<T>() where T : class
@@ -473,17 +603,22 @@ namespace BTDB.ODBLayer
         {
             try
             {
-                foreach (var o in _dirtyObjSet)
+                while (_dirtyObjSet != null)
                 {
-                    StoreObject(o.Value);
+                    var curObjsToStore = _dirtyObjSet;
+                    _dirtyObjSet = null;
+                    foreach (var o in curObjsToStore)
+                    {
+                        StoreObject(o.Value);
+                    }
                 }
                 _owner.CommitLastDictId((ulong)_lastDictId, _keyValueTr);
                 _keyValueTr.Commit();
-                foreach (var updatedTable in _updatedTables)
-                {
-                    updatedTable.Key.LastPersistedVersion = updatedTable.Key.ClientTypeVersion;
-                    updatedTable.Key.ResetNeedStoreSingletonOid();
-                }
+                if (_updatedTables != null) foreach (var updatedTable in _updatedTables)
+                    {
+                        updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
+                        updatedTable.ResetNeedStoreSingletonOid();
+                    }
             }
             finally
             {
@@ -495,8 +630,17 @@ namespace BTDB.ODBLayer
         {
             var tableInfo = _owner.TablesInfo.FindByType(o.GetType());
             IfNeededPersistTableInfo(tableInfo);
-            DBObjectMetadata metadata;
-            _objMetadata.TryGetValue(o, out metadata);
+            DBObjectMetadata metadata = null;
+            if (_objSmallMetadata != null)
+            {
+                _objSmallMetadata.TryGetValue(o, out metadata);
+            }
+            else if (_objBigMetadata != null)
+            {
+                _objBigMetadata.TryGetValue(o, out metadata);
+            }
+            if (metadata == null) throw new BTDBException("Metadata for object not found");
+            if (metadata.State == DBObjectState.Deleted) return;
             var writer = new ByteBufferWriter();
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
@@ -514,7 +658,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        bool PersistTableInfo(TableInfo tableInfo)
+        void PersistTableInfo(TableInfo tableInfo)
         {
             var taken = false;
             try
@@ -548,7 +692,6 @@ namespace BTDB.ODBLayer
                     _keyValueTr.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
                     _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id), BuildKeyFromOid(tableInfo.SingletonOid));
                 }
-                return true;
             }
             finally
             {
