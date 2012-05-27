@@ -375,15 +375,15 @@ namespace BTDB.KV2DBLayer
                     valueSize = 0x4000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
                     break;
                 case 5:
-                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8));
+                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8);
                     valueSize = 0x5000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
                     break;
                 case 6:
-                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8) | (inlineValueBuf[ofs + 5] << 16));
+                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8) | ((uint)inlineValueBuf[ofs + 5] << 16);
                     valueSize = 0x6000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
                     break;
                 case 7:
-                    valueOfs = (uint)(inlineValueBuf[ofs + 3] | (inlineValueBuf[ofs + 4] << 8) | (inlineValueBuf[ofs + 5] << 16) | ((uint)inlineValueBuf[ofs + 6] << 24));
+                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8) | ((uint)inlineValueBuf[ofs + 5] << 16) | (((uint)inlineValueBuf[ofs + 6]) << 24);
                     valueSize = 0x7000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) | inlineValueBuf[ofs + 2];
                     break;
                 default:
@@ -518,7 +518,7 @@ namespace BTDB.KV2DBLayer
 
         void UpdateTransactionLogInBTreeRoot(IBTreeRootNode btreeRoot)
         {
-            if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog)
+            if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog && btreeRoot.TrLogFileId != 0)
             {
                 _compactorScheduler.AdviceRunning();
             }
