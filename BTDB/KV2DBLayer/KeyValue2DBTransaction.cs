@@ -6,7 +6,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.KV2DBLayer
 {
-    internal class KeyValue2DBTransaction : IKeyValueDBTransaction
+    internal class KeyValue2DBTransaction : IKeyValueDBTransaction, IKnowTransactionNumber
     {
         readonly KeyValue2DB _keyValue2DB;
         IBTreeRootNode _btreeRoot;
@@ -329,6 +329,11 @@ namespace BTDB.KV2DBLayer
             if (_btreeRoot == null) return;
             _keyValue2DB.FinishedUsingBTreeRoot(_btreeRoot);
             _btreeRoot = null;
+        }
+
+        public long GetTransactionNumber()
+        {
+            return _btreeRoot.TransactionId;
         }
     }
 }

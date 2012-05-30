@@ -37,6 +37,22 @@ namespace BTDBTest
         }
 
         [Test]
+        public void FirstTransactionIsNumber1()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+            {
+                using (var tr = db.StartTransaction())
+                {
+                    Assert.AreEqual(0, ((IKnowTransactionNumber)tr).GetTransactionNumber());
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.AreEqual(1, ((IKnowTransactionNumber)tr).GetTransactionNumber());
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
         public void MoreComplexTransaction()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -68,12 +84,14 @@ namespace BTDBTest
                     tr1.CreateKey(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
+                        Assert.AreEqual(0, ((IKnowTransactionNumber)tr2).GetTransactionNumber());
                         Assert.False(tr2.FindExactKey(_key1));
                     }
                     tr1.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
                 {
+                    Assert.AreEqual(1, ((IKnowTransactionNumber)tr3).GetTransactionNumber());
                     Assert.True(tr3.FindExactKey(_key1));
                 }
             }
@@ -92,6 +110,7 @@ namespace BTDBTest
                 }
                 using (var tr2 = db.StartTransaction())
                 {
+                    Assert.AreEqual(0, ((IKnowTransactionNumber)tr2).GetTransactionNumber());
                     Assert.False(tr2.FindExactKey(_key1));
                 }
             }

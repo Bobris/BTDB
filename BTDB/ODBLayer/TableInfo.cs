@@ -2,7 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Reflection.Emit;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -23,8 +23,10 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
-        ulong? _singletonOid;
-        readonly object _singletonLock = new object();
+        long _singletonOid;
+        long _cachedSingletonTrNum;
+        byte[] _cachedSingletonContent;
+        readonly object _cachedSingletonLock = new object();
 
         internal TableInfo(uint id, string name, ITableInfoResolver tableInfoResolver)
         {
@@ -97,7 +99,7 @@ namespace BTDB.ODBLayer
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
                 .Ret();
             var creator = method.Create();
-            System.Threading.Interlocked.CompareExchange(ref _creator, creator, null);
+            Interlocked.CompareExchange(ref _creator, creator, null);
         }
 
         internal Action<IInternalObjectDBTransaction, DBObjectMetadata, object> Initializer
@@ -154,7 +156,7 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             var initializer = method.Create();
-            System.Threading.Interlocked.CompareExchange(ref _initializer, initializer, null);
+            Interlocked.CompareExchange(ref _initializer, initializer, null);
         }
 
         internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
@@ -166,16 +168,19 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public ulong SingletonOid
+        public long SingletonOid
         {
             get
             {
-                if (_singletonOid.HasValue) return _singletonOid.Value;
-                _singletonOid = _tableInfoResolver.GetSingletonOid(_id);
-                if (_singletonOid.HasValue) return _singletonOid.Value;
+                var soid = Interlocked.Read(ref _singletonOid);
+                if (soid != 0) return soid;
+                soid = Interlocked.CompareExchange(ref _singletonOid, _tableInfoResolver.GetSingletonOid(_id), 0);
+                if (soid != 0) return soid;
                 NeedStoreSingletonOid = true;
-                _singletonOid = _tableInfoResolver.AllocateNewOid();
-                return _singletonOid.Value;
+                var newsoid = (long)_tableInfoResolver.AllocateNewOid();
+                soid = Interlocked.CompareExchange(ref _singletonOid, newsoid, 0);
+                if (soid == 0) soid = newsoid;
+                return soid;
             }
         }
 
@@ -184,14 +189,6 @@ namespace BTDB.ODBLayer
         public void ResetNeedStoreSingletonOid()
         {
             NeedStoreSingletonOid = false;
-        }
-
-        public object SingletonLock
-        {
-            get
-            {
-                return _singletonLock;
-            }
         }
 
         void CreateSaver()
@@ -232,7 +229,7 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ret();
             var saver = method.Create();
-            System.Threading.Interlocked.CompareExchange(ref _saver, saver, null);
+            Interlocked.CompareExchange(ref _saver, saver, null);
         }
 
         internal void EnsureClientTypeVersion()
@@ -362,6 +359,30 @@ namespace BTDB.ODBLayer
             PackUnpack.PackVUInt(key, ref ofs, tableId);
             PackUnpack.PackVUInt(key, ref ofs, tableVersion);
             return key;
+        }
+
+        public byte[] SingletonContent(long transactionNumber)
+        {
+            lock (_cachedSingletonLock)
+            {
+                if (_cachedSingletonTrNum - transactionNumber > 0) return null;
+                return _cachedSingletonContent;
+            }
+        }
+
+        public void CacheSingletonContent(long transactionNumber, byte[] content)
+        {
+            lock(_cachedSingletonLock)
+            {
+                if (transactionNumber - _cachedSingletonTrNum < 0) return;
+                _cachedSingletonTrNum = transactionNumber;
+                _cachedSingletonContent = content;
+            }
+        }
+
+        public bool IsSingletonOid(ulong id)
+        {
+            return (ulong)Interlocked.Read(ref _singletonOid) == id;
         }
     }
 }

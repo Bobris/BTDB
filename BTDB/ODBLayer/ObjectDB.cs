@@ -174,7 +174,7 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            public ulong? GetSingletonOid(uint id)
+            public long GetSingletonOid(uint id)
             {
                 using (var tr = _keyValueDB.StartTransaction())
                 {
@@ -184,9 +184,9 @@ namespace BTDB.ODBLayer
                     PackUnpack.PackVUInt(key, ref ofs, id);
                     if (tr.FindExactKey(key))
                     {
-                        return new KeyValueDBValueReader(tr).ReadVUInt64();
+                        return (long) new KeyValueDBValueReader(tr).ReadVUInt64();
                     }
-                    return null;
+                    return 0;
                 }
             }
 

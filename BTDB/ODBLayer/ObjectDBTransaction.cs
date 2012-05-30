@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
+using BTDB.KV2DBLayer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -14,6 +15,8 @@ namespace BTDB.ODBLayer
     {
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
+        long _transactionNumber;
+        bool _knowTransactionNumber;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
 
         Dictionary<ulong, object> _objSmallCache;
@@ -31,6 +34,12 @@ namespace BTDB.ODBLayer
             _owner = owner;
             _keyValueTr = keyValueTr;
             _lastDictId = (long)_owner.LastDictId;
+            var knownTrNum = keyValueTr as IKnowTransactionNumber;
+            if (knownTrNum != null)
+            {
+                _transactionNumber = knownTrNum.GetTransactionNumber();
+                _knowTransactionNumber = true;
+            }
         }
 
         public void Dispose()
@@ -289,6 +298,11 @@ namespace BTDB.ODBLayer
             {
                 return o;
             }
+            return GetDirectlyFromStorage(oid);
+        }
+
+        object GetDirectlyFromStorage(ulong oid)
+        {
             bool taken = false;
             try
             {
@@ -327,27 +341,57 @@ namespace BTDB.ODBLayer
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type);
-            lock (tableInfo.SingletonLock)
+            tableInfo.EnsureClientTypeVersion();
+            var oid = (ulong)tableInfo.SingletonOid;
+            var obj = GetObjFromObjCacheByOid(oid);
+            if (obj == null)
             {
-                tableInfo.EnsureClientTypeVersion();
-                var oid = tableInfo.SingletonOid;
-                var obj = Get(oid);
-                if (obj != null)
+                if (_knowTransactionNumber)
                 {
-                    if (!type.IsAssignableFrom(obj.GetType()))
+                    var content = tableInfo.SingletonContent(_transactionNumber);
+                    if (content == null)
                     {
-                        throw new BTDBException(string.Format("Internal error oid {0} does not belong to {1}", oid, tableInfo.Name));
+                        bool taken = false;
+                        try
+                        {
+                            _keyValueTrProtector.Start(ref taken);
+                            _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                            if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+                            {
+                                content = _keyValueTr.GetValueAsByteArray();
+                                tableInfo.CacheSingletonContent(_transactionNumber, content);
+                            }
+                        }
+                        finally
+                        {
+                            if (taken) _keyValueTrProtector.Stop();
+                        }
                     }
-                    return obj;
+                    if (content != null)
+                    {
+                        var reader = new ByteArrayReader(content);
+                        reader.SkipVUInt32();
+                        obj = ReadObjFinish(oid, tableInfo, reader);
+                    }
                 }
-                if (_updatedTables != null) _updatedTables.Remove(tableInfo);
-                var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
-                obj = tableInfo.Creator(this, metadata);
-                tableInfo.Initializer(this, metadata, obj);
-                AddToObjCache(oid, obj, metadata);
-                AddToDirtySet(oid, obj);
+                else obj = GetDirectlyFromStorage(oid);
+            }
+            if (obj != null)
+            {
+                if (!type.IsAssignableFrom(obj.GetType()))
+                {
+                    throw new BTDBException(string.Format("Internal error oid {0} does not belong to {1}", oid, tableInfo.Name));
+                }
                 return obj;
             }
+
+            if (_updatedTables != null) _updatedTables.Remove(tableInfo);
+            var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
+            obj = tableInfo.Creator(this, metadata);
+            tableInfo.Initializer(this, metadata, obj);
+            AddToObjCache(oid, obj, metadata);
+            AddToDirtySet(oid, obj);
+            return obj;
         }
 
         void AddToDirtySet(ulong oid, object obj)
@@ -543,7 +587,7 @@ namespace BTDB.ODBLayer
         public void Delete(object @object)
         {
             if (@object == null) throw new ArgumentNullException("object");
-            AutoRegisterType(@object.GetType());
+            var tableInfo = AutoRegisterType(@object.GetType());
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
             {
@@ -574,6 +618,10 @@ namespace BTDB.ODBLayer
             finally
             {
                 if (taken) _keyValueTrProtector.Stop();
+            }
+            if (_knowTransactionNumber)
+            {
+                tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             }
             if (_objSmallCache != null)
             {
@@ -645,6 +693,13 @@ namespace BTDB.ODBLayer
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
             tableInfo.Saver(this, metadata, writer, o);
+            if (_knowTransactionNumber)
+            {
+                if (tableInfo.IsSingletonOid(metadata.Id))
+                {
+                    tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
+                }
+            }
             var shouldStop = false;
             try
             {
@@ -690,7 +745,7 @@ namespace BTDB.ODBLayer
                 if (tableInfo.NeedStoreSingletonOid)
                 {
                     _keyValueTr.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
-                    _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id), BuildKeyFromOid(tableInfo.SingletonOid));
+                    _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id), BuildKeyFromOid((ulong)tableInfo.SingletonOid));
                 }
             }
             finally
