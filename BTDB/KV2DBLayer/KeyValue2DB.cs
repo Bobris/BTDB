@@ -62,7 +62,7 @@ namespace BTDB.KV2DBLayer
                 try
                 {
                     var reader = file.GetExclusiveReader();
-                    if (CheckMagic(reader, MagicStartOfFile))
+                    if (reader.CheckMagic(MagicStartOfFile))
                     {
                         var fileType = (KV2FileType)reader.ReadUInt8();
                         IFileInfo fileInfo;
@@ -318,7 +318,7 @@ namespace BTDB.KV2DBLayer
                             }
                             break;
                         case KV2CommandType.TransactionStart:
-                            if (!CheckMagic(reader, MagicStartOfTransaction))
+                            if (!reader.CheckMagic(MagicStartOfTransaction))
                                 return false;
                             _nextRoot = LastCommited.NewTransactionRoot();
                             break;
@@ -389,24 +389,6 @@ namespace BTDB.KV2DBLayer
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-        }
-
-        static bool CheckMagic(AbstractBufferedReader reader, byte[] magic)
-        {
-            try
-            {
-                var buf = new byte[magic.Length];
-                reader.ReadBlock(buf);
-                if (BitArrayManipulation.CompareByteArray(buf, 0, buf.Length, magic, 0, magic.Length) == 0)
-                {
-                    return true;
-                }
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-            return false;
         }
 
         uint LinkTransactionLogFileIds(uint lastestTrLogFileId)

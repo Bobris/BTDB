@@ -564,5 +564,23 @@ namespace BTDB.StreamLayer
             if (buffer == null) return BitArrayManipulation.EmptyByteArray;
             return buffer;
         }
+
+        public bool CheckMagic(byte[] magic)
+        {
+            try
+            {
+                var buf = new byte[magic.Length];
+                ReadBlock(buf);
+                if (BitArrayManipulation.CompareByteArray(buf, 0, buf.Length, magic, 0, magic.Length) == 0)
+                {
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            return false;
+        }
     }
 }

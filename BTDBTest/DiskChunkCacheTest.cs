@@ -46,5 +46,21 @@ namespace BTDBTest
                 Assert.AreEqual(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
             }
         }
+
+        [Test]
+        public void ItRemebersContentAfterReopen()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
+                {
+                    cache.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }));
+                }
+                using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
+                {
+                    Assert.AreEqual(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                }
+            }
+        }
     }
 }

@@ -50,7 +50,12 @@
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="ChunkCache\DiskChunkCache.cs" />
+    <Compile Include="ChunkCache\DiskChunkFileType.cs" />
+    <Compile Include="ChunkCache\FileHashIndex.cs" />
+    <Compile Include="ChunkCache\FilePureValues.cs" />
     <Compile Include="ChunkCache\IChunkCache.cs" />
+    <Compile Include="ChunkCache\IFileInfo.cs" />
+    <Compile Include="ChunkCache\UnknownFile.cs" />
     <Compile Include="ChunkedFile\IChunkedFile.cs" />
     <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
