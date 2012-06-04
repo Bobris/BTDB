@@ -15,6 +15,8 @@ namespace BTDB.ChunkCache
         readonly IFileCollection _fileCollection;
         readonly int _keySize;
         readonly long _cacheCapacity;
+        readonly int _sizeLimitOfOneValueFile;
+        readonly int _maxValueFileCount;
         readonly ConcurrentDictionary<Key20, CacheValue> _cache = new ConcurrentDictionary<Key20, CacheValue>(new Key20EqualityComparer());
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         uint _cacheValueFileId;
@@ -70,9 +72,21 @@ namespace BTDB.ChunkCache
         public DiskChunkCache(IFileCollection fileCollection, int keySize, long cacheCapacity)
         {
             if (keySize != 20) throw new NotSupportedException("Only keySize of 20 (Usefull for SHA1) is supported for now");
+            if (cacheCapacity < 1000) throw new ArgumentOutOfRangeException("cacheCapacity", "Minimum for cache capacity is 1kB");
             _fileCollection = fileCollection;
             _keySize = keySize;
             _cacheCapacity = cacheCapacity;
+            cacheCapacity = cacheCapacity / 1000 * (980 - keySize); // decrease for size of HashIndex
+            if (cacheCapacity / 8 > int.MaxValue)
+            {
+                _maxValueFileCount = checked((int)(cacheCapacity / int.MaxValue));
+                _sizeLimitOfOneValueFile = int.MaxValue;
+            }
+            else
+            {
+                _maxValueFileCount = 8;
+                _sizeLimitOfOneValueFile = (int) (cacheCapacity / 8);
+            }
             try
             {
                 LoadContent();
@@ -90,51 +104,46 @@ namespace BTDB.ChunkCache
 
         void LoadContent()
         {
+            AbstractBufferedReader reader;
             foreach (var collectionFile in _fileCollection.Enumerate())
             {
-                var reader = collectionFile.GetExclusiveReader();
-                if (reader.CheckMagic(MagicStartOfFile))
+                reader = collectionFile.GetExclusiveReader();
+                if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
+                var fileType = (DiskChunkFileType)reader.ReadUInt8();
+                IFileInfo fileInfo;
+                switch (fileType)
                 {
-                    var fileType = (DiskChunkFileType)reader.ReadUInt8();
-                    IFileInfo fileInfo;
-                    switch (fileType)
-                    {
-                        case DiskChunkFileType.HashIndex:
-                            fileInfo = new FileHashIndex(reader);
-                            break;
-                        case DiskChunkFileType.PureValues:
-                            fileInfo = new FilePureValues(reader);
-                            break;
-                        default:
-                            fileInfo = UnknownFile.Instance;
-                            break;
-                    }
-                    if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
-                    _fileInfos.TryAdd(collectionFile.Index, fileInfo);
+                    case DiskChunkFileType.HashIndex:
+                        fileInfo = new FileHashIndex(reader);
+                        break;
+                    case DiskChunkFileType.PureValues:
+                        fileInfo = new FilePureValues(reader);
+                        break;
+                    default:
+                        fileInfo = UnknownFile.Instance;
+                        break;
                 }
+                if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
+                _fileInfos.TryAdd(collectionFile.Index, fileInfo);
             }
             var hashFilePair =
                 _fileInfos.Where(f => f.Value.FileType == DiskChunkFileType.HashIndex).OrderByDescending(
                     f => f.Value.Generation).FirstOrDefault();
-            if (hashFilePair.Value != null)
+            if (hashFilePair.Value == null) return;
+            reader = _fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader();
+            FileHashIndex.SkipHeader(reader);
+            if (((FileHashIndex)hashFilePair.Value).KeySize != _keySize) return;
+            var keyBuf = ByteBuffer.NewSync(new byte[_keySize]);
+            while (true)
             {
-                var reader = _fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader();
-                FileHashIndex.SkipHeader(reader);
-                if (((FileHashIndex)hashFilePair.Value).KeySize != _keySize) return;
-                var kvpairs = ((FileHashIndex)hashFilePair.Value).KeyValueCount;
-                var keyBuf = ByteBuffer.NewSync(new byte[_keySize]);
-                for (var i = 0L; i < kvpairs; i++)
-                {
-                    reader.ReadBlock(keyBuf);
-                    var cacheValue = new CacheValue
-                        {
-                            AccessRate = reader.ReadVUInt32(),
-                            FileId = reader.ReadVUInt32(),
-                            FileOfs = reader.ReadVUInt32(),
-                            ContentLength = reader.ReadVUInt32()
-                        };
-                    _cache.TryAdd(new Key20(keyBuf), cacheValue);
-                }
+                var cacheValue = new CacheValue();
+                cacheValue.FileOfs = reader.ReadVUInt32();
+                if (cacheValue.FileOfs == 0) break;
+                cacheValue.FileId = reader.ReadVUInt32();
+                cacheValue.AccessRate = reader.ReadVUInt32();
+                cacheValue.ContentLength = reader.ReadVUInt32();
+                reader.ReadBlock(keyBuf);
+                _cache.TryAdd(new Key20(keyBuf), cacheValue);
             }
         }
 
@@ -149,7 +158,7 @@ namespace BTDB.ChunkCache
                 return;
             }
             cacheValue.AccessRate = 1;
-            if (_cacheValueWriter==null)
+            if (_cacheValueWriter == null)
             {
                 StartNewValueFile();
             }
@@ -183,22 +192,22 @@ namespace BTDB.ChunkCache
                     var newCacheValue = cacheValue;
                     newCacheValue.AccessRate = cacheValue.AccessRate + 1;
                     _cache.TryUpdate(k, newCacheValue, cacheValue);
-                        // It is not problem if update fails, it will have just lower access rate then real
+                    // It is not problem if update fails, it will have just lower access rate then real
                     var result = new byte[cacheValue.ContentLength];
-                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(result, 0, (int) cacheValue.ContentLength,
+                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(result, 0, (int)cacheValue.ContentLength,
                                                                           cacheValue.FileOfs);
                     tcs.SetResult(ByteBuffer.NewAsync(result));
                     return tcs.Task;
                 }
             }
-            catch {} // It is better to return nothing than throw exception
+            catch { } // It is better to return nothing than throw exception
             tcs.SetResult(ByteBuffer.NewEmpty());
             return tcs.Task;
         }
 
         public void Dispose()
         {
-            if (_cacheValueWriter!=null)
+            if (_cacheValueWriter != null)
             {
                 _cacheValueWriter.FlushBuffer();
             }
@@ -217,12 +226,13 @@ namespace BTDB.ChunkCache
             foreach (var cachePair in _cache)
             {
                 cachePair.Key.FillBuffer(keyBuf);
-                writer.WriteBlock(keyBuf);
-                writer.WriteVUInt32(cachePair.Value.AccessRate);
-                writer.WriteVUInt32(cachePair.Value.FileId);
                 writer.WriteVUInt32(cachePair.Value.FileOfs);
+                writer.WriteVUInt32(cachePair.Value.FileId);
+                writer.WriteVUInt32(cachePair.Value.AccessRate);
                 writer.WriteVUInt32(cachePair.Value.ContentLength);
+                writer.WriteBlock(keyBuf);
             }
+            writer.WriteVUInt32(0); // Zero FileOfs as end of file mark
             writer.FlushBuffer();
             file.HardFlush();
         }

@@ -29,8 +29,8 @@ namespace BTDB.ChunkCache
 
         public void WriteHeader(AbstractBufferedWriter writer)
         {
-            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
-            writer.WriteUInt8((byte)KV2FileType.PureValues);
+            writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
+            writer.WriteUInt8((byte)DiskChunkFileType.PureValues);
             writer.WriteVInt64(_generation);
         }
     }
