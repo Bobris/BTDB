@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using BTDB.Buffer;
@@ -59,6 +60,26 @@ namespace BTDBTest
                 using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
                 {
                     Assert.AreEqual(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                }
+            }
+        }
+
+
+        [Test]
+        public void SizeDoesNotGrowOverLimit()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                const int cacheCapacity = 50000;
+                using (var cache = new DiskChunkCache(fileCollection, 20, cacheCapacity))
+                {
+                    for (var i = 0; i < 80; i++)
+                    {
+                        var content = new byte[1024];
+                        PackUnpack.PackInt32BE(content, 0, i);
+                        cache.Put(CalcHash(content), ByteBuffer.NewAsync(content));
+                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long) f.GetSize()), cacheCapacity);
+                    }
                 }
             }
         }

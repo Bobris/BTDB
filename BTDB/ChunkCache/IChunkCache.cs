@@ -7,5 +7,6 @@ namespace BTDB.ChunkCache
     {
         void Put(ByteBuffer key, ByteBuffer content);
         Task<ByteBuffer> Get(ByteBuffer key);
+        string CalcStats();
     }
 }

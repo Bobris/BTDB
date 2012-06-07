@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KV2DBLayer;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ChunkCache
@@ -23,6 +26,9 @@ namespace BTDB.ChunkCache
         IFileCollectionFile _cacheValueFile;
         AbstractBufferedWriter _cacheValueWriter;
         long _fileGeneration;
+        Task _compactionTask;
+        CancellationTokenSource _compactionCTS;
+        readonly object _startNewValueFileLocker = new object();
 
         internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
 
@@ -85,7 +91,7 @@ namespace BTDB.ChunkCache
             else
             {
                 _maxValueFileCount = 8;
-                _sizeLimitOfOneValueFile = (int) (cacheCapacity / 8);
+                _sizeLimitOfOneValueFile = (int)(cacheCapacity / 8);
             }
             try
             {
@@ -93,12 +99,16 @@ namespace BTDB.ChunkCache
             }
             catch
             {
-                _fileInfos.Clear();
-                // Corrupted cache storage better to clear everything and start clean
-                foreach (var collectionFile in _fileCollection.Enumerate())
+                _cache.Clear();
+            }
+            if (_cache.Count == 0)
+            {
+                foreach (var collectionFile in _fileInfos.Keys)
                 {
-                    collectionFile.Remove();
+                    _fileCollection.GetFile(collectionFile).Remove();
                 }
+                _fileInfos.Clear();
+                _fileGeneration = 0;
             }
         }
 
@@ -158,25 +168,136 @@ namespace BTDB.ChunkCache
                 return;
             }
             cacheValue.AccessRate = 1;
-            if (_cacheValueWriter == null)
+        again:
+            var writer = _cacheValueWriter;
+            while (writer == null || writer.GetCurrentPosition() + content.Length > _sizeLimitOfOneValueFile)
             {
                 StartNewValueFile();
+                writer = _cacheValueWriter;
             }
-            cacheValue.FileId = _cacheValueFileId;
-            cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
-            _cacheValueWriter.WriteBlock(content);
+            lock (writer)
+            {
+                if (writer != _cacheValueWriter) goto again;
+                cacheValue.FileId = _cacheValueFileId;
+                cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
+                _cacheValueWriter.WriteBlock(content);
+            }
             cacheValue.ContentLength = (uint)content.Length;
             _cache.TryAdd(k, cacheValue);
         }
 
         void StartNewValueFile()
         {
-            var fileInfo = new FilePureValues(AllocNewFileGeneration());
+            lock (_startNewValueFileLocker)
+            {
+                QuickFinishCompaction();
+                var fileInfo = new FilePureValues(AllocNewFileGeneration());
+                if (_cacheValueWriter != null)
+                {
+                    lock (_cacheValueWriter)
+                    {
+                        SetNewValueFile();
+                    }
+                }
+                else
+                {
+                    SetNewValueFile();
+                }
+                fileInfo.WriteHeader(_cacheValueWriter);
+                _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
+                _compactionCTS = new CancellationTokenSource();
+                _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCTS.Token,
+                                                        TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+        }
+
+        void SetNewValueFile()
+        {
             _cacheValueFile = _fileCollection.AddFile("cav");
             _cacheValueFileId = _cacheValueFile.Index;
             _cacheValueWriter = _cacheValueFile.GetAppenderWriter();
-            fileInfo.WriteHeader(_cacheValueWriter);
-            _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
+        }
+
+        internal struct RateFilePair
+        {
+            internal RateFilePair(ulong accessRate, uint fileId)
+            {
+                AccessRate = accessRate;
+                FileId = fileId;
+            }
+
+            internal ulong AccessRate;
+            internal uint FileId;
+        }
+
+        void CompactionCore()
+        {
+            var token = _compactionCTS.Token;
+            var usage = new Dictionary<uint, ulong>();
+            var finishedUsageStats = true;
+            uint maxAccessRate = 0;
+            foreach (var cacheValue in _cache.Values)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    finishedUsageStats = false;
+                    break;
+                }
+                ulong accessRateRunningTotal;
+                usage.TryGetValue(cacheValue.FileId, out accessRateRunningTotal);
+                uint accessRate = cacheValue.AccessRate;
+                if (maxAccessRate < accessRate) maxAccessRate = accessRate;
+                accessRateRunningTotal += accessRate;
+                usage[cacheValue.FileId] = accessRateRunningTotal;
+            }
+            var usageList = new List<RateFilePair>();
+            foreach (var fileInfo in _fileInfos)
+            {
+                if (fileInfo.Value.FileType != DiskChunkFileType.PureValues) continue;
+                if (fileInfo.Key == _cacheValueFileId) continue;
+                ulong accessRate;
+                if (!usage.TryGetValue(fileInfo.Key, out accessRate) && finishedUsageStats)
+                {
+                    _fileCollection.GetFile(fileInfo.Key).Remove();
+                    _fileInfos.TryRemove(fileInfo.Key);
+                    continue;
+                }
+                usageList.Add(new RateFilePair(accessRate, fileInfo.Key));
+            }
+            var fileIdsToRemove = new List<uint>();
+            usageList.Sort((a, b) => a.AccessRate < b.AccessRate ? -1 : a.AccessRate > b.AccessRate ? 1 : 0);
+            while (usageList.Count >= _maxValueFileCount)
+            {
+                var fileId = usageList.Last().FileId;
+                ClearFileFromCache(fileId);
+                fileIdsToRemove.Add(fileId);
+                usageList.RemoveAt(usageList.Count - 1);
+            }
+            StoreHashIndex();
+            foreach (var fileid in fileIdsToRemove)
+            {
+                _fileCollection.GetFile(fileid).Remove();
+                _fileInfos.TryRemove(fileid);
+            }
+        }
+
+        void ClearFileFromCache(uint fileId)
+        {
+            foreach (var itemPair in _cache)
+            {
+                if (itemPair.Value.FileId == fileId)
+                {
+                    _cache.TryRemove(itemPair.Key);
+                }
+            }
+        }
+
+        void QuickFinishCompaction()
+        {
+            var compactionCTS = _compactionCTS;
+            if (compactionCTS != null) compactionCTS.Cancel();
+            var task = _compactionTask;
+            if (task != null) task.Wait();
         }
 
         public Task<ByteBuffer> Get(ByteBuffer key)
@@ -205,17 +326,53 @@ namespace BTDB.ChunkCache
             return tcs.Task;
         }
 
+        public string CalcStats()
+        {
+            var res = new StringBuilder();
+            res.AppendFormat("Files {0} FileInfos {1} FileGeneration {2} Cached items {3}{4}", _fileCollection.GetCount(),
+                             _fileInfos.Count, _fileGeneration, _cache.Count, Environment.NewLine);
+            var totalSize = 0UL;
+            var totalControledSize = 0UL;
+            foreach (var fileCollectionFile in _fileCollection.Enumerate())
+            {
+                IFileInfo fileInfo;
+                _fileInfos.TryGetValue(fileCollectionFile.Index, out fileInfo);
+                var size = fileCollectionFile.GetSize();
+                totalSize += size;
+                if (fileInfo == null)
+                {
+                    res.AppendFormat("{0} Size: {1} Unknown to cache{2}", fileCollectionFile.Index,
+                                     size, Environment.NewLine);
+                }
+                else
+                {
+                    res.AppendFormat("{0} Size: {1} Type: {2} {3}", fileCollectionFile.Index,
+                                     size, fileInfo.FileType, Environment.NewLine);
+                    totalControledSize += size;
+                }
+            }
+            res.AppendFormat("TotalSize {0} TotalControledSize {1} Limit {2}{3}", totalSize, totalControledSize,
+                             _cacheCapacity, Environment.NewLine);
+            Debug.Assert(totalControledSize <= (ulong)_cacheCapacity);
+            return res.ToString();
+        }
+
         public void Dispose()
         {
-            if (_cacheValueWriter != null)
+            lock (_startNewValueFileLocker)
             {
-                _cacheValueWriter.FlushBuffer();
+                QuickFinishCompaction();
+                if (_cacheValueWriter != null)
+                {
+                    _cacheValueWriter.FlushBuffer();
+                }
+                StoreHashIndex();
             }
-            StoreHashIndex();
         }
 
         void StoreHashIndex()
         {
+            RemoveAllHashIndexAndUnknownFiles();
             var file = _fileCollection.AddFile("chi");
             var writer = file.GetAppenderWriter();
             var keyCount = _cache.Count;
@@ -235,6 +392,20 @@ namespace BTDB.ChunkCache
             writer.WriteVUInt32(0); // Zero FileOfs as end of file mark
             writer.FlushBuffer();
             file.HardFlush();
+        }
+
+        void RemoveAllHashIndexAndUnknownFiles()
+        {
+            foreach (var infoPair in _fileInfos)
+            {
+                if (infoPair.Value.FileType == DiskChunkFileType.HashIndex ||
+                    infoPair.Value.FileType == DiskChunkFileType.Unknown)
+                {
+                    var fileId = infoPair.Key;
+                    _fileCollection.GetFile(fileId).Remove();
+                    _fileInfos.TryRemove(fileId);
+                }
+            }
         }
 
         long AllocNewFileGeneration()
