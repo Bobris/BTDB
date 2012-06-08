@@ -265,7 +265,7 @@ namespace BTDB.ChunkCache
                 usageList.Add(new RateFilePair(accessRate, fileInfo.Key));
             }
             var fileIdsToRemove = new List<uint>();
-            usageList.Sort((a, b) => a.AccessRate < b.AccessRate ? -1 : a.AccessRate > b.AccessRate ? 1 : 0);
+            usageList.Sort((a, b) => a.AccessRate > b.AccessRate ? -1 : a.AccessRate < b.AccessRate ? 1 : 0);
             while (usageList.Count >= _maxValueFileCount)
             {
                 var fileId = usageList.Last().FileId;
@@ -297,7 +297,14 @@ namespace BTDB.ChunkCache
             var compactionCTS = _compactionCTS;
             if (compactionCTS != null) compactionCTS.Cancel();
             var task = _compactionTask;
-            if (task != null) task.Wait();
+            if (task != null)
+            {
+                try
+                {
+                    task.Wait();
+                }
+                catch { }
+            }
         }
 
         public Task<ByteBuffer> Get(ByteBuffer key)

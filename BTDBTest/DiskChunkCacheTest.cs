@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -64,7 +65,6 @@ namespace BTDBTest
             }
         }
 
-
         [Test]
         public void SizeDoesNotGrowOverLimit()
         {
@@ -75,13 +75,69 @@ namespace BTDBTest
                 {
                     for (var i = 0; i < 80; i++)
                     {
-                        var content = new byte[1024];
-                        PackUnpack.PackInt32BE(content, 0, i);
-                        cache.Put(CalcHash(content), ByteBuffer.NewAsync(content));
+                        Put(cache, i);
                         Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long) f.GetSize()), cacheCapacity);
                     }
                 }
             }
         }
+
+        void Put(IChunkCache cache, int i)
+        {
+            var content = new byte[1024];
+            PackUnpack.PackInt32BE(content, 0, i);
+            cache.Put(CalcHash(content), ByteBuffer.NewAsync(content));
+        }
+
+        bool Get(IChunkCache cache, int i)
+        {
+            var content = new byte[1024];
+            PackUnpack.PackInt32BE(content, 0, i);
+            return cache.Get(CalcHash(content)).Result.Length == 1024;
+        }
+
+        [Test]
+        public void GettingContentMakesItStayLongerIncreasingRate()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                const int cacheCapacity = 50000;
+                using (var cache = new DiskChunkCache(fileCollection, 20, cacheCapacity))
+                {
+                    for (var i = 0; i < 80; i++)
+                    {
+                        Put(cache,i);
+                        for(var j=0;j<i;j++)
+                            Get(cache, i);
+                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                    }
+                    Assert.True(Get(cache, 79));
+                    Assert.False(Get(cache, 0));
+                }
+            }
+        }
+
+        [Test]
+        public void GettingContentMakesItStayLongerDecreasingRate()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                const int cacheCapacity = 50000;
+                using (var cache = new DiskChunkCache(fileCollection, 20, cacheCapacity))
+                {
+                    for (var i = 0; i < 80; i++)
+                    {
+                        Put(cache, i);
+                        for (var j = 0; j < 79-i; j++)
+                            Get(cache, i);
+                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                    }
+                    Console.WriteLine(cache.CalcStats());
+                    Assert.True(Get(cache, 0));
+                    Assert.False(Get(cache, 60));
+                }
+            }
+        }
+
     }
 }
