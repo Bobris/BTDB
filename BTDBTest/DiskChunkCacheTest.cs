@@ -76,7 +76,7 @@ namespace BTDBTest
                     for (var i = 0; i < 80; i++)
                     {
                         Put(cache, i);
-                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long) f.GetSize()), cacheCapacity);
+                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
                     }
                 }
             }
@@ -106,8 +106,8 @@ namespace BTDBTest
                 {
                     for (var i = 0; i < 80; i++)
                     {
-                        Put(cache,i);
-                        for(var j=0;j<i;j++)
+                        Put(cache, i);
+                        for (var j = 0; j < i; j++)
                             Get(cache, i);
                         Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
                     }
@@ -128,13 +128,36 @@ namespace BTDBTest
                     for (var i = 0; i < 80; i++)
                     {
                         Put(cache, i);
-                        for (var j = 0; j < 79-i; j++)
+                        for (var j = 0; j < 79 - i; j++)
                             Get(cache, i);
                         Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
                     }
                     Console.WriteLine(cache.CalcStats());
                     Assert.True(Get(cache, 0));
                     Assert.False(Get(cache, 60));
+                }
+            }
+        }
+
+        [Test]
+        public void AccessEveryTenthTenTimesMoreMakesItStay()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                const int cacheCapacity = 50000;
+                using (var cache = new DiskChunkCache(fileCollection, 20, cacheCapacity))
+                {
+                    for (var i = 0; i < 70; i++)
+                    {
+                        Put(cache, i);
+                        for (var j = 0; j < (i % 5 == 0 ? 10 + i : 1); j++)
+                            Get(cache, i);
+                        Thread.Sleep(10);
+                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                    }
+                    Console.WriteLine(cache.CalcStats());
+                    Assert.True(Get(cache, 0));
+                    Assert.False(Get(cache, 1));
                 }
             }
         }

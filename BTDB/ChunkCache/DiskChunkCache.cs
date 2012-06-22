@@ -269,7 +269,10 @@ namespace BTDB.ChunkCache
             while (usageList.Count >= _maxValueFileCount)
             {
                 var fileId = usageList.Last().FileId;
-                ClearFileFromCache(fileId);
+                if (usageList.Count == _maxValueFileCount)
+                    PreserveJustMostOftenUsed(fileId);
+                else
+                    ClearFileFromCache(fileId);
                 fileIdsToRemove.Add(fileId);
                 usageList.RemoveAt(usageList.Count - 1);
             }
@@ -278,6 +281,47 @@ namespace BTDB.ChunkCache
             {
                 _fileCollection.GetFile(fileid).Remove();
                 _fileInfos.TryRemove(fileid);
+            }
+        }
+
+        void PreserveJustMostOftenUsed(uint fileId)
+        {
+            var freqencies = new List<uint>();
+            foreach (var itemPair in _cache)
+            {
+                if (itemPair.Value.FileId == fileId)
+                {
+                    freqencies.Add(itemPair.Value.AccessRate);
+                }
+            }
+            var preserveRate = freqencies.OrderByDescending(r => r).Skip(freqencies.Count / 5).FirstOrDefault();
+            foreach (var itemPair in _cache)
+            {
+                if (itemPair.Value.FileId == fileId)
+                {
+                    if (preserveRate<itemPair.Value.AccessRate)
+                    {
+                        var cacheValue = itemPair.Value;
+                        var content = new byte[cacheValue.ContentLength];
+                        _fileCollection.GetFile(cacheValue.FileId).RandomRead(content, 0, (int)cacheValue.ContentLength,
+                                                                              cacheValue.FileOfs);
+                        var writer = _cacheValueWriter;
+                        if (writer == null) goto remove;
+                        lock (writer)
+                        {
+                            if (writer != _cacheValueWriter) goto remove;
+                            if (writer.GetCurrentPosition() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
+                                goto remove;
+                            cacheValue.FileId = _cacheValueFileId;
+                            cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
+                            _cacheValueWriter.WriteBlock(content);
+                        }
+                        _cache.TryUpdate(itemPair.Key,cacheValue,itemPair.Value);
+                        continue;
+                    }
+                remove:
+                    _cache.TryRemove(itemPair.Key);
+                }
             }
         }
 
