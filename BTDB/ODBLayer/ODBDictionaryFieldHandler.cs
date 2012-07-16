@@ -44,6 +44,17 @@ namespace BTDB.ODBLayer
             CreateConfiguration();
         }
 
+        ODBDictionaryFieldHandler(IObjectDB odb, byte[] configuration, int configurationId, IFieldHandler specializedKeyHandler, IFieldHandler specializedValueHandler)
+        {
+            _odb = odb;
+            _fieldHandlerFactory = odb.FieldHandlerFactory;
+            _typeConvertorGenerator = odb.TypeConvertorGenerator;
+            _configuration = configuration;
+            _keysHandler = specializedKeyHandler;
+            _valuesHandler = specializedValueHandler;
+            CreateConfiguration();
+        }
+
         void CreateConfiguration()
         {
             HandledType();
@@ -206,7 +217,12 @@ namespace BTDB.ODBLayer
         {
             if (_type != type)
                 GenerateType();
-            return this;
+            if (_type == type) return this;
+            if (type.GetGenericTypeDefinition() != typeof(IDictionary<,>)) return this;
+            var arguments = type.GetGenericArguments();
+            var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0]);
+            var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1]);
+            return new ODBDictionaryFieldHandler(_odb, _configuration, _configurationId, specializedKeyHandler, specializedValueHandler);
         }
 
         Type GenerateType()

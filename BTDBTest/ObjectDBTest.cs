@@ -1142,6 +1142,36 @@ namespace BTDBTest
             }
         }
 
+        public class ObjectWithDictString2ListOfUInt64
+        {
+            public IDictionary<string, List<ulong>> Dict { get; set; }
+        }
+
+        public class Object2WithDictString2ListOfUInt64
+        {
+            public IDictionary<string, List<ulong>> Dict { get; set; }
+            public String Added { get; set; }
+        }
+
+        [Test]
+        public void UpgradeWithDictString2ListOfUInt64Works()
+        {
+            var typeName = _db.RegisterType(typeof(ObjectWithDictString2ListOfUInt64));
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictString2ListOfUInt64>();
+                d.Dict.Add("A",new List<ulong> { 1, 2 });
+                tr.Commit();
+            }
+            ReopenDB();
+            _db.RegisterType(typeof(Object2WithDictString2ListOfUInt64), typeName);
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<Object2WithDictString2ListOfUInt64>();
+                Assert.NotNull(d.Dict);
+            }
+        }
+
         public class ObjectWithDictWithInlineKey
         {
             public IDictionary<InlinePerson, int> Dict { get; set; }
