@@ -2,7 +2,7 @@ namespace BTDB.KV2DBLayer
 {
     internal class UnknownFile : IFileInfo
     {
-        internal static IFileInfo Instance = new UnknownFile();
+        internal static readonly IFileInfo Instance = new UnknownFile();
 
         private UnknownFile() { }
 
@@ -12,6 +12,11 @@ namespace BTDB.KV2DBLayer
         }
 
         public long Generation
+        {
+            get { return -1; }
+        }
+
+        public long SubDBId
         {
             get { return -1; }
         }

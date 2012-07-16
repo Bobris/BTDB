@@ -4,5 +4,6 @@ namespace BTDB.KV2DBLayer
     {
         KV2FileType FileType { get; }
         long Generation { get; }
+        long SubDBId { get; }
     }
 }

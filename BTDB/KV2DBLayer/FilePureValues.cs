@@ -26,6 +26,11 @@ namespace BTDB.KV2DBLayer
             get { return _generation; }
         }
 
+        public long SubDBId
+        {
+            get { return 0; }
+        }
+
         public void WriteHeader(AbstractBufferedWriter writer)
         {
             writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
