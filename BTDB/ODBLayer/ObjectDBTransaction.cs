@@ -272,12 +272,17 @@ namespace BTDB.ODBLayer
 
         void CompactObjCache()
         {
+            var toRemove = new List<ulong>();
             foreach (var pair in _objBigCache)
             {
                 if (!pair.Value.IsAlive)
                 {
-                    _objBigCache.Remove(pair.Key);
+                    toRemove.Add(pair.Key);
                 }
+            }
+            foreach (var k in toRemove)
+            {
+                _objBigCache.Remove(k);
             }
         }
 

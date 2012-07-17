@@ -1172,6 +1172,23 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void BiggerTransactionWithGC()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                for (uint i = 0; i < 100; i++)
+                {
+                    tr.StoreAndFlush(new Person { Name = "Bobris", Age = i });
+                    if (i==90)
+                    {
+                        GC.Collect();
+                    }
+                }
+                tr.Commit();
+            }
+        }
+
         public class ObjectWithDictWithInlineKey
         {
             public IDictionary<InlinePerson, int> Dict { get; set; }
