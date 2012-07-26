@@ -230,7 +230,7 @@ namespace BTDB.ODBLayer
             if (_objBigCache != null)
             {
                 CompactObjCacheIfNeeded();
-                _objBigCache.Add(oid, new WeakReference(obj));
+                _objBigCache[oid]=new WeakReference(obj);
                 _objBigMetadata.Add(obj, metadata);
                 return;
             }
