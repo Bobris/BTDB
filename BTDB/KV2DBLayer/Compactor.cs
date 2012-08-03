@@ -81,7 +81,7 @@ namespace BTDB.KV2DBLayer
             {
                 if (_keyValue2DB.DistanceFromLastKeyIndex(_root) < (ulong)_keyValue2DB.MaxTrLogFileSize / 4) return false;
                 _keyValue2DB.CreateIndexFile(_cancellation);
-                _keyValue2DB.DeleteAllUnknownFiles();
+                _keyValue2DB.FileCollection.DeleteAllUnknownFiles();
                 return false;
             }
             _cancellation.ThrowIfCancellationRequested();
@@ -111,7 +111,7 @@ namespace BTDB.KV2DBLayer
                 toRemoveFileIds.Add(valueFileId);
             }
             _keyValue2DB.MarkAsUnknown(toRemoveFileIds);
-            _keyValue2DB.DeleteAllUnknownFiles();
+            _keyValue2DB.FileCollection.DeleteAllUnknownFiles();
             return true;
         }
 
@@ -180,12 +180,13 @@ namespace BTDB.KV2DBLayer
 
         void InitFileStats(long dontTouchGeneration)
         {
-            _fileStats = new FileStat[_keyValue2DB.FileCollection.Enumerate().Max(f => f.Index) + 1];
-            foreach (var file in _keyValue2DB.FileCollection.Enumerate())
+            _fileStats = new FileStat[_keyValue2DB.FileCollection.FileInfos.Max(f => f.Key) + 1];
+            foreach (var file in _keyValue2DB.FileCollection.FileInfos)
             {
-                if (file.Index >= _fileStats.Length) continue;
-                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGeneration(file.Index, dontTouchGeneration)) continue;
-                _fileStats[file.Index] = new FileStat((uint)file.GetSize());
+                if (file.Key >= _fileStats.Length) continue;
+                if (file.Value.SubDBId != 0) continue;
+                if (!_keyValue2DB.ContainsValuesAndDoesNotTouchGeneration(file.Key, dontTouchGeneration)) continue;
+                _fileStats[file.Key] = new FileStat((uint)_keyValue2DB.FileCollection.GetSize(file.Key));
             }
         }
 

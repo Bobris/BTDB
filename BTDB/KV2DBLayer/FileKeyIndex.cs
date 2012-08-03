@@ -57,7 +57,7 @@ namespace BTDB.KV2DBLayer
 
         internal static void SkipHeader(AbstractBufferedReader reader)
         {
-            reader.SkipBlock(KeyValue2DB.MagicStartOfFile.Length + 1); // magic + type of file
+            reader.SkipBlock(FileCollectionWithFileInfos.MagicStartOfFile.Length + 1); // magic + type of file
             reader.SkipVInt64(); // generation
             reader.SkipVUInt32(); // trLogFileId
             reader.SkipVUInt32(); // trLogOffset
@@ -66,7 +66,7 @@ namespace BTDB.KV2DBLayer
 
         internal void WriteHeader(AbstractBufferedWriter writer)
         {
-            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
+            writer.WriteByteArrayRaw(FileCollectionWithFileInfos.MagicStartOfFile);
             writer.WriteUInt8((byte)KV2FileType.KeyIndex);
             writer.WriteVInt64(_generation);
             writer.WriteVUInt32(_trLogFileId);

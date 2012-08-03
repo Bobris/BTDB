@@ -49,6 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
+    <Compile Include="Buffer\ByteStructs.cs" />
     <Compile Include="ChunkCache\DiskChunkCache.cs" />
     <Compile Include="ChunkCache\DiskChunkFileType.cs" />
     <Compile Include="ChunkCache\FileHashIndex.cs" />
@@ -156,15 +157,21 @@
     <Compile Include="KV2DBLayer\BTree\IBTreeLeafNode.cs" />
     <Compile Include="KV2DBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KV2DBLayer\BTree\NodeIdxPair.cs" />
+    <Compile Include="KV2DBLayer\ChunkStorageInKV.cs" />
     <Compile Include="KV2DBLayer\Compactor.cs" />
     <Compile Include="KV2DBLayer\CompactorScheduler.cs" />
+    <Compile Include="KV2DBLayer\FileCollectionWithFileInfos.cs" />
     <Compile Include="KV2DBLayer\FileKeyIndex.cs" />
     <Compile Include="KV2DBLayer\FilePureValues.cs" />
+    <Compile Include="KV2DBLayer\FilePureValuesWithId.cs" />
     <Compile Include="KV2DBLayer\FileTransactionLog.cs" />
+    <Compile Include="KV2DBLayer\HashKeyIndex.cs" />
     <Compile Include="KV2DBLayer\IChunkStorage.cs" />
     <Compile Include="KV2DBLayer\IChunkStorageTransaction.cs" />
     <Compile Include="KV2DBLayer\ICompressionStrategy.cs" />
     <Compile Include="KV2DBLayer\IFileCollectionFile.cs" />
+    <Compile Include="KV2DBLayer\IFileCollectionWithFileInfos.cs" />
+    <Compile Include="KV2DBLayer\IHashKeyIndex.cs" />
     <Compile Include="KV2DBLayer\IHaveSubDB.cs" />
     <Compile Include="KV2DBLayer\IKeyIndex.cs" />
     <Compile Include="KV2DBLayer\IKnowTransactionNumber.cs" />

@@ -43,14 +43,14 @@ namespace BTDB.KV2DBLayer
 
         internal static void SkipHeader(AbstractBufferedReader reader)
         {
-            reader.SkipBlock(KeyValue2DB.MagicStartOfFile.Length + 1); // magic + type of file
+            reader.SkipBlock(FileCollectionWithFileInfos.MagicStartOfFile.Length + 1); // magic + type of file
             reader.SkipVInt64(); // generation
             reader.SkipVInt32(); // previous file id
         }
 
         internal void WriteHeader(AbstractBufferedWriter writer)
         {
-            writer.WriteByteArrayRaw(KeyValue2DB.MagicStartOfFile);
+            writer.WriteByteArrayRaw(FileCollectionWithFileInfos.MagicStartOfFile);
             writer.WriteUInt8((byte)KV2FileType.TransactionLog);
             writer.WriteVInt64(_generation);
             writer.WriteVInt32((int) _previousFileId);

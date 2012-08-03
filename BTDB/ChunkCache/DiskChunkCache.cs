@@ -20,52 +20,17 @@ namespace BTDB.ChunkCache
         readonly long _cacheCapacity;
         readonly int _sizeLimitOfOneValueFile;
         readonly int _maxValueFileCount;
-        readonly ConcurrentDictionary<Key20, CacheValue> _cache = new ConcurrentDictionary<Key20, CacheValue>(new Key20EqualityComparer());
+        readonly ConcurrentDictionary<ByteStructs.Key20, CacheValue> _cache = new ConcurrentDictionary<ByteStructs.Key20, CacheValue>(new ByteStructs.Key20EqualityComparer());
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         uint _cacheValueFileId;
         IFileCollectionFile _cacheValueFile;
         AbstractBufferedWriter _cacheValueWriter;
         long _fileGeneration;
         Task _compactionTask;
-        CancellationTokenSource _compactionCTS;
+        CancellationTokenSource _compactionCts;
         readonly object _startNewValueFileLocker = new object();
 
         internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
-
-        class Key20EqualityComparer : IEqualityComparer<Key20>
-        {
-            public bool Equals(Key20 x, Key20 y)
-            {
-                return x.V1 == y.V1 && x.V2 == y.V2 && x.V3 == y.V3;
-            }
-
-            public int GetHashCode(Key20 obj)
-            {
-                return (int)obj.V1;
-            }
-        }
-
-        struct Key20
-        {
-            internal Key20(ByteBuffer value)
-            {
-                V1 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset);
-                V2 = PackUnpack.UnpackUInt64LE(value.Buffer, value.Offset + 8);
-                V3 = PackUnpack.UnpackUInt32LE(value.Buffer, value.Offset + 16);
-            }
-
-            internal void FillBuffer(ByteBuffer buf)
-            {
-                var o = buf.Offset;
-                PackUnpack.PackUInt64LE(buf.Buffer, o, V1);
-                PackUnpack.PackUInt64LE(buf.Buffer, o + 8, V2);
-                PackUnpack.PackUInt32LE(buf.Buffer, o + 16, V3);
-            }
-
-            internal readonly ulong V1;
-            internal readonly ulong V2;
-            internal readonly uint V3;
-        }
 
         struct CacheValue
         {
@@ -153,7 +118,7 @@ namespace BTDB.ChunkCache
                 cacheValue.AccessRate = reader.ReadVUInt32();
                 cacheValue.ContentLength = reader.ReadVUInt32();
                 reader.ReadBlock(keyBuf);
-                _cache.TryAdd(new Key20(keyBuf), cacheValue);
+                _cache.TryAdd(new ByteStructs.Key20(keyBuf), cacheValue);
             }
         }
 
@@ -161,7 +126,7 @@ namespace BTDB.ChunkCache
         {
             if (key.Length != _keySize) throw new ArgumentException("Key has wrong Length not equal to KeySize");
             if (content.Length == 0) throw new ArgumentException("Empty Content cannot be stored");
-            var k = new Key20(key);
+            var k = new ByteStructs.Key20(key);
             CacheValue cacheValue;
             if (_cache.TryGetValue(k, out cacheValue))
             {
@@ -205,8 +170,8 @@ namespace BTDB.ChunkCache
                 }
                 fileInfo.WriteHeader(_cacheValueWriter);
                 _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
-                _compactionCTS = new CancellationTokenSource();
-                _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCTS.Token,
+                _compactionCts = new CancellationTokenSource();
+                _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts.Token,
                                                         TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
         }
@@ -232,7 +197,7 @@ namespace BTDB.ChunkCache
 
         void CompactionCore()
         {
-            var token = _compactionCTS.Token;
+            var token = _compactionCts.Token;
             var usage = new Dictionary<uint, ulong>();
             var finishedUsageStats = true;
             uint maxAccessRate = 0;
@@ -338,7 +303,7 @@ namespace BTDB.ChunkCache
 
         void QuickFinishCompaction()
         {
-            var compactionCTS = _compactionCTS;
+            var compactionCTS = _compactionCts;
             if (compactionCTS != null) compactionCTS.Cancel();
             var task = _compactionTask;
             if (task != null)
@@ -357,7 +322,7 @@ namespace BTDB.ChunkCache
             var tcs = new TaskCompletionSource<ByteBuffer>();
             try
             {
-                var k = new Key20(key);
+                var k = new ByteStructs.Key20(key);
                 CacheValue cacheValue;
                 if (_cache.TryGetValue(k, out cacheValue))
                 {

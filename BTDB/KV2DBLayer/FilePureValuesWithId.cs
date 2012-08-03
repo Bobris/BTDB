@@ -2,23 +2,26 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KV2DBLayer
 {
-    internal class FilePureValues : IFileInfo
+    internal class FilePureValuesWithId : IFileInfo
     {
+        readonly long _subId;
         readonly long _generation;
 
-        public FilePureValues(AbstractBufferedReader reader)
+        public FilePureValuesWithId(AbstractBufferedReader reader)
         {
+            _subId = reader.ReadVInt64();
             _generation = reader.ReadVInt64();
         }
 
-        public FilePureValues(long generation)
+        public FilePureValuesWithId(long subId, long generation)
         {
+            _subId = subId;
             _generation = generation;
         }
 
         public KV2FileType FileType
         {
-            get { return KV2FileType.PureValues; }
+            get { return KV2FileType.PureValuesWithId; }
         }
 
         public long Generation
@@ -28,13 +31,14 @@ namespace BTDB.KV2DBLayer
 
         public long SubDBId
         {
-            get { return 0; }
+            get { return _subId; }
         }
 
         public void WriteHeader(AbstractBufferedWriter writer)
         {
             writer.WriteByteArrayRaw(FileCollectionWithFileInfos.MagicStartOfFile);
-            writer.WriteUInt8((byte)KV2FileType.PureValues);
+            writer.WriteUInt8((byte)KV2FileType.PureValuesWithId);
+            writer.WriteVInt64(_subId);
             writer.WriteVInt64(_generation);
         }
     }
