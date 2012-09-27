@@ -38,6 +38,8 @@ namespace BTDB.IL
 
         internal static string UniqueName(string name)
         {
+            name = name.Replace('<', '_');
+            name = name.Replace('>', '_');
             var uniqueName = name;
             var uniqueIdx = UniqueNames.AddOrUpdate(name, 0, (s, v) => v + 1);
             if (uniqueIdx != 0) uniqueName = string.Format("{0}__{1}", name, uniqueIdx);
