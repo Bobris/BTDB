@@ -17,21 +17,23 @@ namespace BTDB.IOC
 
         public IRegistration<IAsTrait> RegisterInstance<T>(T instance) where T : class
         {
-            var registration = new SingleInstanceRegistration(instance, typeof(T));
+            var instanceType = typeof(T);
+            if (instance != null) instanceType = instance.GetType();
+            var registration = new SingleInstanceRegistration(instance, instanceType);
             _registrations.Add(registration);
             return registration;
         }
 
         public IRegistration<IAsTraitAndLiveScopeTrait> RegisterFactory<T>(Func<IContainer, T> factory) where T : class
         {
-            var registration = new SingleFactoryRegistration(factory, typeof (T));
+            var registration = new SingleFactoryRegistration(factory, typeof(T));
             _registrations.Add(registration);
             return registration;
         }
 
         public IRegistration<IAsTraitAndLiveScopeTraitAndScanTrait> RegisterAssemblyTypes(Assembly from)
         {
-            return RegisterAssemblyTypes(new[] {from});
+            return RegisterAssemblyTypes(new[] { from });
         }
 
         public IRegistration<IAsTraitAndLiveScopeTraitAndScanTrait> RegisterAssemblyTypes(params Assembly[] froms)
