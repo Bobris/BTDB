@@ -470,6 +470,44 @@ namespace BTDBTest
             Assert.AreEqual(11, obj.Param1);
             Assert.AreEqual(22, obj.Param2);
         }
+
+        public class Logger1 : ILogger
+        {
+            public Logger1()
+            {
+            }
+        }
+
+        public class Logger2 : ILogger
+        {
+            public Logger2()
+            {
+            }
+        }
+
+        [Test]
+        public void EnumerateAllInstances()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger1>().AsImplementedInterfaces();
+            builder.RegisterType<Logger2>().AsImplementedInterfaces();
+            var container = builder.Build();
+            var allInstances = container.Resolve<IEnumerable<ILogger>>().ToArray();
+            Assert.AreEqual(new[] {"Logger1", "Logger2"},
+                            allInstances.Select(i => i.GetType().Name).OrderBy(s => s).ToArray());
+        }
+
+        [Test]
+        public void EnumerateAllInstanceFactories()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger1>().AsImplementedInterfaces();
+            builder.RegisterType<Logger2>().AsImplementedInterfaces();
+            var container = builder.Build();
+            var allInstances = container.Resolve<IEnumerable<Func<ILogger>>>().ToArray();
+            Assert.AreEqual(new[] { "Logger1", "Logger2" },
+                            allInstances.Select(i => i.GetType().Name).OrderBy(s => s).ToArray());
+        }
     }
 
 }

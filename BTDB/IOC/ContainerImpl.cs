@@ -11,7 +11,7 @@ namespace BTDB.IOC
     public class ContainerImpl : IContainer
     {
 
-        readonly ConcurrentDictionary<KeyAndType, Func<ContainerImpl, object>> _workers = new ConcurrentDictionary<KeyAndType, Func<ContainerImpl, object>>();
+        readonly ConcurrentDictionary<KeyAndType, Func<object>> _workers = new ConcurrentDictionary<KeyAndType, Func<object>>();
         readonly object _buildingLock = new object();
         readonly Dictionary<KeyAndType, ICReg> _registrations = new Dictionary<KeyAndType, ICReg>();
         // ReSharper disable MemberCanBePrivate.Global
@@ -54,17 +54,17 @@ namespace BTDB.IOC
 
         public object ResolveKeyed(object key, Type type)
         {
-            Func<ContainerImpl, object> worker;
+            Func<object> worker;
             if (_workers.TryGetValue(new KeyAndType(key, type), out worker))
             {
-                return worker(this);
+                return worker();
             }
             lock (_buildingLock)
             {
                 worker = TryBuild(key, type);
             }
             if (worker == null) throwNotResolvable(key, type);
-            return worker(this);
+            return worker();
         }
 
         void throwNotResolvable(object key, Type type)
@@ -76,9 +76,9 @@ namespace BTDB.IOC
             throw new ArgumentException(string.Format("Type {0} with key {1} cannot be resolved", type.ToSimpleName(), key));
         }
 
-        Func<ContainerImpl, object> TryBuild(object key, Type type)
+        Func<object> TryBuild(object key, Type type)
         {
-            Func<ContainerImpl, object> worker;
+            Func<object> worker;
             if (!_workers.TryGetValue(new KeyAndType(key, type), out worker))
             {
                 worker = Build(key, type);
@@ -100,7 +100,7 @@ namespace BTDB.IOC
             return null;
         }
 
-        Func<ContainerImpl, object> Build(object key, Type type)
+        Func<object> Build(object key, Type type)
         {
             var registration = FindChosenReg(key, type);
             if (registration != null)
@@ -118,7 +118,7 @@ namespace BTDB.IOC
                     if (optimizedFuncCreg != null)
                     {
                         var optimizedFunc = optimizedFuncCreg.BuildFuncOfT(this, type);
-                        if (optimizedFunc != null) return c => optimizedFunc;
+                        if (optimizedFunc != null) return () => optimizedFunc;
                     }
                 }
                 if (registration is ICRegILGen)
@@ -130,14 +130,14 @@ namespace BTDB.IOC
                     context.GenerateBody(il, regILGen);
                     il.Ret();
                     var func = method.Create(this);
-                    return c => func;
+                    return () => func;
                 }
             }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>))
             {
                 var resultType = type.GetGenericArguments()[0];
                 return ((IFuncBuilder)
-                        typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build();
+                        typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build(this);
             }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
@@ -147,7 +147,12 @@ namespace BTDB.IOC
                     var multi = registration as ICRegMulti;
                     var regs = multi != null ? multi.Regs.ToArray() : new[] { registration };
                     var context = new GenerationContext(this);
-                    var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(type.ToSimpleName());
+                    foreach (var cReg in regs)
+                    {
+                        var regILGen = (ICRegILGen)cReg;
+                        context.GatherNeeds(regILGen, new HashSet<ICRegILGen>());
+                    }
+                    var method = ILBuilder.Instance.NewMethod(type.ToSimpleName(), typeof(Func<object>), typeof(ContainerImpl));
                     var il = method.Generator;
                     context.IL = il;
                     var resultLocal = il.DeclareLocal(typeof(List<>).MakeGenericType(resultType));
@@ -176,7 +181,7 @@ namespace BTDB.IOC
                         .Ldloc(resultLocal)
                         .Castclass(type)
                         .Ret();
-                    return method.Create();
+                    return (Func<object>)method.Create(this);
 
                 }
             }
@@ -185,18 +190,14 @@ namespace BTDB.IOC
 
         public interface IFuncBuilder
         {
-            Func<ContainerImpl, object> Build();
+            Func<object> Build(ContainerImpl c);
         }
 
         public class ClosureOfLazy<T> : IFuncBuilder where T : class
         {
-            public ClosureOfLazy()
+            public Func<object> Build(ContainerImpl c)
             {
-            }
-
-            public Func<ContainerImpl, object> Build()
-            {
-                return c => new Lazy<T>(() => c.Resolve<T>());
+                return () => new Lazy<T>(c.Resolve<T>);
             }
         }
 
@@ -217,12 +218,12 @@ namespace BTDB.IOC
             }
         }
 
-        Func<ContainerImpl, object> BuildCReg(ICReg registration)
+        Func<object> BuildCReg(ICReg registration)
         {
             if (registration is ICRegFuncOptimized)
             {
                 var regOpt = (ICRegFuncOptimized)registration;
-                var result = (Func<ContainerImpl, object>)regOpt.BuildFuncOfT(this, typeof(Func<ContainerImpl, object>));
+                var result = (Func<object>)regOpt.BuildFuncOfT(this, typeof(Func<object>));
                 if (result != null)
                 {
                     return result;
@@ -232,11 +233,11 @@ namespace BTDB.IOC
             {
                 var regILGen = (ICRegILGen)registration;
                 var context = new GenerationContext(this);
-                var method = ILBuilder.Instance.NewMethod<Func<ContainerImpl, object>>(regILGen.GenFuncName(context));
+                var method = ILBuilder.Instance.NewMethod(regILGen.GenFuncName(context), typeof(Func<object>),typeof(ContainerImpl));
                 var il = method.Generator;
                 context.GenerateBody(il, regILGen);
                 il.Ret();
-                return method.Create();
+                return (Func<object>)method.Create(this);
             }
             throw new NotImplementedException();
         }

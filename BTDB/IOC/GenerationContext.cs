@@ -165,7 +165,7 @@ namespace BTDB.IOC
             }
         }
 
-        void GatherNeeds(ICRegILGen regILGen, HashSet<ICRegILGen> processed)
+        internal void GatherNeeds(ICRegILGen regILGen, HashSet<ICRegILGen> processed)
         {
             if (processed.Contains(regILGen)) return;
             processed.Add(regILGen);

@@ -29,7 +29,7 @@ namespace BTDB.IOC.CRegs
         public void GenInitialization(IGenerationContext context)
         {
             if (_instance == null) return;
-            context.GetSpecific<FactoryImpl.InstancesLocal>().Prepare();
+            context.GetSpecific<InstancesLocalGenCtxHelper>().Prepare(this);
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)
@@ -50,7 +50,7 @@ namespace BTDB.IOC.CRegs
             {
                 return localInstance;
             }
-            var localInstances = context.GetSpecific<FactoryImpl.InstancesLocal>().MainLocal;
+            var localInstances = context.GetSpecific<InstancesLocalGenCtxHelper>().MainLocal;
             localInstance = context.IL.DeclareLocal(_instance.GetType(), "instance");
             context.IL
                 .Ldloc(localInstances)
@@ -64,7 +64,7 @@ namespace BTDB.IOC.CRegs
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
-            yield break;
+            yield return Need.ContainerNeed;
         }
     }
 }

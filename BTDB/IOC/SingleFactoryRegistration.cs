@@ -18,7 +18,7 @@ namespace BTDB.IOC
 
         public void Register(ContanerRegistrationContext context)
         {
-            ICRegILGen reg = new FactoryImpl(context.AddInstance(_factory), _implementationType);
+            ICRegILGen reg = new FactoryWithContainerParamImpl(context.AddInstance(_factory), _implementationType);
             if (_liveScopeTrait.Lifetime == Lifetime.Singleton)
             {
                 reg = new SingletonImpl(_implementationType, reg, context.SingletonCount);

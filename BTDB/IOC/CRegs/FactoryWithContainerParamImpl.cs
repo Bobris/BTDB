@@ -4,20 +4,20 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class FactoryImpl : ICReg, ICRegILGen
+    internal class FactoryWithContainerParamImpl : ICReg, ICRegILGen
     {
         readonly Type _type;
         readonly int _instanceIndex;
 
-        public FactoryImpl(ContainerImpl container, Func<object> buildFunc, Type type)
+        public FactoryWithContainerParamImpl(int instanceIndex, Type type)
         {
+            _instanceIndex = instanceIndex;
             _type = type;
-            _instanceIndex = container.AddInstance(buildFunc);
         }
 
         string ICRegILGen.GenFuncName(IGenerationContext context)
         {
-            return "Factory_" + _type.ToSimpleName();
+            return "FactoryWithContainerParam_" + _type.ToSimpleName();
         }
 
         public void GenInitialization(IGenerationContext context)
@@ -38,8 +38,10 @@ namespace BTDB.IOC.CRegs
                 .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
-                .Castclass(typeof(Func<object>))
-                .Call(() => default(Func<object>).Invoke())
+                .Castclass(typeof(Func<ContainerImpl, object>));
+            context.PushToILStack(this, Need.ContainerNeed);
+            context.IL
+                .Call(() => default(Func<ContainerImpl, object>).Invoke(null))
                 .Castclass(_type)
                 .Stloc(localInstance);
             return localInstance;
