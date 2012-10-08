@@ -6,7 +6,7 @@ namespace BTDB.Buffer
     {
         public static uint CalcFletcher32(byte[] data, uint position, uint length)
         {
-            Debug.Assert((length & 1) == 0);
+            var odd = (length & 1) != 0;
             length >>= 1;
             uint sum1 = 0xffff;
             uint sum2 = 0xffff;
@@ -24,7 +24,13 @@ namespace BTDB.Buffer
                 sum1 = (sum1 & 0xffff) + (sum1 >> 16);
                 sum2 = (sum2 & 0xffff) + (sum2 >> 16);
             }
-
+            if (odd)
+            {
+                sum1 += data[position];
+                sum2 += sum1;
+                sum1 = (sum1 & 0xffff) + (sum1 >> 16);
+                sum2 = (sum2 & 0xffff) + (sum2 >> 16);
+            }
             // Second reduction step to reduce sums to 16 bits
             sum1 = (sum1 & 0xffff) + (sum1 >> 16);
             sum2 = (sum2 & 0xffff) + (sum2 >> 16);
