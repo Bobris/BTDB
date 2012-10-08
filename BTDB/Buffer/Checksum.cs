@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-
-namespace BTDB.Buffer
+﻿namespace BTDB.Buffer
 {
     public static class Checksum
     {
