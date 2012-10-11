@@ -46,8 +46,7 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 
 ### Roadmap:
 
-* More tests, especially multi-threaded
-* Bug fixing stabilization
+* Deprecating, use Multiple Files Flavor instead
 
 ---
 ## Key Value Database (Multiple Files Flavor)
@@ -60,6 +59,9 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 * It has [ACID] properties with [MVCC].
 * At one time there could be multiple read only transactions and one read/write transaction.
 * Export/Import to stream - could be used for compaction
+* Automatic compaction
+* Customizable compression
+* Relatively Fast DB Open due to key index file
 * Inspired by Bitcask [http://wiki.basho.com/Bitcask.html]
 
 ### Design limits:
@@ -82,10 +84,7 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 
 ### Roadmap:
 
-* Compression using Snappy
-* Key info file for faster DB open
-* Automatic compaction
-* Bug fixing stabilization
+* Everything is there just use it
 
 ---
 ## Wrapped Dynamic IL generation with debugging + extensions
@@ -146,7 +145,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 
 ### Roadmap:
 
-* Support more simple types of properties
+* Support more types of properties
 * Performance tests
 * Free text search (far future)
 
