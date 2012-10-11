@@ -29,7 +29,7 @@ namespace BTDB.IOC.CRegs
         public void GenInitialization(IGenerationContext context)
         {
             if (_instance == null) return;
-            context.GetSpecific<InstancesLocalGenCtxHelper>().Prepare(this);
+            context.GetSpecific<InstancesLocalGenCtxHelper>().Prepare();
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)

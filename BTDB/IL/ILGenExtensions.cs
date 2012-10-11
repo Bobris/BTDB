@@ -482,5 +482,11 @@ namespace BTDB.IL
         {
             return il.Ldfld((FieldInfo)(expression.Body as MemberExpression).Member);
         }
+
+        public static IILGen Newarr(this IILGen il, Type arrayMemberType)
+        {
+            il.Emit(OpCodes.Newarr, arrayMemberType);
+            return il;
+        }
     }
 }

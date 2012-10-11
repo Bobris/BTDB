@@ -9,6 +9,5 @@ namespace BTDB.IOC
         bool Optional { get; }
         bool ForcedKey { get; }
         object Key { get; }
-        Type ParentType { get; }
     }
 }

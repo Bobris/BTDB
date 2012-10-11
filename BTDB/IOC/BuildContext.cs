@@ -1,0 +1,126 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using BTDB.IL;
+using BTDB.IOC.CRegs;
+
+namespace BTDB.IOC
+{
+    internal class BuildContext : IBuildContext
+    {
+        readonly ContainerImpl _container;
+        BuildContext _parent;
+        List<KeyValuePair<ICRegMulti, int>> _multiBinds;
+
+        public BuildContext(ContainerImpl container)
+        {
+            _container = container;
+        }
+
+        ICReg ChooseFromMulti(ICRegMulti multiRegistration, bool frozen)
+        {
+            if (_multiBinds != null)
+            {
+                var reg = _parent.ChooseFromMulti(multiRegistration, true);
+                if (reg != null) return reg;
+                foreach (var multiBind in _multiBinds)
+                {
+                    if (multiBind.Key == multiRegistration)
+                    {
+                        return multiRegistration.Regs.Skip(multiBind.Value).First();
+                    }
+                }
+                if (!frozen)
+                {
+                    _multiBinds.Add(new KeyValuePair<ICRegMulti, int>(multiRegistration, 0));
+                    return multiRegistration.Regs.First();
+                }
+            }
+            return null;
+        }
+
+        IBuildContext MakeEnumEnabledChild()
+        {
+            var child = new BuildContext(_container);
+            child._parent = this;
+            child._multiBinds = new List<KeyValuePair<ICRegMulti, int>>();
+            return child;
+        }
+
+        static readonly Type[] TupleTypes = new[] {
+            typeof(Tuple<>),
+            typeof(Tuple<,>),
+            typeof(Tuple<,,>),
+            typeof(Tuple<,,,>),
+            typeof(Tuple<,,,,>),
+            typeof(Tuple<,,,,,>),
+            typeof(Tuple<,,,,,,>),
+            typeof(Tuple<,,,,,,,>),
+        };
+
+        public ICRegILGen ResolveNeedBy(Type type, object key)
+        {
+            ICReg registration;
+            if (_container.Registrations.TryGetValue(new KeyAndType(key, type), out registration))
+            {
+                var multi = registration as ICRegMulti;
+                if (multi != null)
+                {
+                    registration = ChooseFromMulti(multi, false) ?? multi.ChosenOne;
+                }
+            }
+            if (registration == null)
+            {
+                if (type.IsDelegate())
+                {
+                    registration = new DelegateImpl(key, type);
+                }
+                else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Lazy<>))
+                {
+                    var resultType = type.GetGenericArguments()[0];
+                    var nestedRegistration = ResolveNeedBy(resultType, key);
+                    if (nestedRegistration == null) return null;
+                    registration = new LazyImpl(type, nestedRegistration);
+                }
+                else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                {
+                    var resultType = type.GetGenericArguments()[0];
+                    var child = MakeEnumEnabledChild();
+                    var nestedRegistration = child.ResolveNeedBy(resultType, key);
+                    if (nestedRegistration == null) return null;
+                    registration = new EnumerableImpl(key, type, child, nestedRegistration);
+                }
+                else if (type.IsGenericType && TupleTypes.Contains(type.GetGenericTypeDefinition()))
+                {
+                    registration = new AlwaysNewImpl(type, type.GetConstructors()[0]);
+                }
+            }
+            if (registration != null)
+            {
+                var result = registration as ICRegILGen;
+                if (result != null) return result;
+                throw new ArgumentException("Builder for " + type.ToSimpleName() + " is not ILGen capable");
+            }
+            return null;
+        }
+
+        public IBuildContext IncrementEnumerable()
+        {
+            if (_multiBinds == null) throw new InvalidOperationException("This context was not create by MakeEnumEnabledChild");
+            var nextMultiBind = _multiBinds.ToList();
+            while (nextMultiBind.Count > 0)
+            {
+                var pair = nextMultiBind[nextMultiBind.Count - 1];
+                pair = new KeyValuePair<ICRegMulti, int>(pair.Key, pair.Value + 1);
+                if (pair.Value < pair.Key.Regs.Count())
+                {
+                    nextMultiBind[nextMultiBind.Count - 1] = pair;
+                    var child = new BuildContext(_container) { _parent = _parent, _multiBinds = nextMultiBind };
+                    return child;
+                }
+                nextMultiBind.RemoveAt(nextMultiBind.Count - 1);
+            }
+            return null;
+        }
+    }
+}

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -65,7 +64,7 @@ namespace BTDB.IOC.CRegs
             }
         }
 
-        internal class SingletonsLocal : IGenerationContextSetter
+        class SingletonsLocal : IGenerationContextSetter
         {
             IGenerationContext _context;
 
@@ -78,8 +77,9 @@ namespace BTDB.IOC.CRegs
             {
                 if (MainLocal != null) return;
                 MainLocal = _context.IL.DeclareLocal(typeof(object[]), "singletons");
+                _context.PushToILStack(Need.ContainerNeed);
                 _context.IL
-                    .Ldarg(0)
+                    .Castclass(typeof(ContainerImpl))
                     .Ldfld(() => default(ContainerImpl).Singletons)
                     .Stloc(MainLocal);
             }
@@ -135,8 +135,9 @@ namespace BTDB.IOC.CRegs
                 .Brtrue(labelNull1)
                 .LdcI4(0)
                 .Stloc(localLockTaken);
-            context.PushToILStack(this, Need.ContainerNeed);
+            context.PushToILStack(Need.ContainerNeed);
             il
+                .Castclass(typeof(ContainerImpl))
                 .Ldfld(() => default(ContainerImpl).SingletonLocks)
                 .LdcI4(_singletonIndex)
                 .LdelemRef()

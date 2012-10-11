@@ -9,7 +9,7 @@ namespace BTDBTest
     using IOCDomain;
 
     [TestFixture]
-    public class IOCTests
+    public class IocTests
     {
         [Test]
         public void AlwaysNew()
@@ -189,12 +189,12 @@ namespace BTDBTest
 
         public interface ICycle1
         {
-            ICycle2 Cycle2 { get; }
+            ICycle2 Cycle2Prop { get; }
         }
 
         public interface ICycle2
         {
-            ICycle1 Cycle1 { get; }
+            ICycle1 Cycle1Prop { get; }
         }
 
         public class Cycle1 : ICycle1
@@ -206,7 +206,7 @@ namespace BTDBTest
                 _cycle2 = cycle2;
             }
 
-            public ICycle2 Cycle2
+            public ICycle2 Cycle2Prop
             {
                 get { return _cycle2.Value; }
             }
@@ -221,7 +221,7 @@ namespace BTDBTest
                 _cycle1 = cycle1;
             }
 
-            public ICycle1 Cycle1
+            public ICycle1 Cycle1Prop
             {
                 get { return _cycle1.Value; }
             }
@@ -235,8 +235,8 @@ namespace BTDBTest
             builder.RegisterType<Cycle2>().As<ICycle2>();
             var container = builder.Build();
             var obj1 = container.Resolve<ICycle1>();
-            var obj2 = obj1.Cycle2;
-            Assert.AreSame(obj1, obj2.Cycle1);
+            var obj2 = obj1.Cycle2Prop;
+            Assert.AreSame(obj1, obj2.Cycle1Prop);
         }
 
         public class InjectingContainer
@@ -473,41 +473,92 @@ namespace BTDBTest
 
         public class Logger1 : ILogger
         {
-            public Logger1()
-            {
-            }
         }
 
         public class Logger2 : ILogger
         {
-            public Logger2()
-            {
-            }
+        }
+
+        static IContainer BuildContainerWithTwoLoggers()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger1>().AsImplementedInterfaces();
+            builder.RegisterType<Logger2>().AsImplementedInterfaces();
+            return builder.Build();
+        }
+
+        static void AssertTwoLoggers(IEnumerable<string> enumTypes)
+        {
+            Assert.AreEqual(new[] { "Logger1", "Logger2" }, enumTypes);
         }
 
         [Test]
         public void EnumerateAllInstances()
         {
-            var builder = new ContainerBuilder();
-            builder.RegisterType<Logger1>().AsImplementedInterfaces();
-            builder.RegisterType<Logger2>().AsImplementedInterfaces();
-            var container = builder.Build();
-            var allInstances = container.Resolve<IEnumerable<ILogger>>().ToArray();
-            Assert.AreEqual(new[] {"Logger1", "Logger2"},
-                            allInstances.Select(i => i.GetType().Name).OrderBy(s => s).ToArray());
+            var container = BuildContainerWithTwoLoggers();
+            var allInstances = container.Resolve<IEnumerable<ILogger>>();
+            var enumTypes = allInstances.Select(i => i.GetType().Name);
+            AssertTwoLoggers(enumTypes);
         }
 
         [Test]
         public void EnumerateAllInstanceFactories()
         {
+            var container = BuildContainerWithTwoLoggers();
+            var allInstances = container.Resolve<IEnumerable<Func<ILogger>>>();
+            var enumTypes = allInstances.Select(i => i().GetType().Name);
+            AssertTwoLoggers(enumTypes);
+        }
+
+        [Test]
+        public void EnumerateAllLazyInstances()
+        {
+            var container = BuildContainerWithTwoLoggers();
+            var allInstances = container.Resolve<IEnumerable<Lazy<ILogger>>>();
+            var enumTypes = allInstances.Select(i => i.Value.GetType().Name);
+            AssertTwoLoggers(enumTypes);
+        }
+
+        [Test]
+        public void TupleResolvable()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger1>().AsImplementedInterfaces();
+            builder.RegisterInstance("hello");
+            var container = builder.Build();
+            var tuple = container.Resolve<Tuple<ILogger, string>>();
+            Assert.AreEqual("Logger1", tuple.Item1.GetType().Name);
+            Assert.AreEqual("hello", tuple.Item2);
+        }
+
+        static IContainer BuildContainerWithTwoLoggersAndTwoStrings()
+        {
             var builder = new ContainerBuilder();
             builder.RegisterType<Logger1>().AsImplementedInterfaces();
             builder.RegisterType<Logger2>().AsImplementedInterfaces();
-            var container = builder.Build();
-            var allInstances = container.Resolve<IEnumerable<Func<ILogger>>>().ToArray();
-            Assert.AreEqual(new[] { "Logger1", "Logger2" },
-                            allInstances.Select(i => i.GetType().Name).OrderBy(s => s).ToArray());
+            builder.RegisterInstance("A");
+            builder.RegisterInstance("B");
+            return builder.Build();
+        }
+
+        [Test]
+        public void EnumerateAllCombinations()
+        {
+            var container = BuildContainerWithTwoLoggersAndTwoStrings();
+            var tuples = container.Resolve<IEnumerable<Tuple<ILogger, string>>>();
+            var names = tuples.Select(t => t.Item1.GetType().Name + t.Item2);
+            Assert.AreEqual(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
+        }
+
+        [Test]
+        public void EnumerateAllCombinationsNested()
+        {
+            var container = BuildContainerWithTwoLoggersAndTwoStrings();
+            var tuples = container.Resolve<IEnumerable<Tuple<ILogger, IEnumerable<string>>>>().ToArray();
+            var enumTypes = tuples.Select(t => t.Item1.GetType().Name);
+            AssertTwoLoggers(enumTypes);
+            var names = tuples.SelectMany(t => t.Item2);
+            Assert.AreEqual(new[] { "A", "B", "A", "B" }, names);
         }
     }
-
 }

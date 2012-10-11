@@ -8,11 +8,12 @@ namespace BTDB.IOC
     {
         IILGen IL { get; }
         ContainerImpl Container { get; }
+        IBuildContext BuildContext { get; set; }
         T GetSpecific<T>() where T : class, new();
         IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor);
-        void PushToILStack(ICRegILGen inCReg, INeed need);
-        void PushToILStack(ICRegILGen inCReg, IEnumerable<INeed> needs);
-        bool AnyCorruptingStack(ICRegILGen inCReg, IEnumerable<INeed> needs);
-        ICRegILGen ResolveNeed(ICRegILGen inCReg, INeed need);
+        void PushToILStack(INeed need);
+        void PushToILStack(IEnumerable<INeed> needs);
+        bool AnyCorruptingStack(IEnumerable<INeed> needs);
+        ICRegILGen ResolveNeed(INeed need);
     }
 }

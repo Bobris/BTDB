@@ -24,7 +24,7 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(IGenerationContext context)
         {
-            foreach (var regILGen in GetNeeds(context).Select(n => context.ResolveNeed(this, n)))
+            foreach (var regILGen in GetNeeds(context).Select(context.ResolveNeed))
             {
                 regILGen.GenInitialization(context);
             }
@@ -32,12 +32,12 @@ namespace BTDB.IOC.CRegs
 
         public bool IsCorruptingILStack(IGenerationContext context)
         {
-            return context.AnyCorruptingStack(this, context.NeedsForConstructor(_constructorInfo));
+            return context.AnyCorruptingStack(context.NeedsForConstructor(_constructorInfo));
         }
 
         public IILLocal GenMain(IGenerationContext context)
         {
-            context.PushToILStack(this, context.NeedsForConstructor(_constructorInfo));
+            context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
             context.IL.Newobj(_constructorInfo);
             return null;
         }

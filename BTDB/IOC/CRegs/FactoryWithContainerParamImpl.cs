@@ -22,7 +22,7 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(IGenerationContext context)
         {
-            context.GetSpecific<InstancesLocalGenCtxHelper>().Prepare(this);
+            context.GetSpecific<InstancesLocalGenCtxHelper>().Prepare();
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)
@@ -39,8 +39,9 @@ namespace BTDB.IOC.CRegs
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
                 .Castclass(typeof(Func<ContainerImpl, object>));
-            context.PushToILStack(this, Need.ContainerNeed);
+            context.PushToILStack(Need.ContainerNeed);
             context.IL
+                .Castclass(typeof(ContainerImpl))
                 .Call(() => default(Func<ContainerImpl, object>).Invoke(null))
                 .Castclass(_type)
                 .Stloc(localInstance);

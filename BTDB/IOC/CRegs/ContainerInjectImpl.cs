@@ -21,7 +21,7 @@ namespace BTDB.IOC.CRegs
 
         public IILLocal GenMain(IGenerationContext context)
         {
-            context.PushToILStack(this, Need.ContainerNeed);
+            context.PushToILStack(Need.ContainerNeed);
             return null;
         }
 

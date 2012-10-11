@@ -11,12 +11,13 @@ namespace BTDB.IOC.CRegs
             _context = context;
         }
 
-        internal void Prepare(ICRegILGen parentReg)
+        internal void Prepare()
         {
             if (MainLocal != null) return;
             MainLocal = _context.IL.DeclareLocal(typeof(object[]), "instances");
-            _context.PushToILStack(parentReg, Need.ContainerNeed);
+            _context.PushToILStack(Need.ContainerNeed);
             _context.IL
+                .Castclass(typeof(ContainerImpl))
                 .Ldfld(() => default(ContainerImpl).Instances)
                 .Stloc(MainLocal);
         }
