@@ -520,6 +520,15 @@ namespace BTDBTest
         }
 
         [Test]
+        public void ArrayOfInstances()
+        {
+            var container = BuildContainerWithTwoLoggers();
+            var allInstances = container.Resolve<ILogger[]>();
+            var enumTypes = allInstances.Select(i => i.GetType().Name);
+            AssertTwoLoggers(enumTypes);
+        }
+
+        [Test]
         public void TupleResolvable()
         {
             var builder = new ContainerBuilder();

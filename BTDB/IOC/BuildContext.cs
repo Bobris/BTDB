@@ -88,7 +88,15 @@ namespace BTDB.IOC
                     var child = MakeEnumEnabledChild();
                     var nestedRegistration = child.ResolveNeedBy(resultType, key);
                     if (nestedRegistration == null) return null;
-                    registration = new EnumerableImpl(key, type, child, nestedRegistration);
+                    registration = new EnumerableImpl(key, type, resultType, child, nestedRegistration);
+                }
+                else if (type.IsArray && type.GetArrayRank() == 1)
+                {
+                    var resultType = type.GetElementType();
+                    var child = MakeEnumEnabledChild();
+                    var nestedRegistration = child.ResolveNeedBy(resultType, key);
+                    if (nestedRegistration == null) return null;
+                    registration = new EnumerableImpl(key, type, resultType, child, nestedRegistration);
                 }
                 else if (type.IsGenericType && TupleTypes.Contains(type.GetGenericTypeDefinition()))
                 {

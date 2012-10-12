@@ -12,11 +12,11 @@ namespace BTDB.IOC.CRegs
         readonly Type _resultType;
         readonly List<KeyValuePair<IBuildContext, ICRegILGen>> _list = new List<KeyValuePair<IBuildContext, ICRegILGen>>();
 
-        public EnumerableImpl(object key, Type type, IBuildContext firstBuildCtx, ICRegILGen firstReg)
+        public EnumerableImpl(object key, Type type, Type resultType, IBuildContext firstBuildCtx, ICRegILGen firstReg)
         {
             _key = key;
             _type = type;
-            _resultType = type.GetGenericArguments()[0];
+            _resultType = resultType;
             _list.Add(new KeyValuePair<IBuildContext, ICRegILGen>(firstBuildCtx, firstReg));
         }
 
