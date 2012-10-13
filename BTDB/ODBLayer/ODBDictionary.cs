@@ -9,7 +9,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionary<TKey, TValue> : IDictionary<TKey, TValue>
+    public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>
     {
         readonly IInternalObjectDBTransaction _tr;
         readonly IFieldHandler _keyHandler;
@@ -82,49 +82,6 @@ namespace BTDB.ODBLayer
             PackUnpack.PackVUInt(_prefix, ref o, _id);
         }
 
-        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
-        {
-            bool taken = false;
-            try
-            {
-                long prevProtectionCounter = 0;
-                long pos = 0;
-                while (true)
-                {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == 0)
-                    {
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                        _keyValueTr.SetKeyPrefix(_prefix);
-                        if (!_keyValueTr.FindFirstKey()) break;
-                    }
-                    else
-                    {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindNextKey()) break;
-                        }
-                    }
-                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    var key = ByteArrayToKey(keyBytes);
-                    var value = ByteArrayToValue(valueBytes);
-                    yield return new KeyValuePair<TKey, TValue>(key, value);
-                    pos++;
-                }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
-        }
-
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
@@ -137,7 +94,7 @@ namespace BTDB.ODBLayer
 
         public void Clear()
         {
-            bool taken = false;
+            var taken = false;
             try
             {
                 _keyValueTrProtector.Start(ref taken);
@@ -613,6 +570,215 @@ namespace BTDB.ODBLayer
         public ICollection<TValue> Values
         {
             get { return _valuesCollection ?? (_valuesCollection = new ValuesCollection(this)); }
+        }
+
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
+        {
+            var taken = false;
+            try
+            {
+                long prevProtectionCounter = 0;
+                long pos = 0;
+                while (true)
+                {
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (pos == 0)
+                    {
+                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        _keyValueTr.SetKeyPrefix(_prefix);
+                        if (!_keyValueTr.FindFirstKey()) break;
+                    }
+                    else
+                    {
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        {
+                            _keyValueTr.SetKeyPrefix(_prefix);
+                            if (!_keyValueTr.SetKeyIndex(pos)) break;
+                        }
+                        else
+                        {
+                            if (!_keyValueTr.FindNextKey()) break;
+                        }
+                    }
+                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
+                    _keyValueTrProtector.Stop(ref taken);
+                    var key = ByteArrayToKey(keyBytes);
+                    var value = ByteArrayToValue(valueBytes);
+                    yield return new KeyValuePair<TKey, TValue>(key, value);
+                    pos++;
+                }
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
+
+        public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator()
+        {
+            var taken = false;
+            try
+            {
+                long prevProtectionCounter = 0;
+                long pos = long.MaxValue;
+                while (true)
+                {
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (pos == long.MaxValue)
+                    {
+                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        _keyValueTr.SetKeyPrefix(_prefix);
+                        if (!_keyValueTr.FindLastKey()) break;
+                        pos = _keyValueTr.GetKeyIndex();
+                    }
+                    else
+                    {
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        {
+                            _keyValueTr.SetKeyPrefix(_prefix);
+                            if (!_keyValueTr.SetKeyIndex(pos)) break;
+                        }
+                        else
+                        {
+                            if (!_keyValueTr.FindPreviousKey()) break;
+                        }
+                    }
+                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
+                    _keyValueTrProtector.Stop(ref taken);
+                    var key = ByteArrayToKey(keyBytes);
+                    var value = ByteArrayToValue(valueBytes);
+                    yield return new KeyValuePair<TKey, TValue>(key, value);
+                    pos--;
+                }
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
+
+        public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start)
+        {
+            var startKeyBytes = KeyToByteArray(start);
+            var taken = false;
+            try
+            {
+                long prevProtectionCounter = 0;
+                long pos = 0;
+                while (true)
+                {
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (pos == 0)
+                    {
+                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        _keyValueTr.SetKeyPrefix(_prefix);
+                        bool startOk;
+                        switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
+                        {
+                            case FindResult.Exact:
+                            case FindResult.Next:
+                                startOk = true;
+                                break;
+                            case FindResult.Previous:
+                                startOk = _keyValueTr.FindNextKey();
+                                break;
+                            case FindResult.NotFound:
+                                startOk = false;
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                        if (!startOk) break;
+                        pos = _keyValueTr.GetKeyIndex();
+                    }
+                    else
+                    {
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        {
+                            _keyValueTr.SetKeyPrefix(_prefix);
+                            if (!_keyValueTr.SetKeyIndex(pos)) break;
+                        }
+                        else
+                        {
+                            if (!_keyValueTr.FindNextKey()) break;
+                        }
+                    }
+                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
+                    _keyValueTrProtector.Stop(ref taken);
+                    var key = ByteArrayToKey(keyBytes);
+                    var value = ByteArrayToValue(valueBytes);
+                    yield return new KeyValuePair<TKey, TValue>(key, value);
+                    pos++;
+                }
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
+
+        public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start)
+        {
+            var startKeyBytes = KeyToByteArray(start);
+            var taken = false;
+            try
+            {
+                long prevProtectionCounter = 0;
+                long pos = long.MaxValue;
+                while (true)
+                {
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (pos == long.MaxValue)
+                    {
+                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        _keyValueTr.SetKeyPrefix(_prefix);
+                        bool startOk;
+                        switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
+                        {
+                            case FindResult.Exact:
+                            case FindResult.Previous:
+                                startOk = true;
+                                break;
+                            case FindResult.Next:
+                                startOk = _keyValueTr.FindPreviousKey();
+                                break;
+                            case FindResult.NotFound:
+                                startOk = false;
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                        if (!startOk) break;
+                        pos = _keyValueTr.GetKeyIndex();
+                    }
+                    else
+                    {
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        {
+                            _keyValueTr.SetKeyPrefix(_prefix);
+                            if (!_keyValueTr.SetKeyIndex(pos)) break;
+                        }
+                        else
+                        {
+                            if (!_keyValueTr.FindPreviousKey()) break;
+                        }
+                    }
+                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
+                    _keyValueTrProtector.Stop(ref taken);
+                    var key = ByteArrayToKey(keyBytes);
+                    var value = ByteArrayToValue(valueBytes);
+                    yield return new KeyValuePair<TKey, TValue>(key, value);
+                    pos--;
+                }
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
         }
     }
 }

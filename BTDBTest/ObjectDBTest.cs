@@ -11,11 +11,11 @@ using NUnit.Framework;
 namespace BTDBTest
 {
     [TestFixture]
-    public class ObjectDBTest
+    public class ObjectDbTest
     {
         IPositionLessStream _dbstream;
         IFileCollection _fileCollection;
-        IKeyValueDB _lowDB;
+        IKeyValueDB _lowDb;
         IObjectDB _db;
 
         public class Person
@@ -54,7 +54,7 @@ namespace BTDBTest
         {
             _dbstream = new MemoryPositionLessStream();
             _fileCollection = new InMemoryFileCollection();
-            OpenDB();
+            OpenDb();
         }
 
         [TearDown]
@@ -65,18 +65,18 @@ namespace BTDBTest
             _fileCollection.Dispose();
         }
 
-        void ReopenDB()
+        void ReopenDb()
         {
             _db.Dispose();
-            OpenDB();
+            OpenDb();
         }
 
-        void OpenDB()
+        void OpenDb()
         {
             //_lowDB = new KeyValueDB(_dbstream);
-            _lowDB = new KeyValue2DB(_fileCollection);
+            _lowDb = new KeyValue2DB(_fileCollection);
             _db = new ObjectDB();
-            _db.Open(_lowDB, true);
+            _db.Open(_lowDb, true);
         }
 
         [Test]
@@ -127,7 +127,7 @@ namespace BTDBTest
                 tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
@@ -161,14 +161,14 @@ namespace BTDBTest
         [Test]
         public void PersonUpgrade()
         {
-            var personObjDBName = _db.RegisterType(typeof(Person));
+            var personObjDbName = _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 tr.Store(new Person { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
-            ReopenDB();
-            _db.RegisterType(typeof(PersonNew), personObjDBName);
+            ReopenDb();
+            _db.RegisterType(typeof(PersonNew), personObjDbName);
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<PersonNew>().First();
@@ -181,14 +181,14 @@ namespace BTDBTest
         [Test]
         public void PersonDegrade()
         {
-            var personObjDBName = _db.RegisterType(typeof(PersonNew));
+            var personObjDbName = _db.RegisterType(typeof(PersonNew));
             using (var tr = _db.StartTransaction())
             {
                 tr.Store(new PersonNew { Name = "Bobris", Age = 35, Comment = "Will be lost" });
                 tr.Commit();
             }
-            ReopenDB();
-            _db.RegisterType(typeof(Person), personObjDBName);
+            ReopenDb();
+            _db.RegisterType(typeof(Person), personObjDbName);
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
@@ -252,7 +252,7 @@ namespace BTDBTest
                 Assert.AreEqual(firstOid + 2, tr.Store(new Person()));
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 Assert.AreEqual(firstOid + 3, tr.Store(new Person()));
@@ -434,7 +434,7 @@ namespace BTDBTest
             public uint UIntField { get; set; }
             public long LongField { get; set; }
             public ulong ULongField { get; set; }
-            public object DBObjectField { get; set; }
+            public object DbObjectField { get; set; }
             public VariousFieldTypes VariousFieldTypesField { get; set; }
             public bool BoolField { get; set; }
             public double DoubleField { get; set; }
@@ -462,7 +462,7 @@ namespace BTDBTest
                 Assert.AreEqual(0, o.UIntField);
                 Assert.AreEqual(0, o.LongField);
                 Assert.AreEqual(0, o.ULongField);
-                Assert.Null(o.DBObjectField);
+                Assert.Null(o.DbObjectField);
                 Assert.Null(o.VariousFieldTypesField);
                 Assert.False(o.BoolField);
                 Assert.AreEqual(0d, o.DoubleField);
@@ -483,7 +483,7 @@ namespace BTDBTest
                 o.UIntField = 100000;
                 o.LongField = -1000000000000;
                 o.ULongField = 1000000000000;
-                o.DBObjectField = o;
+                o.DbObjectField = o;
                 o.VariousFieldTypesField = o;
                 o.BoolField = true;
                 o.DoubleField = 12.34;
@@ -516,7 +516,7 @@ namespace BTDBTest
             Assert.AreEqual(100000, o.UIntField);
             Assert.AreEqual(-1000000000000, o.LongField);
             Assert.AreEqual(1000000000000, o.ULongField);
-            Assert.AreSame(o, o.DBObjectField);
+            Assert.AreSame(o, o.DbObjectField);
             Assert.AreSame(o, o.VariousFieldTypesField);
             Assert.True(o.BoolField);
             Assert.AreEqual(12.34, o.DoubleField, 1e-10);
@@ -535,7 +535,7 @@ namespace BTDBTest
         }
 
         [Test]
-        public void ListOfDBObjectsSimple()
+        public void ListOfDbObjectsSimple()
         {
             _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
@@ -617,11 +617,11 @@ namespace BTDBTest
                 root.ByteList = null;
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Empty), "VariousLists");
             using (var tr = _db.StartTransaction())
             {
-                var root = tr.Singleton<Empty>();
+                tr.Singleton<Empty>();
             }
         }
 
@@ -673,7 +673,7 @@ namespace BTDBTest
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Empty), "InlineDictionary");
             using (var tr = _db.StartTransaction())
             {
@@ -730,7 +730,7 @@ namespace BTDBTest
                 root.IntList = new List<int> { 1, 2 };
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Empty), "InlineList");
             using (var tr = _db.StartTransaction())
             {
@@ -777,11 +777,44 @@ namespace BTDBTest
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Empty), "SimpleDictionary");
             using (var tr = _db.StartTransaction())
             {
                 tr.Singleton<Empty>();
+            }
+        }
+
+        public class SimpleOrderedDictionary
+        {
+            public IOrderedDictionary<int, string> Int2String { get; set; }
+        }
+
+        [Test]
+        public void OrderedDictionaryEnumeration()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedDictionary>();
+                root.Int2String.Add(3, "C");
+                root.Int2String.Add(1, "A");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedDictionary>();
+                Assert.AreEqual("AC",root.Int2String.Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("CA", root.Int2String.GetReverseEnumerator().Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("C", root.Int2String.GetIncreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("C", root.Int2String.GetIncreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("", root.Int2String.GetIncreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("", root.Int2String.GetDecreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("A", root.Int2String.GetDecreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("A", root.Int2String.GetDecreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("CA", root.Int2String.GetDecreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("CA", root.Int2String.GetDecreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
             }
         }
 
@@ -821,7 +854,7 @@ namespace BTDBTest
                 var root = tr.Singleton<ComplexDictionary>();
                 Assert.AreEqual(0, root.String2Person.Count);
             }
-            ReopenDB();
+            ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
@@ -839,7 +872,7 @@ namespace BTDBTest
                 root.String2Person = new Dictionary<string, Person> { { "Boris", new Person { Name = "Boris", Age = 35 } }, { "null", null } };
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Empty), "ComplexDictionary");
             using (var tr = _db.StartTransaction())
             {
@@ -916,15 +949,15 @@ namespace BTDBTest
 
         void TestEnum2TestEnumUlong(TestEnum from, TestEnumUlong to)
         {
-            ReopenDB();
-            var testEnumObjDBName = _db.RegisterType(typeof(CTestEnum));
+            ReopenDb();
+            var testEnumObjDbName = _db.RegisterType(typeof(CTestEnum));
             using (var tr = _db.StartTransaction())
             {
                 tr.Store(new CTestEnum { E = from });
                 tr.Commit();
             }
-            ReopenDB();
-            _db.RegisterType(typeof(CTestEnumUlong), testEnumObjDBName);
+            ReopenDb();
+            _db.RegisterType(typeof(CTestEnumUlong), testEnumObjDbName);
             using (var tr = _db.StartTransaction())
             {
                 var e = tr.Enumerate<CTestEnumUlong>().First();
@@ -943,15 +976,15 @@ namespace BTDBTest
 
         void TestEnum2TestEnumEx(TestEnum from, TestEnumEx to)
         {
-            ReopenDB();
-            var testEnumObjDBName = _db.RegisterType(typeof(CTestEnum));
+            ReopenDb();
+            var testEnumObjDbName = _db.RegisterType(typeof(CTestEnum));
             using (var tr = _db.StartTransaction())
             {
                 tr.Store(new CTestEnum { E = from });
                 tr.Commit();
             }
-            ReopenDB();
-            _db.RegisterType(typeof(CTestEnumEx), testEnumObjDBName);
+            ReopenDb();
+            _db.RegisterType(typeof(CTestEnumEx), testEnumObjDbName);
             using (var tr = _db.StartTransaction())
             {
                 var e = tr.Enumerate<CTestEnumEx>().First();
@@ -994,14 +1027,14 @@ namespace BTDBTest
         [Test]
         public void NotStoredProperties()
         {
-            var personObjDBName = _db.RegisterType(typeof(PersonWithNonStoredProperty));
+            var personObjDbName = _db.RegisterType(typeof(PersonWithNonStoredProperty));
             using (var tr = _db.StartTransaction())
             {
                 tr.Store(new PersonWithNonStoredProperty { Name = "Bobris", Age = 35 });
                 tr.Commit();
             }
-            ReopenDB();
-            _db.RegisterType(typeof(Person), personObjDBName);
+            ReopenDb();
+            _db.RegisterType(typeof(Person), personObjDbName);
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
@@ -1123,7 +1156,7 @@ namespace BTDBTest
                 d.String2Person.Add("A", new Person { Name = "A" });
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(TwoComplexDictionary), typeName);
             using (var tr = _db.StartTransaction())
             {
@@ -1163,7 +1196,7 @@ namespace BTDBTest
                 d.Dict.Add("A",new List<ulong> { 1, 2 });
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(Object2WithDictString2ListOfUInt64), typeName);
             using (var tr = _db.StartTransaction())
             {
@@ -1215,7 +1248,7 @@ namespace BTDBTest
                 d.Dict.Add(new InlinePerson { Name = "A" }, 1);
                 tr.Commit();
             }
-            ReopenDB();
+            ReopenDb();
             _db.RegisterType(typeof(ObjectWithDictWithInlineKeyNew), singName);
             _db.RegisterType(typeof(InlinePersonNew), persName);
             using (var tr = _db.StartTransaction())

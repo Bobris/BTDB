@@ -74,7 +74,7 @@
     <Compile Include="KeyValue2DBTest.cs" />
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
-    <Compile Include="ObjectDBTest.cs" />
+    <Compile Include="ObjectDbTest.cs" />
     <Compile Include="PackUnpackTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PtrLenListTest.cs" />

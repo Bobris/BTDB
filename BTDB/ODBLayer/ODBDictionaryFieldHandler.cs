@@ -131,7 +131,13 @@ namespace BTDB.ODBLayer
         {
             if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
             if (!type.IsGenericType) return false;
-            return type.GetGenericTypeDefinition() == typeof(IDictionary<,>);
+            return IsCompatibleWithCore(type);
+        }
+
+        static bool IsCompatibleWithCore(Type type)
+        {
+            var genericTypeDefinition = type.GetGenericTypeDefinition();
+            return genericTypeDefinition == typeof(IDictionary<,>) || genericTypeDefinition == typeof(IOrderedDictionary<,>);
         }
 
         bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -141,7 +147,7 @@ namespace BTDB.ODBLayer
 
         public Type HandledType()
         {
-            return _type ?? GenerateType();
+            return _type ?? GenerateType(null);
         }
 
         public bool NeedsCtx()
@@ -216,24 +222,28 @@ namespace BTDB.ODBLayer
         public IFieldHandler SpecializeLoadForType(Type type)
         {
             if (_type != type)
-                GenerateType();
+                GenerateType(type);
             if (_type == type) return this;
-            if (type.GetGenericTypeDefinition() != typeof(IDictionary<,>)) return this;
+            if (!IsCompatibleWithCore(type)) return this;
             var arguments = type.GetGenericArguments();
             var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0]);
             var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1]);
             return new ODBDictionaryFieldHandler(_odb, _configuration, _configurationId, specializedKeyHandler, specializedValueHandler);
         }
 
-        Type GenerateType()
+        Type GenerateType(Type compatibleWith)
         {
-            return _type = typeof (IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
+            if (compatibleWith != null && compatibleWith.GetGenericTypeDefinition() == typeof(IOrderedDictionary<,>))
+            {
+                return _type = typeof(IOrderedDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
+            }
+            return _type = typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
             if (_type != type)
-                GenerateType();
+                GenerateType(type);
             return this;
         }
 
