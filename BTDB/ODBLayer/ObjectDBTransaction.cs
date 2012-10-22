@@ -230,7 +230,7 @@ namespace BTDB.ODBLayer
             if (_objBigCache != null)
             {
                 CompactObjCacheIfNeeded();
-                _objBigCache[oid]=new WeakReference(obj);
+                _objBigCache[oid] = new WeakReference(obj);
                 _objBigMetadata.Add(obj, metadata);
                 return;
             }
@@ -413,6 +413,7 @@ namespace BTDB.ODBLayer
         public ulong Store(object @object)
         {
             var ti = AutoRegisterType(@object.GetType());
+            CheckStoredInline(ti);
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -453,9 +454,18 @@ namespace BTDB.ODBLayer
             return RegisterNewObject(@object);
         }
 
+        static void CheckStoredInline(TableInfo ti)
+        {
+            if (ti.StoredInline)
+            {
+                throw new BTDBException(string.Format("Object {0} should be stored inline and not directly", ti.Name));
+            }
+        }
+
         public ulong StoreAndFlush(object @object)
         {
             var ti = AutoRegisterType(@object.GetType());
+            CheckStoredInline(ti);
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)

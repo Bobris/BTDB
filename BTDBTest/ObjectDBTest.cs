@@ -1076,6 +1076,15 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void ForbidToStoreInlinedObjectDirectly()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Throws<BTDBException>(() => tr.Store(new InlinePerson()));
+            }
+        }
+
         public class PersonWithPrivateAge
         {
             public string Name { get; set; }
