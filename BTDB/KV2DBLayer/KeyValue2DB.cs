@@ -31,7 +31,7 @@ namespace BTDB.KV2DBLayer
         readonly Dictionary<long, IBTreeRootNode> _usedBTreeRootNodes = new Dictionary<long, IBTreeRootNode>();
         readonly object _usedBTreeRootNodesLock = new object();
         readonly IFileCollectionWithFileInfos _fileCollection;
-        readonly Dictionary<long,object> _subDBs = new Dictionary<long, object>();
+        readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
 
         public KeyValue2DB(IFileCollection fileCollection)
             : this(fileCollection, new SnappyCompressionStrategy())
@@ -454,7 +454,14 @@ namespace BTDB.KV2DBLayer
                 _compactorScheduler.AdviceRunning();
             }
             btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
-            btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
+            if (_writerWithTransactionLog != null)
+            {
+                btreeRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
+            }
+            else
+            {
+                btreeRoot.TrLogOffset = 0;
+            }
         }
 
         void TryDequeWaiterForWrittingTransaction()
@@ -832,14 +839,14 @@ namespace BTDB.KV2DBLayer
             object subDB;
             if (_subDBs.TryGetValue(id, out subDB))
             {
-                if (!(subDB is T)) throw new ArgumentException(string.Format("SubDB of id {0} is not type {1}",id,typeof(T).FullName));
+                if (!(subDB is T)) throw new ArgumentException(string.Format("SubDB of id {0} is not type {1}", id, typeof(T).FullName));
                 return (T)subDB;
             }
-            if (typeof(T)==typeof(IChunkStorage))
+            if (typeof(T) == typeof(IChunkStorage))
             {
                 subDB = new ChunkStorageInKV(id, _fileCollection, MaxTrLogFileSize);
             }
-            _subDBs.Add(id,subDB);
+            _subDBs.Add(id, subDB);
             return (T)subDB;
         }
     }

@@ -23,6 +23,32 @@ namespace BTDBTest
         }
 
         [Test]
+        public void EmptyTransaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+            {
+                using (var tr = db.StartTransaction())
+                {
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
+        public void EmptyWritingTransaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+            {
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
         public void FirstTransaction()
         {
             using (var fileCollection = new InMemoryFileCollection())
