@@ -488,5 +488,11 @@ namespace BTDB.IL
             il.Emit(OpCodes.Newarr, arrayMemberType);
             return il;
         }
+
+        public static IILGen Box(this IILGen il, Type boxedType)
+        {
+            il.Emit(OpCodes.Box, boxedType);
+            return il;
+        }
     }
 }
