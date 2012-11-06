@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>BTDB</RootNamespace>
     <AssemblyName>BTDB</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TargetFrameworkProfile />
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -26,6 +26,7 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisIgnoreGeneratedCode>true</CodeAnalysisIgnoreGeneratedCode>
     <NoWarn>1720</NoWarn>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -35,6 +36,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>1720</NoWarn>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -60,6 +62,21 @@
     <Compile Include="ChunkedFile\IChunkedFile.cs" />
     <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
+    <Compile Include="EventStoreLayer\EventStoreManager.cs" />
+    <Compile Include="EventStoreLayer\IEventFileStorage.cs" />
+    <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
+    <Compile Include="EventStoreLayer\IEventStoreObserver.cs" />
+    <Compile Include="EventStoreLayer\IReadEventStore.cs" />
+    <Compile Include="EventStoreLayer\ITypeBinaryDeserializerGenerator.cs" />
+    <Compile Include="EventStoreLayer\ITypeBinarySerializerGenerator.cs" />
+    <Compile Include="EventStoreLayer\ITypeBinarySkipperGenerator.cs" />
+    <Compile Include="EventStoreLayer\ITypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\ITypeDynamicTypeIterationGenerator.cs" />
+    <Compile Include="EventStoreLayer\ITypeNameMapper.cs" />
+    <Compile Include="EventStoreLayer\IWriteEventStore.cs" />
+    <Compile Include="EventStoreLayer\MemoryEventFileStorage.cs" />
+    <Compile Include="EventStoreLayer\ReadOnlyEventStore.cs" />
+    <Compile Include="EventStoreLayer\SimpleTypeDescriptor.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
     <Compile Include="FieldHandler\DBIndirect.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
