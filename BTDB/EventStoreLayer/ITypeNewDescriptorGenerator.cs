@@ -3,7 +3,7 @@ using BTDB.IL;
 
 namespace BTDB.EventStoreLayer
 {
-    public interface ITypeDynamicTypeIterationGenerator
+    public interface ITypeNewDescriptorGenerator
     {
         void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushCtx);
     }

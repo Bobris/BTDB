@@ -13,7 +13,7 @@ namespace BTDB.EventStoreLayer
         readonly MethodInfo _skipper;
         readonly MethodInfo _saver;
 
-        public SimpleTypeDescriptor(MethodInfo loader, MethodInfo skipper, MethodInfo saver)
+        protected SimpleTypeDescriptor(MethodInfo loader, MethodInfo skipper, MethodInfo saver)
         {
             _loader = loader;
             _skipper = skipper;
@@ -27,13 +27,23 @@ namespace BTDB.EventStoreLayer
             text.Append(Name);
         }
 
+        public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
+        {
+            return ReferenceEquals(this, other);
+        }
+
+        public Type GetPreferedType()
+        {
+            return _loader.ReturnType;
+        }
+
         public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
         {
             var realType = _loader.ReturnType;
             if (realType == target) return this;
             if (target == typeof(object))
             {
-                return new BoxingDeserializerGenerator(this,realType);
+                return new BoxingDeserializerGenerator(this, realType);
             }
             return null;
         }
@@ -54,16 +64,16 @@ namespace BTDB.EventStoreLayer
                 return _typeBinaryDeserializerGenerator.LoadNeedsCtx();
             }
 
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
-                _typeBinaryDeserializerGenerator.GenerateLoad(ilGenerator,pushReaderOrCtx);
+                _typeBinaryDeserializerGenerator.GenerateLoad(ilGenerator, pushReader, pushCtx);
                 if (_realType.IsValueType)
                 {
                     ilGenerator.Box(_realType);
                 }
                 else
                 {
-                    ilGenerator.Castclass(typeof (object));
+                    ilGenerator.Castclass(typeof(object));
                 }
             }
         }
@@ -78,7 +88,7 @@ namespace BTDB.EventStoreLayer
             return this;
         }
 
-        public ITypeDynamicTypeIterationGenerator BuildDynamicTypeIterationGenerator()
+        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
             return null;
         }
@@ -88,14 +98,20 @@ namespace BTDB.EventStoreLayer
             yield break;
         }
 
+        public bool Sealed { get { return true; } }
+
+        public void ClearMappingToType()
+        {
+        }
+
         public bool LoadNeedsCtx()
         {
             return false;
         }
 
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
+            pushReader(ilGenerator);
             ilGenerator.Call(_loader);
         }
 
@@ -120,6 +136,16 @@ namespace BTDB.EventStoreLayer
             pushWriterOrCtx(ilGenerator);
             pushValue(ilGenerator);
             ilGenerator.Call(_saver);
+        }
+
+        public bool Equals(ITypeDescriptor other)
+        {
+            return ReferenceEquals(this, other);
+        }
+
+        public override int GetHashCode()
+        {
+            return Name.GetHashCode();
         }
     }
 }

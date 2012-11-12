@@ -4,14 +4,18 @@ using System.Text;
 
 namespace BTDB.EventStoreLayer
 {
-    public interface ITypeDescriptor
+    public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
     {
         string Name { get; }
         void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack);
+        bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack);
+        Type GetPreferedType();
         ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target);
         ITypeBinarySkipperGenerator BuildBinarySkipperGenerator();
         ITypeBinarySerializerGenerator BuildBinarySerializerGenerator();
-        ITypeDynamicTypeIterationGenerator BuildDynamicTypeIterationGenerator();
+        ITypeNewDescriptorGenerator BuildNewDescriptorGenerator();
         IEnumerable<ITypeDescriptor> NestedTypes();
+        bool Sealed { get; }
+        void ClearMappingToType();
     }
 }
