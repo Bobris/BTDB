@@ -494,5 +494,12 @@ namespace BTDB.IL
             il.Emit(OpCodes.Box, boxedType);
             return il;
         }
+
+        public static IILGen Unbox(this IILGen il, Type valueType)
+        {
+            if (!valueType.IsValueType) throw new ArgumentException("Unboxed could be only valuetype");
+            il.Emit(OpCodes.Unbox, valueType);
+            return il;
+        }
     }
 }

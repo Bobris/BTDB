@@ -84,6 +84,7 @@
     <Compile Include="ConnectedServiceTest.cs" />
     <Compile Include="SnappyTest.cs" />
     <Compile Include="TcpipClientServerChannelTest.cs" />
+    <Compile Include="TypeSerializersTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BTDB\BTDB.csproj">

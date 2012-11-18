@@ -22,6 +22,10 @@ namespace BTDB.EventStoreLayer
 
         public abstract string Name { get; }
 
+        public void FinishBuildFromType(ITypeDescriptorFactory factory)
+        {
+        }
+
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
         {
             text.Append(Name);
@@ -98,6 +102,10 @@ namespace BTDB.EventStoreLayer
             yield break;
         }
 
+        public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+        }
+
         public bool Sealed { get { return true; } }
 
         public void ClearMappingToType()
@@ -131,9 +139,9 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
             ilGenerator.Call(_saver);
         }
