@@ -23,7 +23,26 @@ namespace BTDBTest
             var writer = new ByteBufferWriter();
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, "Hello");
             _mapping.StoreObject(writer, "Hello");
-            _mapping.CommitNewDescriptors(storedDescriptorCtx);
+            Assert.Null(storedDescriptorCtx);
+            _mapping.CommitNewDescriptors(null);
+            var reader = new ByteBufferReader(writer.Data);
+            var obj = _mapping.LoadObject(reader);
+            Assert.AreEqual("Hello", obj);
         }
+
+        [Test]
+        public void CanSerializeInt()
+        {
+            var writer = new ByteBufferWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, 12345);
+            _mapping.StoreObject(writer, 12345);
+            Assert.Null(storedDescriptorCtx);
+            _mapping.CommitNewDescriptors(null);
+            var reader = new ByteBufferReader(writer.Data);
+            var obj = _mapping.LoadObject(reader);
+            Assert.AreEqual(12345, (int)obj);
+        }
+
+
     }
 }

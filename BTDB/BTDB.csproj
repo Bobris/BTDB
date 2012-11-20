@@ -67,6 +67,8 @@
     <Compile Include="EventStoreLayer\IEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IEventStoreObserver.cs" />
+    <Compile Include="EventStoreLayer\VInt16TypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\VInt32TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\Int8TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\IReadEventStore.cs" />
     <Compile Include="EventStoreLayer\ITypeBinaryDeserializerGenerator.cs" />
@@ -87,9 +89,11 @@
     <Compile Include="EventStoreLayer\TypeCategory.cs" />
     <Compile Include="EventStoreLayer\TypeSerializers.cs" />
     <Compile Include="EventStoreLayer\TypeSerializersMapping.cs" />
-    <Compile Include="EventStoreLayer\Uint8TypeDescriptor.cs" />
-    <Compile Include="EventStoreLayer\VIntTypeDescriptor.cs" />
-    <Compile Include="EventStoreLayer\VuIntTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\VUInt16TypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\VUInt32TypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\UInt8TypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\VInt64TypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\VUInt64TypeDescriptor.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
     <Compile Include="FieldHandler\DBIndirect.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />

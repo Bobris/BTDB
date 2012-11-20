@@ -82,6 +82,32 @@ namespace BTDB.StreamLayer
             SkipUInt8();
         }
 
+        public short ReadVInt16()
+        {
+            var res = ReadVInt64();
+            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(string.Format("Reading VInt16 overflowed with {0}", res));
+            return (short)res;
+        }
+
+        public void SkipVInt16()
+        {
+            var res = ReadVInt64();
+            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(string.Format("Skipping VInt16 overflowed with {0}", res));
+        }
+
+        public ushort ReadVUInt16()
+        {
+            var res = ReadVUInt64();
+            if (res > ushort.MaxValue) throw new InvalidDataException(string.Format("Reading VUInt16 overflowed with {0}", res));
+            return (ushort)res;
+        }
+
+        public void SkipVUInt16()
+        {
+            var res = ReadVUInt64();
+            if (res > ushort.MaxValue) throw new InvalidDataException(string.Format("Skipping VUInt16 overflowed with {0}", res));
+        }
+
         public int ReadVInt32()
         {
             var res = ReadVInt64();

@@ -102,6 +102,8 @@ namespace BTDB.EventStoreLayer
             {
                 throw new NotImplementedException();
             }
+
+            public bool SomeTypeStored { get; private set; }
         }
 
         public void StoreObject(AbstractBufferedWriter writer, object obj)

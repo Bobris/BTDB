@@ -3,9 +3,9 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    class Uint8TypeDescriptor : SimpleTypeDescriptor
+    class UInt8TypeDescriptor : SimpleTypeDescriptor
     {
-        public Uint8TypeDescriptor()
+        public UInt8TypeDescriptor()
             : base(EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadUInt8()),
                    EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipUInt8()),
                    EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteUInt8(0)))

@@ -3,9 +3,9 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    class VuIntTypeDescriptor : SimpleTypeDescriptor
+    class VUInt64TypeDescriptor : SimpleTypeDescriptor
     {
-        public VuIntTypeDescriptor()
+        public VUInt64TypeDescriptor()
             : base(EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVUInt64()),
                    EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVUInt64()),
                    EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVUInt64(0)))
@@ -14,7 +14,7 @@ namespace BTDB.EventStoreLayer
 
         public override string Name
         {
-            get { return "VUInt"; }
+            get { return "VUInt64"; }
         }
     }
 }

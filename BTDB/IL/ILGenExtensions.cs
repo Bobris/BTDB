@@ -501,5 +501,11 @@ namespace BTDB.IL
             il.Emit(OpCodes.Unbox, valueType);
             return il;
         }
+
+        public static IILGen UnboxAny(this IILGen il, Type anyType)
+        {
+            il.Emit(OpCodes.Unbox_Any, anyType);
+            return il;
+        }
     }
 }

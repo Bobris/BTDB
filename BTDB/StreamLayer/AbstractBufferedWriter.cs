@@ -63,6 +63,16 @@ namespace BTDB.StreamLayer
             Buf[Pos++] = (byte)(value + 128);
         }
 
+        public void WriteVInt16(short value)
+        {
+            WriteVInt64(value);
+        }
+
+        public void WriteVUInt16(ushort value)
+        {
+            WriteVUInt64(value);
+        }
+
         public void WriteVInt32(int value)
         {
             WriteVInt64(value);

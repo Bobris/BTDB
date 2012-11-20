@@ -10,7 +10,6 @@ namespace BTDB.EventStoreLayer
     internal class TypeSerializers : ITypeSerializers
     {
         public static readonly List<ITypeDescriptor> PredefinedTypes = new List<ITypeDescriptor>();
-        static readonly Dictionary<Type, int> PredefinedAdditionalTypes = new Dictionary<Type, int>();
         ITypeNameMapper _typeNameMapper;
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<IDescriptorSerializerContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<IDescriptorSerializerContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -22,14 +21,14 @@ namespace BTDB.EventStoreLayer
         static TypeSerializers()
         {
             PredefinedTypes.Add(new StringTypeDescriptor());
-            PredefinedTypes.Add(new Uint8TypeDescriptor());
             PredefinedTypes.Add(new Int8TypeDescriptor());
-            PredefinedAdditionalTypes.Add(typeof(short), PredefinedTypes.Count);
-            PredefinedAdditionalTypes.Add(typeof(int), PredefinedTypes.Count);
-            PredefinedTypes.Add(new VIntTypeDescriptor());
-            PredefinedAdditionalTypes.Add(typeof(ushort), PredefinedTypes.Count);
-            PredefinedAdditionalTypes.Add(typeof(uint), PredefinedTypes.Count);
-            PredefinedTypes.Add(new VuIntTypeDescriptor());
+            PredefinedTypes.Add(new UInt8TypeDescriptor());
+            PredefinedTypes.Add(new VInt16TypeDescriptor());
+            PredefinedTypes.Add(new VUInt16TypeDescriptor());
+            PredefinedTypes.Add(new VInt32TypeDescriptor());
+            PredefinedTypes.Add(new VUInt32TypeDescriptor());
+            PredefinedTypes.Add(new VInt64TypeDescriptor());
+            PredefinedTypes.Add(new VUInt64TypeDescriptor());
         }
 
         public TypeSerializers()
@@ -122,10 +121,6 @@ namespace BTDB.EventStoreLayer
             {
                 yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferedType(), predefinedType);
             }
-            foreach (var predefinedAdditionalType in PredefinedAdditionalTypes)
-            {
-                yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedAdditionalType.Key, PredefinedTypes[predefinedAdditionalType.Value]);
-            }
         }
 
         public Func<AbstractBufferedReader, object> GetLoader(ITypeDescriptor descriptor)
@@ -183,13 +178,9 @@ namespace BTDB.EventStoreLayer
                 {
                     ilgen.Ldarg(1);
                     var type = descriptor.GetPreferedType();
-                    if (type.IsValueType)
+                    if (type != typeof(object))
                     {
-                        ilgen.Unbox(type);
-                    }
-                    else if (type != typeof(object))
-                    {
-                        ilgen.Castclass(type);
+                        ilgen.UnboxAny(type);
                     }
                 });
             il.Ret();
