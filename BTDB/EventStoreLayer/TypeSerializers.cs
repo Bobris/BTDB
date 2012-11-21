@@ -63,6 +63,7 @@ namespace BTDB.EventStoreLayer
         {
             readonly ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap;
             readonly Dictionary<Type, ITypeDescriptor> _temporaryMap = new Dictionary<Type, ITypeDescriptor>();
+            readonly Dictionary<ITypeDescriptor,ITypeDescriptor> _remap = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
             public BuildFromTypeCtx(ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap)
             {
@@ -90,7 +91,28 @@ namespace BTDB.EventStoreLayer
 
             public void MergeTypesByShape()
             {
-                throw new NotImplementedException();
+                foreach (var typeDescriptor in _temporaryMap)
+                {
+                    var d = typeDescriptor.Value;
+                    foreach (var existingTypeDescriptor in _type2DescriptorMap)
+                    {
+                        if (d.Equals(existingTypeDescriptor.Value))
+                        {
+                            _remap[d] = existingTypeDescriptor.Value;
+                            break;
+                        }
+                    }
+                }
+                foreach (var typeDescriptor in _temporaryMap)
+                {
+                    var d = typeDescriptor.Value;
+                    d.MapNestedTypes(desc=>
+                        {
+                            ITypeDescriptor res;
+                            if (_remap.TryGetValue(desc, out res)) return res;
+                            return desc;
+                        });
+                }
             }
 
             public ITypeDescriptor GetFinalDescriptor(Type type)
@@ -98,6 +120,8 @@ namespace BTDB.EventStoreLayer
                 ITypeDescriptor result;
                 if (_temporaryMap.TryGetValue(type, out result))
                 {
+                    ITypeDescriptor result2;
+                    if (_remap.TryGetValue(result, out result2)) return result2;
                     return result;
                 }
                 throw new InvalidOperationException();
