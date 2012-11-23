@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using BTDB.IL;
 
 namespace BTDB.EventStoreLayer
 {
@@ -100,12 +102,31 @@ namespace BTDB.EventStoreLayer
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
-            throw new NotImplementedException();
+            if (_fields.Select(p => p.Value).All(d => d.Sealed)) return null;
+            return new TypeNewDescriptorGenerator(this);
+        }
+
+        internal class TypeNewDescriptorGenerator : ITypeNewDescriptorGenerator
+        {
+            readonly ObjectTypeDescriptor _objectTypeDescriptor;
+
+            public TypeNewDescriptorGenerator(ObjectTypeDescriptor objectTypeDescriptor)
+            {
+                _objectTypeDescriptor = objectTypeDescriptor;
+            }
+
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushCtx)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         public IEnumerable<ITypeDescriptor> NestedTypes()
         {
-            throw new NotImplementedException();
+            foreach (var pair in _fields)
+            {
+                yield return pair.Value;
+            }
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)

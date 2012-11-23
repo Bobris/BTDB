@@ -80,18 +80,34 @@ namespace BTDB.EventStoreLayer
                 if (ctx == null) ctx = new DescriptorSerializerContext(this);
                 action(ctx);
             }
-            return ctx;
+            if (ctx != null && ctx.SomeTypeStored)
+            {
+                foreach (var d2IPair in ctx.Descriptor2IdMap)
+                {
+                    writer.WriteVUInt32((uint) d2IPair.Value);
+                    _typeSerializers.StoreDescriptor(d2IPair.Key, writer, ctx.Descriptor2Id);
+                }
+                return ctx;
+            }
+            return null;
         }
 
         public void CommitNewDescriptors(IDescriptorSerializerContext context)
         {
             if (context == null) return;
-            throw new NotImplementedException();
+            var ctx = (DescriptorSerializerContext)context;
+            _id2DescriptorMap.AddRange(ctx.Id2DescriptorMap);
+            foreach (var d2IPair in ctx.Descriptor2IdMap)
+            {
+                _descriptor2IdMap[d2IPair.Key] = d2IPair.Value;
+            }
         }
 
         internal class DescriptorSerializerContext : IDescriptorSerializerContext
         {
             readonly TypeSerializersMapping _typeSerializersMapping;
+            internal readonly List<ITypeDescriptor> Id2DescriptorMap = new List<ITypeDescriptor>();
+            internal readonly Dictionary<ITypeDescriptor, int> Descriptor2IdMap = new Dictionary<ITypeDescriptor, int>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
             public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping)
             {
@@ -100,7 +116,20 @@ namespace BTDB.EventStoreLayer
 
             public void AddDescriptor(ITypeDescriptor descriptor)
             {
-                throw new NotImplementedException();
+                Descriptor2IdMap.Add(descriptor, _typeSerializersMapping._id2DescriptorMap.Count + Id2DescriptorMap.Count);
+                Id2DescriptorMap.Add(descriptor);
+                SomeTypeStored = true;
+            }
+
+            public uint Descriptor2Id(ITypeDescriptor descriptor)
+            {
+                if (descriptor == null) return 0;
+                int id;
+                if (Descriptor2IdMap.TryGetValue(descriptor, out id))
+                    return (uint) id;
+                if (_typeSerializersMapping._descriptor2IdMap.TryGetValue(descriptor, out id))
+                    return (uint) id;
+                throw new InvalidOperationException();
             }
 
             public bool SomeTypeStored { get; private set; }

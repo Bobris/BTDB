@@ -235,5 +235,11 @@ namespace BTDB.EventStoreLayer
         {
             return new TypeSerializersMapping(this);
         }
+
+        public void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
+        {
+            writer.WriteUInt8((byte) TypeCategory.Class);
+            throw new NotImplementedException();
+        }
     }
 }
