@@ -67,6 +67,7 @@
     <Compile Include="EventStoreLayer\IEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IEventStoreObserver.cs" />
+    <Compile Include="EventStoreLayer\IPersistTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\VInt16TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\VInt32TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\Int8TypeDescriptor.cs" />

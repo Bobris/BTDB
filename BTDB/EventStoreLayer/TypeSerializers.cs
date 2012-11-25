@@ -51,7 +51,7 @@ namespace BTDB.EventStoreLayer
             ITypeDescriptor result;
             lock (_buildTypeLock)
             {
-                var buildFromTypeCtx = new BuildFromTypeCtx(_type2DescriptorMap);
+                var buildFromTypeCtx = new BuildFromTypeCtx(this, _type2DescriptorMap);
                 buildFromTypeCtx.Create(type);
                 buildFromTypeCtx.MergeTypesByShape();
                 result = buildFromTypeCtx.GetFinalDescriptor(type);
@@ -61,12 +61,14 @@ namespace BTDB.EventStoreLayer
 
         class BuildFromTypeCtx : ITypeDescriptorFactory
         {
+            readonly TypeSerializers _typeSerializers;
             readonly ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap;
             readonly Dictionary<Type, ITypeDescriptor> _temporaryMap = new Dictionary<Type, ITypeDescriptor>();
-            readonly Dictionary<ITypeDescriptor,ITypeDescriptor> _remap = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+            readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remap = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
-            public BuildFromTypeCtx(ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap)
+            public BuildFromTypeCtx(TypeSerializers typeSerializers, ConcurrentDictionary<Type, ITypeDescriptor> type2DescriptorMap)
             {
+                _typeSerializers = typeSerializers;
                 _type2DescriptorMap = type2DescriptorMap;
             }
 
@@ -81,7 +83,7 @@ namespace BTDB.EventStoreLayer
                 }
                 else
                 {
-                    result = new ObjectTypeDescriptor(type);
+                    result = new ObjectTypeDescriptor(_typeSerializers, type);
                 }
                 _temporaryMap[type] = result;
                 if (result != null)
@@ -106,7 +108,7 @@ namespace BTDB.EventStoreLayer
                 foreach (var typeDescriptor in _temporaryMap)
                 {
                     var d = typeDescriptor.Value;
-                    d.MapNestedTypes(desc=>
+                    d.MapNestedTypes(desc =>
                         {
                             ITypeDescriptor res;
                             if (_remap.TryGetValue(desc, out res)) return res;
@@ -238,8 +240,9 @@ namespace BTDB.EventStoreLayer
 
         public void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
         {
-            writer.WriteUInt8((byte) TypeCategory.Class);
-            throw new NotImplementedException();
+            writer.WriteUInt8((byte)TypeCategory.Class);
+            var p = descriptor as IPersistTypeDescriptor;
+            p.Persist(writer, (w, d) => w.WriteVUInt32(descriptor2Id(d)));
         }
     }
 }

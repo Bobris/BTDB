@@ -1,19 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class ObjectTypeDescriptor : ITypeDescriptor
+    internal class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
+        readonly TypeSerializers _typeSerializers;
         Type _type;
         string _name;
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
 
-        public ObjectTypeDescriptor(Type type)
+        public ObjectTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
+            _typeSerializers = typeSerializers;
             _type = type;
             Sealed = _type.IsSealed;
             _name = type.FullName;
@@ -87,7 +91,43 @@ namespace BTDB.EventStoreLayer
 
         public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
         {
-            throw new NotImplementedException();
+            return new Deserializer(this, target);
+        }
+
+        internal class Deserializer : ITypeBinaryDeserializerGenerator
+        {
+            readonly ObjectTypeDescriptor _objectTypeDescriptor;
+            readonly Type _target;
+
+            public Deserializer(ObjectTypeDescriptor objectTypeDescriptor, Type target)
+            {
+                _objectTypeDescriptor = objectTypeDescriptor;
+                _target = target;
+            }
+
+            public bool LoadNeedsCtx()
+            {
+                return false;
+            }
+
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            {
+                var resultLoc = ilGenerator.DeclareLocal(_target, "result");
+                ilGenerator
+                    .Newobj(_target.GetConstructor(Type.EmptyTypes))
+                    .Stloc(resultLoc);
+                var props = _target.GetProperties();
+                foreach (var pair in _objectTypeDescriptor._fields)
+                {
+                    var prop = props.FirstOrDefault(p => p.Name == pair.Key);
+                    if (prop == null) continue;
+                    var des = pair.Value.BuildBinaryDeserializerGenerator(prop.PropertyType);
+                    ilGenerator.Ldloc(resultLoc);
+                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
+                    ilGenerator.Callvirt(prop.GetSetMethod());
+                }
+                ilGenerator.Ldloc(resultLoc);
+            }
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
@@ -144,6 +184,17 @@ namespace BTDB.EventStoreLayer
         public void ClearMappingToType()
         {
             _type = null;
+        }
+
+        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        {
+            writer.WriteString(Name);
+            writer.WriteVUInt32((uint)_fields.Count);
+            foreach (var pair in _fields)
+            {
+                writer.WriteString(pair.Key);
+                nestedDescriptorPersistor(writer, pair.Value);
+            }
         }
     }
 }

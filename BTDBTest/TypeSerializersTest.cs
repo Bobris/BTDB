@@ -74,7 +74,7 @@ namespace BTDBTest
         }
 
         [Test, Ignore]
-        public void CanSerializeSinpleDto()
+        public void CanSerializeSimpleDto()
         {
             var writer = new ByteBufferWriter();
             var value = new SimpleDto { IntField = 42, StringField = "Hello" };
