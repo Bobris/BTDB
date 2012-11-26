@@ -22,9 +22,9 @@ namespace BTDBTest
         {
             var writer = new ByteBufferWriter();
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, "Hello");
-            _mapping.StoreObject(writer, "Hello");
-            Assert.Null(storedDescriptorCtx);
-            _mapping.CommitNewDescriptors(null);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, "Hello");
+            storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
             Assert.AreEqual("Hello", obj);
@@ -35,9 +35,9 @@ namespace BTDBTest
         {
             var writer = new ByteBufferWriter();
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, 12345);
-            _mapping.StoreObject(writer, 12345);
-            Assert.Null(storedDescriptorCtx);
-            _mapping.CommitNewDescriptors(null);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, 12345);
+            storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
             Assert.AreEqual(12345, obj);
@@ -59,9 +59,9 @@ namespace BTDBTest
         {
             var writer = new ByteBufferWriter();
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            _mapping.StoreObject(writer, value);
-            Assert.Null(storedDescriptorCtx);
-            _mapping.CommitNewDescriptors(null);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, value);
+            storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
             Assert.AreEqual(value, obj);
@@ -79,9 +79,11 @@ namespace BTDBTest
             var writer = new ByteBufferWriter();
             var value = new SimpleDto { IntField = 42, StringField = "Hello" };
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            _mapping.StoreObject(writer, value);
-            _mapping.CommitNewDescriptors(storedDescriptorCtx);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, value);
+            storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
+            _mapping.LoadTypeDescriptors(reader);
             var obj = _mapping.LoadObject(reader);
             Assert.AreEqual(value, obj);
         }

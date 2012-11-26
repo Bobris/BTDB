@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
+    internal class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;
@@ -137,7 +137,7 @@ namespace BTDB.EventStoreLayer
 
         public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -194,6 +194,29 @@ namespace BTDB.EventStoreLayer
             {
                 writer.WriteString(pair.Key);
                 nestedDescriptorPersistor(writer, pair.Value);
+            }
+        }
+
+        public bool SaveNeedsCtx()
+        {
+            return false;
+        }
+
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        {
+            var locValue = ilGenerator.DeclareLocal(_type, "value");
+            ilGenerator
+                .Do(pushValue)
+                .Stloc(locValue);
+            foreach (var pairi in _fields)
+            {
+                var pair = pairi;
+                var generator = pair.Value.BuildBinarySerializerGenerator();
+                generator.GenerateSave(ilGenerator, pushWriter, pushCtx, il =>
+                    {
+                        il.Ldloc(locValue);
+                        il.Callvirt(_type.GetProperty(pair.Key).GetGetMethod());
+                    });
             }
         }
     }
