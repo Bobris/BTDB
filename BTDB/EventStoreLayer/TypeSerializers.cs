@@ -244,5 +244,17 @@ namespace BTDB.EventStoreLayer
             var p = descriptor as IPersistTypeDescriptor;
             p.Persist(writer, (w, d) => w.WriteVUInt32(descriptor2Id(d)));
         }
+
+        public ITypeDescriptor MergeDescriptor(ITypeDescriptor descriptor)
+        {
+            foreach (var existingTypeDescriptor in _type2DescriptorMap)
+            {
+                if (descriptor.Equals(existingTypeDescriptor.Value))
+                {
+                    return existingTypeDescriptor.Value;
+                }
+            }
+            return descriptor;
+        }
     }
 }

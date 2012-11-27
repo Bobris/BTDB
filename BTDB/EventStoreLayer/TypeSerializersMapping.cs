@@ -32,13 +32,14 @@ namespace BTDB.EventStoreLayer
             var typeId = reader.ReadVUInt32();
             while (typeId != 0)
             {
-                var typeCategory = (TypeCategory) reader.ReadUInt8();
+                var typeCategory = (TypeCategory)reader.ReadUInt8();
+                ITypeDescriptor descriptor = null;
                 switch (typeCategory)
                 {
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        
+                        descriptor = new ObjectTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.List:
                         break;
@@ -47,8 +48,19 @@ namespace BTDB.EventStoreLayer
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+                descriptor = _typeSerializers.MergeDescriptor(descriptor);
+                _id2DescriptorMap.Add(descriptor);
+                _descriptor2IdMap[descriptor] = (int)typeId;
                 typeId = reader.ReadVUInt32();
             }
+        }
+
+        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        {
+            var typeId = reader.ReadVUInt32();
+            if (typeId < _id2DescriptorMap.Count)
+                return _id2DescriptorMap[(int) typeId];
+            throw new NotImplementedException();
         }
 
         public object LoadObject(AbstractBufferedReader reader)

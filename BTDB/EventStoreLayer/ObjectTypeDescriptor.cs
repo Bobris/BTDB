@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using BTDB.IL;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
@@ -23,9 +24,22 @@ namespace BTDB.EventStoreLayer
             _name = type.FullName;
         }
 
+        public ObjectTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        {
+            _typeSerializers = typeSerializers;
+            _type = null;
+            Sealed = false;
+            _name = reader.ReadString();
+            var fieldCount = reader.ReadVUInt32();
+            while (fieldCount-- > 0)
+            {
+                _fields.Add(new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
+            }
+        }
+
         public bool Equals(ITypeDescriptor other)
         {
-            return Equals(other, new HashSet<ITypeDescriptor>());
+            return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
         public string Name

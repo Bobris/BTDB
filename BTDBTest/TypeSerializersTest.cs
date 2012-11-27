@@ -73,7 +73,7 @@ namespace BTDBTest
             public int IntField { get; set; }
         }
 
-        [Test, Ignore]
+        [Test]
         public void CanSerializeSimpleDto()
         {
             var writer = new ByteBufferWriter();
@@ -84,8 +84,9 @@ namespace BTDBTest
             storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             _mapping.LoadTypeDescriptors(reader);
-            var obj = _mapping.LoadObject(reader);
-            Assert.AreEqual(value, obj);
+            var obj = (SimpleDto)_mapping.LoadObject(reader);
+            Assert.AreEqual(value.IntField, obj.IntField);
+            Assert.AreEqual(value.StringField, obj.StringField);
         }
 
     }
