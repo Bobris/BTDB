@@ -27,7 +27,10 @@ namespace BTDB.IOC
         {
             ICReg reg;
             var bestConstructor = ContainerImpl.FindBestConstructor(_implementationType);
-            if (bestConstructor == null) return;
+            if (bestConstructor == null)
+            {
+                throw new ArgumentException(string.Format("Cannot find public constructor for {0}", _implementationType.FullName));
+            }
             switch (_liveScopeTrait.Lifetime)
             {
                 case Lifetime.AlwaysNew:

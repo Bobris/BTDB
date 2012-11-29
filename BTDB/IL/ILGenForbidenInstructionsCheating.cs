@@ -53,7 +53,7 @@ namespace BTDB.IL
                     paramTypesWithoutResult = paramTypes.ToArray();
                     if (isFunction) paramTypes.Add(_methodInfo.ReturnType);
                     _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
-                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Public | FieldAttributes.Static);
+                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Private | FieldAttributes.Static);
                     _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, _methodInfo.ReturnType, paramTypesWithoutResult);
                 }
                 else if (_constructorInfo != null)
@@ -62,10 +62,12 @@ namespace BTDB.IL
                     var paramTypes = new List<Type>();
                     paramTypes.AddRange(_constructorInfo.GetParameters().Select(p => p.ParameterType));
                     paramTypesWithoutResult = paramTypes.ToArray();
-                    paramTypes.Add(_constructorInfo.DeclaringType);
+
+                    var accesibleConstructorType = _constructorInfo.DeclaringType.IsPublic ? _constructorInfo.DeclaringType : typeof (object);
+                    paramTypes.Add(accesibleConstructorType);
                     _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
-                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Public | FieldAttributes.Static);
-                    _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, _constructorInfo.DeclaringType, paramTypesWithoutResult);
+                    _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Private | FieldAttributes.Static);
+                    _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, accesibleConstructorType, paramTypesWithoutResult);
                 }
                 else throw new InvalidOperationException();
                 var ilGen = new ILGenImpl(_staticMethod.GetILGenerator(), new ILGenForbidenInstructionsGodPowers());
@@ -97,7 +99,7 @@ namespace BTDB.IL
                 else if (_opCode == OpCodes.Newobj) il.Newobj(_constructorInfo);
                 else throw new InvalidOperationException();
                 il.Ret();
-                finalType.GetField("_" + _name, BindingFlags.Public | BindingFlags.Static).SetValue(null, method.Create());
+                finalType.GetField("_" + _name, BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, method.Create());
             }
 
             public bool Equals(Call other)
@@ -144,7 +146,7 @@ namespace BTDB.IL
         {
             if (opCode == OpCodes.Newobj)
             {
-                if (!constructorInfo.IsPublic)
+                if (!constructorInfo.IsPublic || !constructorInfo.DeclaringType.IsPublic)
                 {
                     var call = new Call(opCode, constructorInfo);
                     if (!_calls.Contains(call))

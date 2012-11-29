@@ -113,7 +113,9 @@ namespace BTDBTest
 
         public class SpecialCase
         {
-            public SpecialCase(IErrorHandler simple, IDatabase complex) { }
+            public SpecialCase(IErrorHandler simple, IDatabase complex)
+            {
+            }
         }
 
         [Test]
@@ -328,7 +330,7 @@ namespace BTDBTest
         public void RegisterAssemblyTypes()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly);
+            builder.RegisterAssemblyTypes(typeof (Logger).Assembly);
             var container = builder.Build();
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
@@ -338,7 +340,8 @@ namespace BTDBTest
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").AsImplementedInterfaces();
+            builder.RegisterAssemblyTypes(typeof (Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
+                AsImplementedInterfaces();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -350,7 +353,8 @@ namespace BTDBTest
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").AsImplementedInterfaces().SingleInstance();
+            builder.RegisterAssemblyTypes(typeof (Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
+                AsImplementedInterfaces().SingleInstance();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -407,7 +411,7 @@ namespace BTDBTest
             builder.RegisterInstance("two").Keyed<string>(true);
             var container = builder.Build();
             var result = container.ResolveKeyed<IEnumerable<string>>(true);
-            Assert.AreEqual(new[] { "one", "two" }, result.ToArray());
+            Assert.AreEqual(new[] {"one", "two"}, result.ToArray());
         }
 
         [Test]
@@ -489,7 +493,7 @@ namespace BTDBTest
 
         static void AssertTwoLoggers(IEnumerable<string> enumTypes)
         {
-            Assert.AreEqual(new[] { "Logger1", "Logger2" }, enumTypes);
+            Assert.AreEqual(new[] {"Logger1", "Logger2"}, enumTypes);
         }
 
         [Test]
@@ -556,7 +560,7 @@ namespace BTDBTest
             var container = BuildContainerWithTwoLoggersAndTwoStrings();
             var tuples = container.Resolve<IEnumerable<Tuple<ILogger, string>>>();
             var names = tuples.Select(t => t.Item1.GetType().Name + t.Item2);
-            Assert.AreEqual(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
+            Assert.AreEqual(new[] {"Logger1A", "Logger1B", "Logger2A", "Logger2B"}, names);
         }
 
         [Test]
@@ -567,7 +571,40 @@ namespace BTDBTest
             var enumTypes = tuples.Select(t => t.Item1.GetType().Name);
             AssertTwoLoggers(enumTypes);
             var names = tuples.SelectMany(t => t.Item2);
-            Assert.AreEqual(new[] { "A", "B", "A", "B" }, names);
+            Assert.AreEqual(new[] {"A", "B", "A", "B"}, names);
         }
+
+        class PrivateLogger : ILogger
+        {
+            public PrivateLogger()
+            {
+            }
+        }
+
+        [Test]
+        public void CanInstantiatePrivateClassAsSingleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<PrivateLogger>().As<ILogger>().SingleInstance();
+            var container = builder.Build();
+            var log1 = container.Resolve<ILogger>();
+            Assert.NotNull(log1);
+        }
+
+        public class PublicClassWithPrivateConstructor : ILogger
+        {
+            private PublicClassWithPrivateConstructor()
+            {
+            }
+        }
+
+        [Test]
+        public void BuildingContainerWithRegisteredTypeWithPrivateConstructorShouldThrow()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<PublicClassWithPrivateConstructor>().As<ILogger>();
+            Assert.Throws<ArgumentException>(() => builder.Build());
+        }
+
     }
 }

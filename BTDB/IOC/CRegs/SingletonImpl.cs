@@ -107,7 +107,8 @@ namespace BTDB.IOC.CRegs
                 return localSingleton;
             }
             var localSingletons = context.GetSpecific<SingletonsLocal>().MainLocal;
-            localSingleton = il.DeclareLocal(_implementationType, "singleton");
+            var safeImplementationType = _implementationType.IsPublic ? _implementationType : typeof (object);
+            localSingleton = il.DeclareLocal(safeImplementationType, "singleton");
             var obj = context.Container.Singletons[_singletonIndex];
             if (obj != null)
             {
@@ -130,7 +131,7 @@ namespace BTDB.IOC.CRegs
                 .LdcI4(_singletonIndex)
                 .LdelemRef()
                 .Dup()
-                .Castclass(_implementationType)
+                .Castclass(safeImplementationType)
                 .Stloc(localSingleton)
                 .Brtrue(labelNull1)
                 .LdcI4(0)
@@ -150,7 +151,7 @@ namespace BTDB.IOC.CRegs
                 .LdcI4(_singletonIndex)
                 .LdelemRef()
                 .Dup()
-                .Castclass(_implementationType)
+                .Castclass(safeImplementationType)
                 .Stloc(localSingleton)
                 .Brtrue(labelNotNull2);
             buildCRegLocals.Push();

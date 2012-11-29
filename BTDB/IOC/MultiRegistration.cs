@@ -27,6 +27,7 @@ namespace BTDB.IOC
                     if (type.IsGenericTypeDefinition) continue;
                     if (type.IsDelegate()) continue;
                     if (!_scanTrait.MatchFilter(type)) continue;
+                    if (ContainerImpl.FindBestConstructor(type) == null) continue;
                     ((IContanerRegistration)new SingleRegistration(type,_asTrait,_liveScopeTrait)).Register(context);
                 }
             }
