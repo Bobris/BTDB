@@ -62,6 +62,8 @@
     <Compile Include="ChunkedFile\IChunkedFile.cs" />
     <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
+    <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
+    <Compile Include="EventStoreLayer\BlockType.cs" />
     <Compile Include="EventStoreLayer\EventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IDescriptorSerializerContext.cs" />
     <Compile Include="EventStoreLayer\IEventFileStorage.cs" />

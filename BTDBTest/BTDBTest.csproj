@@ -59,6 +59,7 @@
     <Compile Include="AbstractBufferedReaderWriterTest.cs" />
     <Compile Include="ChunkStorageTest.cs" />
     <Compile Include="DiskChunkCacheTest.cs" />
+    <Compile Include="EventStoreTest.cs" />
     <Compile Include="ILExtensionsTest.cs" />
     <Compile Include="IOCDomain\Authenticator.cs" />
     <Compile Include="IOCDomain\Database.cs" />

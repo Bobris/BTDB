@@ -2,12 +2,10 @@ namespace BTDB.EventStoreLayer
 {
     public class EventStoreManager : IEventStoreManager
     {
-        ITypeNameMapper _mapper;
         readonly TypeSerializers _typeSerializers = new TypeSerializers();
 
         public void SetNewTypeNameMapper(ITypeNameMapper mapper)
         {
-            _mapper = mapper;
             _typeSerializers.SetTypeNameMapper(mapper);
         }
 
@@ -18,12 +16,12 @@ namespace BTDB.EventStoreLayer
 
         public IReadEventStore OpenReadOnlyStore(IEventFileStorage file)
         {
-            return new ReadOnlyEventStore(this, file);
+            return new ReadOnlyEventStore(file, _typeSerializers.CreateMapping());
         }
 
         public IWriteEventStore AppendToStore(IEventFileStorage file)
         {
-            throw new System.NotImplementedException();
+            return new AppendingEventStore(file, _typeSerializers.CreateMapping());
         }
     }
 }

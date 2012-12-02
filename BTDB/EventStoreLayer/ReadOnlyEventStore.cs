@@ -5,31 +5,18 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    [Flags]
-    enum BlockType : byte
+    public class ReadOnlyEventStore : IReadEventStore
     {
-        FirstBlock = 1,
-        MiddleBlock = 2,
-        LastBlock = 4,
-        HasTypeDeclaration = 8,
-        HasMetadata = 16,
-        HasOneEvent = 32,
-        HasMoreEvents = 64,
-    }
-
-    internal class ReadOnlyEventStore : IReadEventStore
-    {
-        readonly EventStoreManager _eventStoreManager;
-        readonly IEventFileStorage _file;
-        ulong _nextReadPosition;
+        protected readonly IEventFileStorage _file;
+        protected readonly ITypeSerializersMapping _mapping;
+        protected ulong _nextReadPosition;
         const int FirstReadAhead = 4096;
-        const byte StartBlockMagic = 248;
+        public const byte StartBlockMagic = 248;
 
-
-        public ReadOnlyEventStore(EventStoreManager eventStoreManager, IEventFileStorage file)
+        public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
         {
-            _eventStoreManager = eventStoreManager;
             _file = file;
+            _mapping = mapping;
             if (_file.MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
         }
 
@@ -38,7 +25,6 @@ namespace BTDB.EventStoreLayer
             _nextReadPosition = 0;
             return ReadToEnd(observer);
         }
-
 
         public async Task ReadToEnd(IEventStoreObserver observer)
         {
@@ -128,9 +114,29 @@ namespace BTDB.EventStoreLayer
             var reader = new ByteBufferReader(block);
             if (blockType.HasFlag(BlockType.HasTypeDeclaration))
             {
-                
+                _mapping.LoadTypeDescriptors(reader);
             }
-            throw new NotImplementedException();
+            var metadata = blockType.HasFlag(BlockType.HasMetadata) ? _mapping.LoadObject(reader) : null;
+            var readEvents = observer.ObservedMetadata(metadata);
+            if (!readEvents) return;
+            if (blockType.HasFlag(BlockType.HasOneEvent))
+            {
+                observer.ObservedEvents(new[] { _mapping.LoadObject(reader) });
+            }
+            else if (blockType.HasFlag(BlockType.HasMoreEvents))
+            {
+                var eventCount = reader.ReadVUInt32();
+                var events = new object[eventCount];
+                for (var i = 0; i < eventCount; i++)
+                {
+                    events[i] = _mapping.LoadObject(reader);
+                }
+                observer.ObservedEvents(events);
+            }
+            else
+            {
+                observer.ObservedEvents(new object[0]);
+            }
         }
 
         void SetCorrupted()
