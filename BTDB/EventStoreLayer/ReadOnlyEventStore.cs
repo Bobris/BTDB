@@ -117,26 +117,27 @@ namespace BTDB.EventStoreLayer
                 _mapping.LoadTypeDescriptors(reader);
             }
             var metadata = blockType.HasFlag(BlockType.HasMetadata) ? _mapping.LoadObject(reader) : null;
-            var readEvents = observer.ObservedMetadata(metadata);
-            if (!readEvents) return;
+            uint eventCount;
             if (blockType.HasFlag(BlockType.HasOneEvent))
             {
-                observer.ObservedEvents(new[] { _mapping.LoadObject(reader) });
+                eventCount = 1;
             }
             else if (blockType.HasFlag(BlockType.HasMoreEvents))
             {
-                var eventCount = reader.ReadVUInt32();
-                var events = new object[eventCount];
-                for (var i = 0; i < eventCount; i++)
-                {
-                    events[i] = _mapping.LoadObject(reader);
-                }
-                observer.ObservedEvents(events);
+                eventCount = reader.ReadVUInt32();
             }
             else
             {
-                observer.ObservedEvents(new object[0]);
+                eventCount = 0;
             }
+            var readEvents = observer.ObservedMetadata(metadata,eventCount);
+            if (!readEvents) return;
+            var events = new object[eventCount];
+            for (var i = 0; i < eventCount; i++)
+            {
+                events[i] = _mapping.LoadObject(reader);
+            }
+            observer.ObservedEvents(events);
         }
 
         void SetCorrupted()

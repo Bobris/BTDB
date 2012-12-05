@@ -18,10 +18,15 @@ namespace BTDBTest
         IKeyValueDB _lowDb;
         IObjectDB _db;
 
-        public class Person
+        public class Person : IEquatable<Person>
         {
             public string Name { get; set; }
             public uint Age { get; set; }
+
+            public bool Equals(Person other)
+            {
+                return Name == other.Name && Age == other.Age;
+            }
         }
 
         public class PersonWithNonStoredProperty

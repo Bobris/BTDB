@@ -115,12 +115,6 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public void CommitNewDescriptors(IDescriptorSerializerContext context)
-        {
-            if (context == null) return;
-            var ctx = (DescriptorSerializerContext)context;
-        }
-
         internal class DescriptorSerializerContext : IDescriptorSerializerContext
         {
             readonly TypeSerializersMapping _typeSerializersMapping;
@@ -151,6 +145,15 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
+            public bool TryDescriptor2Id(ITypeDescriptor descriptor, out int typeId)
+            {
+                if (Descriptor2IdMap.TryGetValue(descriptor, out typeId))
+                    return true;
+                if (_typeSerializersMapping._descriptor2IdMap.TryGetValue(descriptor, out typeId))
+                    return true;
+                return false;
+            }
+
             public bool SomeTypeStored
             {
                 get { return Id2DescriptorMap.Count != 0; }
@@ -158,7 +161,31 @@ namespace BTDB.EventStoreLayer
 
             public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object obj)
             {
-                throw new NotImplementedException();
+                if (obj == null) return this;
+                var countAtStart = Id2DescriptorMap.Count; 
+                int typeId;
+                var objType = obj.GetType();
+                Action<IDescriptorSerializerContext> action;
+                var descriptor = _typeSerializers.DescriptorOf(objType);
+                if (TryDescriptor2Id(descriptor, out typeId))
+                {
+                    action = _typeSerializers.GetNewDescriptorSaver(descriptor);
+                }
+                else
+                {
+                    AddDescriptor(descriptor);
+                    action = _typeSerializers.GetNewDescriptorSaver(descriptor);
+                }
+                if (action != null)
+                {
+                    action(this);
+                }
+                for (int i = countAtStart; i < Id2DescriptorMap.Count; i++)
+                {
+                    writer.WriteVUInt32((uint) (i + _typeSerializersMapping._id2DescriptorMap.Count));
+                    _typeSerializers.StoreDescriptor(Id2DescriptorMap[i], writer, Descriptor2Id);
+                }
+                return this;
             }
 
             public void CommitNewDescriptors()
