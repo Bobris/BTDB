@@ -606,5 +606,44 @@ namespace BTDBTest
             Assert.Throws<ArgumentException>(() => builder.Build());
         }
 
+        public class HardCycle1 : ICycle1
+        {
+            readonly ICycle2 _cycle2;
+
+            public HardCycle1(ICycle2 cycle2)
+            {
+                _cycle2 = cycle2;
+            }
+
+            public ICycle2 Cycle2Prop
+            {
+                get { return _cycle2; }
+            }
+        }
+
+        public class HardCycle2 : ICycle2
+        {
+            readonly ICycle1 _cycle1;
+
+            public HardCycle2(ICycle1 cycle1)
+            {
+                _cycle1 = cycle1;
+            }
+
+            public ICycle1 Cycle1Prop
+            {
+                get { return _cycle1; }
+            }
+        }
+
+        [Test]
+        public void ResolvingHardCycleShouldThrowException()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<HardCycle1>().As<ICycle1>().SingleInstance();
+            builder.RegisterType<HardCycle2>().As<ICycle2>().SingleInstance();
+            var container = builder.Build();
+            Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle1>());
+        }
     }
 }

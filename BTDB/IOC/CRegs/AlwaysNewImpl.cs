@@ -24,10 +24,12 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(IGenerationContext context)
         {
+            context.PushToCycleDetector(this,_implementationType.ToSimpleName());
             foreach (var regILGen in GetNeeds(context).Select(context.ResolveNeed))
             {
                 regILGen.GenInitialization(context);
             }
+            context.PopFromCycleDetector();
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)

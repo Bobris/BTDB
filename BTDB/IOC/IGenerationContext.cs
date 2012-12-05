@@ -15,5 +15,7 @@ namespace BTDB.IOC
         void PushToILStack(IEnumerable<INeed> needs);
         bool AnyCorruptingStack(IEnumerable<INeed> needs);
         ICRegILGen ResolveNeed(INeed need);
+        void PushToCycleDetector(ICReg reg, string name);
+        void PopFromCycleDetector();
     }
 }

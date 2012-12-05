@@ -14,6 +14,7 @@ namespace BTDB.IOC
         readonly Dictionary<Type, object> _specifics = new Dictionary<Type, object>();
         readonly ParameterInfo[] _parameterInfos;
         readonly List<Tuple<object,Type>> _constants = new List<Tuple<object, Type>>();
+        readonly Stack<Tuple<ICReg,string>> _cycleDetectionStack = new Stack<Tuple<ICReg, string>>();
 
         public GenerationContext(ContainerImpl container, ICRegILGen registration, IBuildContext buildContext)
         {
@@ -133,6 +134,20 @@ namespace BTDB.IOC
         public ICRegILGen ResolveNeed(INeed need)
         {
             return _resolvers[new Tuple<IBuildContext, INeed>(_buildContext, need)];
+        }
+
+        public void PushToCycleDetector(ICReg reg, string name)
+        {
+            if (_cycleDetectionStack.Any(t=>t.Item1==reg))
+            {
+                throw new InvalidOperationException("Cycle detected in registrations: "+string.Join(", ",_cycleDetectionStack.Select(t=>t.Item2))+". Consider using Lazy<> to break cycle.");
+            }
+            _cycleDetectionStack.Push(new Tuple<ICReg, string>(reg,name));
+        }
+
+        public void PopFromCycleDetector()
+        {
+            _cycleDetectionStack.Pop();
         }
 
         readonly Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen> _resolvers = new Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen>(Comparer.Instance);
