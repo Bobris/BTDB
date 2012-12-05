@@ -64,6 +64,7 @@ namespace BTDB.Service
             readonly Socket _socket;
             readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
             readonly ISubject<Unit> _connector = new FastBehaviourSubject<Unit>();
+            readonly object _sendlock = new object();
             bool _disconnected;
 
             public Client(Socket socket)
@@ -91,7 +92,11 @@ namespace BTDB.Service
                 int o = 0;
                 PackUnpack.PackVUInt(vuBuf, ref o, (uint)data.Length);
                 SocketError socketError;
-                _socket.Send(new[] { new ArraySegment<byte>(vuBuf), data.ToArraySegment() }, SocketFlags.None, out socketError);
+                lock (_sendlock)
+                {
+                    _socket.Send(new[] { new ArraySegment<byte>(vuBuf), data.ToArraySegment() }, SocketFlags.None,
+                                 out socketError);
+                }
                 if (socketError == SocketError.Success) return;
                 if (!IsConnected())
                 {
