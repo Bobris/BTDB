@@ -14,6 +14,9 @@ namespace BTDB.ODBLayer
         object Singleton(Type type);
         T Singleton<T>() where T : class;
 
+        object New(Type type);
+        T New<T>() where T : class;
+
         ulong Store(object @object);
         ulong StoreAndFlush(object @object);
         void Delete(object @object);

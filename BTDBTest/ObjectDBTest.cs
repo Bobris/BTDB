@@ -808,7 +808,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleOrderedDictionary>();
-                Assert.AreEqual("AC",root.Int2String.Aggregate("", (current, p) => current + p.Value));
+                Assert.AreEqual("AC", root.Int2String.Aggregate("", (current, p) => current + p.Value));
                 Assert.AreEqual("CA", root.Int2String.GetReverseEnumerator().Aggregate("", (current, p) => current + p.Value));
                 Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
                 Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
@@ -1207,7 +1207,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<ObjectWithDictString2ListOfUInt64>();
-                d.Dict.Add("A",new List<ulong> { 1, 2 });
+                d.Dict.Add("A", new List<ulong> { 1, 2 });
                 tr.Commit();
             }
             ReopenDb();
@@ -1220,6 +1220,25 @@ namespace BTDBTest
         }
 
         [Test]
+        public void PossibleToAllocateNewPreinitializedObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.New<Object2WithDictString2ListOfUInt64>();
+                Assert.NotNull(d.Dict);
+                Assert.Null(d.Added);
+                d.Added = "Stored";
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Enumerate<Object2WithDictString2ListOfUInt64>().First();
+                Assert.NotNull(d.Dict);
+                Assert.AreEqual("Stored", d.Added);
+            }
+        }
+
+        [Test]
         public void BiggerTransactionWithGC()
         {
             using (var tr = _db.StartTransaction())
@@ -1227,7 +1246,7 @@ namespace BTDBTest
                 for (uint i = 0; i < 100; i++)
                 {
                     tr.StoreAndFlush(new Person { Name = "Bobris", Age = i });
-                    if (i==90)
+                    if (i == 90)
                     {
                         GC.Collect();
                     }

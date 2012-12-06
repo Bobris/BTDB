@@ -15,8 +15,8 @@ namespace BTDB.ODBLayer
     {
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
-        long _transactionNumber;
-        bool _knowTransactionNumber;
+        readonly long _transactionNumber;
+        readonly bool _knowTransactionNumber;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
 
         Dictionary<ulong, object> _objSmallCache;
@@ -161,11 +161,10 @@ namespace BTDB.ODBLayer
                     var o = GetObjFromObjCacheByOid(oid);
                     if (o != null)
                     {
-                        if (type == null || type.IsAssignableFrom(o.GetType()))
+                        if (type == null || type.IsInstanceOfType(o))
                         {
                             _keyValueTrProtector.Stop(ref taken);
                             yield return o;
-                            continue;
                         }
                         continue;
                     }
@@ -192,7 +191,7 @@ namespace BTDB.ODBLayer
             foreach (var dObjPair in dirtyObjsToEnum)
             {
                 object obj = dObjPair.Value;
-                if (type != null && !type.IsAssignableFrom(obj.GetType())) continue;
+                if (type != null && !type.IsInstanceOfType(obj)) continue;
                 yield return obj;
             }
         }
@@ -383,7 +382,7 @@ namespace BTDB.ODBLayer
             }
             if (obj != null)
             {
-                if (!type.IsAssignableFrom(obj.GetType()))
+                if (!type.IsInstanceOfType(obj))
                 {
                     throw new BTDBException(string.Format("Internal error oid {0} does not belong to {1}", oid, tableInfo.Name));
                 }
@@ -408,6 +407,28 @@ namespace BTDB.ODBLayer
         public T Singleton<T>() where T : class
         {
             return (T)Singleton(typeof(T));
+        }
+
+        public object New(Type type)
+        {
+            var tableInfo = AutoRegisterType(type);
+            tableInfo.EnsureClientTypeVersion();
+            var oid = 0ul;
+            if (!tableInfo.StoredInline) oid = _owner.AllocateNewOid();
+            var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
+            var obj = tableInfo.Creator(this, metadata);
+            tableInfo.Initializer(this, metadata, obj);
+            if (oid != 0)
+            {
+                AddToObjCache(oid, obj, metadata);
+                AddToDirtySet(oid, obj);
+            }
+            return obj;
+        }
+
+        public T New<T>() where T : class
+        {
+            return (T)New(typeof(T));
         }
 
         public ulong Store(object @object)
