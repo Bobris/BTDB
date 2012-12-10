@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BTDB.EventStoreLayer;
 using NUnit.Framework;
@@ -55,6 +56,40 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver).Wait();
             Assert.AreEqual(new object[] { metadata }, eventObserver.Metadata);
             Assert.AreEqual(new[] { events }, eventObserver.Events);
+        }
+
+        [Test]
+        public void CanWriteSimpleEventAndReadItIndependently()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new TypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var person = new ObjectDbTest.Person { Name = "A", Age = 1 };
+            appender.Store(null, new object[] { person }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new TypeMapper());
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
+            Assert.AreEqual(new[] { new object[] { person } }, eventObserver.Events);
+        }
+
+        public class TypeMapper : ITypeNameMapper
+        {
+            public string ToName(Type type)
+            {
+                if (type == typeof(ObjectDbTest.Person)) return "Person";
+                throw new ArgumentOutOfRangeException();
+            }
+
+            public Type ToType(string name)
+            {
+                if (name == "Person") return typeof (ObjectDbTest.Person);
+                throw new ArgumentOutOfRangeException();
+            }
         }
     }
 }

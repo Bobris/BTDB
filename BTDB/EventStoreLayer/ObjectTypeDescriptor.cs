@@ -21,7 +21,7 @@ namespace BTDB.EventStoreLayer
             _typeSerializers = typeSerializers;
             _type = type;
             Sealed = _type.IsSealed;
-            _name = type.FullName;
+            _name = typeSerializers.TypeToName(type);
         }
 
         public ObjectTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)

@@ -256,5 +256,12 @@ namespace BTDB.EventStoreLayer
             }
             return descriptor;
         }
+
+        public string TypeToName(Type type)
+        {
+            var typeNameMapper = _typeNameMapper;
+            if (typeNameMapper == null) return type.FullName;
+            return typeNameMapper.ToName(type);
+        }
     }
 }
