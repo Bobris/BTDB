@@ -172,7 +172,8 @@ namespace BTDBTest
             var il = method.Generator;
             il
                 .LdcI4(42)
-                .Newobj(typeof (PrivateConstructor).GetConstructors(BindingFlags.NonPublic|BindingFlags.Instance)[0]);
+                .Newobj(typeof (PrivateConstructor).GetConstructors(BindingFlags.NonPublic|BindingFlags.Instance)[0])
+                .Ret();
             Assert.AreEqual(42, method.Create()().A);
         }
 

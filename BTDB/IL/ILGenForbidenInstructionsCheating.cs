@@ -41,7 +41,7 @@ namespace BTDB.IL
 
             public void GenerateStaticParts(TypeBuilder typeBuilder)
             {
-                _name = string.Format("{0}_{1}", _opCode, _methodInfo);
+                _name = string.Format("{0}_{1}", _opCode, (object)_methodInfo ?? _constructorInfo);
                 Type[] paramTypesWithoutResult;
                 if (_methodInfo != null)
                 {
@@ -63,7 +63,8 @@ namespace BTDB.IL
                     paramTypes.AddRange(_constructorInfo.GetParameters().Select(p => p.ParameterType));
                     paramTypesWithoutResult = paramTypes.ToArray();
 
-                    var accesibleConstructorType = _constructorInfo.DeclaringType.IsPublic ? _constructorInfo.DeclaringType : typeof (object);
+                    var constructorType = _constructorInfo.DeclaringType;
+                    var accesibleConstructorType = IsPublicReal(constructorType) ? constructorType : typeof(object);
                     paramTypes.Add(accesibleConstructorType);
                     _delegateType = genDelType.MakeGenericType(paramTypes.ToArray());
                     _fieldBuilder = typeBuilder.DefineField("_" + _name, _delegateType, FieldAttributes.Private | FieldAttributes.Static);
@@ -146,7 +147,7 @@ namespace BTDB.IL
         {
             if (opCode == OpCodes.Newobj)
             {
-                if (!constructorInfo.IsPublic || !constructorInfo.DeclaringType.IsPublic)
+                if (!constructorInfo.IsPublic || !IsPublicReal(constructorInfo.DeclaringType))
                 {
                     var call = new Call(opCode, constructorInfo);
                     if (!_calls.Contains(call))
@@ -167,6 +168,11 @@ namespace BTDB.IL
             {
                 call.FinishType(finalType);
             }
+        }
+
+        internal static bool IsPublicReal(Type constructorType)
+        {
+            return constructorType.IsPublic || constructorType.IsNestedPublic && IsPublicReal(constructorType.DeclaringType);
         }
     }
 }
