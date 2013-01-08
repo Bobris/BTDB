@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -121,7 +120,7 @@ namespace BTDB.EventStoreLayer
 
             public bool LoadNeedsCtx()
             {
-                return false;
+                return !_objectTypeDescriptor._fields.All(p => p.Value.StoredInline) || _objectTypeDescriptor._fields.Any(p => p.Value.BuildBinaryDeserializerGenerator(p.Value.GetPreferedType()).LoadNeedsCtx());
             }
 
             public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
@@ -134,11 +133,29 @@ namespace BTDB.EventStoreLayer
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
                     var prop = props.FirstOrDefault(p => p.Name == pair.Key);
-                    if (prop == null) continue;
-                    var des = pair.Value.BuildBinaryDeserializerGenerator(prop.PropertyType);
-                    ilGenerator.Ldloc(resultLoc);
-                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
-                    ilGenerator.Callvirt(prop.GetSetMethod());
+                    if (prop == null)
+                    {
+                        var skipper = pair.Value.BuildBinarySkipperGenerator();
+                        skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
+                        continue;
+                    }
+                    if (pair.Value.StoredInline)
+                    {
+                        var des = pair.Value.BuildBinaryDeserializerGenerator(prop.PropertyType);
+                        ilGenerator.Ldloc(resultLoc);
+                        des.GenerateLoad(ilGenerator, pushReader, pushCtx);
+                        ilGenerator.Callvirt(prop.GetSetMethod());
+                    }
+                    else
+                    {
+                        ilGenerator
+                            .Ldloc(resultLoc)
+                            .Do(pushCtx)
+                            .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
+                            .Castclass(prop.PropertyType)
+                            .Callvirt(prop.GetSetMethod());
+                        
+                    }
                 }
                 ilGenerator.Ldloc(resultLoc);
             }
@@ -160,7 +177,7 @@ namespace BTDB.EventStoreLayer
             return new TypeNewDescriptorGenerator(this);
         }
 
-        internal class TypeNewDescriptorGenerator : ITypeNewDescriptorGenerator
+        class TypeNewDescriptorGenerator : ITypeNewDescriptorGenerator
         {
             readonly ObjectTypeDescriptor _objectTypeDescriptor;
 
@@ -169,9 +186,18 @@ namespace BTDB.EventStoreLayer
                 _objectTypeDescriptor = objectTypeDescriptor;
             }
 
-            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushCtx)
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx)
             {
-                throw new NotImplementedException();
+                foreach (var pair in _objectTypeDescriptor._fields)
+                {
+                    if (pair.Value.Sealed) continue;
+                    ilGenerator
+                        .Do(pushCtx)
+                        .Do(pushObj)
+                        .Castclass(_objectTypeDescriptor._type)
+                        .Callvirt(_objectTypeDescriptor._type.GetProperty(pair.Key).GetGetMethod())
+                        .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
+                }
             }
         }
 
@@ -195,6 +221,8 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get; private set; }
 
+        public bool StoredInline { get; private set; }
+
         public void ClearMappingToType()
         {
             _type = null;
@@ -213,7 +241,7 @@ namespace BTDB.EventStoreLayer
 
         public bool SaveNeedsCtx()
         {
-            return false;
+            return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.BuildBinarySerializerGenerator().SaveNeedsCtx());
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
@@ -225,12 +253,20 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                var generator = pair.Value.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx, il =>
-                    {
-                        il.Ldloc(locValue);
-                        il.Callvirt(_type.GetProperty(pair.Key).GetGetMethod());
-                    });
+                if (pair.Value.StoredInline)
+                {
+                    var generator = pair.Value.BuildBinarySerializerGenerator();
+                    generator.GenerateSave(ilGenerator, pushWriter, pushCtx,
+                        il => il.Ldloc(locValue).Callvirt(_type.GetProperty(pair.Key).GetGetMethod()));
+                }
+                else
+                {
+                    ilGenerator
+                        .Do(pushCtx)
+                        .Ldloc(locValue)
+                        .Callvirt(_type.GetProperty(pair.Key).GetGetMethod())
+                        .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
+                }
             }
         }
     }

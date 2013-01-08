@@ -40,16 +40,28 @@ namespace BTDBTest
             }
         }
 
+        public class User : IEquatable<User>
+        {
+            public string Name { get; set; }
+            public int Age { get; set; }
+
+            public bool Equals(User other)
+            {
+                if (other == null) return false;
+                return Name == other.Name && Age == other.Age;
+            }
+        }
+
         [Test]
         public void CanWriteMultipleEventsWithMetadata()
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            var metadata = new ObjectDbTest.Person { Name = "A", Age = 1 };
+            var metadata = new User { Name = "A", Age = 1 };
             var events = new object[]
                 {
-                    new ObjectDbTest.Person { Name = "B", Age = 2 },
-                    new ObjectDbTest.Person { Name = "C", Age = 3 }
+                    new User { Name = "B", Age = 2 },
+                    new User { Name = "C", Age = 3 }
                 };
             appender.Store(metadata, events).Wait();
             var eventObserver = new StoringEventObserver();
@@ -62,34 +74,80 @@ namespace BTDBTest
         public void CanWriteSimpleEventAndReadItIndependently()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new TypeMapper());
+            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var person = new ObjectDbTest.Person { Name = "A", Age = 1 };
-            appender.Store(null, new object[] { person }).Wait();
+            var user = new User { Name = "A", Age = 1 };
+            appender.Store(null, new object[] { user }).Wait();
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new TypeMapper());
+            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver).Wait();
             Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { person } }, eventObserver.Events);
+            Assert.AreEqual(new[] { new object[] { user } }, eventObserver.Events);
         }
 
-        public class TypeMapper : ITypeNameMapper
+        public class SimplePersonTypeMapper : ITypeNameMapper
         {
             public string ToName(Type type)
             {
-                if (type == typeof(ObjectDbTest.Person)) return "Person";
+                if (type == typeof(User)) return "User";
                 throw new ArgumentOutOfRangeException();
             }
 
             public Type ToType(string name)
             {
-                if (name == "Person") return typeof (ObjectDbTest.Person);
+                if (name == "User") return typeof(User);
                 throw new ArgumentOutOfRangeException();
             }
+        }
+
+        public class GenericTypeMapper : ITypeNameMapper
+        {
+            public string ToName(Type type)
+            {
+                return type.FullName;
+            }
+
+            public Type ToType(string name)
+            {
+                return Type.GetType(name, false);
+            }
+        }
+
+        public class UserEvent : IEquatable<UserEvent>
+        {
+            public long Id { get; set; }
+            public User User1 { get; set; }
+            public User User2 { get; set; }
+
+            public bool Equals(UserEvent other)
+            {
+                if (Id != other.Id) return false;
+                if (User1 != other.User1 && (User1 == null || !User1.Equals(other.User1))) return false;
+                return User2 == other.User2 || (User2 != null && User2.Equals(other.User2));
+            }
+        }
+
+        [Test]
+        public void NestedObjectsTest()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var userEvent = new UserEvent { Id = 10, User1 = new User { Name = "A", Age = 1 } };
+            appender.Store(null, new object[] { userEvent }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
+            Assert.AreEqual(new[] { new object[] { userEvent } }, eventObserver.Events);
         }
     }
 }

@@ -5,6 +5,7 @@ namespace BTDB.EventStoreLayer
 {
     public interface ITypeNewDescriptorGenerator
     {
-        void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushCtx);
+        // ctx is IDescriptorSerializerLiteContext type
+        void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx);
     }
 }

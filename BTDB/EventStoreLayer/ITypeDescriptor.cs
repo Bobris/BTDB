@@ -18,6 +18,7 @@ namespace BTDB.EventStoreLayer
         IEnumerable<ITypeDescriptor> NestedTypes();
         void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map);
         bool Sealed { get; }
+        bool StoredInline { get; }
         void ClearMappingToType();
     }
 }

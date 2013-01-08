@@ -2,6 +2,11 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
+    public interface IDescriptorSerializerLiteContext
+    {
+        void StoreNewDescriptors(object obj);
+    }
+
     public interface IDescriptorSerializerContext
     {
         bool SomeTypeStored { get; }

@@ -6,6 +6,6 @@ namespace BTDB.EventStoreLayer
     public interface ITypeBinarySkipperGenerator
     {
         bool SkipNeedsCtx();
-        void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
+        void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx);
     }
 }

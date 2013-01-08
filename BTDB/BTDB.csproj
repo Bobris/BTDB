@@ -70,6 +70,10 @@
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IEventStoreObserver.cs" />
     <Compile Include="EventStoreLayer\IPersistTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\ITypeBinaryDeserializerContext.cs" />
+    <Compile Include="EventStoreLayer\ITypeBinarySerializerContext.cs" />
+    <Compile Include="EventStoreLayer\ITypeSerializersId2LoaderMapping.cs" />
+    <Compile Include="EventStoreLayer\ITypeSerializersLightMapping.cs" />
     <Compile Include="EventStoreLayer\VInt16TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\VInt32TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\Int8TypeDescriptor.cs" />

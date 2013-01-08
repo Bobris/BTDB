@@ -108,6 +108,8 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get { return true; } }
 
+        public bool StoredInline { get { return true; } }
+
         public void ClearMappingToType()
         {
         }
@@ -128,9 +130,9 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
+            pushReader(ilGenerator);
             ilGenerator.Call(_skipper);
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -11,12 +12,13 @@ namespace BTDB.EventStoreLayer
     {
         public static readonly List<ITypeDescriptor> PredefinedTypes = new List<ITypeDescriptor>();
         ITypeNameMapper _typeNameMapper;
-        readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
-        readonly ConcurrentDictionary<ITypeDescriptor, Action<IDescriptorSerializerContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<IDescriptorSerializerContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>();
         ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap = new ConcurrentDictionary<Type, ITypeDescriptor>(ReferenceEqualityComparer<Type>.Instance);
         readonly object _buildTypeLock = new object();
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>> _simpleSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>> _complexSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         static TypeSerializers()
         {
@@ -54,6 +56,7 @@ namespace BTDB.EventStoreLayer
                 var buildFromTypeCtx = new BuildFromTypeCtx(this, _type2DescriptorMap);
                 buildFromTypeCtx.Create(type);
                 buildFromTypeCtx.MergeTypesByShape();
+                buildFromTypeCtx.SetNewDescriptors();
                 result = buildFromTypeCtx.GetFinalDescriptor(type);
             }
             return result;
@@ -114,6 +117,7 @@ namespace BTDB.EventStoreLayer
                             if (_remap.TryGetValue(desc, out res)) return res;
                             return desc;
                         });
+
                 }
             }
 
@@ -127,6 +131,17 @@ namespace BTDB.EventStoreLayer
                     return result;
                 }
                 throw new InvalidOperationException();
+            }
+
+            public void SetNewDescriptors()
+            {
+                foreach (var typeDescriptor in _temporaryMap)
+                {
+                    var d = typeDescriptor.Value;
+                    ITypeDescriptor result;
+                    if (_remap.TryGetValue(d, out result)) continue;
+                    _type2DescriptorMap.TryAdd(d.GetPreferedType(), d);
+                }
             }
         }
 
@@ -149,28 +164,34 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public Func<AbstractBufferedReader, object> GetLoader(ITypeDescriptor descriptor)
+        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> GetLoader(ITypeDescriptor descriptor)
         {
             return _loaders.GetOrAdd(descriptor, LoaderFactory);
         }
 
-        Func<AbstractBufferedReader, object> LoaderFactory(ITypeDescriptor descriptor)
+        Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> LoaderFactory(ITypeDescriptor descriptor)
         {
             var loadAsType = descriptor.GetPreferedType() ??
                              (_typeNameMapper != null ? _typeNameMapper.ToType(descriptor.Name) : typeof(object))
                              ?? typeof(object);
             var loadDeserializer = descriptor.BuildBinaryDeserializerGenerator(loadAsType);
-            var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, object>>("DeserializerFor" + descriptor.Name);
+            var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             if (loadDeserializer.LoadNeedsCtx())
             {
-                var localCtx = il.DeclareLocal(typeof(List<object>), "ctx");
+                var localCtx = il.DeclareLocal(typeof(ITypeBinaryDeserializerContext), "ctx");
+                var haveCtx = il.DefineLabel();
                 il
-                    .Newobj(() => new List<object>())
+                    .Ldarg(1)
                     .Dup()
                     .Stloc(localCtx)
-                    .Ldnull()
-                    .Callvirt(() => ((List<object>)null).Add(null));
+                    .Brtrue(haveCtx)
+                    .Ldarg(0)
+                    .Ldarg(2)
+                    .Newobj(() => new DeserializerCtx(null, null))
+                    .Castclass(typeof (ITypeBinaryDeserializerContext))
+                    .Stloc(localCtx)
+                    .Mark(haveCtx);
                 loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
             }
             else
@@ -187,6 +208,32 @@ namespace BTDB.EventStoreLayer
             }
             il.Ret();
             return methodBuilder.Create();
+        }
+
+        public class DeserializerCtx : ITypeBinaryDeserializerContext
+        {
+            readonly AbstractBufferedReader _reader;
+            readonly ITypeSerializersId2LoaderMapping _mapping;
+
+            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping)
+            {
+                _reader = reader;
+                _mapping = mapping;
+            }
+
+            public object LoadObject()
+            {
+                var typeId = _reader.ReadVUInt32();
+                if (typeId == 0)
+                {
+                    return null;
+                }
+                if (typeId == 1)
+                {
+                    throw new NotImplementedException();
+                }
+                return _mapping.GetLoader(typeId)(_reader, this, _mapping);
+            }
         }
 
         public Action<AbstractBufferedWriter, object> GetSimpleSaver(ITypeDescriptor descriptor)
@@ -213,19 +260,46 @@ namespace BTDB.EventStoreLayer
             return method.Create();
         }
 
-        public Action<IDescriptorSerializerContext> GetNewDescriptorSaver(ITypeDescriptor descriptor)
+        public Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> GetComplexSaver(ITypeDescriptor descriptor)
+        {
+            return _complexSavers.GetOrAdd(descriptor, NewComplexSaver);
+        }
+
+        Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> NewComplexSaver(ITypeDescriptor descriptor)
+        {
+            var generator = descriptor.BuildBinarySerializerGenerator();
+            var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(descriptor.Name + "ComplexSaver");
+            var il = method.Generator;
+            generator.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
+            {
+                ilgen.Ldarg(2);
+                var type = descriptor.GetPreferedType();
+                if (type != typeof(object))
+                {
+                    ilgen.UnboxAny(type);
+                }
+            });
+            il.Ret();
+            return method.Create();
+        }
+
+        public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor)
         {
             return _newDescriptorSavers.GetOrAdd(descriptor, NewDescriptorSaverFactory);
         }
 
-        Action<IDescriptorSerializerContext> NewDescriptorSaverFactory(ITypeDescriptor descriptor)
+        Action<object, IDescriptorSerializerLiteContext> NewDescriptorSaverFactory(ITypeDescriptor descriptor)
         {
             var gen = descriptor.BuildNewDescriptorGenerator();
             if (gen == null)
             {
                 return null;
             }
-            throw new NotImplementedException();
+            var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
+            var il = method.Generator;
+            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1));
+            il.Ret();
+            return method.Create();
         }
 
         public TypeCategory GetTypeCategory(ITypeDescriptor descriptor)
