@@ -126,9 +126,16 @@ namespace BTDB.EventStoreLayer
             public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
                 var resultLoc = ilGenerator.DeclareLocal(_target, "result");
+                var labelNoCtx = ilGenerator.DefineLabel();
                 ilGenerator
                     .Newobj(_target.GetConstructor(Type.EmptyTypes))
-                    .Stloc(resultLoc);
+                    .Stloc(resultLoc)
+                    .Do(pushCtx)
+                    .BrfalseS(labelNoCtx)
+                    .Do(pushCtx)
+                    .Ldloc(resultLoc)
+                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
+                    .Mark(labelNoCtx);
                 var props = _target.GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
@@ -154,7 +161,7 @@ namespace BTDB.EventStoreLayer
                             .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
                             .Castclass(prop.PropertyType)
                             .Callvirt(prop.GetSetMethod());
-                        
+
                     }
                 }
                 ilGenerator.Ldloc(resultLoc);

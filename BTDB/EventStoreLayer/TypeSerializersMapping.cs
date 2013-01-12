@@ -418,6 +418,7 @@ namespace BTDB.EventStoreLayer
                     _writer.WriteVUInt32(backRefId);
                     return;
                 }
+                _backrefs.Add(obj, (uint) _backrefs.Count);
                 TypeSerializers typeSerializers;
                 ITypeDescriptor descriptor;
                 int typeId;

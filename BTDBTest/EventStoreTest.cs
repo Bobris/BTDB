@@ -149,5 +149,25 @@ namespace BTDBTest
             Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
             Assert.AreEqual(new[] { new object[] { userEvent } }, eventObserver.Events);
         }
+
+        [Test]
+        public void SameReferenceTest()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var user = new User {Name = "A", Age = 1};
+            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
+            appender.Store(null, new object[] { userEvent }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEvent) eventObserver.Events[0][0];
+            Assert.AreSame(readUserEvent.User1, readUserEvent.User2);
+        }
     }
 }

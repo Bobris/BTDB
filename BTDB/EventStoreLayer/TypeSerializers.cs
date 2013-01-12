@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class TypeSerializers : ITypeSerializers
+    public class TypeSerializers : ITypeSerializers
     {
         public static readonly List<ITypeDescriptor> PredefinedTypes = new List<ITypeDescriptor>();
         ITypeNameMapper _typeNameMapper;
@@ -80,11 +79,7 @@ namespace BTDB.EventStoreLayer
                 ITypeDescriptor result;
                 if (_type2DescriptorMap.TryGetValue(type, out result)) return result;
                 if (_temporaryMap.TryGetValue(type, out result)) return result;
-                if (type.IsSubclassOf(typeof(Delegate)))
-                {
-                    result = null;
-                }
-                else
+                if (!type.IsSubclassOf(typeof (Delegate)))
                 {
                     result = new ObjectTypeDescriptor(_typeSerializers, type);
                 }
@@ -196,7 +191,7 @@ namespace BTDB.EventStoreLayer
             }
             else
             {
-                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), null);
+                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
             }
             if (loadAsType.IsValueType)
             {
@@ -214,6 +209,7 @@ namespace BTDB.EventStoreLayer
         {
             readonly AbstractBufferedReader _reader;
             readonly ITypeSerializersId2LoaderMapping _mapping;
+            readonly List<object> _backRefs = new List<object>();
 
             public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping)
             {
@@ -230,9 +226,15 @@ namespace BTDB.EventStoreLayer
                 }
                 if (typeId == 1)
                 {
-                    throw new NotImplementedException();
+                    var backRefId=_reader.ReadVUInt32();
+                    return _backRefs[(int) backRefId];
                 }
                 return _mapping.GetLoader(typeId)(_reader, this, _mapping);
+            }
+
+            public void AddBackRef(object obj)
+            {
+                _backRefs.Add(obj);
             }
         }
 

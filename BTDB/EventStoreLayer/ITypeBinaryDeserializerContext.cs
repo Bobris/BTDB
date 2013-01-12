@@ -1,7 +1,8 @@
 namespace BTDB.EventStoreLayer
 {
-    internal interface ITypeBinaryDeserializerContext
+    public interface ITypeBinaryDeserializerContext
     {
         object LoadObject();
+        void AddBackRef(object obj);
     }
 }
