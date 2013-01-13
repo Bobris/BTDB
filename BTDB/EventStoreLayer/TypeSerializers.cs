@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -79,9 +80,20 @@ namespace BTDB.EventStoreLayer
                 ITypeDescriptor result;
                 if (_type2DescriptorMap.TryGetValue(type, out result)) return result;
                 if (_temporaryMap.TryGetValue(type, out result)) return result;
-                if (!type.IsSubclassOf(typeof (Delegate)))
+                if (!type.IsSubclassOf(typeof(Delegate)))
                 {
-                    result = new ObjectTypeDescriptor(_typeSerializers, type);
+                    if (type.IsGenericType)
+                    {
+                        if (type.GetGenericTypeDefinition() == typeof(IList<>) ||
+                            type.GetGenericTypeDefinition() == typeof(List<>))
+                        {
+                            result = new ListTypeDescriptor(_typeSerializers, type);
+                        }
+                    }
+                    else
+                    {
+                        result = new ObjectTypeDescriptor(_typeSerializers, type);
+                    }
                 }
                 _temporaryMap[type] = result;
                 if (result != null)
@@ -184,7 +196,7 @@ namespace BTDB.EventStoreLayer
                     .Ldarg(0)
                     .Ldarg(2)
                     .Newobj(() => new DeserializerCtx(null, null))
-                    .Castclass(typeof (ITypeBinaryDeserializerContext))
+                    .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
                 loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
@@ -226,8 +238,8 @@ namespace BTDB.EventStoreLayer
                 }
                 if (typeId == 1)
                 {
-                    var backRefId=_reader.ReadVUInt32();
-                    return _backRefs[(int) backRefId];
+                    var backRefId = _reader.ReadVUInt32();
+                    return _backRefs[(int)backRefId];
                 }
                 return _mapping.GetLoader(typeId)(_reader, this, _mapping);
             }
@@ -235,6 +247,22 @@ namespace BTDB.EventStoreLayer
             public void AddBackRef(object obj)
             {
                 _backRefs.Add(obj);
+            }
+
+            public void SkipObject()
+            {
+                var typeId = _reader.ReadVUInt32();
+                if (typeId == 0)
+                {
+                    return;
+                }
+                if (typeId == 1)
+                {
+                    var backRefId = _reader.ReadVUInt32();
+                    if (backRefId > _backRefs.Count) throw new InvalidDataException();
+                    return;
+                }
+                _mapping.GetLoader(typeId)(_reader, this, _mapping);
             }
         }
 
@@ -316,7 +344,18 @@ namespace BTDB.EventStoreLayer
 
         public void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
         {
-            writer.WriteUInt8((byte)TypeCategory.Class);
+            if (descriptor is ListTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.List);
+            }
+            else if (descriptor is ObjectTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Class);
+            }
+            else
+            {
+                throw new ArgumentOutOfRangeException();
+            }
             var p = descriptor as IPersistTypeDescriptor;
             p.Persist(writer, (w, d) => w.WriteVUInt32(descriptor2Id(d)));
         }
@@ -338,6 +377,13 @@ namespace BTDB.EventStoreLayer
             var typeNameMapper = _typeNameMapper;
             if (typeNameMapper == null) return type.FullName;
             return typeNameMapper.ToName(type);
+        }
+
+        public Type NameToType(string name)
+        {
+            var typeNameMapper = _typeNameMapper;
+            if (typeNameMapper == null) return Type.GetType(name, false);
+            return typeNameMapper.ToType(name);
         }
     }
 }

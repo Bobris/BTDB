@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.EventStoreLayer;
 using NUnit.Framework;
 
@@ -60,8 +61,8 @@ namespace BTDBTest
             var metadata = new User { Name = "A", Age = 1 };
             var events = new object[]
                 {
-                    new User { Name = "B", Age = 2 },
-                    new User { Name = "C", Age = 3 }
+                    new User {Name = "B", Age = 2},
+                    new User {Name = "C", Age = 3}
                 };
             appender.Store(metadata, events).Wait();
             var eventObserver = new StoringEventObserver();
@@ -157,7 +158,7 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User {Name = "A", Age = 1};
+            var user = new User { Name = "A", Age = 1 };
             var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
             appender.Store(null, new object[] { userEvent }).Wait();
 
@@ -166,8 +167,144 @@ namespace BTDBTest
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver).Wait();
-            var readUserEvent = (UserEvent) eventObserver.Events[0][0];
+            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
             Assert.AreSame(readUserEvent.User1, readUserEvent.User2);
         }
+
+        public class UserEventMore : IEquatable<UserEventMore>
+        {
+            public long Id { get; set; }
+            public User User1 { get; set; }
+            public User User2 { get; set; }
+            public User User3 { get; set; }
+
+            public bool Equals(UserEventMore other)
+            {
+                if (Id != other.Id) return false;
+                if (User1 != other.User1 && (User1 == null || !User1.Equals(other.User1))) return false;
+                if (User2 != other.User2 && (User2 == null || !User2.Equals(other.User2))) return false;
+                return User3 == other.User3 || (User3 != null && User3.Equals(other.User3));
+            }
+        }
+
+        public class OverloadableTypeMapper : ITypeNameMapper
+        {
+            readonly ITypeNameMapper _parent = new GenericTypeMapper();
+            readonly Type _type;
+            readonly string _name;
+
+            public OverloadableTypeMapper(Type type, string name)
+            {
+                _type = type;
+                _name = name;
+            }
+
+            public string ToName(Type type)
+            {
+                if (type == _type) return _name;
+                return _parent.ToName(type);
+            }
+
+            public Type ToType(string name)
+            {
+                if (name == _name) return _type;
+                return _parent.ToType(name);
+            }
+        }
+
+        [Test]
+        public void UpgradeToMoreObjectProperties()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var user = new User { Name = "A", Age = 1 };
+            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
+            appender.Store(null, new object[] { userEvent, new User { Name = "B" } }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventMore), "UserEvent"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEventMore)eventObserver.Events[0][0];
+            Assert.AreSame(readUserEvent.User1, readUserEvent.User2);
+            Assert.AreEqual("A", readUserEvent.User1.Name);
+            Assert.AreEqual(10, readUserEvent.Id);
+            Assert.IsNull(readUserEvent.User3);
+            Assert.AreEqual("B", ((User)eventObserver.Events[0][1]).Name);
+        }
+
+        public class UserEventLess : IEquatable<UserEventLess>
+        {
+            public long Id { get; set; }
+            public User User2 { get; set; }
+
+            public bool Equals(UserEventLess other)
+            {
+                if (Id != other.Id) return false;
+                return User2 == other.User2 || (User2 != null && User2.Equals(other.User2));
+            }
+        }
+
+        [Test]
+        public void UpgradeToLessObjectProperties()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var user = new User { Name = "A", Age = 1 };
+            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
+            appender.Store(null, new object[] { userEvent, new User { Name = "B" } }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventLess), "UserEvent"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEventLess)eventObserver.Events[0][0];
+            Assert.AreEqual("A", readUserEvent.User2.Name);
+            Assert.AreEqual(10, readUserEvent.Id);
+            Assert.AreEqual("B", ((User)eventObserver.Events[0][1]).Name);
+        }
+
+        public class UserEventList : IEquatable<UserEventList>
+        {
+            public long Id { get; set; }
+            public List<User> List { get; set; }
+
+            public bool Equals(UserEventList other)
+            {
+                if (Id != other.Id) return false;
+                if (List == other.List) return true;
+                if (List == null || other.List == null) return false;
+                if (List.Count != other.List.Count) return false;
+                return List.Zip(other.List, (u1, u2) => u1 == u2 || (u1 != null && u1.Equals(u2))).All(b => b);
+            }
+        }
+
+        [Test, Ignore("In progress")]
+        public void SupportsList()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var userA = new User { Name = "A", Age = 1 };
+            var userB = new User { Name = "B", Age = 2 };
+            var userEvent = new UserEventList { Id = 10, List = new List<User> { userA, userB, userA } };
+            appender.Store(null, new object[] { userEvent }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEventList)eventObserver.Events[0][0];
+            Assert.AreEqual(readUserEvent,userEvent);
+        }
+
     }
 }

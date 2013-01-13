@@ -10,22 +10,19 @@ namespace BTDB.EventStoreLayer
 {
     internal class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator
     {
-        readonly TypeSerializers _typeSerializers;
         Type _type;
-        string _name;
+        readonly string _name;
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
 
         public ObjectTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
-            _typeSerializers = typeSerializers;
             _type = type;
             Sealed = _type.IsSealed;
             _name = typeSerializers.TypeToName(type);
         }
 
-        public ObjectTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
-            _typeSerializers = typeSerializers;
             _type = null;
             Sealed = false;
             _name = reader.ReadString();
@@ -107,7 +104,7 @@ namespace BTDB.EventStoreLayer
             return new Deserializer(this, target);
         }
 
-        internal class Deserializer : ITypeBinaryDeserializerGenerator
+        class Deserializer : ITypeBinaryDeserializerGenerator
         {
             readonly ObjectTypeDescriptor _objectTypeDescriptor;
             readonly Type _target;
@@ -142,8 +139,15 @@ namespace BTDB.EventStoreLayer
                     var prop = props.FirstOrDefault(p => p.Name == pair.Key);
                     if (prop == null)
                     {
-                        var skipper = pair.Value.BuildBinarySkipperGenerator();
-                        skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
+                        if (pair.Value.StoredInline)
+                        {
+                            var skipper = pair.Value.BuildBinarySkipperGenerator();
+                            skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
+                            continue;
+                        }
+                        ilGenerator
+                            .Do(pushCtx)
+                            .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
                         continue;
                     }
                     if (pair.Value.StoredInline)
@@ -161,7 +165,6 @@ namespace BTDB.EventStoreLayer
                             .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
                             .Castclass(prop.PropertyType)
                             .Callvirt(prop.GetSetMethod());
-
                     }
                 }
                 ilGenerator.Ldloc(resultLoc);
@@ -228,7 +231,7 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get; private set; }
 
-        public bool StoredInline { get; private set; }
+        public bool StoredInline { get { return false; } }
 
         public void ClearMappingToType()
         {
