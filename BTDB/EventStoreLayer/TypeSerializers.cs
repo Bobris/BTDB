@@ -178,9 +178,7 @@ namespace BTDB.EventStoreLayer
 
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> LoaderFactory(ITypeDescriptor descriptor)
         {
-            var loadAsType = descriptor.GetPreferedType() ??
-                             (_typeNameMapper != null ? _typeNameMapper.ToType(descriptor.Name) : typeof(object))
-                             ?? typeof(object);
+            var loadAsType = LoadAsType(descriptor);
             var loadDeserializer = descriptor.BuildBinaryDeserializerGenerator(loadAsType);
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
@@ -215,6 +213,13 @@ namespace BTDB.EventStoreLayer
             }
             il.Ret();
             return methodBuilder.Create();
+        }
+
+        public Type LoadAsType(ITypeDescriptor descriptor)
+        {
+            return descriptor.GetPreferedType() ??
+                   (_typeNameMapper != null ? _typeNameMapper.ToType(descriptor.Name) : typeof(object))
+                   ?? typeof(object);
         }
 
         public class DeserializerCtx : ITypeBinaryDeserializerContext

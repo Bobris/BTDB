@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -65,11 +66,7 @@ namespace BTDB.EventStoreLayer
         {
             if (_type == null)
             {
-                _itemType = _itemDescriptor.GetPreferedType();
-                if (_itemType == null)
-                {
-                    _itemType = _typeSerializers.NameToType(_itemDescriptor.Name);
-                }
+                _itemType = _typeSerializers.LoadAsType(_itemDescriptor);
                 _type = typeof(IList<>).MakeGenericType(_itemType);
             }
             return _type;
@@ -77,7 +74,69 @@ namespace BTDB.EventStoreLayer
 
         public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
         {
-            throw new NotImplementedException();
+            return new Deserializer(this, target);
+        }
+
+        class Deserializer : ITypeBinaryDeserializerGenerator
+        {
+            readonly ListTypeDescriptor _owner;
+            readonly Type _target;
+
+            public Deserializer(ListTypeDescriptor owner, Type target)
+            {
+                _owner = owner;
+                _target = target;
+            }
+
+            public bool LoadNeedsCtx()
+            {
+                return !_owner._itemDescriptor.StoredInline || _owner._itemDescriptor.BuildBinaryDeserializerGenerator(_owner._itemDescriptor.GetPreferedType()).LoadNeedsCtx();
+            }
+
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            {
+                var localCount = ilGenerator.DeclareLocal(typeof(int));
+                var itemType = _owner._typeSerializers.LoadAsType(_owner._itemDescriptor);
+                var listType = typeof (List<>).MakeGenericType(itemType);
+                if (!_target.IsAssignableFrom(listType)) throw new NotImplementedException();
+                var localList = ilGenerator.DeclareLocal(listType);
+                var loadFinished = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Do(pushReader)
+                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                    .ConvI4()
+                    .Dup()
+                    .Stloc(localCount)
+                    .Newobj(listType.GetConstructor(new[] {typeof (int)}))
+                    .Stloc(localList)
+                    .Mark(next)
+                    .Ldloc(localCount)
+                    .Brfalse(loadFinished)
+                    .Ldloc(localCount)
+                    .LdcI4(1)
+                    .Sub()
+                    .Stloc(localCount)
+                    .Ldloc(localList);
+                if (_owner._itemDescriptor.StoredInline)
+                {
+                    var des = _owner._itemDescriptor.BuildBinaryDeserializerGenerator(itemType);
+                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
+                }
+                else
+                {
+                    ilGenerator
+                        .Do(pushCtx)
+                        .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
+                        .Castclass(_owner._itemType);
+                }
+                ilGenerator
+                    .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
+                    .Br(next)
+                    .Mark(loadFinished)
+                    .Ldloc(localList)
+                    .Castclass(_target);
+            }
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()

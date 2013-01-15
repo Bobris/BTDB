@@ -285,7 +285,7 @@ namespace BTDBTest
             }
         }
 
-        [Test, Ignore("In progress")]
+        [Test]
         public void SupportsList()
         {
             var manager = new EventStoreManager();
