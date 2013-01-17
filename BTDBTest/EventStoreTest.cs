@@ -303,8 +303,73 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver).Wait();
             var readUserEvent = (UserEventList)eventObserver.Events[0][0];
-            Assert.AreEqual(readUserEvent,userEvent);
+            Assert.AreEqual(readUserEvent, userEvent);
         }
+
+        [Test]
+        public void SkipListOnUpgrade()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventList), "UserEvent"));
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var userA = new User { Name = "A", Age = 1 };
+            var userB = new User { Name = "B", Age = 2 };
+            var userEvent = new UserEventList { Id = 10, List = new List<User> { userA, userB, userA } };
+            appender.Store(null, new object[] { userEvent }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
+            Assert.AreEqual(10, readUserEvent.Id);
+            Assert.IsNull(readUserEvent.User1);
+        }
+
+        public class UserEventDictionary : IEquatable<UserEventDictionary>
+        {
+            public long Id { get; set; }
+            public Dictionary<string, User> Dict { get; set; }
+
+            public bool Equals(UserEventDictionary other)
+            {
+                if (Id != other.Id) return false;
+                if (Dict == other.Dict) return true;
+                if (Dict == null || other.Dict == null) return false;
+                if (Dict.Count != other.Dict.Count) return false;
+                foreach (var p in Dict)
+                {
+                    User u;
+                    if (!other.Dict.TryGetValue(p.Key, out u)) return false;
+                    if (p.Value != u && (p.Value == null || !p.Value.Equals(u))) return false;
+                }
+                return true;
+            }
+        }
+
+        [Test]
+        public void SupportsDictionary()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var userA = new User { Name = "A", Age = 1 };
+            var userB = new User { Name = "B", Age = 2 };
+            var userEvent = new UserEventDictionary { Id = 10, Dict = new Dictionary<string, User> { { "A", userA }, { "B", userB } } };
+            appender.Store(null, new object[] { userEvent }).Wait();
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            var readUserEvent = (UserEventDictionary)eventObserver.Events[0][0];
+            Assert.AreEqual(readUserEvent, userEvent);
+        }
+
 
     }
 }

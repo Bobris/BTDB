@@ -50,6 +50,7 @@ namespace BTDB.EventStoreLayer
                         descriptor = new ListTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Dictionary:
+                        descriptor = new DictionaryTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();

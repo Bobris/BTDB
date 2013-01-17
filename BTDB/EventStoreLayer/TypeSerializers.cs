@@ -89,6 +89,11 @@ namespace BTDB.EventStoreLayer
                         {
                             result = new ListTypeDescriptor(_typeSerializers, type);
                         }
+                        else if (type.GetGenericTypeDefinition() == typeof(IDictionary<,>) ||
+                            type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+                        {
+                            result = new DictionaryTypeDescriptor(_typeSerializers, type);
+                        }
                     }
                     else
                     {
@@ -352,6 +357,10 @@ namespace BTDB.EventStoreLayer
             if (descriptor is ListTypeDescriptor)
             {
                 writer.WriteUInt8((byte)TypeCategory.List);
+            }
+            else if (descriptor is DictionaryTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Dictionary);
             }
             else if (descriptor is ObjectTypeDescriptor)
             {
