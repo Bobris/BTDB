@@ -76,6 +76,7 @@
     <Compile Include="EventStoreLayer\ITypeSerializersId2LoaderMapping.cs" />
     <Compile Include="EventStoreLayer\ITypeSerializersLightMapping.cs" />
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\TypeDescriptorExtensions.cs" />
     <Compile Include="EventStoreLayer\VInt16TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\VInt32TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\Int8TypeDescriptor.cs" />

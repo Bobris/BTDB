@@ -128,30 +128,8 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Stloc(localCount)
                     .Ldloc(localDict);
-                if (_owner._keyDescriptor.StoredInline)
-                {
-                    var des = _owner._keyDescriptor.BuildBinaryDeserializerGenerator(keyType);
-                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
-                }
-                else
-                {
-                    ilGenerator
-                        .Do(pushCtx)
-                        .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
-                        .Castclass(keyType);
-                }
-                if (_owner._valueDescriptor.StoredInline)
-                {
-                    var des = _owner._valueDescriptor.BuildBinaryDeserializerGenerator(valueType);
-                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
-                }
-                else
-                {
-                    ilGenerator
-                        .Do(pushCtx)
-                        .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
-                        .Castclass(valueType);
-                }
+                _owner._keyDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, keyType);
+                _owner._valueDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, valueType);
                 ilGenerator
                     .Callvirt(dictionaryType.GetMethod("Add"))
                     .Br(next)
@@ -306,36 +284,8 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localEnumerator)
                 .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
                 .Stloc(localPair);
-            if (_keyDescriptor.StoredInline)
-            {
-                var generator = _keyDescriptor.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx,
-                                        il => il.Ldloca(localPair)
-                                                .Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()));
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Ldloca(localPair)
-                    .Call(typeKeyValuePair.GetProperty("Key").GetGetMethod())
-                    .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
-            }
-            if (_valueDescriptor.StoredInline)
-            {
-                var generator = _keyDescriptor.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx,
-                                        il => il.Ldloca(localPair)
-                                                .Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()));
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Ldloca(localPair)
-                    .Call(typeKeyValuePair.GetProperty("Value").GetGetMethod())
-                    .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
-            }
+            _keyDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()));
+            _valueDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()));
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -347,7 +297,7 @@ namespace BTDB.EventStoreLayer
 
         public bool SkipNeedsCtx()
         {
-            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline 
+            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
                 || _keyDescriptor.BuildBinarySkipperGenerator().SkipNeedsCtx()
                 || _valueDescriptor.BuildBinarySkipperGenerator().SkipNeedsCtx();
         }
@@ -369,28 +319,8 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Sub()
                 .Stloc(localCount);
-            if (_keyDescriptor.StoredInline)
-            {
-                var skipper = _keyDescriptor.BuildBinarySkipperGenerator();
-                skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
-            }
-            if (_valueDescriptor.StoredInline)
-            {
-                var skipper = _valueDescriptor.BuildBinarySkipperGenerator();
-                skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
-            } 
+            _keyDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
+            _valueDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);

@@ -150,22 +150,9 @@ namespace BTDB.EventStoreLayer
                             .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
                         continue;
                     }
-                    if (pair.Value.StoredInline)
-                    {
-                        var des = pair.Value.BuildBinaryDeserializerGenerator(prop.PropertyType);
-                        ilGenerator.Ldloc(resultLoc);
-                        des.GenerateLoad(ilGenerator, pushReader, pushCtx);
-                        ilGenerator.Callvirt(prop.GetSetMethod());
-                    }
-                    else
-                    {
-                        ilGenerator
-                            .Ldloc(resultLoc)
-                            .Do(pushCtx)
-                            .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
-                            .Castclass(prop.PropertyType)
-                            .Callvirt(prop.GetSetMethod());
-                    }
+                    ilGenerator.Ldloc(resultLoc);
+                    pair.Value.GenerateLoad(ilGenerator, pushReader, pushCtx, prop.PropertyType);
+                    ilGenerator.Callvirt(prop.GetSetMethod());
                 }
                 ilGenerator.Ldloc(resultLoc);
             }
@@ -263,20 +250,9 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                if (pair.Value.StoredInline)
-                {
-                    var generator = pair.Value.BuildBinarySerializerGenerator();
-                    generator.GenerateSave(ilGenerator, pushWriter, pushCtx,
-                        il => il.Ldloc(locValue).Callvirt(_type.GetProperty(pair.Key).GetGetMethod()));
-                }
-                else
-                {
-                    ilGenerator
-                        .Do(pushCtx)
-                        .Ldloc(locValue)
-                        .Callvirt(_type.GetProperty(pair.Key).GetGetMethod())
-                        .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
-                }
+                pair.Value.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il
+                    .Ldloc(locValue)
+                    .Callvirt(_type.GetProperty(pair.Key).GetGetMethod()));
             }
         }
     }

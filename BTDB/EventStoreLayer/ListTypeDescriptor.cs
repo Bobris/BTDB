@@ -117,18 +117,7 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Stloc(localCount)
                     .Ldloc(localList);
-                if (_owner._itemDescriptor.StoredInline)
-                {
-                    var des = _owner._itemDescriptor.BuildBinaryDeserializerGenerator(itemType);
-                    des.GenerateLoad(ilGenerator, pushReader, pushCtx);
-                }
-                else
-                {
-                    ilGenerator
-                        .Do(pushCtx)
-                        .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject())
-                        .Castclass(itemType);
-                }
+                _owner._itemDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, itemType);
                 ilGenerator
                     .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
                     .Br(next)
@@ -247,23 +236,10 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localIndex)
                 .Ldloc(localCount)
                 .BgeUn(finish);
-            if (_itemDescriptor.StoredInline)
-            {
-                var generator = _itemDescriptor.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx,
-                                       il => il.Ldloc(localList)
-                                               .Ldloc(localIndex)
-                                               .Callvirt(localList.LocalType.GetMethod("get_Item")));
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Ldloc(localList)
-                    .Ldloc(localIndex)
-                    .Callvirt(localList.LocalType.GetMethod("get_Item"))
-                    .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
-            }
+            _itemDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx,
+                il => il.Ldloc(localList)
+                        .Ldloc(localIndex)
+                        .Callvirt(localList.LocalType.GetMethod("get_Item")));
             ilGenerator
                 .Ldloc(localIndex)
                 .LdcI4(1)
@@ -295,17 +271,7 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Sub()
                 .Stloc(localCount);
-            if (_itemDescriptor.StoredInline)
-            {
-                var skipper = _itemDescriptor.BuildBinarySkipperGenerator();
-                skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
-            }
-            else
-            {
-                ilGenerator
-                    .Do(pushCtx)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
-            }
+            _itemDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);
