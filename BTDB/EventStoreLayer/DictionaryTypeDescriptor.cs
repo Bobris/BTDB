@@ -118,7 +118,11 @@ namespace BTDB.EventStoreLayer
                     .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                     .ConvI4()
                     .Dup()
+                    .LdcI4(1)
+                    .Sub()
                     .Stloc(localCount)
+                    .Brfalse(loadFinished)
+                    .Ldloc(localCount)
                     .Newobj(dictionaryType.GetConstructor(new[] { typeof(int) }))
                     .Stloc(localDict)
                     .Mark(next)
@@ -255,6 +259,8 @@ namespace BTDB.EventStoreLayer
         {
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
+            var notnull = ilGenerator.DefineLabel();
+            var completeFinish = ilGenerator.DefineLabel();
             var keyType = _typeSerializers.LoadAsType(_keyDescriptor);
             var valueType = _typeSerializers.LoadAsType(_valueDescriptor);
             var typeAsIDictionary = typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
@@ -263,17 +269,28 @@ namespace BTDB.EventStoreLayer
             var getEnumeratorMethod = typeAsIEnumerable.GetMethod("GetEnumerator");
             var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
             var typeKeyValuePair = typeAsICollection.GetGenericArguments()[0];
+            var localDict = ilGenerator.DeclareLocal(typeAsIDictionary);
             var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
             var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
             ilGenerator
-                .Do(pushWriter)
                 .Do(pushValue)
                 .Castclass(typeAsIDictionary)
+                .Dup()
+                .Stloc(localDict)
+                .Brtrue(notnull)
+                .Do(pushWriter)
+                .LdcI4(0)
+                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
+                .Br(completeFinish)
+                .Mark(notnull)
+                .Do(pushWriter)
+                .Ldloc(localDict)
                 .Callvirt(typeAsICollection.GetProperty("Count").GetGetMethod())
+                .LdcI4(1)
+                .Add()
                 .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
-                .Do(pushValue)
-                .Castclass(typeAsIDictionary)
+                .Ldloc(localDict)
                 .Callvirt(getEnumeratorMethod)
                 .Stloc(localEnumerator)
                 .Try()
@@ -292,7 +309,8 @@ namespace BTDB.EventStoreLayer
                 .Finally()
                 .Ldloc(localEnumerator)
                 .Callvirt(() => default(IDisposable).Dispose())
-                .EndTry();
+                .EndTry()
+                .Mark(completeFinish);
         }
 
         public bool SkipNeedsCtx()
@@ -311,7 +329,11 @@ namespace BTDB.EventStoreLayer
                 .Do(pushReader)
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                 .ConvI4()
+                .Dup()
+                .LdcI4(1)
+                .Sub()
                 .Stloc(localCount)
+                .Brfalse(skipFinished)
                 .Mark(next)
                 .Ldloc(localCount)
                 .Brfalse(skipFinished)

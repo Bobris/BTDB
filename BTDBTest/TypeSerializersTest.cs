@@ -116,8 +116,8 @@ namespace BTDBTest
 
             public bool Equals(ClassWithList other)
             {
-                if (List==other.List) return true;
-                if (List==null || other.List==null) return false;
+                if (List == other.List) return true;
+                if (List == null || other.List == null) return false;
                 if (List.Count != other.List.Count) return false;
                 return List.Zip(other.List, (i1, i2) => i1 == i2).All(p => p);
             }
@@ -132,13 +132,52 @@ namespace BTDBTest
         [Test]
         public void ListCanBeEmpty()
         {
-            TestSerialization(new ClassWithList { List = new List<int>()});
+            TestSerialization(new ClassWithList { List = new List<int>() });
         }
 
         [Test]
         public void ListCanBeNull()
         {
             TestSerialization(new ClassWithList { List = null });
+        }
+
+        public class ClassWithDict : IEquatable<ClassWithDict>
+        {
+            public Dictionary<int, string> Dict { get; set; }
+
+            public bool Equals(ClassWithDict other)
+            {
+                if (Dict == other.Dict) return true;
+                if (Dict == null || other.Dict == null) return false;
+                if (Dict.Count != other.Dict.Count) return false;
+                foreach (var pair in Dict)
+                {
+                    if (!other.Dict.ContainsKey(pair.Key))
+                        return false;
+
+                    if (other.Dict[pair.Key] != pair.Value)
+                        return false;
+                }
+                return true;
+            }
+        }
+
+        [Test]
+        public void DictionaryCanHaveContent()
+        {
+            TestSerialization(new ClassWithDict { Dict = new Dictionary<int, string> { { 1, "a" }, { 2, "b" }, { 3, "c" } } });
+        }
+
+        [Test]
+        public void DictionaryCanBeEmpty()
+        {
+            TestSerialization(new ClassWithDict { Dict = new Dictionary<int,string>() });
+        }
+
+        [Test]
+        public void DictionaryCanBeNull()
+        {
+            TestSerialization(new ClassWithDict { Dict = null });
         }
 
     }
