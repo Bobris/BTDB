@@ -106,7 +106,7 @@ namespace BTDB.EventStoreLayer
 
             string ITypeDescriptor.Name
             {
-                get { throw new InvalidOperationException(); }
+                get { return ""; }
             }
 
             void ITypeDescriptor.FinishBuildFromType(ITypeDescriptorFactory factory)
@@ -126,7 +126,7 @@ namespace BTDB.EventStoreLayer
 
             Type ITypeDescriptor.GetPreferedType()
             {
-                throw new InvalidOperationException();
+                return null;
             }
 
             ITypeBinaryDeserializerGenerator ITypeDescriptor.BuildBinaryDeserializerGenerator(Type target)
@@ -161,12 +161,12 @@ namespace BTDB.EventStoreLayer
 
             bool ITypeDescriptor.Sealed
             {
-                get { throw new InvalidOperationException(); }
+                get { return false; }
             }
 
             bool ITypeDescriptor.StoredInline
             {
-                get { throw new InvalidOperationException(); }
+                get { return false; }
             }
 
             void ITypeDescriptor.ClearMappingToType()
@@ -213,6 +213,12 @@ namespace BTDB.EventStoreLayer
             {
                 ctx = new DescriptorSerializerContext(this, writer);
                 ctx.AddDescriptor(descriptor);
+                foreach (var nestedDescriptor in descriptor.NestedTypes())
+                {
+                    int _;
+                    if (!ctx.TryDescriptor2Id(nestedDescriptor, out _))
+                        ctx.AddDescriptor(nestedDescriptor);
+                }
                 action = _typeSerializers.GetNewDescriptorSaver(descriptor);
             }
             if (action != null)
@@ -222,11 +228,6 @@ namespace BTDB.EventStoreLayer
             }
             if (ctx != null && ctx.SomeTypeStored)
             {
-                foreach (var d2IPair in ctx.Descriptor2IdMap)
-                {
-                    writer.WriteVUInt32((uint)d2IPair.Value);
-                    _typeSerializers.StoreDescriptor(d2IPair.Key, writer, ctx.Descriptor2Id);
-                }
                 return ctx;
             }
             return this;
@@ -268,7 +269,7 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            bool TryDescriptor2Id(ITypeDescriptor descriptor, out int typeId)
+            internal bool TryDescriptor2Id(ITypeDescriptor descriptor, out int typeId)
             {
                 if (Descriptor2IdMap.TryGetValue(descriptor, out typeId))
                     return true;
@@ -285,7 +286,6 @@ namespace BTDB.EventStoreLayer
             public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object obj)
             {
                 if (obj == null) return this;
-                var countAtStart = _id2DescriptorMap.Count;
                 int typeId;
                 var objType = obj.GetType();
                 Action<object, IDescriptorSerializerLiteContext> action;
@@ -297,16 +297,17 @@ namespace BTDB.EventStoreLayer
                 else
                 {
                     AddDescriptor(descriptor);
+                    foreach (var nestedDescriptor in descriptor.NestedTypes())
+                    {
+                        int _;
+                        if (!TryDescriptor2Id(nestedDescriptor, out _))
+                            AddDescriptor(nestedDescriptor);
+                    }
                     action = _typeSerializers.GetNewDescriptorSaver(descriptor);
                 }
                 if (action != null)
                 {
                     action(obj, this);
-                }
-                for (int i = countAtStart; i < _id2DescriptorMap.Count; i++)
-                {
-                    writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
-                    _typeSerializers.StoreDescriptor(_id2DescriptorMap[i], writer, Descriptor2Id);
                 }
                 return this;
             }
@@ -339,6 +340,11 @@ namespace BTDB.EventStoreLayer
             {
                 if (SomeTypeStored)
                 {
+                    for (int i = _id2DescriptorMap.Count - 1; i >= 0; i--)
+                    {
+                        writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
+                        _typeSerializers.StoreDescriptor(_id2DescriptorMap[i], writer, Descriptor2Id);
+                    }
                     writer.WriteUInt8(0);
                 }
             }
@@ -420,7 +426,7 @@ namespace BTDB.EventStoreLayer
                     _writer.WriteVUInt32(backRefId);
                     return;
                 }
-                _backrefs.Add(obj, (uint) _backrefs.Count);
+                _backrefs.Add(obj, (uint)_backrefs.Count);
                 TypeSerializers typeSerializers;
                 ITypeDescriptor descriptor;
                 int typeId;

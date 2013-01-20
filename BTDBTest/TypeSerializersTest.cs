@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
@@ -87,6 +90,55 @@ namespace BTDBTest
             var obj = (SimpleDto)_mapping.LoadObject(reader);
             Assert.AreEqual(value.IntField, obj.IntField);
             Assert.AreEqual(value.StringField, obj.StringField);
+        }
+
+        void TestSerialization(object value)
+        {
+            var writer = new ByteBufferWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, value);
+            storedDescriptorCtx.CommitNewDescriptors();
+            var reader = new ByteBufferReader(writer.Data);
+            _mapping.LoadTypeDescriptors(reader);
+            Assert.AreEqual(value, _mapping.LoadObject(reader));
+            Assert.True(reader.Eof);
+            _mapping = _ts.CreateMapping();
+            reader = new ByteBufferReader(writer.Data);
+            _mapping.LoadTypeDescriptors(reader);
+            Assert.AreEqual(value, _mapping.LoadObject(reader));
+            Assert.True(reader.Eof);
+        }
+
+        public class ClassWithList : IEquatable<ClassWithList>
+        {
+            public List<int> List { get; set; }
+
+            public bool Equals(ClassWithList other)
+            {
+                if (List==other.List) return true;
+                if (List==null || other.List==null) return false;
+                if (List.Count != other.List.Count) return false;
+                return List.Zip(other.List, (i1, i2) => i1 == i2).All(p => p);
+            }
+        }
+
+        [Test]
+        public void ListCanHaveContent()
+        {
+            TestSerialization(new ClassWithList { List = new List<int> { 1, 2, 3 } });
+        }
+
+        [Test]
+        public void ListCanBeEmpty()
+        {
+            TestSerialization(new ClassWithList { List = new List<int>()});
+        }
+
+        [Test]
+        public void ListCanBeNull()
+        {
+            TestSerialization(new ClassWithList { List = null });
         }
 
     }

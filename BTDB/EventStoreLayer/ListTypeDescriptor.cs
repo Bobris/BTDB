@@ -29,6 +29,7 @@ namespace BTDB.EventStoreLayer
 
         void InitFromItemDescriptor(ITypeDescriptor descriptor)
         {
+            if (descriptor == _itemDescriptor) return;
             _itemDescriptor = descriptor;
             _itemType = _itemDescriptor.GetPreferedType();
             Sealed = _itemDescriptor.Sealed;
@@ -105,6 +106,12 @@ namespace BTDB.EventStoreLayer
                     .Do(pushReader)
                     .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                     .ConvI4()
+                    .Dup()
+                    .Stloc(localCount)
+                    .Brfalse(loadFinished)
+                    .Ldloc(localCount)
+                    .LdcI4(1)
+                    .Sub()
                     .Dup()
                     .Stloc(localCount)
                     .Newobj(listType.GetConstructor(new[] { typeof(int) }))
@@ -192,7 +199,7 @@ namespace BTDB.EventStoreLayer
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
         {
-            _itemDescriptor = map(_itemDescriptor);
+            InitFromItemDescriptor(map(_itemDescriptor));
         }
 
         public bool Sealed { get; private set; }
@@ -217,6 +224,7 @@ namespace BTDB.EventStoreLayer
         {
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
+            var notnull = ilGenerator.DefineLabel();
             var localList = ilGenerator.DeclareLocal(
                 typeof(IList<>).MakeGenericType(_itemDescriptor.GetPreferedType()));
             var localIndex = ilGenerator.DeclareLocal(typeof(int));
@@ -226,10 +234,19 @@ namespace BTDB.EventStoreLayer
                 .Castclass(localList.LocalType)
                 .Dup()
                 .Stloc(localList)
+                .BrtrueS(notnull)
+                .Do(pushWriter)
+                .LdcI4(0)
+                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
+                .Br(finish)
+                .Mark(notnull)
+                .Ldloc(localList)
                 .Callvirt(localList.LocalType.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
                 .Stloc(localCount)
                 .Do(pushWriter)
                 .Ldloc(localCount)
+                .LdcI4(1)
+                .Add()
                 .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
                 .Mark(next)
@@ -263,6 +280,12 @@ namespace BTDB.EventStoreLayer
                 .Do(pushReader)
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                 .ConvI4()
+                .Dup()
+                .Stloc(localCount)
+                .Brfalse(skipFinished)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
                 .Stloc(localCount)
                 .Mark(next)
                 .Ldloc(localCount)

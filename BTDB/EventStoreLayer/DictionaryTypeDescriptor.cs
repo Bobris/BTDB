@@ -34,6 +34,7 @@ namespace BTDB.EventStoreLayer
 
         void InitFromKeyValueDescriptors(ITypeDescriptor keyDescriptor, ITypeDescriptor valueDescriptor)
         {
+            if (_keyDescriptor == keyDescriptor && _valueDescriptor == valueDescriptor) return;
             _keyDescriptor = keyDescriptor;
             _valueDescriptor = valueDescriptor;
             _keyType = _keyDescriptor.GetPreferedType();
@@ -225,8 +226,7 @@ namespace BTDB.EventStoreLayer
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
         {
-            _keyDescriptor = map(_keyDescriptor);
-            _valueDescriptor = map(_valueDescriptor);
+            InitFromKeyValueDescriptors(map(_keyDescriptor),map(_valueDescriptor));
         }
 
         public bool Sealed { get; private set; }
