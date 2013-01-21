@@ -161,6 +161,7 @@ namespace BTDB.ChunkCache
                 {
                     lock (_cacheValueWriter)
                     {
+                        _cacheValueFile.HardFlush();
                         SetNewValueFile();
                     }
                 }
@@ -216,6 +217,7 @@ namespace BTDB.ChunkCache
                 usage[cacheValue.FileId] = accessRateRunningTotal;
             }
             var usageList = new List<RateFilePair>();
+            var fileIdsToRemove = new List<uint>();
             foreach (var fileInfo in _fileInfos)
             {
                 if (fileInfo.Value.FileType != DiskChunkFileType.PureValues) continue;
@@ -223,13 +225,11 @@ namespace BTDB.ChunkCache
                 ulong accessRate;
                 if (!usage.TryGetValue(fileInfo.Key, out accessRate) && finishedUsageStats)
                 {
-                    _fileCollection.GetFile(fileInfo.Key).Remove();
-                    _fileInfos.TryRemove(fileInfo.Key);
+                    fileIdsToRemove.Add(fileInfo.Key);
                     continue;
                 }
                 usageList.Add(new RateFilePair(accessRate, fileInfo.Key));
             }
-            var fileIdsToRemove = new List<uint>();
             usageList.Sort((a, b) => a.AccessRate > b.AccessRate ? -1 : a.AccessRate < b.AccessRate ? 1 : 0);
             while (usageList.Count >= _maxValueFileCount)
             {
@@ -241,12 +241,23 @@ namespace BTDB.ChunkCache
                 fileIdsToRemove.Add(fileId);
                 usageList.RemoveAt(usageList.Count - 1);
             }
+            FlushCurrentValueFile();
             StoreHashIndex();
             foreach (var fileid in fileIdsToRemove)
             {
                 _fileCollection.GetFile(fileid).Remove();
                 _fileInfos.TryRemove(fileid);
             }
+        }
+
+        void FlushCurrentValueFile()
+        {
+            var writer = _cacheValueWriter;
+            if (writer != null)
+                lock (writer)
+                {
+                    _cacheValueFile.HardFlush();
+                }
         }
 
         void PreserveJustMostOftenUsed(uint fileId)
@@ -378,10 +389,7 @@ namespace BTDB.ChunkCache
             lock (_startNewValueFileLocker)
             {
                 QuickFinishCompaction();
-                if (_cacheValueWriter != null)
-                {
-                    _cacheValueWriter.FlushBuffer();
-                }
+                FlushCurrentValueFile();
                 StoreHashIndex();
             }
         }
@@ -406,7 +414,6 @@ namespace BTDB.ChunkCache
                 writer.WriteBlock(keyBuf);
             }
             writer.WriteVUInt32(0); // Zero FileOfs as end of file mark
-            writer.FlushBuffer();
             file.HardFlush();
         }
 
