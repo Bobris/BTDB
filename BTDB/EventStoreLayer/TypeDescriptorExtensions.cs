@@ -1,10 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using BTDB.IL;
+using BTDB.ODBLayer;
 
 namespace BTDB.EventStoreLayer
 {
     public static class TypeDescriptorExtensions
     {
+        public static string Describe(this ITypeDescriptor typeDescriptor)
+        {
+            var sb = new StringBuilder();
+            typeDescriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+            return sb.ToString();
+        }
+
         public static void GenerateSave(this ITypeDescriptor typeDescriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue)
         {
             if (typeDescriptor.StoredInline)

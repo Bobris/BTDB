@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.Linq;
+using ApprovalTests;
+using ApprovalTests.Reporters;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
@@ -8,6 +11,7 @@ using NUnit.Framework;
 namespace BTDBTest
 {
     [TestFixture]
+    [UseReporter(typeof(DiffReporter))]
     public class TypeSerializersTest
     {
         ITypeSerializers _ts;
@@ -171,7 +175,7 @@ namespace BTDBTest
         [Test]
         public void DictionaryCanBeEmpty()
         {
-            TestSerialization(new ClassWithDict { Dict = new Dictionary<int,string>() });
+            TestSerialization(new ClassWithDict { Dict = new Dictionary<int, string>() });
         }
 
         [Test]
@@ -180,5 +184,23 @@ namespace BTDBTest
             TestSerialization(new ClassWithDict { Dict = null });
         }
 
+        [Test]
+        public void BasicDescribe()
+        {
+            var ts = new TypeSerializers();
+            var res = new object[]
+                {
+                    1,
+                    1U,
+                    (byte) 1,
+                    (sbyte) 1,
+                    (short) 1,
+                    (ushort) 1,
+                    1L,
+                    1UL,
+                    ""
+                }.Select(o => ts.DescriptorOf(o).Describe());
+            Approvals.VerifyAll(res, "BasicTypes");
+        }
     }
 }

@@ -43,6 +43,11 @@ namespace BTDB.EventStoreLayer
             _typeNameMapper = typeNameMapper;
         }
 
+        public ITypeDescriptor DescriptorOf(object obj)
+        {
+            return DescriptorOf(obj.GetType());
+        }
+
         public ITypeDescriptor DescriptorOf(Type objType)
         {
             return _type2DescriptorMap.GetOrAdd(objType, BuildFromType);

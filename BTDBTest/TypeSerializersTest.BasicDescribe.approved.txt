@@ -1,0 +1,9 @@
+BasicTypes[0] = VInt32
+BasicTypes[1] = VUInt32
+BasicTypes[2] = UInt8
+BasicTypes[3] = Int8
+BasicTypes[4] = VInt16
+BasicTypes[5] = VUInt16
+BasicTypes[6] = VInt64
+BasicTypes[7] = VUInt64
+BasicTypes[8] = String
