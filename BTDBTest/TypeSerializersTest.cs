@@ -198,7 +198,10 @@ namespace BTDBTest
                     (ushort) 1,
                     1L,
                     1UL,
-                    ""
+                    "",
+                    new DateTime(),
+                    Guid.Empty,
+                    new byte[0]
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "BasicTypes");
         }

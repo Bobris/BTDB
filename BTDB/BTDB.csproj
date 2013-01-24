@@ -64,8 +64,11 @@
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
     <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
     <Compile Include="EventStoreLayer\BlockType.cs" />
+    <Compile Include="EventStoreLayer\ByteArrayTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\DateTimeTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\DictionaryTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\EventStoreManager.cs" />
+    <Compile Include="EventStoreLayer\GuidTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\IDescriptorSerializerContext.cs" />
     <Compile Include="EventStoreLayer\IEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />

@@ -7,3 +7,6 @@ BasicTypes[5] = VUInt16
 BasicTypes[6] = VInt64
 BasicTypes[7] = VUInt64
 BasicTypes[8] = String
+BasicTypes[9] = DateTime
+BasicTypes[10] = Guid
+BasicTypes[11] = Byte[]

@@ -9,6 +9,7 @@ namespace BTDB.EventStoreLayer
 {
     internal class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMapping, ITypeSerializersId2LoaderMapping
     {
+        const int ReservedBuildinTypes = 50;
         readonly List<ITypeDescriptor> _id2DescriptorMap = new List<ITypeDescriptor>();
         readonly Dictionary<ITypeDescriptor, int> _descriptor2IdMap = new Dictionary<ITypeDescriptor, int>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly TypeSerializers _typeSerializers;
@@ -28,6 +29,7 @@ namespace BTDB.EventStoreLayer
                 _descriptor2IdMap[predefinedType] = _id2DescriptorMap.Count;
                 _id2DescriptorMap.Add(predefinedType);
             }
+            while (_id2DescriptorMap.Count < ReservedBuildinTypes) _id2DescriptorMap.Add(null);
         }
 
         public void LoadTypeDescriptors(AbstractBufferedReader reader)
