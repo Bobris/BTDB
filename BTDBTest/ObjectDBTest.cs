@@ -1292,5 +1292,24 @@ namespace BTDBTest
                 Assert.AreEqual(1, d.Dict[p]);
             }
         }
+
+        public class ObjectWithDictWithDateTimeKey
+        {
+            public IDictionary<DateTime, DateTime> Dist { get; set; }
+        }
+
+        [Test]
+        public void ForbidToStoreDateTimeUnknownKindInKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictWithDateTimeKey>();
+                var unknownKind = new DateTime(2013, 1, 25, 22, 05, 00);
+                var utcKind = unknownKind.ToUniversalTime();
+                Assert.Throws<ArgumentOutOfRangeException>(() => d.Dist.Add(unknownKind, utcKind));
+                d.Dist.Add(utcKind, unknownKind);
+            }
+
+        }
     }
 }

@@ -158,6 +158,13 @@ namespace BTDB.StreamLayer
             WriteInt64(value.ToBinary());
         }
 
+        public void WriteDateTimeForbidUnspecifiedKind(DateTime value)
+        {
+            if (value.Kind==DateTimeKind.Unspecified)
+                throw new ArgumentOutOfRangeException("value","DateTime.Kind cannot be stored as Unspecified");
+            WriteDateTime(value);
+        }
+
         public void WriteTimeSpan(TimeSpan value)
         {
             WriteVInt64(value.Ticks);

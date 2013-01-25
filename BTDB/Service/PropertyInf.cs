@@ -19,7 +19,7 @@ namespace BTDB.Service
         {
             _name = reader.ReadString();
             var resultFieldHandlerName = reader.ReadString();
-            _fieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray());
+            _fieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray(), FieldHandlerOptions.None);
         }
 
         public string Name

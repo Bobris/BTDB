@@ -32,7 +32,7 @@ namespace BTDB.ODBLayer
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration);
+            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration, FieldHandlerOptions.None);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not created handler {0} in {1}.{2}", handlerName, tableName, name));
             return new TableFieldInfo(name, fieldHandler);
         }

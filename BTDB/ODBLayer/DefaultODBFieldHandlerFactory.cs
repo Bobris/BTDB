@@ -30,10 +30,10 @@ namespace BTDB.ODBLayer
             return null;
         }
 
-        public override IFieldHandler CreateFromName(string handlerName, byte[] configuration)
+        public override IFieldHandler CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
         {
             if (handlerName == ODBDictionaryFieldHandler.HandlerName) return new ODBDictionaryFieldHandler(_odb, configuration);
-            var result = base.CreateFromName(handlerName, configuration);
+            var result = base.CreateFromName(handlerName, configuration, options);
             if (result != null) return result;
             if (handlerName == DBObjectFieldHandler.HandlerName) return new DBObjectFieldHandler(_odb, configuration);
             return null;

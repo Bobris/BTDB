@@ -22,8 +22,8 @@ namespace BTDB.FieldHandler
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
-            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0],FieldHandlerOptions.None);
-            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1],FieldHandlerOptions.None);
+            _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
+            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
@@ -36,8 +36,8 @@ namespace BTDB.FieldHandler
             _typeConvertorGenerator = typeConvertorGenerator;
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
-            _keysHandler = _fieldHandlerFactory.CreateFromReader(reader);
-            _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader);
+            _keysHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
+            _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
         }
 
         DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler keySpecialized, IFieldHandler valueSpecialized)
@@ -143,10 +143,10 @@ namespace BTDB.FieldHandler
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReaderOrCtx)
-                .Callvirt(() => ((IReaderCtx) null).SkipObject())
+                .Callvirt(() => ((IReaderCtx)null).SkipObject())
                 .Brfalse(finish)
                 .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                .Callvirt(() => ((AbstractBufferedReader) null).ReadVUInt32())
+                .Callvirt(() => ((AbstractBufferedReader)null).ReadVUInt32())
                 .Stloc(localCount)
                 .Mark(next)
                 .Ldloc(localCount)
@@ -239,7 +239,7 @@ namespace BTDB.FieldHandler
                 Debug.Fail("even more strange value");
                 return this;
             }
-            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized,valueSpecialized);
+            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized, valueSpecialized);
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)

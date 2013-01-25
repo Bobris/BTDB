@@ -28,9 +28,9 @@ namespace BTDB.Service
             return null;
         }
 
-        public override IFieldHandler CreateFromName(string handlerName, byte[] configuration)
+        public override IFieldHandler CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
         {
-            var result = base.CreateFromName(handlerName, configuration);
+            var result = base.CreateFromName(handlerName, configuration, options);
             if (result != null) return result;
             if (handlerName == ServiceObjectFieldHandler.HandlerName) return new ServiceObjectFieldHandler(_service, configuration);
             return null;

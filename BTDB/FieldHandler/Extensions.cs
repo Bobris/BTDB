@@ -28,11 +28,11 @@ namespace BTDB.FieldHandler
             writer.WriteByteArray(handler.Configuration);
         }
 
-        public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, AbstractBufferedReader reader)
+        public static IFieldHandler CreateFromReader(this IFieldHandlerFactory factory, AbstractBufferedReader reader, FieldHandlerOptions options)
         {
             var handlerName = reader.ReadString();
             var handlerConfiguration = reader.ReadByteArray();
-            return factory.CreateFromName(handlerName, handlerConfiguration);
+            return factory.CreateFromName(handlerName, handlerConfiguration, options);
         }
 
         public static IILGen GenerateLoad(this IILGen ilGenerator, IFieldHandler fieldHandler, Type typeWanted, Action<IILGen> pushReaderOrCtx, ITypeConvertorGenerator typeConvertorGenerator)

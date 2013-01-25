@@ -108,6 +108,7 @@
     <Compile Include="EventStoreLayer\VInt64TypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\VUInt64TypeDescriptor.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
+    <Compile Include="FieldHandler\DateTimeOrderableFieldHandler.cs" />
     <Compile Include="FieldHandler\DBIndirect.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />
     <Compile Include="FieldHandler\Extensions.cs" />
@@ -116,6 +117,7 @@
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\IIndirect.cs" />
     <Compile Include="FieldHandler\Int8OrderableFieldHandler.cs" />
+    <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
     <Compile Include="FieldHandler\StringOrderableFieldHandler.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />

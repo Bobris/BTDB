@@ -16,6 +16,7 @@ namespace BTDB.FieldHandler
                 new BoolFieldHandler(),
                 new DoubleFieldHandler(),
                 new DecimalFieldHandler(),
+                new DateTimeOrderableFieldHandler(), 
                 new DateTimeFieldHandler(),
                 new TimeSpanFieldHandler(), 
                 new GuidFieldHandler(),
@@ -54,12 +55,20 @@ namespace BTDB.FieldHandler
             return null;
         }
 
-        public virtual IFieldHandler CreateFromName(string handlerName, byte[] configuration)
+        public virtual IFieldHandler CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
         {
+            IFieldHandler fallbackFieldHandler = null;
             foreach (var fieldHandler in FieldHandlers)
             {
-                if (fieldHandler.Name == handlerName) return fieldHandler;
+                if (fieldHandler.Name == handlerName)
+                {
+                    fallbackFieldHandler = fieldHandler;
+                    if (fieldHandler.IsCompatibleWith(fieldHandler.HandledType(), options))
+                        return fieldHandler;
+                }
             }
+            if (fallbackFieldHandler != null)
+                return fallbackFieldHandler;
             if (handlerName == EnumFieldHandler.HandlerName) return new EnumFieldHandler(configuration);
             if (handlerName == ListFieldHandler.HandlerName) return new ListFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, configuration);
             if (handlerName == DictionaryFieldHandler.HandlerName) return new DictionaryFieldHandler(_provider.FieldHandlerFactory, _provider.TypeConvertorGenerator, configuration);

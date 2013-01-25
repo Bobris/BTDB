@@ -31,7 +31,7 @@ namespace BTDB.FieldHandler
             _typeConvertorGenerator = typeConvertorGenerator;
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
-            _itemsHandler = _fieldHandlerFactory.CreateFromReader(reader);
+            _itemsHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
         }
 
         ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler itemSpecialized)

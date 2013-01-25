@@ -39,8 +39,8 @@ namespace BTDB.ODBLayer
             _typeConvertorGenerator = odb.TypeConvertorGenerator;
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
-            _keysHandler = _fieldHandlerFactory.CreateFromReader(reader);
-            _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader);
+            _keysHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+            _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
             CreateConfiguration();
         }
 

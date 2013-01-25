@@ -54,7 +54,7 @@ namespace BTDB.Service
             var resultFieldHandlerName = reader.ReadString();
             if (resultFieldHandlerName != null)
             {
-                _resultFieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray());
+                _resultFieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray(), FieldHandlerOptions.None);
             }
             var parameterCount = reader.ReadVUInt32();
             _parameters = new ParameterInf[parameterCount];
