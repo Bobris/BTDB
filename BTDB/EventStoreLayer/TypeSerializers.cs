@@ -31,7 +31,10 @@ namespace BTDB.EventStoreLayer
             PredefinedTypes.Add(new VUInt32TypeDescriptor());
             PredefinedTypes.Add(new VInt64TypeDescriptor());
             PredefinedTypes.Add(new VUInt64TypeDescriptor());
+            PredefinedTypes.Add(new DoubleTypeDescriptor());
+            PredefinedTypes.Add(new DecimalTypeDescriptor());
             PredefinedTypes.Add(new DateTimeTypeDescriptor());
+            PredefinedTypes.Add(new TimeSpanTypeDescriptor());
             PredefinedTypes.Add(new GuidTypeDescriptor());
             PredefinedTypes.Add(new ByteArrayTypeDescriptor());
         }

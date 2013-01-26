@@ -8,7 +8,7 @@ namespace BTDB.EventStoreLayer
     {
         string Name { get; }
         void FinishBuildFromType(ITypeDescriptorFactory factory);
-        void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack);
+        void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent);
         bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack);
         Type GetPreferedType();
         ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target);

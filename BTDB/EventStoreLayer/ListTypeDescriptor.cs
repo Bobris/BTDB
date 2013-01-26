@@ -48,10 +48,10 @@ namespace BTDB.EventStoreLayer
             InitFromItemDescriptor(factory.Create(_itemType));
         }
 
-        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
+        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append("List<");
-            _itemDescriptor.BuildHumanReadableFullName(text, stack);
+            _itemDescriptor.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 

@@ -11,7 +11,7 @@ namespace BTDB.EventStoreLayer
         public static string Describe(this ITypeDescriptor typeDescriptor)
         {
             var sb = new StringBuilder();
-            typeDescriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
+            typeDescriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
             return sb.ToString();
         }
 

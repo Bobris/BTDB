@@ -55,10 +55,10 @@ namespace BTDB.EventStoreLayer
             InitFromKeyValueDescriptors(factory.Create(_keyType), factory.Create(_valueType));
         }
 
-        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
+        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append("List<");
-            _keyDescriptor.BuildHumanReadableFullName(text, stack);
+            _keyDescriptor.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 

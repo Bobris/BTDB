@@ -190,6 +190,7 @@ namespace BTDBTest
             var ts = new TypeSerializers();
             var res = new object[]
                 {
+                    "",
                     1,
                     1U,
                     (byte) 1,
@@ -198,12 +199,46 @@ namespace BTDBTest
                     (ushort) 1,
                     1L,
                     1UL,
-                    "",
+                    (double)1,
+                    (decimal)1,
                     new DateTime(),
+                    new TimeSpan(),
                     Guid.Empty,
                     new byte[0]
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "BasicTypes");
         }
+
+        public class SelfPointing1
+        {
+            public SelfPointing1 Self1 { get; set; }
+            public SelfPointing2 Self2 { get; set; }
+            public int Other1 { get; set; }
+        }
+
+        public class SelfPointing2
+        {
+            public SelfPointing1 Self1 { get; set; }
+            public SelfPointing2 Self2 { get; set; }
+            public string Other2 { get; set; }
+        }
+
+        [Test]
+        public void ComplexDescribe()
+        {
+            var ts = new TypeSerializers();
+            var res = new object[]
+                {
+                    new List<int>(),
+                    new Dictionary<string,double>(),
+                    new SimpleDto(),
+                    new ClassWithList(),
+                    new ClassWithDict(),
+                    new SelfPointing1(),
+                    new SelfPointing2()
+                }.Select(o => ts.DescriptorOf(o).Describe());
+            Approvals.VerifyAll(res, "ComplexTypes");
+        }
+
     }
 }

@@ -56,7 +56,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
+        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             if (stack.Contains(this))
             {
@@ -64,11 +64,27 @@ namespace BTDB.EventStoreLayer
                 return;
             }
             stack.Add(this);
-            text.Append(Name);
-            text.AppendLine(" {");
-
+            text.AppendLine(Name);
+            AppendIndent(text, indent);
+            text.AppendLine("{");
+            indent++;
+            foreach (var pair in _fields)
+            {
+                AppendIndent(text, indent);
+                text.Append(pair.Key);
+                text.Append(" : ");
+                pair.Value.BuildHumanReadableFullName(text, stack, indent);
+                text.AppendLine();
+            }
+            indent--;
+            AppendIndent(text, indent);
             text.Append("}");
             stack.Remove(this);
+        }
+
+        static void AppendIndent(StringBuilder text, uint indent)
+        {
+            text.Append(' ', (int) (indent*4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)

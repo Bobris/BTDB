@@ -26,7 +26,7 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
+        public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append(Name);
         }

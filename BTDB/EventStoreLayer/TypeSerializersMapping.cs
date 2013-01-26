@@ -116,7 +116,7 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            void ITypeDescriptor.BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack)
+            void ITypeDescriptor.BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
             {
                 throw new InvalidOperationException();
             }
