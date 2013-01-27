@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Net;
 using System.Text;
 using BTDB.Buffer;
 
@@ -287,6 +288,29 @@ namespace BTDB.StreamLayer
             return res;
         }
 
+        public int ReadInt32LE()
+        {
+            NeedOneByteInBuffer();
+            int res = 0;
+            if (Pos + 4 <= End)
+            {
+                res = PackUnpack.UnpackInt32LE(Buf, Pos);
+                Pos += 4;
+            }
+            else
+            {
+                var rot = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    NeedOneByteInBuffer();
+                    res += Buf[Pos] << rot;
+                    rot += 8;
+                    Pos++;
+                }
+            }
+            return res;
+        }
+
         public void SkipInt32()
         {
             NeedOneByteInBuffer();
@@ -336,10 +360,10 @@ namespace BTDB.StreamLayer
             var i = 0;
             while (i < l)
             {
-                if (Pos!=End)
+                if (Pos != End)
                 {
                     var b = Buf[Pos];
-                    if (b<0x80)
+                    if (b < 0x80)
                     {
                         res[i] = (char)b;
                         i++;
@@ -607,6 +631,47 @@ namespace BTDB.StreamLayer
                 return false;
             }
             return false;
+        }
+
+        public IPAddress ReadIPAddress()
+        {
+            switch (ReadUInt8())
+            {
+                case 0:
+                    return new IPAddress((uint)ReadInt32LE());
+                case 1:
+                    {
+                        var ip6Bytes = new byte[16];
+                        ReadBlock(ip6Bytes);
+                        return new IPAddress(ip6Bytes);
+                    }
+                case 2:
+                    {
+                        var ip6Bytes = new byte[16];
+                        ReadBlock(ip6Bytes);
+                        var scopeid = (long)ReadVUInt64();
+                        return new IPAddress(ip6Bytes, scopeid);
+                    }
+                default: throw new InvalidDataException("Unknown type of IPAddress");
+            }
+        }
+
+        public void SkipIPAddress()
+        {
+            switch (ReadUInt8())
+            {
+                case 0:
+                    SkipInt32();
+                    return;
+                case 1:
+                    SkipBlock(16);
+                    return;
+                case 2:
+                    SkipBlock(16);
+                    SkipVUInt64();
+                    return;
+                default: throw new InvalidDataException("Unknown type of IPAddress");
+            }
         }
     }
 }

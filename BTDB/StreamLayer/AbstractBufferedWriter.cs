@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Net;
+using System.Net.Sockets;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -153,6 +155,23 @@ namespace BTDB.StreamLayer
             Pos += 4;
         }
 
+        public void WriteInt32LE(int value)
+        {
+            if (Pos + 4 > End)
+            {
+                FlushBuffer();
+                if (Pos + 4 > End)
+                {
+                    var b = new byte[4];
+                    PackUnpack.PackInt32LE(b, 0, value);
+                    WriteBlock(b);
+                    return;
+                }
+            }
+            PackUnpack.PackInt32LE(Buf, Pos, value);
+            Pos += 4;
+        }
+
         public void WriteDateTime(DateTime value)
         {
             WriteInt64(value.ToBinary());
@@ -160,8 +179,8 @@ namespace BTDB.StreamLayer
 
         public void WriteDateTimeForbidUnspecifiedKind(DateTime value)
         {
-            if (value.Kind==DateTimeKind.Unspecified)
-                throw new ArgumentOutOfRangeException("value","DateTime.Kind cannot be stored as Unspecified");
+            if (value.Kind == DateTimeKind.Unspecified)
+                throw new ArgumentOutOfRangeException("value", "DateTime.Kind cannot be stored as Unspecified");
             WriteDateTime(value);
         }
 
@@ -189,7 +208,7 @@ namespace BTDB.StreamLayer
                     {
                         FlushBuffer();
                     }
-                    Buf[Pos++] = (byte) c;
+                    Buf[Pos++] = (byte)c;
                 }
                 else
                 {
@@ -324,6 +343,31 @@ namespace BTDB.StreamLayer
         public void WriteBlock(ByteBuffer data)
         {
             WriteBlock(data.Buffer, data.Offset, data.Length);
+        }
+
+        public void WriteIPAddress(IPAddress value)
+        {
+            if (value.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (value.ScopeId != 0)
+                {
+                    WriteUInt8(2);
+                    WriteBlock(value.GetAddressBytes());
+                    WriteVUInt64((ulong)value.ScopeId);
+                }
+                else
+                {
+                    WriteUInt8(1);
+                    WriteBlock(value.GetAddressBytes());
+                }
+            }
+            else
+            {
+                WriteUInt8(0);
+#pragma warning disable 612,618
+                WriteInt32LE((int) value.Address);
+#pragma warning restore 612,618
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 
@@ -67,7 +68,7 @@ namespace BTDBTest
                 if (End == 0)
                 {
                     Pos = -1;
-                    End = -1; 
+                    End = -1;
                 }
             }
 
@@ -326,5 +327,21 @@ namespace BTDBTest
             TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.AreEqual(value, r.ReadDouble()), s => s.SkipDouble());
         }
 
+        [Test]
+        public void IPAddressTest()
+        {
+            TestIPAddress(IPAddress.Loopback, new byte[] { 0, 127, 0, 0, 1 });
+            TestIPAddress(IPAddress.Broadcast, new byte[] { 0, 255, 255, 255, 255 });
+            TestIPAddress(IPAddress.IPv6Loopback, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 });
+            TestIPAddress(IPAddress.IPv6Any, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            var ip = IPAddress.IPv6Loopback;
+            ip.ScopeId = 1;
+            TestIPAddress(ip, new byte[] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1 });
+        }
+
+        static void TestIPAddress(IPAddress value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteIPAddress(value), checkResult, r => Assert.AreEqual(value, r.ReadIPAddress()), s => s.SkipIPAddress());
+        }
     }
 }
