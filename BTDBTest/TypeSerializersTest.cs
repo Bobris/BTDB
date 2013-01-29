@@ -5,6 +5,7 @@ using System.Linq;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.EventStoreLayer;
+using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 
@@ -204,9 +205,16 @@ namespace BTDBTest
                     new DateTime(),
                     new TimeSpan(),
                     Guid.Empty,
-                    new byte[0]
+                    new byte[0],
+                    false
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "BasicTypes");
+        }
+        
+        [Test]
+        public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
+        {
+            Approvals.VerifyAll(BasicSerializersFactory.TypeDescriptors.Select(o => o.Name), "BasicTypes");
         }
 
         public class SelfPointing1

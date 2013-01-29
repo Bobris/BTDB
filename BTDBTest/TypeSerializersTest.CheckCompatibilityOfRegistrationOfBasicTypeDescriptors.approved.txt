@@ -1,0 +1,17 @@
+BasicTypes[0] = String
+BasicTypes[1] = UInt8
+BasicTypes[2] = Int8
+BasicTypes[3] = VInt16
+BasicTypes[4] = VUInt16
+BasicTypes[5] = VInt32
+BasicTypes[6] = VUInt32
+BasicTypes[7] = VInt64
+BasicTypes[8] = VUInt64
+BasicTypes[9] = Bool
+BasicTypes[10] = Double
+BasicTypes[11] = Decimal
+BasicTypes[12] = DateTime
+BasicTypes[13] = TimeSpan
+BasicTypes[14] = Guid
+BasicTypes[15] = Byte[]
+BasicTypes[16] = IPAddress
