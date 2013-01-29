@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -24,7 +25,7 @@ namespace BTDB.EventStoreLayer
         {
             _id2DescriptorMap.Add(null); // 0 = null
             _id2DescriptorMap.Add(null); // 1 = back reference
-            foreach (var predefinedType in TypeSerializers.PredefinedTypes)
+            foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
                 _descriptor2IdMap[predefinedType] = _id2DescriptorMap.Count;
                 _id2DescriptorMap.Add(predefinedType);
@@ -40,7 +41,7 @@ namespace BTDB.EventStoreLayer
             {
                 if (typeId < firstTypeId) firstTypeId = typeId;
                 var typeCategory = (TypeCategory)reader.ReadUInt8();
-                ITypeDescriptor descriptor = null;
+                ITypeDescriptor descriptor;
                 switch (typeCategory)
                 {
                     case TypeCategory.BuildIn:

@@ -3,9 +3,10 @@ using System.Reflection;
 
 namespace BTDB.FieldHandler
 {
-    public abstract class SimpleFieldHandlerJustOrderableBase : SimpleFieldHandlerBase
+    public class SimpleFieldHandlerJustOrderableBase : SimpleFieldHandlerBase
     {
-        protected SimpleFieldHandlerJustOrderableBase(MethodInfo loader, MethodInfo skipper, MethodInfo saver):base(loader,skipper,saver)
+        public SimpleFieldHandlerJustOrderableBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
+            : base(name, loader, skipper, saver)
         {
         }
 

@@ -6,21 +6,26 @@ using BTDB.IL;
 
 namespace BTDB.EventStoreLayer
 {
-    public abstract class SimpleTypeDescriptor : ITypeDescriptor,
-                                                 ITypeBinaryDeserializerGenerator, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
+    public class SimpleTypeDescriptor : ITypeDescriptor,
+                                        ITypeBinaryDeserializerGenerator, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
     {
+        readonly string _name;
         readonly MethodInfo _loader;
         readonly MethodInfo _skipper;
         readonly MethodInfo _saver;
 
-        protected SimpleTypeDescriptor(MethodInfo loader, MethodInfo skipper, MethodInfo saver)
+        public SimpleTypeDescriptor(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
         {
+            _name = name;
             _loader = loader;
             _skipper = skipper;
             _saver = saver;
         }
 
-        public abstract string Name { get; }
+        public string Name
+        {
+            get { return _name; }
+        }
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {

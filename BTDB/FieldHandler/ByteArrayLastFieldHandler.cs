@@ -7,16 +7,11 @@ namespace BTDB.FieldHandler
     public class ByteArrayLastFieldHandler : SimpleFieldHandlerBase
     {
         public ByteArrayLastFieldHandler()
-            : base(
+            : base("Byte[]Last",
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadByteArrayRawTillEof()),
                 null,
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null)))
         {
-        }
-
-        public override string Name
-        {
-            get { return "Byte[]Last"; }
         }
 
         public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -24,6 +19,5 @@ namespace BTDB.FieldHandler
             if (!options.HasFlag(FieldHandlerOptions.AtEndOfStream)) return false;
             return base.IsCompatibleWith(type, options);
         }
-
     }
 }

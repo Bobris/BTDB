@@ -6,16 +6,11 @@ namespace BTDB.FieldHandler
 {
     public class UnsignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
-        public UnsignedFieldHandler(): base(
+        public UnsignedFieldHandler(): base("Unsigned",
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVUInt64()),
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVUInt64()),
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVUInt64(0)))
         {
-        }
-
-        public override string Name
-        {
-            get { return "Unsigned"; }
         }
 
         public static bool IsCompatibleWith(Type type)

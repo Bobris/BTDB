@@ -4,20 +4,25 @@ using BTDB.IL;
 
 namespace BTDB.FieldHandler
 {
-    public abstract class SimpleFieldHandlerBase : IFieldHandler
+    public class SimpleFieldHandlerBase : IFieldHandler
     {
+        readonly string _name;
         readonly MethodInfo _loader;
         readonly MethodInfo _skipper;
         readonly MethodInfo _saver;
 
-        protected SimpleFieldHandlerBase(MethodInfo loader, MethodInfo skipper, MethodInfo saver)
+        public SimpleFieldHandlerBase(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
         {
+            _name = name;
             _loader = loader;
             _skipper = skipper;
             _saver = saver;
         }
 
-        public abstract string Name { get; }
+        public string Name
+        {
+            get { return _name; }
+        }
 
         public byte[] Configuration
         {

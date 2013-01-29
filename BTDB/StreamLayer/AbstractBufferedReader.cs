@@ -277,7 +277,7 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                for (int i = 0; i < 4; i++)
+                for (var i = 0; i < 4; i++)
                 {
                     NeedOneByteInBuffer();
                     res <<= 8;
@@ -299,12 +299,10 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                var rot = 0;
-                for (int i = 0; i < 4; i++)
+                for (var rot = 0; rot < 32; rot += 8)
                 {
                     NeedOneByteInBuffer();
                     res += Buf[Pos] << rot;
-                    rot += 8;
                     Pos++;
                 }
             }

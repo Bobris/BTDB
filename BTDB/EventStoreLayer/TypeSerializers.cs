@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -10,7 +11,6 @@ namespace BTDB.EventStoreLayer
 {
     public class TypeSerializers : ITypeSerializers
     {
-        public static readonly List<ITypeDescriptor> PredefinedTypes = new List<ITypeDescriptor>();
         ITypeNameMapper _typeNameMapper;
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -19,25 +19,6 @@ namespace BTDB.EventStoreLayer
         readonly object _buildTypeLock = new object();
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>> _simpleSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>> _complexSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
-
-        static TypeSerializers()
-        {
-            PredefinedTypes.Add(new StringTypeDescriptor());
-            PredefinedTypes.Add(new Int8TypeDescriptor());
-            PredefinedTypes.Add(new UInt8TypeDescriptor());
-            PredefinedTypes.Add(new VInt16TypeDescriptor());
-            PredefinedTypes.Add(new VUInt16TypeDescriptor());
-            PredefinedTypes.Add(new VInt32TypeDescriptor());
-            PredefinedTypes.Add(new VUInt32TypeDescriptor());
-            PredefinedTypes.Add(new VInt64TypeDescriptor());
-            PredefinedTypes.Add(new VUInt64TypeDescriptor());
-            PredefinedTypes.Add(new DoubleTypeDescriptor());
-            PredefinedTypes.Add(new DecimalTypeDescriptor());
-            PredefinedTypes.Add(new DateTimeTypeDescriptor());
-            PredefinedTypes.Add(new TimeSpanTypeDescriptor());
-            PredefinedTypes.Add(new GuidTypeDescriptor());
-            PredefinedTypes.Add(new ByteArrayTypeDescriptor());
-        }
 
         public TypeSerializers()
         {
@@ -181,7 +162,7 @@ namespace BTDB.EventStoreLayer
 
         static IEnumerable<KeyValuePair<Type, ITypeDescriptor>> EnumDefaultTypes()
         {
-            foreach (var predefinedType in PredefinedTypes)
+            foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
                 yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferedType(), predefinedType);
             }

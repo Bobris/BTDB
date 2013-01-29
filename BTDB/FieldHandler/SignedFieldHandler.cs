@@ -6,16 +6,11 @@ namespace BTDB.FieldHandler
 {
     public class SignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
     {
-        public SignedFieldHandler(): base(
+        public SignedFieldHandler(): base("Signed",
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVInt64()),
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVInt64()),
             EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVInt64(0)))
         {
-        }
-
-        public override string Name
-        {
-            get { return "Signed"; }
         }
 
         public static bool IsCompatibleWith(Type type)

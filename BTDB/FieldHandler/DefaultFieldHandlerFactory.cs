@@ -4,26 +4,6 @@ namespace BTDB.FieldHandler
 {
     public class DefaultFieldHandlerFactory : IFieldHandlerFactory
     {
-        static readonly IFieldHandler[] FieldHandlers = new IFieldHandler[]
-            {
-                new StringOrderableFieldHandler(), 
-                new StringFieldHandler(),
-                new Uint8FieldHandler(), 
-                new Int8OrderableFieldHandler(), 
-                new Int8FieldHandler(), 
-                new SignedFieldHandler(),
-                new UnsignedFieldHandler(),
-                new BoolFieldHandler(),
-                new DoubleFieldHandler(),
-                new DecimalFieldHandler(),
-                new DateTimeOrderableFieldHandler(), 
-                new DateTimeFieldHandler(),
-                new TimeSpanFieldHandler(), 
-                new GuidFieldHandler(),
-                new ByteArrayLastFieldHandler(), 
-                new ByteArrayFieldHandler(),
-            };
-
         readonly IFieldHandlerFactoryProvider _provider;
 
         public DefaultFieldHandlerFactory(IFieldHandlerFactoryProvider provider)
@@ -34,7 +14,7 @@ namespace BTDB.FieldHandler
         public virtual bool TypeSupported(Type type)
         {
             if (EnumFieldHandler.IsCompatibleWith(type)) return true;
-            foreach (var fieldHandler in FieldHandlers)
+            foreach (var fieldHandler in BasicSerializersFactory.FieldHandlers)
             {
                 if (fieldHandler.IsCompatibleWith(type, FieldHandlerOptions.None)) return true;
             }
@@ -46,7 +26,7 @@ namespace BTDB.FieldHandler
         public virtual IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
             if (EnumFieldHandler.IsCompatibleWith(type)) return new EnumFieldHandler(type);
-            foreach (var fieldHandler in FieldHandlers)
+            foreach (var fieldHandler in BasicSerializersFactory.FieldHandlers)
             {
                 if (fieldHandler.IsCompatibleWith(type, options)) return fieldHandler;
             }
@@ -58,7 +38,7 @@ namespace BTDB.FieldHandler
         public virtual IFieldHandler CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
         {
             IFieldHandler fallbackFieldHandler = null;
-            foreach (var fieldHandler in FieldHandlers)
+            foreach (var fieldHandler in BasicSerializersFactory.FieldHandlers)
             {
                 if (fieldHandler.Name == handlerName)
                 {
