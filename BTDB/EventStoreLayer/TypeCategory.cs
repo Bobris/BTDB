@@ -5,6 +5,7 @@ namespace BTDB.EventStoreLayer
         BuildIn,
         Class,
         List,
-        Dictionary
+        Dictionary,
+        Enum,
     }
 }

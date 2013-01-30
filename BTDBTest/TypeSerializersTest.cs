@@ -231,6 +231,12 @@ namespace BTDBTest
             public string Other2 { get; set; }
         }
 
+        public enum TestEnum
+        {
+            Item1,
+            Item2
+        }
+
         [Test]
         public void ComplexDescribe()
         {
@@ -243,10 +249,22 @@ namespace BTDBTest
                     new ClassWithList(),
                     new ClassWithDict(),
                     new SelfPointing1(),
-                    new SelfPointing2()
+                    new SelfPointing2(),
+                    new TestEnum()
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "ComplexTypes");
         }
 
+        [Test]
+        public void BasicEnumTest1()
+        {
+            TestSerialization(TestEnum.Item1);
+        }
+
+        [Test]
+        public void BasicEnumTest2()
+        {
+            TestSerialization(TestEnum.Item2);
+        }
     }
 }

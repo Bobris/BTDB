@@ -35,3 +35,8 @@ ComplexTypes[6] = BTDBTest.TypeSerializersTest+SelfPointing2
     Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
     Other2 : String
 }
+ComplexTypes[7] = BTDBTest.TypeSerializersTest+TestEnum
+enum {
+    Item1 = 0
+    Item2 = 1
+}

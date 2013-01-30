@@ -55,6 +55,9 @@ namespace BTDB.EventStoreLayer
                     case TypeCategory.Dictionary:
                         descriptor = new DictionaryTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
+                    case TypeCategory.Enum:
+                        descriptor = new EnumTypeDescriptor(reader);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }

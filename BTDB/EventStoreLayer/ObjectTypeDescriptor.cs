@@ -84,7 +84,7 @@ namespace BTDB.EventStoreLayer
 
         static void AppendIndent(StringBuilder text, uint indent)
         {
-            text.Append(' ', (int) (indent*4));
+            text.Append(' ', (int)(indent * 4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)

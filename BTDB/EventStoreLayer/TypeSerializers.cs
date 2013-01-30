@@ -82,10 +82,14 @@ namespace BTDB.EventStoreLayer
                             result = new ListTypeDescriptor(_typeSerializers, type);
                         }
                         else if (type.GetGenericTypeDefinition() == typeof(IDictionary<,>) ||
-                            type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+                                 type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
+                    }
+                    else if (type.IsEnum)
+                    {
+                        result = new EnumTypeDescriptor(_typeSerializers, type);
                     }
                     else
                     {
@@ -214,12 +218,10 @@ namespace BTDB.EventStoreLayer
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferedType() ??
-                   (_typeNameMapper != null ? _typeNameMapper.ToType(descriptor.Name) : typeof(object))
-                   ?? typeof(object);
+            return descriptor.GetPreferedType() ?? NameToType(descriptor.Name) ?? typeof(object);
         }
 
-        public class DeserializerCtx : ITypeBinaryDeserializerContext
+        class DeserializerCtx : ITypeBinaryDeserializerContext
         {
             readonly AbstractBufferedReader _reader;
             readonly ITypeSerializersId2LoaderMapping _mapping;
@@ -334,11 +336,6 @@ namespace BTDB.EventStoreLayer
             return method.Create();
         }
 
-        public TypeCategory GetTypeCategory(ITypeDescriptor descriptor)
-        {
-            return TypeCategory.BuildIn;
-        }
-
         public ITypeSerializersMapping CreateMapping()
         {
             return new TypeSerializersMapping(this);
@@ -357,6 +354,10 @@ namespace BTDB.EventStoreLayer
             else if (descriptor is ObjectTypeDescriptor)
             {
                 writer.WriteUInt8((byte)TypeCategory.Class);
+            }
+            else if (descriptor is EnumTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Enum);
             }
             else
             {
@@ -385,7 +386,7 @@ namespace BTDB.EventStoreLayer
             return typeNameMapper.ToName(type);
         }
 
-        public Type NameToType(string name)
+        Type NameToType(string name)
         {
             var typeNameMapper = _typeNameMapper;
             if (typeNameMapper == null) return Type.GetType(name, false);
