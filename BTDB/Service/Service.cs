@@ -59,13 +59,16 @@ namespace BTDB.Service
         readonly ConcurrentDictionary<uint, Func<IReaderCtx, object>> _clientTypeId2Loader = new ConcurrentDictionary<uint, Func<IReaderCtx, object>>();
         readonly NumberAllocator _clientBindNumbers = new NumberAllocator((uint)Command.FirstToBind);
         readonly NumberAllocator _clientAckNumbers = new NumberAllocator(0);
-        readonly ConcurrentDictionary<uint, TaskAndBindInf> _clientAcks = new ConcurrentDictionary<uint, TaskAndBindInf>();
+
+        Dictionary<uint, TaskAndBindInf> _clientAcks = new Dictionary<uint, TaskAndBindInf>();
+        bool _disconnected;
+        readonly object _ackLocker = new object();
+
         readonly ConditionalWeakTable<Type, WeakReference> _remoteServiceCache = new ConditionalWeakTable<Type, WeakReference>();
 
         ITypeConvertorGenerator _typeConvertorGenerator;
         IFieldHandlerFactory _fieldHandlerFactory;
         readonly NewRemoteServiceObservable _onNewRemoteService;
-        bool _disconnected;
 
         class NewRemoteServiceObservable : IObservable<string>
         {
@@ -135,12 +138,17 @@ namespace BTDB.Service
 
         void OnDisconnect()
         {
-            _disconnected = true;
-            foreach (var clientAck in _clientAcks)
+            Dictionary<uint, TaskAndBindInf> clientAcksClone;
+            lock (_ackLocker)
+            {
+                _disconnected = true;
+                clientAcksClone = _clientAcks;
+                _clientAcks = new Dictionary<uint, TaskAndBindInf>();
+            }
+            foreach (var clientAck in clientAcksClone)
             {
                 clientAck.Value.Binding.HandleCancellation(clientAck.Value.TaskCompletionSource);
             }
-            _clientAcks.Clear();
             _onNewRemoteService.OnDisconnect();
         }
 
@@ -150,6 +158,7 @@ namespace BTDB.Service
             var c0 = reader.ReadVUInt32();
             uint ackId;
             TaskAndBindInf taskAndBind;
+            bool success = false;
             switch ((Command)c0)
             {
                 case Command.Subcommand:
@@ -157,7 +166,15 @@ namespace BTDB.Service
                     break;
                 case Command.Result:
                     ackId = reader.ReadVUInt32();
-                    if (_clientAcks.TryRemove(ackId, out taskAndBind))
+                    lock (_ackLocker)
+                    {
+                        if (_clientAcks.TryGetValue(ackId, out taskAndBind))
+                        {
+                            _clientAcks.Remove(ackId);
+                            success = true;
+                        }
+                    }
+                    if (success)
                     {
                         _clientAckNumbers.Deallocate(ackId);
                         taskAndBind.Binding.HandleResult(taskAndBind.TaskCompletionSource, reader, this);
@@ -165,7 +182,15 @@ namespace BTDB.Service
                     break;
                 case Command.Exception:
                     ackId = reader.ReadVUInt32();
-                    if (_clientAcks.TryRemove(ackId, out taskAndBind))
+                    lock (_ackLocker)
+                    {
+                        if (_clientAcks.TryGetValue(ackId, out taskAndBind))
+                        {
+                            _clientAcks.Remove(ackId);
+                            success = true;
+                        }
+                    }
+                    if (success)
                     {
                         _clientAckNumbers.Deallocate(ackId);
                         Exception ex;
@@ -920,7 +945,7 @@ namespace BTDB.Service
             {
                 return typeId;
             }
-            lock(_serverType2IdLocker)
+            lock (_serverType2IdLocker)
             {
                 return RegisterLocalTypeInternalUnlocked(type, new HashSet<Type>());
             }
@@ -982,13 +1007,16 @@ namespace BTDB.Service
 
         public AbstractBufferedWriter StartTwoWayMarshaling(ClientBindInf binding, out Task resultReturned)
         {
-            ThrowOnDisconnected();
             var message = new ByteBufferWriter();
             message.WriteVUInt32(binding.BindingId);
             var taskWithSource = binding.TaskWithSourceCreator();
             resultReturned = taskWithSource.Task;
             var ackId = _clientAckNumbers.Allocate();
-            _clientAcks.TryAdd(ackId, new TaskAndBindInf(binding, taskWithSource.Source));
+            lock (_ackLocker)
+            {
+                ThrowOnDisconnected();
+                _clientAcks.Add(ackId, new TaskAndBindInf(binding, taskWithSource.Source));
+            }
             message.WriteVUInt32(ackId);
             return message;
         }
