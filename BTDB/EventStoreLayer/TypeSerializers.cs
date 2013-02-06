@@ -12,7 +12,7 @@ namespace BTDB.EventStoreLayer
     public class TypeSerializers : ITypeSerializers
     {
         ITypeNameMapper _typeNameMapper;
-        readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>();
         ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap = new ConcurrentDictionary<Type, ITypeDescriptor>(ReferenceEqualityComparer<Type>.Instance);
@@ -172,16 +172,16 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> GetLoader(ITypeDescriptor descriptor)
+        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> GetLoader(ITypeDescriptor descriptor)
         {
             return _loaders.GetOrAdd(descriptor, LoaderFactory);
         }
 
-        Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> LoaderFactory(ITypeDescriptor descriptor)
+        Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
         {
             var loadAsType = LoadAsType(descriptor);
             var loadDeserializer = descriptor.BuildBinaryDeserializerGenerator(loadAsType);
-            var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object>>("DeserializerFor" + descriptor.Name);
+            var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             if (loadDeserializer.LoadNeedsCtx())
             {
@@ -194,7 +194,8 @@ namespace BTDB.EventStoreLayer
                     .Brtrue(haveCtx)
                     .Ldarg(0)
                     .Ldarg(2)
-                    .Newobj(() => new DeserializerCtx(null, null))
+                    .Ldarg(3)
+                    .Newobj(() => new DeserializerCtx(null, null, null))
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
@@ -226,11 +227,13 @@ namespace BTDB.EventStoreLayer
             readonly AbstractBufferedReader _reader;
             readonly ITypeSerializersId2LoaderMapping _mapping;
             readonly List<object> _backRefs = new List<object>();
+            ITypeDescriptor _currentDescriptor;
 
-            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping)
+            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor)
             {
                 _reader = reader;
                 _mapping = mapping;
+                _currentDescriptor = descriptor;
             }
 
             public object LoadObject()
@@ -245,7 +248,7 @@ namespace BTDB.EventStoreLayer
                     var backRefId = _reader.ReadVUInt32();
                     return _backRefs[(int)backRefId];
                 }
-                return _mapping.GetLoader(typeId)(_reader, this, _mapping);
+                return _mapping.GetLoader(typeId, out _currentDescriptor)(_reader, this, _mapping, _currentDescriptor);
             }
 
             public void AddBackRef(object obj)
@@ -266,7 +269,12 @@ namespace BTDB.EventStoreLayer
                     if (backRefId > _backRefs.Count) throw new InvalidDataException();
                     return;
                 }
-                _mapping.GetLoader(typeId)(_reader, this, _mapping);
+                _mapping.GetLoader(typeId, out _currentDescriptor)(_reader, this, _mapping, _currentDescriptor);
+            }
+
+            public ITypeDescriptor CurrentDescriptor
+            {
+                get { return _currentDescriptor; }
             }
         }
 

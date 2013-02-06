@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Dynamic;
 using System.Linq;
 using ApprovalTests;
 using ApprovalTests.Reporters;
@@ -265,6 +264,38 @@ namespace BTDBTest
         public void BasicEnumTest2()
         {
             TestSerialization(TestEnum.Item2);
+        }
+
+        [Test]
+        public void CanDeserializeSimpleDtoToDynamic()
+        {
+            var writer = new ByteBufferWriter();
+            var value = new SimpleDto { IntField = 42, StringField = "Hello" };
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, value);
+            storedDescriptorCtx.CommitNewDescriptors();
+            var reader = new ByteBufferReader(writer.Data);
+            var ts = new TypeSerializers();
+            ts.SetTypeNameMapper(new ToDynamicMapper());
+            var mapping = ts.CreateMapping();
+            mapping.LoadTypeDescriptors(reader);
+            var obj = (dynamic)mapping.LoadObject(reader);
+            Assert.AreEqual(value.IntField, obj.IntField);
+            Assert.AreEqual(value.StringField, obj.StringField);
+        }
+
+        public class ToDynamicMapper : ITypeNameMapper
+        {
+            public string ToName(Type type)
+            {
+                return type.FullName;
+            }
+
+            public Type ToType(string name)
+            {
+                return null;
+            }
         }
     }
 }

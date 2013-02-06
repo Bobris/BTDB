@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -8,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator
+    public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator
     {
         Type _type;
         readonly string _name;
@@ -117,7 +119,160 @@ namespace BTDB.EventStoreLayer
 
         public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
         {
+            if (target == typeof(object))
+            {
+                return new DynamicDeserializer(this);
+            }
             return new Deserializer(this, target);
+        }
+
+        internal class DynamicDeserializer : ITypeBinaryDeserializerGenerator
+        {
+            readonly ObjectTypeDescriptor _ownerDescriptor;
+
+            public DynamicDeserializer(ObjectTypeDescriptor ownerDescriptor)
+            {
+                _ownerDescriptor = ownerDescriptor;
+            }
+
+            public bool LoadNeedsCtx()
+            {
+                return true;
+            }
+
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            {
+                var resultLoc = ilGenerator.DeclareLocal(typeof(DynamicObject), "result");
+                ilGenerator
+                    .Do(pushCtx)
+                    .Callvirt(() => default(ITypeBinaryDeserializerContext).CurrentDescriptor)
+                    .Castclass(typeof(ObjectTypeDescriptor))
+                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) }))
+                    .Stloc(resultLoc)
+                    .Do(pushCtx)
+                    .Ldloc(resultLoc)
+                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null));
+                var idx = 0;
+                foreach (var pair in _ownerDescriptor._fields)
+                {
+                    ilGenerator.Ldloc(resultLoc);
+                    ilGenerator.LdcI4(idx);
+                    pair.Value.GenerateLoad(ilGenerator, pushReader, pushCtx, typeof(object));
+                    ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
+                    idx++;
+                }
+                ilGenerator
+                    .Ldloc(resultLoc)
+                    .Castclass(typeof(object));
+            }
+        }
+
+        int FindFieldIndex(string fieldName)
+        {
+            return _fields.FindIndex(p => p.Key == fieldName);
+        }
+
+        int FindFieldIndexWithThrow(string fieldName)
+        {
+            var realidx = FindFieldIndex(fieldName);
+            if (realidx < 0)
+                throw new MemberAccessException(string.Format("{0} does not have member {1}", Name, fieldName));
+            return realidx;
+        }
+
+        public class DynamicObject : IDynamicMetaObjectProvider
+        {
+            readonly ObjectTypeDescriptor _ownerDescriptor;
+            readonly object[] _fieldValues;
+
+            public DynamicObject(ObjectTypeDescriptor ownerDescriptor)
+            {
+                _ownerDescriptor = ownerDescriptor;
+                _fieldValues = new object[_ownerDescriptor._fields.Count];
+            }
+
+            DynamicMetaObject IDynamicMetaObjectProvider.GetMetaObject(Expression parameter)
+            {
+                return new DynamicDictionaryMetaObject(parameter, this);
+            }
+
+            public void SetFieldByIdxFast(int idx, object value)
+            {
+                _fieldValues[idx] = value;
+            }
+
+            public void SetFieldByIdx(int idx, string fieldName, ObjectTypeDescriptor descriptor, object value)
+            {
+                if (_ownerDescriptor == descriptor)
+                {
+                    _fieldValues[idx] = value;
+                    return;
+                }
+                var realidx = _ownerDescriptor.FindFieldIndexWithThrow(fieldName);
+                _fieldValues[realidx] = value;
+            }
+
+            public object GetFieldByIdx(int idx, string fieldName, ObjectTypeDescriptor descriptor)
+            {
+                if (_ownerDescriptor == descriptor)
+                {
+                    return _fieldValues[idx];
+                }
+                var realidx = _ownerDescriptor.FindFieldIndexWithThrow(fieldName);
+                return _fieldValues[realidx];
+            }
+
+            class DynamicDictionaryMetaObject : DynamicMetaObject
+            {
+                internal DynamicDictionaryMetaObject(Expression parameter, DynamicObject value)
+                    : base(parameter, BindingRestrictions.Empty, value)
+                {
+                }
+
+                public override DynamicMetaObject BindSetMember(SetMemberBinder binder, DynamicMetaObject value)
+                {
+                    var descriptor = (Value as DynamicObject)._ownerDescriptor;
+                    var idx = descriptor._fields.FindIndex(p => p.Key == binder.Name);
+                    return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
+                        typeof(DynamicObject).GetMethod("SetFieldByIdx"),
+                        Expression.Constant(idx),
+                        Expression.Constant(binder.Name),
+                        Expression.Constant(descriptor),
+                        Expression.Convert(value.Expression, typeof(object))),
+                        BindingRestrictions.GetTypeRestriction(Expression, LimitType));
+                }
+
+                public override DynamicMetaObject BindGetMember(GetMemberBinder binder)
+                {
+                    var descriptor = (Value as DynamicObject)._ownerDescriptor;
+                    var idx = descriptor._fields.FindIndex(p => p.Key == binder.Name);
+                    return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
+                        typeof(DynamicObject).GetMethod("GetFieldByIdx"),
+                        Expression.Constant(idx),
+                        Expression.Constant(binder.Name),
+                        Expression.Constant(descriptor)),
+                        BindingRestrictions.GetTypeRestriction(Expression, LimitType));
+                }
+
+                public override IEnumerable<string> GetDynamicMemberNames()
+                {
+                    var descriptor = (Value as DynamicObject)._ownerDescriptor;
+                    return descriptor._fields.Select(p => p.Key);
+                }
+            }
+
+            public override string ToString()
+            {
+                var message = new StringBuilder();
+                var idx = 0;
+                foreach (var item in _ownerDescriptor._fields)
+                {
+                    if (idx > 0) message.Append(", ");
+                    message.AppendFormat("{0}: {1}", item.Key, _fieldValues[idx]);
+                    idx++;
+                }
+                return message.ToString();
+            }
         }
 
         class Deserializer : ITypeBinaryDeserializerGenerator

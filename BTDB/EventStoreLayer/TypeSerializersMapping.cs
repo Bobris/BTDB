@@ -192,12 +192,13 @@ namespace BTDB.EventStoreLayer
             {
                 throw new InvalidDataException("Backreference cannot be first object");
             }
-            return GetLoader(typeId)(reader, null, this);
+            ITypeDescriptor descriptor;
+            return GetLoader(typeId, out descriptor)(reader, null, this, descriptor);
         }
 
-        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, object> GetLoader(uint typeId)
+        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> GetLoader(uint typeId, out ITypeDescriptor descriptor)
         {
-            var descriptor = _id2DescriptorMap[(int)typeId];
+            descriptor = _id2DescriptorMap[(int)typeId];
             return _typeSerializers.GetLoader(descriptor);
         }
 
