@@ -39,6 +39,11 @@ namespace BTDB.IL.Caching
             return Wrapping.NewType(name, baseType, interfaces);
         }
 
+        public Type NewEnum(string name, Type baseType, IEnumerable<KeyValuePair<string, object>> literals)
+        {
+            return Wrapping.NewEnum(name, baseType, literals);
+        }
+
         public object FindInCache(object item)
         {
             object result;

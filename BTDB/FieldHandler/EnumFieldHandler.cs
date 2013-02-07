@@ -101,22 +101,20 @@ namespace BTDB.FieldHandler
 
             public Type ToType()
             {
-                var name = string.Format("Enum{0}", Guid.NewGuid());
-                AssemblyBuilder ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndCollect);
-                ModuleBuilder mb = ab.DefineDynamicModule(name, true);
-                var enumBuilder = mb.DefineEnum(name, TypeAttributes.Public, _signed ? typeof(long) : typeof(ulong));
-                for (int i = 0; i < Names.Length; i++)
+                var builder = ILBuilder.Instance;
+                var literals = new Dictionary<string, object>();
+                for (var i = 0; i < Names.Length; i++)
                 {
                     if (_signed)
                     {
-                        enumBuilder.DefineLiteral(Names[i], (long)Values[i]);
+                        literals.Add(Names[i], (long)Values[i]);
                     }
                     else
                     {
-                        enumBuilder.DefineLiteral(Names[i], Values[i]);
+                        literals.Add(Names[i], Values[i]);
                     }
                 }
-                return enumBuilder.CreateType();
+                return builder.NewEnum("EnumByFieldHandler", _signed ? typeof(long) : typeof(ulong), literals);
             }
 
             public static bool operator ==(EnumConfiguration left, EnumConfiguration right)

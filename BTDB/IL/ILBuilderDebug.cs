@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
@@ -27,6 +30,19 @@ namespace BTDB.IL
         public IILDynamicType NewType(string name, Type baseType, Type[] interfaces)
         {
             return new ILDynamicTypeDebugImpl(name, baseType, interfaces);
+        }
+
+        public Type NewEnum(string name, Type baseType, IEnumerable<KeyValuePair<string, object>> literals)
+        {
+            name = ILDynamicTypeDebugImpl.UniqueName(name);
+            var ab = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.Run);
+            var mb = ab.DefineDynamicModule(name, true);
+            var enumBuilder = mb.DefineEnum(name, TypeAttributes.Public, baseType);
+            foreach (var pair in literals)
+            {
+                enumBuilder.DefineLiteral(pair.Key, pair.Value);
+            }
+            return enumBuilder.CreateType();
         }
     }
 }
