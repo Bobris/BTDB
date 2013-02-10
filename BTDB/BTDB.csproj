@@ -77,6 +77,7 @@
     <Compile Include="EventStoreLayer\ITypeSerializersId2LoaderMapping.cs" />
     <Compile Include="EventStoreLayer\ITypeSerializersLightMapping.cs" />
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\SkippingEventObserver.cs" />
     <Compile Include="EventStoreLayer\TypeDescriptorExtensions.cs" />
     <Compile Include="EventStoreLayer\IReadEventStore.cs" />
     <Compile Include="EventStoreLayer\ITypeBinaryDeserializerGenerator.cs" />

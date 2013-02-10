@@ -7,88 +7,81 @@ namespace BTDB.EventStoreLayer
 {
     public class ReadOnlyEventStore : IReadEventStore
     {
-        protected readonly IEventFileStorage _file;
-        protected readonly ITypeSerializersMapping _mapping;
-        protected ulong _nextReadPosition;
+        protected readonly IEventFileStorage File;
+        protected readonly ITypeSerializersMapping Mapping;
+        protected ulong NextReadPosition;
         const int FirstReadAhead = 4096;
-        public const byte StartBlockMagic = 248;
+        protected const uint SectorSize = 512;
+        protected const ulong SectorMask = ~(ulong)(SectorSize - 1);
+        protected const uint SectorMaskUInt = (uint)(SectorMask & uint.MaxValue);
+        protected ulong EndBufferPosition;
+        protected readonly byte[] EndBuffer = new byte[SectorSize];
+        protected uint EndBufferLen;
+        protected readonly uint MaxBlockSize;
 
         public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
         {
-            _file = file;
-            _mapping = mapping;
-            if (_file.MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
+            File = file;
+            Mapping = mapping;
+            EndBufferPosition = ulong.MaxValue;
+            MaxBlockSize = Math.Min(File.MaxBlockSize, 0x1000000); // For Length there is only 3 bytes so maximum could be less
+            if (MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
         }
 
         public Task ReadFromStartToEnd(IEventStoreObserver observer)
         {
-            _nextReadPosition = 0;
+            NextReadPosition = 0;
             return ReadToEnd(observer);
         }
 
         public async Task ReadToEnd(IEventStoreObserver observer)
         {
-            var bufferBlock = new byte[FirstReadAhead + _file.MaxBlockSize];
-            var bufferStartPosition = _nextReadPosition & (~511UL);
+            var bufferBlock = new byte[FirstReadAhead + MaxBlockSize];
+            var bufferStartPosition = NextReadPosition & SectorMask;
             var bufferFullLength = 0;
-            var bufferReadOffset = (int)(_nextReadPosition - bufferStartPosition);
+            var bufferReadOffset = (int)(NextReadPosition - bufferStartPosition);
             var buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, FirstReadAhead);
-            var bufReadLength = (int)await _file.Read(buf, bufferStartPosition);
+            var bufReadLength = (int)await File.Read(buf, bufferStartPosition);
             bufferFullLength += bufReadLength;
             while (true)
             {
                 if (bufferReadOffset >= bufferFullLength)
                 {
-                    return;
+                    break;
                 }
-                var b = bufferBlock[bufferReadOffset];
-                if (b == 0)
-                {
-                    return;
-                }
-                if (b != StartBlockMagic)
-                {
-                    SetCorrupted();
-                    return;
-                }
-                bufferReadOffset++;
-                if (bufferReadOffset + 6 > bufferFullLength)
+                if (bufferReadOffset + 8 > bufferFullLength)
                 {
                     SetCorrupted();
                     return;
                 }
                 var blockCheckSum = PackUnpack.UnpackUInt32LE(bufferBlock, bufferReadOffset);
                 bufferReadOffset += 4;
-                var blockLenLen = PackUnpack.LengthVUInt(bufferBlock, bufferReadOffset);
-                if (bufferReadOffset + blockLenLen > bufferFullLength)
+                var blockLen = PackUnpack.UnpackUInt32LE(bufferBlock, bufferReadOffset);
+                if (blockCheckSum == 0 && blockLen == 0)
+                    break;
+                var blockType = (BlockType)(blockLen & 0xff);
+                blockLen >>= 8;
+                bufferReadOffset += 4;
+                if (blockLen == 0 || blockLen + 8 > MaxBlockSize)
                 {
                     SetCorrupted();
                     return;
                 }
-                var blockLen = PackUnpack.UnpackVUInt(bufferBlock, ref bufferReadOffset);
-                if (blockLen == 0 || blockLen > _file.MaxBlockSize)
-                {
-                    SetCorrupted(); // Maybe allow this in future
-                    return;
-                }
-                var bufferLenToFill = ((uint)(bufferReadOffset + (int)blockLen + FirstReadAhead)) & (~511u);
+                var bufferLenToFill = ((uint)(bufferReadOffset + (int)blockLen + FirstReadAhead)) & SectorMaskUInt;
                 if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
                 buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
-                bufReadLength = (int)await _file.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
+                bufReadLength = (int)await File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
                 bufferFullLength += bufReadLength;
                 if (bufferReadOffset + (int)blockLen > bufferFullLength)
                 {
                     SetCorrupted();
                     return;
                 }
-                if (Checksum.CalcFletcher32(bufferBlock, (uint)bufferReadOffset, (uint)blockLen) != blockCheckSum)
+                if (Checksum.CalcFletcher32(bufferBlock, (uint)bufferReadOffset-4, blockLen+4) != blockCheckSum)
                 {
                     SetCorrupted();
                     return;
                 }
-                var blockType = (BlockType)bufferBlock[bufferReadOffset];
-                bufferReadOffset++;
-                blockLen--;
                 if ((blockType & (BlockType.FirstBlock | BlockType.MiddleBlock | BlockType.LastBlock)) == (BlockType.FirstBlock | BlockType.LastBlock))
                 {
                     Process(blockType, ByteBuffer.NewSync(bufferBlock, bufferReadOffset, (int)blockLen), observer);
@@ -97,9 +90,9 @@ namespace BTDB.EventStoreLayer
                 {
                     throw new NotImplementedException();
                 }
-                _nextReadPosition = bufferStartPosition + (ulong)bufferReadOffset + blockLen;
+                NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset + blockLen;
                 bufferReadOffset += (int)blockLen;
-                var nextBufferStartPosition = _nextReadPosition & (~511UL);
+                var nextBufferStartPosition = NextReadPosition & SectorMask;
                 var bufferMoveDistance = (int)(bufferStartPosition - nextBufferStartPosition);
                 if (bufferMoveDistance <= 0) continue;
                 Array.Copy(bufferBlock, bufferReadOffset, bufferBlock, bufferReadOffset - bufferMoveDistance, bufferFullLength - bufferReadOffset);
@@ -107,6 +100,9 @@ namespace BTDB.EventStoreLayer
                 bufferFullLength -= bufferMoveDistance;
                 bufferReadOffset -= bufferMoveDistance;
             }
+            EndBufferLen = (uint)(bufferFullLength - bufferFullLength & SectorMaskUInt);
+            EndBufferPosition = bufferStartPosition + (ulong)bufferFullLength - EndBufferLen;
+            Array.Copy(bufferBlock, bufferFullLength - EndBufferLen, EndBuffer, 0, EndBufferLen);
         }
 
         void Process(BlockType blockType, ByteBuffer block, IEventStoreObserver observer)
@@ -114,9 +110,9 @@ namespace BTDB.EventStoreLayer
             var reader = new ByteBufferReader(block);
             if (blockType.HasFlag(BlockType.HasTypeDeclaration))
             {
-                _mapping.LoadTypeDescriptors(reader);
+                Mapping.LoadTypeDescriptors(reader);
             }
-            var metadata = blockType.HasFlag(BlockType.HasMetadata) ? _mapping.LoadObject(reader) : null;
+            var metadata = blockType.HasFlag(BlockType.HasMetadata) ? Mapping.LoadObject(reader) : null;
             uint eventCount;
             if (blockType.HasFlag(BlockType.HasOneEvent))
             {
@@ -130,12 +126,12 @@ namespace BTDB.EventStoreLayer
             {
                 eventCount = 0;
             }
-            var readEvents = observer.ObservedMetadata(metadata,eventCount);
+            var readEvents = observer.ObservedMetadata(metadata, eventCount);
             if (!readEvents) return;
             var events = new object[eventCount];
             for (var i = 0; i < eventCount; i++)
             {
-                events[i] = _mapping.LoadObject(reader);
+                events[i] = Mapping.LoadObject(reader);
             }
             observer.ObservedEvents(events);
         }

@@ -7,6 +7,8 @@ namespace BTDB.EventStoreLayer
 {
     public class AppendingEventStore : ReadOnlyEventStore, IWriteEventStore
     {
+        readonly byte[] _zeroes = new byte[SectorSize + 12];
+
         public AppendingEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
             : base(file, mapping)
         {
@@ -14,10 +16,14 @@ namespace BTDB.EventStoreLayer
 
         public async Task Store(object metadata, object[] events)
         {
+            if (EndBufferPosition == ulong.MaxValue)
+            {
+                await ReadToEnd(new SkippingEventObserver());
+            }
             var writer = new ByteBufferWriter();
-            writer.WriteInt64(0);
-            writer.WriteInt32(0);
-            IDescriptorSerializerContext serializerContext = _mapping;
+            var startOffset = (int)EndBufferLen + 8;
+            writer.WriteBlock(_zeroes, 0, startOffset);
+            IDescriptorSerializerContext serializerContext = Mapping;
             if (metadata != null)
                 serializerContext = serializerContext.StoreNewDescriptors(writer, metadata);
             if (events != null)
@@ -54,30 +60,40 @@ namespace BTDB.EventStoreLayer
                     blockType |= BlockType.HasMoreEvents;
                 }
             }
+            var lenWithoutEndPadding = (int)writer.GetCurrentPosition();
+            writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
             var block = writer.Data;
-            if (block.Length <= _file.MaxBlockSize)
+            if (lenWithoutEndPadding <= MaxBlockSize)
             {
                 blockType |= BlockType.LastBlock;
-                block.Buffer[block.Offset + 11] = (byte)blockType;
-                var blockLen = (uint)block.Length - 11;
-                var checksum = Checksum.CalcFletcher32(block.Buffer, (uint)(block.Offset + 11), blockLen);
-                var blockLenLen = PackUnpack.LengthVUInt(blockLen);
-                var o = block.Offset + 11 - blockLenLen;
-                PackUnpack.PackVUInt(block.Buffer, ref o, blockLen);
-                o -= blockLenLen + 4;
-                PackUnpack.PackUInt32LE(block.Buffer, o, checksum);
-                o--;
-                block.Buffer[o] = StartBlockMagic;
-                block = ByteBuffer.NewAsync(block.Buffer, o, (int) (1 + 4 + blockLenLen + 1 + blockLen));
-                _file.SetWritePosition(_nextReadPosition);
-                await _file.Write(block);
-                _nextReadPosition += (ulong)block.Length;
+                var blockLen = (uint)(lenWithoutEndPadding - startOffset);
+                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int)blockLen), blockType);
             }
             else
             {
                 throw new NotImplementedException();
             }
             serializerContext.CommitNewDescriptors();
+        }
+
+        async Task WriteOneBlock(ByteBuffer block, BlockType blockType)
+        {
+            var blockLen = (uint)block.Length;
+            var o = block.Offset - 4;
+            PackUnpack.PackUInt32LE(block.Buffer, o, (blockLen << 8) + (uint)blockType);
+            var checksum = Checksum.CalcFletcher32(block.Buffer, (uint)o, blockLen + 4);
+            o -= 4;
+            PackUnpack.PackUInt32LE(block.Buffer, o, checksum);
+            o -= (int)EndBufferLen;
+            Array.Copy(EndBuffer, 0, block.Buffer, o, EndBufferLen);
+            var lenWithoutEndPadding = (int)(EndBufferLen + 8 + blockLen);
+            block = ByteBuffer.NewAsync(block.Buffer, o, (int)((uint)(lenWithoutEndPadding + SectorSize - 1) & SectorMaskUInt));
+            File.SetWritePosition(EndBufferPosition);
+            await File.Write(block);
+            NextReadPosition = EndBufferPosition + (ulong)lenWithoutEndPadding;
+            EndBufferPosition = NextReadPosition & SectorMask;
+            EndBufferLen = (uint)(NextReadPosition - EndBufferPosition);
+            Array.Copy(block.Buffer, block.Offset + lenWithoutEndPadding - EndBufferLen, EndBuffer, 0, EndBufferLen);
         }
     }
 }
