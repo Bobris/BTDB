@@ -236,7 +236,7 @@ namespace BTDB.ODBLayer
             if (_objSmallCache == null)
             {
                 _objSmallCache = new Dictionary<ulong, object>();
-                _objSmallMetadata = new Dictionary<object, DBObjectMetadata>();
+                _objSmallMetadata = new Dictionary<object, DBObjectMetadata>(ReferenceEqualityComparer<object>.Instance);
             }
             else if (_objSmallCache.Count > 30)
             {
