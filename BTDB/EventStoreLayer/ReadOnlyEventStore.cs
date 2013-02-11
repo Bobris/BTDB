@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
@@ -11,6 +12,7 @@ namespace BTDB.EventStoreLayer
         protected readonly ITypeSerializersMapping Mapping;
         protected ulong NextReadPosition;
         const int FirstReadAhead = 4096;
+        protected const int HeaderSize = 8;
         protected const uint SectorSize = 512;
         protected const ulong SectorMask = ~(ulong)(SectorSize - 1);
         protected const uint SectorMaskUInt = (uint)(SectorMask & uint.MaxValue);
@@ -36,6 +38,7 @@ namespace BTDB.EventStoreLayer
 
         public async Task ReadToEnd(IEventStoreObserver observer)
         {
+            var overflowWriter = default(ByteBufferWriter);
             var bufferBlock = new byte[FirstReadAhead + MaxBlockSize];
             var bufferStartPosition = NextReadPosition & SectorMask;
             var bufferFullLength = 0;
@@ -49,7 +52,7 @@ namespace BTDB.EventStoreLayer
                 {
                     break;
                 }
-                if (bufferReadOffset + 8 > bufferFullLength)
+                if (bufferReadOffset + HeaderSize > bufferFullLength)
                 {
                     SetCorrupted();
                     return;
@@ -62,7 +65,7 @@ namespace BTDB.EventStoreLayer
                 var blockType = (BlockType)(blockLen & 0xff);
                 blockLen >>= 8;
                 bufferReadOffset += 4;
-                if (blockLen == 0 || blockLen + 8 > MaxBlockSize)
+                if (blockLen == 0 || blockLen + HeaderSize > MaxBlockSize)
                 {
                     SetCorrupted();
                     return;
@@ -77,28 +80,56 @@ namespace BTDB.EventStoreLayer
                     SetCorrupted();
                     return;
                 }
-                if (Checksum.CalcFletcher32(bufferBlock, (uint)bufferReadOffset-4, blockLen+4) != blockCheckSum)
+                if (Checksum.CalcFletcher32(bufferBlock, (uint)bufferReadOffset - 4, blockLen + 4) != blockCheckSum)
                 {
                     SetCorrupted();
                     return;
                 }
-                if ((blockType & (BlockType.FirstBlock | BlockType.MiddleBlock | BlockType.LastBlock)) == (BlockType.FirstBlock | BlockType.LastBlock))
+                var blockTypeBlock = blockType & (BlockType.FirstBlock | BlockType.MiddleBlock | BlockType.LastBlock);
+                if (blockTypeBlock == (BlockType.FirstBlock | BlockType.LastBlock))
                 {
                     Process(blockType, ByteBuffer.NewSync(bufferBlock, bufferReadOffset, (int)blockLen), observer);
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    if (blockTypeBlock == BlockType.FirstBlock)
+                    {
+                        overflowWriter = new ByteBufferWriter();
+                    }
+                    else if (blockTypeBlock == BlockType.MiddleBlock || blockTypeBlock == BlockType.LastBlock)
+                    {
+                        if (overflowWriter == null)
+                        {
+                            SetCorrupted();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        SetCorrupted();
+                        return;
+                    }
+                    overflowWriter.WriteBlock(ByteBuffer.NewSync(bufferBlock, bufferReadOffset, (int)blockLen));
+                    if (blockTypeBlock == BlockType.LastBlock)
+                    {
+                        Process(blockType, overflowWriter.Data, observer);
+                        overflowWriter = null;
+                    }
                 }
                 NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset + blockLen;
                 bufferReadOffset += (int)blockLen;
                 var nextBufferStartPosition = NextReadPosition & SectorMask;
-                var bufferMoveDistance = (int)(bufferStartPosition - nextBufferStartPosition);
+                var bufferMoveDistance = (int)(nextBufferStartPosition - bufferStartPosition);
                 if (bufferMoveDistance <= 0) continue;
                 Array.Copy(bufferBlock, bufferReadOffset, bufferBlock, bufferReadOffset - bufferMoveDistance, bufferFullLength - bufferReadOffset);
                 bufferStartPosition = nextBufferStartPosition;
                 bufferFullLength -= bufferMoveDistance;
                 bufferReadOffset -= bufferMoveDistance;
+            }
+            if (overflowWriter != null)
+            {
+                SetCorrupted();
+                return;
             }
             EndBufferLen = (uint)(bufferFullLength - bufferFullLength & SectorMaskUInt);
             EndBufferPosition = bufferStartPosition + (ulong)bufferFullLength - EndBufferLen;
@@ -138,6 +169,8 @@ namespace BTDB.EventStoreLayer
 
         void SetCorrupted()
         {
+            EndBufferPosition = ulong.MaxValue;
+            throw new InvalidDataException();
             // File if corrupted and cannot be continued to append new events
         }
     }

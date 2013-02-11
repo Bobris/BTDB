@@ -7,7 +7,7 @@ namespace BTDB.EventStoreLayer
 {
     public class AppendingEventStore : ReadOnlyEventStore, IWriteEventStore
     {
-        readonly byte[] _zeroes = new byte[SectorSize + 12];
+        readonly byte[] _zeroes = new byte[SectorSize + HeaderSize];
 
         public AppendingEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
             : base(file, mapping)
@@ -21,7 +21,7 @@ namespace BTDB.EventStoreLayer
                 await ReadToEnd(new SkippingEventObserver());
             }
             var writer = new ByteBufferWriter();
-            var startOffset = (int)EndBufferLen + 8;
+            var startOffset = (int)EndBufferLen + HeaderSize;
             writer.WriteBlock(_zeroes, 0, startOffset);
             IDescriptorSerializerContext serializerContext = Mapping;
             if (metadata != null)
@@ -63,16 +63,20 @@ namespace BTDB.EventStoreLayer
             var lenWithoutEndPadding = (int)writer.GetCurrentPosition();
             writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
             var block = writer.Data;
-            if (lenWithoutEndPadding <= MaxBlockSize)
+            do
             {
-                blockType |= BlockType.LastBlock;
-                var blockLen = (uint)(lenWithoutEndPadding - startOffset);
-                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int)blockLen), blockType);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
+                var blockLen = MaxBlockSize - (EndBufferLen + HeaderSize);
+                if (blockLen >= lenWithoutEndPadding - startOffset)
+                {
+                    blockLen = (uint) (lenWithoutEndPadding - startOffset);
+                    blockType &= ~BlockType.MiddleBlock;
+                    blockType |= BlockType.LastBlock;
+                }
+                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int) blockLen), blockType);
+                startOffset += (int) blockLen;
+                blockType &= ~BlockType.FirstBlock;
+                blockType |= BlockType.MiddleBlock;
+            } while (lenWithoutEndPadding > startOffset);
             serializerContext.CommitNewDescriptors();
         }
 
@@ -86,7 +90,7 @@ namespace BTDB.EventStoreLayer
             PackUnpack.PackUInt32LE(block.Buffer, o, checksum);
             o -= (int)EndBufferLen;
             Array.Copy(EndBuffer, 0, block.Buffer, o, EndBufferLen);
-            var lenWithoutEndPadding = (int)(EndBufferLen + 8 + blockLen);
+            var lenWithoutEndPadding = (int)(EndBufferLen + HeaderSize + blockLen);
             block = ByteBuffer.NewAsync(block.Buffer, o, (int)((uint)(lenWithoutEndPadding + SectorSize - 1) & SectorMaskUInt));
             File.SetWritePosition(EndBufferPosition);
             await File.Write(block);

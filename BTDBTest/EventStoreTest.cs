@@ -374,13 +374,11 @@ namespace BTDBTest
         public void SupportsDataOverMaxBlockSize()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             appender.Store(null, new object[] { new byte[10000] }).Wait();
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver).Wait();
