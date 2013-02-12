@@ -220,12 +220,6 @@ namespace BTDB.EventStoreLayer
             {
                 ctx = new DescriptorSerializerContext(this, writer);
                 ctx.AddDescriptor(descriptor);
-                foreach (var nestedDescriptor in descriptor.NestedTypes())
-                {
-                    int _;
-                    if (!ctx.TryDescriptor2Id(nestedDescriptor, out _))
-                        ctx.AddDescriptor(nestedDescriptor);
-                }
                 action = _typeSerializers.GetNewDescriptorSaver(descriptor);
             }
             if (action != null)
@@ -263,6 +257,12 @@ namespace BTDB.EventStoreLayer
             {
                 Descriptor2IdMap.Add(descriptor, _typeSerializersMapping._id2DescriptorMap.Count + _id2DescriptorMap.Count);
                 _id2DescriptorMap.Add(descriptor);
+                foreach (var nestedDescriptor in descriptor.NestedTypes())
+                {
+                    int _;
+                    if (!TryDescriptor2Id(nestedDescriptor, out _))
+                        AddDescriptor(nestedDescriptor);
+                }
             }
 
             public uint Descriptor2Id(ITypeDescriptor descriptor)
@@ -304,12 +304,6 @@ namespace BTDB.EventStoreLayer
                 else
                 {
                     AddDescriptor(descriptor);
-                    foreach (var nestedDescriptor in descriptor.NestedTypes())
-                    {
-                        int _;
-                        if (!TryDescriptor2Id(nestedDescriptor, out _))
-                            AddDescriptor(nestedDescriptor);
-                    }
                     action = _typeSerializers.GetNewDescriptorSaver(descriptor);
                 }
                 if (action != null)
