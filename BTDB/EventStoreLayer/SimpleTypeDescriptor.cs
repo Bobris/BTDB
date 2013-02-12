@@ -73,9 +73,9 @@ namespace BTDB.EventStoreLayer
                 return _typeBinaryDeserializerGenerator.LoadNeedsCtx();
             }
 
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
             {
-                _typeBinaryDeserializerGenerator.GenerateLoad(ilGenerator, pushReader, pushCtx);
+                _typeBinaryDeserializerGenerator.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor);
                 if (_realType.IsValueType)
                 {
                     ilGenerator.Box(_realType);
@@ -102,9 +102,9 @@ namespace BTDB.EventStoreLayer
             return null;
         }
 
-        public IEnumerable<ITypeDescriptor> NestedTypes()
+        public ITypeDescriptor NestedType(int index)
         {
-            yield break;
+            return null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
@@ -124,7 +124,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
         {
             pushReader(ilGenerator);
             ilGenerator.Call(_loader);

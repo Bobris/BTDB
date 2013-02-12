@@ -155,7 +155,7 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            IEnumerable<ITypeDescriptor> ITypeDescriptor.NestedTypes()
+            public ITypeDescriptor NestedType(int index)
             {
                 throw new InvalidOperationException();
             }
@@ -257,11 +257,14 @@ namespace BTDB.EventStoreLayer
             {
                 Descriptor2IdMap.Add(descriptor, _typeSerializersMapping._id2DescriptorMap.Count + _id2DescriptorMap.Count);
                 _id2DescriptorMap.Add(descriptor);
-                foreach (var nestedDescriptor in descriptor.NestedTypes())
+                var idx = 0;
+                ITypeDescriptor nestedDescriptor;
+                while ((nestedDescriptor=descriptor.NestedType(idx)) != null)
                 {
                     int _;
                     if (!TryDescriptor2Id(nestedDescriptor, out _))
                         AddDescriptor(nestedDescriptor);
+                    idx++;
                 }
             }
 

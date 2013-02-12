@@ -209,7 +209,7 @@ namespace BTDBTest
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "BasicTypes");
         }
-        
+
         [Test]
         public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
         {
@@ -266,11 +266,9 @@ namespace BTDBTest
             TestSerialization(TestEnum.Item2);
         }
 
-        [Test]
-        public void CanDeserializeSimpleDtoToDynamic()
+        dynamic ConvertToDynamicThroughSerialization(object value)
         {
             var writer = new ByteBufferWriter();
-            var value = new SimpleDto { IntField = 42, StringField = "Hello" };
             var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
             storedDescriptorCtx.FinishNewDescriptors(writer);
             storedDescriptorCtx.StoreObject(writer, value);
@@ -280,9 +278,8 @@ namespace BTDBTest
             ts.SetTypeNameMapper(new ToDynamicMapper());
             var mapping = ts.CreateMapping();
             mapping.LoadTypeDescriptors(reader);
-            var obj = (dynamic)mapping.LoadObject(reader);
-            Assert.AreEqual(value.IntField, obj.IntField);
-            Assert.AreEqual(value.StringField, obj.StringField);
+            var obj = (dynamic) mapping.LoadObject(reader);
+            return obj;
         }
 
         public class ToDynamicMapper : ITypeNameMapper
@@ -297,5 +294,26 @@ namespace BTDBTest
                 return null;
             }
         }
+
+        [Test]
+        public void CanDeserializeSimpleDtoToDynamic()
+        {
+            var value = new SimpleDto { IntField = 42, StringField = "Hello" };
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.AreEqual(value.IntField, obj.IntField);
+            Assert.AreEqual(value.StringField, obj.StringField);
+        }
+
+        [Test]
+        public void CanDeserializeListToDynamic()
+        {
+            var value = new List<SimpleDto> { new SimpleDto { IntField = 42, StringField = "Hello" } };
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.AreEqual(value.Count, obj.Count);
+            Assert.AreEqual(value[0].IntField, obj[0].IntField);
+            Assert.AreEqual(value[0].StringField, obj[0].StringField);
+        }
+
+
     }
 }

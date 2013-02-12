@@ -15,7 +15,7 @@ namespace BTDB.EventStoreLayer
         ITypeBinarySkipperGenerator BuildBinarySkipperGenerator();
         ITypeBinarySerializerGenerator BuildBinarySerializerGenerator();
         ITypeNewDescriptorGenerator BuildNewDescriptorGenerator();
-        IEnumerable<ITypeDescriptor> NestedTypes();
+        ITypeDescriptor NestedType(int index);
         void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map);
         bool Sealed { get; }
         bool StoredInline { get; }

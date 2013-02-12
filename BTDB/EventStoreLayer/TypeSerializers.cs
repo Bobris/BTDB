@@ -199,11 +199,11 @@ namespace BTDB.EventStoreLayer
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
-                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
+                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3));
             }
             else
             {
-                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
+                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3));
             }
             if (loadAsType.IsValueType)
             {

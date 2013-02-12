@@ -143,7 +143,7 @@ namespace BTDB.EventStoreLayer
                 return false;
             }
 
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
             {
                 pushReader(ilGenerator);
                 Type typeRead;
@@ -176,9 +176,9 @@ namespace BTDB.EventStoreLayer
             return null;
         }
 
-        public IEnumerable<ITypeDescriptor> NestedTypes()
+        public ITypeDescriptor NestedType(int index)
         {
-            yield break;
+            return null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)

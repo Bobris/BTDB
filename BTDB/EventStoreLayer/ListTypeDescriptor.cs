@@ -93,11 +93,11 @@ namespace BTDB.EventStoreLayer
                 return !_owner._itemDescriptor.StoredInline || _owner._itemDescriptor.BuildBinaryDeserializerGenerator(_owner._itemDescriptor.GetPreferedType()).LoadNeedsCtx();
             }
 
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
             {
                 var localCount = ilGenerator.DeclareLocal(typeof(int));
                 var itemType = _owner._typeSerializers.LoadAsType(_owner._itemDescriptor);
-                var listType = typeof(List<>).MakeGenericType(itemType);
+                var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
                 if (!_target.IsAssignableFrom(listType)) throw new NotImplementedException();
                 var localList = ilGenerator.DeclareLocal(listType);
                 var loadFinished = ilGenerator.DefineLabel();
@@ -114,7 +114,8 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Dup()
                     .Stloc(localCount)
-                    .Newobj(listType.GetConstructor(new[] { typeof(int) }))
+                    .Do(pushDescriptor)
+                    .Newobj(listType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
                     .Stloc(localList)
                     .Mark(next)
                     .Ldloc(localCount)
@@ -124,7 +125,7 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Stloc(localCount)
                     .Ldloc(localList);
-                _owner._itemDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, itemType);
+                _owner._itemDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType);
                 ilGenerator
                     .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
                     .Br(next)
@@ -192,9 +193,10 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public IEnumerable<ITypeDescriptor> NestedTypes()
+        public ITypeDescriptor NestedType(int index)
         {
-            yield return _itemDescriptor;
+            if (index == 0) return _itemDescriptor;
+            return null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)

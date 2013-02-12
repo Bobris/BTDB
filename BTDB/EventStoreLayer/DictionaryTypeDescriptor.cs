@@ -103,7 +103,7 @@ namespace BTDB.EventStoreLayer
                     || _owner._valueDescriptor.BuildBinaryDeserializerGenerator(_owner._valueDescriptor.GetPreferedType()).LoadNeedsCtx();
             }
 
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
             {
                 var localCount = ilGenerator.DeclareLocal(typeof(int));
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor);
@@ -133,8 +133,8 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Stloc(localCount)
                     .Ldloc(localDict);
-                _owner._keyDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, keyType);
-                _owner._valueDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, valueType);
+                _owner._keyDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType);
+                _owner._valueDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType);
                 ilGenerator
                     .Callvirt(dictionaryType.GetMethod("Add"))
                     .Br(next)
@@ -222,15 +222,16 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public IEnumerable<ITypeDescriptor> NestedTypes()
+        public ITypeDescriptor NestedType(int index)
         {
-            yield return _keyDescriptor;
-            yield return _valueDescriptor;
+            if (index == 0) return _keyDescriptor;
+            if (index == 1) return _valueDescriptor;
+            return null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
         {
-            InitFromKeyValueDescriptors(map(_keyDescriptor),map(_valueDescriptor));
+            InitFromKeyValueDescriptors(map(_keyDescriptor), map(_valueDescriptor));
         }
 
         public bool Sealed { get; private set; }

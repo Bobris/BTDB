@@ -46,12 +46,12 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateLoad(this ITypeDescriptor dictionaryTypeDescriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Type asType)
+        public static void GenerateLoad(this ITypeDescriptor dictionaryTypeDescriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType)
         {
             if (dictionaryTypeDescriptor.StoredInline)
             {
                 var des = dictionaryTypeDescriptor.BuildBinaryDeserializerGenerator(asType);
-                des.GenerateLoad(ilGenerator, pushReader, pushCtx);
+                des.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor);
             }
             else
             {

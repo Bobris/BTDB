@@ -7,6 +7,6 @@ namespace BTDB.EventStoreLayer
     {
         bool LoadNeedsCtx();
         // ctx is ITypeBinaryDeserializerContext
-        void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx);
+        void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor);
     }
 }
