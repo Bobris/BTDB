@@ -108,7 +108,7 @@ namespace BTDB.EventStoreLayer
                 var localCount = ilGenerator.DeclareLocal(typeof(int));
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor);
                 var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor);
-                var dictionaryType = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+                var dictionaryType = typeof(DictionaryWithDescriptor<,>).MakeGenericType(keyType, valueType);
                 if (!_target.IsAssignableFrom(dictionaryType)) throw new NotImplementedException();
                 var localDict = ilGenerator.DeclareLocal(dictionaryType);
                 var loadFinished = ilGenerator.DefineLabel();
@@ -123,7 +123,8 @@ namespace BTDB.EventStoreLayer
                     .Stloc(localCount)
                     .Brfalse(loadFinished)
                     .Ldloc(localCount)
-                    .Newobj(dictionaryType.GetConstructor(new[] { typeof(int) }))
+                    .Do(pushDescriptor)
+                    .Newobj(dictionaryType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
                     .Stloc(localDict)
                     .Mark(next)
                     .Ldloc(localCount)

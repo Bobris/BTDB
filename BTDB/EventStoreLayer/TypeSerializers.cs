@@ -32,6 +32,9 @@ namespace BTDB.EventStoreLayer
 
         public ITypeDescriptor DescriptorOf(object obj)
         {
+            if (obj == null) return null;
+            var knowDescriptor = obj as IKnowDescriptor;
+            if (knowDescriptor != null) return knowDescriptor.GetDescriptor();
             return DescriptorOf(obj.GetType());
         }
 

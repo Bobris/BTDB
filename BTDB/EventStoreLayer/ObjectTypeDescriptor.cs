@@ -180,7 +180,7 @@ namespace BTDB.EventStoreLayer
             return realidx;
         }
 
-        public class DynamicObject : IDynamicMetaObjectProvider
+        public class DynamicObject : IDynamicMetaObjectProvider, IKnowDescriptor
         {
             readonly ObjectTypeDescriptor _ownerDescriptor;
             readonly object[] _fieldValues;
@@ -272,6 +272,11 @@ namespace BTDB.EventStoreLayer
                     idx++;
                 }
                 return message.ToString();
+            }
+
+            public ITypeDescriptor GetDescriptor()
+            {
+                return _ownerDescriptor;
             }
         }
 

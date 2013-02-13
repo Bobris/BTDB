@@ -273,12 +273,14 @@ namespace BTDBTest
             storedDescriptorCtx.FinishNewDescriptors(writer);
             storedDescriptorCtx.StoreObject(writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
+            var originalDescription = _ts.DescriptorOf(value).Describe();
             var reader = new ByteBufferReader(writer.Data);
             var ts = new TypeSerializers();
             ts.SetTypeNameMapper(new ToDynamicMapper());
             var mapping = ts.CreateMapping();
             mapping.LoadTypeDescriptors(reader);
-            var obj = (dynamic) mapping.LoadObject(reader);
+            var obj = (dynamic)mapping.LoadObject(reader);
+            Assert.AreEqual(originalDescription, ts.DescriptorOf((object)obj).Describe());
             return obj;
         }
 
@@ -314,6 +316,14 @@ namespace BTDBTest
             Assert.AreEqual(value[0].StringField, obj[0].StringField);
         }
 
-
+        [Test]
+        public void CanDeserializeDictionaryToDynamic()
+        {
+            var value = new Dictionary<int, SimpleDto> { { 10, new SimpleDto { IntField = 42, StringField = "Hello" } } };
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.AreEqual(value.Count, obj.Count);
+            Assert.AreEqual(value[10].IntField, obj[10].IntField);
+            Assert.AreEqual(value[10].StringField, obj[10].StringField);
+        }
     }
 }

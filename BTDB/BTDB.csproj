@@ -65,6 +65,7 @@
     <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
     <Compile Include="EventStoreLayer\BlockType.cs" />
     <Compile Include="EventStoreLayer\DictionaryTypeDescriptor.cs" />
+    <Compile Include="EventStoreLayer\DictionaryWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\EnumTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\EventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IDescriptorSerializerContext.cs" />
