@@ -525,6 +525,16 @@ namespace BTDB.StreamLayer
             SkipBlock(16);
         }
 
+        public float ReadSingle()
+        {
+            return new Int32SingleUnion(ReadInt32()).AsSingle;
+        }
+
+        public void SkipSingle()
+        {
+            SkipInt32();
+        }
+
         public double ReadDouble()
         {
             return BitConverter.Int64BitsToDouble(ReadInt64());

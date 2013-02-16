@@ -18,15 +18,15 @@ namespace BTDB.FieldHandler
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadStringOrdered()),
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipStringOrdered()),
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteStringOrdered(null)));
-            Add(fh,des,"String",
+            Add(fh, des, "String",
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadString()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipString()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteString(null)));
-            Add(fh,des,"UInt8",
+            Add(fh, des, "UInt8",
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadUInt8()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipUInt8()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteUInt8(0)));
-            AddJustOrderable(fh,"Int8Orderable",
+            AddJustOrderable(fh, "Int8Orderable",
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadInt8Ordered()),
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipInt8Ordered()),
                              EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteInt8Ordered(0)));
@@ -64,11 +64,14 @@ namespace BTDB.FieldHandler
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadBool()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipBool()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteBool(false)));
-            fh.Add(new DoubleFieldHandler());
-            AddDescriptor(des, "Double",
-                          EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDouble()),
-                          EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDouble()),
-                          EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDouble(0)));
+            Add(fh, des, "Single",
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadSingle()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipSingle()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteSingle(0)));
+            Add(fh, des, "Double",
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDouble()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDouble()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDouble(0)));
             Add(fh, des, "Decimal",
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDecimal()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDecimal()),

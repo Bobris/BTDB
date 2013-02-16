@@ -280,6 +280,11 @@ namespace BTDB.StreamLayer
             WriteBlock(value.ToByteArray());
         }
 
+        public void WriteSingle(float value)
+        {
+            WriteInt32(new Int32SingleUnion(value).AsInt32);
+        }
+
         public void WriteDouble(double value)
         {
             WriteInt64(BitConverter.DoubleToInt64Bits(value));

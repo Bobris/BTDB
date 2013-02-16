@@ -52,6 +52,7 @@
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
     <Compile Include="Buffer\ByteStructs.cs" />
+    <Compile Include="Buffer\Int32SingleUnion.cs" />
     <Compile Include="ChunkCache\DiskChunkCache.cs" />
     <Compile Include="ChunkCache\DiskChunkFileType.cs" />
     <Compile Include="ChunkCache\FileHashIndex.cs" />
@@ -324,7 +325,6 @@
     <Compile Include="IL\EmitHelpers.cs" />
     <Compile Include="FieldHandler\IFieldHandler.cs" />
     <Compile Include="FieldHandler\IFieldHandlerFactory.cs" />
-    <Compile Include="FieldHandler\DoubleFieldHandler.cs" />
     <Compile Include="FieldHandler\DBObjectFieldHandler.cs" />
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="FieldHandler\ITypeConvertorGenerator.cs" />

@@ -313,6 +313,21 @@ namespace BTDBTest
         }
 
         [Test]
+        public void SingleTest()
+        {
+            TestSingle(0, new byte[] { 0, 0, 0, 0 });
+            TestSingle(1, new byte[] { 63, 128, 0, 0 });
+            TestSingle(float.MinValue, new byte[] { 255, 127, 255, 255 });
+            TestSingle(float.MaxValue, new byte[] { 127, 127, 255, 255 });
+            TestSingle(float.NaN, new byte[] { 255, 192, 0, 0 });
+        }
+
+        static void TestSingle(float value, byte[] checkResult)
+        {
+            TestWriteRead(w => w.WriteSingle(value), checkResult, r => Assert.AreEqual(value, r.ReadSingle()), s => s.SkipSingle());
+        }
+
+        [Test]
         public void DoubleTest()
         {
             TestDouble(0, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 });
