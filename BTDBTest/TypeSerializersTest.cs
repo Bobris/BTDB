@@ -325,5 +325,25 @@ namespace BTDBTest
             Assert.AreEqual(value[10].IntField, obj[10].IntField);
             Assert.AreEqual(value[10].StringField, obj[10].StringField);
         }
+
+        [Test]
+        public void CanDeserializeEnumToDynamic()
+        {
+            var value = (object)TestEnum.Item1;
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.AreEqual(value.ToString(), obj.ToString());
+            Assert.AreEqual(obj, value);
+            Assert.AreNotEqual(obj, TestEnum.Item2);
+        }
+
+        [Test]
+        public void CanDeserializeFlagsEnumToDynamic()
+        {
+            var value = (object)(AttributeTargets.Method | AttributeTargets.Property);
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.AreEqual(value.ToString(), obj.ToString());
+            Assert.AreEqual(obj, value);
+            Assert.AreNotEqual(obj, AttributeTargets.Method);
+        }
     }
 }

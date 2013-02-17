@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
@@ -11,6 +12,7 @@ namespace BTDB.EventStoreLayer
 {
     internal class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator, ITypeBinarySkipperGenerator
     {
+        readonly TypeSerializers _typeSerializers;
         Type _type;
         readonly string _name;
         readonly bool _signed;
@@ -19,6 +21,7 @@ namespace BTDB.EventStoreLayer
 
         public EnumTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
+            _typeSerializers = typeSerializers;
             _type = type;
             _name = typeSerializers.TypeToName(type);
             _signed = IsSignedEnum(type);
@@ -37,8 +40,9 @@ namespace BTDB.EventStoreLayer
             _pairs = type.GetEnumNames().Zip(enumValuesUlongs.ToArray(), (s, v) => new KeyValuePair<string, ulong>(s, v)).ToList();
         }
 
-        public EnumTypeDescriptor(AbstractBufferedReader reader)
+        public EnumTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader)
         {
+            _typeSerializers = typeSerializers;
             _name = reader.ReadString();
             var header = reader.ReadVUInt32();
             _signed = (header & 1) != 0;
@@ -48,7 +52,7 @@ namespace BTDB.EventStoreLayer
             for (int i = 0; i < count; i++)
             {
                 _pairs.Add(_signed
-                               ? new KeyValuePair<string, ulong>(reader.ReadString(), (ulong) reader.ReadVInt64())
+                               ? new KeyValuePair<string, ulong>(reader.ReadString(), (ulong)reader.ReadVInt64())
                                : new KeyValuePair<string, ulong>(reader.ReadString(), reader.ReadVUInt64()));
             }
         }
@@ -127,6 +131,119 @@ namespace BTDB.EventStoreLayer
             return new Deserializer(this, target);
         }
 
+        public class DynamicEnum : IKnowDescriptor
+        {
+            readonly ITypeDescriptor _descriptor;
+            readonly ulong _value;
+
+            public DynamicEnum(long value, ITypeDescriptor descriptor)
+            {
+                _value = (ulong)value;
+                _descriptor = descriptor;
+            }
+
+            public DynamicEnum(ulong value, ITypeDescriptor descriptor)
+            {
+                _value = value;
+                _descriptor = descriptor;
+            }
+
+            public ITypeDescriptor GetDescriptor()
+            {
+                return _descriptor;
+            }
+
+            public override string ToString()
+            {
+                return ((EnumTypeDescriptor)_descriptor).UlongValueToString(_value);
+            }
+
+            public override int GetHashCode()
+            {
+                return _value.GetHashCode();
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj == null) return false;
+                if (obj is DynamicEnum)
+                {
+                    var objMe = (DynamicEnum)obj;
+                    if (objMe._descriptor != _descriptor) return false;
+                    return objMe._value == _value;
+                }
+                if (!obj.GetType().IsEnum) return false;
+                var myDescriptor = ((EnumTypeDescriptor)_descriptor);
+                var otherDescriptor = myDescriptor._typeSerializers.DescriptorOf(obj.GetType());
+                if (!myDescriptor.Equals(otherDescriptor)) return false;
+                if (myDescriptor._signed)
+                {
+                    return _value == (ulong)Convert.ToInt64(obj, CultureInfo.InvariantCulture);
+                }
+                return _value == Convert.ToUInt64(obj, CultureInfo.InvariantCulture);
+            }
+        }
+
+        string UlongValueToString(ulong value)
+        {
+            if (_flags)
+            {
+                return UlongValueToStringFlags(value);
+            }
+            var index = _pairs.FindIndex(p => p.Value == value);
+            if (index < 0) return UlongValueToStringAsNumber(value);
+            return _pairs[index].Key;
+        }
+
+        string UlongValueToStringAsNumber(ulong value)
+        {
+            if (_signed)
+            {
+                return ((long)value).ToString(CultureInfo.InvariantCulture);
+            }
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        string UlongValueToStringFlags(ulong value)
+        {
+            var workingValue = value;
+            var index = _pairs.Count - 1;
+            var stringBuilder = new StringBuilder();
+            var isFirstText = true;
+            while (index >= 0)
+            {
+                var currentValue = _pairs[index].Value;
+                if ((index == 0) && (currentValue == 0L))
+                {
+                    break;
+                }
+                if ((workingValue & currentValue) == currentValue)
+                {
+                    workingValue -= currentValue;
+                    if (!isFirstText)
+                    {
+                        stringBuilder.Insert(0, ", ");
+                    }
+                    stringBuilder.Insert(0, _pairs[index].Key);
+                    isFirstText = false;
+                }
+                index--;
+            }
+            if (workingValue != 0L)
+            {
+                return UlongValueToStringAsNumber(value);
+            }
+            if (value != 0)
+            {
+                return stringBuilder.ToString();
+            }
+            if ((_pairs.Count > 0) && (_pairs[0].Value == 0))
+            {
+                return _pairs[0].Key;
+            }
+            return "0";
+        }
+
         class Deserializer : ITypeBinaryDeserializerGenerator
         {
             readonly EnumTypeDescriptor _owner;
@@ -156,6 +273,20 @@ namespace BTDB.EventStoreLayer
                 {
                     ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
                     typeRead = typeof(ulong);
+                }
+                if (_target == typeof(object))
+                {
+                    ilGenerator.Do(pushDescriptor);
+                    if (_owner._signed)
+                    {
+                        ilGenerator.Newobj(() => new DynamicEnum(0L, null));
+                    }
+                    else
+                    {
+                        ilGenerator.Newobj(() => new DynamicEnum(0UL, null));
+                    }
+                    ilGenerator.Castclass(typeof(object));
+                    return;
                 }
                 new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _target.GetEnumUnderlyingType())(ilGenerator);
             }
@@ -201,7 +332,7 @@ namespace BTDB.EventStoreLayer
             {
                 writer.WriteString(pair.Key);
                 if (_signed)
-                    writer.WriteVInt64((long) pair.Value);
+                    writer.WriteVInt64((long)pair.Value);
                 else
                     writer.WriteVUInt64(pair.Value);
             }

@@ -56,7 +56,7 @@ namespace BTDB.EventStoreLayer
                         descriptor = new DictionaryTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(reader);
+                        descriptor = new EnumTypeDescriptor(_typeSerializers, reader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -259,7 +259,7 @@ namespace BTDB.EventStoreLayer
                 _id2DescriptorMap.Add(descriptor);
                 var idx = 0;
                 ITypeDescriptor nestedDescriptor;
-                while ((nestedDescriptor=descriptor.NestedType(idx)) != null)
+                while ((nestedDescriptor = descriptor.NestedType(idx)) != null)
                 {
                     int _;
                     if (!TryDescriptor2Id(nestedDescriptor, out _))
