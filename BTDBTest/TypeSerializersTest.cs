@@ -332,6 +332,7 @@ namespace BTDBTest
             var value = (object)TestEnum.Item1;
             var obj = ConvertToDynamicThroughSerialization(value);
             Assert.AreEqual(value.ToString(), obj.ToString());
+            Assert.AreEqual(value.GetHashCode(), obj.GetHashCode());
             Assert.AreEqual(obj, value);
             Assert.AreNotEqual(obj, TestEnum.Item2);
         }
@@ -342,6 +343,7 @@ namespace BTDBTest
             var value = (object)(AttributeTargets.Method | AttributeTargets.Property);
             var obj = ConvertToDynamicThroughSerialization(value);
             Assert.AreEqual(value.ToString(), obj.ToString());
+            Assert.AreEqual(value.GetHashCode(), obj.GetHashCode());
             Assert.AreEqual(obj, value);
             Assert.AreNotEqual(obj, AttributeTargets.Method);
         }

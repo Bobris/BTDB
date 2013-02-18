@@ -6,5 +6,8 @@ namespace BTDB.EventStoreLayer
     {
         Task ReadFromStartToEnd(IEventStoreObserver observer);
         Task ReadToEnd(IEventStoreObserver observer);
+        bool IsKnownAsCorrupted();
+        bool IsKnownAsFinished();
+        bool IsKnownAsAppendable();
     }
 }

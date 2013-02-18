@@ -19,6 +19,34 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver).Wait();
             Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
             Assert.AreEqual(new[] { new object[] { 1 } }, eventObserver.Events);
+            Assert.True(appender.IsKnownAsAppendable());
+            Assert.False(appender.IsKnownAsCorrupted());
+            Assert.False(appender.IsKnownAsFinished());
+            Assert.AreEqual(10, appender.KnownAppendablePosition());
+        }
+
+        [Test]
+        public void CanFinalizeEventStore()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.FinalizeStore().Wait();
+            Assert.False(appender.IsKnownAsAppendable());
+            Assert.False(appender.IsKnownAsCorrupted());
+            Assert.True(appender.IsKnownAsFinished());
+        }
+
+        [Test]
+        public void CanFinalizeEventStoreAfterReadFromStart()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { 1 }).Wait();
+            appender.ReadFromStartToEnd(new SkippingEventObserver()).Wait();
+            appender.FinalizeStore().Wait();
+            Assert.False(appender.IsKnownAsAppendable());
+            Assert.False(appender.IsKnownAsCorrupted());
+            Assert.True(appender.IsKnownAsFinished());
         }
 
         class StoringEventObserver : IEventStoreObserver

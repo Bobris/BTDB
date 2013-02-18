@@ -5,5 +5,7 @@ namespace BTDB.EventStoreLayer
     public interface IWriteEventStore : IReadEventStore
     {
         Task Store(object metadata, object[] events);
+        Task FinalizeStore();
+        ulong KnownAppendablePosition();
     }
 }

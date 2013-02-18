@@ -16,10 +16,11 @@ namespace BTDB.EventStoreLayer
 
         public async Task Store(object metadata, object[] events)
         {
-            if (EndBufferPosition == ulong.MaxValue)
+            if (!IsKnownAsAppendable())
             {
                 await ReadToEnd(new SkippingEventObserver());
             }
+            if (IsKnownAsFinished()) throw new InvalidOperationException("Cannot append to already finished EventStore");
             var writer = new ByteBufferWriter();
             var startOffset = (int)EndBufferLen + HeaderSize;
             writer.WriteBlock(_zeroes, 0, startOffset);
@@ -78,6 +79,26 @@ namespace BTDB.EventStoreLayer
                 blockType |= BlockType.MiddleBlock;
             } while (lenWithoutEndPadding > startOffset);
             serializerContext.CommitNewDescriptors();
+        }
+
+        public async Task FinalizeStore()
+        {
+            if (IsKnownAsFinished()) return;
+            if (!IsKnownAsAppendable())
+            {
+                await ReadToEnd(new SkippingEventObserver());
+            }
+            if (IsKnownAsFinished()) return;
+            var startOffset = (int)EndBufferLen + HeaderSize;
+            await WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
+            EndBufferPosition = ulong.MaxValue;
+            KnownAsFinished = true;
+        }
+
+        public ulong KnownAppendablePosition()
+        {
+            if (!IsKnownAsAppendable()) throw new InvalidOperationException("IsKnownAsAppendable needs to return true before calling this method. Use ReadToEnd(new SkippingEventObserver()).Wait() to initialize.");
+            return EndBufferPosition + EndBufferLen;
         }
 
         async Task WriteOneBlock(ByteBuffer block, BlockType blockType)
