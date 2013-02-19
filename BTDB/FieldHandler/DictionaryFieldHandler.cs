@@ -70,7 +70,7 @@ namespace BTDB.FieldHandler
             return type.GetGenericTypeDefinition() == typeof(IDictionary<,>) || type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

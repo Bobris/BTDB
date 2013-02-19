@@ -15,7 +15,7 @@ namespace BTDB.ODBLayer
 
         public override bool TypeSupported(Type type)
         {
-            if (ODBDictionaryFieldHandler.IsCompatibleWith(type, FieldHandlerOptions.None)) return true;
+            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, FieldHandlerOptions.None)) return true;
             if (base.TypeSupported(type)) return true;
             if (DBObjectFieldHandler.IsCompatibleWith(type)) return true;
             return false;
@@ -23,7 +23,7 @@ namespace BTDB.ODBLayer
 
         public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
-            if (ODBDictionaryFieldHandler.IsCompatibleWith(type, options)) return new ODBDictionaryFieldHandler(_odb, type);
+            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBDictionaryFieldHandler(_odb, type);
             var result = base.CreateFromType(type, options);
             if (result != null) return result;
             if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(_odb, type);

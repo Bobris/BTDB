@@ -1219,6 +1219,37 @@ namespace BTDBTest
             }
         }
 
+        public class ObjectWithDictInt2String
+        {
+            public IDictionary<int, string> Dict { get; set; }
+        }
+
+        public class Object2WithDictInt2String
+        {
+            public IDictionary<int, string> Dict { get; set; }
+            public String Added { get; set; }
+        }
+
+        [Test]
+        public void UpgradeWithDictInt2StringWorks()
+        {
+            var typeName = _db.RegisterType(typeof(ObjectWithDictInt2String));
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictInt2String>();
+                d.Dict.Add(10, "A");
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(Object2WithDictInt2String), typeName);
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<Object2WithDictInt2String>();
+                Assert.NotNull(d.Dict);
+            }
+        }
+
+
         [Test]
         public void PossibleToAllocateNewPreinitializedObject()
         {
@@ -1309,7 +1340,7 @@ namespace BTDBTest
                 Assert.Throws<ArgumentOutOfRangeException>(() => d.Dist.Add(unknownKind, utcKind));
                 d.Dist.Add(utcKind, unknownKind);
             }
-
         }
+
     }
 }

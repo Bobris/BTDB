@@ -76,7 +76,7 @@ namespace BTDB.FieldHandler
             return (!type.IsValueType && !type.IsArray && !type.IsSubclassOf(typeof(Delegate)));
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
             return IsCompatibleWith(type);

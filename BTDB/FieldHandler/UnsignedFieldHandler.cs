@@ -22,7 +22,7 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

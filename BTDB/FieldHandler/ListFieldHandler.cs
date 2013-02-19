@@ -63,7 +63,7 @@ namespace BTDB.FieldHandler
             return type.GetGenericTypeDefinition() == typeof(IList<>) || type.GetGenericTypeDefinition() == typeof(List<>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

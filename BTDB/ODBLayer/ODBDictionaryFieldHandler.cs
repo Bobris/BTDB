@@ -127,7 +127,7 @@ namespace BTDB.ODBLayer
             get { return _configuration; }
         }
 
-        public static bool IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public static bool IsCompatibleWithStatic(Type type, FieldHandlerOptions options)
         {
             if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
             if (!type.IsGenericType) return false;
@@ -140,9 +140,9 @@ namespace BTDB.ODBLayer
             return genericTypeDefinition == typeof(IDictionary<,>) || genericTypeDefinition == typeof(IOrderedDictionary<,>);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
-            return IsCompatibleWith(type, options);
+            return IsCompatibleWithStatic(type, options);
         }
 
         public Type HandledType()

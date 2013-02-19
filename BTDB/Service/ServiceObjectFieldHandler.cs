@@ -51,7 +51,7 @@ namespace BTDB.Service
             return (!type.IsValueType && !type.IsArray && !type.IsSubclassOf(typeof(Delegate)));
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

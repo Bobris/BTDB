@@ -296,7 +296,7 @@ namespace BTDB.FieldHandler
             return SpecializeLoadForType(type);
         }
 
-        bool IFieldHandler.IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return IsCompatibleWith(type);
         }

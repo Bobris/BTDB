@@ -66,12 +66,76 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type)
         {
-            return this;
+            if (HandledType() == type || !IsCompatibleWith(type, FieldHandlerOptions.None))
+            {
+                return this;
+            }
+            return new ConvertingHandler(this, type);
+        }
+
+        public class ConvertingHandler : IFieldHandler
+        {
+            readonly IFieldHandler _fieldHandler;
+            readonly Type _type;
+
+            public ConvertingHandler(IFieldHandler fieldHandler, Type type)
+            {
+                _fieldHandler = fieldHandler;
+                _type = type;
+            }
+
+            public string Name { get { return _fieldHandler.Name; } }
+            public byte[] Configuration { get { return _fieldHandler.Configuration; } }
+
+            public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
+            {
+                return _type == type;
+            }
+
+            public Type HandledType()
+            {
+                return _type;
+            }
+
+            public bool NeedsCtx()
+            {
+                return false;
+            }
+
+            public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            {
+                _fieldHandler.Load(ilGenerator, pushReaderOrCtx);
+                new DefaultTypeConvertorGenerator().GenerateConversion(_fieldHandler.HandledType(), _type)(ilGenerator);
+            }
+
+            public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            {
+                _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+            }
+
+            public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+            {
+                _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(new DefaultTypeConvertorGenerator().GenerateConversion(_type, _fieldHandler.HandledType())));
+            }
+
+            public IFieldHandler SpecializeLoadForType(Type type)
+            {
+                throw new InvalidOperationException();
+            }
+
+            public IFieldHandler SpecializeSaveForType(Type type)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            return this;
+            if (HandledType() == type || !IsCompatibleWith(type, FieldHandlerOptions.None))
+            {
+                return this;
+            }
+            return new ConvertingHandler(this, type);
         }
     }
 }
