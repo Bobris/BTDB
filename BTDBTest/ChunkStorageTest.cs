@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.ChunkCache;
-using BTDB.KV2DBLayer;
+using BTDB.KVDBLayer;
 using NUnit.Framework;
 
 namespace BTDBTest
@@ -16,7 +16,7 @@ namespace BTDBTest
             new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
 
         IFileCollection _fileCollection;
-        KeyValue2DB _kvdb;
+        KeyValueDB _kvdb;
         IChunkStorage _cs;
 
         ByteBuffer CalcHash(byte[] bytes)
@@ -28,7 +28,7 @@ namespace BTDBTest
         public void CreateChunkStorageSubDB()
         {
             _fileCollection = new InMemoryFileCollection();
-            _kvdb = new KeyValue2DB(_fileCollection);
+            _kvdb = new KeyValueDB(_fileCollection);
             _cs = _kvdb.GetSubDB<IChunkStorage>(1);
         }
 
@@ -42,7 +42,7 @@ namespace BTDBTest
         void ReopenStorage()
         {
             _kvdb.Dispose();
-            _kvdb = new KeyValue2DB(_fileCollection);
+            _kvdb = new KeyValueDB(_fileCollection);
             _cs = _kvdb.GetSubDB<IChunkStorage>(1);
         }
 

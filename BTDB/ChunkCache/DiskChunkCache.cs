@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
-using BTDB.KV2DBLayer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 

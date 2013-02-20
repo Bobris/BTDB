@@ -2,54 +2,19 @@
 
 Currently this project these parts:
 
-* Key Value Database (2 flavors)
+* Key Value Database
 * Wrapped Dynamic IL generation with debugging + extensions
 * IOC Container
 * Object Database
 * RPC Library
 * Snappy Compression
+* Event Storage (In heavy development)
 
-All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.0, code uses Parallel Extensions. Code is tested using NUnit Framework.
+All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, code uses Parallel Extensions. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 
 ---
-## Key Value Database (Single File Flavor)
-
-### Features:
-
-* This is Key Value store written in C# without using any native code.
-* It is easily embeddable. 
-* One storage is just one file/stream.
-* It has [ACID] properties with [MVCC].
-* At one time there could be multiple read only transactions and one read/write transaction.
-* Because it reuses deallocated space, it does not need compaction (or at least not that often).
-* Export/Import to stream - could be used for compaction
-
-### Design limits:
-
-* Maximum Key length is limited by 31bits (2GB). Best performance has keys with length smaller than 524 bytes.
-* Maximum value length is limited by 31bits (2GB).
-* Total pairs count is limited by 63bits.
-* Total size of database file is limited by 63bits (8EB).
-
-### Sample code:
-
-    using (var stream = new MemoryPositionLessStream())
-    using (IKeyValueDB db = new KeyValueDB(stream))
-    {
-        using (var tr = db.StartTransaction())
-        {
-            tr.CreateOrUpdateKeyValue(new byte[] { 1 }, new byte[100000]);
-            tr.Commit();
-        }
-    }
-
-### Roadmap:
-
-* Deprecating, use Multiple Files Flavor instead
-
----
-## Key Value Database (Multiple Files Flavor)
+## Key Value Database
 
 ### Features:
 
@@ -58,7 +23,7 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 * One storage is just one directory.
 * It has [ACID] properties with [MVCC].
 * At one time there could be multiple read only transactions and one read/write transaction.
-* Export/Import to stream - could be used for compaction
+* Export/Import to stream - could be used for compaction, snapshotting
 * Automatic compaction
 * Customizable compression
 * Relatively Fast DB Open due to key index file
@@ -73,7 +38,7 @@ Please is you find it useful or have questions, write me e-mail <boris.letocha@g
 ### Sample code:
 
     using (var fileCollection = new InMemoryFileCollection())
-    using (IKeyValueDB db = new KeyValue2DB(fileCollection))
+    using (IKeyValueDB db = new KeyValueDB(fileCollection))
     {
         using (var tr = db.StartTransaction())
         {
@@ -180,7 +145,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 * Ported and inspired mainly by Go version of Snappy Compression [http://code.google.com/p/snappy/]
 * Fully compatible with original
 * Fully managed and safe implementation
-* Compression is aborted when target buffer size is not enough
+* Compression is aborted when target buffer size is not big enough
 
 ### Roadmap:
 

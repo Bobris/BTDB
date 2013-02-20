@@ -1,11 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 using NUnit.Framework;
 
 namespace BTDBTest
@@ -16,10 +15,34 @@ namespace BTDBTest
         [Test]
         public void CreateEmptyDatabase()
         {
-            using (var stream = CreateTestStream())
+            using (var fileCollection = new InMemoryFileCollection())
+            using (new KeyValueDB(fileCollection))
             {
-                using (new KeyValueDB(stream))
+            }
+        }
+
+        [Test]
+        public void EmptyTransaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr = db.StartTransaction())
                 {
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
+        public void EmptyWritingTransaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    tr.Commit();
                 }
             }
         }
@@ -27,30 +50,29 @@ namespace BTDBTest
         [Test]
         public void FirstTransaction()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.True(tr.CreateKey(_key1));
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
                     tr.Commit();
                 }
             }
         }
 
         [Test]
-        public void HumanReadableDescriptionInHeaderWorks()
+        public void FirstTransactionIsNumber1()
         {
-            using (var stream = CreateTestStream())
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
-                using (IKeyValueDB db = new KeyValueDB(stream))
+                using (var tr = db.StartTransaction())
                 {
-                    (db as IKeyValueDBInOneFile).HumanReadableDescriptionInHeader = "Hello World";
-                    Assert.AreEqual("Hello World", (db as IKeyValueDBInOneFile).HumanReadableDescriptionInHeader);
-                }
-                using (IKeyValueDB db = new KeyValueDB(stream))
-                {
-                    Assert.AreEqual("Hello World", (db as IKeyValueDBInOneFile).HumanReadableDescriptionInHeader);
+                    Assert.AreEqual(0, tr.GetTransactionNumber());
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.AreEqual(1, tr.GetTransactionNumber());
+                    tr.Commit();
                 }
             }
         }
@@ -58,18 +80,19 @@ namespace BTDBTest
         [Test]
         public void MoreComplexTransaction()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.True(tr.CreateKey(_key1));
-                    Assert.False(tr.CreateKey(_key1));
-                    Assert.False(tr.FindExactKey(_key2));
-                    Assert.True(tr.CreateKey(_key2));
-                    Assert.True(tr.FindExactKey(_key1));
-                    Assert.True(tr.FindExactKey(_key2));
-                    Assert.False(tr.FindExactKey(_key3));
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.False(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key2)));
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key2), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key1)));
+                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key2)));
+                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key3)));
+                    Assert.AreEqual(FindResult.Next, tr.Find(ByteBuffer.NewEmpty()));
                     tr.Commit();
                 }
             }
@@ -78,20 +101,22 @@ namespace BTDBTest
         [Test]
         public void CommitWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
                     tr1.CreateKey(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
+                        Assert.AreEqual(0, tr2.GetTransactionNumber());
                         Assert.False(tr2.FindExactKey(_key1));
                     }
                     tr1.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
                 {
+                    Assert.AreEqual(1, tr3.GetTransactionNumber());
                     Assert.True(tr3.FindExactKey(_key1));
                 }
             }
@@ -100,8 +125,8 @@ namespace BTDBTest
         [Test]
         public void RollbackWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
@@ -110,6 +135,7 @@ namespace BTDBTest
                 }
                 using (var tr2 = db.StartTransaction())
                 {
+                    Assert.AreEqual(0, tr2.GetTransactionNumber());
                     Assert.False(tr2.FindExactKey(_key1));
                 }
             }
@@ -118,8 +144,8 @@ namespace BTDBTest
         [Test]
         public void OnlyOneWrittingTransactionPossible()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
@@ -136,8 +162,8 @@ namespace BTDBTest
         [Test]
         public void OnlyOneWrittingTransactionPossible2()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var tr1 = db.StartTransaction();
                 tr1.CreateKey(_key1);
@@ -152,25 +178,22 @@ namespace BTDBTest
         }
 
         [Test]
-        public void BiggerKey([Values(0, 1, 268, 269, 270, 4364, 4365, 4366, 1200000)] int keyLength)
+        public void BiggerKey([Values(0, 1, 2, 5000, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
-            using (var stream = CreateTestStream())
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
-                using (IKeyValueDB db = new KeyValueDB(stream))
+                using (var tr1 = db.StartTransaction())
                 {
-                    using (var tr1 = db.StartTransaction())
-                    {
-                        tr1.CreateKey(key);
-                        tr1.Commit();
-                    }
-                    using (var tr2 = db.StartTransaction())
-                    {
-                        Assert.True(tr2.FindExactKey(key));
-                        var buf = tr2.GetKeyAsByteArray();
-                        Assert.AreEqual(key, buf);
-                    }
+                    tr1.CreateKey(key);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.True(tr2.FindExactKey(key));
+                    Assert.AreEqual(key, tr2.GetKeyAsByteArray());
                 }
             }
         }
@@ -178,8 +201,8 @@ namespace BTDBTest
         [Test]
         public void TwoTransactions()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
@@ -206,24 +229,24 @@ namespace BTDBTest
         [Test]
         public void MultipleTransactions([Values(1000)] int transactionCount)
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
-                var key = new byte[2];
+                var key = new byte[2 + transactionCount * 10];
                 for (int i = 0; i < transactionCount; i++)
                 {
                     key[0] = (byte)(i / 256);
                     key[1] = (byte)(i % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKey(key);
+                        tr1.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, 2 + i * 10), ByteBuffer.NewEmpty());
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
                             {
                                 key[0] = (byte)(j / 256);
                                 key[1] = (byte)(j % 256);
-                                Assert.True(tr1.FindExactKey(key));
+                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -235,24 +258,24 @@ namespace BTDBTest
         [Test]
         public void MultipleTransactions2([Values(1000)] int transactionCount)
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
-                var key = new byte[2];
+                var key = new byte[2 + transactionCount * 10];
                 for (int i = 0; i < transactionCount; i++)
                 {
                     key[0] = (byte)((transactionCount - i) / 256);
                     key[1] = (byte)((transactionCount - i) % 256);
                     using (var tr1 = db.StartTransaction())
                     {
-                        tr1.CreateKey(key);
+                        tr1.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, 2 + i * 10), ByteBuffer.NewEmpty());
                         if (i % 100 == 0 || i == transactionCount - 1)
                         {
                             for (int j = 0; j < i; j++)
                             {
                                 key[0] = (byte)((transactionCount - j) / 256);
                                 key[1] = (byte)((transactionCount - j) % 256);
-                                Assert.True(tr1.FindExactKey(key));
+                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -264,8 +287,8 @@ namespace BTDBTest
         [Test]
         public void SimpleFindPreviousKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
@@ -285,10 +308,63 @@ namespace BTDBTest
         }
 
         [Test]
+        public void FindKeyWithPreferPreviousKeyWorks()
+        {
+            const int keyCount = 10000;
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[100];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        tr.CreateKey(key);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[101];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
+                        Assert.AreEqual(FindResult.Previous, findKeyResult);
+                        Assert.AreEqual(i, tr.GetKeyIndex());
+                    }
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    var key = new byte[99];
+                    for (int i = 0; i < keyCount; i++)
+                    {
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
+                        var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
+                        if (i == 0)
+                        {
+                            Assert.AreEqual(FindResult.Next, findKeyResult);
+                            Assert.AreEqual(i, tr.GetKeyIndex());
+                        }
+                        else
+                        {
+                            Assert.AreEqual(FindResult.Previous, findKeyResult);
+                            Assert.AreEqual(i - 1, tr.GetKeyIndex());
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void SimpleFindNextKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
@@ -310,8 +386,8 @@ namespace BTDBTest
         [Test]
         public void AdvancedFindPreviousAndNextKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var key = new byte[2];
                 const int keysCreated = 10000;
@@ -351,8 +427,8 @@ namespace BTDBTest
         [Test]
         public void SetKeyIndexWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var key = new byte[2];
                 const int keysCreated = 10000;
@@ -382,91 +458,18 @@ namespace BTDBTest
         }
 
         [Test]
-        public void SetValueWorksSameTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
-            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
-        {
-            var valbuf = new byte[secondLength];
-            new Random(0).NextBytes(valbuf);
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
-            {
-                using (var tr1 = db.StartTransaction())
-                {
-                    tr1.CreateKey(_key1);
-                    tr1.CreateKey(_key2);
-                    tr1.CreateKey(_key3);
-                    tr1.SetValue(new byte[firstLength]);
-                    tr1.SetValue(valbuf);
-                    tr1.Commit();
-                }
-                using (var tr2 = db.StartTransaction())
-                {
-                    Assert.True(tr2.FindExactKey(_key1));
-                    Assert.True(tr2.FindExactKey(_key2));
-                    Assert.True(tr2.FindExactKey(_key3));
-                    var valbuf2 = tr2.GetValueAsByteArray();
-                    for (int i = 0; i < secondLength; i++)
-                    {
-                        if (valbuf[i] != valbuf2[i])
-                            Assert.AreEqual(valbuf[i], valbuf2[i]);
-                    }
-                }
-            }
-        }
-
-        [Test]
-        public void SetValueWorksDifferentTransaction([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int firstLength,
-            [Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int secondLength)
-        {
-            var valbuf = new byte[secondLength];
-            new Random(0).NextBytes(valbuf);
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
-            {
-                using (var tr1 = db.StartTransaction())
-                {
-                    tr1.CreateKey(_key1);
-                    tr1.CreateKey(_key2);
-                    tr1.CreateKey(_key3);
-                    tr1.SetValue(new byte[firstLength]);
-                    tr1.Commit();
-                }
-                using (var tr2 = db.StartTransaction())
-                {
-                    Assert.True(tr2.FindExactKey(_key1));
-                    Assert.True(tr2.FindExactKey(_key2));
-                    Assert.True(tr2.FindExactKey(_key3));
-                    tr2.SetValue(valbuf);
-                    tr2.Commit();
-                }
-                using (var tr3 = db.StartTransaction())
-                {
-                    Assert.True(tr3.FindExactKey(_key1));
-                    Assert.True(tr3.FindExactKey(_key2));
-                    Assert.True(tr3.FindExactKey(_key3));
-                    var valbuf2 = tr3.GetValueAsByteArray();
-                    for (int i = 0; i < secondLength; i++)
-                    {
-                        if (valbuf[i] != valbuf2[i])
-                            Assert.AreEqual(valbuf[i], valbuf2[i]);
-                    }
-                }
-            }
-        }
-
-        [Test]
-        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 256, 268, 269, 270, 512, 4364, 4365, 4366, 5000, 1200000, 1200012, 10000000)] int length)
+        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 256, 5000, 10000000)] int length)
         {
             var valbuf = new byte[length];
             new Random(0).NextBytes(valbuf);
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    Assert.True(tr1.CreateOrUpdateKeyValue(_key1, valbuf));
-                    Assert.False(tr1.CreateOrUpdateKeyValue(_key1, valbuf));
-                    Assert.True(tr1.CreateOrUpdateKeyValue(_key2, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
+                    Assert.False(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key2, valbuf));
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -492,8 +495,8 @@ namespace BTDBTest
         [Test]
         public void FindFirstKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -511,8 +514,8 @@ namespace BTDBTest
         [Test]
         public void FindLastKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -530,8 +533,8 @@ namespace BTDBTest
         [Test]
         public void SimplePrefixWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -553,8 +556,8 @@ namespace BTDBTest
         [Test]
         public void PrefixWithFindNextKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -563,7 +566,6 @@ namespace BTDBTest
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.True(tr.FindNextKey());
-                    Assert.AreEqual(_key2.Skip(1).ToArray(), tr.GetKeyAsByteArray());
                     Assert.False(tr.FindNextKey());
                     tr.Commit();
                 }
@@ -573,8 +575,8 @@ namespace BTDBTest
         [Test]
         public void PrefixWithFindPrevKeyWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -582,7 +584,6 @@ namespace BTDBTest
                     tr.CreateKey(_key2);
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
-                    Assert.AreEqual(_key1.Skip(1).ToArray(), tr.GetKeyAsByteArray());
                     Assert.False(tr.FindPreviousKey());
                     tr.Commit();
                 }
@@ -592,8 +593,8 @@ namespace BTDBTest
         [Test]
         public void SimpleEraseCurrentWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr = db.StartTransaction())
                 {
@@ -614,8 +615,8 @@ namespace BTDBTest
         [Test, TestCaseSource("EraseRangeSource")]
         public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var key = new byte[2];
                 using (var tr = db.StartTransaction())
@@ -643,11 +644,11 @@ namespace BTDBTest
                         key[1] = (byte)(i % 256);
                         if (i >= removeStart && i < removeStart + removeCount)
                         {
-                            Assert.False(tr.FindExactKey(key));
+                            Assert.False(tr.FindExactKey(key), "{0} should be removed", i);
                         }
                         else
                         {
-                            Assert.True(tr.FindExactKey(key));
+                            Assert.True(tr.FindExactKey(key), "{0} should be found", i);
                         }
                     }
                 }
@@ -659,7 +660,7 @@ namespace BTDBTest
         // ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
-            for (int i = 1001; i < 10000; i += 1000)
+            for (int i = 11; i < 1000; i += i)
             {
                 yield return new[] { i, 0, 1 };
                 yield return new[] { i, i - 1, 1 };
@@ -675,100 +676,18 @@ namespace BTDBTest
         }
 
         [Test]
-        public void RandomlyCreatedTest1()
-        {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
-            {
-                using (var tr = db.StartTransaction())
-                {
-                    tr.CreateKey(new byte[232]);
-                    tr.SetValue(new byte[93341]);
-                    tr.SetValue(new byte[15397]);
-                    tr.SetValue(new byte[46700]);
-                    tr.Commit();
-                }
-            }
-        }
-
-        [Test]
-        public void RandomlyCreatedTest2()
-        {
-            using (var stream = CreateTestStream())
-            using (var db = new KeyValueDB(stream))
-            {
-                using (var tr1 = db.StartTransaction())
-                {
-                    tr1.CreateKey(new byte[] { 1 });
-                    tr1.Commit();
-                }
-                using (var tr2 = db.StartTransaction())
-                {
-                    tr2.CreateKey(new byte[] { 2 });
-                    tr2.Commit();
-                }
-                using (var tr3 = db.StartTransaction())
-                {
-                    tr3.CreateKey(new byte[] { 3 });
-                }
-                using (var tr4 = db.StartTransaction())
-                {
-                    tr4.CreateKey(new byte[] { 4 });
-                }
-            }
-        }
-
-        [Test]
-        public void ALotOfLargeKeysWorks()
-        {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
-            {
-                for (int i = 0; i < 10; i++)
-                {
-                    using (var tr = db.StartTransaction())
-                    {
-                        for (int j = 0; j < 10; j++)
-                        {
-                            var key = new byte[5000];
-                            key[0] = (byte)i;
-                            key[key.Length - 1] = (byte)j;
-                            Assert.True(tr.CreateKey(key));
-                            tr.SetValue(new byte[4000 + i * 100 + j]);
-                        }
-                        tr.Commit();
-                    }
-                }
-                using (var tr = db.StartTransaction())
-                {
-                    for (int i = 0; i < 10; i++)
-                    {
-                        for (int j = 0; j < 10; j++)
-                        {
-                            var key = new byte[5000];
-                            key[0] = (byte)i;
-                            key[key.Length - 1] = (byte)j;
-                            Assert.True(tr.FindExactKey(key));
-                            Assert.AreEqual(4000 + i * 100 + j, tr.GetValue().Length);
-                        }
-                    }
-                }
-            }
-        }
-
-        [Test]
         public void ALotOf5KBTransactionsWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 for (int i = 0; i < 5000; i++)
                 {
                     var key = new byte[5000];
                     using (var tr = db.StartTransaction())
                     {
-                        key[0] = (byte)(i/256);
-                        key[1] = (byte)(i%256);
+                        key[0] = (byte)(i / 256);
+                        key[1] = (byte)(i % 256);
                         Assert.True(tr.CreateKey(key));
                         tr.Commit();
                     }
@@ -779,8 +698,8 @@ namespace BTDBTest
         [Test]
         public void SetKeyPrefixInOneTransaction()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var key = new byte[5];
                 var value = new byte[100];
@@ -812,21 +731,38 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CompressibleValueLoad()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
+                        Assert.AreEqual(new byte[1000], tr.GetValueAsByteArray());
+                        tr.Commit();
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void StartWritingTransactionWorks()
         {
-            using (var stream = CreateTestStream())
-            using (IKeyValueDB db = new KeyValueDB(stream))
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 var tr1 = db.StartWritingTransaction().Result;
                 var tr2Task = db.StartWritingTransaction();
                 var task = Task.Factory.StartNew(() =>
-                                                         {
-                                                             var tr2 = tr2Task.Result;
-                                                             Assert.True(tr2.FindExactKey(_key1));
-                                                             tr2.CreateKey(_key2);
-                                                             tr2.Commit();
-                                                             tr2.Dispose();
-                                                         });
+                {
+                    var tr2 = tr2Task.Result;
+                    Assert.True(tr2.FindExactKey(_key1));
+                    tr2.CreateKey(_key2);
+                    tr2.Commit();
+                    tr2.Dispose();
+                });
                 tr1.CreateKey(_key1);
                 tr1.Commit();
                 tr1.Dispose();
@@ -840,13 +776,12 @@ namespace BTDBTest
         }
 
         [Test]
-        public void RepairsOnReopen([Values(false, true)] bool durable)
+        public void RepairsOnReopen()
         {
-            using (var stream = CreateTestStream())
+            using (var fileCollection = new InMemoryFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(stream))
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
                 {
-                    db.DurableTransactions = durable;
                     using (var tr = db.StartTransaction())
                     {
                         tr.CreateKey(_key1);
@@ -857,22 +792,220 @@ namespace BTDBTest
                         tr.CreateKey(_key2);
                         tr.Commit();
                     }
-                    using (IKeyValueDB db2 = new KeyValueDB(stream))
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateKey(_key3);
+                        // rollback
+                    }
+                    using (IKeyValueDB db2 = new KeyValueDB(fileCollection))
                     {
                         using (var tr = db2.StartTransaction())
                         {
                             Assert.True(tr.FindExactKey(_key1));
                             Assert.True(tr.FindExactKey(_key2));
+                            Assert.False(tr.FindExactKey(_key3));
                         }
                     }
                 }
-                using (IKeyValueDB db = new KeyValueDB(stream))
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
                 {
                     using (var tr = db.StartTransaction())
                     {
                         Assert.True(tr.FindExactKey(_key1));
                         Assert.True(tr.FindExactKey(_key2));
+                        Assert.False(tr.FindExactKey(_key3));
                     }
+                }
+            }
+        }
+
+        [Test]
+        public void MoreComplexReopen()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var key = new byte[100];
+                        using (var tr = db.StartTransaction())
+                        {
+                            key[0] = (byte)(i / 256);
+                            key[1] = (byte)(i % 256);
+                            Assert.True(tr.CreateOrUpdateKeyValue(key, key));
+                            tr.Commit();
+                        }
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.SetKeyIndex(0);
+                        tr.EraseCurrent();
+                        tr.EraseRange(1, 3);
+                        tr.Commit();
+                    }
+                }
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        var key = new byte[100];
+                        key[1] = 1;
+                        Assert.True(tr.FindExactKey(key));
+                        tr.FindNextKey();
+                        Assert.AreEqual(5, tr.GetKeyAsByteArray()[1]);
+                        Assert.AreEqual(96, tr.GetKeyValueCount());
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void AddingContinueToSameFileAfterReopen()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, _key1);
+                        tr.Commit();
+                    }
+                }
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                    Console.WriteLine(db.CalcStats());
+                }
+                Assert.AreEqual(2, fileCollection.GetCount()); // Log + Index
+            }
+        }
+
+        [Test]
+        public void AddingContinueToNewFileAfterReopenWithCorruption()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, _key1);
+                        tr.Commit();
+                    }
+                }
+                fileCollection.SimulateCorruptionBySetSize(20);
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        Assert.AreEqual(0, tr.GetKeyValueCount());
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                    Console.WriteLine(db.CalcStats());
+                }
+                Assert.LessOrEqual(2, fileCollection.GetCount());
+            }
+        }
+
+        [Test]
+        public void AddingContinueToSameFileAfterReopenOfDBWith2TransactionLogFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(2, fileCollection.GetCount());
+                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key3, new byte[10]);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(4, fileCollection.GetCount());
+                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.Commit();
+                    }
+                }
+                Assert.AreEqual(4, fileCollection.GetCount());
+            }
+        }
+
+        [Test]
+        public void CompactionWaitsForFinishingOldTransactionsBeforeRemovingFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.Commit();
+                    }
+                    var longTr = db.StartTransaction();
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.FindExactKey(_key1);
+                        tr.EraseCurrent();
+                        tr.Commit();
+                    }
+                    db.Compact();
+                    Thread.Sleep(2000);
+                    Console.WriteLine(db.CalcStats());
+                    Assert.LessOrEqual(4, fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex, (optinal 1 Unknown (old KeyIndex))
+                    longTr.Dispose();
+                    Thread.Sleep(1000);
+                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
+                }
+            }
+        }
+
+        [Test]
+        public void FastCleanUpOnStartRemovesUselessFiles()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.Commit();
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.EraseAll();
+                        tr.Commit();
+                    }
+                    Assert.AreEqual(3, fileCollection.GetCount()); // 3 Logs
+                }
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    Console.WriteLine(db.CalcStats());
+                    Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
                 }
             }
         }
@@ -880,19 +1013,5 @@ namespace BTDBTest
         readonly byte[] _key1 = new byte[] { 1, 2, 3 };
         readonly byte[] _key2 = new byte[] { 1, 3, 2 };
         readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
-
-        static IPositionLessStream CreateTestStream(bool log = false)
-        {
-            if (log)
-            {
-                return new LoggingPositionLessStream(new MemoryPositionLessStream(), true, LogDebug);
-            }
-            return new MemoryPositionLessStream();
-        }
-
-        static void LogDebug(string s)
-        {
-            Debug.WriteLine(s);
-        }
     }
 }

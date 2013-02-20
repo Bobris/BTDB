@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.ChunkCache;
-using BTDB.KV2DBLayer;
+using BTDB.KVDBLayer;
 using NUnit.Framework;
 
 namespace BTDBTest

@@ -81,8 +81,7 @@
     <Compile Include="IOCDomain\StockQuote.cs" />
     <Compile Include="IOCDomain\WebService.cs" />
     <Compile Include="IOCTests.cs" />
-    <Compile Include="KeyValue2DBCompactorSchedulerTest.cs" />
-    <Compile Include="KeyValue2DBTest.cs" />
+    <Compile Include="KeyValueDBCompactorSchedulerTest.cs" />
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
     <Compile Include="ObjectDbTest.cs" />

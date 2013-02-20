@@ -9,7 +9,7 @@
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
-            new KV2SpeedTest(true).Run();
+            new KeyValueSpeedTest(true).Run();
         }
     }
 }

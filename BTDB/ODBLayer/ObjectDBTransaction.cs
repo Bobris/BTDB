@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
-using BTDB.KV2DBLayer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -16,7 +15,6 @@ namespace BTDB.ODBLayer
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
         readonly long _transactionNumber;
-        readonly bool _knowTransactionNumber;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
 
         Dictionary<ulong, object> _objSmallCache;
@@ -34,12 +32,7 @@ namespace BTDB.ODBLayer
             _owner = owner;
             _keyValueTr = keyValueTr;
             _lastDictId = (long)_owner.LastDictId;
-            var knownTrNum = keyValueTr as IKnowTransactionNumber;
-            if (knownTrNum != null)
-            {
-                _transactionNumber = knownTrNum.GetTransactionNumber();
-                _knowTransactionNumber = true;
-            }
+            _transactionNumber = keyValueTr.GetTransactionNumber();
         }
 
         public void Dispose()
@@ -350,35 +343,31 @@ namespace BTDB.ODBLayer
             var obj = GetObjFromObjCacheByOid(oid);
             if (obj == null)
             {
-                if (_knowTransactionNumber)
+                var content = tableInfo.SingletonContent(_transactionNumber);
+                if (content == null)
                 {
-                    var content = tableInfo.SingletonContent(_transactionNumber);
-                    if (content == null)
+                    bool taken = false;
+                    try
                     {
-                        bool taken = false;
-                        try
+                        _keyValueTrProtector.Start(ref taken);
+                        _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                        if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                         {
-                            _keyValueTrProtector.Start(ref taken);
-                            _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                            if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
-                            {
-                                content = _keyValueTr.GetValueAsByteArray();
-                                tableInfo.CacheSingletonContent(_transactionNumber, content);
-                            }
-                        }
-                        finally
-                        {
-                            if (taken) _keyValueTrProtector.Stop();
+                            content = _keyValueTr.GetValueAsByteArray();
+                            tableInfo.CacheSingletonContent(_transactionNumber, content);
                         }
                     }
-                    if (content != null)
+                    finally
                     {
-                        var reader = new ByteArrayReader(content);
-                        reader.SkipVUInt32();
-                        obj = ReadObjFinish(oid, tableInfo, reader);
+                        if (taken) _keyValueTrProtector.Stop();
                     }
                 }
-                else obj = GetDirectlyFromStorage(oid);
+                if (content != null)
+                {
+                    var reader = new ByteArrayReader(content);
+                    reader.SkipVUInt32();
+                    obj = ReadObjFinish(oid, tableInfo, reader);
+                }
             }
             if (obj != null)
             {
@@ -655,10 +644,7 @@ namespace BTDB.ODBLayer
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
-            if (_knowTransactionNumber)
-            {
-                tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
-            }
+            tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             if (_objSmallCache != null)
             {
                 _objSmallCache.Remove(metadata.Id);
@@ -729,12 +715,9 @@ namespace BTDB.ODBLayer
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
             tableInfo.Saver(this, metadata, writer, o);
-            if (_knowTransactionNumber)
+            if (tableInfo.IsSingletonOid(metadata.Id))
             {
-                if (tableInfo.IsSingletonOid(metadata.Id))
-                {
-                    tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
-                }
+                tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             }
             var shouldStop = false;
             try

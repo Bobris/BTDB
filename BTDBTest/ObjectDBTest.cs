@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
-using BTDB.KV2DBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
@@ -79,7 +78,7 @@ namespace BTDBTest
         void OpenDb()
         {
             //_lowDB = new KeyValueDB(_dbstream);
-            _lowDb = new KeyValue2DB(_fileCollection);
+            _lowDb = new KeyValueDB(_fileCollection);
             _db = new ObjectDB();
             _db.Open(_lowDb, true);
         }

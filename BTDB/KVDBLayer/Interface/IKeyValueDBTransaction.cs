@@ -117,5 +117,10 @@ namespace BTDB.KVDBLayer
         /// You should call this as last method in using scope if you don't want to rollback transaction. After this method only Dispose() is allowed.
         /// </summary>
         void Commit();
+
+        /// <summary>
+        /// Global unique increasing number of actually running transaction
+        /// </summary>
+        long GetTransactionNumber();
     }
 }
