@@ -7,6 +7,11 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
+        public bool ShouldStopReadingNextEvents()
+        {
+            return false;
+        }
+
         public void ObservedEvents(object[] events)
         {
         }

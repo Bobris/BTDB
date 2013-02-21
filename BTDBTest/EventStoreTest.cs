@@ -62,10 +62,23 @@ namespace BTDBTest
                 return true;
             }
 
+            public virtual bool ShouldStopReadingNextEvents()
+            {
+                return false;
+            }
+
             public void ObservedEvents(object[] events)
             {
                 Assert.AreEqual(_lastEventCount, events.Length);
                 Events.Add(events);
+            }
+        }
+
+        class StoringEventObserverWithStop : StoringEventObserver
+        {
+            public override bool ShouldStopReadingNextEvents()
+            {
+                return true;
             }
         }
 
@@ -435,5 +448,29 @@ namespace BTDBTest
             Assert.AreEqual(new[] { new object[] { compressibleData } }, eventObserver.Events);
         }
 
+        [Test]
+        public void CanStopReadBatchesAfterFirst()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var metadata = new User { Name = "A", Age = 1 };
+            var events = new object[]
+                {
+                    new User {Name = "B", Age = 2},
+                    new User {Name = "C", Age = 3}
+                };
+            appender.Store(metadata, events).Wait();
+            appender.Store(metadata, events).Wait();
+
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserverWithStop();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            Assert.False(reader.IsKnownAsCorrupted());
+            Assert.False(reader.IsKnownAsFinished());
+            Assert.False(reader.IsKnownAsAppendable());
+            Assert.AreEqual(new object[] { metadata }, eventObserver.Metadata);
+            Assert.AreEqual(new[] { events }, eventObserver.Events);
+        }
     }
 }
