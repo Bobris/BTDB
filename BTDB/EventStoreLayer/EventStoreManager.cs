@@ -4,6 +4,13 @@ namespace BTDB.EventStoreLayer
     {
         readonly TypeSerializers _typeSerializers = new TypeSerializers();
 
+        public ICompressionStrategy CompressionStrategy { get; set; }
+
+        public EventStoreManager()
+        {
+            CompressionStrategy = new SnappyCompressionStrategy();
+        }
+
         public void SetNewTypeNameMapper(ITypeNameMapper mapper)
         {
             _typeSerializers.SetTypeNameMapper(mapper);
@@ -16,12 +23,12 @@ namespace BTDB.EventStoreLayer
 
         public IReadEventStore OpenReadOnlyStore(IEventFileStorage file)
         {
-            return new ReadOnlyEventStore(file, _typeSerializers.CreateMapping());
+            return new ReadOnlyEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
         }
 
         public IWriteEventStore AppendToStore(IEventFileStorage file)
         {
-            return new AppendingEventStore(file, _typeSerializers.CreateMapping());
+            return new AppendingEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
         }
     }
 }

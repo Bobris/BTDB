@@ -9,8 +9,8 @@ namespace BTDB.EventStoreLayer
     {
         readonly byte[] _zeroes = new byte[SectorSize + HeaderSize];
 
-        public AppendingEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
-            : base(file, mapping)
+        public AppendingEventStore(IEventFileStorage file, ITypeSerializersMapping mapping, ICompressionStrategy compressionStrategy)
+            : base(file, mapping, compressionStrategy)
         {
         }
 
@@ -64,6 +64,16 @@ namespace BTDB.EventStoreLayer
             var lenWithoutEndPadding = (int)writer.GetCurrentPosition();
             writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
             var block = writer.Data;
+            if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding-startOffset))
+            {
+                var compressedBlock = ByteBuffer.NewSync(block.Buffer, startOffset, lenWithoutEndPadding - startOffset);
+                if (CompressionStrategy.Compress(ref compressedBlock))
+                {
+                    blockType |= BlockType.Compressed;
+                    Array.Copy(compressedBlock.Buffer,compressedBlock.Offset,block.Buffer,startOffset,compressedBlock.Length);
+                    lenWithoutEndPadding = startOffset + compressedBlock.Length;
+                }
+            }
             do
             {
                 var blockLen = MaxBlockSize - (EndBufferLen + HeaderSize);

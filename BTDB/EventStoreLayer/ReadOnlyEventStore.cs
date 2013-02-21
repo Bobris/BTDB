@@ -11,6 +11,7 @@ namespace BTDB.EventStoreLayer
     {
         protected readonly IEventFileStorage File;
         protected readonly ITypeSerializersMapping Mapping;
+        protected readonly ICompressionStrategy CompressionStrategy;
         protected ulong NextReadPosition;
         const int FirstReadAhead = 4096;
         protected const int HeaderSize = 8;
@@ -24,10 +25,11 @@ namespace BTDB.EventStoreLayer
         bool _knownAsCorrupted;
         internal bool KnownAsFinished;
 
-        public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping)
+        public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping, ICompressionStrategy compressionStrategy)
         {
             File = file;
             Mapping = mapping;
+            CompressionStrategy = compressionStrategy;
             EndBufferPosition = ulong.MaxValue;
             MaxBlockSize = Math.Min(File.MaxBlockSize, 0x1000000); // For Length there is only 3 bytes so maximum could be less
             if (MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
@@ -177,6 +179,10 @@ namespace BTDB.EventStoreLayer
 
         void Process(BlockType blockType, ByteBuffer block, IEventStoreObserver observer)
         {
+            if (blockType.HasFlag(BlockType.Compressed))
+            {
+                CompressionStrategy.Decompress(ref block);
+            }
             var reader = new ByteBufferReader(block);
             if (blockType.HasFlag(BlockType.HasTypeDeclaration))
             {

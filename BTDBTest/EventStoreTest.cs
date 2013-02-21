@@ -404,14 +404,36 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            appender.Store(null, new object[] { new byte[10000] }).Wait();
+            var randomData = new byte[20000];
+            new Random().NextBytes(randomData);
+            appender.Store(null, new object[] { randomData }).Wait();
+            Assert.Less(10000, appender.KnownAppendablePosition());
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver).Wait();
             Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { new byte[10000] } }, eventObserver.Events);
+            Assert.AreEqual(new[] { new object[] { randomData } }, eventObserver.Events);
         }
+
+        [Test]
+        public void CompressionShortensData()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var compressibleData = new byte[20000];
+            appender.Store(null, new object[] { compressibleData }).Wait();
+            Assert.Greater(2000, appender.KnownAppendablePosition());
+
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver).Wait();
+            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
+            Assert.AreEqual(new[] { new object[] { compressibleData } }, eventObserver.Events);
+        }
+
     }
 }

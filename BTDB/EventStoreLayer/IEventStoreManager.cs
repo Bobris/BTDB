@@ -2,6 +2,7 @@
 {
     public interface IEventStoreManager
     {
+        ICompressionStrategy CompressionStrategy { get; set; }
         void SetNewTypeNameMapper(ITypeNameMapper mapper);
         void ForgotAllTypesAndSerializers();
         IReadEventStore OpenReadOnlyStore(IEventFileStorage file);

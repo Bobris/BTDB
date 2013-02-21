@@ -12,5 +12,6 @@ namespace BTDB.EventStoreLayer
         HasMetadata = 16,
         HasOneEvent = 32,
         HasMoreEvents = 64,
+        Compressed = 128
     }
 }

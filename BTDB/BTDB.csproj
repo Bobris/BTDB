@@ -69,6 +69,7 @@
     <Compile Include="EventStoreLayer\DictionaryWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\EnumTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\EventStoreManager.cs" />
+    <Compile Include="EventStoreLayer\ICompressionStrategy.cs" />
     <Compile Include="EventStoreLayer\IDescriptorSerializerContext.cs" />
     <Compile Include="EventStoreLayer\IEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
@@ -82,6 +83,7 @@
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ListWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\SkippingEventObserver.cs" />
+    <Compile Include="EventStoreLayer\SnappyCompressionStrategy.cs" />
     <Compile Include="EventStoreLayer\TypeDescriptorExtensions.cs" />
     <Compile Include="EventStoreLayer\IReadEventStore.cs" />
     <Compile Include="EventStoreLayer\ITypeBinaryDeserializerGenerator.cs" />
