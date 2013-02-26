@@ -78,6 +78,7 @@
     <Compile Include="IOCDomain\IStockQuote.cs" />
     <Compile Include="IOCDomain\IWebService.cs" />
     <Compile Include="IOCDomain\Logger.cs" />
+    <Compile Include="IOCDomain\LoggerWithErrorHandler.cs" />
     <Compile Include="IOCDomain\StockQuote.cs" />
     <Compile Include="IOCDomain\WebService.cs" />
     <Compile Include="IOCTests.cs" />

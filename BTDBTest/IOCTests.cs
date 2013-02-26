@@ -645,5 +645,18 @@ namespace BTDBTest
             var container = builder.Build();
             Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle1>());
         }
+
+        [Test]
+        public void SingletonByTwoInterfacesIsStillSameInstance()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<LoggerWithErrorHandler>().As<ILogger>().As<IErrorHandler>().SingleInstance();
+            var container = builder.Build();
+            var log1 = container.Resolve<IErrorHandler>();
+            Assert.NotNull(log1);
+            var log2 = container.Resolve<ILogger>();
+            Assert.NotNull(log2);
+            Assert.AreSame(log1, log2);
+        }
     }
 }
