@@ -388,7 +388,12 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBTransaction StartTransaction()
         {
-            return new KeyValueDBTransaction(this, LastCommited, false);
+            return new KeyValueDBTransaction(this, LastCommited, false, false);
+        }
+
+        public IKeyValueDBTransaction StartReadOnlyTransaction()
+        {
+            return new KeyValueDBTransaction(this, LastCommited, false, true);
         }
 
         public Task<IKeyValueDBTransaction> StartWritingTransaction()
@@ -473,7 +478,7 @@ namespace BTDB.KVDBLayer
         void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
         {
             var newTransactionRoot = LastCommited.NewTransactionRoot();
-            _writingTransaction = new KeyValueDBTransaction(this, newTransactionRoot, true);
+            _writingTransaction = new KeyValueDBTransaction(this, newTransactionRoot, true, false);
             tcs.TrySetResult(_writingTransaction);
         }
 

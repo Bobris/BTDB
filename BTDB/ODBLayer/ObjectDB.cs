@@ -100,6 +100,11 @@ namespace BTDB.ODBLayer
             return new ObjectDBTransaction(this, _keyValueDB.StartTransaction());
         }
 
+        public IObjectDBTransaction StartReadOnlyTransaction()
+        {
+            return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction());
+        }
+
         public Task<IObjectDBTransaction> StartWritingTransaction()
         {
             return _keyValueDB.StartWritingTransaction()

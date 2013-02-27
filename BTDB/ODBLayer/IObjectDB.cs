@@ -11,6 +11,8 @@ namespace BTDB.ODBLayer
 
         IObjectDBTransaction StartTransaction();
 
+        IObjectDBTransaction StartReadOnlyTransaction();
+
         Task<IObjectDBTransaction> StartWritingTransaction();
 
         string RegisterType(Type type);

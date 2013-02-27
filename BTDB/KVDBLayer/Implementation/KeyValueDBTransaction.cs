@@ -12,14 +12,16 @@ namespace BTDB.KVDBLayer
         readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
         byte[] _prefix;
         bool _writting;
+        readonly bool _readOnly;
         bool _preapprovedWritting;
         long _prefixKeyStart;
         long _prefixKeyCount;
         long _keyIndex;
 
-        public KeyValueDBTransaction(KeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writting)
+        public KeyValueDBTransaction(KeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writting, bool readOnly)
         {
             _preapprovedWritting = writting;
+            _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _btreeRoot = btreeRoot;
             _prefix = BitArrayManipulation.EmptyByteArray;
@@ -127,6 +129,10 @@ namespace BTDB.KVDBLayer
                 _preapprovedWritting = false;
                 _keyValueDB.WriteStartTransaction();
                 return;
+            }
+            if (_readOnly)
+            {
+                throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
             }
             var oldBTreeRoot = BtreeRoot;
             _btreeRoot = _keyValueDB.MakeWrittableTransaction(this, oldBTreeRoot);

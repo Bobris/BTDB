@@ -93,6 +93,16 @@ namespace BTDBTest
         }
 
         [Test]
+        public void ReadOnlyTransactionThrowsOnWriteAccess()
+        {
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                Assert.Throws<BTDBTransactionRetryException>(() => tr.StoreAndFlush(new Person()));
+            }
+        }
+
+
+        [Test]
         public void InsertPerson()
         {
             using (var tr = _db.StartTransaction())

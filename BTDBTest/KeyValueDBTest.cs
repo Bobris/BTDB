@@ -78,6 +78,20 @@ namespace BTDBTest
         }
 
         [Test]
+        public void ReadOnlyTransactionThrowsOnWriteAccess()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr = db.StartReadOnlyTransaction())
+                {
+                    Assert.Throws<BTDBTransactionRetryException>(() => tr.CreateKey(new byte[1]));
+                }
+            }
+            
+        }
+
+        [Test]
         public void MoreComplexTransaction()
         {
             using (var fileCollection = new InMemoryFileCollection())

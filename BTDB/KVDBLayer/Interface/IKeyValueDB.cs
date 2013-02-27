@@ -10,6 +10,8 @@ namespace BTDB.KVDBLayer
 
         IKeyValueDBTransaction StartTransaction();
 
+        IKeyValueDBTransaction StartReadOnlyTransaction();
+
         Task<IKeyValueDBTransaction> StartWritingTransaction();
 
         string CalcStats();
