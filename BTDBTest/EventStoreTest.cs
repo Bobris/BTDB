@@ -472,5 +472,21 @@ namespace BTDBTest
             Assert.AreEqual(new object[] { metadata }, eventObserver.Metadata);
             Assert.AreEqual(new[] { events }, eventObserver.Events);
         }
+
+        [Test]
+        public void MoreComplexRepeatedAppendingAndReading()
+        {
+            var manager = new EventStoreManager();
+            for (var i = 490; i < 520; i+=2)
+            {
+                var file = new MemoryEventFileStorage();
+                var appender = manager.AppendToStore(file);
+                appender.Store(null, new object[] { new byte[i] }).Wait();
+                var eventObserver = new StoringEventObserver();
+                appender.ReadFromStartToEnd(eventObserver).Wait();
+                appender.Store(null, new object[] { new byte[i] }).Wait();
+                appender.ReadFromStartToEnd(eventObserver).Wait();
+            }
+        }
     }
 }

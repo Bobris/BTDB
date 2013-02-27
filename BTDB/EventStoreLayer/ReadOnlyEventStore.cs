@@ -152,7 +152,7 @@ namespace BTDB.EventStoreLayer
                 var nextBufferStartPosition = NextReadPosition & SectorMask;
                 var bufferMoveDistance = (int)(nextBufferStartPosition - bufferStartPosition);
                 if (bufferMoveDistance <= 0) continue;
-                Array.Copy(bufferBlock, bufferReadOffset, bufferBlock, bufferReadOffset - bufferMoveDistance, bufferFullLength - bufferReadOffset);
+                Array.Copy(bufferBlock, bufferMoveDistance, bufferBlock, 0, bufferFullLength - bufferMoveDistance);
                 bufferStartPosition = nextBufferStartPosition;
                 bufferFullLength -= bufferMoveDistance;
                 bufferReadOffset -= bufferMoveDistance;
