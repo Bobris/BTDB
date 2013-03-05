@@ -59,8 +59,15 @@ namespace BTDB.EventStoreLayer
                 }
                 if (bufferReadOffset + HeaderSize > bufferFullLength)
                 {
-                    SetCorrupted();
-                    return;
+                    for (var i = bufferReadOffset; i < bufferFullLength; i++)
+                    {
+                        if (bufferBlock[i] != 0)
+                        {
+                            SetCorrupted();
+                            return;
+                        }
+                    }
+                    break;
                 }
                 var blockCheckSum = PackUnpack.UnpackUInt32LE(bufferBlock, bufferReadOffset);
                 bufferReadOffset += 4;
