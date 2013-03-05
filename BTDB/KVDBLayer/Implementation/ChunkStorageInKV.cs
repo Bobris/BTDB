@@ -110,7 +110,9 @@ namespace BTDB.KVDBLayer
             if (_keyLen == -1)
             {
                 if (keyLen != 20) throw new ArgumentException("Length of Key must be 20 bytes");
+#pragma warning disable 420
                 Interlocked.CompareExchange(ref _keyLen, keyLen, -1);
+#pragma warning restore 420
             }
             if (_keyLen != keyLen)
             {
