@@ -14,6 +14,7 @@ namespace BTDB.ODBLayer
     {
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
+        readonly bool _readOnly;
         readonly long _transactionNumber;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
 
@@ -27,10 +28,11 @@ namespace BTDB.ODBLayer
         HashSet<TableInfo> _updatedTables;
         long _lastDictId;
 
-        public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr)
+        public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr, bool readOnly)
         {
             _owner = owner;
             _keyValueTr = keyValueTr;
+            _readOnly = readOnly;
             _lastDictId = (long)_owner.LastDictId;
             _transactionNumber = keyValueTr.GetTransactionNumber();
         }
@@ -90,6 +92,7 @@ namespace BTDB.ODBLayer
 
         void IfNeededPersistTableInfo(TableInfo tableInfo)
         {
+            if (_readOnly) return;
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
             {
                 if (_updatedTables == null) _updatedTables = new HashSet<TableInfo>();

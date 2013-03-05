@@ -97,18 +97,18 @@ namespace BTDB.ODBLayer
 
         public IObjectDBTransaction StartTransaction()
         {
-            return new ObjectDBTransaction(this, _keyValueDB.StartTransaction());
+            return new ObjectDBTransaction(this, _keyValueDB.StartTransaction(), false);
         }
 
         public IObjectDBTransaction StartReadOnlyTransaction()
         {
-            return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction());
+            return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction(), true);
         }
 
         public Task<IObjectDBTransaction> StartWritingTransaction()
         {
             return _keyValueDB.StartWritingTransaction()
-                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result), TaskContinuationOptions.ExecuteSynchronously);
+                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false), TaskContinuationOptions.ExecuteSynchronously);
         }
 
         public string RegisterType(Type type)

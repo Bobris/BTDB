@@ -1300,6 +1300,15 @@ namespace BTDBTest
             public IDictionary<InlinePerson, int> Dict { get; set; }
         }
 
+        [Test]
+        public void DictionaryContainsMustWorkInReadOnlyTransaction()
+        {
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                tr.Singleton<ObjectWithDictWithInlineKey>().Dict.ContainsKey(new InlinePerson());
+            }
+        }
+
         [StoredInline]
         public class InlinePersonNew : PersonNew
         {
