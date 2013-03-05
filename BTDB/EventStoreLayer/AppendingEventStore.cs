@@ -64,14 +64,15 @@ namespace BTDB.EventStoreLayer
             var lenWithoutEndPadding = (int)writer.GetCurrentPosition();
             writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
             var block = writer.Data;
-            if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding-startOffset))
+            if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding - startOffset))
             {
                 var compressedBlock = ByteBuffer.NewSync(block.Buffer, startOffset, lenWithoutEndPadding - startOffset);
                 if (CompressionStrategy.Compress(ref compressedBlock))
                 {
                     blockType |= BlockType.Compressed;
-                    Array.Copy(compressedBlock.Buffer,compressedBlock.Offset,block.Buffer,startOffset,compressedBlock.Length);
+                    Array.Copy(compressedBlock.Buffer, compressedBlock.Offset, block.Buffer, startOffset, compressedBlock.Length);
                     lenWithoutEndPadding = startOffset + compressedBlock.Length;
+                    Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int)SectorSize - 1);
                 }
             }
             do
@@ -79,12 +80,12 @@ namespace BTDB.EventStoreLayer
                 var blockLen = MaxBlockSize - (EndBufferLen + HeaderSize);
                 if (blockLen >= lenWithoutEndPadding - startOffset)
                 {
-                    blockLen = (uint) (lenWithoutEndPadding - startOffset);
+                    blockLen = (uint)(lenWithoutEndPadding - startOffset);
                     blockType &= ~BlockType.MiddleBlock;
                     blockType |= BlockType.LastBlock;
                 }
-                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int) blockLen), blockType);
-                startOffset += (int) blockLen;
+                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int)blockLen), blockType);
+                startOffset += (int)blockLen;
                 blockType &= ~BlockType.FirstBlock;
                 blockType |= BlockType.MiddleBlock;
             } while (lenWithoutEndPadding > startOffset);

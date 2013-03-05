@@ -488,22 +488,5 @@ namespace BTDBTest
                 appender.ReadFromStartToEnd(eventObserver).Wait();
             }
         }
-
-        [Test]
-        public void RandomWriteReopenAndReading()
-        {
-            var manager = new EventStoreManager();
-            var file = new MemoryEventFileStorage();
-            var random = new Random(1);
-            for (var i = 0; i < 1000; i++)
-            {
-                var appender = manager.AppendToStore(file);
-                var buffer = new byte[1+i];
-                random.NextBytes(buffer);
-                appender.Store(null, new object[] { buffer }).Wait();
-                appender = manager.AppendToStore(file);
-                appender.ReadFromStartToEnd(new SkippingEventObserver()).Wait();
-            }
-        }
     }
 }
