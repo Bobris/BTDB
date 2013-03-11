@@ -309,6 +309,9 @@ namespace BTDB.KVDBLayer
         {
             if (BtreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
             InvalidateCurrentKey();
+            var currentBtreeRoot = _btreeRoot;
+            _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
+            _btreeRoot = null;
             if (_preapprovedWritting)
             {
                 _preapprovedWritting = false;
@@ -316,11 +319,9 @@ namespace BTDB.KVDBLayer
             }
             else if (_writting)
             {
-                _keyValueDB.CommitWrittingTransaction(BtreeRoot);
+                _keyValueDB.CommitWrittingTransaction(currentBtreeRoot);
                 _writting = false;
             }
-            _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
-            _btreeRoot = null;
         }
 
         public void Dispose()

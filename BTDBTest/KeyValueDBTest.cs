@@ -192,6 +192,25 @@ namespace BTDBTest
         }
 
         [Test]
+        public void TwoEmptyWriteTransactionsWithNestedWaiting()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                Task<IKeyValueDBTransaction> trOuter;
+                using (var tr = db.StartWritingTransaction().Result)
+                {
+                    trOuter = db.StartWritingTransaction();
+                    tr.Commit();
+                }
+                using (var tr = trOuter.Result)
+                {
+                    tr.Commit();
+                }
+            }
+        }
+
+        [Test]
         public void BiggerKey([Values(0, 1, 2, 5000, 1200000)] int keyLength)
         {
             var key = new byte[keyLength];
