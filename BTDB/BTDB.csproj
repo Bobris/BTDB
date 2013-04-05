@@ -216,6 +216,8 @@
     <Compile Include="KVDBLayer\Implementation\FilePureValuesWithId.cs" />
     <Compile Include="KVDBLayer\Implementation\FileTransactionLog.cs" />
     <Compile Include="KVDBLayer\Implementation\HashKeyIndex.cs" />
+    <Compile Include="KVDBLayer\Implementation\IDeleteFileCollectionStrategy.cs" />
+    <Compile Include="KVDBLayer\Implementation\JustDeleteFileCollectionStrategy.cs" />
     <Compile Include="KVDBLayer\Interface\IChunkStorage.cs" />
     <Compile Include="KVDBLayer\Interface\IChunkStorageTransaction.cs" />
     <Compile Include="KVDBLayer\Interface\ICompressionStrategy.cs" />

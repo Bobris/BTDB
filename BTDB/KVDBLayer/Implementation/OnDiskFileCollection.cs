@@ -8,6 +8,15 @@ namespace BTDB.KVDBLayer
 {
     public class OnDiskFileCollection : IFileCollection
     {
+        public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
+        {
+            get {
+                return _deleteFileCollectionStrategy ??
+                       (_deleteFileCollectionStrategy = new JustDeleteFileCollectionStrategy());
+            }
+            set { _deleteFileCollectionStrategy = value; }
+        }
+
         readonly string _directory;
 
         // disable invalid warning about using volatile inside Interlocked.CompareExchange
@@ -15,6 +24,7 @@ namespace BTDB.KVDBLayer
 
         volatile Dictionary<uint, File> _files = new Dictionary<uint, File>();
         int _maxFileId;
+        IDeleteFileCollectionStrategy _deleteFileCollectionStrategy;
 
         sealed class File : IFileCollectionFile
         {
@@ -239,7 +249,7 @@ namespace BTDB.KVDBLayer
                     newFiles.Remove(_index);
                 } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);
                 _stream.Dispose();
-                System.IO.File.Delete(_fileName);
+                _owner.DeleteFileCollectionStrategy.DeleteFile(_fileName);
             }
         }
 
