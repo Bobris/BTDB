@@ -3,7 +3,7 @@ using BTDB.Buffer;
 
 namespace BTDB.ChunkCache
 {
-    interface IChunkCache
+    public interface IChunkCache
     {
         void Put(ByteBuffer key, ByteBuffer content);
         Task<ByteBuffer> Get(ByteBuffer key);

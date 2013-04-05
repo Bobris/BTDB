@@ -12,7 +12,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ChunkCache
 {
-    class DiskChunkCache : IChunkCache, IDisposable
+    public class DiskChunkCache : IChunkCache, IDisposable
     {
         readonly IFileCollection _fileCollection;
         readonly int _keySize;
