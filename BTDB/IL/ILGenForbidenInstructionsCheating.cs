@@ -105,7 +105,7 @@ namespace BTDB.IL
 
             public bool Equals(Call other)
             {
-                return _opCode == other._opCode && _methodInfo == other._methodInfo;
+                return _opCode == other._opCode && _methodInfo == other._methodInfo && _constructorInfo == other._constructorInfo;
             }
 
             public override int GetHashCode()
@@ -136,6 +136,10 @@ namespace BTDB.IL
                         _calls.Add(call);
                         call.GenerateStaticParts(_typeBuilder);
                     }
+                    else
+                    {
+                        call = _calls.First(c => c.Equals(call));
+                    }
                     call.EmitCheat(ilGen);
                     return;
                 }
@@ -154,6 +158,10 @@ namespace BTDB.IL
                     {
                         _calls.Add(call);
                         call.GenerateStaticParts(_typeBuilder);
+                    }
+                    else
+                    {
+                        call = _calls.First(c => c.Equals(call));
                     }
                     call.EmitCheat(ilGen);
                     return;
