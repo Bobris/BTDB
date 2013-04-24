@@ -1,4 +1,4 @@
-BasicTypes[0] = String
+﻿BasicTypes[0] = String
 BasicTypes[1] = VInt32
 BasicTypes[2] = VUInt32
 BasicTypes[3] = UInt8

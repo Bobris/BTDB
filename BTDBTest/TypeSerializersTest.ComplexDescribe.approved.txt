@@ -1,4 +1,4 @@
-ComplexTypes[0] = List<VInt32>
+﻿ComplexTypes[0] = List<VInt32>
 ComplexTypes[1] = List<String>
 ComplexTypes[2] = BTDBTest.TypeSerializersTest+SimpleDto
 {
