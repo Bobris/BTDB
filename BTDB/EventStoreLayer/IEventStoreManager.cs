@@ -7,5 +7,6 @@
         void ForgotAllTypesAndSerializers();
         IReadEventStore OpenReadOnlyStore(IEventFileStorage file);
         IWriteEventStore AppendToStore(IEventFileStorage file);
+        ITypeDescriptor DescriptorOf(object obj);
     }
 }

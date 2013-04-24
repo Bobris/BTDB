@@ -30,5 +30,10 @@ namespace BTDB.EventStoreLayer
         {
             return new AppendingEventStore(file, _typeSerializers.CreateMapping(), CompressionStrategy);
         }
+
+        public ITypeDescriptor DescriptorOf(object obj)
+        {
+            return _typeSerializers.DescriptorOf(obj);
+        }
     }
 }
