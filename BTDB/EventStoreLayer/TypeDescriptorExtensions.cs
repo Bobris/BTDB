@@ -62,5 +62,21 @@ namespace BTDB.EventStoreLayer
                     ilGenerator.Castclass(asType);
             }
         }
+
+        public static StringBuilder AppendJsonLike(this StringBuilder sb, object obj)
+        {
+            if (obj==null)
+            {
+                return sb.Append("null");
+            }
+            var str = obj as string;
+            if (str != null)
+            {
+                return sb.Append('"').Append(str).Append('"');
+            }
+// ReSharper disable RedundantToStringCall it is speed optimization
+            return sb.Append(obj.ToString());
+// ReSharper restore RedundantToStringCall
+        }
     }
 }

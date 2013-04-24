@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 
 namespace BTDB.EventStoreLayer
 {
@@ -15,6 +16,20 @@ namespace BTDB.EventStoreLayer
         public ITypeDescriptor GetDescriptor()
         {
             return _descriptor;
+        }
+
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append("{ ");
+            var first = true;
+            foreach (var p in this)
+            {
+                if (first) first = false; else sb.Append(", ");
+                sb.AppendJsonLike(p.Key).Append(": ").AppendJsonLike(p.Value);
+            }
+            sb.Append(" }");
+            return base.ToString();
         }
     }
 }

@@ -263,15 +263,17 @@ namespace BTDB.EventStoreLayer
 
             public override string ToString()
             {
-                var message = new StringBuilder();
+                var sb = new StringBuilder();
                 var idx = 0;
+                sb.Append("{ ");
                 foreach (var item in _ownerDescriptor._fields)
                 {
-                    if (idx > 0) message.Append(", ");
-                    message.AppendFormat("{0}: {1}", item.Key, _fieldValues[idx]);
+                    if (idx > 0) sb.Append(", ");
+                    sb.Append(item.Key).Append(": ").AppendJsonLike(_fieldValues[idx]);
                     idx++;
                 }
-                return message.ToString();
+                sb.Append(" }");
+                return sb.ToString();
             }
 
             public ITypeDescriptor GetDescriptor()

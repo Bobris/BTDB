@@ -21,21 +21,14 @@ namespace BTDB.EventStoreLayer
         public override string ToString()
         {
             var sb = new StringBuilder();
-            sb.Append("[");
+            sb.Append("[ ");
             var first = true;
             foreach (var o in this)
             {
-                if (first)
-                {
-                    first = false;
-                }
-                else
-                {
-                    sb.Append(", ");
-                }
-                sb.Append(o);
+                if (first) first = false; else sb.Append(", ");
+                sb.AppendJsonLike(o);
             }
-            sb.Append("]");
+            sb.Append(" ]");
             return sb.ToString();
         }
     }
