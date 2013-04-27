@@ -98,6 +98,7 @@
   <ItemGroup>
     <Compile Include="ChannelSpeedTest.cs" />
     <Compile Include="ComplexServiceTest.cs" />
+    <Compile Include="EventStorageSpeedTest.cs" />
     <Compile Include="KeyValueSpeedTest.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

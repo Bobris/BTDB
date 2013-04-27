@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
 
@@ -14,11 +13,11 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public async Task Store(object metadata, object[] events)
+        public void Store(object metadata, object[] events)
         {
             if (!IsKnownAsAppendable())
             {
-                await ReadToEnd(new SkippingEventObserver());
+                ReadToEnd(new SkippingEventObserver());
             }
             if (IsKnownAsFinished()) throw new InvalidOperationException("Cannot append to already finished EventStore");
             var writer = new ByteBufferWriter();
@@ -84,7 +83,7 @@ namespace BTDB.EventStoreLayer
                     blockType &= ~BlockType.MiddleBlock;
                     blockType |= BlockType.LastBlock;
                 }
-                await WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int)blockLen), blockType);
+                WriteOneBlock(ByteBuffer.NewSync(block.Buffer, block.Offset + startOffset, (int)blockLen), blockType);
                 startOffset += (int)blockLen;
                 blockType &= ~BlockType.FirstBlock;
                 blockType |= BlockType.MiddleBlock;
@@ -92,16 +91,16 @@ namespace BTDB.EventStoreLayer
             serializerContext.CommitNewDescriptors();
         }
 
-        public async Task FinalizeStore()
+        public void FinalizeStore()
         {
             if (IsKnownAsFinished()) return;
             if (!IsKnownAsAppendable())
             {
-                await ReadToEnd(new SkippingEventObserver());
+                ReadToEnd(new SkippingEventObserver());
             }
             if (IsKnownAsFinished()) return;
             var startOffset = (int)EndBufferLen + HeaderSize;
-            await WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
+            WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
             EndBufferPosition = ulong.MaxValue;
             KnownAsFinished = true;
         }
@@ -112,7 +111,7 @@ namespace BTDB.EventStoreLayer
             return EndBufferPosition + EndBufferLen;
         }
 
-        async Task WriteOneBlock(ByteBuffer block, BlockType blockType)
+        void WriteOneBlock(ByteBuffer block, BlockType blockType)
         {
             var blockLen = (uint)block.Length;
             var o = block.Offset - 4;
@@ -125,7 +124,7 @@ namespace BTDB.EventStoreLayer
             var lenWithoutEndPadding = (int)(EndBufferLen + HeaderSize + blockLen);
             block = ByteBuffer.NewAsync(block.Buffer, o, (int)((uint)(lenWithoutEndPadding + SectorSize - 1) & SectorMaskUInt));
             File.SetWritePosition(EndBufferPosition);
-            await File.Write(block);
+            File.Write(block);
             NextReadPosition = EndBufferPosition + (ulong)lenWithoutEndPadding;
             EndBufferPosition = NextReadPosition & SectorMask;
             EndBufferLen = (uint)(NextReadPosition - EndBufferPosition);

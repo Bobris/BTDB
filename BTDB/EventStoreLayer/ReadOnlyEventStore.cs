@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
 
@@ -35,13 +34,13 @@ namespace BTDB.EventStoreLayer
             if (MaxBlockSize < FirstReadAhead) throw new ArgumentException("file.MaxBlockSize is less than FirstReadAhead");
         }
 
-        public Task ReadFromStartToEnd(IEventStoreObserver observer)
+        public void ReadFromStartToEnd(IEventStoreObserver observer)
         {
             NextReadPosition = 0;
-            return ReadToEnd(observer);
+            ReadToEnd(observer);
         }
 
-        public async Task ReadToEnd(IEventStoreObserver observer)
+        public void ReadToEnd(IEventStoreObserver observer)
         {
             var overflowWriter = default(ByteBufferWriter);
             var bufferBlock = new byte[FirstReadAhead + MaxBlockSize];
@@ -49,7 +48,7 @@ namespace BTDB.EventStoreLayer
             var bufferFullLength = 0;
             var bufferReadOffset = (int)(NextReadPosition - bufferStartPosition);
             var buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, FirstReadAhead);
-            var bufReadLength = (int)await File.Read(buf, bufferStartPosition);
+            var bufReadLength = (int)File.Read(buf, bufferStartPosition);
             bufferFullLength += bufReadLength;
             while (true)
             {
@@ -105,7 +104,7 @@ namespace BTDB.EventStoreLayer
                 buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                 if (buf.Length != 0)
                 {
-                    bufReadLength = (int)await File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
+                    bufReadLength = (int)File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
                     bufferFullLength += bufReadLength;
                 }
                 if (bufferReadOffset + (int)blockLen > bufferFullLength)

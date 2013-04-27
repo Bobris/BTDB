@@ -4,8 +4,8 @@ namespace BTDB.EventStoreLayer
 {
     public interface IReadEventStore
     {
-        Task ReadFromStartToEnd(IEventStoreObserver observer);
-        Task ReadToEnd(IEventStoreObserver observer);
+        void ReadFromStartToEnd(IEventStoreObserver observer);
+        void ReadToEnd(IEventStoreObserver observer);
         bool IsKnownAsCorrupted();
         bool IsKnownAsFinished();
         bool IsKnownAsAppendable();

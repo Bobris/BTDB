@@ -1,11 +1,9 @@
-using System.Threading.Tasks;
-
 namespace BTDB.EventStoreLayer
 {
     public interface IWriteEventStore : IReadEventStore
     {
-        Task Store(object metadata, object[] events);
-        Task FinalizeStore();
+        void Store(object metadata, object[] events);
+        void FinalizeStore();
         ulong KnownAppendablePosition();
     }
 }

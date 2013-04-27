@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 
 namespace BTDB.EventStoreLayer
@@ -12,33 +11,33 @@ namespace BTDB.EventStoreLayer
             MaxBlockSize = maxBlockSize;
         }
 
-        const int BlockSize = 4096;
+        const uint BlockSize = 4096;
         readonly List<byte[]> _blocks = new List<byte[]>();
         ulong _writePos;
 
         public uint MaxBlockSize { get; private set; }
 
-        public Task<uint> Read(ByteBuffer buf, ulong position)
+        public uint Read(ByteBuffer buf, ulong position)
         {
             CheckBufLength(buf);
-            var read = 0;
-            var size = buf.Length;
-            var offset = 0;
+            var read = 0u;
+            var size = (uint)buf.Length;
+            var offset = 0u;
             while (size > 0)
             {
                 var index = (int)(position / BlockSize);
                 if (index >= _blocks.Count) break;
                 var blk = _blocks[index];
-                var startOfs = (int)(position % BlockSize);
+                var startOfs = (uint)(position % BlockSize);
                 var rest = BlockSize - startOfs;
                 if (size < rest) rest = size;
                 Array.Copy(blk, startOfs, buf.Buffer, buf.Offset + offset, rest);
-                position += (ulong)rest;
+                position += rest;
                 read += rest;
                 offset += rest;
                 size -= rest;
             }
-            return Task.FromResult((uint)read);
+            return read;
         }
 
         void CheckBufLength(ByteBuffer buf)
@@ -51,7 +50,7 @@ namespace BTDB.EventStoreLayer
             _writePos = position;
         }
 
-        public Task Write(ByteBuffer buf)
+        public void Write(ByteBuffer buf)
         {
             CheckBufLength(buf);
             var newBlockCount = (int)(((long)_writePos + buf.Length + BlockSize - 1) / BlockSize);
@@ -59,20 +58,19 @@ namespace BTDB.EventStoreLayer
             {
                 _blocks.Add(new byte[BlockSize]);
             }
-            var size = buf.Length;
-            var offset = 0;
+            var size = (uint)buf.Length;
+            var offset = 0u;
             while (size > 0)
             {
                 var blk = _blocks[(int)(_writePos / BlockSize)];
-                var startOfs = (int)(_writePos % BlockSize);
-                var rest = blk.Length - startOfs;
+                var startOfs = (uint)(_writePos % BlockSize);
+                var rest = (uint)blk.Length - startOfs;
                 if (size < rest) rest = size;
-                Array.Copy(buf.Buffer, buf.Offset+offset, blk, startOfs, rest);
-                _writePos += (ulong)rest;
+                Array.Copy(buf.Buffer, buf.Offset + offset, blk, startOfs, rest);
+                _writePos += rest;
                 offset += rest;
                 size -= rest;
             }
-            return Task.FromResult(true);
         }
     }
 }
