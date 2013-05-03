@@ -88,7 +88,7 @@ namespace BTDB.EventStoreLayer
                     KnownAsFinished = true;
                     return;
                 }
-                if (blockLen == 0)
+                if (blockLen == 0 && blockType != (BlockType.FirstBlock | BlockType.LastBlock))
                 {
                     SetCorrupted();
                     return;

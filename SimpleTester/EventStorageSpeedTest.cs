@@ -10,6 +10,9 @@ namespace SimpleTester
 {
     public class EventStorageSpeedTest
     {
+        const int RepetitionCount = 1000;
+        const int ParallelTasks = 1000;
+
         public class Event
         {
             public ulong Id { get; set; }
@@ -19,12 +22,12 @@ namespace SimpleTester
 
         readonly Stopwatch _sw = new Stopwatch();
         IWriteEventStore _writeStore;
-        readonly BlockingCollection<ValueEvent> _bc = new BlockingCollection<ValueEvent>(2048);
+        readonly BlockingCollection<ValueEvent> _bc = new BlockingCollection<ValueEvent>(1024);
 
         public Task PublishEvent(object obj)
         {
             var tcs = new TaskCompletionSource<bool>();
-            _bc.Add(new ValueEvent {Event = obj, TaskCompletionSource = tcs});
+            _bc.Add(new ValueEvent { Event = obj, TaskCompletionSource = tcs });
             return tcs.Task;
         }
 
@@ -43,15 +46,18 @@ namespace SimpleTester
                 l.Clear();
                 t.Clear();
                 ValueEvent valueEvent;
-                while (_bc.TryTake(out valueEvent))
+                var wait = -1;
+                while (_bc.TryTake(out valueEvent, wait))
                 {
                     l.Add(valueEvent.Event);
                     t.Add(valueEvent.TaskCompletionSource);
+                    wait = 0;
                 }
-                _writeStore.Store(null, l.ToArray());
+                if (l.Count == 0) continue;
+                _writeStore.Store(null, l);
                 foreach (var tcs in t)
                 {
-                    Task.Run(()=>tcs.SetResult(true));
+                    Task.Run(() => tcs.SetResult(true));
                 }
             }
         }
@@ -62,18 +68,48 @@ namespace SimpleTester
             var stream = new FileStream("0.event", FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1);
             var file = new StreamEventFileStorage(stream);
             _writeStore = manager.AppendToStore(file);
-            var consumerTask = Task.Factory.StartNew(EventConsumer,TaskCreationOptions.LongRunning|TaskCreationOptions.HideScheduler);
+            var consumerTask = Task.Factory.StartNew(EventConsumer, TaskCreationOptions.LongRunning | TaskCreationOptions.HideScheduler);
             _sw.Start();
-            var tasks = new Task[1000];
+            var tasks = new Task[ParallelTasks];
             Parallel.For(0, tasks.Length, i =>
                 {
-                    tasks[i] = PublishSampleEvents(1000);
+                    tasks[i] = PublishSampleEvents(RepetitionCount);
                 });
             Task.WaitAll(tasks);
             _bc.CompleteAdding();
             _sw.Stop();
             consumerTask.Wait();
-            Console.WriteLine(_sw.ElapsedMilliseconds + "ms event per second:" + tasks.Length * 1000 / _sw.Elapsed.TotalSeconds + " len:" + stream.Length);
+            Console.WriteLine("Write {0}ms events per second:{1:f0} total len:{2}", _sw.ElapsedMilliseconds, tasks.Length * RepetitionCount / _sw.Elapsed.TotalSeconds, stream.Length);
+            _sw.Restart();
+            var allObserverCounter = new AllObserverCounter();
+            manager.OpenReadOnlyStore(file).ReadFromStartToEnd(allObserverCounter);
+            _sw.Stop();
+            Console.WriteLine("Read {0}ms events per second:{1:f0} events:{2}", _sw.ElapsedMilliseconds, allObserverCounter.Count / _sw.Elapsed.TotalSeconds, allObserverCounter.Count);
+        }
+
+        public class AllObserverCounter : IEventStoreObserver
+        {
+            ulong _count;
+
+            public bool ObservedMetadata(object metadata, uint eventCount)
+            {
+                return true;
+            }
+
+            public bool ShouldStopReadingNextEvents()
+            {
+                return false;
+            }
+
+            public void ObservedEvents(object[] events)
+            {
+                if (events != null) _count += (ulong)events.Length;
+            }
+
+            public ulong Count
+            {
+                get { return _count; }
+            }
         }
 
         async Task PublishSampleEvents(int count)

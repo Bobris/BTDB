@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
 
@@ -14,6 +16,11 @@ namespace BTDB.EventStoreLayer
         }
 
         public void Store(object metadata, object[] events)
+        {
+            Store(metadata, new List<object>(events));
+        }
+
+        public void Store(object metadata, IReadOnlyList<object> events)
         {
             if (!IsKnownAsAppendable())
             {
@@ -32,7 +39,7 @@ namespace BTDB.EventStoreLayer
                 {
                     serializerContext = serializerContext.StoreNewDescriptors(writer, o);
                 }
-                if (events.Length == 0) events = null;
+                if (events.Count == 0) events = null;
             }
             serializerContext.FinishNewDescriptors(writer);
             var blockType = BlockType.FirstBlock;
@@ -45,14 +52,14 @@ namespace BTDB.EventStoreLayer
             }
             if (events != null)
             {
-                if (events.Length == 1)
+                if (events.Count == 1)
                 {
                     serializerContext.StoreObject(writer, events[0]);
                     blockType |= BlockType.HasOneEvent;
                 }
                 else
                 {
-                    writer.WriteVUInt32((uint)events.Length);
+                    writer.WriteVUInt32((uint)events.Count);
                     foreach (var o in events)
                     {
                         serializerContext.StoreObject(writer, o);
@@ -123,8 +130,7 @@ namespace BTDB.EventStoreLayer
             Array.Copy(EndBuffer, 0, block.Buffer, o, EndBufferLen);
             var lenWithoutEndPadding = (int)(EndBufferLen + HeaderSize + blockLen);
             block = ByteBuffer.NewAsync(block.Buffer, o, (int)((uint)(lenWithoutEndPadding + SectorSize - 1) & SectorMaskUInt));
-            File.SetWritePosition(EndBufferPosition);
-            File.Write(block);
+            File.Write(block, EndBufferPosition);
             NextReadPosition = EndBufferPosition + (ulong)lenWithoutEndPadding;
             EndBufferPosition = NextReadPosition & SectorMask;
             EndBufferLen = (uint)(NextReadPosition - EndBufferPosition);

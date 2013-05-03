@@ -1,5 +1,3 @@
-using System;
-
 namespace BTDB.EventStoreLayer
 {
     internal interface ITypeSerializers

@@ -13,7 +13,6 @@ namespace BTDB.EventStoreLayer
 
         const uint BlockSize = 4096;
         readonly List<byte[]> _blocks = new List<byte[]>();
-        ulong _writePos;
 
         public uint MaxBlockSize { get; private set; }
 
@@ -45,15 +44,10 @@ namespace BTDB.EventStoreLayer
             if (buf.Length > MaxBlockSize) throw new ArgumentOutOfRangeException("buf", "buf length is over MaxBlockSize");
         }
 
-        public void SetWritePosition(ulong position)
-        {
-            _writePos = position;
-        }
-
-        public void Write(ByteBuffer buf)
+        public void Write(ByteBuffer buf, ulong position)
         {
             CheckBufLength(buf);
-            var newBlockCount = (int)(((long)_writePos + buf.Length + BlockSize - 1) / BlockSize);
+            var newBlockCount = (int)(((long)position + buf.Length + BlockSize - 1) / BlockSize);
             while (_blocks.Count < newBlockCount)
             {
                 _blocks.Add(new byte[BlockSize]);
@@ -62,12 +56,12 @@ namespace BTDB.EventStoreLayer
             var offset = 0u;
             while (size > 0)
             {
-                var blk = _blocks[(int)(_writePos / BlockSize)];
-                var startOfs = (uint)(_writePos % BlockSize);
+                var blk = _blocks[(int)(position / BlockSize)];
+                var startOfs = (uint)(position % BlockSize);
                 var rest = (uint)blk.Length - startOfs;
                 if (size < rest) rest = size;
                 Array.Copy(buf.Buffer, buf.Offset + offset, blk, startOfs, rest);
-                _writePos += rest;
+                position += rest;
                 offset += rest;
                 size -= rest;
             }

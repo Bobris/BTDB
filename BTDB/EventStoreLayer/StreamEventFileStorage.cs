@@ -6,7 +6,6 @@ namespace BTDB.EventStoreLayer
     public class StreamEventFileStorage : IEventFileStorage
     {
         readonly Stream _stream;
-        ulong _writePos;
 
         public StreamEventFileStorage(Stream stream)
         {
@@ -22,14 +21,9 @@ namespace BTDB.EventStoreLayer
             return (uint)_stream.Read(buf.Buffer, buf.Offset, buf.Length);
         }
 
-        public void SetWritePosition(ulong position)
+        public void Write(ByteBuffer buf, ulong position)
         {
-            _writePos = position;
-        }
-
-        public void Write(ByteBuffer buf)
-        {
-            _stream.Position = (long)_writePos;
+            _stream.Position = (long)position;
             _stream.Write(buf.Buffer, buf.Offset, buf.Length);
             _stream.Flush();
         }
