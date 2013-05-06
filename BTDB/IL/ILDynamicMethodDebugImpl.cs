@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Diagnostics.SymbolStore;
 using System.IO;
 using System.Linq;
@@ -79,7 +80,28 @@ namespace BTDB.IL
             _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.Dispose();
+            //CheckInPeVerify();
             return finalType;
+        }
+
+        void CheckInPeVerify()
+        {
+            const string peverifyPath =
+                @"c:\Program Files (x86)\Microsoft SDKs\Windows\v8.0A\bin\NETFX 4.0 Tools\PEVerify.exe";
+            if (!File.Exists(peverifyPath)) return;
+            var psi = new ProcessStartInfo(peverifyPath, _moduleBuilder.FullyQualifiedName)
+                {
+                    CreateNoWindow = true, RedirectStandardOutput = true, UseShellExecute = false
+                };
+            using (var p = new Process())
+            {
+                p.StartInfo = psi;
+                p.OutputDataReceived += (sender, args) => Trace.WriteLine(args.Data);
+                p.Start();
+                p.BeginOutputReadLine();
+                p.WaitForExit();
+                Trace.WriteLine("PEVerify ended with " + p.ExitCode + " for " + _moduleBuilder.FullyQualifiedName);
+            }
         }
     }
 

@@ -21,9 +21,21 @@ namespace BTDB.EventStoreLayer
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>> _simpleSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>> _complexSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
+        // created funcs just once as optimization
+        readonly Func<ITypeDescriptor, Action<AbstractBufferedWriter, object>> _newSimpleSaverAction;
+        readonly Func<ITypeDescriptor, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>> _newComplexSaverAction;
+        readonly Func<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSaverFactoryAction;
+        readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
+        readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
+
         public TypeSerializers()
         {
             ForgotAllTypesAndSerializers();
+            _newSimpleSaverAction = NewSimpleSaver;
+            _newComplexSaverAction = NewComplexSaver;
+            _newDescriptorSaverFactoryAction = NewDescriptorSaverFactory;
+            _loaderFactoryAction = LoaderFactory;
+            _buildFromTypeAction = BuildFromType;
         }
 
         public void SetTypeNameMapper(ITypeNameMapper typeNameMapper)
@@ -41,7 +53,7 @@ namespace BTDB.EventStoreLayer
 
         public ITypeDescriptor DescriptorOf(Type objType)
         {
-            return _type2DescriptorMap.GetOrAdd(objType, BuildFromType);
+            return _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
         }
 
         ITypeDescriptor BuildFromType(Type type)
@@ -148,7 +160,7 @@ namespace BTDB.EventStoreLayer
                     parent = parent.GetGenericTypeDefinition();
                 return parent;
             }
-            
+
             public void MergeTypesByShape()
             {
                 foreach (var typeDescriptor in _temporaryMap)
@@ -221,7 +233,7 @@ namespace BTDB.EventStoreLayer
 
         public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> GetLoader(ITypeDescriptor descriptor)
         {
-            return _loaders.GetOrAdd(descriptor, LoaderFactory);
+            return _loaders.GetOrAdd(descriptor, _loaderFactoryAction);
         }
 
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
@@ -241,8 +253,7 @@ namespace BTDB.EventStoreLayer
                     .Brtrue(haveCtx)
                     .Ldarg(0)
                     .Ldarg(2)
-                    .Ldarg(3)
-                    .Newobj(() => new DeserializerCtx(null, null, null))
+                    .Newobj(() => new DeserializerCtx(null, null))
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
@@ -274,13 +285,11 @@ namespace BTDB.EventStoreLayer
             readonly AbstractBufferedReader _reader;
             readonly ITypeSerializersId2LoaderMapping _mapping;
             readonly List<object> _backRefs = new List<object>();
-            ITypeDescriptor _currentDescriptor;
 
-            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor)
+            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping)
             {
                 _reader = reader;
                 _mapping = mapping;
-                _currentDescriptor = descriptor;
             }
 
             public object LoadObject()
@@ -295,7 +304,7 @@ namespace BTDB.EventStoreLayer
                     var backRefId = _reader.ReadVUInt32();
                     return _backRefs[(int)backRefId];
                 }
-                return _mapping.GetLoader(typeId, out _currentDescriptor)(_reader, this, _mapping, _currentDescriptor);
+                return _mapping.Load(typeId, _reader, this);
             }
 
             public void AddBackRef(object obj)
@@ -316,18 +325,13 @@ namespace BTDB.EventStoreLayer
                     if (backRefId > _backRefs.Count) throw new InvalidDataException();
                     return;
                 }
-                _mapping.GetLoader(typeId, out _currentDescriptor)(_reader, this, _mapping, _currentDescriptor);
-            }
-
-            public ITypeDescriptor CurrentDescriptor
-            {
-                get { return _currentDescriptor; }
+                _mapping.Load(typeId, _reader, this);
             }
         }
 
         public Action<AbstractBufferedWriter, object> GetSimpleSaver(ITypeDescriptor descriptor)
         {
-            return _simpleSavers.GetOrAdd(descriptor, NewSimpleSaver);
+            return _simpleSavers.GetOrAdd(descriptor, _newSimpleSaverAction);
         }
 
         Action<AbstractBufferedWriter, object> NewSimpleSaver(ITypeDescriptor descriptor)
@@ -351,7 +355,7 @@ namespace BTDB.EventStoreLayer
 
         public Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> GetComplexSaver(ITypeDescriptor descriptor)
         {
-            return _complexSavers.GetOrAdd(descriptor, NewComplexSaver);
+            return _complexSavers.GetOrAdd(descriptor, _newComplexSaverAction);
         }
 
         Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> NewComplexSaver(ITypeDescriptor descriptor)
@@ -374,7 +378,7 @@ namespace BTDB.EventStoreLayer
 
         public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor)
         {
-            return _newDescriptorSavers.GetOrAdd(descriptor, NewDescriptorSaverFactory);
+            return _newDescriptorSavers.GetOrAdd(descriptor, _newDescriptorSaverFactoryAction);
         }
 
         Action<object, IDescriptorSerializerLiteContext> NewDescriptorSaverFactory(ITypeDescriptor descriptor)

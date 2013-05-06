@@ -75,6 +75,7 @@
     <Compile Include="EventStoreLayer\IEventStoreManager.cs" />
     <Compile Include="EventStoreLayer\IEventStoreObserver.cs" />
     <Compile Include="EventStoreLayer\IKnowDescriptor.cs" />
+    <Compile Include="EventStoreLayer\InfoForType.cs" />
     <Compile Include="EventStoreLayer\IPersistTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ITypeBinaryDeserializerContext.cs" />
     <Compile Include="EventStoreLayer\ITypeBinarySerializerContext.cs" />

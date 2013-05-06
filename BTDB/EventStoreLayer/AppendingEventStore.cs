@@ -15,11 +15,6 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public void Store(object metadata, object[] events)
-        {
-            Store(metadata, new List<object>(events));
-        }
-
         public void Store(object metadata, IReadOnlyList<object> events)
         {
             if (!IsKnownAsAppendable())
