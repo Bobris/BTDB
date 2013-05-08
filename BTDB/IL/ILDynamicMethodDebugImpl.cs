@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.SymbolStore;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 
 namespace BTDB.IL
 {
@@ -89,19 +91,35 @@ namespace BTDB.IL
             const string peverifyPath =
                 @"c:\Program Files (x86)\Microsoft SDKs\Windows\v8.0A\bin\NETFX 4.0 Tools\PEVerify.exe";
             if (!File.Exists(peverifyPath)) return;
-            var psi = new ProcessStartInfo(peverifyPath, _moduleBuilder.FullyQualifiedName)
+            var fullyQualifiedName = _moduleBuilder.FullyQualifiedName;
+            var nameInExeDirectory = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(fullyQualifiedName)), Path.GetFileName(fullyQualifiedName));
+            File.Copy(fullyQualifiedName, nameInExeDirectory, true);
+            var additionalDlls = new List<string>(Assembly.ReflectionOnlyLoadFrom(nameInExeDirectory).GetReferencedAssemblies().Select(a => a.Name + ".dll").Where(a => File.Exists("dynamicIL/" + a)));
+            additionalDlls.ForEach(s => File.Copy("dynamicIL/" + s, s));
+            var psi = new ProcessStartInfo(peverifyPath, nameInExeDirectory)
                 {
-                    CreateNoWindow = true, RedirectStandardOutput = true, UseShellExecute = false
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false
                 };
             using (var p = new Process())
             {
                 p.StartInfo = psi;
-                p.OutputDataReceived += (sender, args) => Trace.WriteLine(args.Data);
+                var output = new StringBuilder();
+                p.OutputDataReceived += (sender, args) => output.AppendLine(args.Data);
                 p.Start();
                 p.BeginOutputReadLine();
                 p.WaitForExit();
-                Trace.WriteLine("PEVerify ended with " + p.ExitCode + " for " + _moduleBuilder.FullyQualifiedName);
+                if (p.ExitCode != 0)
+                {
+                    output.Append("PEVerify ended with " + p.ExitCode + " for " + fullyQualifiedName);
+                    var text = output.ToString();
+                    Trace.WriteLine(text);
+                    //Debugger.Break();
+                }
             }
+            File.Delete(nameInExeDirectory);
+            additionalDlls.ForEach(File.Delete);
         }
     }
 

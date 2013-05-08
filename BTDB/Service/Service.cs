@@ -322,7 +322,8 @@ namespace BTDB.Service
                         ilGenerator
                             .Ldarg(2)
                             .Ldloc(localResultId)
-                            .Newobj(CreateTaskContinuationWithResultMarshaling(methodInf.MethodInfo.ReturnType, methodInf.ResultFieldHandler));
+                            .Newobj(CreateTaskContinuationWithResultMarshaling(methodInf.MethodInfo.ReturnType, methodInf.ResultFieldHandler))
+                            .Pop();
                     }
                     else
                     {
