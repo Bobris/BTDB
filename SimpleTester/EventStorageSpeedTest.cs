@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.EventStoreLayer;
 
@@ -57,7 +58,7 @@ namespace SimpleTester
                 _writeStore.Store(null, l);
                 foreach (var tcs in t)
                 {
-                    Task.Run(() => tcs.SetResult(true));
+                    Task.Factory.StartNew(o => ((TaskCompletionSource<bool>)o).SetResult(true), tcs, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
                 }
             }
         }
