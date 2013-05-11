@@ -84,6 +84,7 @@
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ListWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\NoCompressionStrategy.cs" />
+    <Compile Include="EventStoreLayer\ReadOnlyListArrayWrapper.cs" />
     <Compile Include="EventStoreLayer\SkippingEventObserver.cs" />
     <Compile Include="EventStoreLayer\SnappyCompressionStrategy.cs" />
     <Compile Include="EventStoreLayer\StreamEventFileStorage.cs" />

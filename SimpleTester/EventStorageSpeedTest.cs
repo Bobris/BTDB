@@ -11,7 +11,7 @@ namespace SimpleTester
 {
     public class EventStorageSpeedTest
     {
-        const int RepetitionCount = 1000;
+        const int RepetitionCount = 10000;
         const int ParallelTasks = 1000;
 
         public class Event
@@ -66,26 +66,28 @@ namespace SimpleTester
         public void Run()
         {
             var manager = new EventStoreManager();
-            var stream = new FileStream("0.event", FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1);
-            var file = new StreamEventFileStorage(stream);
-            _writeStore = manager.AppendToStore(file);
-            var consumerTask = Task.Factory.StartNew(EventConsumer, TaskCreationOptions.LongRunning | TaskCreationOptions.HideScheduler);
-            _sw.Start();
-            var tasks = new Task[ParallelTasks];
-            Parallel.For(0, tasks.Length, i =>
+            using (var stream = new FileStream("0.event", FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1))
+            {
+                var file = new StreamEventFileStorage(stream);
+                _writeStore = manager.AppendToStore(file);
+                var consumerTask = Task.Factory.StartNew(EventConsumer, TaskCreationOptions.LongRunning | TaskCreationOptions.HideScheduler);
+                _sw.Start();
+                var tasks = new Task[ParallelTasks];
+                Parallel.For(0, tasks.Length, i =>
                 {
                     tasks[i] = PublishSampleEvents(RepetitionCount);
                 });
-            Task.WaitAll(tasks);
-            _bc.CompleteAdding();
-            _sw.Stop();
-            consumerTask.Wait();
-            Console.WriteLine("Write {0}ms events per second:{1:f0} total len:{2}", _sw.ElapsedMilliseconds, tasks.Length * RepetitionCount / _sw.Elapsed.TotalSeconds, stream.Length);
-            _sw.Restart();
-            var allObserverCounter = new AllObserverCounter();
-            manager.OpenReadOnlyStore(file).ReadFromStartToEnd(allObserverCounter);
-            _sw.Stop();
-            Console.WriteLine("Read {0}ms events per second:{1:f0} events:{2}", _sw.ElapsedMilliseconds, allObserverCounter.Count / _sw.Elapsed.TotalSeconds, allObserverCounter.Count);
+                Task.WaitAll(tasks);
+                _bc.CompleteAdding();
+                consumerTask.Wait();
+                _sw.Stop();
+                Console.WriteLine("Write {0}ms events per second:{1:f0} total len:{2}", _sw.ElapsedMilliseconds, tasks.Length * RepetitionCount / _sw.Elapsed.TotalSeconds, stream.Length);
+                _sw.Restart();
+                var allObserverCounter = new AllObserverCounter();
+                manager.OpenReadOnlyStore(file).ReadFromStartToEnd(allObserverCounter);
+                _sw.Stop();
+                Console.WriteLine("Read {0}ms events per second:{1:f0} events:{2}", _sw.ElapsedMilliseconds, allObserverCounter.Count / _sw.Elapsed.TotalSeconds, allObserverCounter.Count);
+            }
         }
 
         public class AllObserverCounter : IEventStoreObserver

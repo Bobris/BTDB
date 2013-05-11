@@ -87,6 +87,15 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Atomic">
+      <HintPath>..\packages\disruptor-fork.1.1.2\lib\net40\Atomic.dll</HintPath>
+    </Reference>
+    <Reference Include="Disruptor">
+      <HintPath>..\packages\disruptor-fork.1.1.2\lib\net40\Disruptor.dll</HintPath>
+    </Reference>
+    <Reference Include="Disruptor.Scheduler">
+      <HintPath>..\packages\disruptor-fork.1.1.2\lib\net40\Disruptor.Scheduler.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
@@ -98,6 +107,7 @@
   <ItemGroup>
     <Compile Include="ChannelSpeedTest.cs" />
     <Compile Include="ComplexServiceTest.cs" />
+    <Compile Include="EventStorageSpeedTestDisruptor.cs" />
     <Compile Include="EventStorageSpeedTest.cs" />
     <Compile Include="KeyValueSpeedTest.cs" />
     <Compile Include="Program.cs" />

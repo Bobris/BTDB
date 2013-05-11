@@ -10,6 +10,7 @@
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
             //new KeyValueSpeedTest(true).Run();
+            new EventStorageSpeedTestDisruptor().Run();
             new EventStorageSpeedTest().Run();
         }
     }
