@@ -107,6 +107,7 @@
   <ItemGroup>
     <Compile Include="ChannelSpeedTest.cs" />
     <Compile Include="ComplexServiceTest.cs" />
+    <Compile Include="EventStorageSpeedTestAwaitable.cs" />
     <Compile Include="EventStorageSpeedTestDisruptor.cs" />
     <Compile Include="EventStorageSpeedTest.cs" />
     <Compile Include="KeyValueSpeedTest.cs" />

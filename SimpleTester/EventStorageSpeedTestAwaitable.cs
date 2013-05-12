@@ -1,8 +1,9 @@
 using System;
-using System.Collections.Concurrent;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.EventStoreLayer;
@@ -10,10 +11,34 @@ using Disruptor;
 
 namespace SimpleTester
 {
-    public class EventStorageSpeedTestDisruptor
+    public class EventStorageSpeedTestAwaitable
     {
         const int RepetitionCount = 10000;
         const int ParallelTasks = 1000;
+
+        public class MyAwaitable : INotifyCompletion
+        {
+            volatile Action _continuation;
+
+            public MyAwaitable GetAwaiter() { return this; }
+            public bool IsCompleted { get { return false; } }
+            public void GetResult() { }
+
+            public void OnCompleted(Action continuation)
+            {
+                _continuation = continuation;
+            }
+
+            public void RunContinuation()
+            {
+                while (_continuation == null)
+                {
+                    Thread.Yield();
+                }
+                Task.Run(_continuation);
+                _continuation = null;
+            }
+        }
 
         public class Event
         {
@@ -29,62 +54,96 @@ namespace SimpleTester
         ISequenceBarrier _sequenceBarrier;
         Sequence _sequence;
 
-        public Task PublishEvent(object obj)
+        public MyAwaitable PublishEvent(object obj)
         {
             var seq = _ring.Next();
-            var tcs = new TaskCompletionSource<bool>();
             var valueEvent = _ring[seq];
             valueEvent.Event = obj;
-            valueEvent.TaskCompletionSource = tcs;
             _ring.Publish(seq);
-            return tcs.Task;
+            return valueEvent.Awaitable;
         }
 
         public class ValueEvent
         {
+            public ValueEvent()
+            {
+                Awaitable = new MyAwaitable();
+            }
             public object Event;
-            public TaskCompletionSource<bool> TaskCompletionSource;
+            public readonly MyAwaitable Awaitable;
         }
 
         public void EventConsumer()
         {
-            var l = new object[_ring.BufferSize];
-            var t = new TaskCompletionSource<bool>[_ring.BufferSize];
-            var lw = new ReadOnlyListArrayWrapper<object>(l);
-
+            var lw = new ReadOnlyListRingWrapper(_ring);
             var nextSequence = _sequence.Value + 1L;
             while (true)
             {
                 try
                 {
                     var availableSequence = _sequenceBarrier.WaitFor(nextSequence);
-                    var count = 0;
-                    while (nextSequence <= availableSequence)
-                    {
-                        var evt = _ring[nextSequence];
-                        l[count] = evt.Event;
-                        t[count] = evt.TaskCompletionSource;
-                        count++;
-                        nextSequence++;
-                    }
+                    var count = (int)(availableSequence - nextSequence + 1);
                     if (count == 0)
                     {
                         continue;
                     }
-                    lw.Count = count;
+                    lw.SetStartAndCount(nextSequence, count);
+                    nextSequence = availableSequence + 1;
                     _writeStore.Store(null, lw);
-                    for (var i = 0; i < count; i++)
-                    {
-                        Task.Factory.StartNew(o => ((TaskCompletionSource<bool>)o).SetResult(true), t[i], CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-                        t[i] = null;
-                        l[i] = null;
-                    }
+                    lw.RunContinuations();
                     _sequence.LazySet(nextSequence - 1L);
                 }
                 catch (AlertException)
                 {
                     break;
                 }
+            }
+        }
+
+        class ReadOnlyListRingWrapper : IReadOnlyList<object>
+        {
+            readonly RingBuffer<ValueEvent> _ring;
+            long _start;
+
+            public ReadOnlyListRingWrapper(RingBuffer<ValueEvent> ring)
+            {
+                _ring = ring;
+            }
+
+            public void SetStartAndCount(long start, int count)
+            {
+                _start = start;
+                Count = count;
+            }
+
+            public void RunContinuations()
+            {
+                for (var i = 0; i < Count; i++)
+                {
+                    var valueEvent = _ring[_start + i];
+                    valueEvent.Awaitable.RunContinuation();
+                    valueEvent.Event = null;
+                }
+            }
+
+            public IEnumerator<object> GetEnumerator()
+            {
+                for (int i = 0; i < Count; i++)
+                {
+                    yield return this[i];
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
+            public int Count { get; private set; }
+
+            public object this[int index]
+            {
+                get { return _ring[_start + index].Event; }
             }
         }
 

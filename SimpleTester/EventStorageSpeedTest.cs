@@ -23,7 +23,7 @@ namespace SimpleTester
 
         readonly Stopwatch _sw = new Stopwatch();
         IWriteEventStore _writeStore;
-        readonly BlockingCollection<ValueEvent> _bc = new BlockingCollection<ValueEvent>(1024);
+        readonly BlockingCollection<ValueEvent> _bc = new BlockingCollection<ValueEvent>(2048);
 
         public Task PublishEvent(object obj)
         {
@@ -66,6 +66,7 @@ namespace SimpleTester
         public void Run()
         {
             var manager = new EventStoreManager();
+            //manager.CompressionStrategy = new NoCompressionStrategy();
             using (var stream = new FileStream("0.event", FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1))
             {
                 var file = new StreamEventFileStorage(stream);
