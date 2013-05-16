@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 
@@ -347,5 +349,54 @@ namespace BTDBTest
             Assert.AreEqual(obj, value);
             Assert.AreNotEqual(obj, AttributeTargets.Method);
         }
+
+        public class ClassWithIDict : IEquatable<ClassWithIDict>
+        {
+            public IDictionary<Guid, IList<SimpleDto>> Dict { get; set; }
+
+            public bool Equals(ClassWithIDict other)
+            {
+                if (Dict == other.Dict) return true;
+                if (Dict == null || other.Dict == null) return false;
+                if (Dict.Count != other.Dict.Count) return false;
+                foreach (var pair in Dict)
+                {
+                    if (!other.Dict.ContainsKey(pair.Key))
+                        return false;
+
+                    if (!other.Dict[pair.Key].SequenceEqual(pair.Value, new SimpleDtoComparer()))
+                        return false;
+                }
+                return true;
+            }
+
+            public class SimpleDtoComparer : IEqualityComparer<SimpleDto>
+            {
+                public bool Equals(SimpleDto x, SimpleDto y)
+                {
+                    return x.IntField == y.IntField && x.StringField == y.StringField;
+                }
+
+                public int GetHashCode(SimpleDto obj)
+                {
+                    return obj.IntField;
+                }
+            }
+        }
+
+        [Test]
+        public void DictionaryAsIfaceCanHaveContent()
+        {
+            TestSerialization(new ClassWithIDict
+            {
+                Dict = new Dictionary<Guid, IList<SimpleDto>>
+                {
+                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto {IntField = 1,StringField = "a" } } },
+                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto {IntField = 2,StringField = "b" } } },
+                    { Guid.NewGuid(), new List<SimpleDto> { new SimpleDto {IntField = 3,StringField = "c" } } }
+                }
+            });
+        }
+
     }
 }

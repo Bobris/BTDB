@@ -98,7 +98,7 @@ namespace BTDB.EventStoreLayer
                 var localCount = ilGenerator.DeclareLocal(typeof(int));
                 var itemType = _owner._typeSerializers.LoadAsType(_owner._itemDescriptor);
                 var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
-                if (!_target.IsAssignableFrom(listType)) throw new NotImplementedException();
+                if (!_target.IsAssignableFrom(listType)) throw new NotSupportedException();
                 var localList = ilGenerator.DeclareLocal(listType);
                 var loadFinished = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
@@ -175,6 +175,8 @@ namespace BTDB.EventStoreLayer
                     .Stloc(localList)
                     .Callvirt(localList.LocalType.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
                     .Stloc(localCount)
+                    .LdcI4(0)
+                    .Stloc(localIndex)
                     .Mark(next)
                     .Ldloc(localIndex)
                     .Ldloc(localCount)
@@ -251,6 +253,8 @@ namespace BTDB.EventStoreLayer
                 .Add()
                 .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
+                .LdcI4(0)
+                .Stloc(localIndex)
                 .Mark(next)
                 .Ldloc(localIndex)
                 .Ldloc(localCount)
