@@ -92,11 +92,11 @@ namespace BTDB.EventStoreLayer
                 {
                     if (type.IsGenericType)
                     {
-                        if (InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IList<>)))
+                        if (EmitHelpers.InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IList<>)))
                         {
                             result = new ListTypeDescriptor(_typeSerializers, type);
                         }
-                        else if (InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IDictionary<,>)))
+                        else if (EmitHelpers.InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IDictionary<,>)))
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
@@ -114,51 +114,6 @@ namespace BTDB.EventStoreLayer
                 if (result != null)
                     result.FinishBuildFromType(this);
                 return result;
-            }
-
-            static bool InheritsOrImplements(Type child, Type parent)
-            {
-                parent = ResolveGenericTypeDefinition(parent);
-
-                var currentChild = child.IsGenericType
-                                       ? child.GetGenericTypeDefinition()
-                                       : child;
-
-                while (currentChild != typeof(object))
-                {
-                    if (parent == currentChild || HasAnyInterfaces(parent, currentChild))
-                        return true;
-
-                    currentChild = currentChild.BaseType != null
-                                   && currentChild.BaseType.IsGenericType
-                                       ? currentChild.BaseType.GetGenericTypeDefinition()
-                                       : currentChild.BaseType;
-
-                    if (currentChild == null)
-                        return false;
-                }
-                return false;
-            }
-
-            static bool HasAnyInterfaces(Type parent, Type child)
-            {
-                return child.GetInterfaces()
-                    .Any(childInterface =>
-                    {
-                        var currentInterface = childInterface.IsGenericType
-                            ? childInterface.GetGenericTypeDefinition()
-                            : childInterface;
-
-                        return currentInterface == parent;
-                    });
-            }
-
-            static Type ResolveGenericTypeDefinition(Type parent)
-            {
-                var shouldUseGenericType = !(parent.IsGenericType && parent.GetGenericTypeDefinition() != parent);
-                if (parent.IsGenericType && shouldUseGenericType)
-                    parent = parent.GetGenericTypeDefinition();
-                return parent;
             }
 
             public void MergeTypesByShape()

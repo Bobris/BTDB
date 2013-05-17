@@ -1360,5 +1360,14 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void PitOfSuccessForbidStoreDictionary()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<ObjectWithDictWithDateTimeKey>();
+                Assert.Throws<InvalidOperationException>(()=>tr.Store(d.Dist));
+            }
+        }
     }
 }

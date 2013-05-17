@@ -36,16 +36,61 @@ namespace BTDB.IL
             return type.IsSubclassOf(typeof(Delegate));
         }
 
+        public static bool InheritsOrImplements(this Type child, Type parent)
+        {
+            parent = ResolveGenericTypeDefinition(parent);
+
+            var currentChild = child.IsGenericType
+                                   ? child.GetGenericTypeDefinition()
+                                   : child;
+
+            while (currentChild != typeof(object))
+            {
+                if (parent == currentChild || HasAnyInterfaces(parent, currentChild))
+                    return true;
+
+                currentChild = currentChild.BaseType != null
+                               && currentChild.BaseType.IsGenericType
+                                   ? currentChild.BaseType.GetGenericTypeDefinition()
+                                   : currentChild.BaseType;
+
+                if (currentChild == null)
+                    return false;
+            }
+            return false;
+        }
+
+        static bool HasAnyInterfaces(Type parent, Type child)
+        {
+            return child.GetInterfaces()
+                .Any(childInterface =>
+                    {
+                        var currentInterface = childInterface.IsGenericType
+                                                   ? childInterface.GetGenericTypeDefinition()
+                                                   : childInterface;
+
+                        return currentInterface == parent;
+                    });
+        }
+
+        static Type ResolveGenericTypeDefinition(Type parent)
+        {
+            var shouldUseGenericType = !(parent.IsGenericType && parent.GetGenericTypeDefinition() != parent);
+            if (parent.IsGenericType && shouldUseGenericType)
+                parent = parent.GetGenericTypeDefinition();
+            return parent;
+        }
+
         public static string ToSimpleName(this Type type)
         {
             if (type == null) return "";
-            if (type.IsArray) return string.Format("{0}[{1}]", ToSimpleName(type.GetElementType()), new string(',',type.GetArrayRank()-1));
+            if (type.IsArray) return String.Format("{0}[{1}]", ToSimpleName(type.GetElementType()), new string(',',type.GetArrayRank()-1));
             if (type.IsGenericType)
             {
-                return string.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
+                return String.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
                     type.Namespace, 
                     type.Name.Substring(0, type.Name.IndexOf('`')), 
-                    string.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
+                    String.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
             }
             if (type == typeof(byte)) return "byte";
             if (type == typeof(sbyte)) return "sbyte";
@@ -63,7 +108,7 @@ namespace BTDB.IL
             if (type == typeof(void)) return "void";
             if (type == typeof(object)) return "object";
             if (type == typeof(decimal)) return "decimal";
-            if (string.IsNullOrEmpty(type.Namespace)) return type.Name;
+            if (String.IsNullOrEmpty(type.Namespace)) return type.Name;
             return type.Namespace + "." + type.Name;
         }
 

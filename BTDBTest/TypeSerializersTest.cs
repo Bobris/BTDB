@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.EventStoreLayer;
@@ -212,7 +213,7 @@ namespace BTDBTest
             Approvals.VerifyAll(res, "BasicTypes");
         }
 
-        [Test]
+        [Test, MethodImpl(MethodImplOptions.NoInlining)]
         public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
         {
             Approvals.VerifyAll(BasicSerializersFactory.TypeDescriptors.Select(o => o.Name), "BasicTypes");

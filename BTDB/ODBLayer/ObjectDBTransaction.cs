@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -594,6 +596,10 @@ namespace BTDB.ODBLayer
             var ti = _owner.TablesInfo.FindByType(type);
             if (ti == null)
             {
+                if (type.InheritsOrImplements(typeof(IEnumerable<>)))
+                {
+                    throw new InvalidOperationException("Cannot store "+type.ToSimpleName()+" type to DB directly.");
+                }
                 var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
