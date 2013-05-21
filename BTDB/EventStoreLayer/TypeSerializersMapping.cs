@@ -89,7 +89,11 @@ namespace BTDB.EventStoreLayer
         {
             var typeId = reader.ReadVUInt32();
             if (typeId < _id2DescriptorMap.Count)
-                return _id2DescriptorMap[(int)typeId].Descriptor;
+            {
+                var infoForType = _id2DescriptorMap[(int)typeId];
+                if (infoForType != null)
+                    return infoForType.Descriptor;
+            }
             return new PlaceHolderDescriptor(typeId);
         }
 
@@ -332,7 +336,7 @@ namespace BTDB.EventStoreLayer
                 if (obj is IKnowDescriptor)
                 {
                     var descriptor = ((IKnowDescriptor)obj).GetDescriptor();
-                    if (!_typeOrDescriptor2InfoMap.TryGetValue(descriptor,out infoForType) &&
+                    if (!_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType) &&
                         !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
                     {
                         infoForType = new InfoForType { Id = 0, Descriptor = descriptor };
@@ -341,11 +345,11 @@ namespace BTDB.EventStoreLayer
                 else
                 {
                     var objType = obj.GetType();
-                    if (!_typeOrDescriptor2InfoMap.TryGetValue(objType,out infoForType) &&
+                    if (!_typeOrDescriptor2InfoMap.TryGetValue(objType, out infoForType) &&
                         !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                     {
                         var descriptor = _typeSerializers.DescriptorOf(objType);
-                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor,out infoForType))
+                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType))
                         {
                             _typeOrDescriptor2InfoMap[objType] = infoForType;
                         }
@@ -355,7 +359,7 @@ namespace BTDB.EventStoreLayer
                         }
                         else
                         {
-                            infoForType = new InfoForType {Id = 0, Descriptor = descriptor};
+                            infoForType = new InfoForType { Id = 0, Descriptor = descriptor };
                         }
                     }
                 }
