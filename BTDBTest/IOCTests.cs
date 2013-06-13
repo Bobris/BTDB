@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using BTDB.IOC;
 using NUnit.Framework;
@@ -330,7 +331,7 @@ namespace BTDBTest
         public void RegisterAssemblyTypes()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof (Logger).Assembly);
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly);
             var container = builder.Build();
             var log = container.Resolve<Logger>();
             Assert.NotNull(log);
@@ -340,7 +341,7 @@ namespace BTDBTest
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof (Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
                 AsImplementedInterfaces();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
@@ -353,7 +354,7 @@ namespace BTDBTest
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof (Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
                 AsImplementedInterfaces().SingleInstance();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
@@ -411,7 +412,7 @@ namespace BTDBTest
             builder.RegisterInstance("two").Keyed<string>(true);
             var container = builder.Build();
             var result = container.ResolveKeyed<IEnumerable<string>>(true);
-            Assert.AreEqual(new[] {"one", "two"}, result.ToArray());
+            Assert.AreEqual(new[] { "one", "two" }, result.ToArray());
         }
 
         [Test]
@@ -493,7 +494,7 @@ namespace BTDBTest
 
         static void AssertTwoLoggers(IEnumerable<string> enumTypes)
         {
-            Assert.AreEqual(new[] {"Logger1", "Logger2"}, enumTypes);
+            Assert.AreEqual(new[] { "Logger1", "Logger2" }, enumTypes);
         }
 
         [Test]
@@ -560,7 +561,7 @@ namespace BTDBTest
             var container = BuildContainerWithTwoLoggersAndTwoStrings();
             var tuples = container.Resolve<IEnumerable<Tuple<ILogger, string>>>();
             var names = tuples.Select(t => t.Item1.GetType().Name + t.Item2);
-            Assert.AreEqual(new[] {"Logger1A", "Logger1B", "Logger2A", "Logger2B"}, names);
+            Assert.AreEqual(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
         }
 
         [Test]
@@ -571,7 +572,7 @@ namespace BTDBTest
             var enumTypes = tuples.Select(t => t.Item1.GetType().Name);
             AssertTwoLoggers(enumTypes);
             var names = tuples.SelectMany(t => t.Item2);
-            Assert.AreEqual(new[] {"A", "B", "A", "B"}, names);
+            Assert.AreEqual(new[] { "A", "B", "A", "B" }, names);
         }
 
         class PrivateLogger : ILogger
@@ -657,6 +658,52 @@ namespace BTDBTest
             var log2 = container.Resolve<ILogger>();
             Assert.NotNull(log2);
             Assert.AreSame(log1, log2);
+        }
+
+        public class MultipleConstructors
+        {
+            public readonly String Desc;
+
+            public MultipleConstructors()
+            {
+                Desc = "";
+            }
+
+            public MultipleConstructors(int i)
+            {
+                Desc = "Int " + i.ToString(CultureInfo.InvariantCulture);
+            }
+
+            public MultipleConstructors(string s)
+            {
+                Desc = "String " + s;
+            }
+
+            public MultipleConstructors(int i, int j)
+            {
+                Desc = "Int " + i.ToString(CultureInfo.InvariantCulture) + ", Int " +
+                       j.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        [Test]
+        public void UsingConstructorWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance((object)7).Named<int>("i");
+            builder.RegisterInstance((object)3).Named<int>("j");
+            builder.RegisterInstance((object)"A").Named<string>("s");
+            builder.RegisterType<MultipleConstructors>().Keyed<MultipleConstructors>(1);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor().Keyed<MultipleConstructors>(2);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int)).Keyed<MultipleConstructors>(3);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(string)).Keyed<MultipleConstructors>(4);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int), typeof(int)).Keyed<MultipleConstructors>(5);
+            var container = builder.Build();
+            Assert.AreEqual("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(1).Desc);
+            Assert.AreEqual("", container.ResolveKeyed<MultipleConstructors>(2).Desc);
+            Assert.AreEqual("Int 7", container.ResolveKeyed<MultipleConstructors>(3).Desc);
+            Assert.AreEqual("String A", container.ResolveKeyed<MultipleConstructors>(4).Desc);
+            Assert.AreEqual("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
         }
     }
 }

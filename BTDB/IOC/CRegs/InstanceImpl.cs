@@ -56,7 +56,7 @@ namespace BTDB.IOC.CRegs
                 .Ldloc(localInstances)
                 .LdcI4(_instanceIndex)
                 .LdelemRef()
-                .Castclass(_instance.GetType())
+                .UnboxAny(_instance.GetType())
                 .Stloc(localInstance);
             buildCRegLocals.Add(this, localInstance);
             return localInstance;

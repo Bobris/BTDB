@@ -4,7 +4,7 @@ namespace BTDB.IOC
 {
     public static class BuilderExtensions
     {
-        public static IRegistration<IAsTraitAndLiveScopeTrait> RegisterType<T>(this ContainerBuilder builder)
+        public static IRegistration<IAsLiveScopeConstructorTrait> RegisterType<T>(this ContainerBuilder builder)
         {
             return builder.RegisterType(typeof (T));
         }
@@ -12,6 +12,12 @@ namespace BTDB.IOC
         public static IRegistration<TTraits> SingleInstance<TTraits>(this IRegistration<TTraits> registration) where TTraits : ILiveScopeTrait
         {
             ((ILiveScopeTrait)registration.InternalTraits(typeof(ILiveScopeTrait))).SingleInstance();
+            return registration;
+        }
+
+        public static IRegistration<TTraits> UsingConstructor<TTraits>(this IRegistration<TTraits> registration, params Type[] parameterTypes) where TTraits : IConstructorTrait
+        {
+            ((IConstructorTrait)registration.InternalTraits(typeof(IConstructorTrait))).UsingConstructor(parameterTypes);
             return registration;
         }
 

@@ -153,6 +153,7 @@
     <Compile Include="IL\SourceCodeWriter.cs" />
     <Compile Include="IOC\AsTraitImpl.cs" />
     <Compile Include="IOC\BuildContext.cs" />
+    <Compile Include="IOC\ConstructorTraitImpl.cs" />
     <Compile Include="IOC\CRegs\ArgXImpl.cs" />
     <Compile Include="IOC\CRegs\ContainerInjectImpl.cs" />
     <Compile Include="IOC\CRegs\DelegateImpl.cs" />
@@ -168,12 +169,15 @@
     <Compile Include="IOC\ClosureOfObjBuilder.cs" />
     <Compile Include="IOC\CRegs\InstancesLocalGenCtxHelper.cs" />
     <Compile Include="IOC\CRegs\LazyImpl.cs" />
+    <Compile Include="IOC\IAsLiveScopeTrait.cs" />
     <Compile Include="IOC\IBuildContext.cs" />
+    <Compile Include="IOC\IConstructorTrait.cs" />
+    <Compile Include="IOC\IConstructorTraitImpl.cs" />
     <Compile Include="IOC\IGenerationContextSetter.cs" />
     <Compile Include="IOC\GenerationContext.cs" />
     <Compile Include="IOC\IAsTrait.cs" />
-    <Compile Include="IOC\IAsTraitAndLiveScopeTrait.cs" />
-    <Compile Include="IOC\IAsTraitAndLiveScopeTraitAndScanTrait.cs" />
+    <Compile Include="IOC\IAsLiveScopeConstructorTrait.cs" />
+    <Compile Include="IOC\IAsLiveScopeConstructorScanTrait.cs" />
     <Compile Include="IOC\IAsTraitImpl.cs" />
     <Compile Include="IOC\IContainer.cs" />
     <Compile Include="IOC\IContanerRegistration.cs" />

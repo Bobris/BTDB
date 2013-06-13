@@ -4,11 +4,12 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal class MultiRegistration : RegistrationBaseImpl<IAsTraitAndLiveScopeTraitAndScanTrait>, IContanerRegistration
+    internal class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorScanTrait>, IContanerRegistration
     {
         readonly AsTraitImpl _asTrait = new AsTraitImpl();
         readonly LiveScopeTraitImpl _liveScopeTrait = new LiveScopeTraitImpl();
         readonly ScanTraitImpl _scanTrait = new ScanTraitImpl();
+        readonly ConstructorTraitImpl _constructorTrait = new ConstructorTraitImpl();
         readonly Assembly[] _froms;
 
         public MultiRegistration(Assembly[] froms)
@@ -27,8 +28,9 @@ namespace BTDB.IOC
                     if (type.IsGenericTypeDefinition) continue;
                     if (type.IsDelegate()) continue;
                     if (!_scanTrait.MatchFilter(type)) continue;
-                    if (ContainerImpl.FindBestConstructor(type) == null) continue;
-                    ((IContanerRegistration)new SingleRegistration(type,_asTrait,_liveScopeTrait)).Register(context);
+                    if (_constructorTrait.ChooseConstructor(type, _constructorTrait.ReturnPossibleConstructors(type)) == null)
+                        continue;
+                    ((IContanerRegistration)new SingleRegistration(type, _asTrait, _liveScopeTrait, _constructorTrait)).Register(context);
                 }
             }
         }
@@ -37,6 +39,7 @@ namespace BTDB.IOC
         {
             if (trait == typeof(IAsTrait)) return _asTrait;
             if (trait == typeof(ILiveScopeTrait)) return _liveScopeTrait;
+            if (trait == typeof(IConstructorTrait)) return _constructorTrait;
             if (trait == typeof(IScanTrait)) return _scanTrait;
             throw new ArgumentOutOfRangeException();
         }

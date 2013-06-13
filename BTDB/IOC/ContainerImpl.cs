@@ -36,11 +36,6 @@ namespace BTDB.IOC
             context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true, new ContainerInjectImpl());
         }
 
-        internal static ConstructorInfo FindBestConstructor(Type type)
-        {
-            return type.GetConstructors().OrderByDescending(ci => ci.GetParameters().Length).FirstOrDefault();
-        }
-
         public object Resolve(Type type)
         {
             return ResolveKeyed(null, type);
