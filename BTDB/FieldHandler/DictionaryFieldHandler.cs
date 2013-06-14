@@ -217,7 +217,7 @@ namespace BTDB.FieldHandler
                 .Mark(realfinish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
@@ -227,17 +227,29 @@ namespace BTDB.FieldHandler
             }
             var wantedKeyType = type.GetGenericArguments()[0];
             var wantedValueType = type.GetGenericArguments()[1];
-            var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType);
+            var wantedKeyHandler = default(IFieldHandler);
+            var wantedValueHandler = default(IFieldHandler);
+            var dictTypeHandler = typeHandler as DictionaryFieldHandler;
+            if (dictTypeHandler != null)
+            {
+                wantedKeyHandler = dictTypeHandler._keysHandler;
+                wantedValueHandler = dictTypeHandler._valuesHandler;
+            }
+            var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType, wantedKeyHandler);
             if (_typeConvertorGenerator.GenerateConversion(keySpecialized.HandledType(), wantedKeyType) == null)
             {
                 Debug.Fail("even more strange key");
                 return this;
             }
-            var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType);
+            var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType, wantedValueHandler);
             if (_typeConvertorGenerator.GenerateConversion(valueSpecialized.HandledType(), wantedValueType) == null)
             {
                 Debug.Fail("even more strange value");
                 return this;
+            }
+            if (wantedKeyHandler == keySpecialized && wantedValueHandler == valueSpecialized)
+            {
+                return typeHandler;
             }
             return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized, valueSpecialized);
         }

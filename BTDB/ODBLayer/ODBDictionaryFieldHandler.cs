@@ -219,15 +219,27 @@ namespace BTDB.ODBLayer
                 .Call(instanceType.GetMethod("DoSave"));
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
             if (_type != type)
                 GenerateType(type);
             if (_type == type) return this;
             if (!IsCompatibleWithCore(type)) return this;
             var arguments = type.GetGenericArguments();
-            var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0]);
-            var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1]);
+            var wantedKeyHandler = default(IFieldHandler);
+            var wantedValueHandler = default(IFieldHandler);
+            var dictTypeHandler = typeHandler as ODBDictionaryFieldHandler;
+            if (dictTypeHandler != null)
+            {
+                wantedKeyHandler = dictTypeHandler._keysHandler;
+                wantedValueHandler = dictTypeHandler._valuesHandler;
+            }
+            var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
+            var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1], wantedValueHandler);
+            if (wantedKeyHandler == specializedKeyHandler && wantedValueHandler == specializedValueHandler)
+            {
+                return typeHandler;
+            }
             return new ODBDictionaryFieldHandler(_odb, _configuration, _configurationId, specializedKeyHandler, specializedValueHandler);
         }
 

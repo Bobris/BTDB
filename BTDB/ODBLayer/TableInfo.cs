@@ -309,7 +309,7 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType());
+                    var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType(), destFieldInfo.Handler);
                     var willLoad = specializedSrcHandler.HandledType();
                     var fieldInfo = _clientType.GetProperty(destFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.GetParameters()[0].ParameterType);

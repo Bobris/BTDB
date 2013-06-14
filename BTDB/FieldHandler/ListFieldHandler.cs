@@ -192,7 +192,7 @@ namespace BTDB.FieldHandler
                 .Mark(finish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
@@ -201,7 +201,17 @@ namespace BTDB.FieldHandler
                 return this;
             }
             var wantedItemType = type.GetGenericArguments()[0];
-            var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType);
+            var wantedItemHandler = default(IFieldHandler);
+            var listFieldHandler = typeHandler as ListFieldHandler;
+            if (listFieldHandler != null)
+            {
+                wantedItemHandler = listFieldHandler._itemsHandler;
+            }
+            var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler);
+            if (itemSpecialized == wantedItemHandler)
+            {
+                return typeHandler;
+            }
             if (_typeConvertorGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
             {
                 Debug.Fail("even more strange");

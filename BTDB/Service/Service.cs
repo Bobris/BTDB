@@ -667,7 +667,7 @@ namespace BTDB.Service
                 }
                 else
                 {
-                    var specializedLoad = targetMethodInf.ResultFieldHandler.SpecializeLoadForType(returnType);
+                    var specializedLoad = targetMethodInf.ResultFieldHandler.SpecializeLoadForType(returnType, null);
                     if (specializedLoad.NeedsCtx())
                     {
                         var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
@@ -1184,7 +1184,7 @@ namespace BTDB.Service
             {
                 var prop = type.GetProperty(propertyInf.Name);
                 Type inputType = prop.PropertyType;
-                var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType);
+                var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType, null);
                 Action<IILGen> pushReaderOrCtx;
                 if (fieldHandler.NeedsCtx()) pushReaderOrCtx = il => il.Ldarg(0);
                 else pushReaderOrCtx = il => il.Ldloc(readerLocal);
@@ -1282,7 +1282,7 @@ namespace BTDB.Service
                     continue;
                 }
                 Type inputType = prop.PropertyType;
-                var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType);
+                var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType, null);
                 ilGenerator.Ldloc(resultLocal);
                 fieldHandler.Load(ilGenerator, pushReaderOrCtx);
                 ilGenerator

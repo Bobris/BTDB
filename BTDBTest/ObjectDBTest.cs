@@ -1369,5 +1369,64 @@ namespace BTDBTest
                 Assert.Throws<InvalidOperationException>(()=>tr.Store(d.Dist));
             }
         }
+
+        public enum CC1V1T3
+        {
+            Item1 = 0
+        }
+
+        public class CC1V1T2
+        {
+            public IDictionary<CC1V1T3, long> Dict2 { get; set; }
+        }
+
+        public class CC1V1T1
+        {
+            public IDictionary<ulong, CC1V1T2> Dict { get; set; }
+        }
+
+        public enum CC1V2T3
+        {
+            Item1 = 0,
+            Item2 = 1,
+            Item3 = 2
+        }
+
+        public class CC1V2T2
+        {
+            public IDictionary<CC1V2T3, long> Dict2 { get; set; }
+        }
+
+        public class CC1V2T1
+        {
+            public IDictionary<ulong, CC1V2T2> Dict { get; set; }
+        }
+
+        [Test]
+        public void CC1Upgrade()
+        {
+            var t1Name = _db.RegisterType(typeof(CC1V1T1));
+            var t2Name = _db.RegisterType(typeof(CC1V1T2));
+            var t3Name = _db.RegisterType(typeof(CC1V1T3));
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<CC1V1T1>();
+                var d2 = tr.New<CC1V1T2>();
+                d2.Dict2[CC1V1T3.Item1] = 10;
+                d.Dict[1] = d2;
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(CC1V2T1), t1Name);
+            _db.RegisterType(typeof(CC1V2T2), t2Name);
+            _db.RegisterType(typeof(CC1V2T3), t3Name);
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<CC1V2T1>();
+                var d2 = d.Dict[1];
+                Assert.AreEqual(10, d2.Dict2[CC1V2T3.Item1]);
+            }
+        }
+
     }
 }
