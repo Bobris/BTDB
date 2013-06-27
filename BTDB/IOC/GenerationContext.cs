@@ -13,8 +13,8 @@ namespace BTDB.IOC
         IBuildContext _buildContext;
         readonly Dictionary<Type, object> _specifics = new Dictionary<Type, object>();
         readonly ParameterInfo[] _parameterInfos;
-        readonly List<Tuple<object,Type>> _constants = new List<Tuple<object, Type>>();
-        readonly Stack<Tuple<ICReg,string>> _cycleDetectionStack = new Stack<Tuple<ICReg, string>>();
+        readonly List<Tuple<object, Type>> _constants = new List<Tuple<object, Type>>();
+        readonly Stack<Tuple<ICReg, string>> _cycleDetectionStack = new Stack<Tuple<ICReg, string>>();
 
         public GenerationContext(ContainerImpl container, ICRegILGen registration, IBuildContext buildContext)
         {
@@ -107,17 +107,23 @@ namespace BTDB.IOC
             }
             for (int i = 0; i < regs.Length; i++)
             {
-                if (parsLocals[i] != null)
+                var local = parsLocals[i];
+                if (local != null)
                 {
-                    IL.Ldloc(parsLocals[i]);
+                    IL.Ldloc(local);
                 }
                 else
                 {
-                    var local = regs[i].GenMain(this);
+                    local = regs[i].GenMain(this);
                     if (local != null)
                     {
                         IL.Ldloc(local);
                     }
+                }
+                if (local == null) continue;
+                if (local.LocalType != needs[i].ClrType && local.LocalType.IsClass)
+                {
+                    IL.UnboxAny(needs[i].ClrType);
                 }
             }
         }
@@ -138,11 +144,11 @@ namespace BTDB.IOC
 
         public void PushToCycleDetector(ICReg reg, string name)
         {
-            if (_cycleDetectionStack.Any(t=>t.Item1==reg))
+            if (_cycleDetectionStack.Any(t => t.Item1 == reg))
             {
-                throw new InvalidOperationException("Cycle detected in registrations: "+string.Join(", ",_cycleDetectionStack.Select(t=>t.Item2))+". Consider using Lazy<> to break cycle.");
+                throw new InvalidOperationException("Cycle detected in registrations: " + string.Join(", ", _cycleDetectionStack.Select(t => t.Item2)) + ". Consider using Lazy<> to break cycle.");
             }
-            _cycleDetectionStack.Push(new Tuple<ICReg, string>(reg,name));
+            _cycleDetectionStack.Push(new Tuple<ICReg, string>(reg, name));
         }
 
         public void PopFromCycleDetector()
@@ -235,7 +241,7 @@ namespace BTDB.IOC
             var comp = ComparerConst.Instance;
             foreach (var constant in _constants)
             {
-                if (comp.Equals(constant,tuple))
+                if (comp.Equals(constant, tuple))
                 {
                     tuple = constant;
                     goto found;
@@ -319,7 +325,7 @@ namespace BTDB.IOC
             public IILLocal GenMain(IGenerationContext context)
             {
                 var consts = ((GenerationContext)context)._constants;
-                context.IL.Ldarg((ushort) (_idx+(consts.Count>0?1:0)));
+                context.IL.Ldarg((ushort)(_idx + (consts.Count > 0 ? 1 : 0)));
                 return null;
             }
 
@@ -352,14 +358,14 @@ namespace BTDB.IOC
         public object GenerateFunc(Type funcType)
         {
             GatherNeeds(_registration, new HashSet<ICRegILGen>());
-            if (_constants.Count==0)
+            if (_constants.Count == 0)
             {
                 var method = ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType);
                 IL = method.Generator;
                 GenerateBody();
                 return method.Create();
             }
-            if (_constants.Count==1)
+            if (_constants.Count == 1)
             {
                 var method = ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType, _constants[0].Item2);
                 IL = method.Generator;
