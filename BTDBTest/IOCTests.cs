@@ -705,5 +705,61 @@ namespace BTDBTest
             Assert.AreEqual("String A", container.ResolveKeyed<MultipleConstructors>(4).Desc);
             Assert.AreEqual("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
         }
+
+        public interface ISupport { }
+        public class Support : ISupport
+        {
+        }
+
+        public interface INotify { }
+        public class Notification : INotify
+        {
+            public Notification(ISupport support)
+            {
+            }
+        }
+
+        public interface IRefinable { }
+        public class RefinePreview : IRefinable
+        {
+            public RefinePreview(Lazy<IWorld> world, INotify notify)
+            {
+            }
+        }
+
+        public interface IOwinServer { }
+        public class WorldHttpHandler : IOwinServer
+        {
+            //takhle to neprojde ze nezna ISupport
+            public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
+
+            //takhle to projde v debugu ale ne v release (Operation could destabilize the runtime)
+            //public WorldHttpHandler(Lazy<IWorld> world, IRefinable refinables)
+            {
+            }
+        }
+
+        public interface IWorld { }
+        public class World : IWorld
+        {
+            public World(IOwinServer server, ISupport support, INotify notifyChanges)
+            {
+            }
+        }
+
+
+        [Test]
+        public void DependenciesInEnumerablesWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<RefinePreview>().AsImplementedInterfaces().SingleInstance();
+            builder.RegisterType<WorldHttpHandler>().AsImplementedInterfaces().SingleInstance();
+            builder.RegisterType<World>().AsImplementedInterfaces().SingleInstance();
+            builder.RegisterType<Notification>().AsImplementedInterfaces().SingleInstance();
+            builder.RegisterType<Support>().AsImplementedInterfaces().SingleInstance();
+
+            var container = builder.Build();
+            var world = container.Resolve<IWorld>();
+        }
     }
 }
