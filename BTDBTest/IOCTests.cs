@@ -730,11 +730,7 @@ namespace BTDBTest
         public interface IOwinServer { }
         public class WorldHttpHandler : IOwinServer
         {
-            //takhle to neprojde ze nezna ISupport
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
-
-            //takhle to projde v debugu ale ne v release (Operation could destabilize the runtime)
-            //public WorldHttpHandler(Lazy<IWorld> world, IRefinable refinables)
             {
             }
         }

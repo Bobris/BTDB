@@ -39,7 +39,17 @@ namespace BTDB.IOC
             get { return _container; }
         }
 
-        public IBuildContext BuildContext { get { return _buildContext; } set { _buildContext = value; } }
+        public IBuildContext BuildContext
+        {
+            get
+            {
+                return _buildContext;
+            }
+            set
+            {
+                _buildContext = value;
+            }
+        }
 
         public T GetSpecific<T>() where T : class, new()
         {
@@ -196,10 +206,26 @@ namespace BTDB.IOC
             }
         }
 
-        internal void GatherNeeds(ICRegILGen regILGen, HashSet<ICRegILGen> processed)
+        class ComparerProcessingContext : IEqualityComparer<Tuple<IBuildContext, ICRegILGen>>
         {
-            if (processed.Contains(regILGen)) return;
-            processed.Add(regILGen);
+            internal static readonly ComparerProcessingContext Instance = new ComparerProcessingContext();
+
+            public bool Equals(Tuple<IBuildContext, ICRegILGen> x, Tuple<IBuildContext, ICRegILGen> y)
+            {
+                return x.Item1 == y.Item1 && x.Item2 == y.Item2;
+            }
+
+            public int GetHashCode(Tuple<IBuildContext, ICRegILGen> obj)
+            {
+                return obj.Item1.GetHashCode() * 33 + obj.Item2.GetHashCode();
+            }
+        }
+
+        internal void GatherNeeds(ICRegILGen regILGen, HashSet<Tuple<IBuildContext,ICRegILGen>> processed)
+        {
+            var processingContext = new Tuple<IBuildContext, ICRegILGen>(_buildContext, regILGen);
+            if (processed.Contains(processingContext)) return;
+            processed.Add(processingContext);
             foreach (var need in regILGen.GetNeeds(this))
             {
                 if (need.Kind == NeedKind.CReg)
@@ -357,7 +383,7 @@ namespace BTDB.IOC
 
         public object GenerateFunc(Type funcType)
         {
-            GatherNeeds(_registration, new HashSet<ICRegILGen>());
+            GatherNeeds(_registration, new HashSet<Tuple<IBuildContext, ICRegILGen>>(ComparerProcessingContext.Instance));
             if (_constants.Count == 0)
             {
                 var method = ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType);
