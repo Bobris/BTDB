@@ -719,11 +719,20 @@ namespace BTDBTest
             }
         }
 
+        public class NotificationOverride : INotify
+        {
+            public NotificationOverride(ISupport support)
+            {
+            }
+        }
+
+
         public interface IRefinable { }
         public class RefinePreview : IRefinable
         {
             public RefinePreview(Lazy<IWorld> world, INotify notify)
             {
+                Assert.That(notify, Is.InstanceOf<NotificationOverride>());
             }
         }
 
@@ -752,10 +761,13 @@ namespace BTDBTest
             builder.RegisterType<WorldHttpHandler>().AsImplementedInterfaces().SingleInstance();
             builder.RegisterType<World>().AsImplementedInterfaces().SingleInstance();
             builder.RegisterType<Notification>().AsImplementedInterfaces().SingleInstance();
+            builder.RegisterType<NotificationOverride>().AsImplementedInterfaces().SingleInstance();
             builder.RegisterType<Support>().AsImplementedInterfaces().SingleInstance();
 
             var container = builder.Build();
             var world = container.Resolve<IWorld>();
+            var notificationOverride = container.Resolve<INotify>();
+            Assert.That(notificationOverride, Is.InstanceOf<NotificationOverride>());
         }
     }
 }
