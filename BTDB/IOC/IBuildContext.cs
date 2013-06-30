@@ -6,5 +6,6 @@ namespace BTDB.IOC
     {
         ICRegILGen ResolveNeedBy(Type type, object key);
         IBuildContext IncrementEnumerable();
+        IBuildContext FreezeMulti();
     }
 }

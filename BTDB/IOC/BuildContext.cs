@@ -130,5 +130,13 @@ namespace BTDB.IOC
             }
             return null;
         }
+
+        public IBuildContext FreezeMulti()
+        {
+            if (_multiBinds == null) return this;
+            var child = new BuildContext(_container);
+            child._parent = this;
+            return child;
+        }
     }
 }

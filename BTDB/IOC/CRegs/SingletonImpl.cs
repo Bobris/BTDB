@@ -11,6 +11,7 @@ namespace BTDB.IOC.CRegs
         readonly Type _implementationType;
         readonly ICRegILGen _wrapping;
         readonly int _singletonIndex;
+        IBuildContext _buildCtx;
 
         public SingletonImpl(Type implementationType, ICRegILGen wrapping, int singletonIndex)
         {
@@ -32,8 +33,11 @@ namespace BTDB.IOC.CRegs
 
         public void GenInitialization(IGenerationContext context)
         {
+            var backupCtx = context.BuildContext;
+            context.BuildContext = _buildCtx;
             _wrapping.GenInitialization(context);
             context.GetSpecific<SingletonsLocal>().Prepare();
+            context.BuildContext = backupCtx;
         }
 
         internal class BuildCRegLocals
@@ -99,6 +103,8 @@ namespace BTDB.IOC.CRegs
 
         public IILLocal GenMain(IGenerationContext context)
         {
+            var backupCtx = context.BuildContext;
+            context.BuildContext = _buildCtx;
             var il = context.IL;
             var buildCRegLocals = context.GetSpecific<BuildCRegLocals>();
             var localSingleton = buildCRegLocals.Get(this);
@@ -177,17 +183,22 @@ namespace BTDB.IOC.CRegs
                 .EndTry()
                 .Mark(labelNull1);
             buildCRegLocals.Add(this, localSingleton);
+            context.BuildContext = backupCtx;
             return localSingleton;
         }
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
+            var backupCtx = context.BuildContext;
+            _buildCtx = backupCtx.FreezeMulti();
+            context.BuildContext = _buildCtx;
             yield return new Need
                 {
                     Kind = NeedKind.CReg,
                     Key = _wrapping
                 };
             yield return Need.ContainerNeed;
+            context.BuildContext = backupCtx;
         }
     }
 }

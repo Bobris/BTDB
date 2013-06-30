@@ -741,6 +741,7 @@ namespace BTDBTest
         {
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
             {
+                Assert.AreEqual(1,refinables.Count());
             }
         }
 
@@ -765,9 +766,9 @@ namespace BTDBTest
             builder.RegisterType<Support>().AsImplementedInterfaces().SingleInstance();
 
             var container = builder.Build();
-            var world = container.Resolve<IWorld>();
             var notificationOverride = container.Resolve<INotify>();
             Assert.That(notificationOverride, Is.InstanceOf<NotificationOverride>());
+            var world = container.Resolve<IWorld>();
         }
     }
 }
