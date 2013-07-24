@@ -215,6 +215,16 @@
     <Compile Include="KVDBLayer\BTree\IBTreeLeafNode.cs" />
     <Compile Include="KVDBLayer\BTree\IBTreeNode.cs" />
     <Compile Include="KVDBLayer\BTree\NodeIdxPair.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\BTreeBranch.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\BTreeLeaf.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\BTreeLeafComp.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\BTreeLeafMember.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\BTreeRoot.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\CreateOrUpdateCtx.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\IBTreeLeafNode.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\IBTreeNode.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\IBTreeRootNode.cs" />
+    <Compile Include="KVDBLayer\BTreeMem\NodeIdxPair.cs" />
     <Compile Include="KVDBLayer\Implementation\ChunkStorageInKV.cs" />
     <Compile Include="KVDBLayer\Implementation\Compactor.cs" />
     <Compile Include="KVDBLayer\Implementation\CompactorScheduler.cs" />
@@ -225,6 +235,8 @@
     <Compile Include="KVDBLayer\Implementation\FileTransactionLog.cs" />
     <Compile Include="KVDBLayer\Implementation\HashKeyIndex.cs" />
     <Compile Include="KVDBLayer\Implementation\IDeleteFileCollectionStrategy.cs" />
+    <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDBTransaction.cs" />
+    <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDB.cs" />
     <Compile Include="KVDBLayer\Implementation\JustDeleteFileCollectionStrategy.cs" />
     <Compile Include="KVDBLayer\Interface\IChunkStorage.cs" />
     <Compile Include="KVDBLayer\Interface\IChunkStorageTransaction.cs" />
