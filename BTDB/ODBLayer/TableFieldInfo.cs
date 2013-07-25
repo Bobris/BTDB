@@ -63,7 +63,7 @@ namespace BTDB.ODBLayer
             if (ca == cb) return true;
             if (ca == null || cb == null) return false;
             if (ca.Length != cb.Length) return false;
-            if (BitArrayManipulation.CompareByteArray(ca, 0, ca.Length, cb, 0, cb.Length) != 0) return false;
+            if (BitArrayManipulation.CompareByteArray(ca, ca.Length, cb, cb.Length) != 0) return false;
             return true;
         }
     }

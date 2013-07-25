@@ -60,8 +60,8 @@ namespace BTDB.KVDBLayer.BTree
             {
                 var middle = (left + right) / 2;
                 var currentKey = _keys[middle];
-                var result = BitArrayManipulation.CompareByteArray(prefix, 0, prefix.Length,
-                                                                   currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
+                var result = BitArrayManipulation.CompareByteArray(prefix, prefix.Length,
+                                                                   currentKey, Math.Min(currentKey.Length, prefix.Length));
                 if (result == 0)
                 {
                     result = BitArrayManipulation.CompareByteArray(key.Buffer, key.Offset, key.Length,
@@ -243,8 +243,8 @@ namespace BTDB.KVDBLayer.BTree
             {
                 var middle = (left + right) / 2;
                 var currentKey = _keys[middle];
-                var result = BitArrayManipulation.CompareByteArray(prefix, 0, prefix.Length,
-                                                                   currentKey, 0, Math.Min(currentKey.Length, prefix.Length));
+                var result = BitArrayManipulation.CompareByteArray(prefix, prefix.Length,
+                                                                   currentKey, Math.Min(currentKey.Length, prefix.Length));
                 if (result < 0)
                 {
                     right = middle;

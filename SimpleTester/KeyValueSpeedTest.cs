@@ -11,14 +11,21 @@ namespace SimpleTester
         readonly Stopwatch _sw = new Stopwatch();
         readonly bool _inMemory;
         IFileCollection _fileCollection;
+        readonly bool _fastInMemory;
 
         public KeyValueSpeedTest(bool inMemory)
         {
             _inMemory = inMemory;
         }
 
+        public KeyValueSpeedTest()
+        {
+            _fastInMemory = true;
+        }
         IFileCollection CreateTestFileCollection()
         {
+            if (_fastInMemory)
+                return null;
             if (_inMemory)
             {
                 _fileCollection = new InMemoryFileCollection();
@@ -33,6 +40,8 @@ namespace SimpleTester
 
         IFileCollection OpenTestFileCollection()
         {
+            if (_fastInMemory)
+                return null;
             if (_inMemory)
             {
                 return _fileCollection;
@@ -46,7 +55,7 @@ namespace SimpleTester
             _sw.Restart();
             long pureDataLength = 0;
             using (var fileCollection = CreateTestFileCollection())
-            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
             {
                 for (int i = 0; i < 200; i++)
                 {
@@ -79,6 +88,14 @@ namespace SimpleTester
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
 
+        IKeyValueDB CreateKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compressionStrategy = null)
+        {
+            if (fileCollection == null) return new InMemoryKeyValueDB();
+            if (compressionStrategy == null)
+                return new KeyValueDB(fileCollection);
+            return new KeyValueDB(fileCollection, compressionStrategy);
+        }
+
         void DoWork5ReadCheck()
         {
             _sw.Restart();
@@ -108,7 +125,7 @@ namespace SimpleTester
             using (var fileCollection = CreateTestFileCollection())
             {
                 _sw.Start();
-                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy()))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
                 {
                     var key = new byte[100];
                     var value = new byte[100000000];
@@ -151,7 +168,7 @@ namespace SimpleTester
                     Console.WriteLine(db.CalcStats());
                 }
                 _sw.Restart();
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                     _sw.Stop();
                     Console.WriteLine("Time to open2 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
@@ -182,7 +199,7 @@ namespace SimpleTester
             var rnd = new Random(1234);
             using (var fileCollection = CreateTestFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -197,7 +214,7 @@ namespace SimpleTester
                         tr.Commit();
                     }
                 }
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                 }
             }
@@ -205,17 +222,17 @@ namespace SimpleTester
 
         void OpenDBSpeedTest()
         {
-            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); 
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             var memStart = GC.GetTotalMemory(false);
             _sw.Start();
             using (var fileCollection = OpenTestFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                     _sw.Stop();
-                    GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); 
+                    GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
                     var memFinish = GC.GetTotalMemory(false);
-                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB", _sw.Elapsed.TotalMilliseconds, (memFinish-memStart)/1024);
+                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB", _sw.Elapsed.TotalMilliseconds, (memFinish - memStart) / 1024);
                     Console.WriteLine(db.CalcStats());
                     _sw.Restart();
                 }
@@ -229,7 +246,7 @@ namespace SimpleTester
             var rnd = new Random(1234);
             using (var fileCollection = OpenTestFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -261,7 +278,7 @@ namespace SimpleTester
 
             using (var fileCollection = CreateTestFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy()))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -285,7 +302,7 @@ namespace SimpleTester
 
             using (var fileCollection = CreateTestFileCollection())
             {
-                using (IKeyValueDB db = new KeyValueDB(fileCollection, new NoCompressionStrategy()))
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -304,11 +321,10 @@ namespace SimpleTester
 
         public void Run()
         {
-            Console.WriteLine("InMemory: {0}", _inMemory);
+            Console.WriteLine("InMemory: {0} TrullyInMemory: {1}", _inMemory, _fastInMemory);
             CreateKeySequence(10000000);
-            OpenDBSpeedTest();
-            OpenDBSpeedTest();
-            CheckKeySequence(10000000);
+            //DoWork5(true);
+            //CheckKeySequence(10000000);
             //CreateTestDB(9999999);
             //OpenDBSpeedTest();
             //CheckDBTest(9999999);

@@ -162,7 +162,7 @@ namespace BTDB.ODBLayer
                     var key2 = tr.GetKeyAsByteArray();
                     var ofs = PackUnpack.LengthVUInt(id);
                     if (key2.Length < ofs) return 0;
-                    if (BitArrayManipulation.CompareByteArray(key, 0, ofs, key2, 0, ofs) != 0) return 0;
+                    if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
                     return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
                 }
             }

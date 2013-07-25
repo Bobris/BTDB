@@ -12,8 +12,6 @@ namespace BTDBTest
     [TestFixture]
     public class ObjectDbTest
     {
-        IPositionLessStream _dbstream;
-        IFileCollection _fileCollection;
         IKeyValueDB _lowDb;
         IObjectDB _db;
 
@@ -56,8 +54,7 @@ namespace BTDBTest
         [SetUp]
         public void Setup()
         {
-            _dbstream = new MemoryPositionLessStream();
-            _fileCollection = new InMemoryFileCollection();
+            _lowDb = new InMemoryKeyValueDB();
             OpenDb();
         }
 
@@ -65,8 +62,7 @@ namespace BTDBTest
         public void TearDown()
         {
             _db.Dispose();
-            _dbstream.Dispose();
-            _fileCollection.Dispose();
+            _lowDb.Dispose();
         }
 
         void ReopenDb()
@@ -77,10 +73,8 @@ namespace BTDBTest
 
         void OpenDb()
         {
-            //_lowDB = new KeyValueDB(_dbstream);
-            _lowDb = new KeyValueDB(_fileCollection);
             _db = new ObjectDB();
-            _db.Open(_lowDb, true);
+            _db.Open(_lowDb, false);
         }
 
         [Test]

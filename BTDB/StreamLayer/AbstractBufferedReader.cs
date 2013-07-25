@@ -629,7 +629,7 @@ namespace BTDB.StreamLayer
             {
                 var buf = new byte[magic.Length];
                 ReadBlock(buf);
-                if (BitArrayManipulation.CompareByteArray(buf, 0, buf.Length, magic, 0, magic.Length) == 0)
+                if (BitArrayManipulation.CompareByteArray(buf, buf.Length, magic, magic.Length) == 0)
                 {
                     return true;
                 }

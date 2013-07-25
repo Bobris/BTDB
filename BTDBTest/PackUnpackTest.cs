@@ -23,7 +23,7 @@ namespace BTDBTest
             }
             Assert.AreEqual(o2, PackUnpack.LengthVUInt(t));
             Assert.AreEqual(o2, PackUnpack.LengthVUInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, 0, o1, buf2, 0, o2));
+            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
             var o1A = 0;
             Assert.AreEqual(t - 1, PackUnpack.UnpackVUInt(buf1, ref o1A));
             Assert.AreEqual(o1, o1A);
@@ -64,7 +64,7 @@ namespace BTDBTest
             }
             Assert.AreEqual(o2, PackUnpack.LengthVInt(t));
             Assert.AreEqual(o2, PackUnpack.LengthVInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, 0, o1, buf2, 0, o2));
+            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
             var o1A = 0;
             Assert.AreEqual(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
             Assert.AreEqual(o1, o1A);
@@ -106,7 +106,7 @@ namespace BTDBTest
             }
             Assert.AreEqual(o2, PackUnpack.LengthVInt(t));
             Assert.AreEqual(o2, PackUnpack.LengthVInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, 0, o1, buf2, 0, o2), "{0} is not before {1}", t - 1, t);
+            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), "{0} is not before {1}", t - 1, t);
             var o1A = 0;
             Assert.AreEqual(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
             Assert.AreEqual(o1, o1A);
