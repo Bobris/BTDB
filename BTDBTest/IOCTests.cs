@@ -770,5 +770,29 @@ namespace BTDBTest
             Assert.That(notificationOverride, Is.InstanceOf<NotificationOverride>());
             var world = container.Resolve<IWorld>();
         }
+
+        public interface IHandler { }
+
+        public class Handler : IHandler
+        {
+            readonly ILogger _logger;
+
+            public Handler(Func<ILogger> logger)
+            {
+                _logger = logger();
+            }
+        }
+
+        [Test]
+        public void FunctionDependencyWithSubdependency()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterType<Logger>().AsImplementedInterfaces();
+            containerBuilder.RegisterType<Handler>().AsImplementedInterfaces().SingleInstance();
+
+            var container = containerBuilder.Build();
+            var handler = container.Resolve<IHandler>();
+            Assert.NotNull(handler);
+        }
     }
 }
