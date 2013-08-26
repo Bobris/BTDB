@@ -598,7 +598,7 @@ namespace BTDB.ODBLayer
             {
                 if (type.InheritsOrImplements(typeof(IEnumerable<>)))
                 {
-                    throw new InvalidOperationException("Cannot store "+type.ToSimpleName()+" type to DB directly.");
+                    throw new InvalidOperationException("Cannot store " + type.ToSimpleName() + " type to DB directly.");
                 }
                 var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
@@ -621,6 +621,17 @@ namespace BTDB.ODBLayer
         public void Delete(object @object)
         {
             if (@object == null) throw new ArgumentNullException("object");
+            var indirect = @object as IIndirect;
+            if (indirect != null)
+            {
+                if (indirect.Oid != 0)
+                {
+                    Delete(indirect.Oid);
+                    return;
+                }
+                Delete(indirect.ValueAsObject);
+                return;
+            }
             var tableInfo = AutoRegisterType(@object.GetType());
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -641,6 +652,7 @@ namespace BTDB.ODBLayer
             }
             else return;
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
+            metadata.State = DBObjectState.Deleted;
             var taken = false;
             try
             {
@@ -663,6 +675,58 @@ namespace BTDB.ODBLayer
                 _objBigCache.Remove(metadata.Id);
             }
             if (_dirtyObjSet != null) _dirtyObjSet.Remove(metadata.Id);
+        }
+
+        public void Delete(ulong oid)
+        {
+            object obj = null;
+            if (_objSmallCache != null)
+            {
+                if (_objSmallCache.TryGetValue(oid, out obj))
+                {
+                    _objSmallCache.Remove(oid);
+                }
+            }
+            else if (_objBigCache != null)
+            {
+                WeakReference weakobj;
+                if (_objBigCache.TryGetValue(oid, out weakobj))
+                {
+                    obj = weakobj.Target;
+                    _objBigCache.Remove(oid);
+                }
+            }
+            if (_dirtyObjSet != null) _dirtyObjSet.Remove(oid);
+            var taken = false;
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+                    _keyValueTr.EraseCurrent();
+            }
+            finally
+            {
+                if (taken) _keyValueTrProtector.Stop();
+            }
+            if (obj == null) return;
+            DBObjectMetadata metadata = null;
+            if (_objSmallMetadata != null)
+            {
+                if (!_objSmallMetadata.TryGetValue(obj, out metadata))
+                {
+                    return;
+                }
+            }
+            else if (_objBigMetadata != null)
+            {
+                if (!_objBigMetadata.TryGetValue(obj, out metadata))
+                {
+                    return;
+                }
+            }
+            if (metadata == null) return;
+            metadata.State = DBObjectState.Deleted;
         }
 
         public void DeleteAll<T>() where T : class

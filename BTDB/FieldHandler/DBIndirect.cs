@@ -1,3 +1,4 @@
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 
 namespace BTDB.FieldHandler
@@ -41,6 +42,16 @@ namespace BTDB.FieldHandler
             }
         }
 
+        public ulong Oid
+        {
+            get { return _oid; }
+        }
+
+        public object ValueAsObject
+        {
+            get { return _value; }
+        }
+
         public static void SaveImpl(IWriterCtx writerCtx, object obj)
         {
             var ind = obj as DBIndirect<T>;
@@ -48,7 +59,11 @@ namespace BTDB.FieldHandler
             {
                 if (ind._transaction != null)
                 {
-                    writerCtx.Writer().WriteVInt64((long) ind._oid);
+                    if (((IDBWriterCtx)writerCtx).GetTransaction() != ind._transaction)
+                    {
+                        throw new BTDBException("Transaction does not match when saving nonmaterialized IIndirect");
+                    }
+                    writerCtx.Writer().WriteVInt64((long)ind._oid);
                     return;
                 }
             }
@@ -64,7 +79,7 @@ namespace BTDB.FieldHandler
         public static IIndirect<T> LoadImpl(IReaderCtx readerCtx)
         {
             var oid = readerCtx.Reader().ReadVInt64();
-            return new DBIndirect<T>(((IDBReaderCtx)readerCtx).GetTransaction(),(ulong) oid);
+            return new DBIndirect<T>(((IDBReaderCtx)readerCtx).GetTransaction(), (ulong)oid);
         }
     }
 }

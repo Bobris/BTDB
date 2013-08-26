@@ -20,6 +20,7 @@ namespace BTDB.ODBLayer
         ulong Store(object @object);
         ulong StoreAndFlush(object @object);
         void Delete(object @object);
+        void Delete(ulong oid);
 
         void DeleteAll<T>() where T : class;
         void DeleteAll(Type type);

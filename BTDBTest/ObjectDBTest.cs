@@ -1360,7 +1360,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<ObjectWithDictWithDateTimeKey>();
-                Assert.Throws<InvalidOperationException>(()=>tr.Store(d.Dist));
+                Assert.Throws<InvalidOperationException>(() => tr.Store(d.Dist));
             }
         }
 
@@ -1422,5 +1422,62 @@ namespace BTDBTest
             }
         }
 
+        public class IndirectValueDict
+        {
+            public IDictionary<int, IIndirect<Person>> Dict { get; set; }
+        }
+
+        [Test]
+        public void BasicIndirectInDict()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<IndirectValueDict>();
+                d.Dict[1] = new DBIndirect<Person>(new Person { Name = "A", Age = 10 });
+                d.Dict[2] = new DBIndirect<Person>(new Person { Name = "B", Age = 20 });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.AreEqual(2, tr.Enumerate<Person>().Count());
+                var d = tr.Singleton<IndirectValueDict>();
+                Assert.AreEqual(10, d.Dict[1].Value.Age);
+                Assert.AreEqual("B", d.Dict[2].Value.Name);
+                tr.Delete(d.Dict[2].Value);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
+                var d = tr.Singleton<IndirectValueDict>();
+                Assert.AreEqual(10, d.Dict[1].Value.Age);
+                Assert.Null(d.Dict[2].Value);
+            }
+        }
+
+        [Test]
+        public void DeleteIndirectWithoutMaterialization()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<IndirectValueDict>();
+                d.Dict[1] = new DBIndirect<Person>(new Person { Name = "A", Age = 10 });
+                d.Dict[2] = new DBIndirect<Person>(new Person { Name = "B", Age = 20 });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<IndirectValueDict>();
+                tr.Delete(d.Dict[2]);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
+                var d = tr.Singleton<IndirectValueDict>();
+                Assert.AreEqual(10, d.Dict[1].Value.Age);
+                Assert.Null(d.Dict[2].Value);
+            }
+        }
     }
 }
