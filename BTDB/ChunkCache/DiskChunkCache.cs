@@ -274,24 +274,32 @@ namespace BTDB.ChunkCache
             {
                 if (itemPair.Value.FileId == fileId)
                 {
-                    if (preserveRate<itemPair.Value.AccessRate)
+                    if (preserveRate < itemPair.Value.AccessRate)
                     {
                         var cacheValue = itemPair.Value;
                         var content = new byte[cacheValue.ContentLength];
                         _fileCollection.GetFile(cacheValue.FileId).RandomRead(content, 0, (int)cacheValue.ContentLength,
                                                                               cacheValue.FileOfs);
                         var writer = _cacheValueWriter;
-                        if (writer == null) goto remove;
+                        if (writer == null)
+                        {
+                            goto remove;
+                        }
                         lock (writer)
                         {
-                            if (writer != _cacheValueWriter) goto remove;
-                            if (writer.GetCurrentPosition() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
+                            if (writer != _cacheValueWriter)
+                            {
                                 goto remove;
+                            }
+                            if (writer.GetCurrentPosition() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
+                            {
+                                goto remove;
+                            }
                             cacheValue.FileId = _cacheValueFileId;
                             cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
                             _cacheValueWriter.WriteBlock(content);
                         }
-                        _cache.TryUpdate(itemPair.Key,cacheValue,itemPair.Value);
+                        _cache.TryUpdate(itemPair.Key, cacheValue, itemPair.Value);
                         continue;
                     }
                 remove:

@@ -147,12 +147,12 @@ namespace BTDBTest
                 const int cacheCapacity = 50000;
                 using (var cache = new DiskChunkCache(fileCollection, 20, cacheCapacity))
                 {
-                    for (var i = 0; i < 70; i++)
+                    for (var i = 0; i < 46; i++)
                     {
                         Put(cache, i);
                         for (var j = 0; j < (i % 5 == 0 ? 10 + i : 1); j++)
                             Get(cache, i);
-                        Thread.Sleep(10);
+                        if (i==42) Thread.Sleep(500);
                         Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
                     }
                     Console.WriteLine(cache.CalcStats());
