@@ -8,12 +8,14 @@ namespace BTDB.IOC.CRegs
     {
         readonly object _key;
         readonly Type _type;
+        readonly ICRegILGen _nestedRegistration;
         readonly Need _myNeed;
 
-        public DelegateImpl(object key, Type type)
+        public DelegateImpl(object key, Type type, ICRegILGen nestedRegistration)
         {
             _key = key;
             _type = type;
+            _nestedRegistration = nestedRegistration;
             _myNeed = new Need {Kind = NeedKind.Constant, ClrType = _type};
         }
 
@@ -42,9 +44,7 @@ namespace BTDB.IOC.CRegs
             if (_myNeed.Key==null)
             {
                 var buildContext = context.BuildContext;
-                var genCtx = new GenerationContext(context.Container,
-                                                   buildContext.ResolveNeedBy(_type.GetMethod("Invoke").ReturnType,
-                                                                              _key), buildContext, _type.GetMethod("Invoke").GetParameters());
+                var genCtx = new GenerationContext(context.Container, _nestedRegistration, buildContext, _type.GetMethod("Invoke").GetParameters());
                 _myNeed.Key = genCtx.GenerateFunc(_type);
             }
             yield return _myNeed;
