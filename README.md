@@ -10,8 +10,9 @@ Currently this project these parts:
 * Snappy Compression
 * Event Storage (In heavy development)
 
-All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, code uses Parallel Extensions. Code is tested using NUnit Framework.
+All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, main code is without any dependency. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
+It is available in Nuget <http://www.nuget.org/packages/BTDB>
 
 ---
 ## Key Value Database
