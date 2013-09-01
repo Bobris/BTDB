@@ -2,8 +2,6 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Reactive;
-using System.Reactive.Subjects;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Reactive;
@@ -62,8 +60,8 @@ namespace BTDB.Service
         internal class Client : IChannel, ITcpIpChannel
         {
             readonly Socket _socket;
-            readonly ISubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
-            readonly ISubject<Unit> _connector = new FastBehaviourSubject<Unit>();
+            readonly FastSubject<ByteBuffer> _receiver = new FastSubject<ByteBuffer>();
+            readonly FastBehaviourSubject<bool> _connector = new FastBehaviourSubject<bool>();
             readonly object _sendlock = new object();
             bool _disconnected;
 
@@ -110,7 +108,7 @@ namespace BTDB.Service
                 get { return _receiver; }
             }
 
-            public IObservable<Unit> OnConnect
+            public IObservable<bool> OnConnect
             {
                 get { return _connector; }
             }
@@ -178,7 +176,7 @@ namespace BTDB.Service
             {
                 try
                 {
-                    _connector.OnNext(Unit.Default);
+                    _connector.OnNext(true);
                     var buf = new byte[9];
                     while (!_disconnected)
                     {

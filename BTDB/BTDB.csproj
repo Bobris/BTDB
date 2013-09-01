@@ -43,10 +43,6 @@
     <Reference Include="System.Core">
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
-    <Reference Include="System.Reactive, Version=1.1.11111.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\Rx_Experimental-Main.1.1.11111\lib\Net4\System.Reactive.dll</HintPath>
-    </Reference>
     <Reference Include="System.Runtime.Caching" />
   </ItemGroup>
   <ItemGroup>
@@ -271,6 +267,7 @@
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
     <Compile Include="ODBLayer\StoredInlineAttribute.cs" />
+    <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="Reactive\FastSubjectHelpers.cs" />
     <Compile Include="Service\IServiceInternal.cs" />
@@ -361,9 +358,6 @@
     <Compile Include="KVDBLayer\Helpers\PtrLenList.cs" />
     <Compile Include="ODBLayer\ReferenceEqualityComparer.cs" />
     <Compile Include="StreamLayer\PositionLessStreamProxy.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 using System.Threading;
 
 namespace BTDB.Reactive
 {
-    public sealed class FastSubject<T> : ISubject<T>, IDisposable, FastSubjectHelpers<T>.IUnsubscribableSubject
+    public sealed class FastSubject<T> : IObservable<T>, IObserver<T>, IDisposable, FastSubjectHelpers<T>.IUnsubscribableSubject
     {
         volatile IObserver<T> _current;
 
@@ -19,7 +17,7 @@ namespace BTDB.Reactive
             _current = FastSubjectHelpers<T>.DisposedSubjectMarker;
         }
 
-// disable invalid warning about using volatile inside Interlocked.CompareExchange
+        // disable invalid warning about using volatile inside Interlocked.CompareExchange
 #pragma warning disable 420
 
         public void OnCompleted()

@@ -1,11 +1,21 @@
 ﻿using System;
-using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 using System.Threading;
 
 namespace BTDB.Reactive
 {
-    public sealed class FastBehaviourSubject<T> : ISubject<T>, IDisposable, FastSubjectHelpers<T>.IUnsubscribableSubject
+    public static class Disposable
+    {
+        public static readonly IDisposable Empty = new EmptyDisposable();
+
+        class EmptyDisposable : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    public sealed class FastBehaviourSubject<T> : IObservable<T>, IObserver<T>, IDisposable, FastSubjectHelpers<T>.IUnsubscribableSubject
     {
         volatile IObserver<T> _current;
 

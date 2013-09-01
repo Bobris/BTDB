@@ -32,20 +32,20 @@ namespace SimpleTester
             //        4     2208     3718     2972     2182
             Console.WriteLine("FastSubject");
             Console.WriteLine("Observers  My Fast Original Delegate Del+null");
-            for (int observers = 0; observers < 5; observers++)
+            for (int observers = -1; observers < 5; observers++)
             {
                 Console.Write("{0,9} ", observers);
                 Stopwatch sw;
-                for (int impl = 0; impl < 2; impl++)
                 {
-                    ISubject<int> subj = null;
-                    switch (impl)
-                    {
-                        case 0: subj = new FastSubject<int>();
-                            break;
-                        case 1: subj = new Subject<int>();
-                            break;
-                    }
+                    var subj = new FastSubject<int>();
+                    for (int i = 0; i < observers; i++) subj.Subscribe(new EmptyIntObserver());
+                    subj.OnNext(0);
+                    sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 100000000; i++) subj.OnNext(i);
+                    Console.Write("{0,8} ", sw.ElapsedMilliseconds);
+                }
+                {
+                    var subj = new Subject<int>();
                     for (int i = 0; i < observers; i++) subj.Subscribe(new EmptyIntObserver());
                     subj.OnNext(0);
                     sw = Stopwatch.StartNew();
@@ -92,16 +92,16 @@ namespace SimpleTester
             for (int observers = 0; observers < 5; observers++)
             {
                 Console.Write("{0,9} ", observers);
-                for (int impl = 0; impl < 2; impl++)
                 {
-                    ISubject<int> subj = null;
-                    switch (impl)
-                    {
-                        case 0: subj = new FastBehaviourSubject<int>(0);
-                            break;
-                        case 1: subj = new BehaviorSubject<int>(0);
-                            break;
-                    }
+                    var subj = new FastBehaviourSubject<int>(0);
+                    for (int i = 0; i < observers; i++) subj.Subscribe(new EmptyIntObserver());
+                    subj.OnNext(0);
+                    var sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 100000000; i++) subj.OnNext(i);
+                    Console.Write("{0,8} ", sw.ElapsedMilliseconds);
+                }
+                {
+                    var subj = new BehaviorSubject<int>(0);
                     for (int i = 0; i < observers; i++) subj.Subscribe(new EmptyIntObserver());
                     subj.OnNext(0);
                     var sw = Stopwatch.StartNew();

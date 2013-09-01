@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("BTDB")]
-[assembly: AssemblyCopyright("Copyright © Boris Letocha 2010")]
+[assembly: AssemblyCopyright("Copyright © Boris Letocha 2013")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

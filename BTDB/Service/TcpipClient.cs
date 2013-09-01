@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Reactive;
 using BTDB.Buffer;
 
 namespace BTDB.Service
@@ -38,7 +37,7 @@ namespace BTDB.Service
             get { return _client.OnReceive; }
         }
 
-        public IObservable<Unit> OnConnect
+        public IObservable<bool> OnConnect
         {
             get { return _client.OnConnect; }
         }

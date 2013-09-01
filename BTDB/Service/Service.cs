@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reactive;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -133,7 +132,7 @@ namespace BTDB.Service
             _typeConvertorGenerator = new DefaultTypeConvertorGenerator();
             _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory(this);
             _channel = channel;
-            channel.OnReceive.Subscribe(OnReceive, OnDisconnect);
+            channel.OnReceive.Subscribe(new AnonymousObserver<ByteBuffer>(OnReceive, OnDisconnect));
         }
 
         void OnDisconnect()
@@ -548,7 +547,7 @@ namespace BTDB.Service
                 else
                 {
                     resultAsTask = typeof(Task);
-                    resultAsTcs = typeof(TaskCompletionSource<Unit>);
+                    resultAsTcs = typeof(TaskCompletionSource<bool>);
                 }
 
                 var bindingInf = new ClientBindInf
