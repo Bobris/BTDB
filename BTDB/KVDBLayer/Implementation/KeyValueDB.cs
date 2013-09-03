@@ -442,7 +442,8 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
             _writerWithTransactionLog.FlushBuffer();
             UpdateTransactionLogInBTreeRoot(btreeRoot);
-            //_fileWithTransactionLog.HardFlush();
+            if (DurableTransactions)
+                _fileWithTransactionLog.HardFlush();
             lock (_writeLock)
             {
                 _writingTransaction = null;
