@@ -37,6 +37,7 @@
     <WarningLevel>4</WarningLevel>
     <NoWarn>1720</NoWarn>
     <Prefer32Bit>false</Prefer32Bit>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -231,6 +232,7 @@
     <Compile Include="KVDBLayer\Implementation\FileTransactionLog.cs" />
     <Compile Include="KVDBLayer\Implementation\HashKeyIndex.cs" />
     <Compile Include="KVDBLayer\Implementation\IDeleteFileCollectionStrategy.cs" />
+    <Compile Include="KVDBLayer\Implementation\OnDiskMemoryMappedFileCollection.cs" />
     <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDBTransaction.cs" />
     <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDB.cs" />
     <Compile Include="KVDBLayer\Implementation\JustDeleteFileCollectionStrategy.cs" />

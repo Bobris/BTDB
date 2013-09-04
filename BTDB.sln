@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB", "BTDB\BTDB.csproj", "{4B16680A-547C-495F-8BB2-8DA239E34194}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDBTest", "BTDBTest\BTDBTest.csproj", "{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}"
@@ -61,8 +61,8 @@ Global
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Debug|x86.Build.0 = Debug|x86
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Any CPU.ActiveCfg = Release|x64
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Any CPU.Build.0 = Release|x64
-		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Mixed Platforms.ActiveCfg = Release|x86
-		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Mixed Platforms.Build.0 = Release|x86
+		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Mixed Platforms.ActiveCfg = Release|x64
+		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|Mixed Platforms.Build.0 = Release|x64
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x64.ActiveCfg = Release|x64
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x64.Build.0 = Release|x64
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x86.ActiveCfg = Release|x86

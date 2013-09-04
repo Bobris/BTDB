@@ -35,7 +35,8 @@ namespace SimpleTester
             if (Directory.Exists(dbfilename))
                 Directory.Delete(dbfilename, true);
             Directory.CreateDirectory(dbfilename);
-            return new OnDiskFileCollection(dbfilename);
+            return new OnDiskMemoryMappedFileCollection(dbfilename);
+            //return new OnDiskFileCollection(dbfilename);
         }
 
         IFileCollection OpenTestFileCollection()
@@ -319,10 +320,36 @@ namespace SimpleTester
             Console.WriteLine("CheckSequence:" + sw.Elapsed.TotalMilliseconds);
         }
 
+        void CreateRandomKeySequence(int keys)
+        {
+            var sw = Stopwatch.StartNew();
+            var rnd = new Random(1234);
+            using (var fileCollection = CreateTestFileCollection())
+            {
+                using (IKeyValueDB db = CreateKeyValueDB(fileCollection,new NoCompressionStrategy()))
+                {
+                    db.DurableTransactions = true;
+                    using (var tr = db.StartTransaction())
+                    {
+                        for (int i = 0; i < keys; i++)
+                        {
+                            var key = new byte[rnd.Next(10, 50)];
+                            rnd.NextBytes(key);
+                            var value = new byte[rnd.Next(50, 500)];
+                            rnd.NextBytes(value);
+                            tr.CreateOrUpdateKeyValueUnsafe(key, value);
+                        }
+                        tr.Commit();
+                    }
+                }
+            }
+            Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds);
+        }
+
         public void Run()
         {
             Console.WriteLine("InMemory: {0} TrullyInMemory: {1}", _inMemory, _fastInMemory);
-            CreateKeySequence(10000000);
+            CreateRandomKeySequence(10000);
             //DoWork5(true);
             //CheckKeySequence(10000000);
             //CreateTestDB(9999999);
