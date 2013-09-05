@@ -214,6 +214,11 @@ namespace BTDB.EventStoreLayer
             _itemType = null;
         }
 
+        public bool ContainsField(string name)
+        {
+            return false;
+        }
+
         public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
         {
             nestedDescriptorPersistor(writer, _itemDescriptor);

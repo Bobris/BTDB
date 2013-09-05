@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -7,7 +6,6 @@ using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
-using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using NUnit.Framework;
 
@@ -307,6 +305,14 @@ namespace BTDBTest
             var obj = ConvertToDynamicThroughSerialization(value);
             Assert.AreEqual(value.IntField, obj.IntField);
             Assert.AreEqual(value.StringField, obj.StringField);
+            Assert.Throws<MemberAccessException>(() =>
+                {
+                    var garbage = obj.Garbage;
+                });
+            var descriptor = _ts.DescriptorOf((object)obj);
+            Assert.NotNull(descriptor);
+            Assert.True(descriptor.ContainsField("IntField"));
+            Assert.False(descriptor.ContainsField("Garbage"));
         }
 
         [Test]

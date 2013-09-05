@@ -185,6 +185,11 @@ namespace BTDB.EventStoreLayer
             {
                 throw new InvalidOperationException();
             }
+
+            public bool ContainsField(string name)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public object LoadObject(AbstractBufferedReader reader)

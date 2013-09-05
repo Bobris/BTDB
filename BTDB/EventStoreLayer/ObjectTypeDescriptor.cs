@@ -205,6 +205,8 @@ namespace BTDB.EventStoreLayer
             {
                 if (_ownerDescriptor == descriptor)
                 {
+                    if (idx < 0)
+                        ThrowMemberAccessException(fieldName);
                     _fieldValues[idx] = value;
                     return;
                 }
@@ -216,10 +218,17 @@ namespace BTDB.EventStoreLayer
             {
                 if (_ownerDescriptor == descriptor)
                 {
+                    if (idx < 0)
+                        ThrowMemberAccessException(fieldName);
                     return _fieldValues[idx];
                 }
                 var realidx = _ownerDescriptor.FindFieldIndexWithThrow(fieldName);
                 return _fieldValues[realidx];
+            }
+
+            void ThrowMemberAccessException(string fieldName)
+            {
+                throw new MemberAccessException(string.Format("{0} does not have member {1}", _ownerDescriptor.Name, fieldName));
             }
 
             class DynamicDictionaryMetaObject : DynamicMetaObject
@@ -332,7 +341,7 @@ namespace BTDB.EventStoreLayer
                     }
                     ilGenerator.Ldloc(resultLoc);
                     pair.Value.GenerateLoad(ilGenerator, pushReader, pushCtx,
-                                            il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)), 
+                                            il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
                                             prop.PropertyType);
                     ilGenerator.Callvirt(prop.GetSetMethod());
                 }
@@ -403,6 +412,15 @@ namespace BTDB.EventStoreLayer
         public void ClearMappingToType()
         {
             _type = null;
+        }
+
+        public bool ContainsField(string name)
+        {
+            foreach (var pair in _fields)
+            {
+                if (pair.Key == name) return true;
+            }
+            return false;
         }
 
         public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)

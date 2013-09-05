@@ -20,5 +20,6 @@ namespace BTDB.EventStoreLayer
         bool Sealed { get; }
         bool StoredInline { get; }
         void ClearMappingToType();
+        bool ContainsField(string name);
     }
 }

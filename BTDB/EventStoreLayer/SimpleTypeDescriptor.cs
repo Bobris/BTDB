@@ -119,6 +119,11 @@ namespace BTDB.EventStoreLayer
         {
         }
 
+        public bool ContainsField(string name)
+        {
+            return false;
+        }
+
         public bool LoadNeedsCtx()
         {
             return false;
