@@ -148,6 +148,16 @@ namespace BTDB.KVDBLayer
             {
             }
 
+            public void SetSize(long size)
+            {
+                if ((ulong)size!=GetSize())
+                    throw new InvalidOperationException("For in memory collection SetSize should never be set to something else than GetSize");
+            }
+
+            public void Truncate()
+            {
+            }
+
             public ulong GetSize()
             {
                 lock (_lock)

@@ -10,6 +10,8 @@ namespace BTDB.KVDBLayer
         void RandomRead(byte[] data, int offset, int size, ulong position);
         AbstractBufferedWriter GetAppenderWriter();
         void HardFlush();
+        void SetSize(long size);
+        void Truncate();
 
         ulong GetSize();
 

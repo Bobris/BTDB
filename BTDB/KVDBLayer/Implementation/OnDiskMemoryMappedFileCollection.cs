@@ -286,6 +286,22 @@ namespace BTDB.KVDBLayer
                 }
             }
 
+            public void SetSize(long size)
+            {
+                _writer.FlushBuffer();
+                lock (_lock)
+                {
+                    _writer.Ofs = (ulong) size;
+                    _trueLength = size;
+                }
+            }
+
+            public void Truncate()
+            {
+                UnmapContent();
+                _stream.SetLength(_trueLength);
+            }
+
             public ulong GetSize()
             {
                 lock (_lock)

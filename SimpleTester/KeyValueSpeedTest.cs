@@ -10,12 +10,14 @@ namespace SimpleTester
     {
         readonly Stopwatch _sw = new Stopwatch();
         readonly bool _inMemory;
+        readonly bool _memoryMapped;
         IFileCollection _fileCollection;
         readonly bool _fastInMemory;
 
-        public KeyValueSpeedTest(bool inMemory)
+        public KeyValueSpeedTest(bool inMemory, bool memoryMapped)
         {
             _inMemory = inMemory;
+            _memoryMapped = memoryMapped;
         }
 
         public KeyValueSpeedTest()
@@ -35,8 +37,9 @@ namespace SimpleTester
             if (Directory.Exists(dbfilename))
                 Directory.Delete(dbfilename, true);
             Directory.CreateDirectory(dbfilename);
-            return new OnDiskMemoryMappedFileCollection(dbfilename);
-            //return new OnDiskFileCollection(dbfilename);
+            if (_memoryMapped)
+                return new OnDiskMemoryMappedFileCollection(dbfilename);
+            return new OnDiskFileCollection(dbfilename);
         }
 
         IFileCollection OpenTestFileCollection()
@@ -48,6 +51,8 @@ namespace SimpleTester
                 return _fileCollection;
             }
             const string dbfilename = "data";
+            if (_memoryMapped)
+                return new OnDiskMemoryMappedFileCollection(dbfilename);
             return new OnDiskFileCollection(dbfilename);
         }
 
@@ -348,16 +353,17 @@ namespace SimpleTester
 
         public void Run()
         {
-            Console.WriteLine("InMemory: {0} TrullyInMemory: {1}", _inMemory, _fastInMemory);
-            CreateRandomKeySequence(10000);
+            Console.WriteLine("InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory, _memoryMapped);
+            //CreateTestDB(9999999);
+            //CreateRandomKeySequence(10000);
             //DoWork5(true);
             //CheckKeySequence(10000000);
             //CreateTestDB(9999999);
             //OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
-            //DoWork5(true);
-            //DoWork5ReadCheck();
+            DoWork5(true);
+            DoWork5ReadCheck();
         }
     }
 }

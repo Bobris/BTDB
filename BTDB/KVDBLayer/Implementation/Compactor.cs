@@ -97,7 +97,9 @@ namespace BTDB.KVDBLayer
                 _fileStats[wastefullFileId] = new FileStat(0);
                 toRemoveFileIds.Add(wastefullFileId);
             }
-            _keyValueDB.FileCollection.GetFile(valueFileId).HardFlush();
+            var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
+            valueFile.HardFlush();
+            valueFile.Truncate();
             var btreesCorrectInTransactionId = _keyValueDB.AtomicallyChangeBTree(root => root.RemappingIterate((uint oldFileId, uint oldOffset, out uint newFileId, out uint newOffset) =>
                 {
                     newFileId = valueFileId;

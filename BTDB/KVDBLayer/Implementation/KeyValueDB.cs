@@ -14,6 +14,7 @@ namespace BTDB.KVDBLayer
     public class KeyValueDB : IKeyValueDB, IHaveSubDB
     {
         const int MaxValueSizeInlineInMemory = 7;
+        const int EndOfIndexFileMarker = 0x1234DEAD;
         IBTreeRootNode _lastCommited;
         IBTreeRootNode _nextRoot;
         KeyValueDBTransaction _writingTransaction;
@@ -142,7 +143,9 @@ namespace BTDB.KVDBLayer
                                 ValueSize = reader.ReadVInt32()
                             };
                     });
-                return reader.Eof;
+                if (reader.Eof) return true;
+                if (reader.ReadInt32()==EndOfIndexFileMarker) return true;
+                return false;
             }
             catch (Exception)
             {
@@ -173,7 +176,8 @@ namespace BTDB.KVDBLayer
         {
             var inlineValueBuf = new byte[MaxValueSizeInlineInMemory];
             var stack = new List<NodeIdxPair>();
-            var reader = FileCollection.GetFile(fileId).GetExclusiveReader();
+            var collectionFile = FileCollection.GetFile(fileId);
+            var reader = collectionFile.GetExclusiveReader();
             try
             {
                 if (logOffset == 0)
@@ -184,11 +188,19 @@ namespace BTDB.KVDBLayer
                 {
                     reader.SkipBlock(logOffset);
                 }
+                var afterTemporaryEnd = false;
                 while (!reader.Eof)
                 {
                     var command = (KVCommandType)reader.ReadUInt8();
+                    if (command==0 && afterTemporaryEnd)
+                    {
+                        collectionFile.SetSize(reader.GetCurrentPosition()-1);
+                        return true;
+                    }
+                    afterTemporaryEnd = false;
                     switch (command & KVCommandType.CommandMask)
                     {
+                        case KVCommandType.CreateOrUpdateDeprecated:
                         case KVCommandType.CreateOrUpdate:
                             {
                                 if (_nextRoot == null) return false;
@@ -282,13 +294,18 @@ namespace BTDB.KVDBLayer
                             _nextRoot = null;
                             break;
                         case KVCommandType.EndOfFile:
+                            collectionFile.SetSize(reader.GetCurrentPosition());
+                            collectionFile.Truncate();
                             return false;
+                        case KVCommandType.TemporaryEndOfFile:
+                            afterTemporaryEnd = true;
+                            break;
                         default:
                             _nextRoot = null;
                             return false;
                     }
                 }
-                return _nextRoot == null;
+                return afterTemporaryEnd;
             }
             catch (EndOfStreamException)
             {
@@ -371,6 +388,13 @@ namespace BTDB.KVDBLayer
                 {
                     _writeWaitingQueue.Dequeue().TrySetCanceled();
                 }
+            }
+            if (_writerWithTransactionLog != null)
+            {
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+                _writerWithTransactionLog.FlushBuffer();
+                _fileWithTransactionLog.HardFlush();
+                _fileWithTransactionLog.Truncate();
             }
         }
 
@@ -526,6 +550,7 @@ namespace BTDB.KVDBLayer
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
                 _writerWithTransactionLog.FlushBuffer();
                 _fileWithTransactionLog.HardFlush();
+                _fileWithTransactionLog.Truncate();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
             }
             _fileWithTransactionLog = FileCollection.AddFile("trl");
@@ -717,6 +742,10 @@ namespace BTDB.KVDBLayer
             }
             writer.FlushBuffer();
             file.HardFlush();
+            writer.WriteInt32(EndOfIndexFileMarker);
+            writer.FlushBuffer();
+            file.HardFlush();
+            file.Truncate();
             FileCollection.SetInfo(file.Index, keyIndex);
             return file.Index;
         }

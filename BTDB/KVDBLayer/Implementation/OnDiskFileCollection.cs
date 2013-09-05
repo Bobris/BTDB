@@ -228,6 +228,14 @@ namespace BTDB.KVDBLayer
                 }
             }
 
+            public void SetSize(long size)
+            {
+            }
+
+            public void Truncate()
+            {
+            }
+
             public ulong GetSize()
             {
                 lock (_lock)
