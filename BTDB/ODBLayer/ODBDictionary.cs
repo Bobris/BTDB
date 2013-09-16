@@ -780,5 +780,45 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Stop(ref taken);
             }
         }
+
+        public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd)
+        {
+            var taken = false;
+            var startKeyBytes = KeyToByteArray(start);
+            var endKeyBytes = KeyToByteArray(end);
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(_prefix);
+                var result = _keyValueTr.Find(ByteBuffer.NewAsync(startKeyBytes));
+                if (result == FindResult.NotFound) return 0;
+                var startIndex = _keyValueTr.GetKeyIndex();
+                if (result == FindResult.Exact)
+                {
+                    if (!includeStart) startIndex++;
+                }
+                else if (result == FindResult.Previous)
+                {
+                    startIndex++;
+                }
+                result = _keyValueTr.Find(ByteBuffer.NewAsync(endKeyBytes));
+                var endIndex = _keyValueTr.GetKeyIndex();
+                if (result == FindResult.Exact)
+                {
+                    if (!includeEnd) endIndex--;
+                }
+                else if (result == FindResult.Next)
+                {
+                    endIndex--;
+                }
+                _keyValueTr.EraseRange(startIndex, endIndex);
+                _keyValueTrProtector.Stop(ref taken);
+                return Math.Max(0, endIndex - startIndex + 1);
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
     }
 }

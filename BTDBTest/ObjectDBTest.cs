@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using BTDB.StreamLayer;
 using NUnit.Framework;
 
 namespace BTDBTest
@@ -1477,6 +1477,29 @@ namespace BTDBTest
                 var d = tr.Singleton<IndirectValueDict>();
                 Assert.AreEqual(10, d.Dict[1].Value.Age);
                 Assert.Null(d.Dict[2].Value);
+            }
+        }
+
+        [Test]
+        [TestCase(2, false, 4, false, "1245", 1)]
+        [TestCase(2, true, 4, false, "145", 2)]
+        [TestCase(2, false, 4, true, "125", 2)]
+        [TestCase(2, true, 4, true, "15", 3)]
+        [TestCase(3, false, 3, false, "12345", 0)]
+        [TestCase(6, true, 5, true, "12345", 0)]
+        [TestCase(0, true, 6, true, "", 5)]
+        [TestCase(0, false, 6, false, "", 5)]
+        public void RemoveRange(int start, bool includeStart, int end, bool includeEnd, string result, int removedCount)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<SimpleOrderedDictionary>().Int2String;
+                for (var i = 1; i <= 5; i++)
+                {
+                    d[i] = i.ToString(CultureInfo.InvariantCulture);
+                }
+                Assert.AreEqual(removedCount, d.RemoveRange(start, includeStart, end, includeEnd));
+                Assert.AreEqual(result, d.Aggregate("", (s, p) => s + p.Value));
             }
         }
     }

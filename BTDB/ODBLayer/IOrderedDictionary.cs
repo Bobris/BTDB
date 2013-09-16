@@ -7,5 +7,6 @@ namespace BTDB.ODBLayer
         IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator();
         IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start);
         IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start);
+        long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd);
     }
 }
