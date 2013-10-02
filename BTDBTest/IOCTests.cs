@@ -794,5 +794,32 @@ namespace BTDBTest
             var handler = container.Resolve<IHandler>();
             Assert.NotNull(handler);
         }
+
+        public class EnhancedLogger: ILogger
+        {
+            readonly ILogger _parent;
+
+            public EnhancedLogger(ILogger parent)
+            {
+                _parent = parent;
+            }
+
+            public ILogger Parent
+            {
+                get { return _parent; }
+            }
+        }
+
+        [Test]
+        public void EnhancingImplementationPossible()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterType<Logger>().AsImplementedInterfaces().Named<ILogger>("parent");
+            containerBuilder.RegisterType<EnhancedLogger>().AsImplementedInterfaces();
+            var container = containerBuilder.Build();
+            var handler = container.Resolve<ILogger>();
+            Assert.IsInstanceOf<EnhancedLogger>(handler);
+            Assert.IsInstanceOf<Logger>(((EnhancedLogger)handler).Parent);
+        }
     }
 }
