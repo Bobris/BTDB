@@ -48,8 +48,9 @@ namespace BTDB.KVDBLayer
             DurableTransactions = false;
             _fileCollection = new FileCollectionWithFileInfos(fileCollection);
             _lastCommited = new BTreeRoot(0);
-            _compactorScheduler = new CompactorScheduler(token => new Compactor(this, token).Run());
             LoadInfoAboutFiles();
+            _compactorScheduler = new CompactorScheduler(token => new Compactor(this, token).Run());
+            _compactorScheduler.AdviceRunning();
         }
 
         void LoadInfoAboutFiles()
@@ -108,7 +109,6 @@ namespace BTDB.KVDBLayer
             }
             new Compactor(this, CancellationToken.None).FastStartCleanUp();
             _fileCollection.DeleteAllUnknownFiles();
-            _compactorScheduler.AdviceRunning();
         }
 
         internal void CreateIndexFile(CancellationToken cancellation)
@@ -512,8 +512,8 @@ namespace BTDB.KVDBLayer
             if (!nothingWrittenToTransactionLog)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
+                UpdateTransactionLogInBTreeRoot(_lastCommited);
             }
-            UpdateTransactionLogInBTreeRoot(_lastCommited);
             lock (_writeLock)
             {
                 _writingTransaction = null;
