@@ -176,6 +176,11 @@ namespace BTDB.KVDBLayer.BTree
             return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
         }
 
+        public IBTreeRootNode CloneRoot()
+        {
+            return new BTreeRoot(_transactionId) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
+        }
+
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
         {
             Debug.Assert(firstKeyIndex >= 0);

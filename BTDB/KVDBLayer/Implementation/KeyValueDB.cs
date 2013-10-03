@@ -188,6 +188,7 @@ namespace BTDB.KVDBLayer
                 {
                     reader.SkipBlock(logOffset);
                 }
+                if (reader.Eof) return true;
                 var afterTemporaryEnd = false;
                 while (!reader.Eof)
                 {
@@ -512,12 +513,22 @@ namespace BTDB.KVDBLayer
             if (!nothingWrittenToTransactionLog)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
-                UpdateTransactionLogInBTreeRoot(_lastCommited);
+                var newRoot = _lastCommited.CloneRoot();
+                UpdateTransactionLogInBTreeRoot(newRoot);
+                lock (_writeLock)
+                {
+                    _writingTransaction = null;
+                    _lastCommited = newRoot;
+                    TryDequeWaiterForWrittingTransaction();
+                }
             }
-            lock (_writeLock)
+            else
             {
-                _writingTransaction = null;
-                TryDequeWaiterForWrittingTransaction();
+                lock (_writeLock)
+                {
+                    _writingTransaction = null;
+                    TryDequeWaiterForWrittingTransaction();
+                }
             }
         }
 
