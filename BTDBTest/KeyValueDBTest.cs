@@ -1028,6 +1028,40 @@ namespace BTDBTest
         }
 
         [Test]
+        public void PreapprovedCommitAndCompaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartWritingTransaction().Result)
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.Commit();
+                    }
+                    db.Compact();
+                    Thread.Sleep(2000);
+                    using (var tr = db.StartWritingTransaction().Result)
+                    {
+                        tr.EraseRange(0,0);
+                        tr.Commit();
+                    }
+                    db.Compact();
+                    Thread.Sleep(2000);
+                    using (var db2 = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                    {
+                        using (var tr = db2.StartTransaction())
+                        {
+                            Assert.False(tr.FindExactKey(_key1));
+                            Assert.True(tr.FindExactKey(_key2));
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void FastCleanUpOnStartRemovesUselessFiles()
         {
             using (var fileCollection = new InMemoryFileCollection())
