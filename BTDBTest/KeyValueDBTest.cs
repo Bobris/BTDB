@@ -1011,6 +1011,18 @@ namespace BTDBTest
                     longTr.Dispose();
                     Thread.Sleep(1000);
                     Assert.AreEqual(2, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key3, new byte[10]);
+                        tr.Commit();
+                    }
+                    using (var db2 = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                    {
+                        using (var tr = db2.StartTransaction())
+                        {
+                            Assert.True(tr.FindExactKey(_key3));
+                        }
+                    }
                 }
             }
         }

@@ -173,12 +173,12 @@ namespace BTDB.KVDBLayer.BTree
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
+            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset};
         }
 
         public IBTreeRootNode CloneRoot()
         {
-            return new BTreeRoot(_transactionId) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
+            return new BTreeRoot(_transactionId) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset };
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
