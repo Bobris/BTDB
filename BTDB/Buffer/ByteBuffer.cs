@@ -45,6 +45,25 @@ namespace BTDB.Buffer
         public int Length { get { return _length; } }
         public bool AsyncSafe { get { return (_offset & 0x80000000u) == 0u; } }
 
+        public byte this[int index]
+        {
+            get { return _buffer[Offset + index]; }
+            set
+            {
+                _buffer[Offset + index] = value;
+            }
+        }
+
+        public ByteBuffer SubBuffer(int offset)
+        {
+            return AsyncSafe ? NewAsync(Buffer, Offset + offset, Length - offset) : NewSync(Buffer, Offset + offset, Length - offset);
+        }
+
+        public ByteBuffer SubBuffer(int offset, int length)
+        {
+            return AsyncSafe ? NewAsync(Buffer, Offset + offset, length) : NewSync(Buffer, Offset + offset, length);
+        }
+
         public ByteBuffer ToAsyncSafe()
         {
             if (AsyncSafe) return this;
