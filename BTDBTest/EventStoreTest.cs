@@ -488,5 +488,36 @@ namespace BTDBTest
                 appender.ReadFromStartToEnd(eventObserver);
             }
         }
+
+        public class SpecificList
+        {
+            public List<ulong> Ulongs { get; set; }
+        }
+
+        public class SpecificDictIList
+        {
+            public IDictionary<ulong,IList<ulong>> Dict { get; set; }
+        }
+
+        [Test]
+        public void MixedIListAndList()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var e1 = new SpecificDictIList { Dict = new Dictionary<ulong, IList<ulong>>() };
+            var e2 = new SpecificList {Ulongs = new List<ulong>()};
+            appender.Store(null, new object[] { e2 });
+            appender.Store(null, new object[] { e1 });
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new GenericTypeMapper());
+            appender = manager.AppendToStore(file);
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            appender.Store(null, new object[] { e1 });
+        }
+
     }
 }

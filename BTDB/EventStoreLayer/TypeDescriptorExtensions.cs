@@ -15,12 +15,12 @@ namespace BTDB.EventStoreLayer
             return sb.ToString();
         }
 
-        public static void GenerateSave(this ITypeDescriptor typeDescriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue)
+        public static void GenerateSave(this ITypeDescriptor typeDescriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
         {
             if (typeDescriptor.StoredInline)
             {
                 var generator = typeDescriptor.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx, pushSubValue);
+                generator.GenerateSave(ilGenerator, pushWriter, pushCtx, pushSubValue, subValueType);
             }
             else
             {

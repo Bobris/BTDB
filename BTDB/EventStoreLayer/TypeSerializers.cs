@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -303,7 +304,7 @@ namespace BTDB.EventStoreLayer
                     {
                         ilgen.UnboxAny(type);
                     }
-                });
+                }, descriptor.GetPreferedType());
             il.Ret();
             return method.Create();
         }
@@ -326,7 +327,7 @@ namespace BTDB.EventStoreLayer
                 {
                     ilgen.UnboxAny(type);
                 }
-            });
+            }, descriptor.GetPreferedType());
             il.Ret();
             return method.Create();
         }

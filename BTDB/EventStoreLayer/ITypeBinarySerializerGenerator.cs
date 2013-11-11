@@ -7,6 +7,6 @@ namespace BTDB.EventStoreLayer
     {
         bool SaveNeedsCtx();
         // ctx is ITypeBinarySerializerContext
-        void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue);
+        void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType);
     }
 }

@@ -439,8 +439,10 @@ namespace BTDB.EventStoreLayer
             return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.BuildBinarySerializerGenerator().SaveNeedsCtx());
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
+            if (_type != valueType)
+                throw new ArgumentException("value type does not match my type");
             var locValue = ilGenerator.DeclareLocal(_type, "value");
             ilGenerator
                 .Do(pushValue)
@@ -448,9 +450,8 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                pair.Value.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il
-                    .Ldloc(locValue)
-                    .Callvirt(_type.GetProperty(pair.Key).GetGetMethod()));
+                var methodInfo = _type.GetProperty(pair.Key).GetGetMethod();
+                pair.Value.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }
     }

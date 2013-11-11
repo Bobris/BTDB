@@ -229,13 +229,14 @@ namespace BTDB.EventStoreLayer
             return !_itemDescriptor.StoredInline || _itemDescriptor.BuildBinarySerializerGenerator().SaveNeedsCtx();
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             var notnull = ilGenerator.DefineLabel();
+            var itemType = valueType.GetGenericArguments()[0];
             var localList = ilGenerator.DeclareLocal(
-                typeof(IList<>).MakeGenericType(_itemDescriptor.GetPreferedType()));
+                typeof(IList<>).MakeGenericType(itemType));
             var localIndex = ilGenerator.DeclareLocal(typeof(int));
             var localCount = ilGenerator.DeclareLocal(typeof(int));
             ilGenerator
@@ -267,7 +268,7 @@ namespace BTDB.EventStoreLayer
             _itemDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx,
                 il => il.Ldloc(localList)
                         .Ldloc(localIndex)
-                        .Callvirt(localList.LocalType.GetMethod("get_Item")));
+                        .Callvirt(localList.LocalType.GetMethod("get_Item")), itemType);
             ilGenerator
                 .Ldloc(localIndex)
                 .LdcI4(1)

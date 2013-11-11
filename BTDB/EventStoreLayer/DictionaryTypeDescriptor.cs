@@ -262,14 +262,14 @@ namespace BTDB.EventStoreLayer
                 || _valueDescriptor.BuildBinarySerializerGenerator().SaveNeedsCtx();
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type saveType)
         {
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             var notnull = ilGenerator.DefineLabel();
             var completeFinish = ilGenerator.DefineLabel();
-            var keyType = _typeSerializers.LoadAsType(_keyDescriptor);
-            var valueType = _typeSerializers.LoadAsType(_valueDescriptor);
+            var keyType = saveType.GetGenericArguments()[0];
+            var valueType = saveType.GetGenericArguments()[1];
             var typeAsIDictionary = typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
             var typeAsICollection = typeAsIDictionary.GetInterface("ICollection`1");
             var typeAsIEnumerable = typeAsIDictionary.GetInterface("IEnumerable`1");
@@ -308,8 +308,8 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localEnumerator)
                 .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
                 .Stloc(localPair);
-            _keyDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()));
-            _valueDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()));
+            _keyDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
+            _valueDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
             ilGenerator
                 .Br(next)
                 .Mark(finish)

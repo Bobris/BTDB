@@ -151,7 +151,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);

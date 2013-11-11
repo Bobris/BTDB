@@ -166,9 +166,9 @@ namespace BTDB.EventStoreLayer
             public override bool Equals(object obj)
             {
                 if (obj == null) return false;
-                if (obj is DynamicEnum)
+                var objMe = obj as DynamicEnum;
+                if (objMe != null)
                 {
-                    var objMe = (DynamicEnum)obj;
                     if (objMe._descriptor != _descriptor) return false;
                     return objMe._value == _value;
                 }
@@ -348,7 +348,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
