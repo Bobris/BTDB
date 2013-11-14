@@ -75,6 +75,22 @@ namespace BTDB.EventStoreLayer
                     Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int)SectorSize - 1);
                 }
             }
+            if (SpaceNeeded(startOffset, lenWithoutEndPadding) + EndBufferPosition + EndBufferLen > File.MaxFileSize)
+            {
+                FinalizeStore();
+                File = File.CreateNew();
+                EndBufferPosition = 0;
+                EndBufferLen = 0;
+                KnownAsFinished = false;
+                if (startOffset > HeaderSize)
+                    Array.Copy(block.Buffer, startOffset, block.Buffer, HeaderSize, lenWithoutEndPadding - startOffset);
+                lenWithoutEndPadding -= startOffset - HeaderSize;
+                startOffset = HeaderSize;
+                if ((ulong)lenWithoutEndPadding > File.MaxFileSize)
+                {
+                    throw new ArgumentOutOfRangeException(string.Format("Size of events are bigger than MaxFileSize {0}>{1}", lenWithoutEndPadding, File.MaxFileSize));
+                }
+            }
             do
             {
                 var blockLen = MaxBlockSize - (EndBufferLen + HeaderSize);
@@ -88,8 +104,24 @@ namespace BTDB.EventStoreLayer
                 startOffset += (int)blockLen;
                 blockType &= ~BlockType.FirstBlock;
                 blockType |= BlockType.MiddleBlock;
-            } while (lenWithoutEndPadding > startOffset);
+            } while (startOffset < lenWithoutEndPadding);
             serializerContext.CommitNewDescriptors();
+        }
+
+        ulong SpaceNeeded(int startOffset, int lenWithoutEndPadding)
+        {
+            var res = 0u;
+            do
+            {
+                var blockLen = MaxBlockSize - (EndBufferLen + HeaderSize);
+                if (blockLen >= lenWithoutEndPadding - startOffset)
+                {
+                    blockLen = (uint)(lenWithoutEndPadding - startOffset);
+                }
+                res += HeaderSize + blockLen;
+                startOffset += (int)blockLen;
+            } while (startOffset < lenWithoutEndPadding);
+            return res;
         }
 
         public void FinalizeStore()
@@ -101,7 +133,10 @@ namespace BTDB.EventStoreLayer
             }
             if (IsKnownAsFinished()) return;
             var startOffset = (int)EndBufferLen + HeaderSize;
-            WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
+            if (EndBufferPosition + (ulong)startOffset <= File.MaxFileSize)
+            {
+                WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
+            }
             EndBufferPosition = ulong.MaxValue;
             KnownAsFinished = true;
         }
@@ -110,6 +145,11 @@ namespace BTDB.EventStoreLayer
         {
             if (!IsKnownAsAppendable()) throw new InvalidOperationException("IsKnownAsAppendable needs to return true before calling this method. Use ReadToEnd(new SkippingEventObserver()).Wait() to initialize.");
             return EndBufferPosition + EndBufferLen;
+        }
+
+        public IEventFileStorage CurrentFileStorage
+        {
+            get { return File; }
         }
 
         void WriteOneBlock(ByteBuffer block, BlockType blockType)

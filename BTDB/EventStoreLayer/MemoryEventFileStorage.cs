@@ -6,15 +6,18 @@ namespace BTDB.EventStoreLayer
 {
     public class MemoryEventFileStorage : IEventFileStorage
     {
-        public MemoryEventFileStorage(uint maxBlockSize = 4096)
+        public MemoryEventFileStorage(uint maxBlockSize = 4096, ulong maxFileSize = int.MaxValue)
         {
             MaxBlockSize = maxBlockSize;
+            MaxFileSize = maxFileSize;
         }
 
         const uint BlockSize = 4096;
         readonly List<byte[]> _blocks = new List<byte[]>();
 
         public uint MaxBlockSize { get; private set; }
+
+        public ulong MaxFileSize { get; private set; }
 
         public uint Read(ByteBuffer buf, ulong position)
         {
@@ -65,6 +68,11 @@ namespace BTDB.EventStoreLayer
                 offset += rest;
                 size -= rest;
             }
+        }
+
+        public IEventFileStorage CreateNew()
+        {
+            return new MemoryEventFileStorage(MaxBlockSize, MaxFileSize);
         }
     }
 }

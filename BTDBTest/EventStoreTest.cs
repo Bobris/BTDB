@@ -40,6 +40,46 @@ namespace BTDBTest
         public void CanFinalizeEventStoreAfterReadFromStart()
         {
             var manager = new EventStoreManager();
+            manager.CompressionStrategy = new NoCompressionStrategy();
+            var file1 = new MemoryEventFileStorage(4096, 4096);
+            var appender = manager.AppendToStore(file1);
+            appender.Store(null, new object[] { new byte[4000] });
+            appender.Store(null, new object[] { new byte[4000] });
+            Assert.AreNotSame(file1, appender.CurrentFileStorage);
+            var reader = manager.OpenReadOnlyStore(file1);
+            reader.ReadFromStartToEnd(new SkippingEventObserver());
+            Assert.False(reader.IsKnownAsAppendable());
+            Assert.False(reader.IsKnownAsCorrupted());
+            Assert.True(reader.IsKnownAsFinished());
+            Assert.True(appender.IsKnownAsAppendable());
+            Assert.False(appender.IsKnownAsCorrupted());
+            Assert.False(appender.IsKnownAsFinished());
+        }
+
+        [Test]
+        public void CanFinalizeEventStoreAfterReadFromStartFirstNearlyFull()
+        {
+            var manager = new EventStoreManager();
+            manager.CompressionStrategy = new NoCompressionStrategy();
+            var file1 = new MemoryEventFileStorage(4096, 4096);
+            var appender = manager.AppendToStore(file1);
+            appender.Store(null, new object[] { new byte[4080] });
+            appender.Store(null, new object[] { new byte[4000] });
+            Assert.AreNotSame(file1, appender.CurrentFileStorage);
+            var reader = manager.OpenReadOnlyStore(file1);
+            reader.ReadFromStartToEnd(new SkippingEventObserver());
+            Assert.False(reader.IsKnownAsAppendable());
+            Assert.False(reader.IsKnownAsCorrupted());
+            Assert.True(reader.IsKnownAsFinished());
+            Assert.True(appender.IsKnownAsAppendable());
+            Assert.False(appender.IsKnownAsCorrupted());
+            Assert.False(appender.IsKnownAsFinished());
+        }
+
+        [Test]
+        public void CreatesNewFileWhenOldOneIsFull()
+        {
+            var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
             appender.Store(null, new object[] { 1 });
             appender.ReadFromStartToEnd(new SkippingEventObserver());
@@ -47,6 +87,7 @@ namespace BTDBTest
             Assert.False(appender.IsKnownAsAppendable());
             Assert.False(appender.IsKnownAsCorrupted());
             Assert.True(appender.IsKnownAsFinished());
+
         }
 
         class StoringEventObserver : IEventStoreObserver

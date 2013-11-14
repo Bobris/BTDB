@@ -7,5 +7,6 @@ namespace BTDB.EventStoreLayer
         void Store(object metadata, IReadOnlyList<object> events);
         void FinalizeStore();
         ulong KnownAppendablePosition();
+        IEventFileStorage CurrentFileStorage { get; }
     }
 }

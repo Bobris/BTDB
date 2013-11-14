@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using BTDB.Buffer;
 
@@ -11,9 +12,12 @@ namespace BTDB.EventStoreLayer
         {
             _stream = stream;
             MaxBlockSize = 4*1024*1024;
+            MaxFileSize = (ulong) (long.MaxValue / MaxBlockSize * MaxBlockSize);
         }
 
         public uint MaxBlockSize { get; set; }
+
+        public ulong MaxFileSize { get; set; }
 
         public uint Read(ByteBuffer buf, ulong position)
         {
@@ -26,6 +30,11 @@ namespace BTDB.EventStoreLayer
             _stream.Position = (long)position;
             _stream.Write(buf.Buffer, buf.Offset, buf.Length);
             _stream.Flush();
+        }
+
+        public IEventFileStorage CreateNew()
+        {
+            throw new InvalidOperationException();
         }
     }
 }

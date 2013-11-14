@@ -8,7 +8,7 @@ namespace BTDB.EventStoreLayer
 {
     public class ReadOnlyEventStore : IReadEventStore
     {
-        protected readonly IEventFileStorage File;
+        protected IEventFileStorage File;
         protected readonly ITypeSerializersMapping Mapping;
         protected readonly ICompressionStrategy CompressionStrategy;
         protected ulong NextReadPosition;
@@ -52,6 +52,11 @@ namespace BTDB.EventStoreLayer
             bufferFullLength += bufReadLength;
             while (true)
             {
+                if (bufferStartPosition + (ulong)bufferReadOffset + HeaderSize > File.MaxFileSize)
+                {
+                    KnownAsFinished = true;
+                    return;
+                }
                 if (bufferReadOffset == bufferFullLength)
                 {
                     break;
