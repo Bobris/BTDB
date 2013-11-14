@@ -23,9 +23,9 @@ namespace BTDB.Service
             set { _newClient = value; }
         }
 
-        public void StartListening()
+        public void StartListening(int backLog = 10)
         {
-            _listener.Start(10);
+            _listener.Start(backLog);
             Task.Factory.StartNew(AcceptNewClients, TaskCreationOptions.LongRunning);
         }
 
