@@ -6,5 +6,6 @@ namespace BTDB.EventStoreLayer
     {
         void LoadTypeDescriptors(AbstractBufferedReader reader);
         object LoadObject(AbstractBufferedReader reader);
+        void Reset();
     }
 }

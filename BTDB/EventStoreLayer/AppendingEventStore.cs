@@ -21,71 +21,22 @@ namespace BTDB.EventStoreLayer
                 ReadToEnd(new SkippingEventObserver());
             }
             if (IsKnownAsFinished()) throw new InvalidOperationException("Cannot append to already finished EventStore");
-            var writer = new ByteBufferWriter();
-            var startOffset = (int)EndBufferLen + HeaderSize;
-            writer.WriteBlock(_zeroes, 0, startOffset);
-            IDescriptorSerializerContext serializerContext = Mapping;
-            if (metadata != null)
-                serializerContext = serializerContext.StoreNewDescriptors(writer, metadata);
-            if (events != null)
-            {
-                foreach (var o in events)
-                {
-                    serializerContext = serializerContext.StoreNewDescriptors(writer, o);
-                }
-                if (events.Count == 0) events = null;
-            }
-            serializerContext.FinishNewDescriptors(writer);
-            var blockType = BlockType.FirstBlock;
-            if (serializerContext.SomeTypeStored)
-                blockType |= BlockType.HasTypeDeclaration;
-            if (metadata != null)
-            {
-                serializerContext.StoreObject(writer, metadata);
-                blockType |= BlockType.HasMetadata;
-            }
-            if (events != null)
-            {
-                if (events.Count == 1)
-                {
-                    serializerContext.StoreObject(writer, events[0]);
-                    blockType |= BlockType.HasOneEvent;
-                }
-                else
-                {
-                    writer.WriteVUInt32((uint)events.Count);
-                    foreach (var o in events)
-                    {
-                        serializerContext.StoreObject(writer, o);
-                    }
-                    blockType |= BlockType.HasMoreEvents;
-                }
-            }
-            var lenWithoutEndPadding = (int)writer.GetCurrentPosition();
-            writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
-            var block = writer.Data;
-            if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding - startOffset))
-            {
-                var compressedBlock = ByteBuffer.NewSync(block.Buffer, startOffset, lenWithoutEndPadding - startOffset);
-                if (CompressionStrategy.Compress(ref compressedBlock))
-                {
-                    blockType |= BlockType.Compressed;
-                    Array.Copy(compressedBlock.Buffer, compressedBlock.Offset, block.Buffer, startOffset, compressedBlock.Length);
-                    lenWithoutEndPadding = startOffset + compressedBlock.Length;
-                    Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int)SectorSize - 1);
-                }
-            }
+            int startOffset;
+            IDescriptorSerializerContext serializerContext;
+            BlockType blockType;
+            int lenWithoutEndPadding;
+            ByteBuffer block;
+            SerializeIntoBuffer(metadata, events, out startOffset, out serializerContext, out blockType, out lenWithoutEndPadding, out block);
             if (SpaceNeeded(startOffset, lenWithoutEndPadding) + EndBufferPosition + EndBufferLen > File.MaxFileSize)
             {
                 FinalizeStore();
-                File = File.CreateNew();
+                File = File.CreateNew(File);
+                NextReadPosition = 0;
                 EndBufferPosition = 0;
                 EndBufferLen = 0;
                 KnownAsFinished = false;
-                if (startOffset > HeaderSize)
-                    Array.Copy(block.Buffer, startOffset, block.Buffer, HeaderSize, lenWithoutEndPadding - startOffset);
-                lenWithoutEndPadding -= startOffset - HeaderSize;
-                startOffset = HeaderSize;
+                Mapping.Reset();
+                SerializeIntoBuffer(metadata, events, out startOffset, out serializerContext, out blockType, out lenWithoutEndPadding, out block);
                 if ((ulong)lenWithoutEndPadding > File.MaxFileSize)
                 {
                     throw new ArgumentOutOfRangeException(string.Format("Size of events are bigger than MaxFileSize {0}>{1}", lenWithoutEndPadding, File.MaxFileSize));
@@ -106,6 +57,66 @@ namespace BTDB.EventStoreLayer
                 blockType |= BlockType.MiddleBlock;
             } while (startOffset < lenWithoutEndPadding);
             serializerContext.CommitNewDescriptors();
+        }
+
+        void SerializeIntoBuffer(object metadata, IReadOnlyList<object> events, out int startOffset,
+                                 out IDescriptorSerializerContext serializerContext, out BlockType blockType,
+                                 out int lenWithoutEndPadding, out ByteBuffer block)
+        {
+            startOffset = (int) EndBufferLen + HeaderSize;
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(_zeroes, 0, startOffset);
+            serializerContext = Mapping;
+            if (metadata != null)
+                serializerContext = serializerContext.StoreNewDescriptors(writer, metadata);
+            if (events != null)
+            {
+                foreach (var o in events)
+                {
+                    serializerContext = serializerContext.StoreNewDescriptors(writer, o);
+                }
+                if (events.Count == 0) events = null;
+            }
+            serializerContext.FinishNewDescriptors(writer);
+            blockType = BlockType.FirstBlock;
+            if (serializerContext.SomeTypeStored)
+                blockType |= BlockType.HasTypeDeclaration;
+            if (metadata != null)
+            {
+                serializerContext.StoreObject(writer, metadata);
+                blockType |= BlockType.HasMetadata;
+            }
+            if (events != null)
+            {
+                if (events.Count == 1)
+                {
+                    serializerContext.StoreObject(writer, events[0]);
+                    blockType |= BlockType.HasOneEvent;
+                }
+                else
+                {
+                    writer.WriteVUInt32((uint) events.Count);
+                    foreach (var o in events)
+                    {
+                        serializerContext.StoreObject(writer, o);
+                    }
+                    blockType |= BlockType.HasMoreEvents;
+                }
+            }
+            lenWithoutEndPadding = (int) writer.GetCurrentPosition();
+            writer.WriteBlock(_zeroes, 0, (int) (SectorSize - 1));
+            block = writer.Data;
+            if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding - startOffset))
+            {
+                var compressedBlock = ByteBuffer.NewSync(block.Buffer, startOffset, lenWithoutEndPadding - startOffset);
+                if (CompressionStrategy.Compress(ref compressedBlock))
+                {
+                    blockType |= BlockType.Compressed;
+                    Array.Copy(compressedBlock.Buffer, compressedBlock.Offset, block.Buffer, startOffset, compressedBlock.Length);
+                    lenWithoutEndPadding = startOffset + compressedBlock.Length;
+                    Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int) SectorSize - 1);
+                }
+            }
         }
 
         ulong SpaceNeeded(int startOffset, int lenWithoutEndPadding)
@@ -135,7 +146,7 @@ namespace BTDB.EventStoreLayer
             var startOffset = (int)EndBufferLen + HeaderSize;
             if (EndBufferPosition + (ulong)startOffset <= File.MaxFileSize)
             {
-                WriteOneBlock(ByteBuffer.NewSync(_zeroes, startOffset, 0), BlockType.LastBlock);
+                WriteOneBlock(ByteBuffer.NewSync(new byte[SectorSize + HeaderSize], startOffset, 0), BlockType.LastBlock);
             }
             EndBufferPosition = ulong.MaxValue;
             KnownAsFinished = true;

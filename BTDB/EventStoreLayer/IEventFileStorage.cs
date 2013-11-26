@@ -6,6 +6,6 @@ namespace BTDB.EventStoreLayer
         ulong MaxFileSize { get; }
         uint Read(Buffer.ByteBuffer buf, ulong position);
         void Write(Buffer.ByteBuffer buf, ulong position);
-        IEventFileStorage CreateNew();
+        IEventFileStorage CreateNew(IEventFileStorage previous);
     }
 }

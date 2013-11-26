@@ -172,6 +172,30 @@ namespace BTDBTest
             Assert.AreEqual(new[] { new object[] { user } }, eventObserver.Events);
         }
 
+        [Test]
+        public void CustomEventIsReadFromSecondSplit()
+        {
+            var manager = new EventStoreManager();
+            manager.CompressionStrategy = new NoCompressionStrategy();
+            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
+            var appender = manager.AppendToStore(new MemoryEventFileStorage(4096, 4096));
+            var first = appender.CurrentFileStorage;
+            var user = new User { Name = "A", Age = 1 };
+            while (appender.CurrentFileStorage == first)
+                appender.Store(null, new object[] { user });
+            var second = appender.CurrentFileStorage;
+
+            manager = new EventStoreManager();
+            manager.CompressionStrategy = new NoCompressionStrategy();
+            manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
+            var reader = manager.OpenReadOnlyStore(second);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
+            Assert.AreEqual(new[] { new object[] { user } }, eventObserver.Events);
+        }
+
+
         public class SimplePersonTypeMapper : ITypeNameMapper
         {
             public string ToName(Type type)
@@ -518,7 +542,7 @@ namespace BTDBTest
         public void MoreComplexRepeatedAppendingAndReading()
         {
             var manager = new EventStoreManager();
-            for (var i = 490; i < 520; i+=2)
+            for (var i = 490; i < 520; i += 2)
             {
                 var file = new MemoryEventFileStorage();
                 var appender = manager.AppendToStore(file);
@@ -537,7 +561,7 @@ namespace BTDBTest
 
         public class SpecificDictIList
         {
-            public IDictionary<ulong,IList<ulong>> Dict { get; set; }
+            public IDictionary<ulong, IList<ulong>> Dict { get; set; }
         }
 
         [Test]
@@ -548,7 +572,7 @@ namespace BTDBTest
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var e1 = new SpecificDictIList { Dict = new Dictionary<ulong, IList<ulong>>() };
-            var e2 = new SpecificList {Ulongs = new List<ulong>()};
+            var e2 = new SpecificList { Ulongs = new List<ulong>() };
             appender.Store(null, new object[] { e2 });
             appender.Store(null, new object[] { e1 });
 

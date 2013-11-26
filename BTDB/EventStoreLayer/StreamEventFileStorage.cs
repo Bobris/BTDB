@@ -32,7 +32,7 @@ namespace BTDB.EventStoreLayer
             _stream.Flush();
         }
 
-        public virtual IEventFileStorage CreateNew()
+        public virtual IEventFileStorage CreateNew(IEventFileStorage file)
         {
             throw new InvalidOperationException();
         }

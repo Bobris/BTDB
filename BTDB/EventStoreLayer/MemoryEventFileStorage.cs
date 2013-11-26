@@ -70,7 +70,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public IEventFileStorage CreateNew()
+        public IEventFileStorage CreateNew(IEventFileStorage file)
         {
             return new MemoryEventFileStorage(MaxBlockSize, MaxFileSize);
         }

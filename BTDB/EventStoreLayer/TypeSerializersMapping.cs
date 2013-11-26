@@ -21,6 +21,13 @@ namespace BTDB.EventStoreLayer
             AddBuildInTypes();
         }
 
+        public void Reset()
+        {
+            _id2DescriptorMap.Clear();
+            _typeOrDescriptor2Info.Clear();
+            AddBuildInTypes();
+        }
+
         void AddBuildInTypes()
         {
             _id2DescriptorMap.Add(null); // 0 = null
