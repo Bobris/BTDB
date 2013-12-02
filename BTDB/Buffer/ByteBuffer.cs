@@ -81,12 +81,12 @@ namespace BTDB.Buffer
             _offset = 0;
         }
 
-        internal ArraySegment<byte> ToArraySegment()
+        public ArraySegment<byte> ToArraySegment()
         {
             return new ArraySegment<byte>(Buffer, Offset, Length);
         }
 
-        internal byte[] ToByteArray()
+        public byte[] ToByteArray()
         {
             var safeSelf = ToAsyncSafe();
             var buf = safeSelf.Buffer ?? BitArrayManipulation.EmptyByteArray;
