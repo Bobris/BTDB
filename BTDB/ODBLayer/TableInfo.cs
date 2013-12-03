@@ -215,15 +215,16 @@ namespace BTDB.ODBLayer
                 var field = ClientTableVersionInfo[i];
                 var getter = ClientType.GetProperty(field.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
-                if (field.Handler.NeedsCtx())
+                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
+                if (handler.NeedsCtx())
                     writerOrCtx = il => il.Ldloc(1);
                 else
                     writerOrCtx = il => il.Ldarg(2);
-                field.Handler.Save(ilGenerator, writerOrCtx, il =>
+                handler.Save(ilGenerator, writerOrCtx, il =>
                     {
                         il.Ldloc(0).Callvirt(getter);
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                                                                                     field.Handler.HandledType())(il);
+                                                                                     handler.HandledType())(il);
                     });
             }
             ilGenerator
@@ -309,10 +310,11 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(destFieldInfo.Handler.HandledType(), destFieldInfo.Handler);
-                    var willLoad = specializedSrcHandler.HandledType();
                     var fieldInfo = _clientType.GetProperty(destFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
-                    var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldInfo.GetParameters()[0].ParameterType);
+                    var fieldType = fieldInfo.GetParameters()[0].ParameterType;
+                    var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
+                    var willLoad = specializedSrcHandler.HandledType();
+                    var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
                     if (converterGenerator != null)
                     {
                         ilGenerator.Ldloc(0);

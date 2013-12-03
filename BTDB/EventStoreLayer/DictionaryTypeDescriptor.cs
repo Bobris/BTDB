@@ -80,69 +80,52 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
+        public bool LoadNeedsCtx()
         {
-            return new Deserializer(this, target);
+            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
+                || _keyDescriptor.LoadNeedsCtx()
+                || _valueDescriptor.LoadNeedsCtx();
         }
 
-        class Deserializer : ITypeBinaryDeserializerGenerator
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
-            readonly DictionaryTypeDescriptor _owner;
-            readonly Type _target;
-
-            public Deserializer(DictionaryTypeDescriptor owner, Type target)
-            {
-                _owner = owner;
-                _target = target;
-            }
-
-            public bool LoadNeedsCtx()
-            {
-                return !_owner._keyDescriptor.StoredInline || !_owner._valueDescriptor.StoredInline
-                    || _owner._keyDescriptor.BuildBinaryDeserializerGenerator(_owner._keyDescriptor.GetPreferedType()).LoadNeedsCtx()
-                    || _owner._valueDescriptor.BuildBinaryDeserializerGenerator(_owner._valueDescriptor.GetPreferedType()).LoadNeedsCtx();
-            }
-
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
-            {
-                var localCount = ilGenerator.DeclareLocal(typeof(int));
-                var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor);
-                var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor);
-                var dictionaryType = typeof(DictionaryWithDescriptor<,>).MakeGenericType(keyType, valueType);
-                if (!_target.IsAssignableFrom(dictionaryType)) throw new NotImplementedException();
-                var localDict = ilGenerator.DeclareLocal(dictionaryType);
-                var loadFinished = ilGenerator.DefineLabel();
-                var next = ilGenerator.DefineLabel();
-                ilGenerator
-                    .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
-                    .ConvI4()
-                    .Dup()
-                    .LdcI4(1)
-                    .Sub()
-                    .Stloc(localCount)
-                    .Brfalse(loadFinished)
-                    .Ldloc(localCount)
-                    .Do(pushDescriptor)
-                    .Newobj(dictionaryType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
-                    .Stloc(localDict)
-                    .Mark(next)
-                    .Ldloc(localCount)
-                    .Brfalse(loadFinished)
-                    .Ldloc(localCount)
-                    .LdcI4(1)
-                    .Sub()
-                    .Stloc(localCount)
-                    .Ldloc(localDict);
-                _owner._keyDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType);
-                _owner._valueDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType);
-                ilGenerator
-                    .Callvirt(dictionaryType.GetMethod("Add"))
-                    .Br(next)
-                    .Mark(loadFinished)
-                    .Ldloc(localDict)
-                    .Castclass(_target);
-            }
+            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            var keyType = _typeSerializers.LoadAsType(_keyDescriptor);
+            var valueType = _typeSerializers.LoadAsType(_valueDescriptor);
+            var dictionaryType = typeof(DictionaryWithDescriptor<,>).MakeGenericType(keyType, valueType);
+            if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
+            var localDict = ilGenerator.DeclareLocal(dictionaryType);
+            var loadFinished = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            ilGenerator
+                .Do(pushReader)
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .ConvI4()
+                .Dup()
+                .LdcI4(1)
+                .Sub()
+                .Stloc(localCount)
+                .Brfalse(loadFinished)
+                .Ldloc(localCount)
+                .Do(pushDescriptor)
+                .Newobj(dictionaryType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
+                .Stloc(localDict)
+                .Mark(next)
+                .Ldloc(localCount)
+                .Brfalse(loadFinished)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .Stloc(localCount)
+                .Ldloc(localDict);
+            _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType);
+            _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType);
+            ilGenerator
+                .Callvirt(dictionaryType.GetMethod("Add"))
+                .Br(next)
+                .Mark(loadFinished)
+                .Ldloc(localDict)
+                .Castclass(targetType);
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()

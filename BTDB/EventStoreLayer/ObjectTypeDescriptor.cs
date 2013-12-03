@@ -117,53 +117,85 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
+        public bool LoadNeedsCtx()
         {
-            if (target == typeof(object))
-            {
-                return new DynamicDeserializer(this);
-            }
-            return new Deserializer(this, target);
+            return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.LoadNeedsCtx());
         }
 
-        class DynamicDeserializer : ITypeBinaryDeserializerGenerator
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
-            readonly ObjectTypeDescriptor _ownerDescriptor;
-
-            public DynamicDeserializer(ObjectTypeDescriptor ownerDescriptor)
+            if (targetType == typeof (object))
             {
-                _ownerDescriptor = ownerDescriptor;
-            }
-
-            public bool LoadNeedsCtx()
-            {
-                return true;
-            }
-
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
-            {
-                var resultLoc = ilGenerator.DeclareLocal(typeof(DynamicObject), "result");
+                var resultLoc = ilGenerator.DeclareLocal(typeof (DynamicObject), "result");
+                var labelNoCtx = ilGenerator.DefineLabel();
                 ilGenerator
                     .Do(pushDescriptor)
-                    .Castclass(typeof(ObjectTypeDescriptor))
-                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) }))
+                    .Castclass(typeof (ObjectTypeDescriptor))
+                    .Newobj(typeof (DynamicObject).GetConstructor(new[] {typeof (ObjectTypeDescriptor)}))
                     .Stloc(resultLoc)
                     .Do(pushCtx)
+                    .BrfalseS(labelNoCtx)
+                    .Do(pushCtx)
                     .Ldloc(resultLoc)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null));
+                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
+                    .Mark(labelNoCtx);
                 var idx = 0;
-                foreach (var pair in _ownerDescriptor._fields)
+                foreach (var pair in _fields)
                 {
                     var idxForCapture = idx;
                     ilGenerator.Ldloc(resultLoc);
                     ilGenerator.LdcI4(idx);
-                    pair.Value.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object));
+                    pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                        il =>
+                            il.Do(pushDescriptor)
+                                .LdcI4(idxForCapture)
+                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof (object));
                     ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
                     idx++;
                 }
                 ilGenerator
                     .Ldloc(resultLoc)
-                    .Castclass(typeof(object));
+                    .Castclass(typeof (object));
+            }
+            else
+            {
+                var resultLoc = ilGenerator.DeclareLocal(targetType, "result");
+                var labelNoCtx = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Newobj(targetType.GetConstructor(Type.EmptyTypes))
+                    .Stloc(resultLoc)
+                    .Do(pushCtx)
+                    .BrfalseS(labelNoCtx)
+                    .Do(pushCtx)
+                    .Ldloc(resultLoc)
+                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
+                    .Mark(labelNoCtx);
+                var props = targetType.GetProperties();
+                for (var idx = 0; idx < _fields.Count; idx++)
+                {
+                    var idxForCapture = idx;
+                    var pair = _fields[idx];
+                    var prop = props.FirstOrDefault(p => p.Name == pair.Key);
+                    if (prop == null)
+                    {
+                        if (pair.Value.StoredInline)
+                        {
+                            var skipper = pair.Value.BuildBinarySkipperGenerator();
+                            skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
+                            continue;
+                        }
+                        ilGenerator
+                            .Do(pushCtx)
+                            .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
+                        continue;
+                    }
+                    ilGenerator.Ldloc(resultLoc);
+                    pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                                            il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
+                                            prop.PropertyType);
+                    ilGenerator.Callvirt(prop.GetSetMethod());
+                }
+                ilGenerator.Ldloc(resultLoc);
             }
         }
 
@@ -288,64 +320,6 @@ namespace BTDB.EventStoreLayer
             public ITypeDescriptor GetDescriptor()
             {
                 return _ownerDescriptor;
-            }
-        }
-
-        class Deserializer : ITypeBinaryDeserializerGenerator
-        {
-            readonly ObjectTypeDescriptor _objectTypeDescriptor;
-            readonly Type _target;
-
-            public Deserializer(ObjectTypeDescriptor objectTypeDescriptor, Type target)
-            {
-                _objectTypeDescriptor = objectTypeDescriptor;
-                _target = target;
-            }
-
-            public bool LoadNeedsCtx()
-            {
-                return !_objectTypeDescriptor._fields.All(p => p.Value.StoredInline) || _objectTypeDescriptor._fields.Any(p => p.Value.BuildBinaryDeserializerGenerator(p.Value.GetPreferedType()).LoadNeedsCtx());
-            }
-
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
-            {
-                var resultLoc = ilGenerator.DeclareLocal(_target, "result");
-                var labelNoCtx = ilGenerator.DefineLabel();
-                ilGenerator
-                    .Newobj(_target.GetConstructor(Type.EmptyTypes))
-                    .Stloc(resultLoc)
-                    .Do(pushCtx)
-                    .BrfalseS(labelNoCtx)
-                    .Do(pushCtx)
-                    .Ldloc(resultLoc)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
-                    .Mark(labelNoCtx);
-                var props = _target.GetProperties();
-                for (var idx = 0; idx < _objectTypeDescriptor._fields.Count; idx++)
-                {
-                    var idxForCapture = idx;
-                    var pair = _objectTypeDescriptor._fields[idx];
-                    var prop = props.FirstOrDefault(p => p.Name == pair.Key);
-                    if (prop == null)
-                    {
-                        if (pair.Value.StoredInline)
-                        {
-                            var skipper = pair.Value.BuildBinarySkipperGenerator();
-                            skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
-                            continue;
-                        }
-                        ilGenerator
-                            .Do(pushCtx)
-                            .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
-                        continue;
-                    }
-                    ilGenerator.Ldloc(resultLoc);
-                    pair.Value.GenerateLoad(ilGenerator, pushReader, pushCtx,
-                                            il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
-                                            prop.PropertyType);
-                    ilGenerator.Callvirt(prop.GetSetMethod());
-                }
-                ilGenerator.Ldloc(resultLoc);
             }
         }
 

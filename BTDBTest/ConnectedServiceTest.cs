@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.Buffer;
 using BTDB.Service;
 using NUnit.Framework;
 
@@ -297,6 +298,22 @@ namespace BTDBTest
             _first.RegisterLocalService((Func<byte[], byte[]>)(p => p.AsEnumerable().Reverse().ToArray()));
             var d = _second.QueryRemoteService<Func<byte[], byte[]>>();
             Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(new byte[] { 0, 1, 2, 3, 255 }));
+        }
+
+        [Test]
+        public void ByteBufferSupport()
+        {
+            _first.RegisterLocalService((Func<ByteBuffer, ByteBuffer>)(p => ByteBuffer.NewAsync(p.ToByteArray().AsEnumerable().Reverse().ToArray())));
+            var d = _second.QueryRemoteService<Func<byte[], byte[]>>();
+            Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(new byte[] { 0, 1, 2, 3, 255 }));
+        }
+
+        [Test]
+        public void ByteBufferSupport2()
+        {
+            _first.RegisterLocalService((Func<byte[], byte[]>)(p => p.AsEnumerable().Reverse().ToArray()));
+            var d = _second.QueryRemoteService<Func<ByteBuffer, ByteBuffer>>();
+            Assert.AreEqual(new byte[] { 255, 3, 2, 1, 0 }, d(ByteBuffer.NewAsync(new byte[] { 0, 1, 2, 3, 255 })).ToByteArray());
         }
 
         [Test]

@@ -1,29 +1,17 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
+using BTDB.Buffer;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    public class SimpleTypeDescriptor : ITypeDescriptor, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
+    public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
     {
-        readonly string _name;
-        readonly MethodInfo _loader;
-        readonly MethodInfo _skipper;
-        readonly MethodInfo _saver;
-
-        public SimpleTypeDescriptor(string name, MethodInfo loader, MethodInfo skipper, MethodInfo saver)
-        {
-            _name = name;
-            _loader = loader;
-            _skipper = skipper;
-            _saver = saver;
-        }
-
         public string Name
         {
-            get { return _name; }
+            get { return "Byte[]"; }
         }
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
@@ -42,7 +30,7 @@ namespace BTDB.EventStoreLayer
 
         public Type GetPreferedType()
         {
-            return _loader.ReturnType;
+            return typeof(byte[]);
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
@@ -82,6 +70,11 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
+        public IEnumerable<Type> GetNativeTypes()
+        {
+            yield return typeof (ByteBuffer);
+        }
+
         public bool LoadNeedsCtx()
         {
             return false;
@@ -90,21 +83,19 @@ namespace BTDB.EventStoreLayer
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(_loader);
-            if (targetType != typeof(object))
+            ilGenerator.Call(() => default(AbstractBufferedReader).ReadByteArray());
+            if (targetType == typeof (ByteBuffer))
             {
-                if (targetType != GetPreferedType())
+                ilGenerator.Call(() => ByteBuffer.NewAsync(null));
+                return;
+            }
+            if (targetType != typeof (object))
+            {
+                if (targetType!=typeof(byte[]))
                     throw new ArgumentOutOfRangeException("targetType");
                 return;
             }
-            if (GetPreferedType().IsValueType)
-            {
-                ilGenerator.Box(GetPreferedType());
-            }
-            else
-            {
-                ilGenerator.Castclass(typeof(object));
-            }
+            ilGenerator.Castclass(typeof(object));
         }
 
         public bool SkipNeedsCtx()
@@ -115,7 +106,7 @@ namespace BTDB.EventStoreLayer
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(_skipper);
+            ilGenerator.Call(() => default(AbstractBufferedReader).SkipByteArray());
         }
 
         public bool SaveNeedsCtx()
@@ -127,7 +118,11 @@ namespace BTDB.EventStoreLayer
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(_saver);
+            if (valueType==typeof(byte[]))
+                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
+            else if (valueType==typeof(ByteBuffer))
+                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
+            else throw new ArgumentOutOfRangeException("valueType");
         }
 
         public bool Equals(ITypeDescriptor other)

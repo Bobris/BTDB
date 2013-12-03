@@ -251,6 +251,9 @@ namespace BTDB.Service
             _serverTypeInfs.TryGetValue(typeId, out typeInf);
             var methodInf = typeInf.MethodInfs[binding.MethodId];
             var returnType = methodInf.MethodInfo.ReturnType.UnwrapTask();
+            IFieldHandler resultFieldHandler = null;
+            if (methodInf.ResultFieldHandler != null)
+                resultFieldHandler = methodInf.ResultFieldHandler.SpecializeSaveForType(returnType);
             var isAsync = returnType != methodInf.MethodInfo.ReturnType;
             binding.Object = serverObject;
             var method = ILBuilder.Instance.NewMethod<Action<object, AbstractBufferedReader, IServiceInternalServer>>(string.Format("{0}_{1}", typeInf.Name, methodInf.Name));
@@ -263,8 +266,10 @@ namespace BTDB.Service
             if (!binding.OneWay)
             {
                 localResultId = ilGenerator.DeclareLocal(typeof(uint));
-                if (methodInf.ResultFieldHandler != null && !isAsync)
-                    localResult = ilGenerator.DeclareLocal(methodInf.ResultFieldHandler.HandledType());
+                if (resultFieldHandler != null && !isAsync)
+                {
+                    localResult = ilGenerator.DeclareLocal(resultFieldHandler.HandledType());
+                }
                 ilGenerator
                     .Ldarg(1)
                     .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
@@ -286,7 +291,9 @@ namespace BTDB.Service
             for (int i = 0; i < methodInf.Parameters.Length; i++)
             {
                 var fieldHandler = methodInf.Parameters[i].FieldHandler;
-                localParams[i] = ilGenerator.DeclareLocal(methodInf.MethodInfo.GetParameters()[i].ParameterType);
+                var parameterType = methodInf.MethodInfo.GetParameters()[i].ParameterType;
+                fieldHandler = fieldHandler.SpecializeLoadForType(parameterType, fieldHandler);
+                localParams[i] = ilGenerator.DeclareLocal(parameterType);
                 if (fieldHandler.NeedsCtx())
                 {
                     fieldHandler.Load(ilGenerator, il => il.Ldloc(localReaderCtx));
@@ -295,7 +302,7 @@ namespace BTDB.Service
                 {
                     fieldHandler.Load(ilGenerator, il => il.Ldarg(1));
                 }
-                _typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), localParams[i].LocalType)
+                _typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), parameterType)
                     (ilGenerator);
                 ilGenerator.Stloc(localParams[i]);
             }
@@ -343,7 +350,7 @@ namespace BTDB.Service
                         .Callvirt(() => default(IServiceInternalServer).StartResultMarshaling(0u))
                         .Stloc(localWriter);
                     IILLocal localWriterCtx = null;
-                    if (methodInf.ResultFieldHandler.NeedsCtx())
+                    if (resultFieldHandler.NeedsCtx())
                     {
                         localWriterCtx = ilGenerator.DeclareLocal(typeof(IWriterCtx), "writerCtx");
                         ilGenerator
@@ -354,7 +361,7 @@ namespace BTDB.Service
                             .Stloc(localWriterCtx);
 
                     }
-                    methodInf.ResultFieldHandler.Save(ilGenerator, il => il.Ldloc(methodInf.ResultFieldHandler.NeedsCtx() ? localWriterCtx : localWriter), il => il.Ldloc(localResult));
+                    resultFieldHandler.Save(ilGenerator, il => il.Ldloc(resultFieldHandler.NeedsCtx() ? localWriterCtx : localWriter), il => il.Ldloc(localResult));
                     ilGenerator
                         .Ldarg(2)
                         .Ldloc(localWriter)

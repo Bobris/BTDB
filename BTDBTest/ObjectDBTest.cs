@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -453,6 +454,7 @@ namespace BTDBTest
             public TimeSpan TimeSpanField { get; set; }
             public TestEnum EnumField { get; set; }
             public byte[] ByteArrayField { get; set; }
+            public ByteBuffer ByteBufferField { get; set; }
         }
 
         [Test]
@@ -481,6 +483,7 @@ namespace BTDBTest
                 Assert.AreEqual(new Guid(), o.GuidField);
                 Assert.AreEqual(TestEnum.Item1, o.EnumField);
                 Assert.AreEqual(null, o.ByteArrayField);
+                Assert.AreEqual(ByteBuffer.NewEmpty().ToByteArray(), o.ByteBufferField.ToByteArray());
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -502,6 +505,7 @@ namespace BTDBTest
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
                 o.ByteArrayField = new byte[] { 0, 1, 2 };
+                o.ByteBufferField = ByteBuffer.NewAsync(new byte[] {0, 1, 2}, 1, 1);
 
                 AssertContent(o);
                 tr.Commit();
@@ -535,6 +539,7 @@ namespace BTDBTest
             Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
             Assert.AreEqual(TestEnum.Item2, o.EnumField);
             Assert.AreEqual(new byte[] { 0, 1, 2 }, o.ByteArrayField);
+            Assert.AreEqual(new byte[] { 1 }, o.ByteBufferField.ToByteArray());
         }
 
         public class Root

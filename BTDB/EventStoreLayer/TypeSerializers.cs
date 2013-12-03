@@ -2,8 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -93,11 +91,11 @@ namespace BTDB.EventStoreLayer
                 {
                     if (type.IsGenericType)
                     {
-                        if (EmitHelpers.InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IList<>)))
+                        if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IList<>)))
                         {
                             result = new ListTypeDescriptor(_typeSerializers, type);
                         }
-                        else if (EmitHelpers.InheritsOrImplements(type.GetGenericTypeDefinition(), typeof(IDictionary<,>)))
+                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IDictionary<,>)))
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
@@ -184,6 +182,12 @@ namespace BTDB.EventStoreLayer
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
                 yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferedType(), predefinedType);
+                var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
+                if (descriptorMultipleNativeTypes == null) continue;
+                foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
+                {
+                    yield return new KeyValuePair<Type, ITypeDescriptor>(type, predefinedType);
+                }
             }
         }
 
@@ -195,10 +199,9 @@ namespace BTDB.EventStoreLayer
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
         {
             var loadAsType = LoadAsType(descriptor);
-            var loadDeserializer = descriptor.BuildBinaryDeserializerGenerator(loadAsType);
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
-            if (loadDeserializer.LoadNeedsCtx())
+            if (descriptor.LoadNeedsCtx())
             {
                 var localCtx = il.DeclareLocal(typeof(ITypeBinaryDeserializerContext), "ctx");
                 var haveCtx = il.DefineLabel();
@@ -213,11 +216,11 @@ namespace BTDB.EventStoreLayer
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
-                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3));
+                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3), loadAsType);
             }
             else
             {
-                loadDeserializer.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3));
+                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3), loadAsType);
             }
             if (loadAsType.IsValueType)
             {

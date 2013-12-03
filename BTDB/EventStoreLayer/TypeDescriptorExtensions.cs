@@ -8,18 +8,18 @@ namespace BTDB.EventStoreLayer
 {
     public static class TypeDescriptorExtensions
     {
-        public static string Describe(this ITypeDescriptor typeDescriptor)
+        public static string Describe(this ITypeDescriptor descriptor)
         {
             var sb = new StringBuilder();
-            typeDescriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
+            descriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
             return sb.ToString();
         }
 
-        public static void GenerateSave(this ITypeDescriptor typeDescriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
+        public static void GenerateSave(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
         {
-            if (typeDescriptor.StoredInline)
+            if (descriptor.StoredInline)
             {
-                var generator = typeDescriptor.BuildBinarySerializerGenerator();
+                var generator = descriptor.BuildBinarySerializerGenerator();
                 generator.GenerateSave(ilGenerator, pushWriter, pushCtx, pushSubValue, subValueType);
             }
             else
@@ -31,11 +31,11 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateSkip(this ITypeDescriptor itemDescriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public static void GenerateSkip(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            if (itemDescriptor.StoredInline)
+            if (descriptor.StoredInline)
             {
-                var skipper = itemDescriptor.BuildBinarySkipperGenerator();
+                var skipper = descriptor.BuildBinarySkipperGenerator();
                 skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
             }
             else
@@ -46,12 +46,11 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateLoad(this ITypeDescriptor dictionaryTypeDescriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType)
+        public static void GenerateLoadEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType)
         {
-            if (dictionaryTypeDescriptor.StoredInline)
+            if (descriptor.StoredInline)
             {
-                var des = dictionaryTypeDescriptor.BuildBinaryDeserializerGenerator(asType);
-                des.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor);
+                descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, asType);
             }
             else
             {

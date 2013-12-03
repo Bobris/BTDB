@@ -93,10 +93,8 @@ namespace BTDB.FieldHandler
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipGuid()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteGuid(new Guid())));
             fh.Add(new ByteArrayLastFieldHandler());
-            Add(fh, des, "Byte[]",
-                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadByteArray()),
-                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipByteArray()),
-                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteByteArray(null)));
+            fh.Add(new ByteArrayFieldHandler());
+            des.Add(new ByteArrayTypeDescriptor());
             Add(fh, des, "IPAddress",
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadIPAddress()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipIPAddress()),

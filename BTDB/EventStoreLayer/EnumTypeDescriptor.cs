@@ -126,11 +126,6 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
-        {
-            return new Deserializer(this, target);
-        }
-
         public class DynamicEnum : IKnowDescriptor
         {
             readonly ITypeDescriptor _descriptor;
@@ -244,52 +239,40 @@ namespace BTDB.EventStoreLayer
             return "0";
         }
 
-        class Deserializer : ITypeBinaryDeserializerGenerator
+        public bool LoadNeedsCtx()
         {
-            readonly EnumTypeDescriptor _owner;
-            readonly Type _target;
+            return false;
+        }
 
-            public Deserializer(EnumTypeDescriptor owner, Type target)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+        {
+            pushReader(ilGenerator);
+            Type typeRead;
+            if (_signed)
             {
-                _owner = owner;
-                _target = target;
+                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
+                typeRead = typeof(long);
             }
-
-            public bool LoadNeedsCtx()
+            else
             {
-                return false;
+                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
+                typeRead = typeof(ulong);
             }
-
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
+            if (targetType == typeof(object))
             {
-                pushReader(ilGenerator);
-                Type typeRead;
-                if (_owner._signed)
+                ilGenerator.Do(pushDescriptor);
+                if (_signed)
                 {
-                    ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
-                    typeRead = typeof(long);
+                    ilGenerator.Newobj(() => new DynamicEnum(0L, null));
                 }
                 else
                 {
-                    ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
-                    typeRead = typeof(ulong);
+                    ilGenerator.Newobj(() => new DynamicEnum(0UL, null));
                 }
-                if (_target == typeof(object))
-                {
-                    ilGenerator.Do(pushDescriptor);
-                    if (_owner._signed)
-                    {
-                        ilGenerator.Newobj(() => new DynamicEnum(0L, null));
-                    }
-                    else
-                    {
-                        ilGenerator.Newobj(() => new DynamicEnum(0UL, null));
-                    }
-                    ilGenerator.Castclass(typeof(object));
-                    return;
-                }
-                new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _target.GetEnumUnderlyingType())(ilGenerator);
+                ilGenerator.Castclass(typeof(object));
+                return;
             }
+            new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, targetType.GetEnumUnderlyingType())(ilGenerator);
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()

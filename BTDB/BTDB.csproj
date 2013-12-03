@@ -45,7 +45,6 @@
     <Reference Include="System.Core">
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
-    <Reference Include="System.Runtime.Caching" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Buffer\ByteBuffer.cs" />
@@ -63,6 +62,7 @@
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
     <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
     <Compile Include="EventStoreLayer\BlockType.cs" />
+    <Compile Include="EventStoreLayer\ByteArrayTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\DictionaryTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\DictionaryWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\EnumTypeDescriptor.cs" />
@@ -77,6 +77,7 @@
     <Compile Include="EventStoreLayer\IPersistTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ITypeBinaryDeserializerContext.cs" />
     <Compile Include="EventStoreLayer\ITypeBinarySerializerContext.cs" />
+    <Compile Include="EventStoreLayer\ITypeDescriptorMultipleNativeTypes.cs" />
     <Compile Include="EventStoreLayer\ITypeSerializersId2LoaderMapping.cs" />
     <Compile Include="EventStoreLayer\ITypeSerializersLightMapping.cs" />
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
@@ -88,7 +89,6 @@
     <Compile Include="EventStoreLayer\StreamEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\TypeDescriptorExtensions.cs" />
     <Compile Include="EventStoreLayer\IReadEventStore.cs" />
-    <Compile Include="EventStoreLayer\ITypeBinaryDeserializerGenerator.cs" />
     <Compile Include="EventStoreLayer\ITypeBinarySerializerGenerator.cs" />
     <Compile Include="EventStoreLayer\ITypeBinarySkipperGenerator.cs" />
     <Compile Include="EventStoreLayer\ITypeDescriptor.cs" />
@@ -106,6 +106,7 @@
     <Compile Include="EventStoreLayer\TypeSerializers.cs" />
     <Compile Include="EventStoreLayer\TypeSerializersMapping.cs" />
     <Compile Include="FieldHandler\BasicSerializersFactory.cs" />
+    <Compile Include="FieldHandler\ByteArrayFieldHandler.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
     <Compile Include="FieldHandler\DBIndirect.cs" />
     <Compile Include="FieldHandler\DictionaryFieldHandler.cs" />

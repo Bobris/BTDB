@@ -72,67 +72,50 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public ITypeBinaryDeserializerGenerator BuildBinaryDeserializerGenerator(Type target)
+        public bool LoadNeedsCtx()
         {
-            return new Deserializer(this, target);
+            return !_itemDescriptor.StoredInline || _itemDescriptor.LoadNeedsCtx();
         }
 
-        class Deserializer : ITypeBinaryDeserializerGenerator
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
-            readonly ListTypeDescriptor _owner;
-            readonly Type _target;
-
-            public Deserializer(ListTypeDescriptor owner, Type target)
-            {
-                _owner = owner;
-                _target = target;
-            }
-
-            public bool LoadNeedsCtx()
-            {
-                return !_owner._itemDescriptor.StoredInline || _owner._itemDescriptor.BuildBinaryDeserializerGenerator(_owner._itemDescriptor.GetPreferedType()).LoadNeedsCtx();
-            }
-
-            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor)
-            {
-                var localCount = ilGenerator.DeclareLocal(typeof(int));
-                var itemType = _owner._typeSerializers.LoadAsType(_owner._itemDescriptor);
-                var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
-                if (!_target.IsAssignableFrom(listType)) throw new NotSupportedException();
-                var localList = ilGenerator.DeclareLocal(listType);
-                var loadFinished = ilGenerator.DefineLabel();
-                var next = ilGenerator.DefineLabel();
-                ilGenerator
-                    .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
-                    .ConvI4()
-                    .Dup()
-                    .Stloc(localCount)
-                    .Brfalse(loadFinished)
-                    .Ldloc(localCount)
-                    .LdcI4(1)
-                    .Sub()
-                    .Dup()
-                    .Stloc(localCount)
-                    .Do(pushDescriptor)
-                    .Newobj(listType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
-                    .Stloc(localList)
-                    .Mark(next)
-                    .Ldloc(localCount)
-                    .Brfalse(loadFinished)
-                    .Ldloc(localCount)
-                    .LdcI4(1)
-                    .Sub()
-                    .Stloc(localCount)
-                    .Ldloc(localList);
-                _owner._itemDescriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType);
-                ilGenerator
-                    .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
-                    .Br(next)
-                    .Mark(loadFinished)
-                    .Ldloc(localList)
-                    .Castclass(_target);
-            }
+            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor);
+            var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
+            if (!targetType.IsAssignableFrom(listType)) throw new NotSupportedException();
+            var localList = ilGenerator.DeclareLocal(listType);
+            var loadFinished = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            ilGenerator
+                .Do(pushReader)
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .ConvI4()
+                .Dup()
+                .Stloc(localCount)
+                .Brfalse(loadFinished)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .Dup()
+                .Stloc(localCount)
+                .Do(pushDescriptor)
+                .Newobj(listType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
+                .Stloc(localList)
+                .Mark(next)
+                .Ldloc(localCount)
+                .Brfalse(loadFinished)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .Stloc(localCount)
+                .Ldloc(localList);
+            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType);
+            ilGenerator
+                .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
+                .Br(next)
+                .Mark(loadFinished)
+                .Ldloc(localList)
+                .Castclass(targetType);
         }
 
         public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()

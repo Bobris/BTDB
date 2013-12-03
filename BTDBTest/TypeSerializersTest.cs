@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using ApprovalTests;
 using ApprovalTests.Reporters;
+using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
@@ -206,6 +207,7 @@ namespace BTDBTest
                     new TimeSpan(),
                     Guid.Empty,
                     new byte[0],
+                    ByteBuffer.NewEmpty(),
                     false
                 }.Select(o => ts.DescriptorOf(o).Describe());
             Approvals.VerifyAll(res, "BasicTypes");

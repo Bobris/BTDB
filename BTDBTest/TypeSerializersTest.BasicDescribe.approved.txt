@@ -13,4 +13,5 @@ BasicTypes[11] = DateTime
 BasicTypes[12] = TimeSpan
 BasicTypes[13] = Guid
 BasicTypes[14] = Byte[]
-BasicTypes[15] = Bool
+BasicTypes[15] = Byte[]
+BasicTypes[16] = Bool

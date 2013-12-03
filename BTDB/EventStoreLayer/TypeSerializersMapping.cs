@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -148,7 +149,12 @@ namespace BTDB.EventStoreLayer
                 return null;
             }
 
-            ITypeBinaryDeserializerGenerator ITypeDescriptor.BuildBinaryDeserializerGenerator(Type target)
+            public bool LoadNeedsCtx()
+            {
+                throw new InvalidOperationException();
+            }
+
+            public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
             {
                 throw new InvalidOperationException();
             }
