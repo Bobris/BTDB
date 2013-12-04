@@ -15,12 +15,11 @@ namespace BTDB.EventStoreLayer
             return sb.ToString();
         }
 
-        public static void GenerateSave(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
+        public static void GenerateSaveEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
         {
             if (descriptor.StoredInline)
             {
-                var generator = descriptor.BuildBinarySerializerGenerator();
-                generator.GenerateSave(ilGenerator, pushWriter, pushCtx, pushSubValue, subValueType);
+                descriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, pushSubValue, subValueType);
             }
             else
             {
@@ -31,12 +30,11 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateSkip(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public static void GenerateSkipEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             if (descriptor.StoredInline)
             {
-                var skipper = descriptor.BuildBinarySkipperGenerator();
-                skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
+                descriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
             }
             else
             {

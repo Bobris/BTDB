@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator
+    public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         Type _type;
         readonly string _name;
@@ -117,9 +117,9 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
-            return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.LoadNeedsCtx());
+            return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.AnyOpNeedsCtx());
         }
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
@@ -178,15 +178,7 @@ namespace BTDB.EventStoreLayer
                     var prop = props.FirstOrDefault(p => p.Name == pair.Key);
                     if (prop == null)
                     {
-                        if (pair.Value.StoredInline)
-                        {
-                            var skipper = pair.Value.BuildBinarySkipperGenerator();
-                            skipper.GenerateSkip(ilGenerator, pushReader, pushCtx);
-                            continue;
-                        }
-                        ilGenerator
-                            .Do(pushCtx)
-                            .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
+                        pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
                         continue;
                     }
                     ilGenerator.Ldloc(resultLoc);
@@ -197,6 +189,11 @@ namespace BTDB.EventStoreLayer
                 }
                 ilGenerator.Ldloc(resultLoc);
             }
+        }
+
+        public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        {
+            throw new InvalidOperationException();
         }
 
         int FindFieldIndex(string fieldName)
@@ -323,16 +320,6 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            throw new InvalidOperationException();
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
-        }
-
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
             if (_fields.Select(p => p.Value).All(d => d.Sealed)) return null;
@@ -408,11 +395,6 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public bool SaveNeedsCtx()
-        {
-            return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.BuildBinarySerializerGenerator().SaveNeedsCtx());
-        }
-
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             if (_type != valueType)
@@ -425,7 +407,7 @@ namespace BTDB.EventStoreLayer
             {
                 var pair = pairi;
                 var methodInfo = _type.GetProperty(pair.Key).GetGetMethod();
-                pair.Value.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
+                pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }
     }

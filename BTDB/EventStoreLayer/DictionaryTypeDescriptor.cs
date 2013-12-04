@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator, ITypeBinarySkipperGenerator
+    internal class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;
@@ -80,11 +80,11 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
             return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
-                || _keyDescriptor.LoadNeedsCtx()
-                || _valueDescriptor.LoadNeedsCtx();
+                || _keyDescriptor.AnyOpNeedsCtx()
+                || _valueDescriptor.AnyOpNeedsCtx();
         }
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
@@ -126,16 +126,6 @@ namespace BTDB.EventStoreLayer
                 .Mark(loadFinished)
                 .Ldloc(localDict)
                 .Castclass(targetType);
-        }
-
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            return this;
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -238,13 +228,6 @@ namespace BTDB.EventStoreLayer
             nestedDescriptorPersistor(writer, _valueDescriptor);
         }
 
-        public bool SaveNeedsCtx()
-        {
-            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
-                || _keyDescriptor.BuildBinarySerializerGenerator().SaveNeedsCtx()
-                || _valueDescriptor.BuildBinarySerializerGenerator().SaveNeedsCtx();
-        }
-
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type saveType)
         {
             var finish = ilGenerator.DefineLabel();
@@ -291,8 +274,8 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localEnumerator)
                 .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
                 .Stloc(localPair);
-            _keyDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
-            _valueDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
+            _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
+            _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -301,13 +284,6 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(() => default(IDisposable).Dispose())
                 .EndTry()
                 .Mark(completeFinish);
-        }
-
-        public bool SkipNeedsCtx()
-        {
-            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
-                || _keyDescriptor.BuildBinarySkipperGenerator().SkipNeedsCtx()
-                || _valueDescriptor.BuildBinarySkipperGenerator().SkipNeedsCtx();
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
@@ -331,8 +307,8 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Sub()
                 .Stloc(localCount);
-            _keyDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
-            _valueDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
+            _keyDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            _valueDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);

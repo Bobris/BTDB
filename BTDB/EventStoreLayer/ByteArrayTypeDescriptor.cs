@@ -7,7 +7,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
+    public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
     {
         public string Name
         {
@@ -31,16 +31,6 @@ namespace BTDB.EventStoreLayer
         public Type GetPreferedType()
         {
             return typeof(byte[]);
-        }
-
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            return this;
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -75,7 +65,7 @@ namespace BTDB.EventStoreLayer
             yield return typeof (ByteBuffer);
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
             return false;
         }
@@ -98,20 +88,10 @@ namespace BTDB.EventStoreLayer
             ilGenerator.Castclass(typeof(object));
         }
 
-        public bool SkipNeedsCtx()
-        {
-            return false;
-        }
-
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushReader(ilGenerator);
             ilGenerator.Call(() => default(AbstractBufferedReader).SkipByteArray());
-        }
-
-        public bool SaveNeedsCtx()
-        {
-            return false;
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)

@@ -7,7 +7,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator, ITypeBinarySkipperGenerator
+    internal class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;
@@ -72,9 +72,9 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
-            return !_itemDescriptor.StoredInline || _itemDescriptor.LoadNeedsCtx();
+            return !_itemDescriptor.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
         }
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
@@ -116,16 +116,6 @@ namespace BTDB.EventStoreLayer
                 .Mark(loadFinished)
                 .Ldloc(localList)
                 .Castclass(targetType);
-        }
-
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            return this;
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -207,11 +197,6 @@ namespace BTDB.EventStoreLayer
             nestedDescriptorPersistor(writer, _itemDescriptor);
         }
 
-        public bool SaveNeedsCtx()
-        {
-            return !_itemDescriptor.StoredInline || _itemDescriptor.BuildBinarySerializerGenerator().SaveNeedsCtx();
-        }
-
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             var finish = ilGenerator.DefineLabel();
@@ -248,7 +233,7 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localIndex)
                 .Ldloc(localCount)
                 .BgeUn(finish);
-            _itemDescriptor.GenerateSave(ilGenerator, pushWriter, pushCtx,
+            _itemDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                 il => il.Ldloc(localList)
                         .Ldloc(localIndex)
                         .Callvirt(localList.LocalType.GetMethod("get_Item")), itemType);
@@ -259,11 +244,6 @@ namespace BTDB.EventStoreLayer
                 .Stloc(localIndex)
                 .Br(next)
                 .Mark(finish);
-        }
-
-        public bool SkipNeedsCtx()
-        {
-            return !_itemDescriptor.StoredInline || _itemDescriptor.BuildBinarySkipperGenerator().SkipNeedsCtx();
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
@@ -289,7 +269,7 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Sub()
                 .Stloc(localCount);
-            _itemDescriptor.GenerateSkip(ilGenerator, pushReader, pushCtx);
+            _itemDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);

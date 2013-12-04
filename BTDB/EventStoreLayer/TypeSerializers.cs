@@ -201,7 +201,7 @@ namespace BTDB.EventStoreLayer
             var loadAsType = LoadAsType(descriptor);
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
-            if (descriptor.LoadNeedsCtx())
+            if (descriptor.AnyOpNeedsCtx())
             {
                 var localCtx = il.DeclareLocal(typeof(ITypeBinaryDeserializerContext), "ctx");
                 var haveCtx = il.DefineLabel();
@@ -295,11 +295,10 @@ namespace BTDB.EventStoreLayer
 
         Action<AbstractBufferedWriter, object> NewSimpleSaver(ITypeDescriptor descriptor)
         {
-            var generator = descriptor.BuildBinarySerializerGenerator();
-            if (generator.SaveNeedsCtx()) return null;
+            if (descriptor.AnyOpNeedsCtx()) return null;
             var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, object>>(descriptor.Name + "SimpleSaver");
             var il = method.Generator;
-            generator.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
+            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
                 {
                     ilgen.Ldarg(1);
                     var type = descriptor.GetPreferedType();
@@ -319,10 +318,9 @@ namespace BTDB.EventStoreLayer
 
         Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> NewComplexSaver(ITypeDescriptor descriptor)
         {
-            var generator = descriptor.BuildBinarySerializerGenerator();
             var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(descriptor.Name + "ComplexSaver");
             var il = method.Generator;
-            generator.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
+            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
                 ilgen.Ldarg(2);
                 var type = descriptor.GetPreferedType();

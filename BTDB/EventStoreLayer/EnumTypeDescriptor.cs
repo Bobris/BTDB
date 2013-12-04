@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor, ITypeBinarySerializerGenerator, ITypeBinarySkipperGenerator
+    internal class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;
@@ -239,7 +239,7 @@ namespace BTDB.EventStoreLayer
             return "0";
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
             return false;
         }
@@ -273,16 +273,6 @@ namespace BTDB.EventStoreLayer
                 return;
             }
             new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, targetType.GetEnumUnderlyingType())(ilGenerator);
-        }
-
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            return this;
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -326,11 +316,6 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public bool SaveNeedsCtx()
-        {
-            return false;
-        }
-
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
             pushWriter(ilGenerator);
@@ -347,11 +332,6 @@ namespace BTDB.EventStoreLayer
                     .ConvU8()
                     .Call(() => default(AbstractBufferedWriter).WriteVUInt64(0));
             }
-        }
-
-        public bool SkipNeedsCtx()
-        {
-            return false;
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

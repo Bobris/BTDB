@@ -149,7 +149,7 @@ namespace BTDB.EventStoreLayer
                 return null;
             }
 
-            public bool LoadNeedsCtx()
+            public bool AnyOpNeedsCtx()
             {
                 throw new InvalidOperationException();
             }
@@ -159,12 +159,12 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            ITypeBinarySkipperGenerator ITypeDescriptor.BuildBinarySkipperGenerator()
+            public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
                 throw new InvalidOperationException();
             }
 
-            ITypeBinarySerializerGenerator ITypeDescriptor.BuildBinarySerializerGenerator()
+            public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
             {
                 throw new InvalidOperationException();
             }

@@ -6,7 +6,7 @@ using BTDB.IL;
 
 namespace BTDB.EventStoreLayer
 {
-    public class SimpleTypeDescriptor : ITypeDescriptor, ITypeBinarySkipperGenerator, ITypeBinarySerializerGenerator
+    public class SimpleTypeDescriptor : ITypeDescriptor
     {
         readonly string _name;
         readonly MethodInfo _loader;
@@ -45,16 +45,6 @@ namespace BTDB.EventStoreLayer
             return _loader.ReturnType;
         }
 
-        public ITypeBinarySkipperGenerator BuildBinarySkipperGenerator()
-        {
-            return this;
-        }
-
-        public ITypeBinarySerializerGenerator BuildBinarySerializerGenerator()
-        {
-            return this;
-        }
-
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
             return null;
@@ -82,7 +72,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public bool LoadNeedsCtx()
+        public bool AnyOpNeedsCtx()
         {
             return false;
         }
@@ -107,20 +97,10 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public bool SkipNeedsCtx()
-        {
-            return false;
-        }
-
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushReader(ilGenerator);
             ilGenerator.Call(_skipper);
-        }
-
-        public bool SaveNeedsCtx()
-        {
-            return false;
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)

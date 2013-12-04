@@ -89,8 +89,6 @@
     <Compile Include="EventStoreLayer\StreamEventFileStorage.cs" />
     <Compile Include="EventStoreLayer\TypeDescriptorExtensions.cs" />
     <Compile Include="EventStoreLayer\IReadEventStore.cs" />
-    <Compile Include="EventStoreLayer\ITypeBinarySerializerGenerator.cs" />
-    <Compile Include="EventStoreLayer\ITypeBinarySkipperGenerator.cs" />
     <Compile Include="EventStoreLayer\ITypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ITypeDescriptorFactory.cs" />
     <Compile Include="EventStoreLayer\ITypeNewDescriptorGenerator.cs" />
