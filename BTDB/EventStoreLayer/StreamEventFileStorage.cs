@@ -4,7 +4,7 @@ using BTDB.Buffer;
 
 namespace BTDB.EventStoreLayer
 {
-    public class StreamEventFileStorage : IEventFileStorage
+    public class StreamEventFileStorage : IEventFileStorage, IDisposable
     {
         readonly Stream _stream;
 
@@ -35,6 +35,11 @@ namespace BTDB.EventStoreLayer
         public virtual IEventFileStorage CreateNew(IEventFileStorage file)
         {
             throw new InvalidOperationException();
+        }
+
+        public void Dispose()
+        {
+            ((IDisposable) _stream).Dispose();
         }
     }
 }
