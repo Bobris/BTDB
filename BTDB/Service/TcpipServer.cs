@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Reactive;
@@ -12,6 +13,8 @@ namespace BTDB.Service
     {
         readonly TcpListener _listener;
         Action<IChannel> _newClient;
+        Task _acceptClientsTask;
+        bool _listening;
 
         public TcpipServer(IPEndPoint endPoint)
         {
@@ -26,17 +29,21 @@ namespace BTDB.Service
         public void StartListening(int backLog = 10)
         {
             _listener.Start(backLog);
-            Task.Factory.StartNew(AcceptNewClients, TaskCreationOptions.LongRunning);
+            _listening = true;
+            _acceptClientsTask = Task.Factory.StartNew(AcceptNewClients, TaskCreationOptions.LongRunning);
         }
 
         public void StopListening()
         {
+            _listening = false;
             _listener.Stop();
+            if (_acceptClientsTask != null)
+                _acceptClientsTask.Wait();
         }
 
         void AcceptNewClients()
         {
-            while (true)
+            while (_listening)
             {
                 Socket socket;
                 try
@@ -49,6 +56,11 @@ namespace BTDB.Service
                 }
                 catch (ObjectDisposedException)
                 {
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    // called when _listener.AcceptSocket is called after _listener.Stop();
                     return;
                 }
                 var channel = new Client(socket);
