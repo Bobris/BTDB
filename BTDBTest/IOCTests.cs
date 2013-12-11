@@ -498,6 +498,16 @@ namespace BTDBTest
         }
 
         [Test]
+        public void AnythingCouldBeEnumerated()
+        {
+            var builder = new ContainerBuilder();
+            var container = builder.Build();
+            var allInstances = container.Resolve<IEnumerable<ILogger>>();
+            Assert.NotNull(allInstances);
+            Assert.IsEmpty(allInstances);
+        }
+
+        [Test]
         public void EnumerateAllInstances()
         {
             var container = BuildContainerWithTwoLoggers();

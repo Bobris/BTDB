@@ -166,6 +166,7 @@
     <Compile Include="IOC\ClosureOfObjBuilder.cs" />
     <Compile Include="IOC\CRegs\InstancesLocalGenCtxHelper.cs" />
     <Compile Include="IOC\CRegs\LazyImpl.cs" />
+    <Compile Include="IOC\CRegs\EmptyEnumerableImpl.cs" />
     <Compile Include="IOC\IAsLiveScopeTrait.cs" />
     <Compile Include="IOC\IBuildContext.cs" />
     <Compile Include="IOC\IConstructorTrait.cs" />
