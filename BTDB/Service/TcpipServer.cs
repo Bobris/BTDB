@@ -88,10 +88,18 @@ namespace BTDB.Service
             {
                 if (!_disconnected)
                 {
-                    _socket.Shutdown(SocketShutdown.Both);
+                    try
+                    {
+                        _socket.Shutdown(SocketShutdown.Both);
+                    }
+                    catch { }
                     SignalDisconnected();
                 }
-                _socket.Dispose();
+                try
+                {
+                    _socket.Dispose();
+                }
+                catch { }
             }
 
             public void Send(ByteBuffer data)
