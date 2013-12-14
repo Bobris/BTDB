@@ -76,6 +76,7 @@
     <Compile Include="AbstractBufferedReaderWriterTest.cs" />
     <Compile Include="ChunkStorageTest.cs" />
     <Compile Include="DiskChunkCacheTest.cs" />
+    <Compile Include="DtoChannelTest.cs" />
     <Compile Include="EventStoreTest.cs" />
     <Compile Include="ILExtensionsTest.cs" />
     <Compile Include="InMemoryKeyValueDBTest.cs" />

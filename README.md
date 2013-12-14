@@ -7,6 +7,7 @@ Currently this project these parts:
 * IOC Container
 * Object Database
 * RPC Library
+* Dto Channel
 * Snappy Compression
 * Event Storage (In heavy development)
 
@@ -118,6 +119,8 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ---
 ## RPC Library
 
+Deprecated use Dto Channel instead
+
 ### Features:
 
 * TCP/IP comunication, service types negotiation
@@ -133,6 +136,25 @@ This help you to write fluent code which generates IL code in runtime. It is use
     var d = _second.QueryRemoteService<Action<SimpleDTO>>();
     d(new SimpleDTO { Name = "Text", Number = 3.14 });
     Assert.NotNull(received);
+
+### Roadmap:
+
+* Even more speed and event based TCP/IP server channels
+
+---
+## Dto Channel
+
+### Features:
+
+* Send and receive Dto over Tcp/Ip
+* Identical serialization from Event Storage
+
+### Sample code:
+
+    object u1 = new User { Name = "A", Age = 1 };
+    object u2 = null;
+    _second.OnReceive.Subscribe(o => u2 = o);
+    _first.Send(u1);
 
 ### Roadmap:
 

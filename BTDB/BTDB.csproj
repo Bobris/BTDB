@@ -60,6 +60,8 @@
     <Compile Include="ChunkedFile\IChunkedFile.cs" />
     <Compile Include="ChunkedFile\IChunkedFileFactory.cs" />
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
+    <Compile Include="DtoChannel\DtoChannel.cs" />
+    <Compile Include="DtoChannel\IDtoChannel.cs" />
     <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
     <Compile Include="EventStoreLayer\BlockType.cs" />
     <Compile Include="EventStoreLayer\ByteArrayTypeDescriptor.cs" />

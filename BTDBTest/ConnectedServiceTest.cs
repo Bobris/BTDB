@@ -32,7 +32,7 @@ namespace BTDBTest
             _second.Dispose();
         }
 
-        public void Disconnect()
+        void Disconnect()
         {
             _pipedTwoChannels.Disconnect();
         }
