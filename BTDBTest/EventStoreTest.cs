@@ -211,19 +211,6 @@ namespace BTDBTest
             }
         }
 
-        public class GenericTypeMapper : ITypeNameMapper
-        {
-            public string ToName(Type type)
-            {
-                return type.FullName;
-            }
-
-            public Type ToType(string name)
-            {
-                return Type.GetType(name, false);
-            }
-        }
-
         public class UserEvent : IEquatable<UserEvent>
         {
             public long Id { get; set; }
@@ -242,14 +229,12 @@ namespace BTDBTest
         public void NestedObjectsTest()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var userEvent = new UserEvent { Id = 10, User1 = new User { Name = "A", Age = 1 } };
             appender.Store(null, new object[] { userEvent });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
@@ -261,7 +246,6 @@ namespace BTDBTest
         public void SameReferenceTest()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var user = new User { Name = "A", Age = 1 };
@@ -269,7 +253,6 @@ namespace BTDBTest
             appender.Store(null, new object[] { userEvent });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
@@ -295,7 +278,7 @@ namespace BTDBTest
 
         public class OverloadableTypeMapper : ITypeNameMapper
         {
-            readonly ITypeNameMapper _parent = new GenericTypeMapper();
+            readonly ITypeNameMapper _parent = new FullNameTypeMapper();
             readonly Type _type;
             readonly string _name;
 
@@ -395,7 +378,6 @@ namespace BTDBTest
         public void SupportsList()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var userA = new User { Name = "A", Age = 1 };
@@ -404,7 +386,6 @@ namespace BTDBTest
             appender.Store(null, new object[] { userEvent });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
@@ -459,7 +440,6 @@ namespace BTDBTest
         public void SupportsDictionary()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var userA = new User { Name = "A", Age = 1 };
@@ -468,7 +448,6 @@ namespace BTDBTest
             appender.Store(null, new object[] { userEvent });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
@@ -568,7 +547,6 @@ namespace BTDBTest
         public void MixedIListAndList()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var e1 = new SpecificDictIList { Dict = new Dictionary<ulong, IList<ulong>>() };
@@ -577,12 +555,10 @@ namespace BTDBTest
             appender.Store(null, new object[] { e1 });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new GenericTypeMapper());
             appender = manager.AppendToStore(file);
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
             appender.Store(null, new object[] { e1 });
         }
-
     }
 }

@@ -9,7 +9,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    public class TypeSerializers : ITypeSerializers
+    public class TypeSerializers : ITypeSerializers, ITypeSerializerMappingFactory
     {
         ITypeNameMapper _typeNameMapper;
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -27,8 +27,13 @@ namespace BTDB.EventStoreLayer
         readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
 
-        public TypeSerializers()
+        public TypeSerializers(): this(null)
         {
+        }
+
+        public TypeSerializers(ITypeNameMapper typeNameMapper)
+        {
+            SetTypeNameMapper(typeNameMapper);
             ForgotAllTypesAndSerializers();
             _newSimpleSaverAction = NewSimpleSaver;
             _newComplexSaverAction = NewComplexSaver;
@@ -39,7 +44,7 @@ namespace BTDB.EventStoreLayer
 
         public void SetTypeNameMapper(ITypeNameMapper typeNameMapper)
         {
-            _typeNameMapper = typeNameMapper;
+            _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         }
 
         public ITypeDescriptor DescriptorOf(object obj)
@@ -397,16 +402,12 @@ namespace BTDB.EventStoreLayer
 
         public string TypeToName(Type type)
         {
-            var typeNameMapper = _typeNameMapper;
-            if (typeNameMapper == null) return type.FullName;
-            return typeNameMapper.ToName(type);
+            return _typeNameMapper.ToName(type);
         }
 
         Type NameToType(string name)
         {
-            var typeNameMapper = _typeNameMapper;
-            if (typeNameMapper == null) return Type.GetType(name, false);
-            return typeNameMapper.ToType(name);
+            return _typeNameMapper.ToType(name);
         }
     }
 }

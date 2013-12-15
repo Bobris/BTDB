@@ -11,13 +11,16 @@ namespace BTDB.DtoChannel
     public class DtoChannel : IDtoChannel
     {
         readonly IChannel _channel;
-        readonly ITypeSerializersMapping _mapping;
+        readonly ITypeSerializersMapping _receivingMapping;
+        readonly ITypeSerializersMapping _sendingMapping;
         readonly FastSubject<object> _onReceive = new FastSubject<object>();
+        readonly object _sendLocker = new object();
 
-        public DtoChannel(IChannel channel, ITypeSerializersMapping mapping)
+        public DtoChannel(IChannel channel, ITypeSerializerMappingFactory mappingFactory)
         {
             _channel = channel;
-            _mapping = mapping;
+            _receivingMapping = mappingFactory.CreateMapping();
+            _sendingMapping = mappingFactory.CreateMapping();
             _channel.OnReceive.Subscribe(new Receiver(this));
         }
 
@@ -38,14 +41,14 @@ namespace BTDB.DtoChannel
                     c0 = reader.ReadUInt8();
                 if (c0 == 99)
                 {
-                    _dtoChannel._mapping.LoadTypeDescriptors(reader);
+                    _dtoChannel._receivingMapping.LoadTypeDescriptors(reader);
                 }
                 else if (c0 != 100)
                 {
                     _dtoChannel._onReceive.OnError(new InvalidDataException("Data received from other side must start with byte 99 or 100"));
                     return;
                 }
-                _dtoChannel._onReceive.OnNext(_dtoChannel._mapping.LoadObject(reader));
+                _dtoChannel._onReceive.OnNext(_dtoChannel._receivingMapping.LoadObject(reader));
             }
 
             public void OnError(Exception error)
@@ -61,19 +64,22 @@ namespace BTDB.DtoChannel
 
         public void Send(object dto)
         {
-            IDescriptorSerializerContext serializerContext = _mapping;
-            var writer = new ByteBufferWriter();
-            writer.WriteUInt8(100);
-            serializerContext = serializerContext.StoreNewDescriptors(writer, dto);
-            serializerContext.FinishNewDescriptors(writer);
-            serializerContext.StoreObject(writer,dto);
-            var block = writer.Data;
-            if (serializerContext.SomeTypeStored)
+            lock (_sendLocker)
             {
-                block[0] = 99;
+                IDescriptorSerializerContext serializerContext = _sendingMapping;
+                var writer = new ByteBufferWriter();
+                writer.WriteUInt8(100);
+                serializerContext = serializerContext.StoreNewDescriptors(writer, dto);
+                serializerContext.FinishNewDescriptors(writer);
+                serializerContext.StoreObject(writer, dto);
+                var block = writer.Data;
+                if (serializerContext.SomeTypeStored)
+                {
+                    block[0] = 99;
+                }
+                _channel.Send(block);
+                serializerContext.CommitNewDescriptors();
             }
-            _channel.Send(block);
-            serializerContext.CommitNewDescriptors();
         }
 
         public IObservable<object> OnReceive

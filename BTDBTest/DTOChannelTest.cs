@@ -10,7 +10,7 @@ namespace BTDBTest
     public class DtoChannelTest
     {
         PipedTwoChannels _pipedTwoChannels;
-        TypeSerializers _typeSerializers;
+        ITypeSerializerMappingFactory _typeSerializers;
         IDtoChannel _first;
         IDtoChannel _second;
 
@@ -19,9 +19,8 @@ namespace BTDBTest
         {
             _pipedTwoChannels = new PipedTwoChannels();
             _typeSerializers = new TypeSerializers();
-            _typeSerializers.SetTypeNameMapper(new EventStoreTest.GenericTypeMapper());
-            _first = new DtoChannel(_pipedTwoChannels.First, _typeSerializers.CreateMapping());
-            _second = new DtoChannel(_pipedTwoChannels.Second, _typeSerializers.CreateMapping());
+            _first = new DtoChannel(_pipedTwoChannels.First, _typeSerializers);
+            _second = new DtoChannel(_pipedTwoChannels.Second, _typeSerializers);
         }
 
         [TearDown]
