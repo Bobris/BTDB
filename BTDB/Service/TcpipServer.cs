@@ -189,7 +189,7 @@ namespace BTDB.Service
                                                   return;
                                               }
                                               ReceiveBody();
-                                          });
+                                          }, TaskCreationOptions.LongRunning);
             }
 
             void ReceiveBody()
