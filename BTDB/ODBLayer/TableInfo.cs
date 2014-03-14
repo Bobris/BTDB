@@ -168,6 +168,18 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public long LazySingletonOid
+        {
+            get
+            {
+                var soid = Interlocked.Read(ref _singletonOid);
+                if (soid != 0) return soid;
+                Interlocked.CompareExchange(ref _singletonOid, _tableInfoResolver.GetSingletonOid(_id), 0);
+                soid = Interlocked.Read(ref _singletonOid);
+                return soid;
+            }
+        }
+
         public long SingletonOid
         {
             get
@@ -175,6 +187,8 @@ namespace BTDB.ODBLayer
                 var soid = Interlocked.Read(ref _singletonOid);
                 if (soid != 0) return soid;
                 soid = Interlocked.CompareExchange(ref _singletonOid, _tableInfoResolver.GetSingletonOid(_id), 0);
+                if (soid != 0) return soid;
+                soid = Interlocked.Read(ref _singletonOid);
                 if (soid != 0) return soid;
                 NeedStoreSingletonOid = true;
                 var newsoid = (long)_tableInfoResolver.AllocateNewOid();

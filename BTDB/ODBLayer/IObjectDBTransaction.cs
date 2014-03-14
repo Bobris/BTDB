@@ -10,7 +10,8 @@ namespace BTDB.ODBLayer
 
         object Get(ulong oid);
         ulong GetOid(object @object);
-        
+
+        IEnumerable<Type> EnumerateSingletonTypes();
         object Singleton(Type type);
         T Singleton<T>() where T : class;
 

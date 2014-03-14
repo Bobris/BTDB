@@ -89,5 +89,16 @@ namespace BTDB.ODBLayer
             _name2Table.TryAdd(name, t);
             return t;
         }
+
+        public IEnumerable<TableInfo> EnumerateTableInfos()
+        {
+            lock (_lock)
+            {
+                foreach (var tableInfo in _name2Table.Values)
+                {
+                    yield return tableInfo;
+                }
+            }
+        }
     }
 }

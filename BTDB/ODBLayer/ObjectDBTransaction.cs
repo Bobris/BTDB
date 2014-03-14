@@ -339,6 +339,26 @@ namespace BTDB.ODBLayer
             return 0;
         }
 
+        public IEnumerable<Type> EnumerateSingletonTypes()
+        {
+            foreach (var tableInfo in _owner.TablesInfo.EnumerateTableInfos().ToArray())
+            {
+                var oid = tableInfo.LazySingletonOid;
+                if (oid == 0) continue;
+                try
+                {
+                    EnsureClientTypeNotNull(tableInfo);
+                }
+                catch (BTDBException)
+                {
+                    // Ignore imposibility to create type
+                }
+                var type = tableInfo.ClientType;
+                if (type != null)
+                    yield return type;
+            }
+        }
+
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type);

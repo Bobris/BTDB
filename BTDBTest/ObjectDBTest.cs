@@ -505,7 +505,7 @@ namespace BTDBTest
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
                 o.ByteArrayField = new byte[] { 0, 1, 2 };
-                o.ByteBufferField = ByteBuffer.NewAsync(new byte[] {0, 1, 2}, 1, 1);
+                o.ByteBufferField = ByteBuffer.NewAsync(new byte[] { 0, 1, 2 }, 1, 1);
 
                 AssertContent(o);
                 tr.Commit();
@@ -1505,6 +1505,45 @@ namespace BTDBTest
                 }
                 Assert.AreEqual(removedCount, d.RemoveRange(start, includeStart, end, includeEnd));
                 Assert.AreEqual(result, d.Aggregate("", (s, p) => s + p.Value));
+            }
+        }
+
+        [Test]
+        public void PossibleToEnumerateSingletons()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Singleton<Root>();
+                tr.Singleton<Tree>();
+                CheckSingletonTypes(tr.EnumerateSingletonTypes());
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                CheckSingletonTypes(tr.EnumerateSingletonTypes());
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(Root));
+            _db.RegisterType(typeof(Tree));
+            using (var tr = _db.StartTransaction())
+            {
+                CheckSingletonTypes(tr.EnumerateSingletonTypes());
+            }
+        }
+
+        void CheckSingletonTypes(IEnumerable<Type> types)
+        {
+            var a = types.ToArray();
+            Assert.AreEqual(2, a.Length);
+            if (a[0] == typeof(Root))
+            {
+                Assert.AreEqual(typeof(Root), a[0]);
+                Assert.AreEqual(typeof(Tree), a[1]);
+            }
+            else
+            {
+                Assert.AreEqual(typeof(Tree), a[0]);
+                Assert.AreEqual(typeof(Root), a[1]);
             }
         }
     }
