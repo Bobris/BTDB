@@ -120,6 +120,7 @@
     <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />
+    <Compile Include="IL\Caching\CachingILDynamicMethodWithThis.cs" />
     <Compile Include="IL\Caching\CachingILGen.cs" />
     <Compile Include="IL\Caching\IReplayILGen.cs" />
     <Compile Include="IL\IILDynamicMethodWithThis.cs" />

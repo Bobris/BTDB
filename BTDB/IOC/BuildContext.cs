@@ -144,6 +144,7 @@ namespace BTDB.IOC
         public IBuildContext FreezeMulti()
         {
             if (_multiBinds == null) return this;
+            return _parent;
             var child = new BuildContext(_container);
             child._parent = this;
             return child;

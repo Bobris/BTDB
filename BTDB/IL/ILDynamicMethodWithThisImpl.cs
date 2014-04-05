@@ -30,6 +30,10 @@ namespace BTDB.IL
             get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers())); }
         }
 
+        public void FinalizeCreation()
+        {
+        }
+
         public object Create(object @this)
         {
             return _dynamicMethod.CreateDelegate(_delegateType, @this);

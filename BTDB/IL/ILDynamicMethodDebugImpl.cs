@@ -22,6 +22,7 @@ namespace BTDB.IL
         readonly MethodBuilder _dynamicMethod;
         readonly SourceCodeWriter _sourceCodeWriter;
         readonly IILGenForbidenInstructions _forbidenInstructions;
+        Type _finalType;
 
         public ILDynamicMethodDebugImpl(string name, Type delegateType, Type thisType)
         {
@@ -63,10 +64,15 @@ namespace BTDB.IL
             get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
         }
 
+        public void FinalizeCreation()
+        {
+            _finalType = FinishType();
+        }
+
         public object Create(object @this)
         {
-            var finalType = FinishType();
-            return Delegate.CreateDelegate(_delegateType, @this, finalType.GetMethod("Invoke"));
+            if (_finalType==null) FinalizeCreation();
+            return Delegate.CreateDelegate(_delegateType, @this, _finalType.GetMethod("Invoke"));
         }
 
         public object Create()

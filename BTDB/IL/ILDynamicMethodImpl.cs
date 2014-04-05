@@ -43,6 +43,10 @@ namespace BTDB.IL
             return _dynamicMethod.CreateDelegate(_delegateType);
         }
 
+        public void FinalizeCreation()
+        {
+        }
+
         public object Create(object @this)
         {
             return _dynamicMethod.CreateDelegate(_delegateType, @this);

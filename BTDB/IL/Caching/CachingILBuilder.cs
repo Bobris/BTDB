@@ -31,7 +31,7 @@ namespace BTDB.IL.Caching
         {
             if (thisType == null) throw new ArgumentNullException("thisType");
             if (!@delegate.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
-            return Wrapping.NewMethod(name, @delegate, thisType);
+            return new CachingILDynamicMethodWithThis(this, name, @delegate, thisType);
         }
 
         public IILDynamicType NewType(string name, Type baseType, Type[] interfaces)
