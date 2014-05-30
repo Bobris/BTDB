@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.BTree;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -28,7 +29,7 @@ namespace BTDB.KVDBLayer
         internal readonly long MaxTrLogFileSize;
         readonly ICompressionStrategy _compression;
         readonly CompactorScheduler _compactorScheduler;
-        readonly Dictionary<long, IBTreeRootNode> _usedBTreeRootNodes = new Dictionary<long, IBTreeRootNode>();
+        readonly HashSet<IBTreeRootNode> _usedBTreeRootNodes = new HashSet<IBTreeRootNode>(ReferenceEqualityComparer<IBTreeRootNode>.Instance);
         readonly object _usedBTreeRootNodesLock = new object();
         readonly IFileCollectionWithFileInfos _fileCollection;
         readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
@@ -505,7 +506,7 @@ namespace BTDB.KVDBLayer
         {
             var newTransactionRoot = LastCommited.NewTransactionRoot();
             _writingTransaction = new KeyValueDBTransaction(this, newTransactionRoot, true, false);
-            tcs.TrySetResult(_writingTransaction);
+            tcs.SetResult(_writingTransaction);
         }
 
         internal void RevertWrittingTransaction(bool nothingWrittenToTransactionLog)
@@ -827,7 +828,7 @@ namespace BTDB.KVDBLayer
                 btreeRoot.UseCount = uses;
                 if (uses == 1)
                 {
-                    _usedBTreeRootNodes.Add(btreeRoot.TransactionId, btreeRoot);
+                    _usedBTreeRootNodes.Add(btreeRoot);
                 }
             }
         }
@@ -841,7 +842,7 @@ namespace BTDB.KVDBLayer
                 btreeRoot.UseCount = uses;
                 if (uses == 0)
                 {
-                    _usedBTreeRootNodes.Remove(btreeRoot.TransactionId);
+                    _usedBTreeRootNodes.Remove(btreeRoot);
                     Monitor.PulseAll(_usedBTreeRootNodesLock);
                 }
             }
@@ -855,9 +856,9 @@ namespace BTDB.KVDBLayer
                 {
                     cancellation.ThrowIfCancellationRequested();
                     var oldStillRuns = false;
-                    foreach (var usedTransactionId in _usedBTreeRootNodes.Keys)
+                    foreach (var usedTransaction in _usedBTreeRootNodes)
                     {
-                        if (usedTransactionId - transactionId >= 0) continue;
+                        if (usedTransaction.TransactionId - transactionId >= 0) continue;
                         oldStillRuns = true;
                         break;
                     }
