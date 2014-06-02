@@ -63,7 +63,7 @@ namespace BTDB.EventStoreLayer
                                  out IDescriptorSerializerContext serializerContext, out BlockType blockType,
                                  out int lenWithoutEndPadding, out ByteBuffer block)
         {
-            startOffset = (int) EndBufferLen + HeaderSize;
+            startOffset = (int)EndBufferLen + HeaderSize;
             var writer = new ByteBufferWriter();
             writer.WriteBlock(_zeroes, 0, startOffset);
             serializerContext = Mapping;
@@ -95,7 +95,7 @@ namespace BTDB.EventStoreLayer
                 }
                 else
                 {
-                    writer.WriteVUInt32((uint) events.Count);
+                    writer.WriteVUInt32((uint)events.Count);
                     foreach (var o in events)
                     {
                         serializerContext.StoreObject(writer, o);
@@ -103,8 +103,8 @@ namespace BTDB.EventStoreLayer
                     blockType |= BlockType.HasMoreEvents;
                 }
             }
-            lenWithoutEndPadding = (int) writer.GetCurrentPosition();
-            writer.WriteBlock(_zeroes, 0, (int) (SectorSize - 1));
+            lenWithoutEndPadding = (int)writer.GetCurrentPosition();
+            writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
             block = writer.Data;
             if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding - startOffset))
             {
@@ -114,7 +114,7 @@ namespace BTDB.EventStoreLayer
                     blockType |= BlockType.Compressed;
                     Array.Copy(compressedBlock.Buffer, compressedBlock.Offset, block.Buffer, startOffset, compressedBlock.Length);
                     lenWithoutEndPadding = startOffset + compressedBlock.Length;
-                    Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int) SectorSize - 1);
+                    Array.Copy(_zeroes, 0, block.Buffer, lenWithoutEndPadding, (int)SectorSize - 1);
                 }
             }
         }
@@ -146,7 +146,7 @@ namespace BTDB.EventStoreLayer
             var startOffset = (int)EndBufferLen + HeaderSize;
             if (EndBufferPosition + (ulong)startOffset <= File.MaxFileSize)
             {
-                WriteOneBlock(ByteBuffer.NewSync(new byte[SectorSize + HeaderSize], startOffset, 0), BlockType.LastBlock);
+                WriteOneBlock(ByteBuffer.NewSync(new byte[SectorSize * 2], startOffset, 0), BlockType.LastBlock);
             }
             EndBufferPosition = ulong.MaxValue;
             KnownAsFinished = true;

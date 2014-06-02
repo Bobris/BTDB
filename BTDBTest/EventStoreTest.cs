@@ -57,6 +57,20 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CanFinalizeEventStoreOnEverySectorPosition()
+        {
+            for (int i = 4000; i < 4600; i++)
+            {
+                var manager = new EventStoreManager();
+                manager.CompressionStrategy = new NoCompressionStrategy();
+                var file1 = new MemoryEventFileStorage(4096, 8192);
+                var appender = manager.AppendToStore(file1);
+                appender.Store(null, new object[] { new byte[i] });
+                appender.Store(null, new object[] { new byte[7000] });
+            }
+        }
+
+        [Test]
         public void CanFinalizeEventStoreAfterReadFromStartFirstNearlyFull()
         {
             var manager = new EventStoreManager();
