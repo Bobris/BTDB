@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
@@ -108,7 +109,7 @@ namespace BTDB.ODBLayer
         public Task<IObjectDBTransaction> StartWritingTransaction()
         {
             return _keyValueDB.StartWritingTransaction()
-                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false), TaskContinuationOptions.ExecuteSynchronously);
+                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 
         public string RegisterType(Type type)
