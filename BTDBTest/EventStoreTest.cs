@@ -574,5 +574,20 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver);
             appender.Store(null, new object[] { e1 });
         }
+
+        public class UsersIList
+        {
+            public IList<User> Users { get; set; }
+        }
+
+        [Test]
+        public void UseArrayForStoreIList()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var e = new UsersIList { Users = new[] { new User { Name = "A" }, new User { Name = "B" } } };
+            appender.Store(null, new object[] { e });
+        }
     }
 }

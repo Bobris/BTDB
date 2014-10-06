@@ -18,7 +18,7 @@ namespace BTDB.EventStoreLayer
         {
             _typeSerializers = typeSerializers;
             _type = type;
-            _itemType = type.GetGenericArguments()[0];
+            _itemType = GetItemType(type);
         }
 
         public ListTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
@@ -202,7 +202,7 @@ namespace BTDB.EventStoreLayer
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             var notnull = ilGenerator.DefineLabel();
-            var itemType = valueType.GetGenericArguments()[0];
+            var itemType = GetItemType(valueType);
             var localList = ilGenerator.DeclareLocal(
                 typeof(IList<>).MakeGenericType(itemType));
             var localIndex = ilGenerator.DeclareLocal(typeof(int));
@@ -244,6 +244,15 @@ namespace BTDB.EventStoreLayer
                 .Stloc(localIndex)
                 .Br(next)
                 .Mark(finish);
+        }
+
+        static Type GetItemType(Type valueType)
+        {
+            if (valueType.IsArray)
+            {
+                return valueType.GetElementType();
+            }
+            return valueType.GetGenericArguments()[0];
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

@@ -105,6 +105,10 @@ namespace BTDB.EventStoreLayer
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
                     }
+                    else if (type.IsArray)
+                    {
+                        result = new ListTypeDescriptor(_typeSerializers, type);
+                    }
                     else if (type.IsEnum)
                     {
                         result = new EnumTypeDescriptor(_typeSerializers, type);
