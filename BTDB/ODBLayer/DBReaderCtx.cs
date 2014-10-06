@@ -122,7 +122,11 @@ namespace BTDB.ODBLayer
         public void SkipNativeObject()
         {
             var test = SkipObject();
-            if (test) throw new InvalidDataException();
+            if (test)
+            {
+                // This should be skip inline object, but it is easier just to throw away result
+                _transaction.ReadInlineObject(this);
+            }
         }
 
         object RetriveObj(int ido)

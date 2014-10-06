@@ -1546,5 +1546,57 @@ namespace BTDBTest
                 Assert.AreEqual(typeof(Root), a[1]);
             }
         }
+
+        [StoredInline]
+        public class Rule1
+        {
+            public string Name { get; set; }
+        }
+
+        [StoredInline]
+        public class Rule2
+        {
+            public string Name { get; set; }
+            public int Type { get; set; }
+        }
+        public class ObjectWfd1
+        {
+            public Rule1 A { get; set; }
+            public Rule1 B { get; set; }
+            public Rule1 C { get; set; }
+        }
+
+        public class ObjectWfd2
+        {
+            public Rule2 A { get; set; }
+            //public Rule2 B { get; set; }
+            public Rule2 C { get; set; }
+        }
+
+        [Test]
+        public void UpgradeDeletedInlineObjectWorks()
+        {
+            var typeNameWfd = _db.RegisterType(typeof(ObjectWfd1));
+            var typeNameRule = _db.RegisterType(typeof(Rule1));
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ObjectWfd1>();
+                wfd.A = new Rule1 { Name = "A" };
+                wfd.B = new Rule1 { Name = "B" };
+                wfd.C = new Rule1 { Name = "C" };
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(ObjectWfd2), typeNameWfd);
+            _db.RegisterType(typeof(Rule2), typeNameRule);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ObjectWfd2>();
+                Assert.AreEqual("C", wfd.C.Name);
+            }
+        }
     }
 }
+
