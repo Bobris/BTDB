@@ -341,5 +341,16 @@ namespace BTDB.KVDBLayer
         {
             return _btreeRoot.TransactionId;
         }
+
+        public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
+        {
+            if (!IsValidKey()) return new KeyValuePair<uint, uint>();
+            var nodeIdxPair = _stack[_stack.Count - 1];
+            var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+
+            return new KeyValuePair<uint, uint>(
+                (uint) ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length, 
+                _keyValueDB.CalcValueSize(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize));
+        }
     }
 }

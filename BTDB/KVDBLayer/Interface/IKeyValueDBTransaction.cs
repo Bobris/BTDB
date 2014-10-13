@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
@@ -122,5 +123,11 @@ namespace BTDB.KVDBLayer
         /// Global unique increasing number of actually running transaction
         /// </summary>
         long GetTransactionNumber();
+
+        /// <summary>
+        /// Usefull for finding what takes most storege in your DB
+        /// </summary>
+        /// <returns>Size of key and value (possibly even compressed size)</returns>
+        KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
     }
 }

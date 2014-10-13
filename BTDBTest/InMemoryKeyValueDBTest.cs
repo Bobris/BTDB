@@ -58,6 +58,21 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CanGetSizeOfPair()
+        {
+            using (IKeyValueDB db = new InMemoryKeyValueDB())
+            {
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[1]));
+                    var s = tr.GetStorageSizeOfCurrentKey();
+                    Assert.AreEqual(_key1.Length, s.Key);
+                    Assert.AreEqual(1, s.Value);
+                }
+            }
+        }
+
+        [Test]
         public void FirstTransactionIsNumber1()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())

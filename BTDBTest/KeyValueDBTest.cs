@@ -78,6 +78,22 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CanGetSizeOfPair()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr = db.StartTransaction())
+                {
+                    tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[1]));
+                    var s = tr.GetStorageSizeOfCurrentKey();
+                    Assert.AreEqual(_key1.Length, s.Key);
+                    Assert.AreEqual(1, s.Value);
+                }
+            }
+        }
+
+        [Test]
         public void ReadOnlyTransactionThrowsOnWriteAccess()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -88,7 +104,7 @@ namespace BTDBTest
                     Assert.Throws<BTDBTransactionRetryException>(() => tr.CreateKey(new byte[1]));
                 }
             }
-            
+
         }
 
         [Test]
@@ -1044,7 +1060,7 @@ namespace BTDBTest
                     Thread.Sleep(2000);
                     using (var tr = db.StartWritingTransaction().Result)
                     {
-                        tr.EraseRange(0,0);
+                        tr.EraseRange(0, 0);
                         tr.Commit();
                     }
                     db.Compact();

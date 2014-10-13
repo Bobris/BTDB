@@ -9,7 +9,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>
+    public class ODBDictionary<TKey, TValue> : IOrderedDictionary<TKey, TValue>, IQuerySizeDictionary<TKey>
     {
         readonly IInternalObjectDBTransaction _tr;
         readonly IFieldHandler _keyHandler;
@@ -814,6 +814,69 @@ namespace BTDB.ODBLayer
                 _keyValueTr.EraseRange(startIndex, endIndex);
                 _keyValueTrProtector.Stop(ref taken);
                 return Math.Max(0, endIndex - startIndex + 1);
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
+
+        public IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator()
+        {
+            var taken = false;
+            try
+            {
+                long prevProtectionCounter = 0;
+                long pos = 0;
+                while (true)
+                {
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (pos == 0)
+                    {
+                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        _keyValueTr.SetKeyPrefix(_prefix);
+                        if (!_keyValueTr.FindFirstKey()) break;
+                    }
+                    else
+                    {
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        {
+                            _keyValueTr.SetKeyPrefix(_prefix);
+                            if (!_keyValueTr.SetKeyIndex(pos)) break;
+                        }
+                        else
+                        {
+                            if (!_keyValueTr.FindNextKey()) break;
+                        }
+                    }
+                    var size = _keyValueTr.GetStorageSizeOfCurrentKey();
+                    _keyValueTrProtector.Stop(ref taken);
+                    yield return size;
+                    pos++;
+                }
+            }
+            finally
+            {
+                _keyValueTrProtector.Stop(ref taken);
+            }
+        }
+
+        public KeyValuePair<uint, uint> QuerySizeByKey(TKey key)
+        {
+            bool taken = false;
+            var keyBytes = KeyToByteArray(key);
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(_prefix);
+                bool found = _keyValueTr.FindExactKey(keyBytes);
+                if (!found)
+                {
+                    throw new ArgumentException("Key not found in Dictionary");
+                }
+                var size = _keyValueTr.GetStorageSizeOfCurrentKey();
+                _keyValueTrProtector.Stop(ref taken);
+                return size;
             }
             finally
             {

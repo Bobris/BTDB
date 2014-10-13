@@ -831,6 +831,24 @@ namespace BTDBTest
             }
         }
 
+        [Test]
+        public void CanQuerySizeOfKeyInOrderedDictionary()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedDictionary>();
+                root.Int2String.Add(3, "C");
+                var qs = (IQuerySizeDictionary<int>)root.Int2String;
+                var size = qs.QuerySizeByKey(3);
+                Assert.AreEqual(3, size.Key);
+                Assert.AreEqual(2, size.Value);
+                root.Int2String.Add(1, "A");
+                size = qs.QuerySizeEnumerator().First();
+                Assert.AreEqual(3, size.Key);
+                Assert.AreEqual(2, size.Value);
+            }
+        }
+
         public class ComplexDictionary
         {
             public IDictionary<string, Person> String2Person { get; set; }
@@ -1127,6 +1145,18 @@ namespace BTDBTest
         }
 
         [Test]
+        public void CanGetSizeOfObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var oid = tr.StoreAndFlush(new Person { Name = "Bobris", Age = 35 });
+                var s = tr.GetStorageSize(oid);
+                Assert.AreEqual(2, s.Key);
+                Assert.AreEqual(10, s.Value);
+            }
+        }
+
+        [Test]
         public void SingletonShouldNotNeedWritableTransactionIfNotCommited()
         {
             using (var tr = _db.StartTransaction())
@@ -1256,7 +1286,6 @@ namespace BTDBTest
                 Assert.NotNull(d.Dict);
             }
         }
-
 
         [Test]
         public void PossibleToAllocateNewPreinitializedObject()

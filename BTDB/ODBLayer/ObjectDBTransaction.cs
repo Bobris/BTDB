@@ -339,6 +339,27 @@ namespace BTDB.ODBLayer
             return 0;
         }
 
+        public KeyValuePair<uint, uint> GetStorageSize(ulong oid)
+        {
+            bool taken = false;
+            try
+            {
+                _keyValueTrProtector.Start(ref taken);
+                _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+                {
+                    return new KeyValuePair<uint, uint>(0,0);
+                }
+                var res = _keyValueTr.GetStorageSizeOfCurrentKey();
+                _keyValueTrProtector.Stop(ref taken);
+                return res;
+            }
+            finally
+            {
+                if (taken) _keyValueTrProtector.Stop();
+            }
+        }
+
         public IEnumerable<Type> EnumerateSingletonTypes()
         {
             foreach (var tableInfo in _owner.TablesInfo.EnumerateTableInfos().ToArray())

@@ -10,6 +10,8 @@ namespace BTDB.ODBLayer
 
         object Get(ulong oid);
         ulong GetOid(object @object);
+        // return key and value byte size by object id
+        KeyValuePair<uint, uint> GetStorageSize(ulong oid); 
 
         IEnumerable<Type> EnumerateSingletonTypes();
         object Singleton(Type type);
