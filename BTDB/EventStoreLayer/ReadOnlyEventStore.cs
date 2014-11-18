@@ -155,12 +155,13 @@ namespace BTDB.EventStoreLayer
                     }
                 }
                 bufferReadOffset += (int)blockLen;
-                NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset;
+                if (overflowWriter == null)
+                    NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset;
                 if (stopReadingRequested)
                 {
                     return;
                 }
-                var nextBufferStartPosition = NextReadPosition & SectorMask;
+                var nextBufferStartPosition = (bufferStartPosition + (ulong)bufferReadOffset) & SectorMask;
                 var bufferMoveDistance = (int)(nextBufferStartPosition - bufferStartPosition);
                 if (bufferMoveDistance <= 0) continue;
                 Array.Copy(bufferBlock, bufferMoveDistance, bufferBlock, 0, bufferFullLength - bufferMoveDistance);
@@ -170,7 +171,8 @@ namespace BTDB.EventStoreLayer
             }
             if (overflowWriter != null)
             {
-                SetCorrupted();
+                // It is not corrupted here just unfinished, but definitely not appendable
+                EndBufferPosition = ulong.MaxValue;
                 return;
             }
             EndBufferLen = (uint)(bufferReadOffset - (bufferReadOffset & SectorMaskUInt));

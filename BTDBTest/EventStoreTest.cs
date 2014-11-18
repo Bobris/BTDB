@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using NUnit.Framework;
 
@@ -54,6 +55,32 @@ namespace BTDBTest
             Assert.True(appender.IsKnownAsAppendable());
             Assert.False(appender.IsKnownAsCorrupted());
             Assert.False(appender.IsKnownAsFinished());
+        }
+
+        [Test]
+        public void CanReadLongerEventsFromIncompleteFile()
+        {
+            var manager = new EventStoreManager();
+            manager.CompressionStrategy = new NoCompressionStrategy();
+            var file1 = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file1);
+            appender.Store(null, new object[] { new byte[8000] });
+            var file2 = new MemoryEventFileStorage();
+            var buf = ByteBuffer.NewSync(new byte[4096]);
+            file1.Read(buf, 0);
+            file2.Write(buf, 0);
+            var reader = manager.OpenReadOnlyStore(file2);
+            reader.ReadFromStartToEnd(new SkippingEventObserver());
+            Assert.False(reader.IsKnownAsCorrupted());
+            Assert.False(reader.IsKnownAsAppendable());
+            Assert.False(reader.IsKnownAsFinished());
+            buf = ByteBuffer.NewSync(new byte[4096]);
+            file1.Read(buf, 4096);
+            file2.Write(buf, 4096);
+            reader.ReadToEnd(new SkippingEventObserver());
+            Assert.False(reader.IsKnownAsCorrupted());
+            Assert.True(reader.IsKnownAsAppendable());
+            Assert.False(reader.IsKnownAsFinished());
         }
 
         [Test]
