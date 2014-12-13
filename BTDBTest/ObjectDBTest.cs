@@ -1626,6 +1626,52 @@ namespace BTDBTest
                 Assert.AreEqual("C", wfd.C.Name);
             }
         }
+
+        public enum MapEnum
+        {
+            A
+        };
+
+        public enum MapEnumEx
+        {
+            A,
+            B
+        }
+
+        public class ComplexMap
+        {
+            public IOrderedDictionary<ulong, IDictionary<MapEnum, int>> Items { get; set; }
+        }
+
+        public class ComplexMapEx
+        {
+            public IOrderedDictionary<ulong, IDictionary<MapEnumEx, int>> Items { get; set; }
+        }
+
+        [Test]
+        [Ignore("Failing")]
+        public void UpgradeNestedMapWithEnumWorks()
+        {
+            var typeComplexMap = _db.RegisterType(typeof(ComplexMap));
+            var typeEnum = _db.RegisterType(typeof(MapEnum));
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ComplexMap>();
+                wfd.Items[0] = new Dictionary<MapEnum, int> { { MapEnum.A, 11 } };
+                tr.Commit();
+            }
+
+            ReopenDb();
+            _db.RegisterType(typeof(ComplexMapEx), typeComplexMap);
+            _db.RegisterType(typeof(MapEnumEx), typeEnum);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ComplexMapEx>();
+                Assert.AreEqual(11, wfd.Items[0][MapEnumEx.A]);
+            }
+        }
     }
 }
 
