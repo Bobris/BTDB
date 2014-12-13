@@ -236,7 +236,7 @@ namespace BTDB.ODBLayer
             }
             var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
             var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1], wantedValueHandler);
-            if (wantedKeyHandler == specializedKeyHandler && wantedValueHandler == specializedValueHandler)
+            if (wantedKeyHandler == specializedKeyHandler && (wantedValueHandler == specializedValueHandler || wantedValueHandler.HandledType()==specializedValueHandler.HandledType()))
             {
                 return typeHandler;
             }

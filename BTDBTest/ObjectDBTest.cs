@@ -1649,7 +1649,6 @@ namespace BTDBTest
         }
 
         [Test]
-        [Ignore("Failing")]
         public void UpgradeNestedMapWithEnumWorks()
         {
             var typeComplexMap = _db.RegisterType(typeof(ComplexMap));
