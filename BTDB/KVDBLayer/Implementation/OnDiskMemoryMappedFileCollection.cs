@@ -250,6 +250,7 @@ namespace BTDB.KVDBLayer
                 {
                     if (size > 0 && position < _writer.Ofs)
                     {
+                        MapContent();
                         var read = size;
                         if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
                         fixed (byte* dst = data)
