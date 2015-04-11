@@ -1671,6 +1671,36 @@ namespace BTDBTest
                 Assert.AreEqual(11, wfd.Items[0][MapEnumEx.A]);
             }
         }
+
+        public class SimpleWithIndexer
+        {
+            public string OddName { get; set; }
+            public string EvenName { get; set; }
+
+            public string this[int i]
+            {
+                get { return i % 2 == 0 ? EvenName : OddName; }
+            }
+        }
+
+        [Test]
+        public void CanStoreObjectWithIndexer()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<SimpleWithIndexer>();
+                t.OddName = "oddy";
+                t.EvenName= "evvy";
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<SimpleWithIndexer>();
+                Assert.AreEqual("oddy", t.OddName);
+                Assert.AreEqual("evvy", t[12]);
+            }
+        }
     }
 }
 
