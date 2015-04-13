@@ -46,7 +46,7 @@ namespace BTDB.Service
                 foreach (var property in properties)
                 {
                     if (!property.CanRead || !property.CanWrite) continue;
-                    if (property.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) return;
+                    if (property.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                     if (property.GetIndexParameters().Length != 0) continue;
                     if (property.GetGetMethod()==null) continue;
                     if (property.GetSetMethod()==null) continue;
