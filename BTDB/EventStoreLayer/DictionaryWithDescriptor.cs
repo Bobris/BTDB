@@ -29,7 +29,7 @@ namespace BTDB.EventStoreLayer
                 sb.AppendJsonLike(p.Key).Append(": ").AppendJsonLike(p.Value);
             }
             sb.Append(" }");
-            return base.ToString();
+            return sb.ToString();
         }
     }
 }
