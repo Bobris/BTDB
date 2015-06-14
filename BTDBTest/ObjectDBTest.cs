@@ -1347,7 +1347,7 @@ namespace BTDBTest
             public IDictionary<InlinePersonNew, int> Dict { get; set; }
         }
 
-        [Test, Ignore]
+        [Test, Ignore("This is very difficult to do")]
         public void UpgradingKeyInDictionary()
         {
             var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
