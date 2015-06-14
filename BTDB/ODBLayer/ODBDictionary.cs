@@ -26,6 +26,11 @@ namespace BTDB.ODBLayer
         KeysCollection _keysCollection;
         ValuesCollection _valuesCollection;
 
+        internal static void throwIfModified(bool wasKeyChange)
+        {
+            if (wasKeyChange) throw new InvalidOperationException("DB modified during enumaration");
+        }
+
         public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
         {
             _tr = tr;
@@ -97,7 +102,7 @@ namespace BTDB.ODBLayer
             var taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, true);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 _keyValueTr.EraseAll();
                 _count = 0;
@@ -151,7 +156,7 @@ namespace BTDB.ODBLayer
                     bool taken = false;
                     try
                     {
-                        _keyValueTrProtector.Start(ref taken);
+                        _keyValueTrProtector.Start(ref taken, false);
                         _keyValueTr.SetKeyPrefix(_prefix);
                         _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                     }
@@ -209,7 +214,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, false);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 return _keyValueTr.FindExactKey(keyBytes);
             }
@@ -226,7 +231,7 @@ namespace BTDB.ODBLayer
             var valueBytes = ValueToByteArray(value);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, true);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 if (_keyValueTr.FindExactKey(keyBytes))
                 {
@@ -247,7 +252,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, true);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 bool found = _keyValueTr.FindExactKey(keyBytes);
                 if (found)
@@ -269,7 +274,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, false);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 bool found = _keyValueTr.FindExactKey(keyBytes);
                 if (!found)
@@ -296,7 +301,7 @@ namespace BTDB.ODBLayer
                 var keyBytes = KeyToByteArray(key);
                 try
                 {
-                    _keyValueTrProtector.Start(ref taken);
+                    _keyValueTrProtector.Start(ref taken, false);
                     _keyValueTr.SetKeyPrefix(_prefix);
                     bool found = _keyValueTr.FindExactKey(keyBytes);
                     if (!found)
@@ -319,7 +324,7 @@ namespace BTDB.ODBLayer
                 var valueBytes = ValueToByteArray(value);
                 try
                 {
-                    _keyValueTrProtector.Start(ref taken);
+                    _keyValueTrProtector.Start(ref taken, false);
                     _keyValueTr.SetKeyPrefix(_prefix);
                     if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                     {
@@ -374,7 +379,7 @@ namespace BTDB.ODBLayer
                     long pos = 0;
                     while (true)
                     {
-                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
+                        if (!taken) _parent._keyValueTrProtector.Start(ref taken, false);
                         if (pos == 0)
                         {
                             prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
@@ -383,8 +388,10 @@ namespace BTDB.ODBLayer
                         }
                         else
                         {
-                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                            bool wasKeyChange = false;
+                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                             {
+                                throwIfModified(wasKeyChange);
                                 _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
                                 if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                             }
@@ -482,7 +489,7 @@ namespace BTDB.ODBLayer
                     long pos = 0;
                     while (true)
                     {
-                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
+                        if (!taken) _parent._keyValueTrProtector.Start(ref taken, false);
                         if (pos == 0)
                         {
                             prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
@@ -491,8 +498,10 @@ namespace BTDB.ODBLayer
                         }
                         else
                         {
-                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                            bool wasKeyChange = false;
+                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                             {
+                                throwIfModified(wasKeyChange);
                                 _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
                                 if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                             }
@@ -581,7 +590,7 @@ namespace BTDB.ODBLayer
                 long pos = 0;
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (!taken) _keyValueTrProtector.Start(ref taken, false);
                     if (pos == 0)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -590,8 +599,10 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        bool wasKeyChange = false;
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                         {
+                            throwIfModified(wasKeyChange);
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -624,7 +635,7 @@ namespace BTDB.ODBLayer
                 long pos = long.MaxValue;
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (!taken) _keyValueTrProtector.Start(ref taken, false);
                     if (pos == long.MaxValue)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -634,8 +645,10 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        bool wasKeyChange = false;
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                         {
+                            throwIfModified(wasKeyChange);
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -669,7 +682,7 @@ namespace BTDB.ODBLayer
                 long pos = 0;
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (!taken) _keyValueTrProtector.Start(ref taken, false);
                     if (pos == 0)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -695,8 +708,10 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        bool wasKeyChange = false;
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                         {
+                            throwIfModified(wasKeyChange);
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -730,7 +745,7 @@ namespace BTDB.ODBLayer
                 long pos = long.MaxValue;
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (!taken) _keyValueTrProtector.Start(ref taken, false);
                     if (pos == long.MaxValue)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -756,8 +771,10 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        bool wasKeyChange = false;
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                         {
+                            throwIfModified(wasKeyChange);
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -788,7 +805,7 @@ namespace BTDB.ODBLayer
             var endKeyBytes = KeyToByteArray(end);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, true);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 var result = _keyValueTr.Find(ByteBuffer.NewAsync(startKeyBytes));
                 if (result == FindResult.NotFound) return 0;
@@ -830,7 +847,7 @@ namespace BTDB.ODBLayer
                 long pos = 0;
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
+                    if (!taken) _keyValueTrProtector.Start(ref taken, false);
                     if (pos == 0)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -839,8 +856,10 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        bool wasKeyChange = false;
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter, ref wasKeyChange))
                         {
+                            throwIfModified(wasKeyChange);
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -867,7 +886,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             try
             {
-                _keyValueTrProtector.Start(ref taken);
+                _keyValueTrProtector.Start(ref taken, false);
                 _keyValueTr.SetKeyPrefix(_prefix);
                 bool found = _keyValueTr.FindExactKey(keyBytes);
                 if (!found)

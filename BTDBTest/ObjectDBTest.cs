@@ -1719,13 +1719,14 @@ namespace BTDBTest
             {
                 var sd = tr.Singleton<SimpleDictionary>().Int2String;
                 Assert.AreEqual(sd.Count, 3);
-                
-                foreach (var kvp in sd)
-                {
-                    sd.Remove(kvp.Key);
-                }
 
-                CollectionAssert.IsEmpty(sd);
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    foreach (var kvp in sd)
+                    {
+                        sd.Remove(kvp.Key);
+                    }
+                });
             }
         }
     }
