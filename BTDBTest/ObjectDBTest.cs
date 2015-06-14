@@ -1701,6 +1701,33 @@ namespace BTDBTest
                 Assert.AreEqual("evvy", t[12]);
             }
         }
+
+        [Test]
+        public void LoopsThroughAllItemsEvenIfDeleteIsPerformed()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var sd = tr.Singleton<SimpleDictionary>().Int2String;
+                sd[0] = "a";
+                sd[1] = "b";
+                sd[2] = "c";
+
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var sd = tr.Singleton<SimpleDictionary>().Int2String;
+                Assert.AreEqual(sd.Count, 3);
+                
+                foreach (var kvp in sd)
+                {
+                    sd.Remove(kvp.Key);
+                }
+
+                CollectionAssert.IsEmpty(sd);
+            }
+        }
     }
 }
 
