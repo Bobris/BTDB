@@ -1759,8 +1759,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var sd = tr.Singleton<DictWithComplexCompoundKey>().Items;
-                var deleted = sd.RemoveRange(new LogId { Key = "key", DateTime = DateTime.MinValue, CollisionId = ushort.MinValue },
-                    true, new LogId { Key = "key", DateTime = DateTime.MaxValue, CollisionId = ushort.MaxValue }, true);
+                var deleted = sd.RemoveRange(new LogId { Key = "key", DateTime = DateTime.MinValue.ToUniversalTime(), CollisionId = ushort.MinValue },
+                    true, new LogId { Key = "key", DateTime = DateTime.MaxValue.ToUniversalTime(), CollisionId = ushort.MaxValue }, true);
 
                 Assert.AreEqual(3, deleted);
 
