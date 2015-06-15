@@ -1729,6 +1729,44 @@ namespace BTDBTest
                 });
             }
         }
+
+        public class DictWithComplexCompoundKey
+        {
+            public IOrderedDictionary<LogId, string> Items { get; set; }
+        }
+
+        [StoredInline]
+        public class LogId
+        {
+            public string Key { get; set; }
+            public DateTime DateTime { get; set; }
+            public ulong CollisionId { get; set; }
+        }
+
+        [Test]
+        public void CanRemoveRangeOfCompoundKeys()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var sd = tr.Singleton<DictWithComplexCompoundKey>().Items;
+                sd[new LogId() { Key = "key", DateTime = DateTime.UtcNow, CollisionId = 0 }] = "a";
+                sd[new LogId() { Key = "key", DateTime = DateTime.UtcNow.AddSeconds(1), CollisionId = 0 }] = "b";
+                sd[new LogId() { Key = "key", DateTime = DateTime.UtcNow.AddSeconds(2), CollisionId = 0 }] = "c";
+
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var sd = tr.Singleton<DictWithComplexCompoundKey>().Items;
+                var deleted = sd.RemoveRange(new LogId { Key = "key", DateTime = DateTime.MinValue, CollisionId = ushort.MinValue },
+                    true, new LogId { Key = "key", DateTime = DateTime.MaxValue, CollisionId = ushort.MaxValue }, true);
+
+                Assert.AreEqual(3, deleted);
+
+                CollectionAssert.IsEmpty(sd);
+            }
+        }
     }
 }
 
