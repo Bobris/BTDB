@@ -121,7 +121,7 @@ namespace BTDB.ODBLayer
             {
                 while (true)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken,false);
+                    if (!taken) _keyValueTrProtector.Start(ref taken);
                     if (oid == 0)
                     {
                         prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -130,7 +130,7 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInteruptedCanSurviveAnything(prevProtectionCounter))
+                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                             oid++;
@@ -307,7 +307,7 @@ namespace BTDB.ODBLayer
             bool taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken, false);
+                _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                 {
@@ -344,7 +344,7 @@ namespace BTDB.ODBLayer
             bool taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken, false);
+                _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                 {
@@ -394,7 +394,7 @@ namespace BTDB.ODBLayer
                     bool taken = false;
                     try
                     {
-                        _keyValueTrProtector.Start(ref taken, false);
+                        _keyValueTrProtector.Start(ref taken);
                         _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                         if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                         {
@@ -696,7 +696,7 @@ namespace BTDB.ODBLayer
             var taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken, true);
+                _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (_keyValueTr.FindExactKey(BuildKeyFromOid(metadata.Id)))
                     _keyValueTr.EraseCurrent();
@@ -740,7 +740,7 @@ namespace BTDB.ODBLayer
             var taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken, true);
+                _keyValueTrProtector.Start(ref taken);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                     _keyValueTr.EraseCurrent();
@@ -835,7 +835,7 @@ namespace BTDB.ODBLayer
             var shouldStop = false;
             try
             {
-                _keyValueTrProtector.Start(ref shouldStop, true);
+                _keyValueTrProtector.Start(ref shouldStop);
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data.ToByteArray());
             }
@@ -850,7 +850,7 @@ namespace BTDB.ODBLayer
             var taken = false;
             try
             {
-                _keyValueTrProtector.Start(ref taken, false);
+                _keyValueTrProtector.Start(ref taken);
                 if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
                 {
                     if (tableInfo.LastPersistedVersion <= 0)

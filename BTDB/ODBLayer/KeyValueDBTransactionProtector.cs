@@ -7,18 +7,15 @@ namespace BTDB.ODBLayer
     {
         readonly object _lock = new object();
         long _protectionCounter;
-        long _lastChangeOfKeys;
         bool _lockTaken;
 
-
-        internal void Start(ref bool taken, bool changeOfKeys)
+        internal void Start(ref bool taken)
         {
             Debug.Assert(_lockTaken == false);
             _lockTaken = false;
             taken = true;
             Monitor.Enter(_lock, ref _lockTaken);
             _protectionCounter++;
-            if (changeOfKeys) _lastChangeOfKeys = _protectionCounter;
         }
 
         internal void Stop()
@@ -40,14 +37,8 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal bool WasInteruptedCanSurviveAnything(long lastCounter)
+        internal bool WasInterupted(long lastCounter)
         {
-            return lastCounter + 1 != _protectionCounter;
-        }
-
-        internal bool WasInterupted(long lastCounter, ref bool wasChangeOfKeys)
-        {
-            wasChangeOfKeys = lastCounter <= _lastChangeOfKeys;
             return lastCounter + 1 != _protectionCounter;
         }
 
