@@ -14,6 +14,7 @@
     <TargetFrameworkProfile />
     <FileUpgradeFlags>
     </FileUpgradeFlags>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -117,6 +118,7 @@
     <Compile Include="FieldHandler\IFieldHandlerWithInit.cs" />
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\IIndirect.cs" />
+    <Compile Include="FieldHandler\PersistedNameAttribute.cs" />
     <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />

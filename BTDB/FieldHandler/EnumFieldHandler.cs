@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using BTDB.IL;
 using BTDB.StreamLayer;
+using System.Diagnostics;
 
 namespace BTDB.FieldHandler
 {
@@ -26,6 +26,13 @@ namespace BTDB.FieldHandler
                 _signed = IsSignedEnum(enumType);
                 _flags = IsFlagsEnum(enumType);
                 _names = enumType.GetEnumNames();
+                var members = enumType.GetMembers(BindingFlags.Static | BindingFlags.Public);
+                Debug.Assert(members.Length == _names.Length);
+                for (int i = 0; i < members.Length; i++)
+                {
+                    var a = members[i].GetCustomAttributes<PersistedNameAttribute>().FirstOrDefault();
+                    if (a != null) _names[i] = a.Name;
+                }
                 var undertype = enumType.GetEnumUnderlyingType();
                 var enumValues = enumType.GetEnumValues();
                 IEnumerable<ulong> enumValuesUlongs;

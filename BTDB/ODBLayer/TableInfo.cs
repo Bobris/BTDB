@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
+using System.Linq;
 
 namespace BTDB.ODBLayer
 {
@@ -133,6 +134,7 @@ namespace BTDB.ODBLayer
                         .Newobj(() => new DBReaderCtx(null))
                         .Stloc(1);
                 }
+                var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
                 {
                     var srcFieldInfo = tableVersionInfo[fi];
@@ -144,7 +146,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
                     if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
@@ -224,10 +226,11 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBWriterCtx(null, null))
                     .Stloc(1);
             }
+            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             for (int i = 0; i < ClientTableVersionInfo.FieldCount; i++)
             {
                 var field = ClientTableVersionInfo[i];
-                var getter = ClientType.GetProperty(field.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetGetMethod(true);
+                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
                 var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
                 if (handler.NeedsCtx())
@@ -314,6 +317,7 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
+            var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
@@ -325,7 +329,8 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientTableVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    var fieldInfo = _clientType.GetProperty(destFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
+
+                    var fieldInfo = props.First(p => GetPersistantName(p) == destFieldInfo.Name).GetSetMethod(true);
                     var fieldType = fieldInfo.GetParameters()[0].ParameterType;
                     var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
                     var willLoad = specializedSrcHandler.HandledType();
@@ -355,7 +360,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = _clientType.GetProperty(srcFieldInfo.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
                     if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
@@ -367,6 +372,12 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             return method.Create();
+        }
+
+        static string GetPersistantName(PropertyInfo p)
+        {
+            var a = p.GetCustomAttribute<PersistedNameAttribute>();
+            return a != null ? a.Name : p.Name;
         }
 
         internal static byte[] BuildKeyForTableVersions(uint tableId, uint tableVersion)
@@ -389,7 +400,7 @@ namespace BTDB.ODBLayer
 
         public void CacheSingletonContent(long transactionNumber, byte[] content)
         {
-            lock(_cachedSingletonLock)
+            lock (_cachedSingletonLock)
             {
                 if (transactionNumber - _cachedSingletonTrNum < 0) return;
                 _cachedSingletonTrNum = transactionNumber;

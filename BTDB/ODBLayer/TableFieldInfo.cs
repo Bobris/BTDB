@@ -41,7 +41,8 @@ namespace BTDB.ODBLayer
         {
             var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType, FieldHandlerOptions.None);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
-            return new TableFieldInfo(pi.Name, fieldHandler);
+            var a = pi.GetCustomAttribute<PersistedNameAttribute>();
+            return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler);
         }
 
         internal void Save(AbstractBufferedWriter writer)

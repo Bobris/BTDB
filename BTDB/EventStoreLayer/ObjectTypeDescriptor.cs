@@ -7,6 +7,7 @@ using System.Text;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using BTDB.FieldHandler;
 
 namespace BTDB.EventStoreLayer
 {
@@ -53,9 +54,15 @@ namespace BTDB.EventStoreLayer
                 var descriptor = factory.Create(propertyInfo.PropertyType);
                 if (descriptor != null)
                 {
-                    _fields.Add(new KeyValuePair<string, ITypeDescriptor>(propertyInfo.Name, descriptor));
+                    _fields.Add(new KeyValuePair<string, ITypeDescriptor>(GetPersitentName(propertyInfo), descriptor));
                 }
             }
+        }
+
+        static string GetPersitentName(System.Reflection.PropertyInfo propertyInfo)
+        {
+            var a = propertyInfo.GetCustomAttributes(typeof(PersistedNameAttribute), false).Cast<PersistedNameAttribute>().FirstOrDefault();
+            return a != null ? a.Name : propertyInfo.Name;
         }
 
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
@@ -124,14 +131,14 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
-            if (targetType == typeof (object))
+            if (targetType == typeof(object))
             {
-                var resultLoc = ilGenerator.DeclareLocal(typeof (DynamicObject), "result");
+                var resultLoc = ilGenerator.DeclareLocal(typeof(DynamicObject), "result");
                 var labelNoCtx = ilGenerator.DefineLabel();
                 ilGenerator
                     .Do(pushDescriptor)
-                    .Castclass(typeof (ObjectTypeDescriptor))
-                    .Newobj(typeof (DynamicObject).GetConstructor(new[] {typeof (ObjectTypeDescriptor)}))
+                    .Castclass(typeof(ObjectTypeDescriptor))
+                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) }))
                     .Stloc(resultLoc)
                     .Do(pushCtx)
                     .BrfalseS(labelNoCtx)
@@ -149,13 +156,13 @@ namespace BTDB.EventStoreLayer
                         il =>
                             il.Do(pushDescriptor)
                                 .LdcI4(idxForCapture)
-                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof (object));
+                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object));
                     ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
                     idx++;
                 }
                 ilGenerator
                     .Ldloc(resultLoc)
-                    .Castclass(typeof (object));
+                    .Castclass(typeof(object));
             }
             else
             {
@@ -175,7 +182,7 @@ namespace BTDB.EventStoreLayer
                 {
                     var idxForCapture = idx;
                     var pair = _fields[idx];
-                    var prop = props.FirstOrDefault(p => p.Name == pair.Key);
+                    var prop = props.FirstOrDefault(p => GetPersitentName(p) == pair.Key);
                     if (prop == null)
                     {
                         pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
@@ -337,6 +344,7 @@ namespace BTDB.EventStoreLayer
 
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx)
             {
+                var allProps = _objectTypeDescriptor._type.GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
                     if (pair.Value.Sealed) continue;
@@ -344,7 +352,7 @@ namespace BTDB.EventStoreLayer
                         .Do(pushCtx)
                         .Do(pushObj)
                         .Castclass(_objectTypeDescriptor._type)
-                        .Callvirt(_objectTypeDescriptor._type.GetProperty(pair.Key).GetGetMethod())
+                        .Callvirt(allProps.First(p => GetPersitentName(p) == pair.Key).GetGetMethod())
                         .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
                 }
             }
@@ -406,7 +414,7 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                var methodInfo = _type.GetProperty(pair.Key).GetGetMethod();
+                var methodInfo = _type.GetProperties().First(p=>GetPersitentName(p)==pair.Key).GetGetMethod();
                 pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }

@@ -1690,7 +1690,7 @@ namespace BTDBTest
             {
                 var t = tr.Singleton<SimpleWithIndexer>();
                 t.OddName = "oddy";
-                t.EvenName= "evvy";
+                t.EvenName = "evvy";
                 tr.Commit();
             }
             ReopenDb();
@@ -1767,6 +1767,46 @@ namespace BTDBTest
                 CollectionAssert.IsEmpty(sd);
             }
         }
+
+        public enum TestRenamedEnum
+        {
+            [PersistedName("Item1")]
+            ItemA,
+            [PersistedName("Item2")]
+            ItemB
+        }
+
+        public class CTestRenamedEnum
+        {
+            [PersistedName("E")]
+            public TestRenamedEnum EE { get; set; }
+        }
+
+        [Test]
+        public void UnderstandPersistedNameInEnum()
+        {
+            TestEnum2TestRenamedEnum(TestEnum.Item1, TestRenamedEnum.ItemA);
+            TestEnum2TestRenamedEnum(TestEnum.Item2, TestRenamedEnum.ItemB);
+        }
+
+        void TestEnum2TestRenamedEnum(TestEnum from, TestRenamedEnum to)
+        {
+            ReopenDb();
+            var testEnumObjDbName = _db.RegisterType(typeof(CTestEnum));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new CTestEnum { E = from });
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(CTestRenamedEnum), testEnumObjDbName);
+            using (var tr = _db.StartTransaction())
+            {
+                var e = tr.Enumerate<CTestRenamedEnum>().First();
+                Assert.AreEqual(to, e.EE);
+                tr.Delete(e);
+                tr.Commit();
+            }
+        }
     }
 }
-
