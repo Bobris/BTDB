@@ -30,9 +30,9 @@ namespace BTDB.IL
             _expectedLength = 64;
             var mi = delegateType.GetMethod("Invoke");
             var uniqueName = ILDynamicTypeDebugImpl.UniqueName(name);
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, Path.Combine(Path.GetTempPath(), "dynamicIL"));
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
+            var sourceCodeFileName = Path.Combine(Path.GetTempPath(),"dynamicIL/" + uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             Type[] parameterTypes;
