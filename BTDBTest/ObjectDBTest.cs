@@ -1808,5 +1808,63 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+        
+        public class UlongGuidKey
+        {
+            public ulong Ulong { get; set; }
+            public Guid Guid { get; set; }
+        }
+
+        public class UlongGuidMap
+        {
+            public IOrderedDictionary<UlongGuidKey, string> Items { get; set; }
+        }
+
+        public class GuidMap
+        {
+            public IOrderedDictionary<Guid, string> Items { get; set; }
+        }
+
+        [Test]
+        public void GuidInKey()
+        {
+            var guid = Guid.NewGuid();
+            using (var tr = _db.StartTransaction())
+            {
+                var items = tr.Singleton<GuidMap>().Items;
+                items[guid] = "a";
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var items = tr.Singleton<GuidMap>().Items;
+                string value;
+                Assert.AreEqual(true, items.TryGetValue(guid, out value));
+
+                Assert.AreEqual("a", value);
+            }
+        }
+
+        [Test]
+        public void GuidInComplexKey()
+        {
+            var guid = Guid.NewGuid();
+            using (var tr = _db.StartTransaction())
+            {
+                var items = tr.Singleton<UlongGuidMap>().Items;
+                items[new UlongGuidKey { Ulong = 1, Guid = guid }] = "a";
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var items = tr.Singleton<UlongGuidMap>().Items;
+                string value;
+                Assert.AreEqual(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
+
+                Assert.AreEqual("a", value);
+            }
+        }
     }
 }
