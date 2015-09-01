@@ -1809,6 +1809,7 @@ namespace BTDBTest
             }
         }
         
+        [StoredInline]
         public class UlongGuidKey
         {
             public ulong Ulong { get; set; }
