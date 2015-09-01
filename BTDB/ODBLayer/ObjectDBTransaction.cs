@@ -891,7 +891,27 @@ namespace BTDB.ODBLayer
 
         public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
         {
-            throw new NotImplementedException();
+            var interfaceType = typeof(T);
+            var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, typeof(object),new [] { interfaceType });
+            var transactionField = classImpl.DefineField("transaction", typeof(IInternalObjectDBTransaction), System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
+            var constructorMethod = classImpl.DefineConstructor(new[] { typeof(IObjectDBTransaction) });
+            var il = constructorMethod.Generator;
+            // super.ctor();
+            il.Ldarg(0).Call(() => new object());
+            // this.transaction = (IInternalObjectDBTransaction)arg0; return;
+            il.Ldarg(0).Ldarg(1).Castclass(typeof(IInternalObjectDBTransaction)).Stfld(transactionField).Ret();
+            var methods = interfaceType.GetMethods();
+            foreach (var method in methods)
+            {
+                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType, method.GetParameters().Select(pi => pi.ParameterType).ToArray(), System.Reflection.MethodAttributes.Virtual | System.Reflection.MethodAttributes.Public);
+                reqMethod.Generator.Ret();
+                classImpl.DefineMethodOverride(reqMethod, method);
+            }
+            var classImplType = classImpl.CreateType();
+            var creatorMethod = ILBuilder.Instance.NewMethod<Func<IObjectDBTransaction, T>>("RelationCreator" + relationName);
+            // return (T)new ClassImpl(arg);
+            creatorMethod.Generator.Ldarg(0).Newobj(classImplType.GetConstructors()[0]).Castclass(interfaceType).Ret();
+            return creatorMethod.Create();
         }
     }
 }

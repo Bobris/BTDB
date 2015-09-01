@@ -220,12 +220,12 @@ namespace BTDB.ODBLayer
 
         internal ulong AllocateNewOid()
         {
-            return (ulong)System.Threading.Interlocked.Increment(ref _lastObjId);
+            return (ulong)Interlocked.Increment(ref _lastObjId);
         }
 
         internal ulong GetLastAllocatedOid()
         {
-            return (ulong)System.Threading.Interlocked.Read(ref _lastObjId);
+            return (ulong)Interlocked.Read(ref _lastObjId);
         }
 
         public int RegisterInstance(object content)
