@@ -587,9 +587,6 @@ namespace BTDBTest
 
         class PrivateLogger : ILogger
         {
-            public PrivateLogger()
-            {
-            }
         }
 
         [Test]
@@ -604,7 +601,7 @@ namespace BTDBTest
 
         public class PublicClassWithPrivateConstructor : ILogger
         {
-            private PublicClassWithPrivateConstructor()
+            PublicClassWithPrivateConstructor()
             {
             }
         }

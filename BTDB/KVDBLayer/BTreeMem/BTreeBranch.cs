@@ -5,7 +5,7 @@ using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
-    internal class BTreeBranch : IBTreeNode
+    class BTreeBranch : IBTreeNode
     {
         internal readonly long TransactionId;
         byte[][] _keys;

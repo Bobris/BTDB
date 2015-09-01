@@ -1,6 +1,6 @@
 namespace BTDB.ChunkCache
 {
-    internal interface IFileInfo
+    interface IFileInfo
     {
         DiskChunkFileType FileType { get; }
         long Generation { get; }

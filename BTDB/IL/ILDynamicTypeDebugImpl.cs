@@ -8,7 +8,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILDynamicTypeDebugImpl : IILDynamicType
+    class ILDynamicTypeDebugImpl : IILDynamicType
     {
         static readonly ConcurrentDictionary<string, int> UniqueNames = new ConcurrentDictionary<string, int>();
 
@@ -25,9 +25,9 @@ namespace BTDB.IL
         {
             _name = name;
             var uniqueName = UniqueName(name);
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, DynamicILDirectoryPath.DynamicIL);
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
+            var sourceCodeFileName = Path.Combine(DynamicILDirectoryPath.DynamicIL, uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             _sourceCodeWriter.WriteLine(string.Format("class {0} : {1}{2}", name, baseType.ToSimpleName(), string.Concat(interfaces.Select(i => ", " + i.ToSimpleName()))));

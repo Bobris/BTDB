@@ -6,7 +6,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class AlwaysNewImpl : ICReg, ICRegILGen
+    class AlwaysNewImpl : ICReg, ICRegILGen
     {
         readonly Type _implementationType;
         readonly ConstructorInfo _constructorInfo;

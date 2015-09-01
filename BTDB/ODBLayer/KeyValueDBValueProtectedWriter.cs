@@ -2,7 +2,7 @@
 
 namespace BTDB.ODBLayer
 {
-    internal class KeyValueDBValueProtectedWriter : KeyValueDBValueWriter
+    class KeyValueDBValueProtectedWriter : KeyValueDBValueWriter
     {
         readonly KeyValueDBTransactionProtector _protector;
 

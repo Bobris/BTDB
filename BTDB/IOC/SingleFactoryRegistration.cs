@@ -3,8 +3,7 @@ using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
-    
-    internal class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerRegistration
+    class SingleFactoryRegistration : RegistrationBaseImpl<IAsLiveScopeTrait>, IContanerRegistration
     {
         readonly Type _implementationType;
         readonly AsTraitImpl _asTrait = new AsTraitImpl();

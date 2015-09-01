@@ -1,6 +1,6 @@
 namespace BTDB.IOC
 {
-    internal interface ICReg
+    interface ICReg
     {
     }
 }

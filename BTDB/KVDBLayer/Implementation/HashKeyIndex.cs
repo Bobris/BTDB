@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class HashKeyIndex : IFileInfo, IHashKeyIndex
+    class HashKeyIndex : IFileInfo, IHashKeyIndex
     {
         readonly long _subId;
         readonly long _generation;

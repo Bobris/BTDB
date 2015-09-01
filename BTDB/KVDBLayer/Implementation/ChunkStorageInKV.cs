@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class ChunkStorageInKV : IChunkStorage
+    class ChunkStorageInKV : IChunkStorage
     {
         struct StorageValue
         {

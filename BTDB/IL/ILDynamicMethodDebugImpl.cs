@@ -10,7 +10,8 @@ using System.Text;
 
 namespace BTDB.IL
 {
-    internal class ILDynamicMethodDebugImpl : IILDynamicMethod, IILDynamicMethodWithThis
+
+    class ILDynamicMethodDebugImpl : IILDynamicMethod, IILDynamicMethodWithThis
     {
         readonly Type _delegateType;
         int _expectedLength;
@@ -30,9 +31,9 @@ namespace BTDB.IL
             _expectedLength = 64;
             var mi = delegateType.GetMethod("Invoke");
             var uniqueName = ILDynamicTypeDebugImpl.UniqueName(name);
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, "dynamicIL");
+            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(uniqueName), AssemblyBuilderAccess.RunAndSave, DynamicILDirectoryPath.DynamicIL);
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(uniqueName + ".dll", true);
-            var sourceCodeFileName = Path.GetFullPath("dynamicIL/" + uniqueName + ".il");
+            var sourceCodeFileName = Path.Combine(DynamicILDirectoryPath.DynamicIL, uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
             Type[] parameterTypes;
@@ -100,8 +101,8 @@ namespace BTDB.IL
             var fullyQualifiedName = _moduleBuilder.FullyQualifiedName;
             var nameInExeDirectory = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(fullyQualifiedName)), Path.GetFileName(fullyQualifiedName));
             File.Copy(fullyQualifiedName, nameInExeDirectory, true);
-            var additionalDlls = new List<string>(Assembly.ReflectionOnlyLoadFrom(nameInExeDirectory).GetReferencedAssemblies().Select(a => a.Name + ".dll").Where(a => File.Exists("dynamicIL/" + a)));
-            additionalDlls.ForEach(s => File.Copy("dynamicIL/" + s, s));
+            var additionalDlls = new List<string>(Assembly.ReflectionOnlyLoadFrom(nameInExeDirectory).GetReferencedAssemblies().Select(a => a.Name + ".dll").Where(a => File.Exists(Path.Combine(DynamicILDirectoryPath.DynamicIL, a))));
+            additionalDlls.ForEach(s => File.Copy(Path.Combine(DynamicILDirectoryPath.DynamicIL, s), s));
             var psi = new ProcessStartInfo(peverifyPath, nameInExeDirectory)
                 {
                     CreateNoWindow = true,
@@ -129,7 +130,7 @@ namespace BTDB.IL
         }
     }
 
-    internal class ILDynamicMethodDebugImpl<TDelegate> : ILDynamicMethodDebugImpl, IILDynamicMethod<TDelegate> where TDelegate : class
+    class ILDynamicMethodDebugImpl<TDelegate> : ILDynamicMethodDebugImpl, IILDynamicMethod<TDelegate> where TDelegate : class
     {
         public ILDynamicMethodDebugImpl(string name)
             : base(name, typeof(TDelegate), null)

@@ -4,7 +4,7 @@ using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
-    internal class CreateOrUpdateCtx
+    class CreateOrUpdateCtx
     {
         internal byte[] KeyPrefix;
         internal ByteBuffer Key;

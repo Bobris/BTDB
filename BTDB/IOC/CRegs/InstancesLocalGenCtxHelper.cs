@@ -2,7 +2,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class InstancesLocalGenCtxHelper : IGenerationContextSetter
+    class InstancesLocalGenCtxHelper : IGenerationContextSetter
     {
         IGenerationContext _context;
 

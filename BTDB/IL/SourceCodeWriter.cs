@@ -8,7 +8,7 @@ using System.Text;
 
 namespace BTDB.IL
 {
-    internal class SourceCodeWriter : IDisposable
+    class SourceCodeWriter : IDisposable
     {
         readonly string _fileName;
         readonly ISymbolDocumentWriter _symbolDocumentWriter;

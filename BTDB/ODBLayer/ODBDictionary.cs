@@ -124,10 +124,10 @@ namespace BTDB.ODBLayer
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
-            if (array == null) throw new ArgumentNullException("array");
+            if (array == null) throw new ArgumentNullException(nameof(array));
             if ((arrayIndex < 0) || (arrayIndex > array.Length))
             {
-                throw new ArgumentOutOfRangeException("arrayIndex", arrayIndex, "Needs to be nonnegative ");
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
             }
             if ((array.Length - arrayIndex) < Count)
             {
@@ -442,10 +442,10 @@ namespace BTDB.ODBLayer
 
             public void CopyTo(TKey[] array, int arrayIndex)
             {
-                if (array == null) throw new ArgumentNullException("array");
+                if (array == null) throw new ArgumentNullException(nameof(array));
                 if ((arrayIndex < 0) || (arrayIndex > array.Length))
                 {
-                    throw new ArgumentOutOfRangeException("arrayIndex", arrayIndex, "Needs to be nonnegative ");
+                    throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
                 }
                 if ((array.Length - arrayIndex) < Count)
                 {
@@ -554,10 +554,10 @@ namespace BTDB.ODBLayer
 
             public void CopyTo(TValue[] array, int arrayIndex)
             {
-                if (array == null) throw new ArgumentNullException("array");
+                if (array == null) throw new ArgumentNullException(nameof(array));
                 if ((arrayIndex < 0) || (arrayIndex > array.Length))
                 {
-                    throw new ArgumentOutOfRangeException("arrayIndex", arrayIndex, "Needs to be nonnegative ");
+                    throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
                 }
                 if ((array.Length - arrayIndex) < Count)
                 {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
-    internal interface IBTreeRootNode : IBTreeNode
+    interface IBTreeRootNode : IBTreeNode
     {
         long TransactionId { get; }
         IBTreeRootNode NewTransactionRoot();

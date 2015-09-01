@@ -1,3 +1,0 @@
-namespace BTDB.IL.Caching
-{
-}

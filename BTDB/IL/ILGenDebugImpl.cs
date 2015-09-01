@@ -6,7 +6,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILGenDebugImpl : IILGen
+    class ILGenDebugImpl : IILGen
     {
         readonly ILGenerator _ilGenerator;
         readonly IILGenForbidenInstructions _forbidenInstructions;

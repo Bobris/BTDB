@@ -116,7 +116,7 @@ namespace BTDB.Service
 
         public void SkipNativeObject()
         {
-            throw new NotImplementedException();
+            ReadNativeObject(); // TODO: maybe optimize later
         }
 
         object RetriveObj(int ido)

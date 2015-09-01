@@ -33,7 +33,7 @@ namespace BTDB.Buffer
             return new ByteBuffer(BitArrayManipulation.EmptyByteArray, 0, 0);
         }
 
-        private ByteBuffer(byte[] buffer, uint offset, int length)
+        ByteBuffer(byte[] buffer, uint offset, int length)
         {
             _buffer = buffer;
             _offset = offset;

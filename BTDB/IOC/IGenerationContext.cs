@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal interface IGenerationContext
+    interface IGenerationContext
     {
         IILGen IL { get; }
         ContainerImpl Container { get; }

@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.IOC
 {
-    internal static class ClosureOfObjBuilder
+    static class ClosureOfObjBuilder
     {
         internal static object Build(Type funcType, object toReturn)
         {

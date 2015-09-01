@@ -130,7 +130,7 @@ namespace BTDB.IL
                     il.Emit(OpCodes.Stloc_3);
                     break;
                 case 65535:
-                    throw new ArgumentOutOfRangeException("localVariableIndex");
+                    throw new ArgumentOutOfRangeException(nameof(localVariableIndex));
                 default:
                     if (localVariableIndex <= 255)
                         il.Emit(OpCodes.Stloc_S, (byte)localVariableIndex);
@@ -164,7 +164,7 @@ namespace BTDB.IL
                     il.Emit(OpCodes.Ldloc_3);
                     break;
                 case 65535:
-                    throw new ArgumentOutOfRangeException("localVariableIndex");
+                    throw new ArgumentOutOfRangeException(nameof(localVariableIndex));
                 default:
                     if (localVariableIndex <= 255)
                         il.Emit(OpCodes.Ldloc_S, (byte)localVariableIndex);

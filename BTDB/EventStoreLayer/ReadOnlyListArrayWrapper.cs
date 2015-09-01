@@ -32,7 +32,7 @@ namespace BTDB.EventStoreLayer
         {
             get
             {
-                if (index >= Count) throw new ArgumentOutOfRangeException("index");
+                if (index >= Count) throw new ArgumentOutOfRangeException(nameof(index));
                 return _array[index];
             }
         }

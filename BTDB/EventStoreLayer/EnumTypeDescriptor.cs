@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
+    class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;

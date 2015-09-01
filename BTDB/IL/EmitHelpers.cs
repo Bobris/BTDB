@@ -241,7 +241,7 @@ namespace BTDB.IL
                     .BrtrueS(jumpTo);
                 return;
             }
-            throw new NotImplementedException(String.Format("Don't know how to compare type {0}", type));
+            throw new ArgumentOutOfRangeException(nameof(type), String.Format("Don't know how to compare type {0}", type));
         }
     }
 }

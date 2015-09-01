@@ -3,7 +3,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class ContainerInjectImpl : ICReg, ICRegILGen
+    class ContainerInjectImpl : ICReg, ICRegILGen
     {
         public string GenFuncName(IGenerationContext context)
         {

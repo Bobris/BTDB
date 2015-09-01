@@ -5,7 +5,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class EnumerableImpl : ICReg, ICRegILGen
+    class EnumerableImpl : ICReg, ICRegILGen
     {
         readonly object _key;
         readonly Type _type;

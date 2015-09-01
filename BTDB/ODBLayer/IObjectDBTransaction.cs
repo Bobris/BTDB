@@ -29,5 +29,7 @@ namespace BTDB.ODBLayer
         void DeleteAll(Type type);
 
         void Commit();
+
+        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
     }
 }

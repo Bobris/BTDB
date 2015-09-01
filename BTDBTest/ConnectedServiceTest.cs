@@ -334,7 +334,7 @@ namespace BTDBTest
             Assert.AreEqual(1, ((AggregateException)e).InnerExceptions.Count);
             e = ((AggregateException)e).InnerExceptions[0];
             Assert.IsInstanceOf<ArgumentException>(e);
-            Assert.That(e.Message, Is.StringStarting("msg"));
+            Assert.That(e.Message, Does.StartWith("msg"));
             Assert.AreEqual("test", ((ArgumentException)e).ParamName);
         }
 

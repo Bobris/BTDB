@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
+    class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly TypeSerializers _typeSerializers;
         Type _type;

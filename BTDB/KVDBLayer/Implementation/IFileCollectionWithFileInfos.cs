@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace BTDB.KVDBLayer
 {
-    internal interface IFileCollectionWithFileInfos
+    interface IFileCollectionWithFileInfos
     {
         IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos { get; }
         long LastFileGeneration { get; }

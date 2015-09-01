@@ -30,7 +30,7 @@ namespace BTDB.FieldHandler
             {
                 if (!m.IsStatic) continue;
                 if (!m.IsPublic) continue;
-                if (!m.Name.StartsWith("Convert")) continue;
+                if (!m.Name.StartsWith("Convert", StringComparison.Ordinal)) continue;
                 if (m.ContainsGenericParameters) continue;
                 var parameterInfos = m.GetParameters();
                 if (parameterInfos.Length != 1) continue;

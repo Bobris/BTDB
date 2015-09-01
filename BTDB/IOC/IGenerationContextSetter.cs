@@ -1,6 +1,6 @@
 namespace BTDB.IOC
 {
-    internal interface IGenerationContextSetter
+    interface IGenerationContextSetter
     {
         void Set(IGenerationContext context);
     }

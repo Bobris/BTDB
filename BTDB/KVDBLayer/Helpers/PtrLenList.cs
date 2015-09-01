@@ -327,7 +327,7 @@ namespace BTDB.KVDBLayer
             return false;
         }
 
-        private void GrowIfNeeded()
+        void GrowIfNeeded()
         {
             if (_size == _list.Length)
             {

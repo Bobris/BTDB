@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class FileKeyIndex : IFileInfo, IKeyIndex
+    class FileKeyIndex : IFileInfo, IKeyIndex
     {
         readonly long _generation;
         readonly uint _trLogFileId;

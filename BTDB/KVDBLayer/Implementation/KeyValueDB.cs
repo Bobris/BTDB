@@ -25,7 +25,7 @@ namespace BTDB.KVDBLayer
         uint _fileIdWithPreviousTransactionLog;
         IFileCollectionFile _fileWithTransactionLog;
         AbstractBufferedWriter _writerWithTransactionLog;
-        static readonly byte[] MagicStartOfTransaction = new[] { (byte)'t', (byte)'R' };
+        static readonly byte[] MagicStartOfTransaction = { (byte)'t', (byte)'R' };
         internal readonly long MaxTrLogFileSize;
         readonly ICompressionStrategy _compression;
         readonly CompactorScheduler _compactorScheduler;
@@ -41,9 +41,9 @@ namespace BTDB.KVDBLayer
 
         public KeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = int.MaxValue)
         {
-            if (fileCollection == null) throw new ArgumentNullException("fileCollection");
-            if (compression == null) throw new ArgumentNullException("compression");
-            if (fileSplitSize < 1024 || fileSplitSize > int.MaxValue) throw new ArgumentOutOfRangeException("fileSplitSize", "Allowed range 1024 - 2G");
+            if (fileCollection == null) throw new ArgumentNullException(nameof(fileCollection));
+            if (compression == null) throw new ArgumentNullException(nameof(compression));
+            if (fileSplitSize < 1024 || fileSplitSize > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(fileSplitSize), "Allowed range 1024 - 2G");
             MaxTrLogFileSize = fileSplitSize;
             _compression = compression;
             DurableTransactions = false;
@@ -824,7 +824,7 @@ namespace BTDB.KVDBLayer
             var fileInfo = FileCollection.FileInfoByIdx(fileId);
             if (fileInfo == null)
             {
-                throw new ArgumentOutOfRangeException("fileId");
+                throw new ArgumentOutOfRangeException(nameof(fileId));
             }
             return fileInfo.Generation;
         }

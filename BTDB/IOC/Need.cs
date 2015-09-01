@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.IOC
 {
-    internal class Need : INeed
+    class Need : INeed
     {
         public NeedKind Kind { get; set; }
         public Type ClrType { get; set; }

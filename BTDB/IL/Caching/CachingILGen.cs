@@ -6,7 +6,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL.Caching
 {
-    internal class CachingILGen : IILGen
+    class CachingILGen : IILGen
     {
         interface IReplayILGen
         {

@@ -1,6 +1,6 @@
 namespace BTDB.EventStoreLayer
 {
-    internal interface ITypeSerializers : ITypeSerializerMappingFactory
+    interface ITypeSerializers : ITypeSerializerMappingFactory
     {
         void SetTypeNameMapper(ITypeNameMapper typeNameMapper);
         void ForgotAllTypesAndSerializers();

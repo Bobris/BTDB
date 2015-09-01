@@ -3,7 +3,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class InfoForType
+    class InfoForType
     {
         public int Id;
         public ITypeDescriptor Descriptor;

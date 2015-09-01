@@ -1,6 +1,6 @@
 namespace BTDB.IOC
 {
-    internal class LiveScopeTraitImpl : ILiveScopeTrait, ILiveScopeTraitImpl
+    class LiveScopeTraitImpl : ILiveScopeTrait, ILiveScopeTraitImpl
     {
         Lifetime _lifetime = Lifetime.AlwaysNew;
 

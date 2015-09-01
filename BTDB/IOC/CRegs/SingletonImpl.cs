@@ -6,7 +6,7 @@ using BTDB.ODBLayer;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class SingletonImpl : ICReg, ICRegILGen, ICRegFuncOptimized
+    class SingletonImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
         readonly Type _implementationType;
         readonly ICRegILGen _wrapping;

@@ -3,7 +3,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal interface ICRegILGen
+    interface ICRegILGen
     {
         string GenFuncName(IGenerationContext context);
         void GenInitialization(IGenerationContext context);

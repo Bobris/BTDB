@@ -152,9 +152,9 @@ namespace BTDBTest
     
         public class PrivateConstructor
         {
-            int _a;
+            readonly int _a;
 
-            private PrivateConstructor(int a)
+            PrivateConstructor(int a)
             {
                 _a = a;
             }

@@ -3,7 +3,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILMethodImpl : IILMethod
+    class ILMethodImpl : IILMethod
     {
         int _expectedLength;
         IILGen _gen;

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.IOC
 {
-    internal class AsTraitImpl : IAsTrait, IAsTraitImpl
+    class AsTraitImpl : IAsTrait, IAsTraitImpl
     {
         readonly List<KeyAndType> _asTypes = new List<KeyAndType>();
         bool _asSelf;

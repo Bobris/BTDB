@@ -5,7 +5,7 @@ using BTDB.KVDBLayer.BTreeMem;
 
 namespace BTDB.KVDBLayer
 {
-    internal class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
+    class InMemoryKeyValueDBTransaction : IKeyValueDBTransaction
     {
         readonly InMemoryKeyValueDB _keyValueDB;
         IBTreeRootNode _btreeRoot;

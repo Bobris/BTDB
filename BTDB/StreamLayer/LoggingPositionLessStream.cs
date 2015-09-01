@@ -18,7 +18,7 @@ namespace BTDB.StreamLayer
             Log("LoggingStream created Stream:{0} Dispose:{1}", _positionLessStream.ToString(), _dispose);
         }
 
-        private void Log(string what, params object[] parameters)
+        void Log(string what, params object[] parameters)
         {
             _logAction(string.Format(CultureInfo.InvariantCulture, what, parameters));
         }

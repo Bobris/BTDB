@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class FactoryWithContainerParamImpl : ICReg, ICRegILGen
+    class FactoryWithContainerParamImpl : ICReg, ICRegILGen
     {
         readonly Type _type;
         readonly int _instanceIndex;

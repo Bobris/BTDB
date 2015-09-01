@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class FilePureValuesWithId : IFileInfo
+    class FilePureValuesWithId : IFileInfo
     {
         readonly long _subId;
         readonly long _generation;

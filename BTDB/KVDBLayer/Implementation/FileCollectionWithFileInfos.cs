@@ -6,12 +6,12 @@ using System.Threading;
 
 namespace BTDB.KVDBLayer
 {
-    internal class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
+    class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
     {
         readonly IFileCollection _fileCollection;
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         long _fileGeneration;
-        internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
+        internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
 
         public FileCollectionWithFileInfos(IFileCollection fileCollection)
         {

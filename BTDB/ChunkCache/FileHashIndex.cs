@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ChunkCache
 {
-    internal class FileHashIndex : IFileInfo
+    class FileHashIndex : IFileInfo
     {
         readonly long _generation;
         readonly long _keyValueCount;

@@ -7,13 +7,13 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class Compactor
+    class Compactor
     {
         readonly KeyValueDB _keyValueDB;
         IBTreeRootNode _root;
         FileStat[] _fileStats;
         Dictionary<ulong, uint> _newPositionMap;
-        CancellationToken _cancellation;
+        readonly CancellationToken _cancellation;
 
         struct FileStat
         {

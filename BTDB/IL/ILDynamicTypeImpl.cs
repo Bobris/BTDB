@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILDynamicTypeImpl : IILDynamicType
+    class ILDynamicTypeImpl : IILDynamicType
     {
         readonly AssemblyBuilder _assemblyBuilder;
         readonly ModuleBuilder _moduleBuilder;

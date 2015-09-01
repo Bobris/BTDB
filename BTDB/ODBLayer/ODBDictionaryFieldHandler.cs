@@ -74,15 +74,7 @@ namespace BTDB.ODBLayer
             var delegateType = typeof(Action<,,>).MakeGenericType(realType, typeof(AbstractBufferedWriter), typeof(IWriterCtx));
             var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Writer", delegateType);
             var ilGenerator = dm.Generator;
-            Action<IILGen> pushWriterOrCtx;
-            if (fieldHandler.NeedsCtx())
-            {
-                pushWriterOrCtx = il => il.Ldarg(2);
-            }
-            else
-            {
-                pushWriterOrCtx = il => il.Ldarg(1);
-            }
+            Action<IILGen> pushWriterOrCtx = il => il.Ldarg((ushort)(1 + (fieldHandler.NeedsCtx() ? 1 : 0)));
             fieldHandler.Save(ilGenerator, pushWriterOrCtx,
                 il => il.Ldarg(0).Do(_typeConvertorGenerator.GenerateConversion(realType, fieldHandler.HandledType())));
             ilGenerator.Ret();
@@ -96,15 +88,7 @@ namespace BTDB.ODBLayer
                                                                  realType);
             var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
             var ilGenerator = dm.Generator;
-            Action<IILGen> pushReaderOrCtx;
-            if (fieldHandler.NeedsCtx())
-            {
-                pushReaderOrCtx = il => il.Ldarg(1);
-            }
-            else
-            {
-                pushReaderOrCtx = il => il.Ldarg(0);
-            }
+            Action<IILGen> pushReaderOrCtx = il => il.Ldarg((ushort)(fieldHandler.NeedsCtx() ? 1 : 0));
             fieldHandler.Load(ilGenerator, pushReaderOrCtx);
             ilGenerator
                 .Do(_typeConvertorGenerator.GenerateConversion(fieldHandler.HandledType(), realType))

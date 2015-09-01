@@ -1,10 +1,10 @@
 namespace BTDB.KVDBLayer
 {
-    internal class UnknownFile : IFileInfo
+    class UnknownFile : IFileInfo
     {
         internal static readonly IFileInfo Instance = new UnknownFile();
 
-        private UnknownFile() { }
+        UnknownFile() { }
 
         public KVFileType FileType
         {

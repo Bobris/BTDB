@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class InstanceImpl : ICReg, ICRegILGen, ICRegFuncOptimized
+    class InstanceImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
         readonly object _instance;
         readonly int _instanceIndex;

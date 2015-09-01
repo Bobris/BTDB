@@ -1,6 +1,6 @@
 namespace BTDB.IOC
 {
-    internal enum Lifetime
+    enum Lifetime
     {
         AlwaysNew,
         Singleton,

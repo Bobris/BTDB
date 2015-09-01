@@ -12,7 +12,7 @@ namespace BTDB.ODBLayer
             Instance = new ReferenceEqualityComparer<T>();
         }
 
-        private ReferenceEqualityComparer()
+        ReferenceEqualityComparer()
         {
         }
 

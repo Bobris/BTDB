@@ -11,7 +11,7 @@ using System.Linq;
 
 namespace BTDB.ODBLayer
 {
-    internal class TableInfo
+    class TableInfo
     {
         readonly uint _id;
         readonly string _name;
@@ -59,8 +59,7 @@ namespace BTDB.ODBLayer
             set
             {
                 _clientType = value;
-                if (_clientType.GetCustomAttributes(typeof(StoredInlineAttribute), true).Length != 0)
-                    _storedInline = true;
+                _storedInline |= _clientType.GetCustomAttributes(typeof(StoredInlineAttribute), true).Length != 0;
                 ClientTypeVersion = 0;
             }
         }
@@ -138,7 +137,8 @@ namespace BTDB.ODBLayer
                 for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
                 {
                     var srcFieldInfo = tableVersionInfo[fi];
-                    if (!(srcFieldInfo.Handler is IFieldHandlerWithInit)) continue;
+                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
+                    if (iFieldHandlerWithInit == null) continue;
                     Action<IILGen> readerOrCtx;
                     if (srcFieldInfo.Handler.NeedsCtx())
                         readerOrCtx = il => il.Ldloc(1);
@@ -149,9 +149,9 @@ namespace BTDB.ODBLayer
                     var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
-                    if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
+                    if (!iFieldHandlerWithInit.NeedInit()) continue;
                     ilGenerator.Ldloc(0);
-                    ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
+                    iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
                     converterGenerator(ilGenerator);
                     ilGenerator.Call(setterMethod);
                 }
@@ -351,7 +351,8 @@ namespace BTDB.ODBLayer
                 for (int fi = 0; fi < clientTableVersionInfo.FieldCount; fi++)
                 {
                     var srcFieldInfo = clientTableVersionInfo[fi];
-                    if (!(srcFieldInfo.Handler is IFieldHandlerWithInit)) continue;
+                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
+                    if (iFieldHandlerWithInit == null) continue;
                     if (tableVersionInfo[srcFieldInfo.Name] != null) continue;
                     Action<IILGen> readerOrCtx;
                     if (srcFieldInfo.Handler.NeedsCtx())
@@ -363,9 +364,9 @@ namespace BTDB.ODBLayer
                     var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
-                    if (!((IFieldHandlerWithInit)specializedSrcHandler).NeedInit()) continue;
+                    if (!iFieldHandlerWithInit.NeedInit()) continue;
                     ilGenerator.Ldloc(0);
-                    ((IFieldHandlerWithInit)specializedSrcHandler).Init(ilGenerator, readerOrCtx);
+                    iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
                     converterGenerator(ilGenerator);
                     ilGenerator.Call(setterMethod);
                 }

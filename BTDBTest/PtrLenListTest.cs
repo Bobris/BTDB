@@ -7,7 +7,7 @@ namespace BTDBTest
     [TestFixture]
     public class PtrLenListTest
     {
-        private static string Str(PtrLenList l)
+        static string Str(PtrLenList l)
         {
             var sb = new StringBuilder();
             foreach (var kv in l)

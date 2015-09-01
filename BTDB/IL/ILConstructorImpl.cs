@@ -2,7 +2,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILConstructorImpl : IILMethod
+    class ILConstructorImpl : IILMethod
     {
         readonly ConstructorBuilder _constructor;
         int _expectedLength;

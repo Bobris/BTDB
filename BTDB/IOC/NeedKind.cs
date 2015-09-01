@@ -1,6 +1,6 @@
 namespace BTDB.IOC
 {
-    internal enum NeedKind
+    enum NeedKind
     {
         Internal,
         Constant,

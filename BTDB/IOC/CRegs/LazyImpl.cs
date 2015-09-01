@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class LazyImpl : ICReg, ICRegILGen
+    class LazyImpl : ICReg, ICRegILGen
     {
         readonly Type _type;
         readonly ICRegILGen _nestedRegistration;

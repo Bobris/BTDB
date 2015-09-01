@@ -24,7 +24,7 @@ namespace BTDBTest
             return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
         }
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void CreateChunkStorageSubDB()
         {
             _fileCollection = new InMemoryFileCollection();
@@ -32,7 +32,7 @@ namespace BTDBTest
             _cs = _kvdb.GetSubDB<IChunkStorage>(1);
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void DestroyChunkStorageSubDB()
         {
             _kvdb.Dispose();

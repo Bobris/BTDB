@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer
 {
-    internal interface IFileInfo
+    interface IFileInfo
     {
         KVFileType FileType { get; }
         long Generation { get; }

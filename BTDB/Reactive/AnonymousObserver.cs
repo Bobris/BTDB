@@ -10,8 +10,8 @@ namespace BTDB.Reactive
 
         public AnonymousObserver(Action<T> onNext, Action onCompleted)
         {
-            if (onNext == null) throw new ArgumentNullException("onNext");
-            if (onCompleted == null) throw new ArgumentNullException("onCompleted");
+            if (onNext == null) throw new ArgumentNullException(nameof(onNext));
+            if (onCompleted == null) throw new ArgumentNullException(nameof(onCompleted));
             _onNext = onNext;
             _onCompleted = onCompleted;
         }

@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    internal class FileTransactionLog : IFileInfo, IFileTransactionLog
+    class FileTransactionLog : IFileInfo, IFileTransactionLog
     {
         readonly uint _previousFileId;
         readonly long _generation;

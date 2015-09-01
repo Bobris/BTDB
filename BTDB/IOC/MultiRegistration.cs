@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorScanTrait>, IContanerRegistration
+    class MultiRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorScanTrait>, IContanerRegistration
     {
         readonly AsTraitImpl _asTrait = new AsTraitImpl();
         readonly LiveScopeTraitImpl _liveScopeTrait = new LiveScopeTraitImpl();

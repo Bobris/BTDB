@@ -22,7 +22,7 @@ namespace BTDB.IL
 
         public IILDynamicMethodWithThis NewMethod(string name, Type @delegate, Type thisType)
         {
-            if (thisType == null) throw new ArgumentNullException("thisType");
+            if (thisType == null) throw new ArgumentNullException(nameof(thisType));
             if (!@delegate.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
             return new ILDynamicMethodDebugImpl(name, @delegate, thisType);
         }

@@ -4,7 +4,7 @@ using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
-    internal class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorTrait>, IContanerRegistration
+    class SingleRegistration : RegistrationBaseImpl<IAsLiveScopeConstructorTrait>, IContanerRegistration
     {
         readonly Type _implementationType;
         readonly AsTraitImpl _asTrait;

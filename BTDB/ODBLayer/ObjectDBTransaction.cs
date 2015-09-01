@@ -11,7 +11,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal class ObjectDBTransaction : IObjectDBTransaction, IInternalObjectDBTransaction
+    class ObjectDBTransaction : IObjectDBTransaction, IInternalObjectDBTransaction
     {
         readonly ObjectDB _owner;
         IKeyValueDBTransaction _keyValueTr;
@@ -348,7 +348,7 @@ namespace BTDB.ODBLayer
                 _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
                 {
-                    return new KeyValuePair<uint, uint>(0,0);
+                    return new KeyValuePair<uint, uint>(0, 0);
                 }
                 var res = _keyValueTr.GetStorageSizeOfCurrentKey();
                 _keyValueTrProtector.Stop(ref taken);
@@ -660,7 +660,7 @@ namespace BTDB.ODBLayer
 
         public void Delete(object @object)
         {
-            if (@object == null) throw new ArgumentNullException("object");
+            if (@object == null) throw new ArgumentNullException(nameof(@object));
             var indirect = @object as IIndirect;
             if (indirect != null)
             {
@@ -797,7 +797,8 @@ namespace BTDB.ODBLayer
                 }
                 _owner.CommitLastDictId((ulong)_lastDictId, _keyValueTr);
                 _keyValueTr.Commit();
-                if (_updatedTables != null) foreach (var updatedTable in _updatedTables)
+                if (_updatedTables != null)
+                    foreach (var updatedTable in _updatedTables)
                     {
                         updatedTable.LastPersistedVersion = updatedTable.ClientTypeVersion;
                         updatedTable.ResetNeedStoreSingletonOid();
@@ -811,7 +812,9 @@ namespace BTDB.ODBLayer
 
         void StoreObject(object o)
         {
-            var tableInfo = _owner.TablesInfo.FindByType(o.GetType());
+            var type = o.GetType();
+            if (!type.IsClass) throw new BTDBException("You can store only classes, not " + type.ToSimpleName());
+            var tableInfo = _owner.TablesInfo.FindByType(type);
             IfNeededPersistTableInfo(tableInfo);
             DBObjectMetadata metadata = null;
             if (_objSmallMetadata != null)
@@ -884,6 +887,11 @@ namespace BTDB.ODBLayer
             {
                 if (taken) _keyValueTrProtector.Stop();
             }
+        }
+
+        public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
+        {
+            throw new NotImplementedException();
         }
     }
 }

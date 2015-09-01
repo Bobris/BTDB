@@ -70,11 +70,11 @@ namespace BTDBTest
             }
         }
 
-        private byte[] FromTick(Tick tick)
+        byte[] FromTick(Tick tick)
         {
             using (MemoryStream stream = new MemoryStream())
             {
-                BinaryWriter writer = new BinaryWriter(stream);
+                var writer = new BinaryWriter(stream);
 
                 writer.Write(tick.Symbol);
                 writer.Write(tick.Timestamp.Ticks);
@@ -88,13 +88,13 @@ namespace BTDBTest
             }
         }
 
-        private Tick ToTick(byte[] value)
+        Tick ToTick(byte[] value)
         {
-            Tick tick = new Tick();
+            var tick = new Tick();
 
             using (MemoryStream stream = new MemoryStream(value))
             {
-                BinaryReader reader = new BinaryReader(stream);
+                var reader = new BinaryReader(stream);
 
                 tick.Symbol = reader.ReadString();
                 tick.Timestamp = new DateTime(reader.ReadInt64());
@@ -108,9 +108,9 @@ namespace BTDBTest
             return tick;
         }
 
-        private byte[] Direct(Int64 key)
+        byte[] Direct(Int64 key)
         {
-            ulong val = (UInt64)(key + Int64.MaxValue + 1);
+            var val = (UInt64)(key + Int64.MaxValue + 1);
             var index = BitConverter.GetBytes(val);
 
             byte[] buf = new byte[8];
@@ -126,7 +126,7 @@ namespace BTDBTest
             return buf;
         }
 
-        private Int64 Reverse(byte[] index)
+        Int64 Reverse(byte[] index)
         {
             byte[] buf = new byte[8];
             buf[0] = index[7];
@@ -147,11 +147,11 @@ namespace BTDBTest
 
     public static class TicksGenerator
     {
-        private static string[] symbols;
-        private static int[] digits;
-        private static double[] pipsizes;
-        private static double[] prices;
-        private static string[] providers;
+        static readonly string[] symbols;
+        static readonly int[] digits;
+        static readonly double[] pipsizes;
+        static readonly double[] prices;
+        static readonly string[] providers;
 
         static TicksGenerator()
         {
@@ -184,7 +184,7 @@ namespace BTDBTest
 
         public static IEnumerable<KeyValuePair<long, Tick>> GetFlow(long number, KeysType keysType)
         {
-            Random random = new Random(0);
+            var random = new Random(0);
 
             //init startup prices
             var prices = TicksGenerator.prices.ToArray();
@@ -215,15 +215,10 @@ namespace BTDBTest
                 string provider = providers[random.Next(providers.Length)];
 
                 //create tick
-                Tick tick = new Tick(symbol, timestamp, bid, ask, bidSize, askSize, provider);
+                var tick = new Tick(symbol, timestamp, bid, ask, bidSize, askSize, provider);
 
-                long key;
-                if (keysType == KeysType.Sequential)
-                    key = i;
-                else
-                    key = unchecked(random.Next() * i);
-
-                KeyValuePair<long, Tick> kv = new KeyValuePair<long, Tick>(key, tick);
+                var key = keysType == KeysType.Sequential ? i : unchecked(random.Next() * i);
+                var kv = new KeyValuePair<long, Tick>(key, tick);
                 yield return kv;
 
                 prices[id] = bid;
@@ -274,7 +269,7 @@ namespace BTDBTest
                 return -1;
             if (other.AskSize != this.AskSize)
                 return -1;
-            if (other.Bid != this.Bid)
+            if (Math.Abs(other.Bid - this.Bid) > 1e-50)
                 return -1;
             if (other.BidSize != this.BidSize)
                 return -1;

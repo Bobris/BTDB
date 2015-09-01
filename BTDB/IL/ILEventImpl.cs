@@ -2,7 +2,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILEventImpl : IILEvent
+    class ILEventImpl : IILEvent
     {
         readonly EventBuilder _eventBuilder;
 

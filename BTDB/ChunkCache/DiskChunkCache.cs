@@ -29,7 +29,7 @@ namespace BTDB.ChunkCache
         CancellationTokenSource _compactionCts;
         readonly object _startNewValueFileLocker = new object();
 
-        internal static readonly byte[] MagicStartOfFile = new[] { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
+        internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
 
         struct CacheValue
         {
@@ -42,7 +42,7 @@ namespace BTDB.ChunkCache
         public DiskChunkCache(IFileCollection fileCollection, int keySize, long cacheCapacity)
         {
             if (keySize != 20) throw new NotSupportedException("Only keySize of 20 (Usefull for SHA1) is supported for now");
-            if (cacheCapacity < 1000) throw new ArgumentOutOfRangeException("cacheCapacity", "Minimum for cache capacity is 1kB");
+            if (cacheCapacity < 1000) throw new ArgumentOutOfRangeException(nameof(cacheCapacity), "Minimum for cache capacity is 1kB");
             _fileCollection = fileCollection;
             _keySize = keySize;
             _cacheCapacity = cacheCapacity;

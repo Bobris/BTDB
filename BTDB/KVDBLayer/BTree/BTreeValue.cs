@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer.BTree
 {
-    internal struct BTreeValue
+    struct BTreeValue
     {
         internal uint ValueFileId;
         internal uint ValueOfs;

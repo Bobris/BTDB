@@ -2,14 +2,14 @@ using System.Collections.Generic;
 
 namespace BTDB.IOC
 {
-    internal interface ICRegMulti : ICReg
+    interface ICRegMulti : ICReg
     {
         ICReg ChosenOne { get; }
         IEnumerable<ICReg> Regs { get; }
         void Add(ICReg reg, bool chosenOne);
     }
 
-    internal class CRegMulti : ICRegMulti
+    class CRegMulti : ICRegMulti
     {
         ICReg _chosenOne;
         readonly IList<ICReg> _regs = new List<ICReg>();

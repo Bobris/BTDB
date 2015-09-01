@@ -84,7 +84,7 @@ namespace BTDB.EventStoreLayer
             if (targetType != typeof(object))
             {
                 if (targetType != GetPreferedType())
-                    throw new ArgumentOutOfRangeException("targetType");
+                    throw new ArgumentOutOfRangeException(nameof(targetType));
                 return;
             }
             if (GetPreferedType().IsValueType)

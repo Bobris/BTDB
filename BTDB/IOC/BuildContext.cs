@@ -6,7 +6,7 @@ using BTDB.IOC.CRegs;
 
 namespace BTDB.IOC
 {
-    internal class BuildContext : IBuildContext
+    class BuildContext : IBuildContext
     {
         readonly ContainerImpl _container;
         BuildContext _parent;
@@ -47,7 +47,7 @@ namespace BTDB.IOC
             return child;
         }
 
-        static readonly Type[] TupleTypes = new[] {
+        static readonly Type[] TupleTypes = {
             typeof(Tuple<>),
             typeof(Tuple<,>),
             typeof(Tuple<,,>),
@@ -145,9 +145,10 @@ namespace BTDB.IOC
         {
             if (_multiBinds == null) return this;
             return _parent;
-            var child = new BuildContext(_container);
-            child._parent = this;
-            return child;
+            //TODO: this was here before - maybe needs better implementation
+            //var child = new BuildContext(_container);
+            //child._parent = this;
+            //return child;
         }
     }
 }

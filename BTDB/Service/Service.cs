@@ -479,7 +479,7 @@ namespace BTDB.Service
 
         public object QueryRemoteService(Type serviceType)
         {
-            if (serviceType == null) throw new ArgumentNullException("serviceType");
+            if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
             var weak = _remoteServiceCache.GetValue(serviceType, t => new WeakReference(null, true));
             lock (weak)
             {
@@ -925,7 +925,7 @@ namespace BTDB.Service
 
         public void RegisterLocalService<T>(T service) where T : class
         {
-            if (service == null) throw new ArgumentNullException("service");
+            if (service == null) throw new ArgumentNullException(nameof(service));
             var serviceId = _serverObjectNumbers.Allocate();
             _serverObjects.TryAdd(serviceId, service);
             _serverServices.TryAdd(service, serviceId);
@@ -971,8 +971,9 @@ namespace BTDB.Service
             var typeInf = new TypeInf(type, _fieldHandlerFactory);
             foreach (var fieldHandler in typeInf.EnumerateFieldHandlers().Flatten(fh =>
                 {
-                    if (fh is IFieldHandlerWithNestedFieldHandlers)
-                        return ((IFieldHandlerWithNestedFieldHandlers)fh).EnumerateNestedFieldHandlers();
+                    var iFieldHandlerWithNestedFieldHandlers = fh as IFieldHandlerWithNestedFieldHandlers;
+                    if (iFieldHandlerWithNestedFieldHandlers != null)
+                        return iFieldHandlerWithNestedFieldHandlers.EnumerateNestedFieldHandlers();
                     return null;
                 }).OfType<ServiceObjectFieldHandler>())
             {

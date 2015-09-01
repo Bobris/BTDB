@@ -3,7 +3,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class ArgXImpl : ICRegILGen
+    class ArgXImpl : ICRegILGen
     {
         internal static ICRegILGen GetInstance(ushort x)
         {

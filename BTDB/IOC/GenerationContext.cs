@@ -6,7 +6,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC
 {
-    internal class GenerationContext : IGenerationContext
+    class GenerationContext : IGenerationContext
     {
         readonly ContainerImpl _container;
         readonly ICRegILGen _registration;

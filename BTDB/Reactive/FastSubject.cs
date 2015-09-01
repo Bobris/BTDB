@@ -35,7 +35,7 @@ namespace BTDB.Reactive
         {
             if (error == null)
             {
-                throw new ArgumentNullException("error");
+                throw new ArgumentNullException(nameof(error));
             }
             IObserver<T> original;
             do
@@ -55,7 +55,7 @@ namespace BTDB.Reactive
         {
             if (observer == null)
             {
-                throw new ArgumentNullException("observer");
+                throw new ArgumentNullException(nameof(observer));
             }
             IObserver<T> original;
             IObserver<T> nextState;

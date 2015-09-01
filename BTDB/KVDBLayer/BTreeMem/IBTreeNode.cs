@@ -3,7 +3,7 @@ using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
-    internal interface IBTreeNode
+    interface IBTreeNode
     {
         void CreateOrUpdate(CreateOrUpdateCtx ctx);
         FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key);

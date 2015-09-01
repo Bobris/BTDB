@@ -39,7 +39,7 @@ namespace BTDBTest
         [Test]
         public void CanSendSimpleType()
         {
-            object u1 = new EventStoreTest.User { Name = "A", Age = 1 };
+            var u1 = new EventStoreTest.User { Name = "A", Age = 1 };
             object u2 = null;
             _second.OnReceive.Subscribe(o => u2 = o);
             _first.Send(u1);
@@ -49,7 +49,7 @@ namespace BTDBTest
         [Test]
         public void CanSendSimpleTypeTwice()
         {
-            object u1 = new EventStoreTest.User { Name = "A", Age = 1 };
+            var u1 = new EventStoreTest.User { Name = "A", Age = 1 };
             object u2 = null;
             _second.OnReceive.Subscribe(o => u2 = o);
             _first.Send(u1);

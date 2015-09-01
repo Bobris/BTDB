@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.IOC
 {
-    internal interface INeed
+    interface INeed
     {
         NeedKind Kind { get; }
         Type ClrType { get; }

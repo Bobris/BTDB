@@ -117,10 +117,10 @@ namespace BTDBTest
                 {
                     Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
                     Assert.False(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
-                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key2)));
-                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key2), ByteBuffer.NewAsync(new byte[0])));
+                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(Key2)));
+                    Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(Key2), ByteBuffer.NewAsync(new byte[0])));
                     Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key1)));
-                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key2)));
+                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(Key2)));
                     Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key3)));
                     Assert.AreEqual(FindResult.Next, tr.Find(ByteBuffer.NewEmpty()));
                     tr.Commit();
@@ -183,7 +183,7 @@ namespace BTDBTest
                     using (var tr2 = db.StartTransaction())
                     {
                         Assert.False(tr2.FindExactKey(_key1));
-                        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(_key2));
+                        Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(Key2));
                     }
                 }
             }
@@ -202,7 +202,7 @@ namespace BTDBTest
                     tr1.Commit();
                     tr1.Dispose();
                     Assert.False(tr2.FindExactKey(_key1));
-                    Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(_key2));
+                    Assert.Throws<BTDBTransactionRetryException>(() => tr2.CreateKey(Key2));
                 }
             }
         }
@@ -260,16 +260,16 @@ namespace BTDBTest
                 }
                 using (var tr2 = db.StartTransaction())
                 {
-                    tr2.CreateKey(_key2);
+                    tr2.CreateKey(Key2);
                     Assert.True(tr2.FindExactKey(_key1));
-                    Assert.True(tr2.FindExactKey(_key2));
+                    Assert.True(tr2.FindExactKey(Key2));
                     Assert.False(tr2.FindExactKey(_key3));
                     tr2.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
                 {
                     Assert.True(tr3.FindExactKey(_key1));
-                    Assert.True(tr3.FindExactKey(_key2));
+                    Assert.True(tr3.FindExactKey(Key2));
                     Assert.False(tr3.FindExactKey(_key3));
                 }
             }
@@ -342,7 +342,7 @@ namespace BTDBTest
                 using (var tr1 = db.StartTransaction())
                 {
                     tr1.CreateKey(_key1);
-                    tr1.CreateKey(_key2);
+                    tr1.CreateKey(Key2);
                     tr1.CreateKey(_key3);
                     tr1.Commit();
                 }
@@ -418,7 +418,7 @@ namespace BTDBTest
                 using (var tr1 = db.StartTransaction())
                 {
                     tr1.CreateKey(_key1);
-                    tr1.CreateKey(_key2);
+                    tr1.CreateKey(Key2);
                     tr1.CreateKey(_key3);
                     tr1.Commit();
                 }
@@ -426,7 +426,7 @@ namespace BTDBTest
                 {
                     Assert.True(tr2.FindExactKey(_key3));
                     Assert.True(tr2.FindNextKey());
-                    Assert.AreEqual(_key2, tr2.GetKeyAsByteArray());
+                    Assert.AreEqual(Key2, tr2.GetKeyAsByteArray());
                     Assert.False(tr2.FindNextKey());
                 }
             }
@@ -518,7 +518,7 @@ namespace BTDBTest
                 {
                     Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
                     Assert.False(tr1.CreateOrUpdateKeyValueUnsafe(_key1, valbuf));
-                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(_key2, valbuf));
+                    Assert.True(tr1.CreateOrUpdateKeyValueUnsafe(Key2, valbuf));
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -530,7 +530,7 @@ namespace BTDBTest
                         if (valbuf[i] != valbuf2[i])
                             Assert.AreEqual(valbuf[i], valbuf2[i]);
                     }
-                    Assert.True(tr2.FindExactKey(_key2));
+                    Assert.True(tr2.FindExactKey(Key2));
                     valbuf2 = tr2.GetValueAsByteArray();
                     for (int i = 0; i < length; i++)
                     {
@@ -551,7 +551,7 @@ namespace BTDBTest
                 {
                     Assert.False(tr.FindFirstKey());
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
+                    tr.CreateKey(Key2);
                     tr.CreateKey(_key3);
                     Assert.True(tr.FindFirstKey());
                     Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
@@ -570,10 +570,10 @@ namespace BTDBTest
                 {
                     Assert.False(tr.FindLastKey());
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
+                    tr.CreateKey(Key2);
                     tr.CreateKey(_key3);
                     Assert.True(tr.FindLastKey());
-                    Assert.AreEqual(_key2, tr.GetKeyAsByteArray());
+                    Assert.AreEqual(Key2, tr.GetKeyAsByteArray());
                     tr.Commit();
                 }
             }
@@ -588,7 +588,7 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
+                    tr.CreateKey(Key2);
                     tr.CreateKey(_key3);
                     Assert.AreEqual(3, tr.GetKeyValueCount());
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key1, 0, 3));
@@ -611,8 +611,8 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
-                    tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
+                    tr.CreateKey(Key2);
+                    tr.SetKeyPrefix(ByteBuffer.NewAsync(Key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.True(tr.FindNextKey());
                     Assert.False(tr.FindNextKey());
@@ -630,8 +630,8 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
-                    tr.SetKeyPrefix(ByteBuffer.NewAsync(_key2, 0, 1));
+                    tr.CreateKey(Key2);
+                    tr.SetKeyPrefix(ByteBuffer.NewAsync(Key2, 0, 1));
                     Assert.True(tr.FindFirstKey());
                     Assert.False(tr.FindPreviousKey());
                     tr.Commit();
@@ -648,13 +648,13 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateKey(_key1);
-                    tr.CreateKey(_key2);
+                    tr.CreateKey(Key2);
                     tr.CreateKey(_key3);
                     tr.EraseCurrent();
                     Assert.True(tr.FindFirstKey());
                     Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
                     Assert.True(tr.FindNextKey());
-                    Assert.AreEqual(_key2, tr.GetKeyAsByteArray());
+                    Assert.AreEqual(Key2, tr.GetKeyAsByteArray());
                     Assert.False(tr.FindNextKey());
                     Assert.AreEqual(2, tr.GetKeyValueCount());
                 }
@@ -808,7 +808,7 @@ namespace BTDBTest
                 {
                     var tr2 = tr2Task.Result;
                     Assert.True(tr2.FindExactKey(_key1));
-                    tr2.CreateKey(_key2);
+                    tr2.CreateKey(Key2);
                     tr2.Commit();
                     tr2.Dispose();
                 });
@@ -819,7 +819,7 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     Assert.True(tr.FindExactKey(_key1));
-                    Assert.True(tr.FindExactKey(_key2));
+                    Assert.True(tr.FindExactKey(Key2));
                 }
             }
         }
@@ -838,7 +838,7 @@ namespace BTDBTest
                     }
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateKey(_key2);
+                        tr.CreateKey(Key2);
                         tr.Commit();
                     }
                     using (var tr = db.StartTransaction())
@@ -851,7 +851,7 @@ namespace BTDBTest
                         using (var tr = db2.StartTransaction())
                         {
                             Assert.True(tr.FindExactKey(_key1));
-                            Assert.True(tr.FindExactKey(_key2));
+                            Assert.True(tr.FindExactKey(Key2));
                             Assert.False(tr.FindExactKey(_key3));
                         }
                     }
@@ -861,7 +861,7 @@ namespace BTDBTest
                     using (var tr = db.StartTransaction())
                     {
                         Assert.True(tr.FindExactKey(_key1));
-                        Assert.True(tr.FindExactKey(_key2));
+                        Assert.True(tr.FindExactKey(Key2));
                         Assert.False(tr.FindExactKey(_key3));
                     }
                 }
@@ -926,7 +926,7 @@ namespace BTDBTest
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.CreateOrUpdateKeyValue(Key2, Key2);
                         tr.Commit();
                     }
                     Console.WriteLine(db.CalcStats());
@@ -954,7 +954,7 @@ namespace BTDBTest
                     using (var tr = db.StartTransaction())
                     {
                         Assert.AreEqual(0, tr.GetKeyValueCount());
-                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.CreateOrUpdateKeyValue(Key2, Key2);
                         tr.Commit();
                     }
                     Console.WriteLine(db.CalcStats());
@@ -973,7 +973,7 @@ namespace BTDBTest
                     using (var tr = db.StartTransaction())
                     {
                         tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
-                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
                         tr.Commit();
                     }
                 }
@@ -982,7 +982,7 @@ namespace BTDBTest
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[1024]);
                         tr.CreateOrUpdateKeyValue(_key3, new byte[10]);
                         tr.Commit();
                     }
@@ -992,7 +992,7 @@ namespace BTDBTest
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        tr.CreateOrUpdateKeyValue(_key2, _key2);
+                        tr.CreateOrUpdateKeyValue(Key2, Key2);
                         tr.Commit();
                     }
                 }
@@ -1010,7 +1010,7 @@ namespace BTDBTest
                     using (var tr = db.StartTransaction())
                     {
                         tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
-                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
                         tr.Commit();
                     }
                     var longTr = db.StartTransaction();
@@ -1053,7 +1053,7 @@ namespace BTDBTest
                     using (var tr = db.StartWritingTransaction().Result)
                     {
                         tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
-                        tr.CreateOrUpdateKeyValue(_key2, new byte[10]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
                         tr.Commit();
                     }
                     db.Compact();
@@ -1070,7 +1070,7 @@ namespace BTDBTest
                         using (var tr = db2.StartTransaction())
                         {
                             Assert.False(tr.FindExactKey(_key1));
-                            Assert.True(tr.FindExactKey(_key2));
+                            Assert.True(tr.FindExactKey(Key2));
                         }
                     }
                 }
@@ -1087,7 +1087,7 @@ namespace BTDBTest
                     using (var tr = db.StartTransaction())
                     {
                         tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
-                        tr.CreateOrUpdateKeyValue(_key2, new byte[1024]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[1024]);
                         tr.Commit();
                     }
                     using (var tr = db.StartTransaction())
@@ -1105,8 +1105,16 @@ namespace BTDBTest
             }
         }
 
-        readonly byte[] _key1 = new byte[] { 1, 2, 3 };
-        readonly byte[] _key2 = new byte[] { 1, 3, 2 };
-        readonly byte[] _key3 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+        readonly byte[] _key1 = { 1, 2, 3 };
+        readonly byte[] _key2 = { 1, 3, 2 };
+        readonly byte[] _key3 = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+
+        public byte[] Key2
+        {
+            get
+            {
+                return _key2;
+            }
+        }
     }
 }

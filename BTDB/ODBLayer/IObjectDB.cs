@@ -5,7 +5,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable 
+    public interface IObjectDB : IFieldHandlerFactoryProvider, IDisposable
     {
         void Open(IKeyValueDB keyValueDB, bool dispose);
 

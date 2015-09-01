@@ -5,7 +5,7 @@ using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.KVDBLayer
 {
-    internal class KeyValueDBTransaction : IKeyValueDBTransaction
+    class KeyValueDBTransaction : IKeyValueDBTransaction
     {
         readonly KeyValueDB _keyValueDB;
         IBTreeRootNode _btreeRoot;
@@ -39,14 +39,7 @@ namespace BTDB.KVDBLayer
         public void SetKeyPrefix(ByteBuffer prefix)
         {
             _prefix = prefix.ToByteArray();
-            if (_prefix.Length == 0)
-            {
-                _prefixKeyStart = 0;
-            }
-            else
-            {
-                _prefixKeyStart = -1;
-            }
+            _prefixKeyStart = _prefix.Length == 0 ? 0 : -1;
             _prefixKeyCount = -1;
             InvalidateCurrentKey();
         }

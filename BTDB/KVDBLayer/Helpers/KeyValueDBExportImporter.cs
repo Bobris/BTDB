@@ -13,9 +13,9 @@ namespace BTDB.KVDBLayer
         /// <param name="stream">where to write it to</param>
         public static void Export(IKeyValueDBTransaction transaction, Stream stream)
         {
-            if (transaction == null) throw new ArgumentNullException("transaction");
-            if (stream == null) throw new ArgumentNullException("stream");
-            if (!stream.CanWrite) throw new ArgumentException("stream must be writeable", "stream");
+            if (transaction == null) throw new ArgumentNullException(nameof(transaction));
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanWrite) throw new ArgumentException("stream must be writeable", nameof(stream));
             var keyValueCount = transaction.GetKeyValueCount();
             var tempbuf = new byte[16];
             tempbuf[0] = (byte)'B';
@@ -50,9 +50,9 @@ namespace BTDB.KVDBLayer
         /// <param name="stream">where to read it from</param>
         public static void Import(IKeyValueDBTransaction transaction, Stream stream)
         {
-            if (transaction == null) throw new ArgumentNullException("transaction");
-            if (stream == null) throw new ArgumentNullException("stream");
-            if (!stream.CanRead) throw new ArgumentException("stream must be readable", "stream");
+            if (transaction == null) throw new ArgumentNullException(nameof(transaction));
+            if (stream == null) throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanRead) throw new ArgumentException("stream must be readable", nameof(stream));
             var tempbuf = new byte[4096];
             var tempbuf2 = new byte[4096];
             if (stream.Read(tempbuf, 0, 16) != 16) throw new EndOfStreamException();

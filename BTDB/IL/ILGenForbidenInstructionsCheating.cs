@@ -6,7 +6,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILGenForbidenInstructionsCheating : IILGenForbidenInstructions
+    class ILGenForbidenInstructionsCheating : IILGenForbidenInstructions
     {
         class Call : IEquatable<Call>
         {
@@ -15,11 +15,10 @@ namespace BTDB.IL
             readonly ConstructorInfo _constructorInfo;
             string _name;
             Type _delegateType;
-            static readonly Type[][] GenericDelegates = new[]
-                {
-                    new[] { typeof(Action), typeof(Action<>), typeof(Action<,>), typeof(Action<,,>), typeof(Action<,,,>), typeof(Action<,,,,>)},
-                    new[] { typeof(Func<>), typeof(Func<,>), typeof(Func<,,>), typeof(Func<,,,>), typeof(Func<,,,,>), typeof(Func<,,,,,>)}
-                };
+            static readonly Type[][] GenericDelegates = {
+                new[] { typeof(Action), typeof(Action<>), typeof(Action<,>), typeof(Action<,,>), typeof(Action<,,,>), typeof(Action<,,,,>)},
+                new[] { typeof(Func<>), typeof(Func<,>), typeof(Func<,,>), typeof(Func<,,,>), typeof(Func<,,,,>), typeof(Func<,,,,,>)}
+            };
 
             FieldBuilder _fieldBuilder;
             MethodBuilder _staticMethod;

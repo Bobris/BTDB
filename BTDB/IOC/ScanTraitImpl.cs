@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.IOC
 {
-    internal class ScanTraitImpl : IScanTrait, IScanTraitImpl
+    class ScanTraitImpl : IScanTrait, IScanTraitImpl
     {
         readonly List<Predicate<Type>> _filters = new List<Predicate<Type>>();
 

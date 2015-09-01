@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer
 {
-    internal enum KVFileType : byte
+    enum KVFileType : byte
     {
         TransactionLog,
         KeyIndex,

@@ -120,11 +120,12 @@
     <Compile Include="FieldHandler\IIndirect.cs" />
     <Compile Include="FieldHandler\PersistedNameAttribute.cs" />
     <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
+    <Compile Include="GlobalSuppressions.cs" />
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethodWithThis.cs" />
     <Compile Include="IL\Caching\CachingILGen.cs" />
-    <Compile Include="IL\Caching\IReplayILGen.cs" />
+    <Compile Include="IL\DynamicILDirectoryPath.cs" />
     <Compile Include="IL\IILDynamicMethodWithThis.cs" />
     <Compile Include="IL\IILEvent.cs" />
     <Compile Include="IL\IILGenForbidenInstructions.cs" />
@@ -277,7 +278,9 @@
     <Compile Include="ODBLayer\ODBDictionary.cs" />
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
+    <Compile Include="ODBLayer\PrimaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\StoredInlineAttribute.cs" />
+    <Compile Include="ODBLayer\UniqueIndexAttribute.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="Reactive\FastSubjectHelpers.cs" />

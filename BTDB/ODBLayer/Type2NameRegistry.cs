@@ -5,7 +5,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal class Type2NameRegistry
+    class Type2NameRegistry
     {
         readonly ConcurrentDictionary<string, Type> _name2Type = new ConcurrentDictionary<string, Type>(ReferenceEqualityComparer<string>.Instance);
         readonly ConcurrentDictionary<Type, string> _type2Name = new ConcurrentDictionary<Type, string>(ReferenceEqualityComparer<Type>.Instance);

@@ -82,7 +82,7 @@ namespace BTDB.EventStoreLayer
             if (targetType != typeof (object))
             {
                 if (targetType!=typeof(byte[]))
-                    throw new ArgumentOutOfRangeException("targetType");
+                    throw new ArgumentOutOfRangeException(nameof(targetType));
                 return;
             }
             ilGenerator.Castclass(typeof(object));
@@ -102,7 +102,7 @@ namespace BTDB.EventStoreLayer
                 ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
             else if (valueType==typeof(ByteBuffer))
                 ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
-            else throw new ArgumentOutOfRangeException("valueType");
+            else throw new ArgumentOutOfRangeException(nameof(valueType));
         }
 
         public bool Equals(ITypeDescriptor other)

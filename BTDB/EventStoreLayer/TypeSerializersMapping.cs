@@ -9,7 +9,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    internal class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMapping, ITypeSerializersId2LoaderMapping
+    class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMapping, ITypeSerializersId2LoaderMapping
     {
         const int ReservedBuildinTypes = 50;
         readonly List<InfoForType> _id2DescriptorMap = new List<InfoForType>();
@@ -235,9 +235,10 @@ namespace BTDB.EventStoreLayer
         {
             if (obj == null) return this;
             InfoForType infoForType;
-            if (obj is IKnowDescriptor)
+            var iKnowDescriptor = obj as IKnowDescriptor;
+            if (iKnowDescriptor != null)
             {
-                var descriptor = ((IKnowDescriptor)obj).GetDescriptor();
+                var descriptor = iKnowDescriptor.GetDescriptor();
                 if (!_typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
                 {
                     infoForType = new InfoForType { Id = 0, Descriptor = descriptor };
@@ -351,9 +352,10 @@ namespace BTDB.EventStoreLayer
             {
                 if (obj == null) return this;
                 InfoForType infoForType;
-                if (obj is IKnowDescriptor)
+                var iKnowDescriptor = obj as IKnowDescriptor;
+                if (iKnowDescriptor != null)
                 {
-                    var descriptor = ((IKnowDescriptor)obj).GetDescriptor();
+                    var descriptor = iKnowDescriptor.GetDescriptor();
                     if (!_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType) &&
                         !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
                     {
@@ -441,9 +443,10 @@ namespace BTDB.EventStoreLayer
             public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
             {
                 InfoForType infoForType;
-                if (obj is IKnowDescriptor)
+                var iKnowDescriptor = obj as IKnowDescriptor;
+                if (iKnowDescriptor != null)
                 {
-                    var descriptor = ((IKnowDescriptor)obj).GetDescriptor();
+                    var descriptor = iKnowDescriptor.GetDescriptor();
                     if (!_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType))
                         _typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType);
                 }
@@ -504,7 +507,7 @@ namespace BTDB.EventStoreLayer
                 infoForType.KnownComplexSaver = true;
             }
             var complexSaver = infoForType.ComplexSaver;
-            ITypeBinarySerializerContext ctx = new TypeBinarySerializerContext(mapping, writer, obj);
+            var ctx = new TypeBinarySerializerContext(mapping, writer, obj);
             complexSaver(writer, ctx, obj);
         }
 
@@ -567,9 +570,10 @@ namespace BTDB.EventStoreLayer
         public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
         {
             InfoForType infoForType;
-            if (obj is IKnowDescriptor)
+            var iKnowDescriptor = obj as IKnowDescriptor;
+            if (iKnowDescriptor != null)
             {
-                var descriptor = ((IKnowDescriptor)obj).GetDescriptor();
+                var descriptor = iKnowDescriptor.GetDescriptor();
                 _typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType);
             }
             else

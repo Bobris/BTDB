@@ -2,7 +2,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILConstructorDebugImpl : IILMethod
+    class ILConstructorDebugImpl : IILMethod
     {
         readonly ConstructorBuilder _constructor;
         readonly SourceCodeWriter _sourceCodeWriter;

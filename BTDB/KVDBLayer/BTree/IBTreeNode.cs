@@ -7,7 +7,7 @@ namespace BTDB.KVDBLayer.BTree
 
     internal delegate bool BTreeRemappingIterateAction(uint oldFileId, uint oldOffset, out uint fileId, out uint offset);
 
-    internal interface IBTreeNode
+    interface IBTreeNode
     {
         void CreateOrUpdate(CreateOrUpdateCtx ctx);
         FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key);

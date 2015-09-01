@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace BTDB.IOC
 {
-    internal class ConstructorTraitImpl : IConstructorTrait, IConstructorTraitImpl
+    class ConstructorTraitImpl : IConstructorTrait, IConstructorTraitImpl
     {
         Type[] _parameterTypes;
 

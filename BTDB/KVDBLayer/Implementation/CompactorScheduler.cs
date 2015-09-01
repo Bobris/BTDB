@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace BTDB.KVDBLayer
 {
-    internal class CompactorScheduler: IDisposable
+    class CompactorScheduler: IDisposable
     {
         readonly Func<CancellationToken, bool> _coreAction;
         readonly Timer _timer;

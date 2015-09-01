@@ -1,6 +1,6 @@
 namespace BTDB.EventStoreLayer
 {
-    internal interface ITypeSerializersLightMapping
+    interface ITypeSerializersLightMapping
     {
         InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers);
     }

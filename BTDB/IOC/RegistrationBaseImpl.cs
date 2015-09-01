@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.IOC
 {
-    internal abstract class RegistrationBaseImpl<TTraits> : IRegistration<TTraits> where TTraits : IAsTrait
+    abstract class RegistrationBaseImpl<TTraits> : IRegistration<TTraits> where TTraits : IAsTrait
     {
         public IRegistration<TTraits> As<T>()
         {

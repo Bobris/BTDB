@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer.BTree
 {
-    internal struct NodeIdxPair
+    struct NodeIdxPair
     {
         internal IBTreeNode Node;
         internal int Idx;

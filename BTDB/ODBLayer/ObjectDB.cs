@@ -15,12 +15,15 @@ namespace BTDB.ODBLayer
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
         TablesInfo _tablesInfo;
         bool _dispose;
-        internal static readonly byte[] TableNamesPrefix = new byte[] { 0, 0 };
-        internal static readonly byte[] TableVersionsPrefix = new byte[] { 0, 1 };
-        internal static readonly byte[] TableSingletonsPrefix = new byte[] { 0, 2 };
-        internal static readonly byte[] LastDictIdKey = new byte[] { 0, 3 };
-        internal static readonly byte[] AllObjectsPrefix = new byte[] { 1 };
-        internal static readonly byte[] AllDictionariesPrefix = new byte[] { 2 };
+        internal static readonly byte[] TableNamesPrefix = { 0, 0 };
+        internal static readonly byte[] TableVersionsPrefix = { 0, 1 };
+        internal static readonly byte[] TableSingletonsPrefix = { 0, 2 };
+        internal static readonly byte[] LastDictIdKey = { 0, 3 };
+        internal static readonly byte[] RelationNamesPrefix = { 0, 4 };
+        internal static readonly byte[] RelationVersionsPrefix = { 0, 5 };
+        internal static readonly byte[] AllObjectsPrefix = { 1 };
+        internal static readonly byte[] AllDictionariesPrefix = { 2 };
+        internal static readonly byte[] AllRelationsPrefix = { 3 };
         readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
         TableInfoResolver _tableInfoResolver;
         long _lastObjId;
@@ -49,7 +52,7 @@ namespace BTDB.ODBLayer
 
         public void Open(IKeyValueDB keyValueDB, bool dispose)
         {
-            if (keyValueDB == null) throw new ArgumentNullException("keyValueDB");
+            if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
             _keyValueDB = keyValueDB;
             _dispose = dispose;
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
@@ -114,11 +117,11 @@ namespace BTDB.ODBLayer
 
         public string RegisterType(Type type)
         {
-            if (type == null) throw new ArgumentNullException("type");
+            if (type == null) throw new ArgumentNullException(nameof(type));
             var name = Type2NameRegistry.FindNameByType(type);
             if (name != null) return name;
             name = type.Name;
-            if (type.IsInterface && name.StartsWith("I")) name = name.Substring(1);
+            if (type.IsInterface && name.StartsWith("I", StringComparison.Ordinal)) name = name.Substring(1);
             return RegisterType(type, name);
         }
 

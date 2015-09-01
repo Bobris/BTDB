@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.IOC
 {
-    internal interface IScanTraitImpl
+    interface IScanTraitImpl
     {
         bool MatchFilter(Type type);
     }

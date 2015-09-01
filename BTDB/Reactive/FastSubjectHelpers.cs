@@ -3,9 +3,9 @@ using System.Threading;
 
 namespace BTDB.Reactive
 {
-    internal interface IStoppedSubjectMarker { }
+    interface IStoppedSubjectMarker { }
 
-    internal static class FastSubjectHelpers<T>
+    static class FastSubjectHelpers<T>
     {
         internal interface IUnsubscribableSubject
         {

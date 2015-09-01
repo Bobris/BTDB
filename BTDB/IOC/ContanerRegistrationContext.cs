@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.IOC
 {
-    internal class ContanerRegistrationContext
+    class ContanerRegistrationContext
     {
         readonly ContainerImpl _container;
         readonly Dictionary<KeyAndType, ICReg> _registrations;

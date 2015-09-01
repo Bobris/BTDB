@@ -2,7 +2,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ChunkCache
 {
-    internal class FilePureValues : IFileInfo
+    class FilePureValues : IFileInfo
     {
         readonly long _generation;
 

@@ -6,7 +6,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal class TablesInfo
+    class TablesInfo
     {
         readonly ConcurrentDictionary<uint, TableInfo> _id2Table = new ConcurrentDictionary<uint, TableInfo>();
         readonly ConcurrentDictionary<string, TableInfo> _name2Table = new ConcurrentDictionary<string, TableInfo>(ReferenceEqualityComparer<string>.Instance);

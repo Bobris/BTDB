@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    internal class ILDynamicMethodImpl : IILDynamicMethod, IILDynamicMethodWithThis
+    class ILDynamicMethodImpl : IILDynamicMethod, IILDynamicMethodWithThis
     {
         readonly Type _delegateType;
         int _expectedLength;
@@ -53,7 +53,7 @@ namespace BTDB.IL
         }
     }
 
-    internal class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : class
+    class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : class
     {
         public ILDynamicMethodImpl(string name):base(name,typeof(TDelegate),null)
         {

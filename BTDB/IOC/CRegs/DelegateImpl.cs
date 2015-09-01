@@ -4,7 +4,7 @@ using BTDB.IL;
 
 namespace BTDB.IOC.CRegs
 {
-    internal class DelegateImpl : ICReg, ICRegILGen
+    class DelegateImpl : ICReg, ICRegILGen
     {
         readonly object _key;
         readonly Type _type;

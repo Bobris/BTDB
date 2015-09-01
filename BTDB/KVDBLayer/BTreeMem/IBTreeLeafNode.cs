@@ -2,7 +2,7 @@ using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
-    internal interface IBTreeLeafNode
+    interface IBTreeLeafNode
     {
         ByteBuffer GetKey(int idx);
         ByteBuffer GetMemberValue(int idx);

@@ -44,7 +44,7 @@ namespace BTDB.EventStoreLayer
 
         void CheckBufLength(ByteBuffer buf)
         {
-            if (buf.Length > MaxBlockSize) throw new ArgumentOutOfRangeException("buf", "buf length is over MaxBlockSize");
+            if (buf.Length > MaxBlockSize) throw new ArgumentOutOfRangeException(nameof(buf), "buf length is over MaxBlockSize");
         }
 
         public void Write(ByteBuffer buf, ulong position)
