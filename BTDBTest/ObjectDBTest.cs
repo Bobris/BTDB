@@ -1867,5 +1867,32 @@ namespace BTDBTest
                 Assert.AreEqual("a", value);
             }
         }
+
+        public class TimeIndex
+        {
+            public IOrderedDictionary<TimeIndexKey, ulong> Items { get; set; }
+
+            [StoredInline]
+            public class TimeIndexKey
+            {
+                public DateTime Time { get; set; }
+            }
+        }
+
+
+        [Test]
+        public void CannotStoreDateTimeKindUnspecified()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+            {
+                using (var tr = _db.StartTransaction())
+                {
+                    var t = tr.Singleton<TimeIndex>().Items;
+                    var unspecifiedKindDate = new DateTime(2015, 1, 1, 1, 1, 1, DateTimeKind.Unspecified);
+                    t[new TimeIndex.TimeIndexKey { Time = unspecifiedKindDate }] = 15;
+                    tr.Commit();
+                }
+            });
+        }
     }
 }
