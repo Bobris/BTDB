@@ -1880,7 +1880,7 @@ namespace BTDBTest
         }
 
 
-        [Test]
+        [Test, Ignore("Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
         public void CannotStoreDateTimeKindUnspecified()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
