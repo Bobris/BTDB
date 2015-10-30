@@ -47,7 +47,8 @@ namespace BTDB.EventStoreLayer
             var bufferStartPosition = NextReadPosition & SectorMask;
             var bufferFullLength = 0;
             var bufferReadOffset = (int)(NextReadPosition - bufferStartPosition);
-            var buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, FirstReadAhead);
+            var currentReadAhead = FirstReadAhead;
+            var buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, currentReadAhead);
             var bufReadLength = (int)File.Read(buf, bufferStartPosition);
             bufferFullLength += bufReadLength;
             while (true)
@@ -104,11 +105,15 @@ namespace BTDB.EventStoreLayer
                     return;
                 }
                 bufferReadOffset += 4;
-                var bufferLenToFill = ((uint)(bufferReadOffset + (int)blockLen + FirstReadAhead)) & SectorMaskUInt;
+                var bufferLenToFill = ((uint)(bufferReadOffset + (int)blockLen + currentReadAhead)) & SectorMaskUInt;
                 if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
                 buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                 if (buf.Length != 0)
                 {
+                    if (currentReadAhead * 4 < MaxBlockSize)
+                    {
+                        currentReadAhead = currentReadAhead * 2;
+                    }
                     bufReadLength = (int)File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
                     bufferFullLength += bufReadLength;
                 }
