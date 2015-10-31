@@ -349,7 +349,6 @@
     <Compile Include="ODBLayer\ITableInfoResolver.cs" />
     <Compile Include="FieldHandler\ITypeConvertorGenerator.cs" />
     <Compile Include="ODBLayer\KeyValueDBTransactionProtector.cs" />
-    <Compile Include="ODBLayer\KeyValueDBValueProtectedWriter.cs" />
     <Compile Include="FieldHandler\SignedFieldHandler.cs" />
     <Compile Include="ODBLayer\TableFieldInfo.cs" />
     <Compile Include="ODBLayer\IObjectDB.cs" />
