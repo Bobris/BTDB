@@ -90,6 +90,8 @@ This help you to write fluent code which generates IL code in runtime. It is use
 * Enumeration of all objects
 * Each object type could store its "singleton" - very useful for root objects
 
+Documentation: [Doc/ODBDictionary.md]
+
 ### Sample code:
 
     public class Person
