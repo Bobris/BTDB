@@ -45,7 +45,7 @@ namespace BTDB.DtoChannel
                 }
                 else if (c0 != 100)
                 {
-                    _dtoChannel._onReceive.OnError(new InvalidDataException("Data received from other side must start with byte 99 or 100"));
+                    _dtoChannel._onReceive.OnError(new InvalidDataException("Data received from other side must Start with byte 99 or 100"));
                     return;
                 }
                 _dtoChannel._onReceive.OnNext(_dtoChannel._receivingMapping.LoadObject(reader));

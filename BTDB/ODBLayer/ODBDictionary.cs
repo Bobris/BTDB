@@ -317,7 +317,6 @@ namespace BTDB.ODBLayer
                     if (pos == 0)
                     {
                         prevModificationCounter = _parent._modificationCounter;
-                        prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
                         _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
                         if (!_parent._keyValueTr.FindFirstKey()) break;
                     }
@@ -334,8 +333,8 @@ namespace BTDB.ODBLayer
                         {
                             if (!_parent._keyValueTr.FindNextKey()) break;
                         }
-                        prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
                     }
+                    prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
                     var keyBytes = _parent._keyValueTr.GetKeyAsByteArray();
                     var key = _parent.ByteArrayToKey(keyBytes);
                     yield return key;
@@ -749,11 +748,10 @@ namespace BTDB.ODBLayer
 #pragma warning restore 693
         {
             readonly ODBDictionary<TKey, TValue> _owner;
-            readonly AdvancedEnumeratorParam<TKey> _param;
             readonly KeyValueDBTransactionProtector _keyValueTrProtector;
             readonly IKeyValueDBTransaction _keyValueTr;
             long _prevProtectionCounter;
-            int _prevModificationCounter;
+            readonly int _prevModificationCounter;
             readonly uint _startPos = 0;
             readonly uint _count = 0;
             uint _pos;
@@ -763,28 +761,27 @@ namespace BTDB.ODBLayer
             public AdvancedEnumerator(ODBDictionary<TKey, TValue> owner, AdvancedEnumeratorParam<TKey> param)
             {
                 _owner = owner;
-                _param = param;
                 _keyValueTrProtector = _owner._keyValueTrProtector;
                 _keyValueTr = _owner._keyValueTr;
-                _ascending = param.order == EnumerationOrder.Ascending;
+                _ascending = param.Order == EnumerationOrder.Ascending;
                 _keyValueTrProtector.Start();
                 _prevModificationCounter = _owner._modificationCounter;
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 _keyValueTr.SetKeyPrefix(_owner._prefix);
                 long startIndex;
                 long endIndex;
-                if ((_ascending ? param.endProposition : param.startProposition) == KeyProposition.Ignored)
+                if (param.EndProposition == KeyProposition.Ignored)
                 {
                     endIndex = _keyValueTr.GetKeyValueCount() - 1;
                 }
                 else
                 {
-                    var keyBytes = _owner.KeyToByteArray(_ascending ? param.end : param.start);
+                    var keyBytes = _owner.KeyToByteArray(param.End);
                     switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
                     {
                         case FindResult.Exact:
                             endIndex = _keyValueTr.GetKeyIndex();
-                            if ((_ascending ? param.endProposition : param.startProposition) == KeyProposition.Excluded)
+                            if (param.EndProposition == KeyProposition.Excluded)
                             {
                                 endIndex--;
                             }
@@ -802,18 +799,18 @@ namespace BTDB.ODBLayer
                             throw new ArgumentOutOfRangeException();
                     }
                 }
-                if ((_ascending ? param.startProposition : param.endProposition) == KeyProposition.Ignored)
+                if (param.StartProposition == KeyProposition.Ignored)
                 {
                     startIndex = 0;
                 }
                 else
                 {
-                    var keyBytes = _owner.KeyToByteArray(_ascending ? param.start : param.end);
+                    var keyBytes = _owner.KeyToByteArray(param.Start);
                     switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
                     {
                         case FindResult.Exact:
                             startIndex = _keyValueTr.GetKeyIndex();
-                            if ((_ascending ? param.startProposition : param.endProposition) == KeyProposition.Excluded)
+                            if (param.StartProposition == KeyProposition.Excluded)
                             {
                                 startIndex++;
                             }
@@ -878,8 +875,6 @@ namespace BTDB.ODBLayer
                         Seek();
                     }
                     _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                    _prevModificationCounter++;
-                    _owner._modificationCounter++;
                     var valueBytes = _owner.ValueToByteArray(value);
                     _keyValueTr.SetValue(valueBytes);
                 }

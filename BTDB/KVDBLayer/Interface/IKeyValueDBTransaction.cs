@@ -104,7 +104,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// This will remove keys in range of key indexes. It will erase only keys in current prefix, even you specify indexes outside of range. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
         /// </summary>
-        /// <param name="firstKeyIndex">zero based index relative to current prefix where to start erase (inclusive)</param>
+        /// <param name="firstKeyIndex">zero based index relative to current prefix where to Start erase (inclusive)</param>
         /// <param name="lastKeyIndex">zero based index relative to current prefix where to finish erase (inclusive)</param>
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
 

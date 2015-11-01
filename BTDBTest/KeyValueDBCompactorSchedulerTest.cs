@@ -19,7 +19,7 @@ namespace BTDBTest
                 }))
             {
             }
-            Assert.False(run, "Should not start imidietly");
+            Assert.False(run, "Should not Start imidietly");
         }
 
         [Test]

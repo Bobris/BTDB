@@ -5,7 +5,7 @@ namespace BTDB.ODBLayer
     public interface IOrderedDictionaryEnumerator<TKey, TValue>
     {
         /// <summary>
-        /// Read current cursor position key and move cursor to next pair, if at end just return false and stay at end
+        /// Read current cursor position key and move cursor to next pair, if at End just return false and stay at End
         /// </summary>
         /// <param name="key">Filled by read key</param>
         /// <returns>true if there was new key read</returns>
@@ -32,49 +32,32 @@ namespace BTDB.ODBLayer
     {
         public AdvancedEnumeratorParam()
         {
-            order = EnumerationOrder.Ascending;
-            startProposition = KeyProposition.Ignored;
-            endProposition = KeyProposition.Ignored;
+            Order = EnumerationOrder.Ascending;
+            StartProposition = KeyProposition.Ignored;
+            EndProposition = KeyProposition.Ignored;
         }
 
         public AdvancedEnumeratorParam(EnumerationOrder order)
         {
-            this.order = order;
-            startProposition = KeyProposition.Ignored;
-            endProposition = KeyProposition.Ignored;
-        }
-
-        public AdvancedEnumeratorParam(EnumerationOrder order, TKey start, bool included = true)
-        {
-            this.order = order;
-            this.start = start;
-            startProposition = included ? KeyProposition.Included : KeyProposition.Excluded;
-            endProposition = KeyProposition.Ignored;
-        }
-
-        public AdvancedEnumeratorParam(EnumerationOrder order, TKey start, TKey end, bool endIncluded = false)
-        {
-            this.order = order;
-            this.start = start;
-            startProposition = KeyProposition.Included;
-            this.end = end;
-            endProposition = endIncluded ? KeyProposition.Included : KeyProposition.Excluded;
+            Order = order;
+            StartProposition = KeyProposition.Ignored;
+            EndProposition = KeyProposition.Ignored;
         }
 
         public AdvancedEnumeratorParam(EnumerationOrder order, TKey start, KeyProposition startProposition, TKey end, KeyProposition endProposition)
         {
-            this.order = order;
-            this.start = start;
-            this.startProposition = startProposition;
-            this.end = end;
-            this.endProposition = endProposition;
+            Order = order;
+            Start = start;
+            StartProposition = startProposition;
+            End = end;
+            EndProposition = endProposition;
         }
 
-        public EnumerationOrder order;
-        public KeyProposition startProposition;
-        public TKey start;
-        public KeyProposition endProposition;
-        public TKey end;
+        public readonly EnumerationOrder Order;
+        public readonly KeyProposition StartProposition;
+        public readonly TKey Start;
+        public readonly KeyProposition EndProposition;
+        public readonly TKey End;
     }
 
     public interface IOrderedDictionary<TKey, TValue> : IDictionary<TKey,TValue>

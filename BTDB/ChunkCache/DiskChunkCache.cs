@@ -420,7 +420,7 @@ namespace BTDB.ChunkCache
                 writer.WriteVUInt32(cachePair.Value.ContentLength);
                 writer.WriteBlock(keyBuf);
             }
-            writer.WriteVUInt32(0); // Zero FileOfs as end of file mark
+            writer.WriteVUInt32(0); // Zero FileOfs as End of file mark
             file.HardFlush();
         }
 
