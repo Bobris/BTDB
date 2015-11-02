@@ -16,6 +16,7 @@ namespace BTDB.EventStoreLayer
         Type _valueType;
         ITypeDescriptor _keyDescriptor;
         ITypeDescriptor _valueDescriptor;
+        string _name;
 
         public DictionaryTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
@@ -34,13 +35,14 @@ namespace BTDB.EventStoreLayer
 
         void InitFromKeyValueDescriptors(ITypeDescriptor keyDescriptor, ITypeDescriptor valueDescriptor)
         {
-            if (_keyDescriptor == keyDescriptor && _valueDescriptor == valueDescriptor) return;
+            if (_keyDescriptor == keyDescriptor && _valueDescriptor == valueDescriptor && _name != null) return;
             _keyDescriptor = keyDescriptor;
             _valueDescriptor = valueDescriptor;
+            if ((_keyDescriptor.Name?.Length ?? 0) == 0 || (_valueDescriptor.Name?.Length ?? 0) == 0) return;
             _keyType = _keyDescriptor.GetPreferedType();
             _valueType = _valueDescriptor.GetPreferedType();
             Sealed = _keyDescriptor.Sealed && _valueDescriptor.Sealed;
-            Name = string.Format("Dictionary<{0}, {1}>", _keyDescriptor.Name, _valueDescriptor.Name);
+            Name = $"Dictionary<{_keyDescriptor.Name}, {_valueDescriptor.Name}>";
         }
 
         public bool Equals(ITypeDescriptor other)
@@ -48,7 +50,15 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
-        public string Name { get; private set; }
+        public string Name
+        {
+            get
+            {
+                if (_name == null) InitFromKeyValueDescriptors(_keyDescriptor, _valueDescriptor);
+                return _name;
+            }
+            private set { _name = value; }
+        }
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {

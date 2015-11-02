@@ -369,7 +369,9 @@ namespace BTDB.EventStoreLayer
             for (int index = 0; index < _fields.Count; index++)
             {
                 var keyValuePair = _fields[index];
-                keyValuePair = new KeyValuePair<string, ITypeDescriptor>(keyValuePair.Key, map(keyValuePair.Value));
+                var mapped = map(keyValuePair.Value);
+                if (mapped == keyValuePair.Value) continue;
+                keyValuePair = new KeyValuePair<string, ITypeDescriptor>(keyValuePair.Key, mapped);
                 _fields[index] = keyValuePair;
             }
         }

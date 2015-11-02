@@ -496,6 +496,31 @@ namespace BTDBTest
             Assert.AreEqual(readUserEvent, userEvent);
         }
 
+        public class ErrorInfo
+        {
+            public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }
+        }
+
+        [Test]
+        public void DeserializeErrorInfoWorks()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var obj = new ErrorInfo();
+            obj.PropertyErrors = new Dictionary<string, IList<ErrorInfo>>();
+            var items = obj.PropertyErrors;
+            items["a"] = new List<ErrorInfo> { new ErrorInfo() };
+            appender.Store(null, new object[] { obj });
+
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            var readUserEvent = (ErrorInfo)eventObserver.Events[0][0];
+            Assert.AreEqual(1, readUserEvent.PropertyErrors.Count);
+        }
+
         [Test]
         public void SupportsDataOverMaxBlockSize()
         {
