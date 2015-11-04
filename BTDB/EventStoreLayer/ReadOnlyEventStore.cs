@@ -105,11 +105,14 @@ namespace BTDB.EventStoreLayer
                     return;
                 }
                 bufferReadOffset += 4;
-                var bufferLenToFill = ((uint)(bufferReadOffset + (int)blockLen + currentReadAhead)) & SectorMaskUInt;
+                var bufferLenToFill = (uint)(bufferReadOffset + (int)blockLen + FirstReadAhead) & SectorMaskUInt;
                 if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
                 buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                 if (buf.Length != 0)
                 {
+                    bufferLenToFill = (uint)(bufferReadOffset + (int)blockLen + currentReadAhead) & SectorMaskUInt;
+                    if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
+                    buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                     if (currentReadAhead * 4 < MaxBlockSize)
                     {
                         currentReadAhead = currentReadAhead * 2;
