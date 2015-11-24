@@ -279,6 +279,7 @@
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
     <Compile Include="ODBLayer\PrimaryKeyAttribute.cs" />
+    <Compile Include="ODBLayer\SecondaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\StoredInlineAttribute.cs" />
     <Compile Include="ODBLayer\UniqueIndexAttribute.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
