@@ -49,20 +49,11 @@ namespace BTDB.FieldHandler
             _valuesHandler = valueSpecialized;
         }
 
-        public static string HandlerName
-        {
-            get { return "Dictionary"; }
-        }
+        public static string HandlerName => "Dictionary";
 
-        public string Name
-        {
-            get { return HandlerName; }
-        }
+        public string Name => HandlerName;
 
-        public byte[] Configuration
-        {
-            get { return _configuration; }
-        }
+        public byte[] Configuration => _configuration;
 
         public static bool IsCompatibleWith(Type type)
         {

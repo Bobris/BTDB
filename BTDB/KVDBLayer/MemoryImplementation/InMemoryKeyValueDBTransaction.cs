@@ -30,10 +30,7 @@ namespace BTDB.KVDBLayer
             _keyIndex = -1;
         }
 
-        internal IBTreeRootNode BtreeRoot
-        {
-            get { return _btreeRoot; }
-        }
+        internal IBTreeRootNode BtreeRoot => _btreeRoot;
 
         public void SetKeyPrefix(ByteBuffer prefix)
         {

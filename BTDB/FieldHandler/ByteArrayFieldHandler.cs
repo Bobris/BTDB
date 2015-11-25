@@ -7,15 +7,9 @@ namespace BTDB.FieldHandler
 {
     public class ByteArrayFieldHandler : IFieldHandler
     {
-        public virtual string Name
-        {
-            get { return "Byte[]"; }
-        }
+        public virtual string Name => "Byte[]";
 
-        public byte[] Configuration
-        {
-            get { return null; }
-        }
+        public byte[] Configuration => null;
 
         public virtual bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
@@ -76,8 +70,8 @@ namespace BTDB.FieldHandler
                 _fieldHandler = fieldHandler;
             }
 
-            public string Name { get { return _fieldHandler.Name; } }
-            public byte[] Configuration { get { return _fieldHandler.Configuration; } }
+            public string Name => _fieldHandler.Name;
+            public byte[] Configuration => _fieldHandler.Configuration;
 
             public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
             {

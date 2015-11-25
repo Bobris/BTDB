@@ -31,7 +31,7 @@ namespace BTDB.IL
 
         internal int Indent { get; set; }
 
-        int RealIndent { get { return Indent * 4; } }
+        int RealIndent => Indent * 4;
 
         internal void WriteLine(string text)
         {
@@ -105,8 +105,8 @@ namespace BTDB.IL
                     int idx = 0;
                     foreach (var par in parameters)
                     {
-                        WriteLine(String.Format("{0} arg{1}{2}", par.ToSimpleName(), idx + firstArgIdx,
-                                                idx + 1 == parameters.Length ? ')' : ','));
+                        WriteLine(
+                            $"{par.ToSimpleName()} arg{idx + firstArgIdx}{(idx + 1 == parameters.Length ? ')' : ',')}");
                         idx++;
                     }
                     Indent--;

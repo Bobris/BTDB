@@ -55,20 +55,11 @@ namespace BTDB.FieldHandler
             return _type = _objectDB.TypeByName(_typeName);
         }
 
-        public static string HandlerName
-        {
-            get { return "Object"; }
-        }
+        public static string HandlerName => "Object";
 
-        public string Name
-        {
-            get { return HandlerName; }
-        }
+        public string Name => HandlerName;
 
-        public byte[] Configuration
-        {
-            get { return _configuration; }
-        }
+        public byte[] Configuration => _configuration;
 
         public static bool IsCompatibleWith(Type type)
         {

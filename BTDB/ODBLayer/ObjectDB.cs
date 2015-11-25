@@ -35,20 +35,11 @@ namespace BTDB.ODBLayer
             TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
         }
 
-        internal ulong LastDictId
-        {
-            get { return _lastDictId; }
-        }
+        internal ulong LastDictId => _lastDictId;
 
-        internal Type2NameRegistry Type2NameRegistry
-        {
-            get { return _type2Name; }
-        }
+        internal Type2NameRegistry Type2NameRegistry => _type2Name;
 
-        internal TablesInfo TablesInfo
-        {
-            get { return _tablesInfo; }
-        }
+        internal TablesInfo TablesInfo => _tablesInfo;
 
         public void Open(IKeyValueDB keyValueDB, bool dispose)
         {
@@ -155,7 +146,7 @@ namespace BTDB.ODBLayer
                 _objectDB = objectDB;
             }
 
-            uint ITableInfoResolver.GetLastPesistedVersion(uint id)
+            uint ITableInfoResolver.GetLastPersistedVersion(uint id)
             {
                 using (var tr = _keyValueDB.StartTransaction())
                 {
@@ -178,7 +169,7 @@ namespace BTDB.ODBLayer
                     tr.SetKeyPrefix(TableVersionsPrefix);
                     var key = TableInfo.BuildKeyForTableVersions(id, version);
                     if (!tr.FindExactKey(key))
-                        throw new BTDBException(string.Format("Missing TableVersionInfo Id:{0} Version:{1}", id, version));
+                        throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
                     return TableVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, tableName);
                 }
             }
@@ -204,15 +195,9 @@ namespace BTDB.ODBLayer
                 return _objectDB.AllocateNewOid();
             }
 
-            public IFieldHandlerFactory FieldHandlerFactory
-            {
-                get { return _objectDB.FieldHandlerFactory; }
-            }
+            public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
 
-            public ITypeConvertorGenerator TypeConvertorGenerator
-            {
-                get { return _objectDB.TypeConvertorGenerator; }
-            }
+            public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
         }
 
         public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }

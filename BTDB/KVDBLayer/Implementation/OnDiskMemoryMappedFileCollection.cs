@@ -64,10 +64,7 @@ namespace BTDB.KVDBLayer
                 _stream.Dispose();
             }
 
-            public uint Index
-            {
-                get { return _index; }
-            }
+            public uint Index => _index;
 
             void MapContent()
             {

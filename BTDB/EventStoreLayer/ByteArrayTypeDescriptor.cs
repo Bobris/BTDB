@@ -9,10 +9,7 @@ namespace BTDB.EventStoreLayer
 {
     public class ByteArrayTypeDescriptor : ITypeDescriptorMultipleNativeTypes
     {
-        public string Name
-        {
-            get { return "Byte[]"; }
-        }
+        public string Name => "Byte[]";
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {
@@ -47,9 +44,9 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public bool Sealed { get { return true; } }
+        public bool Sealed => true;
 
-        public bool StoredInline { get { return true; } }
+        public bool StoredInline => true;
 
         public void ClearMappingToType()
         {

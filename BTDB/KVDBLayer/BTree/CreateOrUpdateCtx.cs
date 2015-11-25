@@ -24,7 +24,8 @@ namespace BTDB.KVDBLayer.BTree
         internal IBTreeNode Node1;
         internal IBTreeNode Node2;
 
-        internal int WholeKeyLen { get { return KeyPrefix.Length + Key.Length; } }
+        internal int WholeKeyLen => KeyPrefix.Length + Key.Length;
+
         internal byte[] WholeKey()
         {
             if (KeyPrefix.Length == 0)

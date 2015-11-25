@@ -64,25 +64,13 @@ namespace BTDB.Service
             }
         }
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
-        public string IfaceName
-        {
-            get { return _ifaceName; }
-        }
+        public string IfaceName => _ifaceName;
 
-        public ParameterInf[] Parameters
-        {
-            get { return _parameters; }
-        }
+        public ParameterInf[] Parameters => _parameters;
 
-        public IFieldHandler ResultFieldHandler
-        {
-            get { return _resultFieldHandler; }
-        }
+        public IFieldHandler ResultFieldHandler => _resultFieldHandler;
 
         public MethodInfo MethodInfo { get; set; }
 

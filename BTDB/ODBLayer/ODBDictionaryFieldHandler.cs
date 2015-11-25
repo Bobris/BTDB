@@ -96,20 +96,11 @@ namespace BTDB.ODBLayer
             return dm.Create();
         }
 
-        public static string HandlerName
-        {
-            get { return "ODBDictionary"; }
-        }
+        public static string HandlerName => "ODBDictionary";
 
-        public string Name
-        {
-            get { return HandlerName; }
-        }
+        public string Name => HandlerName;
 
-        public byte[] Configuration
-        {
-            get { return _configuration; }
-        }
+        public byte[] Configuration => _configuration;
 
         public static bool IsCompatibleWithStatic(Type type, FieldHandlerOptions options)
         {

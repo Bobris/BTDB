@@ -22,19 +22,10 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions)); }
-        }
+        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions));
 
-        public MethodInfo MethodInfo
-        {
-            get { return _method; }
-        }
+        public MethodInfo MethodInfo => _method;
 
-        public MethodBuilder MethodBuilder
-        {
-            get { return _method; }
-        }
+        public MethodBuilder MethodBuilder => _method;
     }
 }

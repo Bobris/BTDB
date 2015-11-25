@@ -150,10 +150,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             throw new ArgumentException();
         }
 
-        public long TransactionId
-        {
-            get { return _transactionId; }
-        }
+        public long TransactionId => _transactionId;
 
         public IBTreeRootNode NewTransactionRoot()
         {

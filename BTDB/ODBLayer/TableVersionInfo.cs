@@ -13,12 +13,9 @@ namespace BTDB.ODBLayer
             _tableFields = tableFields;
         }
 
-        internal int FieldCount { get { return _tableFields.Length; } }
+        internal int FieldCount => _tableFields.Length;
 
-        internal TableFieldInfo this[int idx]
-        {
-            get { return _tableFields[idx]; }
-        }
+        internal TableFieldInfo this[int idx] => _tableFields[idx];
 
         internal TableFieldInfo this[string name]
         {

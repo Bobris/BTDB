@@ -70,7 +70,7 @@ namespace BTDB.ODBLayer
             {
                 if (FindByType(type).Name != name)
                 {
-                    throw new BTDBException(string.Format("Type {0} is already linked", type));
+                    throw new BTDBException($"Type {type} is already linked");
                 }
             }
             return t;

@@ -11,7 +11,7 @@ namespace BTDBTest.IOCDomain
             _logger = logger;
         }
 
-		public ILogger Logger { get { return _logger; } }
-		public IErrorHandler ErrorHandler { get { return _handler; } }
+		public ILogger Logger => _logger;
+	    public IErrorHandler ErrorHandler => _handler;
 	}
 }

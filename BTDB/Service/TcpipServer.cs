@@ -123,15 +123,9 @@ namespace BTDB.Service
                 throw new SocketException((int)socketError);
             }
 
-            public IObservable<ByteBuffer> OnReceive
-            {
-                get { return _receiver; }
-            }
+            public IObservable<ByteBuffer> OnReceive => _receiver;
 
-            public IObservable<bool> OnConnect
-            {
-                get { return _connector; }
-            }
+            public IObservable<bool> OnConnect => _connector;
 
             void SignalDisconnected()
             {
@@ -223,15 +217,9 @@ namespace BTDB.Service
                 Task.Factory.StartNew(ReceiveBody, TaskCreationOptions.LongRunning);
             }
 
-            public IPEndPoint LocalEndPoint
-            {
-                get { return _socket.LocalEndPoint as IPEndPoint; }
-            }
+            public IPEndPoint LocalEndPoint => _socket.LocalEndPoint as IPEndPoint;
 
-            public IPEndPoint RemoteEndPoint
-            {
-                get { return _socket.RemoteEndPoint as IPEndPoint; }
-            }
+            public IPEndPoint RemoteEndPoint => _socket.RemoteEndPoint as IPEndPoint;
         }
     }
 }

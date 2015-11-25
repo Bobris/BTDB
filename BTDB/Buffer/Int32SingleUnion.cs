@@ -20,14 +20,8 @@ namespace BTDB.Buffer
             _f = f;
         }
 
-        public int AsInt32
-        {
-            get { return _i; }
-        }
+        public int AsInt32 => _i;
 
-        public float AsSingle
-        {
-            get { return _f; }
-        }
+        public float AsSingle => _f;
     }
 }

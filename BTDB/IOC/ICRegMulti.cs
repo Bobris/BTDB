@@ -15,15 +15,9 @@ namespace BTDB.IOC
         readonly IList<ICReg> _regs = new List<ICReg>();
 
 
-        public ICReg ChosenOne
-        {
-            get { return _chosenOne; }
-        }
+        public ICReg ChosenOne => _chosenOne;
 
-        public IEnumerable<ICReg> Regs
-        {
-            get { return _regs; }
-        }
+        public IEnumerable<ICReg> Regs => _regs;
 
         public void Add(ICReg reg, bool preserveExistingDefaults)
         {

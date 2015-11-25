@@ -72,10 +72,7 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {
@@ -289,8 +286,8 @@ namespace BTDB.EventStoreLayer
         {
         }
 
-        public bool Sealed { get { return true; } }
-        public bool StoredInline { get { return true; } }
+        public bool Sealed => true;
+        public bool StoredInline => true;
 
         public void ClearMappingToType()
         {

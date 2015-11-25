@@ -30,7 +30,8 @@ namespace BTDB.IL
             var sourceCodeFileName = Path.Combine(DynamicILDirectoryPath.DynamicIL, uniqueName + ".il");
             _symbolDocumentWriter = _moduleBuilder.DefineDocument(sourceCodeFileName, SymDocumentType.Text, SymLanguageType.ILAssembly, SymLanguageVendor.Microsoft);
             _sourceCodeWriter = new SourceCodeWriter(sourceCodeFileName, _symbolDocumentWriter);
-            _sourceCodeWriter.WriteLine(string.Format("class {0} : {1}{2}", name, baseType.ToSimpleName(), string.Concat(interfaces.Select(i => ", " + i.ToSimpleName()))));
+            _sourceCodeWriter.WriteLine(
+                $"class {name} : {baseType.ToSimpleName()}{string.Concat(interfaces.Select(i => ", " + i.ToSimpleName()))}");
             _sourceCodeWriter.OpenScope();
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, baseType, interfaces);
             _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
@@ -44,7 +45,7 @@ namespace BTDB.IL
             name = name.Replace(" ", "");
             var uniqueName = name;
             var uniqueIdx = UniqueNames.AddOrUpdate(name, 0, (s, v) => v + 1);
-            if (uniqueIdx != 0) uniqueName = string.Format("{0}__{1}", name, uniqueIdx);
+            if (uniqueIdx != 0) uniqueName = $"{name}__{uniqueIdx}";
             return uniqueName;
         }
 
@@ -55,7 +56,7 @@ namespace BTDB.IL
             var methodBuilder = _typeBuilder.DefineMethod(name, methodAttributes, returns, parameters);
             for (int i = 0; i < parameters.Length; i++)
             {
-                methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
+                methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, $"arg{i}");
             }
             _inScope = true;
             return new ILMethodDebugImpl(methodBuilder, _sourceCodeWriter, name, returns, parameters, _forbidenInstructions);
@@ -64,14 +65,14 @@ namespace BTDB.IL
         public FieldBuilder DefineField(string name, Type type, FieldAttributes fieldAttributes)
         {
             CloseInScope();
-            _sourceCodeWriter.WriteLine(string.Format("{0} {1};", type.ToSimpleName(), name));
+            _sourceCodeWriter.WriteLine($"{type.ToSimpleName()} {name};");
             return _typeBuilder.DefineField(name, type, fieldAttributes);
         }
 
         public IILEvent DefineEvent(string name, EventAttributes eventAttributes, Type type)
         {
             CloseInScope();
-            _sourceCodeWriter.WriteLine(string.Format("event {0} {1};", type.ToSimpleName(), name));
+            _sourceCodeWriter.WriteLine($"event {type.ToSimpleName()} {name};");
             return new ILEventDebugImpl(_typeBuilder.DefineEvent(name, eventAttributes, type));
         }
 

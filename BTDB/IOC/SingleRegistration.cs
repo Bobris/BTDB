@@ -34,7 +34,7 @@ namespace BTDB.IOC
             var bestConstructor = _constructorTrait.ChooseConstructor(_implementationType, possibleConstructors);
             if (bestConstructor == null)
             {
-                throw new ArgumentException(string.Format("Cannot find public constructor for {0}", _implementationType.FullName));
+                throw new ArgumentException($"Cannot find public constructor for {_implementationType.FullName}");
             }
             switch (_liveScopeTrait.Lifetime)
             {

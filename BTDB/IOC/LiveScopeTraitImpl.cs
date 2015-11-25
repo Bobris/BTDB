@@ -9,9 +9,6 @@ namespace BTDB.IOC
             _lifetime = Lifetime.Singleton;
         }
 
-        public Lifetime Lifetime
-        {
-            get { return _lifetime; }
-        }
+        public Lifetime Lifetime => _lifetime;
     }
 }

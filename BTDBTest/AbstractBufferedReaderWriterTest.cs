@@ -19,10 +19,7 @@ namespace BTDBTest
             byte[] _output = new byte[0];
             readonly int _bufLength;
 
-            public byte[] Output
-            {
-                get { return _output; }
-            }
+            public byte[] Output => _output;
 
             public override void FlushBuffer()
             {

@@ -42,9 +42,6 @@ namespace BTDB.ODBLayer
             return lastCounter + 1 != _protectionCounter;
         }
 
-        internal long ProtectionCounter
-        {
-            get { return _protectionCounter; }
-        }
+        internal long ProtectionCounter => _protectionCounter;
     }
 }

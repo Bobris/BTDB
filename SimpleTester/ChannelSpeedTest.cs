@@ -166,7 +166,8 @@ namespace SimpleTester
                 {
                     if (message.Length != _messageLen)
                     {
-                        throw new InvalidOperationException(string.Format("Recived message of len {0} instead {1}", message.Length, _messageLen));
+                        throw new InvalidOperationException(
+                            $"Recived message of len {message.Length} instead {_messageLen}");
                     }
                     var ticks = Stopwatch.GetTimestamp();
                     ticks -= PackUnpack.UnpackInt64LE(message.Buffer, message.Offset);

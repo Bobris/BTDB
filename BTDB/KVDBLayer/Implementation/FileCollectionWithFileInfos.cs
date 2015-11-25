@@ -66,15 +66,9 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos
-        {
-            get { return _fileInfos; }
-        }
+        public IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos => _fileInfos;
 
-        public long LastFileGeneration
-        {
-            get { return _fileGeneration; }
-        }
+        public long LastFileGeneration => _fileGeneration;
 
         public IFileInfo FileInfoByIdx(uint idx)
         {

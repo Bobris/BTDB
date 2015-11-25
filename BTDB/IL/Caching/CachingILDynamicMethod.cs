@@ -22,10 +22,7 @@ namespace BTDB.IL.Caching
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _ilGen; }
-        }
+        public IILGen Generator => _ilGen;
 
         public object Create()
         {

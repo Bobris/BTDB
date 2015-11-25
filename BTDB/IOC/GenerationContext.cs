@@ -34,10 +34,7 @@ namespace BTDB.IOC
 
         public IILGen IL { get; private set; }
 
-        public ContainerImpl Container
-        {
-            get { return _container; }
-        }
+        public ContainerImpl Container => _container;
 
         public IBuildContext BuildContext
         {
@@ -253,7 +250,7 @@ namespace BTDB.IOC
                         reg = ResolveNeedBy(need.ClrType, null);
                     if (reg == null)
                     {
-                        throw new ArgumentException(string.Format("Cannot resolve {0} with key {1}", need.ClrType.ToSimpleName(), need.Key));
+                        throw new ArgumentException($"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
                     }
                     _resolvers.Add(new Tuple<IBuildContext, INeed>(_buildContext, need), reg);
                     GatherNeeds(reg, processed);

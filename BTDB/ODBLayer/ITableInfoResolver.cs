@@ -4,7 +4,7 @@ namespace BTDB.ODBLayer
 {
     interface ITableInfoResolver
     {
-        uint GetLastPesistedVersion(uint id);
+        uint GetLastPersistedVersion(uint id);
         TableVersionInfo LoadTableVersionInfo(uint id, uint version, string tableName);
         long GetSingletonOid(uint id);
         ulong AllocateNewOid();

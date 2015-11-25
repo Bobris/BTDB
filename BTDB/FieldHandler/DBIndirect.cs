@@ -42,15 +42,9 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public ulong Oid
-        {
-            get { return _oid; }
-        }
+        public ulong Oid => _oid;
 
-        public object ValueAsObject
-        {
-            get { return _value; }
-        }
+        public object ValueAsObject => _value;
 
         public static void SaveImpl(IWriterCtx writerCtx, object obj)
         {

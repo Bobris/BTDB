@@ -17,10 +17,7 @@ namespace BTDB.IOC
 
         internal int SingletonCount { get; set; }
 
-        internal List<object> Instances
-        {
-            get { return _instances; }
-        }
+        internal List<object> Instances => _instances;
 
         internal int AddInstance(object instance)
         {

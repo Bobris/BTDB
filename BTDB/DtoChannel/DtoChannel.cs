@@ -82,10 +82,7 @@ namespace BTDB.DtoChannel
             }
         }
 
-        public IObservable<object> OnReceive
-        {
-            get { return _onReceive; }
-        }
+        public IObservable<object> OnReceive => _onReceive;
 
         public void Dispose()
         {

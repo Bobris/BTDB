@@ -45,20 +45,11 @@ namespace BTDB.ODBLayer
             _keyValueTr = null;
         }
 
-        public IObjectDB Owner
-        {
-            get { return _owner; }
-        }
+        public IObjectDB Owner => _owner;
 
-        public IKeyValueDBTransaction KeyValueDBTransaction
-        {
-            get { return _keyValueTr; }
-        }
+        public IKeyValueDBTransaction KeyValueDBTransaction => _keyValueTr;
 
-        public KeyValueDBTransactionProtector TransactionProtector
-        {
-            get { return _keyValueTrProtector; }
-        }
+        public KeyValueDBTransactionProtector TransactionProtector => _keyValueTrProtector;
 
         public ulong AllocateDictionaryId()
         {
@@ -71,7 +62,7 @@ namespace BTDB.ODBLayer
             var tableId = reader.ReadVUInt32();
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
-            if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of inline object", tableId));
+            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             EnsureClientTypeNotNull(tableInfo);
             var obj = tableInfo.Creator(this, null);
             readerCtx.RegisterObject(obj);
@@ -287,7 +278,7 @@ namespace BTDB.ODBLayer
             var reader = new ByteArrayReader(_keyValueTr.GetValueAsByteArray());
             var tableId = reader.ReadVUInt32();
             tableInfo = _owner.TablesInfo.FindById(tableId);
-            if (tableInfo == null) throw new BTDBException(string.Format("Unknown TypeId {0} of Oid {1}", tableId, oid));
+            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
             EnsureClientTypeNotNull(tableInfo);
             return reader;
         }
@@ -418,7 +409,7 @@ namespace BTDB.ODBLayer
             {
                 if (!type.IsInstanceOfType(obj))
                 {
-                    throw new BTDBException(string.Format("Internal error oid {0} does not belong to {1}", oid, tableInfo.Name));
+                    throw new BTDBException($"Internal error oid {oid} does not belong to {tableInfo.Name}");
                 }
                 return obj;
             }
@@ -513,7 +504,7 @@ namespace BTDB.ODBLayer
         {
             if (ti.StoredInline)
             {
-                throw new BTDBException(string.Format("Object {0} should be stored inline and not directly", ti.Name));
+                throw new BTDBException($"Object {ti.Name} should be stored inline and not directly");
             }
         }
 
@@ -610,7 +601,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException(string.Format("Type {0} is not registered", tableInfo.Name));
+                    throw new BTDBException($"Type {tableInfo.Name} is not registered");
                 }
             }
         }

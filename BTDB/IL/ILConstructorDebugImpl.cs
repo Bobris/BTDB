@@ -23,9 +23,6 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_constructor.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
-        }
+        public IILGen Generator => _gen ?? (_gen = new ILGenDebugImpl(_constructor.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter));
     }
 }

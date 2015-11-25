@@ -235,7 +235,7 @@ namespace BTDB.EventStoreLayer
         {
             _knownAsCorrupted = true;
             EndBufferPosition = ulong.MaxValue;
-            throw new InvalidDataException(string.Format("EventStore is corrupted (detailed line number {0})", sourceLineNumber));
+            throw new InvalidDataException($"EventStore is corrupted (detailed line number {sourceLineNumber})");
         }
     }
 }

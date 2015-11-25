@@ -109,10 +109,7 @@ namespace BTDB.EventStoreLayer
         {
             readonly uint _typeId;
 
-            internal uint TypeId
-            {
-                get { return _typeId; }
-            }
+            internal uint TypeId => _typeId;
 
             public PlaceHolderDescriptor(uint typeId)
             {
@@ -124,10 +121,7 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            string ITypeDescriptor.Name
-            {
-                get { return ""; }
-            }
+            string ITypeDescriptor.Name => "";
 
             void ITypeDescriptor.FinishBuildFromType(ITypeDescriptorFactory factory)
             {
@@ -184,15 +178,9 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            bool ITypeDescriptor.Sealed
-            {
-                get { return false; }
-            }
+            bool ITypeDescriptor.Sealed => false;
 
-            bool ITypeDescriptor.StoredInline
-            {
-                get { return false; }
-            }
+            bool ITypeDescriptor.StoredInline => false;
 
             void ITypeDescriptor.ClearMappingToType()
             {
@@ -229,7 +217,7 @@ namespace BTDB.EventStoreLayer
             return infoForType.Loader(reader, context, this, infoForType.Descriptor);
         }
 
-        public bool SomeTypeStored { get { return false; } }
+        public bool SomeTypeStored => false;
 
         public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object obj)
         {
@@ -343,10 +331,7 @@ namespace BTDB.EventStoreLayer
                 return false;
             }
 
-            public bool SomeTypeStored
-            {
-                get { return _id2InfoMap.Count != 0; }
-            }
+            public bool SomeTypeStored => _id2InfoMap.Count != 0;
 
             public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object obj)
             {
@@ -468,7 +453,8 @@ namespace BTDB.EventStoreLayer
                 }
                 if (infoForType == null)
                 {
-                    throw new InvalidOperationException(String.Format("Type {0} was not registered using StoreNewDescriptors", obj.GetType().FullName));
+                    throw new InvalidOperationException(
+                        $"Type {obj.GetType().FullName} was not registered using StoreNewDescriptors");
                 }
                 typeSerializers = _typeSerializers;
                 return infoForType;
@@ -591,7 +577,8 @@ namespace BTDB.EventStoreLayer
             typeSerializers = _typeSerializers;
             if (infoForType == null)
             {
-                throw new InvalidOperationException(String.Format("Type {0} was not registered using StoreNewDescriptors", obj.GetType().FullName));
+                throw new InvalidOperationException(
+                    $"Type {obj.GetType().FullName} was not registered using StoreNewDescriptors");
             }
             return infoForType;
         }

@@ -15,15 +15,9 @@ namespace BTDB.ODBLayer
             _valueHandler = valueHandler;
         }
 
-        public IFieldHandler KeyHandler
-        {
-            get { return _keyHandler; }
-        }
+        public IFieldHandler KeyHandler => _keyHandler;
 
-        public IFieldHandler ValueHandler
-        {
-            get { return _valueHandler; }
-        }
+        public IFieldHandler ValueHandler => _valueHandler;
 
         public object KeyReader { get; set; }
         public object KeyWriter { get; set; }

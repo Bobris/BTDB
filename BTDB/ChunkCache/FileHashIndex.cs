@@ -8,25 +8,13 @@ namespace BTDB.ChunkCache
         readonly long _keyValueCount;
         readonly int _keySize;
 
-        public DiskChunkFileType FileType
-        {
-            get { return DiskChunkFileType.HashIndex; }
-        }
+        public DiskChunkFileType FileType => DiskChunkFileType.HashIndex;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
-        internal int KeySize
-        {
-            get { return _keySize; }
-        }
+        internal int KeySize => _keySize;
 
-        internal long KeyValueCount
-        {
-            get { return _keyValueCount; }
-        }
+        internal long KeyValueCount => _keyValueCount;
 
         public FileHashIndex(AbstractBufferedReader reader)
         {

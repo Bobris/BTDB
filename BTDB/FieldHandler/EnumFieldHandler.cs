@@ -67,28 +67,13 @@ namespace BTDB.FieldHandler
                 }
             }
 
-            public bool Signed
-            {
-                get
-                {
-                    return _signed;
-                }
-            }
+            public bool Signed => _signed;
 
-            bool Flags
-            {
-                get { return _flags; }
-            }
+            bool Flags => _flags;
 
-            string[] Names
-            {
-                get { return _names; }
-            }
+            string[] Names => _names;
 
-            ulong[] Values
-            {
-                get { return _values; }
-            }
+            ulong[] Values => _values;
 
             public byte[] ToConfiguration()
             {
@@ -206,20 +191,11 @@ namespace BTDB.FieldHandler
             return type.GetCustomAttributes(typeof(FlagsAttribute), false).Length != 0;
         }
 
-        public static string HandlerName
-        {
-            get { return "Enum"; }
-        }
+        public static string HandlerName => "Enum";
 
-        public string Name
-        {
-            get { return HandlerName; }
-        }
+        public string Name => HandlerName;
 
-        public byte[] Configuration
-        {
-            get { return _configuration; }
-        }
+        public byte[] Configuration => _configuration;
 
         public static bool IsCompatibleWith(Type type)
         {

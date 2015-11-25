@@ -39,7 +39,8 @@ namespace BTDB.EventStoreLayer
                 SerializeIntoBuffer(metadata, events, out startOffset, out serializerContext, out blockType, out lenWithoutEndPadding, out block);
                 if ((ulong)lenWithoutEndPadding > File.MaxFileSize)
                 {
-                    throw new ArgumentOutOfRangeException(string.Format("Size of events are bigger than MaxFileSize {0}>{1}", lenWithoutEndPadding, File.MaxFileSize));
+                    throw new ArgumentOutOfRangeException(
+                        $"Size of events are bigger than MaxFileSize {lenWithoutEndPadding}>{File.MaxFileSize}");
                 }
             }
             do
@@ -158,10 +159,7 @@ namespace BTDB.EventStoreLayer
             return EndBufferPosition + EndBufferLen;
         }
 
-        public IEventFileStorage CurrentFileStorage
-        {
-            get { return File; }
-        }
+        public IEventFileStorage CurrentFileStorage => File;
 
         void WriteOneBlock(ByteBuffer block, BlockType blockType)
         {

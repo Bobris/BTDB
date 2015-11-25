@@ -17,15 +17,9 @@ namespace BTDB.ODBLayer
             _handler = handler;
         }
 
-        internal string Name
-        {
-            get { return _name; }
-        }
+        internal string Name => _name;
 
-        internal IFieldHandler Handler
-        {
-            get { return _handler; }
-        }
+        internal IFieldHandler Handler => _handler;
 
         internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
         {
@@ -33,7 +27,8 @@ namespace BTDB.ODBLayer
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
             var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration, FieldHandlerOptions.None);
-            if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not created handler {0} in {1}.{2}", handlerName, tableName, name));
+            if (fieldHandler == null) throw new BTDBException(
+                $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
             return new TableFieldInfo(name, fieldHandler);
         }
 

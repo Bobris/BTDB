@@ -59,7 +59,7 @@ namespace BTDB.ODBLayer
             _count = -1;
         }
 
-        static void throwModifiedDuringEnum()
+        static void ThrowModifiedDuringEnum()
         {
             throw new InvalidOperationException("DB modified during iteration");
         }
@@ -171,10 +171,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public bool IsReadOnly
-        {
-            get { return false; }
-        }
+        public bool IsReadOnly => false;
 
         byte[] KeyToByteArray(TKey key)
         {
@@ -398,7 +395,7 @@ namespace BTDB.ODBLayer
                             if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
                             {
                                 if (prevModificationCounter != _parent._modificationCounter)
-                                    throwModifiedDuringEnum();
+                                    ThrowModifiedDuringEnum();
                                 _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
                                 if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                             }
@@ -462,21 +459,12 @@ namespace BTDB.ODBLayer
                 return _parent.Remove(item);
             }
 
-            public int Count
-            {
-                get { return _parent.Count; }
-            }
+            public int Count => _parent.Count;
 
-            public bool IsReadOnly
-            {
-                get { return false; }
-            }
+            public bool IsReadOnly => false;
         }
 
-        public ICollection<TKey> Keys
-        {
-            get { return _keysCollection ?? (_keysCollection = new KeysCollection(this)); }
-        }
+        public ICollection<TKey> Keys => _keysCollection ?? (_keysCollection = new KeysCollection(this));
 
         class ValuesCollection : ICollection<TValue>
         {
@@ -510,7 +498,7 @@ namespace BTDB.ODBLayer
                             if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
                             {
                                 if (prevModificationCounter != _parent._modificationCounter)
-                                    throwModifiedDuringEnum();
+                                    ThrowModifiedDuringEnum();
                                 _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
                                 if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                             }
@@ -574,21 +562,12 @@ namespace BTDB.ODBLayer
                 throw new NotSupportedException();
             }
 
-            public int Count
-            {
-                get { return _parent.Count; }
-            }
+            public int Count => _parent.Count;
 
-            public bool IsReadOnly
-            {
-                get { return true; }
-            }
+            public bool IsReadOnly => true;
         }
 
-        public ICollection<TValue> Values
-        {
-            get { return _valuesCollection ?? (_valuesCollection = new ValuesCollection(this)); }
-        }
+        public ICollection<TValue> Values => _valuesCollection ?? (_valuesCollection = new ValuesCollection(this));
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
@@ -613,7 +592,7 @@ namespace BTDB.ODBLayer
                         if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             if (prevModificationCounter != _modificationCounter)
-                                throwModifiedDuringEnum();
+                                ThrowModifiedDuringEnum();
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -661,7 +640,7 @@ namespace BTDB.ODBLayer
                         if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             if (prevModificationCounter != _modificationCounter)
-                                throwModifiedDuringEnum();
+                                ThrowModifiedDuringEnum();
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -726,7 +705,7 @@ namespace BTDB.ODBLayer
                         if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             if (prevModificationCounter != _modificationCounter)
-                                throwModifiedDuringEnum();
+                                ThrowModifiedDuringEnum();
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -791,7 +770,7 @@ namespace BTDB.ODBLayer
                         if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             if (prevModificationCounter != _modificationCounter)
-                                throwModifiedDuringEnum();
+                                ThrowModifiedDuringEnum();
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }
@@ -879,7 +858,7 @@ namespace BTDB.ODBLayer
                         if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
                             if (prevModificationCounter != _modificationCounter)
-                                throwModifiedDuringEnum();
+                                ThrowModifiedDuringEnum();
                             _keyValueTr.SetKeyPrefix(_prefix);
                             if (!_keyValueTr.SetKeyIndex(pos)) break;
                         }

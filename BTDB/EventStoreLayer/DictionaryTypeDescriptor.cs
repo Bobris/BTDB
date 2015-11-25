@@ -40,7 +40,7 @@ namespace BTDB.EventStoreLayer
             _keyType = _keyDescriptor.GetPreferedType();
             _valueType = _valueDescriptor.GetPreferedType();
             Sealed = _keyDescriptor.Sealed && _valueDescriptor.Sealed;
-            Name = string.Format("Dictionary<{0}, {1}>", _keyDescriptor.Name, _valueDescriptor.Name);
+            Name = $"Dictionary<{_keyDescriptor.Name}, {_valueDescriptor.Name}>";
         }
 
         public bool Equals(ITypeDescriptor other)
@@ -209,7 +209,8 @@ namespace BTDB.EventStoreLayer
         }
 
         public bool Sealed { get; private set; }
-        public bool StoredInline { get { return true; } }
+        public bool StoredInline => true;
+
         public void ClearMappingToType()
         {
             _type = null;

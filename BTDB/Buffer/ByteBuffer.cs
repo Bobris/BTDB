@@ -40,10 +40,10 @@ namespace BTDB.Buffer
             _length = length;
         }
 
-        public byte[] Buffer { get { return _buffer; } }
-        public int Offset { get { return (int)(_offset & 0x7fffffffu); } }
-        public int Length { get { return _length; } }
-        public bool AsyncSafe { get { return (_offset & 0x80000000u) == 0u; } }
+        public byte[] Buffer => _buffer;
+        public int Offset => (int)(_offset & 0x7fffffffu);
+        public int Length => _length;
+        public bool AsyncSafe => (_offset & 0x80000000u) == 0u;
 
         public byte this[int index]
         {

@@ -21,7 +21,7 @@ namespace SimpleTester
             volatile Action _continuation;
 
             public MyAwaitable GetAwaiter() { return this; }
-            public bool IsCompleted { get { return false; } }
+            public bool IsCompleted => false;
             public void GetResult() { }
 
             public void OnCompleted(Action continuation)
@@ -141,10 +141,7 @@ namespace SimpleTester
 
             public int Count { get; private set; }
 
-            public object this[int index]
-            {
-                get { return _ring[_start + index].Event; }
-            }
+            public object this[int index] => _ring[_start + index].Event;
         }
 
         public void Run()
@@ -202,10 +199,7 @@ namespace SimpleTester
                 if (events != null) _count += (ulong)events.Length;
             }
 
-            public ulong Count
-            {
-                get { return _count; }
-            }
+            public ulong Count => _count;
         }
 
         async Task PublishSampleEvents(int count)

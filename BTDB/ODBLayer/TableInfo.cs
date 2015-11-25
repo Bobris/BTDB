@@ -38,20 +38,11 @@ namespace BTDB.ODBLayer
             NeedStoreSingletonOid = false;
         }
 
-        internal bool StoredInline
-        {
-            get { return _storedInline; }
-        }
+        internal bool StoredInline => _storedInline;
 
-        internal uint Id
-        {
-            get { return _id; }
-        }
+        internal uint Id => _id;
 
-        internal string Name
-        {
-            get { return _name; }
-        }
+        internal string Name => _name;
 
         internal Type ClientType
         {
@@ -93,7 +84,8 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Creator_{0}", Name));
+            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
+                $"Creator_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
@@ -115,7 +107,8 @@ namespace BTDB.ODBLayer
         {
             EnsureClientTypeVersion();
             var tableVersionInfo = ClientTableVersionInfo;
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(string.Format("Initializer_{0}", Name));
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
+                $"Initializer_{Name}");
             var ilGenerator = method.Generator;
             if (tableVersionInfo.NeedsInit())
             {
@@ -209,7 +202,8 @@ namespace BTDB.ODBLayer
 
         void CreateSaver()
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(string.Format("Saver_{0}", Name));
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(
+                $"Saver_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
@@ -287,7 +281,7 @@ namespace BTDB.ODBLayer
         void EnsureKnownLastPersistedVersion()
         {
             if (LastPersistedVersion != 0) return;
-            LastPersistedVersion = _tableInfoResolver.GetLastPesistedVersion(_id);
+            LastPersistedVersion = _tableInfoResolver.GetLastPersistedVersion(_id);
         }
 
         internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
@@ -298,7 +292,8 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(string.Format("Loader_{0}_{1}", Name, version));
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(
+                $"Loader_{Name}_{version}");
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator

@@ -143,10 +143,7 @@ namespace SimpleTester
                 if (events != null) _count += (ulong)events.Length;
             }
 
-            public ulong Count
-            {
-                get { return _count; }
-            }
+            public ulong Count => _count;
         }
 
         async Task PublishSampleEvents(int count)
