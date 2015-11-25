@@ -38,39 +38,50 @@ namespace BTDBTest
             _db.Open(_lowDb, false);
         }
 
+        public class PersonSimple
+        {
+            [PrimaryKey(1)]
+            public ulong TenantId { get; set; }
+            [PrimaryKey(2)]
+            public string Email { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface IPersonSimpleTableWithJustInsert
+        {
+            void Insert(PersonSimple person);
+        }
+
+        [Test]
+        public void GeneratesCreator()
+        {
+            Func<IObjectDBTransaction, IPersonSimpleTableWithJustInsert> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("Person");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                creator(tr).Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
+                tr.Commit();
+            }
+        }
+
         public class Person
         {
             [PrimaryKey(1)]
             public ulong TenantId { get; set; }
             [PrimaryKey(2)]
             public Guid Id { get; set; }
+            [SecondaryKey("Age", Order = 2)]
+            [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
             public string Name { get; set; }
             [SecondaryKey("Age", IncludePrimaryKeyOrder = 1)]
             public uint Age { get; set; }
         }
 
-        public interface IPersonTableWithJustInsert
-        {
-            void Insert(Person person);
-        }
-
-        [Test]
-        public void GeneratesCreator()
-        {
-            Func<IObjectDBTransaction, IPersonTableWithJustInsert> creator;
-            using (var tr = _db.StartTransaction())
-            {
-                creator = tr.InitRelation<IPersonTableWithJustInsert>("Person");
-                tr.Commit();
-            }
-            using (var tr = _db.StartTransaction())
-            {
-                creator(tr).Insert(new Person { TenantId = 1, Id = Guid.NewGuid(), Name = "Boris", Age = 39 });
-                tr.Commit();
-            }
-        }
-
-        public interface IPersonTable
+        public interface IPersonTableComplexFuture
         {
             ulong TenantId { get; set; }
             // Should Insert with different TenantId throw? Or it should set tenantId before writing?
@@ -89,6 +100,7 @@ namespace BTDBTest
             IEnumerator<Person> FindByAge(uint age);  
             // Returns true if removed, if returning void it does throw if does not exists
             bool RemoveById(Guid id);
+
             // fills all your iterating needs
             IOrderedDictionaryEnumerator<Guid, Person> ListById(AdvancedEnumeratorParam<Guid> param);
             IEnumerator<Person> GetEnumerator();
