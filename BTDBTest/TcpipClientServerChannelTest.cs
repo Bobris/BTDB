@@ -29,7 +29,7 @@ namespace BTDBTest
             client.OnConnect.Subscribe(
                 u => Assert.Fail("Should not connect"),
                 ex => connectException = ex,
-                () => Assert.Fail("Connect should end with exception"));
+                () => Assert.Fail("Connect should End with exception"));
             client.OnReceive.Subscribe(b => { }, () => e.Set());
             client.ConnectAsync();
             Assert.True(e.WaitOne(TimeSpan.FromSeconds(10)));

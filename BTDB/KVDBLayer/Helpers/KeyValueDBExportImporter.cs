@@ -58,7 +58,7 @@ namespace BTDB.KVDBLayer
             if (stream.Read(tempbuf, 0, 16) != 16) throw new EndOfStreamException();
             if (tempbuf[0] != 'B' || tempbuf[1] != 'T' || tempbuf[2] != 'D' || tempbuf[3] != 'B' || tempbuf[4] != 'E' || tempbuf[5] != 'X' || tempbuf[6] != 'P' || tempbuf[7] != '2')
             {
-                throw new BTDBException("Invalid header (it should start with BTDBEXP2)");
+                throw new BTDBException("Invalid header (it should Start with BTDBEXP2)");
             }
             var keyValuePairs = PackUnpack.UnpackInt64LE(tempbuf, 8);
             if (keyValuePairs < 0) throw new BTDBException("Negative number of key value pairs");

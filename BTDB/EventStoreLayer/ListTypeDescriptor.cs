@@ -13,6 +13,7 @@ namespace BTDB.EventStoreLayer
         Type _type;
         Type _itemType;
         ITypeDescriptor _itemDescriptor;
+        string _name;
 
         public ListTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
@@ -29,11 +30,12 @@ namespace BTDB.EventStoreLayer
 
         void InitFromItemDescriptor(ITypeDescriptor descriptor)
         {
-            if (descriptor == _itemDescriptor) return;
+            if (descriptor == _itemDescriptor && _name != null) return;
             _itemDescriptor = descriptor;
+            if ((descriptor.Name?.Length ?? 0) == 0) return;
             _itemType = _itemDescriptor.GetPreferedType();
             Sealed = _itemDescriptor.Sealed;
-            Name = "List<" + _itemDescriptor.Name + ">";
+            Name = $"List<{_itemDescriptor.Name}>";
         }
 
         public bool Equals(ITypeDescriptor other)
@@ -41,7 +43,15 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
-        public string Name { get; private set; }
+        public string Name
+        {
+            get
+            {
+                if (_name == null) InitFromItemDescriptor(_itemDescriptor);
+                return _name;
+            }
+            private set { _name = value; }
+        }
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {

@@ -9,7 +9,7 @@ Currently this project these parts:
 * RPC Library
 * Dto Channel
 * Snappy Compression
-* Event Storage (In heavy development)
+* Event Storage
 
 All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, main code is without any dependency. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
@@ -29,7 +29,7 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>
 * Automatic compaction
 * Customizable compression
 * Relatively Fast DB Open due to key index file
-* Inspired by Bitcask [http://wiki.basho.com/Bitcask.html]
+* Inspired by Bitcask [https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf]
 
 ### Design limits:
 
@@ -90,6 +90,8 @@ This help you to write fluent code which generates IL code in runtime. It is use
 * Enumeration of all objects
 * Each object type could store its "singleton" - very useful for root objects
 
+Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/ODBDictionary.md]
+
 ### Sample code:
 
     public class Person
@@ -119,7 +121,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 ---
 ## RPC Library
 
-Deprecated use Dto Channel instead
+Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad performance)
 
 ### Features:
 
@@ -141,6 +143,16 @@ Deprecated use Dto Channel instead
 
 * Even more speed and event based TCP/IP server channels
 
+---
+## Event storage
+
+### Features:
+
+* Optimal serialization with metadata
+* Deserialization also to dynamic
+* Storage is transactional
+* As storage could be used Azure Page Blobs
+ 
 ---
 ## Dto Channel
 

@@ -82,7 +82,7 @@ namespace BTDB.ODBLayer
 
         void GeneratePrefix()
         {
-            int o = ObjectDB.AllDictionariesPrefix.Length;
+            var o = ObjectDB.AllDictionariesPrefix.Length;
             _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
             PackUnpack.PackVUInt(_prefix, ref o, _id);
@@ -100,19 +100,11 @@ namespace BTDB.ODBLayer
 
         public void Clear()
         {
-            var taken = false;
-            try
-            {
-                _keyValueTrProtector.Start(ref taken);
-                _modificationCounter++;
-                _keyValueTr.SetKeyPrefix(_prefix);
-                _keyValueTr.EraseAll();
-                _count = 0;
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
+            _keyValueTrProtector.Start();
+            _modificationCounter++;
+            _keyValueTr.SetKeyPrefix(_prefix);
+            _keyValueTr.EraseAll();
+            _count = 0;
         }
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
@@ -155,17 +147,9 @@ namespace BTDB.ODBLayer
             {
                 if (_count == -1)
                 {
-                    bool taken = false;
-                    try
-                    {
-                        _keyValueTrProtector.Start(ref taken);
-                        _keyValueTr.SetKeyPrefix(_prefix);
-                        _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
-                    }
-                    finally
-                    {
-                        _keyValueTrProtector.Stop(ref taken);
-                    }
+                    _keyValueTrProtector.Start();
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                 }
                 return _count;
             }
@@ -209,133 +193,83 @@ namespace BTDB.ODBLayer
 
         public bool ContainsKey(TKey key)
         {
-            bool taken = false;
             var keyBytes = KeyToByteArray(key);
-            try
-            {
-                _keyValueTrProtector.Start(ref taken);
-                _keyValueTr.SetKeyPrefix(_prefix);
-                return _keyValueTr.FindExactKey(keyBytes);
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
+            _keyValueTrProtector.Start();
+            _keyValueTr.SetKeyPrefix(_prefix);
+            return _keyValueTr.FindExactKey(keyBytes);
         }
 
         public void Add(TKey key, TValue value)
         {
-            bool taken = false;
             var keyBytes = KeyToByteArray(key);
             var valueBytes = ValueToByteArray(value);
-            try
+            _keyValueTrProtector.Start();
+            _modificationCounter++;
+            _keyValueTr.SetKeyPrefix(_prefix);
+            if (_keyValueTr.FindExactKey(keyBytes))
             {
-                _keyValueTrProtector.Start(ref taken);
-                _modificationCounter++;
-                _keyValueTr.SetKeyPrefix(_prefix);
-                if (_keyValueTr.FindExactKey(keyBytes))
-                {
-                    throw new ArgumentException("Cannot Add duplicate key to Dictionary");
-                }
-                _keyValueTr.CreateOrUpdateKeyValueUnsafe(keyBytes, valueBytes);
-                NotifyAdded();
+                throw new ArgumentException("Cannot Add duplicate key to Dictionary");
             }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
+            _keyValueTr.CreateOrUpdateKeyValueUnsafe(keyBytes, valueBytes);
+            NotifyAdded();
         }
 
         public bool Remove(TKey key)
         {
-            bool taken = false;
             var keyBytes = KeyToByteArray(key);
-            try
+            _keyValueTrProtector.Start();
+            _modificationCounter++;
+            _keyValueTr.SetKeyPrefix(_prefix);
+            var found = _keyValueTr.FindExactKey(keyBytes);
+            if (found)
             {
-                _keyValueTrProtector.Start(ref taken);
-                _modificationCounter++;
-                _keyValueTr.SetKeyPrefix(_prefix);
-                bool found = _keyValueTr.FindExactKey(keyBytes);
-                if (found)
-                {
-                    _keyValueTr.EraseCurrent();
-                    NotifyRemoved();
-                }
-                return found;
+                _keyValueTr.EraseCurrent();
+                NotifyRemoved();
             }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
+            return found;
         }
 
         public bool TryGetValue(TKey key, out TValue value)
         {
-            bool taken = false;
             var keyBytes = KeyToByteArray(key);
-            try
+            _keyValueTrProtector.Start();
+            _keyValueTr.SetKeyPrefix(_prefix);
+            var found = _keyValueTr.FindExactKey(keyBytes);
+            if (!found)
             {
-                _keyValueTrProtector.Start(ref taken);
-                _keyValueTr.SetKeyPrefix(_prefix);
-                bool found = _keyValueTr.FindExactKey(keyBytes);
-                if (!found)
-                {
-                    value = default(TValue);
-                    return false;
-                }
-                var valueBytes = _keyValueTr.GetValueAsByteArray();
-                _keyValueTrProtector.Stop(ref taken);
-                value = ByteArrayToValue(valueBytes);
-                return true;
+                value = default(TValue);
+                return false;
             }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
-            }
+            var valueBytes = _keyValueTr.GetValueAsByteArray();
+            value = ByteArrayToValue(valueBytes);
+            return true;
         }
 
         public TValue this[TKey key]
         {
             get
             {
-                bool taken = false;
                 var keyBytes = KeyToByteArray(key);
-                try
+                _keyValueTrProtector.Start();
+                _keyValueTr.SetKeyPrefix(_prefix);
+                var found = _keyValueTr.FindExactKey(keyBytes);
+                if (!found)
                 {
-                    _keyValueTrProtector.Start(ref taken);
-                    _keyValueTr.SetKeyPrefix(_prefix);
-                    bool found = _keyValueTr.FindExactKey(keyBytes);
-                    if (!found)
-                    {
-                        throw new ArgumentException("Key not found in Dictionary");
-                    }
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    return ByteArrayToValue(valueBytes);
+                    throw new ArgumentException("Key not found in Dictionary");
                 }
-                finally
-                {
-                    _keyValueTrProtector.Stop(ref taken);
-                }
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                return ByteArrayToValue(valueBytes);
             }
             set
             {
-                bool taken = false;
                 var keyBytes = KeyToByteArray(key);
                 var valueBytes = ValueToByteArray(value);
-                try
+                _keyValueTrProtector.Start();
+                _keyValueTr.SetKeyPrefix(_prefix);
+                if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                 {
-                    _keyValueTrProtector.Start(ref taken);
-                    _keyValueTr.SetKeyPrefix(_prefix);
-                    if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
-                    {
-                        _modificationCounter++;
-                        NotifyAdded();
-                    }
-                }
-                finally
-                {
-                    _keyValueTrProtector.Stop(ref taken);
+                    _modificationCounter++;
+                    NotifyAdded();
                 }
             }
         }
@@ -374,53 +308,41 @@ namespace BTDB.ODBLayer
 
             public IEnumerator<TKey> GetEnumerator()
             {
-                bool taken = false;
-                try
+                long prevProtectionCounter = 0;
+                var prevModificationCounter = 0;
+                long pos = 0;
+                while (true)
                 {
-                    long prevProtectionCounter = 0;
-                    int prevModificationCounter = 0;
-                    long pos = 0;
-                    while (true)
+                    _parent._keyValueTrProtector.Start();
+                    if (pos == 0)
                     {
-                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
-                        if (pos == 0)
+                        prevModificationCounter = _parent._modificationCounter;
+                        _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                        if (!_parent._keyValueTr.FindFirstKey()) break;
+                    }
+                    else
+                    {
+                        if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
-                            prevModificationCounter = _parent._modificationCounter;
-                            prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                            if (prevModificationCounter != _parent._modificationCounter)
+                                ThrowModifiedDuringEnum();
                             _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
-                            if (!_parent._keyValueTr.FindFirstKey()) break;
+                            if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                         }
                         else
                         {
-                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                            {
-                                if (prevModificationCounter != _parent._modificationCounter)
-                                    ThrowModifiedDuringEnum();
-                                _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
-                                if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
-                            }
-                            else
-                            {
-                                if (!_parent._keyValueTr.FindNextKey()) break;
-                            }
+                            if (!_parent._keyValueTr.FindNextKey()) break;
                         }
-                        var keyBytes = _parent._keyValueTr.GetKeyAsByteArray();
-                        _parent._keyValueTrProtector.Stop(ref taken);
-                        var key = _parent.ByteArrayToKey(keyBytes);
-                        yield return key;
-                        pos++;
                     }
-                }
-                finally
-                {
-                    _parent._keyValueTrProtector.Stop(ref taken);
+                    prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                    var keyBytes = _parent._keyValueTr.GetKeyAsByteArray();
+                    var key = _parent.ByteArrayToKey(keyBytes);
+                    yield return key;
+                    pos++;
                 }
             }
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public void Add(TKey item)
             {
@@ -432,10 +354,7 @@ namespace BTDB.ODBLayer
                 _parent.Clear();
             }
 
-            public bool Contains(TKey item)
-            {
-                return _parent.ContainsKey(item);
-            }
+            public bool Contains(TKey item) => _parent.ContainsKey(item);
 
             public void CopyTo(TKey[] array, int arrayIndex)
             {
@@ -454,10 +373,7 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            public bool Remove(TKey item)
-            {
-                return _parent.Remove(item);
-            }
+            public bool Remove(TKey item) => _parent.Remove(item);
 
             public int Count => _parent.Count;
 
@@ -477,53 +393,41 @@ namespace BTDB.ODBLayer
 
             public IEnumerator<TValue> GetEnumerator()
             {
-                bool taken = false;
-                try
+                long prevProtectionCounter = 0;
+                var prevModificationCounter = 0;
+                long pos = 0;
+                while (true)
                 {
-                    long prevProtectionCounter = 0;
-                    int prevModificationCounter = 0;
-                    long pos = 0;
-                    while (true)
+                    _parent._keyValueTrProtector.Start();
+                    if (pos == 0)
                     {
-                        if (!taken) _parent._keyValueTrProtector.Start(ref taken);
-                        if (pos == 0)
+                        prevModificationCounter = _parent._modificationCounter;
+                        _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
+                        if (!_parent._keyValueTr.FindFirstKey()) break;
+                    }
+                    else
+                    {
+                        if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
                         {
-                            prevModificationCounter = _parent._modificationCounter;
-                            prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                            if (prevModificationCounter != _parent._modificationCounter)
+                                ThrowModifiedDuringEnum();
                             _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
-                            if (!_parent._keyValueTr.FindFirstKey()) break;
+                            if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
                         }
                         else
                         {
-                            if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                            {
-                                if (prevModificationCounter != _parent._modificationCounter)
-                                    ThrowModifiedDuringEnum();
-                                _parent._keyValueTr.SetKeyPrefix(_parent._prefix);
-                                if (!_parent._keyValueTr.SetKeyIndex(pos)) break;
-                            }
-                            else
-                            {
-                                if (!_parent._keyValueTr.FindNextKey()) break;
-                            }
+                            if (!_parent._keyValueTr.FindNextKey()) break;
                         }
-                        var valueBytes = _parent._keyValueTr.GetValueAsByteArray();
-                        _parent._keyValueTrProtector.Stop(ref taken);
-                        var value = _parent.ByteArrayToValue(valueBytes);
-                        yield return value;
-                        pos++;
                     }
-                }
-                finally
-                {
-                    _parent._keyValueTrProtector.Stop(ref taken);
+                    prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                    var valueBytes = _parent._keyValueTr.GetValueAsByteArray();
+                    var value = _parent.ByteArrayToValue(valueBytes);
+                    yield return value;
+                    pos++;
                 }
             }
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public void Add(TValue item)
             {
@@ -571,335 +475,471 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
-            var taken = false;
-            try
+            long prevProtectionCounter = 0;
+            var prevModificationCounter = 0;
+            long pos = 0;
+            while (true)
             {
-                long prevProtectionCounter = 0;
-                int prevModificationCounter = 0;
-                long pos = 0;
-                while (true)
+                _keyValueTrProtector.Start();
+                if (pos == 0)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == 0)
+                    prevModificationCounter = _modificationCounter;
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    if (!_keyValueTr.FindFirstKey()) break;
+                }
+                else
+                {
+                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                     {
-                        prevModificationCounter = _modificationCounter;
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        if (prevModificationCounter != _modificationCounter)
+                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
-                        if (!_keyValueTr.FindFirstKey()) break;
+                        if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            if (prevModificationCounter != _modificationCounter)
-                                ThrowModifiedDuringEnum();
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindNextKey()) break;
-                        }
+                        if (!_keyValueTr.FindNextKey()) break;
                     }
-                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    var key = ByteArrayToKey(keyBytes);
-                    var value = ByteArrayToValue(valueBytes);
-                    yield return new KeyValuePair<TKey, TValue>(key, value);
-                    pos++;
                 }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
+                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                var key = ByteArrayToKey(keyBytes);
+                var value = ByteArrayToValue(valueBytes);
+                yield return new KeyValuePair<TKey, TValue>(key, value);
+                pos++;
             }
         }
 
         public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator()
         {
-            var taken = false;
-            try
+            long prevProtectionCounter = 0;
+            var prevModificationCounter = 0;
+            var pos = long.MaxValue;
+            while (true)
             {
-                long prevProtectionCounter = 0;
-                int prevModificationCounter = 0;
-                long pos = long.MaxValue;
-                while (true)
+                _keyValueTrProtector.Start();
+                if (pos == long.MaxValue)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == long.MaxValue)
+                    prevModificationCounter = _modificationCounter;
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    if (!_keyValueTr.FindLastKey()) break;
+                    pos = _keyValueTr.GetKeyIndex();
+                }
+                else
+                {
+                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                     {
-                        prevModificationCounter = _modificationCounter;
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        if (prevModificationCounter != _modificationCounter)
+                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
-                        if (!_keyValueTr.FindLastKey()) break;
-                        pos = _keyValueTr.GetKeyIndex();
+                        if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            if (prevModificationCounter != _modificationCounter)
-                                ThrowModifiedDuringEnum();
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindPreviousKey()) break;
-                        }
+                        if (!_keyValueTr.FindPreviousKey()) break;
                     }
-                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    var key = ByteArrayToKey(keyBytes);
-                    var value = ByteArrayToValue(valueBytes);
-                    yield return new KeyValuePair<TKey, TValue>(key, value);
-                    pos--;
                 }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
+                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                var key = ByteArrayToKey(keyBytes);
+                var value = ByteArrayToValue(valueBytes);
+                yield return new KeyValuePair<TKey, TValue>(key, value);
+                pos--;
             }
         }
 
         public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start)
         {
             var startKeyBytes = KeyToByteArray(start);
-            var taken = false;
-            try
+            long prevProtectionCounter = 0;
+            var prevModificationCounter = 0;
+            long pos = 0;
+            while (true)
             {
-                long prevProtectionCounter = 0;
-                int prevModificationCounter = 0;
-                long pos = 0;
-                while (true)
+                _keyValueTrProtector.Start();
+                if (pos == 0)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == 0)
+                    prevModificationCounter = _modificationCounter;
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    bool startOk;
+                    switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
                     {
-                        prevModificationCounter = _modificationCounter;
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        case FindResult.Exact:
+                        case FindResult.Next:
+                            startOk = true;
+                            break;
+                        case FindResult.Previous:
+                            startOk = _keyValueTr.FindNextKey();
+                            break;
+                        case FindResult.NotFound:
+                            startOk = false;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                    if (!startOk) break;
+                    pos = _keyValueTr.GetKeyIndex();
+                }
+                else
+                {
+                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    {
+                        if (prevModificationCounter != _modificationCounter)
+                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
-                        bool startOk;
-                        switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
-                        {
-                            case FindResult.Exact:
-                            case FindResult.Next:
-                                startOk = true;
-                                break;
-                            case FindResult.Previous:
-                                startOk = _keyValueTr.FindNextKey();
-                                break;
-                            case FindResult.NotFound:
-                                startOk = false;
-                                break;
-                            default:
-                                throw new ArgumentOutOfRangeException();
-                        }
-                        if (!startOk) break;
-                        pos = _keyValueTr.GetKeyIndex();
+                        if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            if (prevModificationCounter != _modificationCounter)
-                                ThrowModifiedDuringEnum();
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindNextKey()) break;
-                        }
+                        if (!_keyValueTr.FindNextKey()) break;
                     }
-                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    var key = ByteArrayToKey(keyBytes);
-                    var value = ByteArrayToValue(valueBytes);
-                    yield return new KeyValuePair<TKey, TValue>(key, value);
-                    pos++;
                 }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
+                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                var key = ByteArrayToKey(keyBytes);
+                var value = ByteArrayToValue(valueBytes);
+                yield return new KeyValuePair<TKey, TValue>(key, value);
+                pos++;
             }
         }
 
         public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start)
         {
             var startKeyBytes = KeyToByteArray(start);
-            var taken = false;
-            try
+            long prevProtectionCounter = 0;
+            var prevModificationCounter = 0;
+            var pos = long.MaxValue;
+            while (true)
             {
-                long prevProtectionCounter = 0;
-                int prevModificationCounter = 0;
-                long pos = long.MaxValue;
-                while (true)
+                _keyValueTrProtector.Start();
+                if (pos == long.MaxValue)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == long.MaxValue)
+                    prevModificationCounter = _modificationCounter;
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    bool startOk;
+                    switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
                     {
-                        prevModificationCounter = _modificationCounter;
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        case FindResult.Exact:
+                        case FindResult.Previous:
+                            startOk = true;
+                            break;
+                        case FindResult.Next:
+                            startOk = _keyValueTr.FindPreviousKey();
+                            break;
+                        case FindResult.NotFound:
+                            startOk = false;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                    if (!startOk) break;
+                    pos = _keyValueTr.GetKeyIndex();
+                }
+                else
+                {
+                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    {
+                        if (prevModificationCounter != _modificationCounter)
+                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
-                        bool startOk;
-                        switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
-                        {
-                            case FindResult.Exact:
-                            case FindResult.Previous:
-                                startOk = true;
-                                break;
-                            case FindResult.Next:
-                                startOk = _keyValueTr.FindPreviousKey();
-                                break;
-                            case FindResult.NotFound:
-                                startOk = false;
-                                break;
-                            default:
-                                throw new ArgumentOutOfRangeException();
-                        }
-                        if (!startOk) break;
-                        pos = _keyValueTr.GetKeyIndex();
+                        if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            if (prevModificationCounter != _modificationCounter)
-                                ThrowModifiedDuringEnum();
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindPreviousKey()) break;
-                        }
+                        if (!_keyValueTr.FindPreviousKey()) break;
                     }
-                    var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                    var valueBytes = _keyValueTr.GetValueAsByteArray();
-                    _keyValueTrProtector.Stop(ref taken);
-                    var key = ByteArrayToKey(keyBytes);
-                    var value = ByteArrayToValue(valueBytes);
-                    yield return new KeyValuePair<TKey, TValue>(key, value);
-                    pos--;
                 }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
+                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                var key = ByteArrayToKey(keyBytes);
+                var value = ByteArrayToValue(valueBytes);
+                yield return new KeyValuePair<TKey, TValue>(key, value);
+                pos--;
             }
         }
 
         public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd)
         {
-            var taken = false;
             var startKeyBytes = KeyToByteArray(start);
             var endKeyBytes = KeyToByteArray(end);
-            try
+            _keyValueTrProtector.Start();
+            _modificationCounter++;
+            _keyValueTr.SetKeyPrefix(_prefix);
+            var result = _keyValueTr.Find(ByteBuffer.NewAsync(startKeyBytes));
+            if (result == FindResult.NotFound) return 0;
+            var startIndex = _keyValueTr.GetKeyIndex();
+            if (result == FindResult.Exact)
             {
-                _keyValueTrProtector.Start(ref taken);
-                _modificationCounter++;
-                _keyValueTr.SetKeyPrefix(_prefix);
-                var result = _keyValueTr.Find(ByteBuffer.NewAsync(startKeyBytes));
-                if (result == FindResult.NotFound) return 0;
-                var startIndex = _keyValueTr.GetKeyIndex();
-                if (result == FindResult.Exact)
-                {
-                    if (!includeStart) startIndex++;
-                }
-                else if (result == FindResult.Previous)
-                {
-                    startIndex++;
-                }
-                result = _keyValueTr.Find(ByteBuffer.NewAsync(endKeyBytes));
-                var endIndex = _keyValueTr.GetKeyIndex();
-                if (result == FindResult.Exact)
-                {
-                    if (!includeEnd) endIndex--;
-                }
-                else if (result == FindResult.Next)
-                {
-                    endIndex--;
-                }
-                _keyValueTr.EraseRange(startIndex, endIndex);
-                _keyValueTrProtector.Stop(ref taken);
-                return Math.Max(0, endIndex - startIndex + 1);
+                if (!includeStart) startIndex++;
             }
-            finally
+            else if (result == FindResult.Previous)
             {
-                _keyValueTrProtector.Stop(ref taken);
+                startIndex++;
             }
+            result = _keyValueTr.Find(ByteBuffer.NewAsync(endKeyBytes));
+            var endIndex = _keyValueTr.GetKeyIndex();
+            if (result == FindResult.Exact)
+            {
+                if (!includeEnd) endIndex--;
+            }
+            else if (result == FindResult.Next)
+            {
+                endIndex--;
+            }
+            _keyValueTr.EraseRange(startIndex, endIndex);
+            return Math.Max(0, endIndex - startIndex + 1);
         }
 
         public IEnumerable<KeyValuePair<uint, uint>> QuerySizeEnumerator()
         {
-            var taken = false;
-            try
+            long prevProtectionCounter = 0;
+            var prevModificationCounter = 0;
+            long pos = 0;
+            while (true)
             {
-                long prevProtectionCounter = 0;
-                int prevModificationCounter = 0;
-                long pos = 0;
-                while (true)
+                _keyValueTrProtector.Start();
+                if (pos == 0)
                 {
-                    if (!taken) _keyValueTrProtector.Start(ref taken);
-                    if (pos == 0)
+                    prevModificationCounter = _modificationCounter;
+                    _keyValueTr.SetKeyPrefix(_prefix);
+                    if (!_keyValueTr.FindFirstKey()) break;
+                }
+                else
+                {
+                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                     {
-                        prevModificationCounter = _modificationCounter;
-                        prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                        if (prevModificationCounter != _modificationCounter)
+                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
-                        if (!_keyValueTr.FindFirstKey()) break;
+                        if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }
                     else
                     {
-                        if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
-                        {
-                            if (prevModificationCounter != _modificationCounter)
-                                ThrowModifiedDuringEnum();
-                            _keyValueTr.SetKeyPrefix(_prefix);
-                            if (!_keyValueTr.SetKeyIndex(pos)) break;
-                        }
-                        else
-                        {
-                            if (!_keyValueTr.FindNextKey()) break;
-                        }
+                        if (!_keyValueTr.FindNextKey()) break;
                     }
-                    var size = _keyValueTr.GetStorageSizeOfCurrentKey();
-                    _keyValueTrProtector.Stop(ref taken);
-                    yield return size;
-                    pos++;
                 }
-            }
-            finally
-            {
-                _keyValueTrProtector.Stop(ref taken);
+                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var size = _keyValueTr.GetStorageSizeOfCurrentKey();
+                yield return size;
+                pos++;
             }
         }
 
         public KeyValuePair<uint, uint> QuerySizeByKey(TKey key)
         {
-            bool taken = false;
             var keyBytes = KeyToByteArray(key);
-            try
+            _keyValueTrProtector.Start();
+            _keyValueTr.SetKeyPrefix(_prefix);
+            var found = _keyValueTr.FindExactKey(keyBytes);
+            if (!found)
             {
-                _keyValueTrProtector.Start(ref taken);
-                _keyValueTr.SetKeyPrefix(_prefix);
-                bool found = _keyValueTr.FindExactKey(keyBytes);
-                if (!found)
+                throw new ArgumentException("Key not found in Dictionary");
+            }
+            var size = _keyValueTr.GetStorageSizeOfCurrentKey();
+            return size;
+        }
+
+#pragma warning disable 693 // generic parameters named same
+        class AdvancedEnumerator<TKey, TValue> : IOrderedDictionaryEnumerator<TKey, TValue>
+#pragma warning restore 693
+        {
+            readonly ODBDictionary<TKey, TValue> _owner;
+            readonly KeyValueDBTransactionProtector _keyValueTrProtector;
+            readonly IKeyValueDBTransaction _keyValueTr;
+            long _prevProtectionCounter;
+            readonly int _prevModificationCounter;
+            readonly uint _startPos = 0;
+            readonly uint _count = 0;
+            uint _pos;
+            bool _seekNeeded;
+            readonly bool _ascending;
+
+            public AdvancedEnumerator(ODBDictionary<TKey, TValue> owner, AdvancedEnumeratorParam<TKey> param)
+            {
+                _owner = owner;
+                _keyValueTrProtector = _owner._keyValueTrProtector;
+                _keyValueTr = _owner._keyValueTr;
+                _ascending = param.Order == EnumerationOrder.Ascending;
+                _keyValueTrProtector.Start();
+                _prevModificationCounter = _owner._modificationCounter;
+                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                _keyValueTr.SetKeyPrefix(_owner._prefix);
+                long startIndex;
+                long endIndex;
+                if (param.EndProposition == KeyProposition.Ignored)
                 {
-                    throw new ArgumentException("Key not found in Dictionary");
+                    endIndex = _keyValueTr.GetKeyValueCount() - 1;
                 }
-                var size = _keyValueTr.GetStorageSizeOfCurrentKey();
-                _keyValueTrProtector.Stop(ref taken);
-                return size;
+                else
+                {
+                    var keyBytes = _owner.KeyToByteArray(param.End);
+                    switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                    {
+                        case FindResult.Exact:
+                            endIndex = _keyValueTr.GetKeyIndex();
+                            if (param.EndProposition == KeyProposition.Excluded)
+                            {
+                                endIndex--;
+                            }
+                            break;
+                        case FindResult.Previous:
+                            endIndex = _keyValueTr.GetKeyIndex();
+                            break;
+                        case FindResult.Next:
+                            endIndex = _keyValueTr.GetKeyIndex() - 1;
+                            break;
+                        case FindResult.NotFound:
+                            endIndex = -1;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                }
+                if (param.StartProposition == KeyProposition.Ignored)
+                {
+                    startIndex = 0;
+                }
+                else
+                {
+                    var keyBytes = _owner.KeyToByteArray(param.Start);
+                    switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                    {
+                        case FindResult.Exact:
+                            startIndex = _keyValueTr.GetKeyIndex();
+                            if (param.StartProposition == KeyProposition.Excluded)
+                            {
+                                startIndex++;
+                            }
+                            break;
+                        case FindResult.Previous:
+                            startIndex = _keyValueTr.GetKeyIndex() + 1;
+                            break;
+                        case FindResult.Next:
+                            startIndex = _keyValueTr.GetKeyIndex();
+                            break;
+                        case FindResult.NotFound:
+                            startIndex = 0;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                }
+                _count = (uint)Math.Max(0, endIndex - startIndex + 1);
+                _startPos = (uint)(_ascending ? startIndex : endIndex);
+                _pos = 0;
+                _seekNeeded = true;
             }
-            finally
+
+            public uint Count => _count;
+
+            public TValue CurrentValue
             {
-                _keyValueTrProtector.Stop(ref taken);
+                get
+                {
+                    if (_pos >= _count) throw new IndexOutOfRangeException();
+                    _keyValueTrProtector.Start();
+                    if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                    {
+                        if (_prevModificationCounter != _owner._modificationCounter)
+                            ThrowModifiedDuringEnum();
+                        _keyValueTr.SetKeyPrefix(_owner._prefix);
+                        Seek();
+                    }
+                    else if (_seekNeeded)
+                    {
+                        Seek();
+                        _seekNeeded = false;
+                    }
+                    _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                    var valueBytes = _keyValueTr.GetValueAsByteArray();
+                    return _owner.ByteArrayToValue(valueBytes);
+                }
+
+                set
+                {
+                    if (_pos >= _count) throw new IndexOutOfRangeException();
+                    _keyValueTrProtector.Start();
+                    if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                    {
+                        if (_prevModificationCounter != _owner._modificationCounter)
+                            ThrowModifiedDuringEnum();
+                        _keyValueTr.SetKeyPrefix(_owner._prefix);
+                        Seek();
+                    }
+                    else if (_seekNeeded)
+                    {
+                        Seek();
+                    }
+                    _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                    var valueBytes = _owner.ValueToByteArray(value);
+                    _keyValueTr.SetValue(valueBytes);
+                }
             }
+
+            void Seek()
+            {
+                if (_ascending)
+                    _keyValueTr.SetKeyIndex(_startPos + _pos);
+                else
+                    _keyValueTr.SetKeyIndex(_startPos - _pos);
+                _seekNeeded = false;
+            }
+
+            public uint Position
+            {
+                get { return _pos; }
+
+                set
+                {
+                    _pos = value > _count ? _count : value;
+                    _seekNeeded = true;
+                }
+            }
+
+            public bool NextKey(out TKey key)
+            {
+                if (!_seekNeeded)
+                    _pos++;
+                if (_pos >= _count)
+                {
+                    key = default(TKey);
+                    return false;
+                }
+                _keyValueTrProtector.Start();
+                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                {
+                    if (_prevModificationCounter != _owner._modificationCounter)
+                        ThrowModifiedDuringEnum();
+                    _keyValueTr.SetKeyPrefix(_owner._prefix);
+                    Seek();
+                }
+                else if (_seekNeeded)
+                {
+                    Seek();
+                }
+                else
+                {
+                    if (_ascending)
+                    {
+                        _keyValueTr.FindNextKey();
+                    }
+                    else
+                    {
+                        _keyValueTr.FindPreviousKey();
+                    }
+                }
+                key = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsByteArray());
+                return true;
+            }
+        }
+
+        public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param)
+        {
+            return new AdvancedEnumerator<TKey, TValue>(this, param);
         }
     }
 }

@@ -84,6 +84,11 @@ namespace BTDB.EventStoreLayer
                         return placeHolderDescriptor != null ? _id2DescriptorMap[(int)placeHolderDescriptor.TypeId].Descriptor : d;
                     });
             }
+            // This additional cycle is needed to fill names of recursive structures
+            for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
+            {
+                _id2DescriptorMap[(int) i].Descriptor.MapNestedTypes(d => d);
+            }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
                 var infoForType = _id2DescriptorMap[(int)i];

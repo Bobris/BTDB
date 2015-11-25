@@ -1805,7 +1805,7 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
-        
+
         [StoredInline]
         public class UlongGuidKey
         {
@@ -1859,7 +1859,7 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<UlongGuidMap>().Items;
                 string value;
-                Assert.AreEqual(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
+                Assert.AreEqual(true, items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
 
                 Assert.AreEqual("a", value);
             }
@@ -1877,7 +1877,7 @@ namespace BTDBTest
         }
 
 
-        [Test]
+        [Test, Ignore("Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
         public void CannotStoreDateTimeKindUnspecified()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -1891,5 +1891,150 @@ namespace BTDBTest
                 }
             });
         }
+
+        [Test]
+        [TestCase(-1, false, -1, false, "13579")]
+        [TestCase(2, true, -1, false, "3579")]
+        [TestCase(2, false, -1, false, "3579")]
+        [TestCase(3, true, -1, false, "3579")]
+        [TestCase(3, false, -1, false, "579")]
+        [TestCase(-1, false, 8, true, "1357")]
+        [TestCase(-1, false, 8, false, "1357")]
+        [TestCase(-1, false, 7, true, "1357")]
+        [TestCase(-1, false, 7, false, "135")]
+        [TestCase(3, true, 7, true, "357")]
+        [TestCase(3, true, 7, false, "35")]
+        [TestCase(3, false, 7, true, "57")]
+        [TestCase(3, false, 7, false, "5")]
+        [TestCase(0, true, 10, true, "13579")]
+        [TestCase(0, true, 10, false, "13579")]
+        [TestCase(0, false, 10, true, "13579")]
+        [TestCase(0, false, 10, false, "13579")]
+        [TestCase(10, false, 0, false, "")]
+        [TestCase(5, false, 5, false, "")]
+        [TestCase(5, false, 5, true, "")]
+        [TestCase(5, true, 5, false, "")]
+        [TestCase(5, true, 5, true, "5")]
+        public void AdvancedIterationBasics(int start, bool includeStart, int end, bool includeEnd, string result)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<SimpleOrderedDictionary>().Int2String;
+                // 1 3 5 7 9
+                for (var i = 1; i <= 9; i += 2)
+                {
+                    d[i] = i.ToString(CultureInfo.InvariantCulture);
+                }
+                var param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Ascending, start,
+                    start == -1
+                        ? KeyProposition.Ignored
+                        : includeStart ? KeyProposition.Included : KeyProposition.Excluded,
+                    end,
+                    end == -1 ? KeyProposition.Ignored : includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
+                var e = d.GetAdvancedEnumerator(param);
+                var res = "";
+                int key;
+                Assert.AreEqual(result.Length, e.Count);
+                while (e.NextKey(out key))
+                {
+                    Assert.AreEqual(res.Length, e.Position);
+                    var val = e.CurrentValue;
+                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    res += val;
+                }
+                Assert.AreEqual(result, res);
+                Assert.AreEqual(res.Length, e.Position);
+                param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Descending, start,
+                    start == -1
+                        ? KeyProposition.Ignored
+                        : includeStart ? KeyProposition.Included : KeyProposition.Excluded,
+                    end,
+                    end == -1 ? KeyProposition.Ignored : includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
+                e = d.GetAdvancedEnumerator(param);
+                res = "";
+                Assert.AreEqual(result.Length, e.Count);
+                while (e.NextKey(out key))
+                {
+                    Assert.AreEqual(res.Length, e.Position);
+                    var val = e.CurrentValue;
+                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    res = val + res;
+                }
+                Assert.AreEqual(result, res);
+                Assert.AreEqual(res.Length, e.Position);
+            }
+        }
+
+        [Test]
+        [TestCase(-1, false, -1, false, "13579")]
+        [TestCase(2, true, -1, false, "3579")]
+        [TestCase(2, false, -1, false, "3579")]
+        [TestCase(3, true, -1, false, "3579")]
+        [TestCase(3, false, -1, false, "579")]
+        [TestCase(-1, false, 8, true, "1357")]
+        [TestCase(-1, false, 8, false, "1357")]
+        [TestCase(-1, false, 7, true, "1357")]
+        [TestCase(-1, false, 7, false, "135")]
+        [TestCase(3, true, 7, true, "357")]
+        [TestCase(3, true, 7, false, "35")]
+        [TestCase(3, false, 7, true, "57")]
+        [TestCase(3, false, 7, false, "5")]
+        [TestCase(0, true, 10, true, "13579")]
+        [TestCase(0, true, 10, false, "13579")]
+        [TestCase(0, false, 10, true, "13579")]
+        [TestCase(0, false, 10, false, "13579")]
+        [TestCase(10, false, 0, false, "")]
+        [TestCase(5, false, 5, false, "")]
+        [TestCase(5, false, 5, true, "")]
+        [TestCase(5, true, 5, false, "")]
+        [TestCase(5, true, 5, true, "5")]
+        public void AdvancedIterationSeeks(int start, bool includeStart, int end, bool includeEnd, string result)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<SimpleOrderedDictionary>().Int2String;
+                // 1 3 5 7 9
+                for (var i = 1; i <= 9; i += 2)
+                {
+                    d[i] = i.ToString(CultureInfo.InvariantCulture);
+                }
+                var param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Ascending, start,
+                    start == -1
+                        ? KeyProposition.Ignored
+                        : includeStart ? KeyProposition.Included : KeyProposition.Excluded,
+                    end,
+                    end == -1 ? KeyProposition.Ignored : includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
+                var e = d.GetAdvancedEnumerator(param);
+                var res = "";
+                int key;
+                e.Position = 2;
+                while (e.NextKey(out key))
+                {
+                    Assert.AreEqual(res.Length, e.Position - 2);
+                    var val = e.CurrentValue;
+                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    res += val;
+                }
+                Assert.AreEqual(result.Substring(Math.Min(result.Length, 2)), res);
+                param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Descending, start,
+                    start == -1
+                        ? KeyProposition.Ignored
+                        : includeStart ? KeyProposition.Included : KeyProposition.Excluded,
+                    end,
+                    end == -1 ? KeyProposition.Ignored : includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
+                e = d.GetAdvancedEnumerator(param);
+                res = "";
+                e.Position = 2;
+                while (e.NextKey(out key))
+                {
+                    Assert.AreEqual(res.Length, e.Position - 2);
+                    var val = e.CurrentValue;
+                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    res = val + res;
+                }
+                Assert.AreEqual(result.Substring(0, Math.Max(0, result.Length - 2)), res);
+            }
+        }
+
     }
 }
