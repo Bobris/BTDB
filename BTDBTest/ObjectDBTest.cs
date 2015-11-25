@@ -213,7 +213,7 @@ namespace BTDBTest
             {
                 for (uint i = 0; i < 1000; i++)
                 {
-                    tr.Store(new Person { Name = string.Format("Person {0}", i), Age = i });
+                    tr.Store(new Person { Name = $"Person {i}", Age = i });
                 }
                 tr.Commit();
             }
@@ -225,7 +225,7 @@ namespace BTDBTest
                 {
                     i--;
                     Assert.AreEqual(i, p.Age);
-                    Assert.AreEqual(string.Format("Person {0}", i), p.Name);
+                    Assert.AreEqual($"Person {i}", p.Name);
                 }
             }
         }
@@ -1677,10 +1677,7 @@ namespace BTDBTest
             public string OddName { get; set; }
             public string EvenName { get; set; }
 
-            public string this[int i]
-            {
-                get { return i % 2 == 0 ? EvenName : OddName; }
-            }
+            public string this[int i] => i % 2 == 0 ? EvenName : OddName;
         }
 
         [Test]

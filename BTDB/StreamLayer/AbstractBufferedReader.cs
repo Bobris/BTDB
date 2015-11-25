@@ -86,53 +86,57 @@ namespace BTDB.StreamLayer
         public short ReadVInt16()
         {
             var res = ReadVInt64();
-            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(string.Format("Reading VInt16 overflowed with {0}", res));
+            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(
+                $"Reading VInt16 overflowed with {res}");
             return (short)res;
         }
 
         public void SkipVInt16()
         {
             var res = ReadVInt64();
-            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(string.Format("Skipping VInt16 overflowed with {0}", res));
+            if (res > short.MaxValue || res < short.MinValue) throw new InvalidDataException(
+                $"Skipping VInt16 overflowed with {res}");
         }
 
         public ushort ReadVUInt16()
         {
             var res = ReadVUInt64();
-            if (res > ushort.MaxValue) throw new InvalidDataException(string.Format("Reading VUInt16 overflowed with {0}", res));
+            if (res > ushort.MaxValue) throw new InvalidDataException($"Reading VUInt16 overflowed with {res}");
             return (ushort)res;
         }
 
         public void SkipVUInt16()
         {
             var res = ReadVUInt64();
-            if (res > ushort.MaxValue) throw new InvalidDataException(string.Format("Skipping VUInt16 overflowed with {0}", res));
+            if (res > ushort.MaxValue) throw new InvalidDataException($"Skipping VUInt16 overflowed with {res}");
         }
 
         public int ReadVInt32()
         {
             var res = ReadVInt64();
-            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(string.Format("Reading VInt32 overflowed with {0}", res));
+            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(
+                $"Reading VInt32 overflowed with {res}");
             return (int)res;
         }
 
         public void SkipVInt32()
         {
             var res = ReadVInt64();
-            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(string.Format("Skipping VInt32 overflowed with {0}", res));
+            if (res > int.MaxValue || res < int.MinValue) throw new InvalidDataException(
+                $"Skipping VInt32 overflowed with {res}");
         }
 
         public uint ReadVUInt32()
         {
             var res = ReadVUInt64();
-            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Reading VUInt32 overflowed with {0}", res));
+            if (res > uint.MaxValue) throw new InvalidDataException($"Reading VUInt32 overflowed with {res}");
             return (uint)res;
         }
 
         public void SkipVUInt32()
         {
             var res = ReadVUInt64();
-            if (res > uint.MaxValue) throw new InvalidDataException(string.Format("Skipping VUInt32 overflowed with {0}", res));
+            if (res > uint.MaxValue) throw new InvalidDataException($"Skipping VUInt32 overflowed with {res}");
         }
 
         public long ReadVInt64()
@@ -351,7 +355,7 @@ namespace BTDB.StreamLayer
             var len = ReadVUInt64();
             if (len == 0) return null;
             len--;
-            if (len > int.MaxValue) throw new InvalidDataException(string.Format("Reading String length overflowed with {0}", len));
+            if (len > int.MaxValue) throw new InvalidDataException($"Reading String length overflowed with {len}");
             var l = (int)len;
             if (l == 0) return "";
             var res = new char[l];
@@ -372,7 +376,7 @@ namespace BTDB.StreamLayer
                 var c = ReadVUInt64();
                 if (c > 0xffff)
                 {
-                    if (c > 0x10ffff) throw new InvalidDataException(string.Format("Reading String unicode value overflowed with {0}", c));
+                    if (c > 0x10ffff) throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                     c -= 0x10000;
                     res[i] = (char)((c >> 10) + 0xD800);
                     i++;
@@ -401,7 +405,7 @@ namespace BTDB.StreamLayer
                     if (c > 0x10ffff)
                     {
                         if (res.Length == 0 && c == 0x110000) return null;
-                        throw new InvalidDataException(string.Format("Reading String unicode value overflowed with {0}", c));
+                        throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                     }
                     c -= 0x10000;
                     res.Append((char)((c >> 10) + 0xD800));
@@ -420,7 +424,7 @@ namespace BTDB.StreamLayer
             var len = ReadVUInt64();
             if (len == 0) return;
             len--;
-            if (len > int.MaxValue) throw new InvalidDataException(string.Format("Skipping String length overflowed with {0}", len));
+            if (len > int.MaxValue) throw new InvalidDataException($"Skipping String length overflowed with {len}");
             var l = (int)len;
             if (l == 0) return;
             int i = 0;
@@ -429,7 +433,8 @@ namespace BTDB.StreamLayer
                 var c = ReadVUInt64();
                 if (c > 0xffff)
                 {
-                    if (c > 0x10ffff) throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
+                    if (c > 0x10ffff) throw new InvalidDataException(
+                        $"Skipping String unicode value overflowed with {c}");
                     i += 2;
                 }
                 else
@@ -447,14 +452,14 @@ namespace BTDB.StreamLayer
             if (c > 0x10ffff)
             {
                 if (c == 0x110000) return;
-                throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
+                throw new InvalidDataException($"Skipping String unicode value overflowed with {c}");
             }
             while (true)
             {
                 c = ReadVUInt32();
                 if (c == 0) break;
                 c--;
-                if (c > 0x10ffff) throw new InvalidDataException(string.Format("Skipping String unicode value overflowed with {0}", c));
+                if (c > 0x10ffff) throw new InvalidDataException($"Skipping String unicode value overflowed with {c}");
             }
         }
 

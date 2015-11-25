@@ -19,20 +19,11 @@ namespace BTDB.KVDBLayer
             _generation = generation;
         }
 
-        public KVFileType FileType
-        {
-            get { return KVFileType.PureValuesWithId; }
-        }
+        public KVFileType FileType => KVFileType.PureValuesWithId;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
-        public long SubDBId
-        {
-            get { return _subId; }
-        }
+        public long SubDBId => _subId;
 
         public void WriteHeader(AbstractBufferedWriter writer)
         {

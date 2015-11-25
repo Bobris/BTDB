@@ -13,8 +13,8 @@ namespace BTDBTest.IOCDomain
 			_database = database;
 		}
 
-		public ILogger Logger { get { return _logger; } }
-		public IErrorHandler ErrorHandler { get { return _handler; } }
-		public IDatabase Database { get { return _database; } }
+		public ILogger Logger => _logger;
+	    public IErrorHandler ErrorHandler => _handler;
+	    public IDatabase Database => _database;
 	}
 }

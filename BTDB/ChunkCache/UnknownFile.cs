@@ -6,14 +6,8 @@ namespace BTDB.ChunkCache
 
         UnknownFile() { }
 
-        public DiskChunkFileType FileType
-        {
-            get { return DiskChunkFileType.Unknown; }
-        }
+        public DiskChunkFileType FileType => DiskChunkFileType.Unknown;
 
-        public long Generation
-        {
-            get { return -1; }
-        }
+        public long Generation => -1;
     }
 }

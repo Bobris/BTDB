@@ -32,24 +32,12 @@ namespace BTDB.Service
             _client.Send(data);
         }
 
-        public IObservable<ByteBuffer> OnReceive
-        {
-            get { return _client.OnReceive; }
-        }
+        public IObservable<ByteBuffer> OnReceive => _client.OnReceive;
 
-        public IObservable<bool> OnConnect
-        {
-            get { return _client.OnConnect; }
-        }
+        public IObservable<bool> OnConnect => _client.OnConnect;
 
-        public IPEndPoint LocalEndPoint
-        {
-            get { return _client.LocalEndPoint; }
-        }
+        public IPEndPoint LocalEndPoint => _client.LocalEndPoint;
 
-        public IPEndPoint RemoteEndPoint
-        {
-            get { return _client.RemoteEndPoint; }
-        }
+        public IPEndPoint RemoteEndPoint => _client.RemoteEndPoint;
     }
 }

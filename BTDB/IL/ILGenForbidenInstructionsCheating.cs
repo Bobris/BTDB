@@ -40,7 +40,7 @@ namespace BTDB.IL
 
             public void GenerateStaticParts(TypeBuilder typeBuilder)
             {
-                _name = string.Format("{0}_{1}", _opCode, (object)_methodInfo ?? _constructorInfo);
+                _name = $"{_opCode}_{(object) _methodInfo ?? _constructorInfo}";
                 Type[] paramTypesWithoutResult;
                 if (_methodInfo != null)
                 {

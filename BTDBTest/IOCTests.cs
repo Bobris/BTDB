@@ -209,10 +209,7 @@ namespace BTDBTest
                 _cycle2 = cycle2;
             }
 
-            public ICycle2 Cycle2Prop
-            {
-                get { return _cycle2.Value; }
-            }
+            public ICycle2 Cycle2Prop => _cycle2.Value;
         }
 
         public class Cycle2 : ICycle2
@@ -224,10 +221,7 @@ namespace BTDBTest
                 _cycle1 = cycle1;
             }
 
-            public ICycle1 Cycle1Prop
-            {
-                get { return _cycle1.Value; }
-            }
+            public ICycle1 Cycle1Prop => _cycle1.Value;
         }
 
         [Test]
@@ -251,10 +245,7 @@ namespace BTDBTest
                 _container = container;
             }
 
-            public IContainer Container
-            {
-                get { return _container; }
-            }
+            public IContainer Container => _container;
         }
 
         [Test]
@@ -623,10 +614,7 @@ namespace BTDBTest
                 _cycle2 = cycle2;
             }
 
-            public ICycle2 Cycle2Prop
-            {
-                get { return _cycle2; }
-            }
+            public ICycle2 Cycle2Prop => _cycle2;
         }
 
         public class HardCycle2 : ICycle2
@@ -638,10 +626,7 @@ namespace BTDBTest
                 _cycle1 = cycle1;
             }
 
-            public ICycle1 Cycle1Prop
-            {
-                get { return _cycle1; }
-            }
+            public ICycle1 Cycle1Prop => _cycle1;
         }
 
         [Test]
@@ -811,10 +796,7 @@ namespace BTDBTest
                 _parent = parent;
             }
 
-            public ILogger Parent
-            {
-                get { return _parent; }
-            }
+            public ILogger Parent => _parent;
         }
 
         [Test]

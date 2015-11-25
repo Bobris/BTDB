@@ -6,19 +6,10 @@ namespace BTDB.KVDBLayer
 
         UnknownFile() { }
 
-        public KVFileType FileType
-        {
-            get { return KVFileType.Unknown; }
-        }
+        public KVFileType FileType => KVFileType.Unknown;
 
-        public long Generation
-        {
-            get { return -1; }
-        }
+        public long Generation => -1;
 
-        public long SubDBId
-        {
-            get { return -1; }
-        }
+        public long SubDBId => -1;
     }
 }

@@ -31,10 +31,7 @@ namespace BTDB.KVDBLayer
 
         public bool DurableTransactions { get; set; }
 
-        internal IBTreeRootNode LastCommited
-        {
-            get { return _lastCommited; }
-        }
+        internal IBTreeRootNode LastCommited => _lastCommited;
 
         public IKeyValueDBTransaction StartTransaction()
         {

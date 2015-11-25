@@ -9,6 +9,6 @@ namespace BTDBTest.IOCDomain
 			_logger = logger;
 		}
 
-		public ILogger Logger { get { return _logger; } }
+		public ILogger Logger => _logger;
 	}
 }

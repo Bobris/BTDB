@@ -59,9 +59,6 @@ namespace BTDB.IOC
             }
         }
 
-        public bool PreserveExistingDefaults
-        {
-            get { return _preserveExistingDefaults; }
-        }
+        public bool PreserveExistingDefaults => _preserveExistingDefaults;
     }
 }

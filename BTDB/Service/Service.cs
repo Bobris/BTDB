@@ -256,7 +256,8 @@ namespace BTDB.Service
                 resultFieldHandler = methodInf.ResultFieldHandler.SpecializeSaveForType(returnType);
             var isAsync = returnType != methodInf.MethodInfo.ReturnType;
             binding.Object = serverObject;
-            var method = ILBuilder.Instance.NewMethod<Action<object, AbstractBufferedReader, IServiceInternalServer>>(string.Format("{0}_{1}", typeInf.Name, methodInf.Name));
+            var method = ILBuilder.Instance.NewMethod<Action<object, AbstractBufferedReader, IServiceInternalServer>>(
+                $"{typeInf.Name}_{methodInf.Name}");
             var ilGenerator = method.Generator;
             IILLocal localResultId = null;
             var localWriter = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
@@ -492,10 +493,7 @@ namespace BTDB.Service
             }
         }
 
-        public IObservable<string> OnNewRemoteService
-        {
-            get { return _onNewRemoteService; }
-        }
+        public IObservable<string> OnNewRemoteService => _onNewRemoteService;
 
         public void RegisterRemoteType(Type type)
         {
@@ -534,7 +532,7 @@ namespace BTDB.Service
             {
                 var methodInf = typeInf.MethodInfs[sourceMethodIndex];
                 var methodInfo = methodInf.MethodInfo;
-                var bindingField = tb.DefineField(string.Format("_b{0}", bindings.Count), typeof(ClientBindInf), FieldAttributes.Private);
+                var bindingField = tb.DefineField($"_b{bindings.Count}", typeof(ClientBindInf), FieldAttributes.Private);
                 bindingFields.Add(bindingField);
                 var parameterTypes = methodInfo.GetParameters().Select(pi => pi.ParameterType).ToArray();
                 var returnType = methodInfo.ReturnType.UnwrapTask();
@@ -991,10 +989,7 @@ namespace BTDB.Service
             return typeId;
         }
 
-        public IChannel Channel
-        {
-            get { return _channel; }
-        }
+        public IChannel Channel => _channel;
 
         public ITypeConvertorGenerator TypeConvertorGenerator
         {
@@ -1128,7 +1123,7 @@ namespace BTDB.Service
             }
             if (!found)
             {
-                throw new ArgumentException(string.Format("Type {0} is not registered on server", type.Name));
+                throw new ArgumentException($"Type {type.Name} is not registered on server");
             }
             var dm = ILBuilder.Instance.NewMethod<Action<object, IWriterCtx>>(type.Name + "ServiceSaver");
             var ilGenerator = dm.Generator;
@@ -1174,7 +1169,7 @@ namespace BTDB.Service
             TypeInf typeInf;
             if (!_serverTypeInfs.TryGetValue(typeId, out typeInf))
             {
-                throw new ArgumentException(string.Format("Received unknown typeId {0}", typeId));
+                throw new ArgumentException($"Received unknown typeId {typeId}");
             }
             var type = typeInf.OriginalType;
             var dm = ILBuilder.Instance.NewMethod<Func<IReaderCtx, object>>(typeInf.Name + "ServiceLoader");
@@ -1260,12 +1255,12 @@ namespace BTDB.Service
             TypeInf typeInf;
             if (!_clientTypeInfs.TryGetValue(typeId, out typeInf))
             {
-                throw new ArgumentException(string.Format("Received unknown typeId {0}", typeId));
+                throw new ArgumentException($"Received unknown typeId {typeId}");
             }
             var type = TypeByName(typeInf.Name);
             if (type == null)
             {
-                throw new ArgumentException(string.Format("Received type {0}, but it is not registered", typeInf.Name));
+                throw new ArgumentException($"Received type {typeInf.Name}, but it is not registered");
             }
             var dm = ILBuilder.Instance.NewMethod<Func<IReaderCtx, object>>(typeInf.Name + "ServiceLoaderBack");
             var ilGenerator = dm.Generator;

@@ -31,34 +31,16 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
-        }
+        public IILGen Generator => _gen ?? (_gen = new ILGenDebugImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter));
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
-        public MethodInfo MethodInfo
-        {
-            get { return _method; }
-        }
+        public MethodInfo MethodInfo => _method;
 
-        public MethodBuilder MethodBuilder
-        {
-            get { return _method; }
-        }
+        public MethodBuilder MethodBuilder => _method;
 
-        public Type ReturnType
-        {
-            get { return _returnType; }
-        }
+        public Type ReturnType => _returnType;
 
-        public Type[] Parameters
-        {
-            get { return _parameters; }
-        }
+        public Type[] Parameters => _parameters;
     }
 }

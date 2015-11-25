@@ -11,10 +11,10 @@ namespace BTDBTest.IOCDomain
 			_quotes = quotes;
 		}
 
-		public IAuthenticator Authenticator { get { return _authenticator; } }
-		public IStockQuote StockQuote { get { return _quotes; } }
+		public IAuthenticator Authenticator => _authenticator;
+	    public IStockQuote StockQuote => _quotes;
 
-		public void Execute()
+	    public void Execute()
 		{
 		}
 	}

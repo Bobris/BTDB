@@ -260,7 +260,7 @@ namespace BTDBTest
 
         public override string ToString()
         {
-            return String.Format("{0};{1:yyyy-MM-dd HH:mm:ss};{2};{3};{4};{5};{6}", Symbol, Timestamp, Bid, Ask, BidSize, AskSize, Provider);
+            return $"{Symbol};{Timestamp:yyyy-MM-dd HH:mm:ss};{Bid};{Ask};{BidSize};{AskSize};{Provider}";
         }
 
         public int CompareTo(Tick other)

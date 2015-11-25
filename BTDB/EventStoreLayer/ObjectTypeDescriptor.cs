@@ -41,10 +41,7 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
         public void FinishBuildFromType(ITypeDescriptorFactory factory)
         {
@@ -212,7 +209,7 @@ namespace BTDB.EventStoreLayer
         {
             var realidx = FindFieldIndex(fieldName);
             if (realidx < 0)
-                throw new MemberAccessException(string.Format("{0} does not have member {1}", Name, fieldName));
+                throw new MemberAccessException($"{Name} does not have member {fieldName}");
             return realidx;
         }
 
@@ -264,7 +261,7 @@ namespace BTDB.EventStoreLayer
 
             void ThrowMemberAccessException(string fieldName)
             {
-                throw new MemberAccessException(string.Format("{0} does not have member {1}", _ownerDescriptor.Name, fieldName));
+                throw new MemberAccessException($"{_ownerDescriptor.Name} does not have member {fieldName}");
             }
 
             class DynamicDictionaryMetaObject : DynamicMetaObject
@@ -378,7 +375,7 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get; private set; }
 
-        public bool StoredInline { get { return false; } }
+        public bool StoredInline => false;
 
         public void ClearMappingToType()
         {

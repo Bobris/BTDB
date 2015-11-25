@@ -8,25 +8,13 @@ namespace BTDB.KVDBLayer
         readonly long _generation;
         readonly uint _keyLen;
 
-        public KVFileType FileType
-        {
-            get { return KVFileType.HashKeyIndex; }
-        }
+        public KVFileType FileType => KVFileType.HashKeyIndex;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
-        public long SubDBId
-        {
-            get { return _subId; }
-        }
+        public long SubDBId => _subId;
 
-        public uint KeyLen
-        {
-            get { return _keyLen; }
-        }
+        public uint KeyLen => _keyLen;
 
         public HashKeyIndex(AbstractBufferedReader reader)
         {

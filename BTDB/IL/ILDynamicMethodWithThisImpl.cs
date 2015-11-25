@@ -25,10 +25,7 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers())); }
-        }
+        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers()));
 
         public void FinalizeCreation()
         {

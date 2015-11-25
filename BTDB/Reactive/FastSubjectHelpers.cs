@@ -46,7 +46,7 @@ namespace BTDB.Reactive
                 _error = error;
             }
 
-            internal Exception Error { get { return _error; } }
+            internal Exception Error => _error;
 
             public void OnNext(T value)
             {
@@ -104,10 +104,7 @@ namespace BTDB.Reactive
                 _array = array;
             }
 
-            public IObserver<T>[] Array
-            {
-                get { return _array; }
-            }
+            public IObserver<T>[] Array => _array;
 
             public void OnNext(T value)
             {
@@ -155,10 +152,7 @@ namespace BTDB.Reactive
             {
             }
 
-            public T Value
-            {
-                get { return _value; }
-            }
+            public T Value => _value;
         }
 
         internal sealed class MultiSubjectWithValue : IObserver<T>, IHasValue
@@ -172,10 +166,7 @@ namespace BTDB.Reactive
                 _value = value;
             }
 
-            public IObserver<T>[] Array
-            {
-                get { return _array; }
-            }
+            public IObserver<T>[] Array => _array;
 
             public void OnNext(T value)
             {
@@ -201,10 +192,7 @@ namespace BTDB.Reactive
                 }
             }
 
-            public T Value
-            {
-                get { return _value; }
-            }
+            public T Value => _value;
         }
 
         internal sealed class SingleSubjectWithValue : IObserver<T>, IHasValue
@@ -233,15 +221,9 @@ namespace BTDB.Reactive
                 Observer.OnCompleted();
             }
 
-            public T Value
-            {
-                get { return _value; }
-            }
+            public T Value => _value;
 
-            internal IObserver<T> Observer
-            {
-                get { return _observer; }
-            }
+            internal IObserver<T> Observer => _observer;
         }
 
 

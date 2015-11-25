@@ -29,10 +29,7 @@ namespace BTDB.IL
                 _label = label;
             }
 
-            public Label Label
-            {
-                get { return _label; }
-            }
+            public Label Label => _label;
         }
 
         public IILLocal DeclareLocal(Type type, string name, bool pinned = false)
@@ -49,25 +46,13 @@ namespace BTDB.IL
                 _localBuilder = localBuilder;
             }
 
-            public int Index
-            {
-                get { return LocalBuilder.LocalIndex; }
-            }
+            public int Index => LocalBuilder.LocalIndex;
 
-            public bool Pinned
-            {
-                get { return LocalBuilder.IsPinned; }
-            }
+            public bool Pinned => LocalBuilder.IsPinned;
 
-            public Type LocalType
-            {
-                get { return LocalBuilder.LocalType; }
-            }
+            public Type LocalType => LocalBuilder.LocalType;
 
-            public LocalBuilder LocalBuilder
-            {
-                get { return _localBuilder; }
-            }
+            public LocalBuilder LocalBuilder => _localBuilder;
         }
 
         public IILGen Comment(string text)

@@ -190,7 +190,8 @@ namespace BTDB.EventStoreLayer
         }
 
         public bool Sealed { get; private set; }
-        public bool StoredInline { get { return true; } }
+        public bool StoredInline => true;
+
         public void ClearMappingToType()
         {
             _type = null;

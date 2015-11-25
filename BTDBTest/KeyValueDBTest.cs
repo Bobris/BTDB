@@ -1109,12 +1109,6 @@ namespace BTDBTest
         readonly byte[] _key2 = { 1, 3, 2 };
         readonly byte[] _key3 = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
 
-        public byte[] Key2
-        {
-            get
-            {
-                return _key2;
-            }
-        }
+        public byte[] Key2 => _key2;
     }
 }

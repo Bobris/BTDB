@@ -159,10 +159,7 @@ namespace BTDBTest
                 _a = a;
             }
 
-            public int A
-            {
-                get { return _a; }
-            }
+            public int A => _a;
         }
 
         [Test]

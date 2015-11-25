@@ -402,15 +402,9 @@ namespace BTDB.KVDBLayer
 
         public bool DurableTransactions { get; set; }
 
-        internal IBTreeRootNode LastCommited
-        {
-            get { return _lastCommited; }
-        }
+        internal IBTreeRootNode LastCommited => _lastCommited;
 
-        internal IFileCollectionWithFileInfos FileCollection
-        {
-            get { return _fileCollection; }
-        }
+        internal IFileCollectionWithFileInfos FileCollection => _fileCollection;
 
         public IKeyValueDBTransaction StartTransaction()
         {
@@ -895,7 +889,7 @@ namespace BTDB.KVDBLayer
             object subDB;
             if (_subDBs.TryGetValue(id, out subDB))
             {
-                if (!(subDB is T)) throw new ArgumentException(string.Format("SubDB of id {0} is not type {1}", id, typeof(T).FullName));
+                if (!(subDB is T)) throw new ArgumentException($"SubDB of id {id} is not type {typeof (T).FullName}");
                 return (T)subDB;
             }
             if (typeof(T) == typeof(IChunkStorage))

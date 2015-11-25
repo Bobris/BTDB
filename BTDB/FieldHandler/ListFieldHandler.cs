@@ -42,20 +42,11 @@ namespace BTDB.FieldHandler
             _itemsHandler = itemSpecialized;
         }
 
-        public static string HandlerName
-        {
-            get { return "List"; }
-        }
+        public static string HandlerName => "List";
 
-        public string Name
-        {
-            get { return HandlerName; }
-        }
+        public string Name => HandlerName;
 
-        public byte[] Configuration
-        {
-            get { return _configuration; }
-        }
+        public byte[] Configuration => _configuration;
 
         public static bool IsCompatibleWith(Type type)
         {

@@ -161,10 +161,7 @@ namespace BTDB.KVDBLayer.BTree
             throw new ArgumentException();
         }
 
-        public long TransactionId
-        {
-            get { return _transactionId; }
-        }
+        public long TransactionId => _transactionId;
 
         public uint TrLogFileId { get; set; }
         public uint TrLogOffset { get; set; }

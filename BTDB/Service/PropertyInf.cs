@@ -22,15 +22,9 @@ namespace BTDB.Service
             _fieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray(), FieldHandlerOptions.None);
         }
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
-        public IFieldHandler FieldHandler
-        {
-            get { return _fieldHandler; }
-        }
+        public IFieldHandler FieldHandler => _fieldHandler;
 
         public void Store(AbstractBufferedWriter writer)
         {

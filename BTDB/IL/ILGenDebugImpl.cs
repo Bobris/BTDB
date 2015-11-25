@@ -41,15 +41,9 @@ namespace BTDB.IL
                 _name = name;
             }
 
-            public Label Label
-            {
-                get { return _label; }
-            }
+            public Label Label => _label;
 
-            public string Name
-            {
-                get { return _name; }
-            }
+            public string Name => _name;
         }
 
         public IILLocal DeclareLocal(Type type, string name, bool pinned = false)
@@ -75,30 +69,15 @@ namespace BTDB.IL
                 _name = name;
             }
 
-            public int Index
-            {
-                get { return LocalBuilder.LocalIndex; }
-            }
+            public int Index => LocalBuilder.LocalIndex;
 
-            public bool Pinned
-            {
-                get { return LocalBuilder.IsPinned; }
-            }
+            public bool Pinned => LocalBuilder.IsPinned;
 
-            public Type LocalType
-            {
-                get { return LocalBuilder.LocalType; }
-            }
+            public Type LocalType => LocalBuilder.LocalType;
 
-            public LocalBuilder LocalBuilder
-            {
-                get { return _localBuilder; }
-            }
+            public LocalBuilder LocalBuilder => _localBuilder;
 
-            public string Name
-            {
-                get { return _name; }
-            }
+            public string Name => _name;
         }
 
         public IILGen Comment(string text)
@@ -115,37 +94,39 @@ namespace BTDB.IL
 
         public void Emit(OpCode opCode, sbyte param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, param));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {param}");
             _ilGenerator.Emit(opCode, param);
         }
 
         public void Emit(OpCode opCode, byte param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, param));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {param}");
             _ilGenerator.Emit(opCode, param);
         }
 
         public void Emit(OpCode opCode, ushort param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, param));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {param}");
             _ilGenerator.Emit(opCode, param);
         }
 
         public void Emit(OpCode opCode, int param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, param));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {param}");
             _ilGenerator.Emit(opCode, param);
         }
 
         public void Emit(OpCode opCode, FieldInfo param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} field {1} {2}", opCode, param.FieldType.ToSimpleName(), param.Name));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator,
+                $"{opCode} field {param.FieldType.ToSimpleName()} {param.Name}");
             _ilGenerator.Emit(opCode, param);
         }
 
         public void Emit(OpCode opCode, ConstructorInfo param)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} ctor {1}({2})", opCode, param.DeclaringType.ToSimpleName(), FormatParams(param.GetParameters())));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator,
+                $"{opCode} ctor {param.DeclaringType.ToSimpleName()}({FormatParams(param.GetParameters())})");
             _forbidenInstructions.Emit(_ilGenerator, opCode, param);
         }
 
@@ -157,13 +138,13 @@ namespace BTDB.IL
 
         public void Emit(OpCode opCode, Type type)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, type.ToSimpleName()));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {type.ToSimpleName()}");
             _ilGenerator.Emit(opCode, type);
         }
 
         static string FormatParams(IEnumerable<ParameterInfo> pars)
         {
-            return string.Join(", ", pars.Select(par => string.Format("{0} {1}", par.ParameterType.ToSimpleName(), par.Name)));
+            return string.Join(", ", pars.Select(par => $"{par.ParameterType.ToSimpleName()} {par.Name}"));
         }
 
         public void Emit(OpCode opCode, IILLocal ilLocal)
@@ -174,7 +155,7 @@ namespace BTDB.IL
 
         public void Emit(OpCode opCode, IILLabel ilLabel)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {1}", opCode, ((ILLabelImpl)ilLabel).Name));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {((ILLabelImpl) ilLabel).Name}");
             _ilGenerator.Emit(opCode, ((ILLabelImpl)ilLabel).Label);
         }
 
@@ -201,7 +182,7 @@ namespace BTDB.IL
 
         public IILGen Ldstr(string str)
         {
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} \"{1}\"", OpCodes.Ldstr, str));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{OpCodes.Ldstr} \"{str}\"");
             _ilGenerator.Emit(OpCodes.Ldstr, str);
             return this;
         }
@@ -217,7 +198,7 @@ namespace BTDB.IL
         public IILGen Catch(Type exceptionType)
         {
             _sourceCodeWriter.CloseScope();
-            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("catch ({0})", exceptionType.FullName));
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"catch ({exceptionType.FullName})");
             _sourceCodeWriter.OpenScope();
             _ilGenerator.BeginCatchBlock(exceptionType);
             return this;

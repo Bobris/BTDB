@@ -51,7 +51,7 @@ namespace BTDB.IL
             _dynamicMethod = _typeBuilder.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.Static, mi.ReturnType, parameterTypes);
             for (int i = 0; i < parameterTypes.Length; i++)
             {
-                _dynamicMethod.DefineParameter(i + 1, ParameterAttributes.In, string.Format("arg{0}", i));
+                _dynamicMethod.DefineParameter(i + 1, ParameterAttributes.In, $"arg{i}");
             }
         }
 
@@ -60,10 +60,7 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator
-        {
-            get { return _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter)); }
-        }
+        public IILGen Generator => _gen ?? (_gen = new ILGenDebugImpl(_dynamicMethod.GetILGenerator(_expectedLength), _forbidenInstructions, _sourceCodeWriter));
 
         public void FinalizeCreation()
         {

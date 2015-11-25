@@ -9,35 +9,17 @@ namespace BTDB.KVDBLayer
         readonly uint _trLogOffset;
         readonly long _keyValueCount;
 
-        public KVFileType FileType
-        {
-            get { return KVFileType.KeyIndex; }
-        }
+        public KVFileType FileType => KVFileType.KeyIndex;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
-        public long SubDBId
-        {
-            get { return 0; }
-        }
+        public long SubDBId => 0;
 
-        public uint TrLogFileId
-        {
-            get { return _trLogFileId; }
-        }
+        public uint TrLogFileId => _trLogFileId;
 
-        public uint TrLogOffset
-        {
-            get { return _trLogOffset; }
-        }
+        public uint TrLogOffset => _trLogOffset;
 
-        public long KeyValueCount
-        {
-            get { return _keyValueCount; }
-        }
+        public long KeyValueCount => _keyValueCount;
 
         public FileKeyIndex(AbstractBufferedReader reader)
         {

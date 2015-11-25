@@ -7,10 +7,7 @@ namespace BTDB.FieldHandler
 {
     public class ByteArrayLastFieldHandler : ByteArrayFieldHandler
     {
-        public override string Name
-        {
-            get { return "Byte[]Last"; }
-        }
+        public override string Name => "Byte[]Last";
 
         public override void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {

@@ -19,25 +19,13 @@ namespace BTDB.KVDBLayer
             _previousFileId = fileIdWithPreviousTransactionLog;
         }
 
-        public KVFileType FileType
-        {
-            get { return KVFileType.TransactionLog; }
-        }
+        public KVFileType FileType => KVFileType.TransactionLog;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
-        public long SubDBId
-        {
-            get { return 0; }
-        }
+        public long SubDBId => 0;
 
-        public uint PreviousFileId
-        {
-            get { return _previousFileId; }
-        }
+        public uint PreviousFileId => _previousFileId;
 
         public uint NextFileId { get; set; }
 

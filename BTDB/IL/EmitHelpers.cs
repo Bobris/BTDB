@@ -84,7 +84,8 @@ namespace BTDB.IL
         public static string ToSimpleName(this Type type)
         {
             if (type == null) return "";
-            if (type.IsArray) return String.Format("{0}[{1}]", ToSimpleName(type.GetElementType()), new string(',',type.GetArrayRank()-1));
+            if (type.IsArray) return
+                $"{ToSimpleName(type.GetElementType())}[{new string(',', type.GetArrayRank() - 1)}]";
             if (type.IsGenericType)
             {
                 return String.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
@@ -241,7 +242,7 @@ namespace BTDB.IL
                     .BrtrueS(jumpTo);
                 return;
             }
-            throw new ArgumentOutOfRangeException(nameof(type), String.Format("Don't know how to compare type {0}", type));
+            throw new ArgumentOutOfRangeException(nameof(type), $"Don't know how to compare type {type}");
         }
     }
 }

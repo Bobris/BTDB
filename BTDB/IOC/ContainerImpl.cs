@@ -65,9 +65,9 @@ namespace BTDB.IOC
         {
             if (key == null)
             {
-                throw new ArgumentException(string.Format("Type {0} cannot be resolved", type.ToSimpleName()));
+                throw new ArgumentException($"Type {type.ToSimpleName()} cannot be resolved");
             }
-            throw new ArgumentException(string.Format("Type {0} with key {1} cannot be resolved", type.ToSimpleName(), key));
+            throw new ArgumentException($"Type {type.ToSimpleName()} with key {key} cannot be resolved");
         }
 
         Func<object> TryBuild(object key, Type type)

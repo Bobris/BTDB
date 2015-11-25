@@ -16,15 +16,9 @@ namespace BTDB.ChunkCache
             _generation = generation;
         }
 
-        public DiskChunkFileType FileType
-        {
-            get { return DiskChunkFileType.PureValues; }
-        }
+        public DiskChunkFileType FileType => DiskChunkFileType.PureValues;
 
-        public long Generation
-        {
-            get { return _generation; }
-        }
+        public long Generation => _generation;
 
         public void WriteHeader(AbstractBufferedWriter writer)
         {

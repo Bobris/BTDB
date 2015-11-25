@@ -76,25 +76,13 @@ namespace BTDB.Service
             }
         }
 
-        public Type OriginalType
-        {
-            get { return _type; }
-        }
+        public Type OriginalType => _type;
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
-        public MethodInf[] MethodInfs
-        {
-            get { return _methodInfs; }
-        }
+        public MethodInf[] MethodInfs => _methodInfs;
 
-        public PropertyInf[] PropertyInfs
-        {
-            get { return _propertyInfs; }
-        }
+        public PropertyInf[] PropertyInfs => _propertyInfs;
 
         public void Store(AbstractBufferedWriter writer)
         {

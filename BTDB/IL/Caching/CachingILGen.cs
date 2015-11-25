@@ -100,20 +100,11 @@ namespace BTDB.IL.Caching
                 _index = index;
             }
 
-            public int Index
-            {
-                get { return _index; }
-            }
+            public int Index => _index;
 
-            public bool Pinned
-            {
-                get { return _pinned; }
-            }
+            public bool Pinned => _pinned;
 
-            public Type LocalType
-            {
-                get { return _type; }
-            }
+            public Type LocalType => _type;
 
             public void ReplayTo(IILGen target)
             {

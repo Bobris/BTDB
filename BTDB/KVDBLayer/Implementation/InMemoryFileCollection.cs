@@ -35,10 +35,7 @@ namespace BTDB.KVDBLayer
                 _writer = new Writer(this);
             }
 
-            public uint Index
-            {
-                get { return _index; }
-            }
+            public uint Index => _index;
 
             sealed class Reader : AbstractBufferedReader
             {

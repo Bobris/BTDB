@@ -40,15 +40,9 @@ namespace BTDB.Service
                 _other._receiver.OnNext(data);
             }
 
-            public IObservable<ByteBuffer> OnReceive
-            {
-                get { return _receiver; }
-            }
+            public IObservable<ByteBuffer> OnReceive => _receiver;
 
-            public IObservable<bool> OnConnect
-            {
-                get { return _connector; }
-            }
+            public IObservable<bool> OnConnect => _connector;
 
             internal Channel Other
             {
@@ -64,8 +58,8 @@ namespace BTDB.Service
             }
         }
 
-        public IChannel First { get { return _first; } }
-        public IChannel Second { get { return _second; } }
+        public IChannel First => _first;
+        public IChannel Second => _second;
 
         public void Connect()
         {

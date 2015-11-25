@@ -11,10 +11,7 @@ namespace BTDB.KVDBLayer
             _size = 0;
         }
 
-        public bool Empty
-        {
-            get { return _size == 0; }
-        }
+        public bool Empty => _size == 0;
 
         public ulong FindFreeSizeAfter(ulong pos, ulong len)
         {

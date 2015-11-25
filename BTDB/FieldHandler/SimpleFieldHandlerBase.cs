@@ -19,15 +19,9 @@ namespace BTDB.FieldHandler
             _saver = saver;
         }
 
-        public string Name
-        {
-            get { return _name; }
-        }
+        public string Name => _name;
 
-        public byte[] Configuration
-        {
-            get { return null; }
-        }
+        public byte[] Configuration => null;
 
         public virtual bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
@@ -84,8 +78,8 @@ namespace BTDB.FieldHandler
                 _type = type;
             }
 
-            public string Name { get { return _fieldHandler.Name; } }
-            public byte[] Configuration { get { return _fieldHandler.Configuration; } }
+            public string Name => _fieldHandler.Name;
+            public byte[] Configuration => _fieldHandler.Configuration;
 
             public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
             {
