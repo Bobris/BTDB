@@ -117,12 +117,14 @@ namespace BTDB.EventStoreLayer
                         bufferLenToFill = (uint)(File.MaxFileSize - bufferStartPosition);
                     }
                     buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
-                    if (currentReadAhead * 4 < MaxBlockSize)
-                    {
-                        currentReadAhead = currentReadAhead * 2;
+                    if (buf.Length > 0) {
+                        if (currentReadAhead * 4 < MaxBlockSize)
+                        {
+                            currentReadAhead = currentReadAhead * 2;
+                        }
+                        bufReadLength = (int)File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
+                        bufferFullLength += bufReadLength;
                     }
-                    bufReadLength = (int)File.Read(buf, bufferStartPosition + (ulong)bufferFullLength);
-                    bufferFullLength += bufReadLength;
                 }
                 if (bufferReadOffset + (int)blockLen > bufferFullLength)
                 {
