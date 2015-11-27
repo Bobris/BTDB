@@ -112,6 +112,10 @@ namespace BTDB.EventStoreLayer
                 {
                     bufferLenToFill = (uint)(bufferReadOffset + (int)blockLen + currentReadAhead) & SectorMaskUInt;
                     if (bufferLenToFill > bufferBlock.Length) bufferLenToFill = (uint)bufferBlock.Length;
+                    if (bufferStartPosition + bufferLenToFill > File.MaxFileSize)
+                    {
+                        bufferLenToFill = (uint)(File.MaxFileSize - bufferStartPosition);
+                    }
                     buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
                     if (currentReadAhead * 4 < MaxBlockSize)
                     {
