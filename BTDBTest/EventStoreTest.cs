@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class EventStoreTest
     {
-        [Test]
+        [Fact]
         public void CanWriteSimpleEvent()
         {
             var manager = new EventStoreManager();
@@ -18,15 +17,15 @@ namespace BTDBTest
             appender.Store(null, new object[] { 1 });
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { 1 } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { 1 } }, eventObserver.Events);
             Assert.True(appender.IsKnownAsAppendable());
             Assert.False(appender.IsKnownAsCorrupted());
             Assert.False(appender.IsKnownAsFinished());
-            Assert.AreEqual(10, appender.KnownAppendablePosition());
+            Assert.Equal(10ul, appender.KnownAppendablePosition());
         }
 
-        [Test]
+        [Fact]
         public void CanFinalizeEventStore()
         {
             var manager = new EventStoreManager();
@@ -37,7 +36,7 @@ namespace BTDBTest
             Assert.True(appender.IsKnownAsFinished());
         }
 
-        [Test]
+        [Fact]
         public void CanFinalizeEventStoreAfterReadFromStart()
         {
             var manager = new EventStoreManager();
@@ -46,7 +45,7 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file1);
             appender.Store(null, new object[] { new byte[4000] });
             appender.Store(null, new object[] { new byte[4000] });
-            Assert.AreNotSame(file1, appender.CurrentFileStorage);
+            Assert.NotSame(file1, appender.CurrentFileStorage);
             var reader = manager.OpenReadOnlyStore(file1);
             reader.ReadFromStartToEnd(new SkippingEventObserver());
             Assert.False(reader.IsKnownAsAppendable());
@@ -57,7 +56,7 @@ namespace BTDBTest
             Assert.False(appender.IsKnownAsFinished());
         }
 
-        [Test]
+        [Fact]
         public void CanReadLongerEventsFromIncompleteFile()
         {
             var manager = new EventStoreManager();
@@ -83,7 +82,7 @@ namespace BTDBTest
             Assert.False(reader.IsKnownAsFinished());
         }
 
-        [Test]
+        [Fact]
         public void CanFinalizeEventStoreOnEverySectorPosition()
         {
             for (int i = 4000; i < 4600; i++)
@@ -97,7 +96,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanFinalizeEventStoreAfterReadFromStartFirstNearlyFull()
         {
             var manager = new EventStoreManager();
@@ -106,7 +105,7 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file1);
             appender.Store(null, new object[] { new byte[4080] });
             appender.Store(null, new object[] { new byte[4000] });
-            Assert.AreNotSame(file1, appender.CurrentFileStorage);
+            Assert.NotSame(file1, appender.CurrentFileStorage);
             var reader = manager.OpenReadOnlyStore(file1);
             reader.ReadFromStartToEnd(new SkippingEventObserver());
             Assert.False(reader.IsKnownAsAppendable());
@@ -117,7 +116,7 @@ namespace BTDBTest
             Assert.False(appender.IsKnownAsFinished());
         }
 
-        [Test]
+        [Fact]
         public void CreatesNewFileWhenOldOneIsFull()
         {
             var manager = new EventStoreManager();
@@ -151,7 +150,7 @@ namespace BTDBTest
 
             public void ObservedEvents(object[] events)
             {
-                Assert.AreEqual(_lastEventCount, events.Length);
+                Assert.Equal((int)_lastEventCount, events.Length);
                 Events.Add(events);
             }
         }
@@ -174,9 +173,14 @@ namespace BTDBTest
                 if (other == null) return false;
                 return Name == other.Name && Age == other.Age;
             }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as User);
+            }
         }
 
-        [Test]
+        [Fact]
         public void CanWriteMultipleEventsWithMetadata()
         {
             var manager = new EventStoreManager();
@@ -190,11 +194,11 @@ namespace BTDBTest
             appender.Store(metadata, events);
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { metadata }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { events }, eventObserver.Events);
+            Assert.Equal(new object[] { metadata }, eventObserver.Metadata);
+            Assert.Equal(new[] { events }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void CanWriteSimpleEventAndReadItIndependently()
         {
             var manager = new EventStoreManager();
@@ -209,11 +213,11 @@ namespace BTDBTest
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { user } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { user } }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void CustomEventIsReadFromSecondSplit()
         {
             var manager = new EventStoreManager();
@@ -232,8 +236,8 @@ namespace BTDBTest
             var reader = manager.OpenReadOnlyStore(second);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { user } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { user } }, eventObserver.Events);
         }
 
 
@@ -264,9 +268,14 @@ namespace BTDBTest
                 if (User1 != other.User1 && (User1 == null || !User1.Equals(other.User1))) return false;
                 return User2 == other.User2 || (User2 != null && User2.Equals(other.User2));
             }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as UserEvent);
+            }
         }
 
-        [Test]
+        [Fact]
         public void NestedObjectsTest()
         {
             var manager = new EventStoreManager();
@@ -279,11 +288,11 @@ namespace BTDBTest
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { userEvent } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { userEvent } }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void SameReferenceTest()
         {
             var manager = new EventStoreManager();
@@ -298,7 +307,7 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEvent)eventObserver.Events[0][0];
-            Assert.AreSame(readUserEvent.User1, readUserEvent.User2);
+            Assert.Same(readUserEvent.User1, readUserEvent.User2);
         }
 
         public class UserEventMore : IEquatable<UserEventMore>
@@ -342,7 +351,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeToMoreObjectProperties()
         {
             var manager = new EventStoreManager();
@@ -359,11 +368,11 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEventMore)eventObserver.Events[0][0];
-            Assert.AreSame(readUserEvent.User1, readUserEvent.User2);
-            Assert.AreEqual("A", readUserEvent.User1.Name);
-            Assert.AreEqual(10, readUserEvent.Id);
-            Assert.IsNull(readUserEvent.User3);
-            Assert.AreEqual("B", ((User)eventObserver.Events[0][1]).Name);
+            Assert.Same(readUserEvent.User1, readUserEvent.User2);
+            Assert.Equal("A", readUserEvent.User1.Name);
+            Assert.Equal(10, readUserEvent.Id);
+            Assert.Null(readUserEvent.User3);
+            Assert.Equal("B", ((User)eventObserver.Events[0][1]).Name);
         }
 
         public class UserEventLess : IEquatable<UserEventLess>
@@ -378,7 +387,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeToLessObjectProperties()
         {
             var manager = new EventStoreManager();
@@ -395,9 +404,9 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEventLess)eventObserver.Events[0][0];
-            Assert.AreEqual("A", readUserEvent.User2.Name);
-            Assert.AreEqual(10, readUserEvent.Id);
-            Assert.AreEqual("B", ((User)eventObserver.Events[0][1]).Name);
+            Assert.Equal("A", readUserEvent.User2.Name);
+            Assert.Equal(10, readUserEvent.Id);
+            Assert.Equal("B", ((User)eventObserver.Events[0][1]).Name);
         }
 
         public class UserEventList : IEquatable<UserEventList>
@@ -415,7 +424,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SupportsList()
         {
             var manager = new EventStoreManager();
@@ -431,10 +440,10 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEventList)eventObserver.Events[0][0];
-            Assert.AreEqual(readUserEvent, userEvent);
+            Assert.Equal(readUserEvent, userEvent);
         }
 
-        [Test]
+        [Fact]
         public void SkipListOnUpgrade()
         {
             var manager = new EventStoreManager();
@@ -452,8 +461,8 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEvent)eventObserver.Events[0][0];
-            Assert.AreEqual(10, readUserEvent.Id);
-            Assert.IsNull(readUserEvent.User1);
+            Assert.Equal(10, readUserEvent.Id);
+            Assert.Null(readUserEvent.User1);
         }
 
         public class UserEventDictionary : IEquatable<UserEventDictionary>
@@ -477,7 +486,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SupportsDictionary()
         {
             var manager = new EventStoreManager();
@@ -493,9 +502,10 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (UserEventDictionary)eventObserver.Events[0][0];
-            Assert.AreEqual(readUserEvent, userEvent);
+            Assert.Equal(readUserEvent, userEvent);
         }
 
+        [Fact]
         public class ErrorInfo
         {
             public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }
@@ -530,17 +540,17 @@ namespace BTDBTest
             var randomData = new byte[20000];
             new Random().NextBytes(randomData);
             appender.Store(null, new object[] { randomData });
-            Assert.Less(10000, appender.KnownAppendablePosition());
+            Assert.True(10000 < appender.KnownAppendablePosition());
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { randomData } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { randomData } }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void CompressionShortensData()
         {
             var manager = new EventStoreManager();
@@ -548,17 +558,17 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file);
             var compressibleData = new byte[20000];
             appender.Store(null, new object[] { compressibleData });
-            Assert.Greater(2000, appender.KnownAppendablePosition());
+            Assert.True(2000 > appender.KnownAppendablePosition());
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.AreEqual(new object[] { null }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { new object[] { compressibleData } }, eventObserver.Events);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new[] { new object[] { compressibleData } }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void CanStopReadBatchesAfterFirst()
         {
             var manager = new EventStoreManager();
@@ -579,11 +589,11 @@ namespace BTDBTest
             Assert.False(reader.IsKnownAsCorrupted());
             Assert.False(reader.IsKnownAsFinished());
             Assert.False(reader.IsKnownAsAppendable());
-            Assert.AreEqual(new object[] { metadata }, eventObserver.Metadata);
-            Assert.AreEqual(new[] { events }, eventObserver.Events);
+            Assert.Equal(new List<object>{ metadata }, eventObserver.Metadata);
+            Assert.Equal(new[] { events }, eventObserver.Events);
         }
 
-        [Test]
+        [Fact]
         public void MoreComplexRepeatedAppendingAndReading()
         {
             var manager = new EventStoreManager();
@@ -609,7 +619,7 @@ namespace BTDBTest
             public IDictionary<ulong, IList<ulong>> Dict { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void MixedIListAndList()
         {
             var manager = new EventStoreManager();
@@ -632,7 +642,7 @@ namespace BTDBTest
             public IList<User> Users { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UseArrayForStoreIList()
         {
             var manager = new EventStoreManager();

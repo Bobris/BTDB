@@ -1,18 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class InMemoryInMemoryKeyValueDBTest
     {
-        [Test]
+        [Fact]
         public void CreateEmptyDatabase()
         {
             using (new InMemoryKeyValueDB())
@@ -20,7 +18,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void EmptyTransaction()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -32,7 +30,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void EmptyWritingTransaction()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -44,7 +42,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void FirstTransaction()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -57,7 +55,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanGetSizeOfPair()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -66,28 +64,28 @@ namespace BTDBTest
                 {
                     tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[1]));
                     var s = tr.GetStorageSizeOfCurrentKey();
-                    Assert.AreEqual(_key1.Length, s.Key);
-                    Assert.AreEqual(1, s.Value);
+                    Assert.Equal(_key1.Length, (int)s.Key);
+                    Assert.Equal(1u, s.Value);
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void FirstTransactionIsNumber1()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.AreEqual(0, tr.GetTransactionNumber());
+                    Assert.Equal(0, tr.GetTransactionNumber());
                     Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
-                    Assert.AreEqual(1, tr.GetTransactionNumber());
+                    Assert.Equal(1, tr.GetTransactionNumber());
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void ReadOnlyTransactionThrowsOnWriteAccess()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -99,7 +97,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void MoreComplexTransaction()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -108,18 +106,18 @@ namespace BTDBTest
                 {
                     Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
                     Assert.False(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key1), ByteBuffer.NewAsync(new byte[0])));
-                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key2)));
+                    Assert.Equal(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key2)));
                     Assert.True(tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(_key2), ByteBuffer.NewAsync(new byte[0])));
-                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key1)));
-                    Assert.AreEqual(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key2)));
-                    Assert.AreEqual(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key3)));
-                    Assert.AreEqual(FindResult.Next, tr.Find(ByteBuffer.NewEmpty()));
+                    Assert.Equal(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key1)));
+                    Assert.Equal(FindResult.Exact, tr.Find(ByteBuffer.NewAsync(_key2)));
+                    Assert.Equal(FindResult.Previous, tr.Find(ByteBuffer.NewAsync(_key3)));
+                    Assert.Equal(FindResult.Next, tr.Find(ByteBuffer.NewEmpty()));
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void CommitWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -129,20 +127,20 @@ namespace BTDBTest
                     tr1.CreateKey(_key1);
                     using (var tr2 = db.StartTransaction())
                     {
-                        Assert.AreEqual(0, tr2.GetTransactionNumber());
+                        Assert.Equal(0, tr2.GetTransactionNumber());
                         Assert.False(tr2.FindExactKey(_key1));
                     }
                     tr1.Commit();
                 }
                 using (var tr3 = db.StartTransaction())
                 {
-                    Assert.AreEqual(1, tr3.GetTransactionNumber());
+                    Assert.Equal(1, tr3.GetTransactionNumber());
                     Assert.True(tr3.FindExactKey(_key1));
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void RollbackWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -154,13 +152,13 @@ namespace BTDBTest
                 }
                 using (var tr2 = db.StartTransaction())
                 {
-                    Assert.AreEqual(0, tr2.GetTransactionNumber());
+                    Assert.Equal(0, tr2.GetTransactionNumber());
                     Assert.False(tr2.FindExactKey(_key1));
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void OnlyOneWrittingTransactionPossible()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -177,7 +175,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void OnlyOneWrittingTransactionPossible2()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -194,7 +192,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void TwoEmptyWriteTransactionsWithNestedWaiting()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -212,8 +210,13 @@ namespace BTDBTest
             }
         }
 
-        [Test]
-        public void BiggerKey([Values(0, 1, 2, 5000, 1200000)] int keyLength)
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(5000)]
+        [InlineData(1200000)]
+        public void BiggerKey(int keyLength)
         {
             var key = new byte[keyLength];
             for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
@@ -227,12 +230,12 @@ namespace BTDBTest
                 using (var tr2 = db.StartTransaction())
                 {
                     Assert.True(tr2.FindExactKey(key));
-                    Assert.AreEqual(key, tr2.GetKeyAsByteArray());
+                    Assert.Equal(key, tr2.GetKeyAsByteArray());
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void TwoTransactions()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -259,8 +262,9 @@ namespace BTDBTest
             }
         }
 
-        [Test]
-        public void MultipleTransactions([Values(1000)] int transactionCount)
+        [Theory]
+        [InlineData(1000)]
+        public void MultipleTransactions(int transactionCount)
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {
@@ -278,7 +282,7 @@ namespace BTDBTest
                             {
                                 key[0] = (byte)(j / 256);
                                 key[1] = (byte)(j % 256);
-                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
+                                Assert.Equal(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -287,8 +291,9 @@ namespace BTDBTest
             }
         }
 
-        [Test]
-        public void MultipleTransactions2([Values(1000)] int transactionCount)
+        [Theory]
+        [InlineData(1000)]
+        public void MultipleTransactions2(int transactionCount)
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {
@@ -306,7 +311,7 @@ namespace BTDBTest
                             {
                                 key[0] = (byte)((transactionCount - j) / 256);
                                 key[1] = (byte)((transactionCount - j) % 256);
-                                Assert.AreEqual(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
+                                Assert.Equal(FindResult.Exact, tr1.Find(ByteBuffer.NewSync(key, 0, 2 + j * 10)));
                             }
                         }
                         tr1.Commit();
@@ -315,7 +320,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SimpleFindPreviousKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -331,13 +336,13 @@ namespace BTDBTest
                 {
                     Assert.True(tr2.FindExactKey(_key3));
                     Assert.True(tr2.FindPreviousKey());
-                    Assert.AreEqual(_key1, tr2.GetKeyAsByteArray());
+                    Assert.Equal(_key1, tr2.GetKeyAsByteArray());
                     Assert.False(tr2.FindPreviousKey());
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void FindKeyWithPreferPreviousKeyWorks()
         {
             const int keyCount = 10000;
@@ -362,8 +367,8 @@ namespace BTDBTest
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
-                        Assert.AreEqual(FindResult.Previous, findKeyResult);
-                        Assert.AreEqual(i, tr.GetKeyIndex());
+                        Assert.Equal(FindResult.Previous, findKeyResult);
+                        Assert.Equal(i, tr.GetKeyIndex());
                     }
                 }
                 using (var tr = db.StartTransaction())
@@ -376,20 +381,20 @@ namespace BTDBTest
                         var findKeyResult = tr.Find(ByteBuffer.NewSync(key));
                         if (i == 0)
                         {
-                            Assert.AreEqual(FindResult.Next, findKeyResult);
-                            Assert.AreEqual(i, tr.GetKeyIndex());
+                            Assert.Equal(FindResult.Next, findKeyResult);
+                            Assert.Equal(i, tr.GetKeyIndex());
                         }
                         else
                         {
-                            Assert.AreEqual(FindResult.Previous, findKeyResult);
-                            Assert.AreEqual(i - 1, tr.GetKeyIndex());
+                            Assert.Equal(FindResult.Previous, findKeyResult);
+                            Assert.Equal(i - 1, tr.GetKeyIndex());
                         }
                     }
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void SimpleFindNextKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -405,13 +410,13 @@ namespace BTDBTest
                 {
                     Assert.True(tr2.FindExactKey(_key3));
                     Assert.True(tr2.FindNextKey());
-                    Assert.AreEqual(_key2, tr2.GetKeyAsByteArray());
+                    Assert.Equal(_key2, tr2.GetKeyAsByteArray());
                     Assert.False(tr2.FindNextKey());
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void AdvancedFindPreviousAndNextKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -430,28 +435,28 @@ namespace BTDBTest
                 }
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.AreEqual(-1, tr.GetKeyIndex());
+                    Assert.Equal(-1, tr.GetKeyIndex());
                     tr.FindExactKey(key);
-                    Assert.AreEqual(keysCreated - 1, tr.GetKeyIndex());
+                    Assert.Equal(keysCreated - 1, tr.GetKeyIndex());
                     for (int i = 1; i < keysCreated; i++)
                     {
                         Assert.True(tr.FindPreviousKey());
-                        Assert.AreEqual(keysCreated - 1 - i, tr.GetKeyIndex());
+                        Assert.Equal(keysCreated - 1 - i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindPreviousKey());
-                    Assert.AreEqual(-1, tr.GetKeyIndex());
+                    Assert.Equal(-1, tr.GetKeyIndex());
                     for (int i = 0; i < keysCreated; i++)
                     {
                         Assert.True(tr.FindNextKey());
-                        Assert.AreEqual(i, tr.GetKeyIndex());
+                        Assert.Equal(i, tr.GetKeyIndex());
                     }
                     Assert.False(tr.FindNextKey());
-                    Assert.AreEqual(-1, tr.GetKeyIndex());
+                    Assert.Equal(-1, tr.GetKeyIndex());
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void SetKeyIndexWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -475,16 +480,28 @@ namespace BTDBTest
                     {
                         Assert.True(tr.SetKeyIndex(i));
                         key = tr.GetKeyAsByteArray();
-                        Assert.AreEqual((byte)(i / 256), key[0]);
-                        Assert.AreEqual((byte)(i % 256), key[1]);
-                        Assert.AreEqual(i, tr.GetKeyIndex());
+                        Assert.Equal((byte)(i / 256), key[0]);
+                        Assert.Equal((byte)(i % 256), key[1]);
+                        Assert.Equal(i, tr.GetKeyIndex());
                     }
                 }
             }
         }
 
-        [Test]
-        public void CreateOrUpdateKeyValueWorks([Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 256, 5000, 10000000)] int length)
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(4)]
+        [InlineData(5)]
+        [InlineData(6)]
+        [InlineData(7)]
+        [InlineData(8)]
+        [InlineData(256)]
+        [InlineData(5000)]
+        [InlineData(10000000)]
+        public void CreateOrUpdateKeyValueWorks(int length)
         {
             var valbuf = new byte[length];
             new Random(0).NextBytes(valbuf);
@@ -504,20 +521,20 @@ namespace BTDBTest
                     for (int i = 0; i < length; i++)
                     {
                         if (valbuf[i] != valbuf2[i])
-                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                            Assert.Equal(valbuf[i], valbuf2[i]);
                     }
                     Assert.True(tr2.FindExactKey(_key2));
                     valbuf2 = tr2.GetValueAsByteArray();
                     for (int i = 0; i < length; i++)
                     {
                         if (valbuf[i] != valbuf2[i])
-                            Assert.AreEqual(valbuf[i], valbuf2[i]);
+                            Assert.Equal(valbuf[i], valbuf2[i]);
                     }
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void FindFirstKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -529,13 +546,13 @@ namespace BTDBTest
                     tr.CreateKey(_key2);
                     tr.CreateKey(_key3);
                     Assert.True(tr.FindFirstKey());
-                    Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
+                    Assert.Equal(_key1, tr.GetKeyAsByteArray());
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void FindLastKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -547,13 +564,13 @@ namespace BTDBTest
                     tr.CreateKey(_key2);
                     tr.CreateKey(_key3);
                     Assert.True(tr.FindLastKey());
-                    Assert.AreEqual(_key2, tr.GetKeyAsByteArray());
+                    Assert.Equal(_key2, tr.GetKeyAsByteArray());
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void SimplePrefixWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -563,19 +580,19 @@ namespace BTDBTest
                     tr.CreateKey(_key1);
                     tr.CreateKey(_key2);
                     tr.CreateKey(_key3);
-                    Assert.AreEqual(3, tr.GetKeyValueCount());
+                    Assert.Equal(3, tr.GetKeyValueCount());
                     tr.SetKeyPrefix(ByteBuffer.NewAsync(_key1, 0, 3));
-                    Assert.AreEqual(2, tr.GetKeyValueCount());
+                    Assert.Equal(2, tr.GetKeyValueCount());
                     tr.FindFirstKey();
-                    Assert.AreEqual(new byte[0], tr.GetKeyAsByteArray());
+                    Assert.Equal(new byte[0], tr.GetKeyAsByteArray());
                     tr.FindLastKey();
-                    Assert.AreEqual(_key3.Skip(3).ToArray(), tr.GetKeyAsByteArray());
+                    Assert.Equal(_key3.Skip(3).ToArray(), tr.GetKeyAsByteArray());
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void PrefixWithFindNextKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -593,7 +610,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void PrefixWithFindPrevKeyWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -610,7 +627,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SimpleEraseCurrentWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -622,16 +639,22 @@ namespace BTDBTest
                     tr.CreateKey(_key3);
                     tr.EraseCurrent();
                     Assert.True(tr.FindFirstKey());
-                    Assert.AreEqual(_key1, tr.GetKeyAsByteArray());
+                    Assert.Equal(_key1, tr.GetKeyAsByteArray());
                     Assert.True(tr.FindNextKey());
-                    Assert.AreEqual(_key2, tr.GetKeyAsByteArray());
+                    Assert.Equal(_key2, tr.GetKeyAsByteArray());
                     Assert.False(tr.FindNextKey());
-                    Assert.AreEqual(2, tr.GetKeyValueCount());
+                    Assert.Equal(2, tr.GetKeyValueCount());
                 }
             }
         }
 
-        [Test, TestCaseSource("EraseRangeSource")]
+        [Fact]
+        public void AdvancedEraseRangeWorks()
+        {
+            foreach(var range in EraseRangeSource())
+                AdvancedEraseRangeWorks(range[0], range[1], range[2]);
+        }
+
         public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -650,23 +673,23 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.EraseRange(removeStart, removeStart + removeCount - 1);
-                    Assert.AreEqual(createKeys - removeCount, tr.GetKeyValueCount());
+                    Assert.Equal(createKeys - removeCount, tr.GetKeyValueCount());
                     tr.Commit();
                 }
                 using (var tr = db.StartTransaction())
                 {
-                    Assert.AreEqual(createKeys - removeCount, tr.GetKeyValueCount());
+                    Assert.Equal(createKeys - removeCount, tr.GetKeyValueCount());
                     for (int i = 0; i < createKeys; i++)
                     {
                         key[0] = (byte)(i / 256);
                         key[1] = (byte)(i % 256);
                         if (i >= removeStart && i < removeStart + removeCount)
                         {
-                            Assert.False(tr.FindExactKey(key), "{0} should be removed", i);
+                            Assert.False(tr.FindExactKey(key), $"{i} should be removed");
                         }
                         else
                         {
-                            Assert.True(tr.FindExactKey(key), "{0} should be found", i);
+                            Assert.True(tr.FindExactKey(key), $"{i} should be found");
                         }
                     }
                 }
@@ -693,7 +716,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void ALotOf5KBTransactionsWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -712,7 +735,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SetKeyPrefixInOneTransaction()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -740,13 +763,13 @@ namespace BTDBTest
                     {
                         key[0] = i;
                         tr.SetKeyPrefix(ByteBuffer.NewSync(key, 0, 4));
-                        Assert.AreEqual(100, tr.GetKeyValueCount());
+                        Assert.Equal(100, tr.GetKeyValueCount());
                     }
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void CompressibleValueLoad()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
@@ -754,13 +777,13 @@ namespace BTDBTest
                 using (var tr = db.StartTransaction())
                 {
                     tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
-                    Assert.AreEqual(new byte[1000], tr.GetValueAsByteArray());
+                    Assert.Equal(new byte[1000], tr.GetValueAsByteArray());
                     tr.Commit();
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void StartWritingTransactionWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())

@@ -2,11 +2,10 @@
 using System.Linq;
 using System.Net;
 using BTDB.StreamLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class AbstractBufferedReaderWriterTest
     {
         class BufferedWriterStub : AbstractBufferedWriter
@@ -81,18 +80,18 @@ namespace BTDBTest
             var sw = new BufferedWriterStub(1);
             writeAction(sw);
             sw.FlushBuffer();
-            Assert.AreEqual(checkResult, sw.Output);
+            Assert.Equal(checkResult, sw.Output);
             BufferedReaderStub sr;
             if (checkResult.Length > 1)
             {
                 sw = new BufferedWriterStub(checkResult.Length);
                 writeAction(sw);
                 sw.FlushBuffer();
-                Assert.AreEqual(checkResult, sw.Output);
+                Assert.Equal(checkResult, sw.Output);
                 sw = new BufferedWriterStub(checkResult.Length + 1);
                 writeAction(sw);
                 sw.FlushBuffer();
-                Assert.AreEqual(checkResult, sw.Output);
+                Assert.Equal(checkResult, sw.Output);
                 sr = new BufferedReaderStub(checkResult, checkResult.Length);
                 readAction(sr);
                 Assert.True(sr.Eof);
@@ -104,7 +103,7 @@ namespace BTDBTest
             writeAction(sw);
             writeAction(sw);
             sw.FlushBuffer();
-            Assert.AreEqual(checkResult.Concat(checkResult).ToArray(), sw.Output);
+            Assert.Equal(checkResult.Concat(checkResult).ToArray(), sw.Output);
             sr = new BufferedReaderStub(checkResult.Concat(checkResult).ToArray(), checkResult.Length * 2);
             readAction(sr);
             readAction(sr);
@@ -121,7 +120,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void DateTimeTest()
         {
             var d = new DateTime(1976, 2, 2);
@@ -132,10 +131,10 @@ namespace BTDBTest
 
         static void TestDateTime(DateTime value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDateTime(value), checkResult, r => Assert.AreEqual(value, r.ReadDateTime()), s => s.SkipDateTime());
+            TestWriteRead(w => w.WriteDateTime(value), checkResult, r => Assert.Equal(value, r.ReadDateTime()), s => s.SkipDateTime());
         }
 
-        [Test]
+        [Fact]
         public void TimeSpanTest()
         {
             TestTimeSpan(new TimeSpan(1), new byte[] { 0x81 });
@@ -144,10 +143,10 @@ namespace BTDBTest
 
         static void TestTimeSpan(TimeSpan value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteTimeSpan(value), checkResult, r => Assert.AreEqual(value, r.ReadTimeSpan()), s => s.SkipTimeSpan());
+            TestWriteRead(w => w.WriteTimeSpan(value), checkResult, r => Assert.Equal(value, r.ReadTimeSpan()), s => s.SkipTimeSpan());
         }
 
-        [Test]
+        [Fact]
         public void StringTest()
         {
             TestString(null, new byte[] { 0 });
@@ -159,10 +158,10 @@ namespace BTDBTest
 
         static void TestString(string value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteString(value), checkResult, r => Assert.AreEqual(value, r.ReadString()), s => s.SkipString());
+            TestWriteRead(w => w.WriteString(value), checkResult, r => Assert.Equal(value, r.ReadString()), s => s.SkipString());
         }
 
-        [Test]
+        [Fact]
         public void StringOrderedTest()
         {
             TestStringOrdered(null, new byte[] { 0xd1, 0x0, 0x1 });
@@ -174,28 +173,28 @@ namespace BTDBTest
 
         static void TestStringOrdered(string value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteStringOrdered(value), checkResult, r => Assert.AreEqual(value, r.ReadStringOrdered()), s => s.SkipStringOrdered());
+            TestWriteRead(w => w.WriteStringOrdered(value), checkResult, r => Assert.Equal(value, r.ReadStringOrdered()), s => s.SkipStringOrdered());
         }
 
-        [Test]
+        [Fact]
         public void UInt8Test()
         {
-            TestWriteRead(w => w.WriteUInt8(42), new byte[] { 42 }, r => Assert.AreEqual(42, r.ReadUInt8()), s => s.SkipUInt8());
+            TestWriteRead(w => w.WriteUInt8(42), new byte[] { 42 }, r => Assert.Equal(42, r.ReadUInt8()), s => s.SkipUInt8());
         }
 
-        [Test]
+        [Fact]
         public void Int8Test()
         {
-            TestWriteRead(w => w.WriteInt8(-42), new byte[] { 0xD6 }, r => Assert.AreEqual(-42, r.ReadInt8()), s => s.SkipInt8());
+            TestWriteRead(w => w.WriteInt8(-42), new byte[] { 0xD6 }, r => Assert.Equal(-42, r.ReadInt8()), s => s.SkipInt8());
         }
 
-        [Test]
+        [Fact]
         public void GuidTest()
         {
-            TestWriteRead(w => w.WriteGuid(Guid.Empty), Guid.Empty.ToByteArray(), r => Assert.AreEqual(Guid.Empty, r.ReadGuid()), s => s.SkipGuid());
+            TestWriteRead(w => w.WriteGuid(Guid.Empty), Guid.Empty.ToByteArray(), r => Assert.Equal(Guid.Empty, r.ReadGuid()), s => s.SkipGuid());
         }
 
-        [Test]
+        [Fact]
         public void BlockTest()
         {
             var b = new byte[] { 1, 2, 3, 4, 5, 6, 7 };
@@ -203,7 +202,7 @@ namespace BTDBTest
                                                        {
                                                            var b2 = new byte[b.Length];
                                                            r.ReadBlock(b2);
-                                                           Assert.AreEqual(b, b2);
+                                                           Assert.Equal(b, b2);
                                                        }, s => s.SkipBlock(b.Length));
             var bExpect = new byte[] { 2, 3, 4, 5, 6 };
             var b2Expect = new byte[] { 0, 2, 3, 4, 5, 6, 0 };
@@ -211,23 +210,23 @@ namespace BTDBTest
             {
                 var b2 = new byte[b.Length];
                 r.ReadBlock(b2, 1, 5);
-                Assert.AreEqual(b2Expect, b2);
+                Assert.Equal(b2Expect, b2);
             }, s => s.SkipBlock(5u));
         }
 
-        [Test]
+        [Fact]
         public void Int64Test()
         {
-            TestWriteRead(w => w.WriteInt64(0x1234567890ABCDEFL), new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }, r => Assert.AreEqual(0x1234567890ABCDEFL, r.ReadInt64()), s => s.SkipInt64());
+            TestWriteRead(w => w.WriteInt64(0x1234567890ABCDEFL), new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }, r => Assert.Equal(0x1234567890ABCDEFL, r.ReadInt64()), s => s.SkipInt64());
         }
 
-        [Test]
+        [Fact]
         public void Int32Test()
         {
-            TestWriteRead(w => w.WriteInt32(0x12345678), new byte[] { 0x12, 0x34, 0x56, 0x78 }, r => Assert.AreEqual(0x12345678, r.ReadInt32()), s => s.SkipInt32());
+            TestWriteRead(w => w.WriteInt32(0x12345678), new byte[] { 0x12, 0x34, 0x56, 0x78 }, r => Assert.Equal(0x12345678, r.ReadInt32()), s => s.SkipInt32());
         }
 
-        [Test]
+        [Fact]
         public void VUInt32Test()
         {
             TestVUInt32(0, new byte[] { 0 });
@@ -239,10 +238,10 @@ namespace BTDBTest
 
         static void TestVUInt32(uint value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVUInt32(value), checkResult, r => Assert.AreEqual(value, r.ReadVUInt32()), s => s.SkipVUInt32());
+            TestWriteRead(w => w.WriteVUInt32(value), checkResult, r => Assert.Equal(value, r.ReadVUInt32()), s => s.SkipVUInt32());
         }
 
-        [Test]
+        [Fact]
         public void VUInt64Test()
         {
             TestVUInt64(0, new byte[] { 0 });
@@ -254,10 +253,10 @@ namespace BTDBTest
 
         static void TestVUInt64(ulong value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVUInt64(value), checkResult, r => Assert.AreEqual(value, r.ReadVUInt64()), s => s.SkipVUInt64());
+            TestWriteRead(w => w.WriteVUInt64(value), checkResult, r => Assert.Equal(value, r.ReadVUInt64()), s => s.SkipVUInt64());
         }
 
-        [Test]
+        [Fact]
         public void VInt32Test()
         {
             TestVInt32(0, new byte[] { 0x80 });
@@ -269,10 +268,10 @@ namespace BTDBTest
 
         static void TestVInt32(int value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVInt32(value), checkResult, r => Assert.AreEqual(value, r.ReadVInt32()), s => s.SkipVInt64());
+            TestWriteRead(w => w.WriteVInt32(value), checkResult, r => Assert.Equal(value, r.ReadVInt32()), s => s.SkipVInt64());
         }
 
-        [Test]
+        [Fact]
         public void VInt64Test()
         {
             TestVInt64(0, new byte[] { 0x80 });
@@ -286,10 +285,10 @@ namespace BTDBTest
 
         static void TestVInt64(long value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVInt64(value), checkResult, r => Assert.AreEqual(value, r.ReadVInt64()), s => s.SkipVInt64());
+            TestWriteRead(w => w.WriteVInt64(value), checkResult, r => Assert.Equal(value, r.ReadVInt64()), s => s.SkipVInt64());
         }
 
-        [Test]
+        [Fact]
         public void DecimalTest()
         {
             TestDecimal(0M, new byte[] { 0 });
@@ -306,10 +305,10 @@ namespace BTDBTest
 
         static void TestDecimal(decimal value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDecimal(value), checkResult, r => Assert.AreEqual(value, r.ReadDecimal()), s => s.SkipDecimal());
+            TestWriteRead(w => w.WriteDecimal(value), checkResult, r => Assert.Equal(value, r.ReadDecimal()), s => s.SkipDecimal());
         }
 
-        [Test]
+        [Fact]
         public void SingleTest()
         {
             TestSingle(0, new byte[] { 0, 0, 0, 0 });
@@ -321,10 +320,10 @@ namespace BTDBTest
 
         static void TestSingle(float value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteSingle(value), checkResult, r => Assert.AreEqual(value, r.ReadSingle()), s => s.SkipSingle());
+            TestWriteRead(w => w.WriteSingle(value), checkResult, r => Assert.Equal(value, r.ReadSingle()), s => s.SkipSingle());
         }
 
-        [Test]
+        [Fact]
         public void DoubleTest()
         {
             TestDouble(0, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 });
@@ -336,10 +335,10 @@ namespace BTDBTest
 
         static void TestDouble(double value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.AreEqual(value, r.ReadDouble()), s => s.SkipDouble());
+            TestWriteRead(w => w.WriteDouble(value), checkResult, r => Assert.Equal(value, r.ReadDouble()), s => s.SkipDouble());
         }
 
-        [Test]
+        [Fact]
         public void IPAddressTest()
         {
             TestIPAddress(IPAddress.Loopback, new byte[] { 0, 127, 0, 0, 1 });
@@ -353,7 +352,7 @@ namespace BTDBTest
 
         static void TestIPAddress(IPAddress value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteIPAddress(value), checkResult, r => Assert.AreEqual(value, r.ReadIPAddress()), s => s.SkipIPAddress());
+            TestWriteRead(w => w.WriteIPAddress(value), checkResult, r => Assert.Equal(value, r.ReadIPAddress()), s => s.SkipIPAddress());
         }
     }
 }
