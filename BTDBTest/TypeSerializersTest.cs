@@ -1,32 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     [UseReporter(typeof(DiffReporter))]
     public class TypeSerializersTest
     {
         ITypeSerializers _ts;
         ITypeSerializersMapping _mapping;
 
-        [SetUp]
-        public void Setup()
+        public TypeSerializersTest()
         {
             _ts = new TypeSerializers();
             _mapping = _ts.CreateMapping();
         }
 
-        [Test]
+        [Fact]
         public void CanSerializeString()
         {
             var writer = new ByteBufferWriter();
@@ -36,10 +33,10 @@ namespace BTDBTest
             storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
-            Assert.AreEqual("Hello", obj);
+            Assert.Equal("Hello", obj);
         }
 
-        [Test]
+        [Fact]
         public void CanSerializeInt()
         {
             var writer = new ByteBufferWriter();
@@ -49,10 +46,10 @@ namespace BTDBTest
             storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
-            Assert.AreEqual(12345, obj);
+            Assert.Equal(12345, obj);
         }
 
-        [Test]
+        [Fact]
         public void CanSerializeSimpleTypes()
         {
             CanSerializeSimpleValue((byte)42);
@@ -73,7 +70,7 @@ namespace BTDBTest
             storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             var obj = _mapping.LoadObject(reader);
-            Assert.AreEqual(value, obj);
+            Assert.Equal(value, obj);
         }
 
         public class SimpleDto
@@ -82,7 +79,7 @@ namespace BTDBTest
             public int IntField { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void CanSerializeSimpleDto()
         {
             var writer = new ByteBufferWriter();
@@ -94,8 +91,8 @@ namespace BTDBTest
             var reader = new ByteBufferReader(writer.Data);
             _mapping.LoadTypeDescriptors(reader);
             var obj = (SimpleDto)_mapping.LoadObject(reader);
-            Assert.AreEqual(value.IntField, obj.IntField);
-            Assert.AreEqual(value.StringField, obj.StringField);
+            Assert.Equal(value.IntField, obj.IntField);
+            Assert.Equal(value.StringField, obj.StringField);
         }
 
         void TestSerialization(object value)
@@ -107,15 +104,16 @@ namespace BTDBTest
             storedDescriptorCtx.CommitNewDescriptors();
             var reader = new ByteBufferReader(writer.Data);
             _mapping.LoadTypeDescriptors(reader);
-            Assert.AreEqual(value, _mapping.LoadObject(reader));
+            Assert.Equal(value, _mapping.LoadObject(reader));
             Assert.True(reader.Eof);
             _mapping = _ts.CreateMapping();
             reader = new ByteBufferReader(writer.Data);
             _mapping.LoadTypeDescriptors(reader);
-            Assert.AreEqual(value, _mapping.LoadObject(reader));
+            Assert.Equal(value, _mapping.LoadObject(reader));
             Assert.True(reader.Eof);
         }
 
+#pragma warning disable 659
         public class ClassWithList : IEquatable<ClassWithList>
         {
             public List<int> List { get; set; }
@@ -127,21 +125,26 @@ namespace BTDBTest
                 if (List.Count != other.List.Count) return false;
                 return List.Zip(other.List, (i1, i2) => i1 == i2).All(p => p);
             }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ClassWithList);
+            }
         }
 
-        [Test]
+        [Fact]
         public void ListCanHaveContent()
         {
             TestSerialization(new ClassWithList { List = new List<int> { 1, 2, 3 } });
         }
 
-        [Test]
+        [Fact]
         public void ListCanBeEmpty()
         {
             TestSerialization(new ClassWithList { List = new List<int>() });
         }
 
-        [Test]
+        [Fact]
         public void ListCanBeNull()
         {
             TestSerialization(new ClassWithList { List = null });
@@ -166,27 +169,32 @@ namespace BTDBTest
                 }
                 return true;
             }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ClassWithDict);
+            }
         }
 
-        [Test]
+        [Fact]
         public void DictionaryCanHaveContent()
         {
             TestSerialization(new ClassWithDict { Dict = new Dictionary<int, string> { { 1, "a" }, { 2, "b" }, { 3, "c" } } });
         }
 
-        [Test]
+        [Fact]
         public void DictionaryCanBeEmpty()
         {
             TestSerialization(new ClassWithDict { Dict = new Dictionary<int, string>() });
         }
 
-        [Test]
+        [Fact]
         public void DictionaryCanBeNull()
         {
             TestSerialization(new ClassWithDict { Dict = null });
         }
 
-        [Test]
+        [Fact]
         public void BasicDescribe()
         {
             var ts = new TypeSerializers();
@@ -213,7 +221,7 @@ namespace BTDBTest
             Approvals.VerifyAll(res, "BasicTypes");
         }
 
-        [Test, MethodImpl(MethodImplOptions.NoInlining)]
+        [Fact]
         public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
         {
             Approvals.VerifyAll(BasicSerializersFactory.TypeDescriptors.Select(o => o.Name), "BasicTypes");
@@ -239,7 +247,7 @@ namespace BTDBTest
             Item2
         }
 
-        [Test]
+        [Fact]
         public void ComplexDescribe()
         {
             var ts = new TypeSerializers();
@@ -257,13 +265,13 @@ namespace BTDBTest
             Approvals.VerifyAll(res, "ComplexTypes");
         }
 
-        [Test]
+        [Fact]
         public void BasicEnumTest1()
         {
             TestSerialization(TestEnum.Item1);
         }
 
-        [Test]
+        [Fact]
         public void BasicEnumTest2()
         {
             TestSerialization(TestEnum.Item2);
@@ -283,7 +291,7 @@ namespace BTDBTest
             var mapping = ts.CreateMapping();
             mapping.LoadTypeDescriptors(reader);
             var obj = (dynamic)mapping.LoadObject(reader);
-            Assert.AreEqual(originalDescription, ts.DescriptorOf((object)obj).Describe());
+            Assert.Equal(originalDescription, ts.DescriptorOf((object)obj).Describe());
             return obj;
         }
 
@@ -300,13 +308,13 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanDeserializeSimpleDtoToDynamic()
         {
             var value = new SimpleDto { IntField = 42, StringField = "Hello" };
             var obj = ConvertToDynamicThroughSerialization(value);
-            Assert.AreEqual(value.IntField, obj.IntField);
-            Assert.AreEqual(value.StringField, obj.StringField);
+            Assert.Equal(value.IntField, obj.IntField);
+            Assert.Equal(value.StringField, obj.StringField);
             Assert.Throws<MemberAccessException>(() =>
                 {
                     var garbage = obj.Garbage;
@@ -317,46 +325,46 @@ namespace BTDBTest
             Assert.False(descriptor.ContainsField("Garbage"));
         }
 
-        [Test]
+        [Fact]
         public void CanDeserializeListToDynamic()
         {
             var value = new List<SimpleDto> { new SimpleDto { IntField = 42, StringField = "Hello" } };
             var obj = ConvertToDynamicThroughSerialization(value);
-            Assert.AreEqual(value.Count, obj.Count);
-            Assert.AreEqual(value[0].IntField, obj[0].IntField);
-            Assert.AreEqual(value[0].StringField, obj[0].StringField);
+            Assert.Equal(value.Count, obj.Count);
+            Assert.Equal(value[0].IntField, obj[0].IntField);
+            Assert.Equal(value[0].StringField, obj[0].StringField);
         }
 
-        [Test]
+        [Fact]
         public void CanDeserializeDictionaryToDynamic()
         {
             var value = new Dictionary<int, SimpleDto> { { 10, new SimpleDto { IntField = 42, StringField = "Hello" } } };
             var obj = ConvertToDynamicThroughSerialization(value);
-            Assert.AreEqual(value.Count, obj.Count);
-            Assert.AreEqual(value[10].IntField, obj[10].IntField);
-            Assert.AreEqual(value[10].StringField, obj[10].StringField);
+            Assert.Equal(value.Count, obj.Count);
+            Assert.Equal(value[10].IntField, obj[10].IntField);
+            Assert.Equal(value[10].StringField, obj[10].StringField);
         }
 
-        [Test]
+        [Fact]
         public void CanDeserializeEnumToDynamic()
         {
             var value = (object)TestEnum.Item1;
             var obj = ConvertToDynamicThroughSerialization(value);
-            Assert.AreEqual(value.ToString(), obj.ToString());
-            Assert.AreEqual(value.GetHashCode(), obj.GetHashCode());
-            Assert.AreEqual(obj, value);
-            Assert.AreNotEqual(obj, TestEnum.Item2);
+            Assert.Equal(value.ToString(), obj.ToString());
+            Assert.Equal(value.GetHashCode(), obj.GetHashCode());
+            Assert.True(obj.Equals(value));
+            Assert.False(obj.Equals(TestEnum.Item2));
         }
 
-        [Test]
+        [Fact]
         public void CanDeserializeFlagsEnumToDynamic()
         {
             var value = (object)(AttributeTargets.Method | AttributeTargets.Property);
             var obj = ConvertToDynamicThroughSerialization(value);
-            Assert.AreEqual(value.ToString(), obj.ToString());
-            Assert.AreEqual(value.GetHashCode(), obj.GetHashCode());
-            Assert.AreEqual(obj, value);
-            Assert.AreNotEqual(obj, AttributeTargets.Method);
+            Assert.Equal(value.ToString(), obj.ToString());
+            Assert.Equal(value.GetHashCode(), obj.GetHashCode());
+            Assert.True(obj.Equals(value));
+            Assert.False(obj.Equals(AttributeTargets.Method));
         }
 
         public class ClassWithIDict : IEquatable<ClassWithIDict>
@@ -379,6 +387,11 @@ namespace BTDBTest
                 return true;
             }
 
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ClassWithIDict);
+            }
+
             public class SimpleDtoComparer : IEqualityComparer<SimpleDto>
             {
                 public bool Equals(SimpleDto x, SimpleDto y)
@@ -392,8 +405,9 @@ namespace BTDBTest
                 }
             }
         }
+#pragma warning restore 659
 
-        [Test]
+        [Fact]
         public void DictionaryAsIfaceCanHaveContent()
         {
             TestSerialization(new ClassWithIDict

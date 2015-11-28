@@ -2,20 +2,18 @@ using System;
 using BTDB.DtoChannel;
 using BTDB.EventStoreLayer;
 using BTDB.Service;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
-    public class DtoChannelTest
+    public class DtoChannelTest : IDisposable
     {
         PipedTwoChannels _pipedTwoChannels;
         ITypeSerializerMappingFactory _typeSerializers;
         IDtoChannel _first;
         IDtoChannel _second;
 
-        [SetUp]
-        public void Setup()
+        public DtoChannelTest()
         {
             _pipedTwoChannels = new PipedTwoChannels();
             _typeSerializers = new TypeSerializers();
@@ -23,8 +21,7 @@ namespace BTDBTest
             _second = new DtoChannel(_pipedTwoChannels.Second, _typeSerializers);
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             Disconnect();
             _first.Dispose();
@@ -36,17 +33,17 @@ namespace BTDBTest
             _pipedTwoChannels.Disconnect();
         }
 
-        [Test]
+        [Fact]
         public void CanSendSimpleType()
         {
             var u1 = new EventStoreTest.User { Name = "A", Age = 1 };
             object u2 = null;
             _second.OnReceive.Subscribe(o => u2 = o);
             _first.Send(u1);
-            Assert.AreEqual(u1, u2);
+            Assert.True(u1.Equals((EventStoreTest.User)u2));
         }
 
-        [Test]
+        [Fact]
         public void CanSendSimpleTypeTwice()
         {
             var u1 = new EventStoreTest.User { Name = "A", Age = 1 };
@@ -55,7 +52,7 @@ namespace BTDBTest
             _first.Send(u1);
             u2 = null;
             _first.Send(u1);
-            Assert.AreEqual(u1, u2);
+            Assert.True(u1.Equals((EventStoreTest.User)u2));
         }
     }
 }

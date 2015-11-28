@@ -1,14 +1,13 @@
 using System;
 using System.Threading;
 using BTDB.KVDBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class KeyValueDBCompactorSchedulerTest
     {
-        [Test]
+        [Fact]
         public void ItWillNotStartImidietly()
         {
             var run = false;
@@ -22,7 +21,7 @@ namespace BTDBTest
             Assert.False(run, "Should not Start imidietly");
         }
 
-        [Test]
+        [Fact]
         public void ItWillRunFirstTimeAfterWaitTime()
         {
             var e = new AutoResetEvent(false);
@@ -38,7 +37,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void ItShouldRunAgainSoonIfCompactionSuccessfull()
         {
             var e = new AutoResetEvent(false);
@@ -61,7 +60,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void ItShouldCancelRunningCompaction()
         {
             var e = new AutoResetEvent(false);

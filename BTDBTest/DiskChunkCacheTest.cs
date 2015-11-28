@@ -5,11 +5,10 @@ using System.Threading;
 using BTDB.Buffer;
 using BTDB.ChunkCache;
 using BTDB.KVDBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class DiskChunkCacheTest
     {
         readonly ThreadLocal<HashAlgorithm> _hashAlg = new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
@@ -19,7 +18,7 @@ namespace BTDBTest
             return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
         }
 
-        [Test]
+        [Fact]
         public void CreateEmptyCache()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -28,28 +27,28 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void GetFromEmptyCacheReturnsEmptyByteBuffer()
         {
             using (var fileCollection = new InMemoryFileCollection())
             using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
             {
-                Assert.AreEqual(0, cache.Get(CalcHash(new byte[] { 0 })).Result.Length);
+                Assert.Equal(0, cache.Get(CalcHash(new byte[] { 0 })).Result.Length);
             }
         }
 
-        [Test]
+        [Fact]
         public void WhatIPutICanGet()
         {
             using (var fileCollection = new InMemoryFileCollection())
             using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
             {
                 cache.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }));
-                Assert.AreEqual(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                Assert.Equal(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
             }
         }
 
-        [Test]
+        [Fact]
         public void ItRemebersContentAfterReopen()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -60,12 +59,12 @@ namespace BTDBTest
                 }
                 using (var cache = new DiskChunkCache(fileCollection, 20, 1000))
                 {
-                    Assert.AreEqual(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                    Assert.Equal(new byte[] { 1 }, cache.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void SizeDoesNotGrowOverLimit()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -76,7 +75,7 @@ namespace BTDBTest
                     for (var i = 0; i < 80; i++)
                     {
                         Put(cache, i);
-                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
                 }
             }
@@ -96,7 +95,7 @@ namespace BTDBTest
             return cache.Get(CalcHash(content)).Result.Length == 1024;
         }
 
-        [Test]
+        [Fact]
         public void GettingContentMakesItStayLongerIncreasingRate()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -109,7 +108,7 @@ namespace BTDBTest
                         Put(cache, i);
                         for (var j = 0; j < i; j++)
                             Get(cache, i);
-                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
                     Assert.True(Get(cache, 79));
                     Assert.False(Get(cache, 0));
@@ -117,7 +116,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void GettingContentMakesItStayLongerDecreasingRate()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -130,7 +129,7 @@ namespace BTDBTest
                         Put(cache, i);
                         for (var j = 0; j < 79 - i; j++)
                             Get(cache, i);
-                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
                     Console.WriteLine(cache.CalcStats());
                     Assert.True(Get(cache, 0));
@@ -139,7 +138,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void AccessEveryTenthTenTimesMoreMakesItStay()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -153,7 +152,7 @@ namespace BTDBTest
                         for (var j = 0; j < (i % 5 == 0 ? 10 + i : 1); j++)
                             Get(cache, i);
                         if (i==42) Thread.Sleep(500);
-                        Assert.LessOrEqual(fileCollection.Enumerate().Sum(f => (long)f.GetSize()), cacheCapacity);
+                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
                     Console.WriteLine(cache.CalcStats());
                     Assert.True(Get(cache, 0));
