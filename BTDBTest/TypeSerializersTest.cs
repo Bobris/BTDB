@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
@@ -74,23 +73,10 @@ namespace BTDBTest
             Assert.Equal(value, obj);
         }
 
-        public class SimpleDto : IEquatable<SimpleDto>
+        public class SimpleDto
         {
             public string StringField { get; set; }
             public int IntField { get; set; }
-
-            public bool Equals(SimpleDto other)
-            {
-                if (other == null)
-                    return false;
-                return StringField == other.StringField &&
-                       IntField == other.IntField;
-            }
-
-            public override bool Equals(object obj)
-            {
-                return Equals(obj as SimpleDto);
-            }
         }
 
         [Fact]
@@ -127,6 +113,7 @@ namespace BTDBTest
             Assert.True(reader.Eof);
         }
 
+#pragma warning disable 659
         public class ClassWithList : IEquatable<ClassWithList>
         {
             public List<int> List { get; set; }
@@ -418,6 +405,7 @@ namespace BTDBTest
                 }
             }
         }
+#pragma warning restore 659
 
         [Fact]
         public void DictionaryAsIfaceCanHaveContent()

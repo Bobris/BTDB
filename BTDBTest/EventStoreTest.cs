@@ -163,6 +163,8 @@ namespace BTDBTest
             }
         }
 
+#pragma warning disable 659
+
         public class User : IEquatable<User>
         {
             public string Name { get; set; }
@@ -174,11 +176,13 @@ namespace BTDBTest
                 return Name == other.Name && Age == other.Age;
             }
 
+
             public override bool Equals(object obj)
             {
                 return Equals(obj as User);
             }
         }
+#pragma warning restore 659
 
         [Fact]
         public void CanWriteMultipleEventsWithMetadata()
@@ -256,6 +260,7 @@ namespace BTDBTest
             }
         }
 
+#pragma warning disable 659
         public class UserEvent : IEquatable<UserEvent>
         {
             public long Id { get; set; }
@@ -274,6 +279,7 @@ namespace BTDBTest
                 return Equals(obj as UserEvent);
             }
         }
+#pragma warning restore 659
 
         [Fact]
         public void NestedObjectsTest()
@@ -504,14 +510,13 @@ namespace BTDBTest
             var readUserEvent = (UserEventDictionary)eventObserver.Events[0][0];
             Assert.Equal(readUserEvent, userEvent);
         }
-
-        [Fact]
+        
         public class ErrorInfo
         {
             public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void DeserializeErrorInfoWorks()
         {
             var manager = new EventStoreManager();
@@ -528,10 +533,10 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readUserEvent = (ErrorInfo)eventObserver.Events[0][0];
-            Assert.AreEqual(1, readUserEvent.PropertyErrors.Count);
+            Assert.Equal(1, readUserEvent.PropertyErrors.Count);
         }
 
-        [Test]
+        [Fact]
         public void SupportsDataOverMaxBlockSize()
         {
             var manager = new EventStoreManager();

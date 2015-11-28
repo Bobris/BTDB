@@ -1889,29 +1889,29 @@ namespace BTDBTest
             });
         }
 
-        [Test]
-        [TestCase(-1, false, -1, false, "13579")]
-        [TestCase(2, true, -1, false, "3579")]
-        [TestCase(2, false, -1, false, "3579")]
-        [TestCase(3, true, -1, false, "3579")]
-        [TestCase(3, false, -1, false, "579")]
-        [TestCase(-1, false, 8, true, "1357")]
-        [TestCase(-1, false, 8, false, "1357")]
-        [TestCase(-1, false, 7, true, "1357")]
-        [TestCase(-1, false, 7, false, "135")]
-        [TestCase(3, true, 7, true, "357")]
-        [TestCase(3, true, 7, false, "35")]
-        [TestCase(3, false, 7, true, "57")]
-        [TestCase(3, false, 7, false, "5")]
-        [TestCase(0, true, 10, true, "13579")]
-        [TestCase(0, true, 10, false, "13579")]
-        [TestCase(0, false, 10, true, "13579")]
-        [TestCase(0, false, 10, false, "13579")]
-        [TestCase(10, false, 0, false, "")]
-        [TestCase(5, false, 5, false, "")]
-        [TestCase(5, false, 5, true, "")]
-        [TestCase(5, true, 5, false, "")]
-        [TestCase(5, true, 5, true, "5")]
+        [Theory]
+        [InlineData(-1, false, -1, false, "13579")]
+        [InlineData(2, true, -1, false, "3579")]
+        [InlineData(2, false, -1, false, "3579")]
+        [InlineData(3, true, -1, false, "3579")]
+        [InlineData(3, false, -1, false, "579")]
+        [InlineData(-1, false, 8, true, "1357")]
+        [InlineData(-1, false, 8, false, "1357")]
+        [InlineData(-1, false, 7, true, "1357")]
+        [InlineData(-1, false, 7, false, "135")]
+        [InlineData(3, true, 7, true, "357")]
+        [InlineData(3, true, 7, false, "35")]
+        [InlineData(3, false, 7, true, "57")]
+        [InlineData(3, false, 7, false, "5")]
+        [InlineData(0, true, 10, true, "13579")]
+        [InlineData(0, true, 10, false, "13579")]
+        [InlineData(0, false, 10, true, "13579")]
+        [InlineData(0, false, 10, false, "13579")]
+        [InlineData(10, false, 0, false, "")]
+        [InlineData(5, false, 5, false, "")]
+        [InlineData(5, false, 5, true, "")]
+        [InlineData(5, true, 5, false, "")]
+        [InlineData(5, true, 5, true, "5")]
         public void AdvancedIterationBasics(int start, bool includeStart, int end, bool includeEnd, string result)
         {
             using (var tr = _db.StartTransaction())
@@ -1931,16 +1931,16 @@ namespace BTDBTest
                 var e = d.GetAdvancedEnumerator(param);
                 var res = "";
                 int key;
-                Assert.AreEqual(result.Length, e.Count);
+                Assert.Equal(result.Length, (int)e.Count);
                 while (e.NextKey(out key))
                 {
-                    Assert.AreEqual(res.Length, e.Position);
+                    Assert.Equal(res.Length, (int)e.Position);
                     var val = e.CurrentValue;
-                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                     res += val;
                 }
-                Assert.AreEqual(result, res);
-                Assert.AreEqual(res.Length, e.Position);
+                Assert.Equal(result, res);
+                Assert.Equal(res.Length, (int)e.Position);
                 param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Descending, start,
                     start == -1
                         ? KeyProposition.Ignored
@@ -1949,42 +1949,42 @@ namespace BTDBTest
                     end == -1 ? KeyProposition.Ignored : includeEnd ? KeyProposition.Included : KeyProposition.Excluded);
                 e = d.GetAdvancedEnumerator(param);
                 res = "";
-                Assert.AreEqual(result.Length, e.Count);
+                Assert.Equal(result.Length, (int)e.Count);
                 while (e.NextKey(out key))
                 {
-                    Assert.AreEqual(res.Length, e.Position);
+                    Assert.Equal(res.Length, (int)e.Position);
                     var val = e.CurrentValue;
-                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                     res = val + res;
                 }
-                Assert.AreEqual(result, res);
-                Assert.AreEqual(res.Length, e.Position);
+                Assert.Equal(result, res);
+                Assert.Equal(res.Length, (int)e.Position);
             }
         }
 
-        [Test]
-        [TestCase(-1, false, -1, false, "13579")]
-        [TestCase(2, true, -1, false, "3579")]
-        [TestCase(2, false, -1, false, "3579")]
-        [TestCase(3, true, -1, false, "3579")]
-        [TestCase(3, false, -1, false, "579")]
-        [TestCase(-1, false, 8, true, "1357")]
-        [TestCase(-1, false, 8, false, "1357")]
-        [TestCase(-1, false, 7, true, "1357")]
-        [TestCase(-1, false, 7, false, "135")]
-        [TestCase(3, true, 7, true, "357")]
-        [TestCase(3, true, 7, false, "35")]
-        [TestCase(3, false, 7, true, "57")]
-        [TestCase(3, false, 7, false, "5")]
-        [TestCase(0, true, 10, true, "13579")]
-        [TestCase(0, true, 10, false, "13579")]
-        [TestCase(0, false, 10, true, "13579")]
-        [TestCase(0, false, 10, false, "13579")]
-        [TestCase(10, false, 0, false, "")]
-        [TestCase(5, false, 5, false, "")]
-        [TestCase(5, false, 5, true, "")]
-        [TestCase(5, true, 5, false, "")]
-        [TestCase(5, true, 5, true, "5")]
+        [Theory]
+        [InlineData(-1, false, -1, false, "13579")]
+        [InlineData(2, true, -1, false, "3579")]
+        [InlineData(2, false, -1, false, "3579")]
+        [InlineData(3, true, -1, false, "3579")]
+        [InlineData(3, false, -1, false, "579")]
+        [InlineData(-1, false, 8, true, "1357")]
+        [InlineData(-1, false, 8, false, "1357")]
+        [InlineData(-1, false, 7, true, "1357")]
+        [InlineData(-1, false, 7, false, "135")]
+        [InlineData(3, true, 7, true, "357")]
+        [InlineData(3, true, 7, false, "35")]
+        [InlineData(3, false, 7, true, "57")]
+        [InlineData(3, false, 7, false, "5")]
+        [InlineData(0, true, 10, true, "13579")]
+        [InlineData(0, true, 10, false, "13579")]
+        [InlineData(0, false, 10, true, "13579")]
+        [InlineData(0, false, 10, false, "13579")]
+        [InlineData(10, false, 0, false, "")]
+        [InlineData(5, false, 5, false, "")]
+        [InlineData(5, false, 5, true, "")]
+        [InlineData(5, true, 5, false, "")]
+        [InlineData(5, true, 5, true, "5")]
         public void AdvancedIterationSeeks(int start, bool includeStart, int end, bool includeEnd, string result)
         {
             using (var tr = _db.StartTransaction())
@@ -2007,12 +2007,12 @@ namespace BTDBTest
                 e.Position = 2;
                 while (e.NextKey(out key))
                 {
-                    Assert.AreEqual(res.Length, e.Position - 2);
+                    Assert.Equal(res.Length, (int)(e.Position - 2));
                     var val = e.CurrentValue;
-                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                     res += val;
                 }
-                Assert.AreEqual(result.Substring(Math.Min(result.Length, 2)), res);
+                Assert.Equal(result.Substring(Math.Min(result.Length, 2)), res);
                 param = new AdvancedEnumeratorParam<int>(EnumerationOrder.Descending, start,
                     start == -1
                         ? KeyProposition.Ignored
@@ -2024,12 +2024,12 @@ namespace BTDBTest
                 e.Position = 2;
                 while (e.NextKey(out key))
                 {
-                    Assert.AreEqual(res.Length, e.Position - 2);
+                    Assert.Equal(res.Length, (int)(e.Position - 2));
                     var val = e.CurrentValue;
-                    Assert.AreEqual(key.ToString(CultureInfo.InvariantCulture), val);
+                    Assert.Equal(key.ToString(CultureInfo.InvariantCulture), val);
                     res = val + res;
                 }
-                Assert.AreEqual(result.Substring(0, Math.Max(0, result.Length - 2)), res);
+                Assert.Equal(result.Substring(0, Math.Max(0, result.Length - 2)), res);
             }
         }
 
