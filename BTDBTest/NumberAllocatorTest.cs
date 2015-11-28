@@ -1,20 +1,19 @@
 using BTDB.Service;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class NumberAllocatorTest
     {
-        [Test]
+        [Fact]
         public void BasicTest()
         {
             var a=new NumberAllocator(5);
-            Assert.AreEqual(5, a.Allocate());
-            Assert.AreEqual(6, a.Allocate());
+            Assert.Equal(5u, a.Allocate());
+            Assert.Equal(6u, a.Allocate());
             a.Deallocate(5);
-            Assert.AreEqual(5, a.Allocate());
-            Assert.AreEqual(7, a.Allocate());
+            Assert.Equal(5u, a.Allocate());
+            Assert.Equal(7u, a.Allocate());
         }
     }
 }

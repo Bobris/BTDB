@@ -2,12 +2,11 @@
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using NUnit.Framework;
+using Xunit;
 using BTDB.IL;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class ILExtensionsTest
     {
         public class Nested
@@ -21,21 +20,21 @@ namespace BTDBTest
 
             public void Fun(int noFun)
             {
-                Assert.Fail();
+                Assert.True(false, "Fail");
             }
 
             int PrivateProperty { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void NoILWay()
         {
             var n = new Nested();
             n.Fun("Test");
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
 
-        [Test]
+        [Fact]
         public void ILOldWay()
         {
             var method = new DynamicMethod("SampleCall", typeof(Nested), Type.EmptyTypes);
@@ -50,10 +49,10 @@ namespace BTDBTest
             il.Emit(OpCodes.Ret);
             var action = (Func<Nested>)method.CreateDelegate(typeof(Func<Nested>));
             var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
 
-        [Test]
+        [Fact]
         public void ILNewestWayRelease()
         {
             var method = new ILBuilderRelease().NewMethod<Func<Nested>>("SampleCall");
@@ -69,10 +68,10 @@ namespace BTDBTest
                 .Ret();
             var action = method.Create();
             var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
 
-        [Test]
+        [Fact]
         public void ILNewestWayDebug()
         {
             var method = new ILBuilderDebug().NewMethod<Func<Nested>>("SampleCall");
@@ -88,10 +87,10 @@ namespace BTDBTest
                 .Ret();
             var action = method.Create();
             var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
 
-        [Test]
+        [Fact]
         public void CanAccessPrivateProperties()
         {
             var method = new ILBuilderDebug().NewMethod<Func<int>>("PrivateAccess");
@@ -109,10 +108,10 @@ namespace BTDBTest
                 .Call(propertyInfo.GetGetMethod(true))
                 .Ret();
             var d = method.Create();
-            Assert.AreEqual(42, d());
+            Assert.Equal(42, d());
         }
 
-        [Test]
+        [Fact]
         public void CanFixFirstParameterRelease()
         {
             var method = new ILBuilderRelease().NewMethod("SampleCall", typeof(Func<Nested>),typeof(string));
@@ -128,10 +127,10 @@ namespace BTDBTest
                 .Ret();
             var action = (Func<Nested>)method.Create("Test");
             var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
 
-        [Test]
+        [Fact]
         public void CanFixFirstParameterDebug()
         {
             var method = new ILBuilderDebug().NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
@@ -147,7 +146,7 @@ namespace BTDBTest
                 .Ret();
             var action = (Func<Nested>)method.Create("Test");
             var n = action();
-            Assert.AreEqual("Test", n.PassedParam);
+            Assert.Equal("Test", n.PassedParam);
         }
     
         public class PrivateConstructor
@@ -165,7 +164,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanCallPrivateConstructor()
         {
             var method = new ILBuilderDebug().NewMethod<Func<PrivateConstructor>>("PrivateConstructorCall");
@@ -174,7 +173,7 @@ namespace BTDBTest
                 .LdcI4(42)
                 .Newobj(typeof (PrivateConstructor).GetConstructors(BindingFlags.NonPublic|BindingFlags.Instance)[0])
                 .Ret();
-            Assert.AreEqual(42, method.Create()().A);
+            Assert.Equal(42, method.Create()().A);
         }
 
     }

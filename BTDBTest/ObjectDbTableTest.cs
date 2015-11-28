@@ -1,25 +1,22 @@
 ﻿using System;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
-    public class ObjectDbTableTest
+    public class ObjectDbTableTest : IDisposable
     {
         IKeyValueDB _lowDb;
         IObjectDB _db;
 
-        [SetUp]
-        public void Setup()
+        public ObjectDbTableTest()
         {
             _lowDb = new InMemoryKeyValueDB();
             OpenDb();
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             _db.Dispose();
             _lowDb.Dispose();
@@ -52,7 +49,7 @@ namespace BTDBTest
             void Insert(Person person);
         }
 
-        [Test]
+        [Fact]
         public void GeneratesCreator()
         {
             Func<IObjectDBTransaction, IPersonTableWithJustInsert> creator;

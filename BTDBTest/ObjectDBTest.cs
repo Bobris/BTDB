@@ -2,16 +2,16 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
-    public class ObjectDbTest
+    public class ObjectDbTest : IDisposable
     {
         IKeyValueDB _lowDb;
         IObjectDB _db;
@@ -52,15 +52,13 @@ namespace BTDBTest
         {
         }
 
-        [SetUp]
-        public void Setup()
+        public ObjectDbTest()
         {
             _lowDb = new InMemoryKeyValueDB();
             OpenDb();
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             _db.Dispose();
             _lowDb.Dispose();
@@ -78,16 +76,16 @@ namespace BTDBTest
             _db.Open(_lowDb, false);
         }
 
-        [Test]
+        [Fact]
         public void NewDatabaseIsEmpty()
         {
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(tr.Enumerate<Person>().Count(), 0);
+                Assert.Equal(tr.Enumerate<Person>().Count(), 0);
             }
         }
 
-        [Test]
+        [Fact]
         public void ReadOnlyTransactionThrowsOnWriteAccess()
         {
             using (var tr = _db.StartReadOnlyTransaction())
@@ -97,7 +95,7 @@ namespace BTDBTest
         }
 
 
-        [Test]
+        [Fact]
         public void InsertPerson()
         {
             using (var tr = _db.StartTransaction())
@@ -105,14 +103,14 @@ namespace BTDBTest
                 var p = new Person { Name = "Bobris", Age = 35 };
                 tr.Store(p);
                 var p2 = tr.Enumerate<Person>().First();
-                Assert.AreSame(p, p2);
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.Age);
+                Assert.Same(p, p2);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.Age);
                 tr.Commit();
             }
         }
 
-        [Test]
+        [Fact]
         public void InsertPersonAndEnumerateInNextTransaction()
         {
             using (var tr = _db.StartTransaction())
@@ -123,12 +121,12 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.Age);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.Age);
             }
         }
 
-        [Test]
+        [Fact]
         public void InsertPersonAndEnumerateAfterReopen()
         {
             using (var tr = _db.StartTransaction())
@@ -140,12 +138,12 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.Age);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.Age);
             }
         }
 
-        [Test]
+        [Fact]
         public void ModifyPerson()
         {
             using (var tr = _db.StartTransaction())
@@ -163,11 +161,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
-                Assert.AreEqual(36, p.Age);
+                Assert.Equal(36u, p.Age);
             }
         }
 
-        [Test]
+        [Fact]
         public void PersonUpgrade()
         {
             var personObjDbName = _db.RegisterType(typeof(Person));
@@ -181,13 +179,13 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<PersonNew>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.Age);
-                Assert.AreEqual(null, p.Comment);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.Age);
+                Assert.Equal(null, p.Comment);
             }
         }
 
-        [Test]
+        [Fact]
         public void PersonDegrade()
         {
             var personObjDbName = _db.RegisterType(typeof(PersonNew));
@@ -201,12 +199,12 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.Age);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.Age);
             }
         }
 
-        [Test]
+        [Fact]
         public void ALotsOfPeople()
         {
             using (var tr = _db.StartTransaction())
@@ -224,13 +222,13 @@ namespace BTDBTest
                 foreach (var p in q)
                 {
                     i--;
-                    Assert.AreEqual(i, p.Age);
-                    Assert.AreEqual(string.Format("Person {0}", i), p.Name);
+                    Assert.Equal(i, p.Age);
+                    Assert.Equal(string.Format("Person {0}", i), p.Name);
                 }
             }
         }
 
-        [Test]
+        [Fact]
         public void DeleteObject()
         {
             using (var tr = _db.StartTransaction())
@@ -239,37 +237,37 @@ namespace BTDBTest
                 tr.Store(p);
                 p = new Person { Name = "DeadMan", Age = 105 };
                 tr.Store(p);
-                Assert.AreEqual(2, tr.Enumerate<Person>().Count());
+                Assert.Equal(2, tr.Enumerate<Person>().Count());
                 tr.Delete(p);
-                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
+                Assert.Equal(1, tr.Enumerate<Person>().Count());
                 tr.Commit();
             }
         }
 
-        [Test]
+        [Fact]
         public void OIdsAreInOrder()
         {
             ulong firstOid;
             using (var tr = _db.StartTransaction())
             {
                 firstOid = tr.Store(new Person());
-                Assert.AreEqual(firstOid + 1, tr.Store(new Person()));
+                Assert.Equal(firstOid + 1, tr.Store(new Person()));
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(firstOid + 2, tr.Store(new Person()));
+                Assert.Equal(firstOid + 2, tr.Store(new Person()));
                 tr.Commit();
             }
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(firstOid + 3, tr.Store(new Person()));
+                Assert.Equal(firstOid + 3, tr.Store(new Person()));
                 tr.Commit();
             }
         }
 
-        [Test]
+        [Fact]
         public void EnumReturnsOidsInOrderAndNewObjIsSkipped()
         {
             using (var tr = _db.StartTransaction())
@@ -283,20 +281,20 @@ namespace BTDBTest
                 {
                     if (i == 0)
                     {
-                        Assert.AreSame(p1, p);
+                        Assert.Same(p1, p);
                         tr.Store(new Person());
                     }
                     else
                     {
-                        Assert.AreSame(p2, p);
+                        Assert.Same(p2, p);
                     }
                     i++;
                 }
-                Assert.AreEqual(2, i);
+                Assert.Equal(2, i);
             }
         }
 
-        [Test]
+        [Fact]
         public void GetByOid()
         {
             ulong firstOid;
@@ -307,18 +305,18 @@ namespace BTDBTest
                 p1.Name = "Bobris";
                 p1.Age = 35;
                 tr.Store(new Person { Name = "DeadMan", Age = 105 });
-                Assert.AreSame(p1, tr.Get(firstOid));
+                Assert.Same(p1, tr.Get(firstOid));
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Get(firstOid);
-                Assert.IsInstanceOf<Person>(p);
-                Assert.AreEqual("Bobris", ((Person)p).Name);
+                Assert.IsType<Person>(p);
+                Assert.Equal("Bobris", ((Person)p).Name);
             }
         }
 
-        [Test]
+        [Fact]
         public void SingletonBasic()
         {
             using (var tr = _db.StartTransaction())
@@ -330,11 +328,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Singleton<Person>();
-                Assert.AreEqual("Bobris", p.Name);
+                Assert.Equal("Bobris", p.Name);
             }
         }
 
-        [Test]
+        [Fact]
         public void SingletonComplex()
         {
             using (var tr = _db.StartTransaction())
@@ -353,7 +351,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Singleton<Person>();
-                Assert.AreEqual("Bobris", p.Name);
+                Assert.Equal("Bobris", p.Name);
                 tr.Delete(p);
                 tr.Commit();
             }
@@ -364,7 +362,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void NestedIfaceObject()
         {
             using (var tr = _db.StartTransaction())
@@ -379,13 +377,13 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var t = tr.Singleton<Tree>();
-                Assert.AreEqual("Root", t.Content);
-                Assert.AreEqual("Left", t.Left.Content);
-                Assert.AreEqual("Right", t.Right.Content);
+                Assert.Equal("Root", t.Content);
+                Assert.Equal("Left", t.Left.Content);
+                Assert.Equal("Right", t.Right.Content);
             }
         }
 
-        [Test]
+        [Fact]
         public void NestedIfaceObjectDelete()
         {
             using (var tr = _db.StartTransaction())
@@ -402,7 +400,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void NestedIfaceObjectModification()
         {
             using (var tr = _db.StartTransaction())
@@ -422,7 +420,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var t = tr.Singleton<Tree>();
-                Assert.AreEqual("After", t.Left.Content);
+                Assert.Equal("After", t.Left.Content);
             }
         }
 
@@ -457,33 +455,33 @@ namespace BTDBTest
             public ByteBuffer ByteBufferField { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void FieldsOfVariousTypes()
         {
             using (var tr = _db.StartTransaction())
             {
                 var o = tr.Singleton<VariousFieldTypes>();
                 Assert.Null(o.StringField);
-                Assert.AreEqual(0, o.SByteField);
-                Assert.AreEqual(0, o.ByteField);
-                Assert.AreEqual(0, o.ShortField);
-                Assert.AreEqual(0, o.UShortField);
-                Assert.AreEqual(0, o.IntField);
-                Assert.AreEqual(0, o.UIntField);
-                Assert.AreEqual(0, o.LongField);
-                Assert.AreEqual(0, o.ULongField);
+                Assert.Equal(0, o.SByteField);
+                Assert.Equal(0, o.ByteField);
+                Assert.Equal(0, o.ShortField);
+                Assert.Equal(0, o.UShortField);
+                Assert.Equal(0, o.IntField);
+                Assert.Equal(0u, o.UIntField);
+                Assert.Equal(0, o.LongField);
+                Assert.Equal(0u, o.ULongField);
                 Assert.Null(o.DbObjectField);
                 Assert.Null(o.VariousFieldTypesField);
                 Assert.False(o.BoolField);
-                Assert.AreEqual(0d, o.DoubleField);
-                Assert.AreEqual(0f, o.FloatField);
-                Assert.AreEqual(0m, o.DecimalField);
-                Assert.AreEqual(new DateTime(), o.DateTimeField);
-                Assert.AreEqual(new TimeSpan(), o.TimeSpanField);
-                Assert.AreEqual(new Guid(), o.GuidField);
-                Assert.AreEqual(TestEnum.Item1, o.EnumField);
-                Assert.AreEqual(null, o.ByteArrayField);
-                Assert.AreEqual(ByteBuffer.NewEmpty().ToByteArray(), o.ByteBufferField.ToByteArray());
+                Assert.Equal(0d, o.DoubleField);
+                Assert.Equal(0f, o.FloatField);
+                Assert.Equal(0m, o.DecimalField);
+                Assert.Equal(new DateTime(), o.DateTimeField);
+                Assert.Equal(new TimeSpan(), o.TimeSpanField);
+                Assert.Equal(new Guid(), o.GuidField);
+                Assert.Equal(TestEnum.Item1, o.EnumField);
+                Assert.Equal(null, o.ByteArrayField);
+                Assert.Equal(ByteBuffer.NewEmpty().ToByteArray(), o.ByteBufferField.ToByteArray());
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -519,27 +517,27 @@ namespace BTDBTest
 
         static void AssertContent(VariousFieldTypes o)
         {
-            Assert.AreEqual("Text", o.StringField);
-            Assert.AreEqual(-10, o.SByteField);
-            Assert.AreEqual(10, o.ByteField);
-            Assert.AreEqual(-1000, o.ShortField);
-            Assert.AreEqual(1000, o.UShortField);
-            Assert.AreEqual(-100000, o.IntField);
-            Assert.AreEqual(100000, o.UIntField);
-            Assert.AreEqual(-1000000000000, o.LongField);
-            Assert.AreEqual(1000000000000, o.ULongField);
-            Assert.AreSame(o, o.DbObjectField);
-            Assert.AreSame(o, o.VariousFieldTypesField);
+            Assert.Equal("Text", o.StringField);
+            Assert.Equal(-10, o.SByteField);
+            Assert.Equal(10, o.ByteField);
+            Assert.Equal(-1000, o.ShortField);
+            Assert.Equal(1000, o.UShortField);
+            Assert.Equal(-100000, o.IntField);
+            Assert.Equal(100000u, o.UIntField);
+            Assert.Equal(-1000000000000, o.LongField);
+            Assert.Equal(1000000000000u, o.ULongField);
+            Assert.Same(o, o.DbObjectField);
+            Assert.Same(o, o.VariousFieldTypesField);
             Assert.True(o.BoolField);
-            Assert.AreEqual(12.34, o.DoubleField, 1e-10);
-            Assert.AreEqual(-12.34, o.FloatField, 1e-6);
-            Assert.AreEqual(123456.789m, o.DecimalField);
-            Assert.AreEqual(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
-            Assert.AreEqual(new TimeSpan(1, 2, 3, 4), o.TimeSpanField);
-            Assert.AreEqual(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
-            Assert.AreEqual(TestEnum.Item2, o.EnumField);
-            Assert.AreEqual(new byte[] { 0, 1, 2 }, o.ByteArrayField);
-            Assert.AreEqual(new byte[] { 1 }, o.ByteBufferField.ToByteArray());
+            Assert.InRange(12.34 - o.DoubleField, -1e-10, 1e10);
+            Assert.InRange(-12.34 - o.FloatField, -1e-6, 1e6);
+            Assert.Equal(123456.789m, o.DecimalField);
+            Assert.Equal(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField);
+            Assert.Equal(new TimeSpan(1, 2, 3, 4), o.TimeSpanField);
+            Assert.Equal(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField);
+            Assert.Equal(TestEnum.Item2, o.EnumField);
+            Assert.Equal(new byte[] { 0, 1, 2 }, o.ByteArrayField);
+            Assert.Equal(new byte[] { 1 }, o.ByteBufferField.ToByteArray());
         }
 
         public class Root
@@ -547,7 +545,7 @@ namespace BTDBTest
             public IList<Person> Persons { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void ListOfDbObjectsSimple()
         {
             _db.RegisterType(typeof(Person));
@@ -560,11 +558,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<Root>();
-                Assert.AreEqual(2, root.Persons.Count);
+                Assert.Equal(2, root.Persons.Count);
                 var p1 = root.Persons[0];
                 var p2 = root.Persons[1];
-                Assert.AreEqual("P1", p1.Name);
-                Assert.AreEqual("P2", p2.Name);
+                Assert.Equal("P1", p1.Name);
+                Assert.Equal("P2", p2.Name);
             }
         }
 
@@ -575,7 +573,7 @@ namespace BTDBTest
             public IList<byte> ByteList { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void ListOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -589,9 +587,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                Assert.AreEqual(new List<int> { 5, 10, 2000 }, root.IntList);
-                Assert.AreEqual(new List<string> { "A", null, "AB!" }, root.StringList);
-                Assert.AreEqual(new List<byte> { 0, 255 }, root.ByteList);
+                Assert.Equal(new List<int> { 5, 10, 2000 }, root.IntList);
+                Assert.Equal(new List<string> { "A", null, "AB!" }, root.StringList);
+                Assert.Equal(new List<byte> { 0, 255 }, root.ByteList);
                 root.IntList = null;
                 root.StringList = null;
                 root.ByteList = null;
@@ -601,9 +599,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                Assert.AreEqual(null, root.IntList);
-                Assert.AreEqual(null, root.StringList);
-                Assert.AreEqual(null, root.ByteList);
+                Assert.Equal(null, root.IntList);
+                Assert.Equal(null, root.StringList);
+                Assert.Equal(null, root.ByteList);
                 root.IntList = new List<int>();
                 root.StringList = new List<string>();
                 root.ByteList = new List<byte>();
@@ -613,13 +611,13 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                Assert.AreEqual(new List<int>(), root.IntList);
-                Assert.AreEqual(new List<string>(), root.StringList);
-                Assert.AreEqual(new List<byte>(), root.ByteList);
+                Assert.Equal(new List<int>(), root.IntList);
+                Assert.Equal(new List<string>(), root.StringList);
+                Assert.Equal(new List<byte>(), root.ByteList);
             }
         }
 
-        [Test]
+        [Fact]
         public void ListOfSimpleValuesSkip()
         {
             using (var tr = _db.StartTransaction())
@@ -643,7 +641,7 @@ namespace BTDBTest
             public Dictionary<int, string> Int2String { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void InlineDictionariesOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -655,9 +653,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineDictionary>();
-                Assert.AreEqual(2, root.Int2String.Count);
-                Assert.AreEqual("one", root.Int2String[1]);
-                Assert.AreEqual(null, root.Int2String[0]);
+                Assert.Equal(2, root.Int2String.Count);
+                Assert.Equal("one", root.Int2String[1]);
+                Assert.Equal(null, root.Int2String[0]);
                 root.Int2String.Clear();
                 tr.Store(root);
                 tr.Commit();
@@ -665,7 +663,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineDictionary>();
-                Assert.AreEqual(0, root.Int2String.Count);
+                Assert.Equal(0, root.Int2String.Count);
                 root.Int2String = null;
                 tr.Store(root);
                 tr.Commit();
@@ -673,11 +671,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineDictionary>();
-                Assert.IsNull(root.Int2String);
+                Assert.Null(root.Int2String);
             }
         }
 
-        [Test]
+        [Fact]
         public void InlineDictionariesOfSimpleValuesSkip()
         {
             using (var tr = _db.StartTransaction())
@@ -699,7 +697,7 @@ namespace BTDBTest
             public List<int> IntList { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void InlineListsOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -711,10 +709,10 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineList>();
-                Assert.AreEqual(3, root.IntList.Count);
-                Assert.AreEqual(1, root.IntList[0]);
-                Assert.AreEqual(2, root.IntList[1]);
-                Assert.AreEqual(3, root.IntList[2]);
+                Assert.Equal(3, root.IntList.Count);
+                Assert.Equal(1, root.IntList[0]);
+                Assert.Equal(2, root.IntList[1]);
+                Assert.Equal(3, root.IntList[2]);
                 root.IntList.Clear();
                 tr.Store(root);
                 tr.Commit();
@@ -722,7 +720,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineList>();
-                Assert.AreEqual(0, root.IntList.Count);
+                Assert.Equal(0, root.IntList.Count);
                 root.IntList = null;
                 tr.Store(root);
                 tr.Commit();
@@ -730,11 +728,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineList>();
-                Assert.IsNull(root.IntList);
+                Assert.Null(root.IntList);
             }
         }
 
-        [Test]
+        [Fact]
         public void InlineListsOfSimpleValuesSkip()
         {
             using (var tr = _db.StartTransaction())
@@ -756,7 +754,7 @@ namespace BTDBTest
             public IDictionary<int, string> Int2String { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void DictionariesOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -768,20 +766,20 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleDictionary>();
-                Assert.AreEqual(2, root.Int2String.Count);
-                Assert.AreEqual("one", root.Int2String[1]);
-                Assert.AreEqual(null, root.Int2String[0]);
+                Assert.Equal(2, root.Int2String.Count);
+                Assert.Equal("one", root.Int2String[1]);
+                Assert.Equal(null, root.Int2String[0]);
                 root.Int2String.Clear();
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleDictionary>();
-                Assert.AreEqual(0, root.Int2String.Count);
+                Assert.Equal(0, root.Int2String.Count);
             }
         }
 
-        [Test]
+        [Fact]
         public void DictionariesOfSimpleValuesSkip()
         {
             using (var tr = _db.StartTransaction())
@@ -803,7 +801,7 @@ namespace BTDBTest
             public IOrderedDictionary<int, string> Int2String { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void OrderedDictionaryEnumeration()
         {
             using (var tr = _db.StartTransaction())
@@ -816,22 +814,22 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleOrderedDictionary>();
-                Assert.AreEqual("AC", root.Int2String.Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("CA", root.Int2String.GetReverseEnumerator().Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("AC", root.Int2String.GetIncreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("C", root.Int2String.GetIncreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("C", root.Int2String.GetIncreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("", root.Int2String.GetIncreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("", root.Int2String.GetDecreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("A", root.Int2String.GetDecreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("A", root.Int2String.GetDecreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("CA", root.Int2String.GetDecreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
-                Assert.AreEqual("CA", root.Int2String.GetDecreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("AC", root.Int2String.Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("CA", root.Int2String.GetReverseEnumerator().Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("AC", root.Int2String.GetIncreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("AC", root.Int2String.GetIncreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("C", root.Int2String.GetIncreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("C", root.Int2String.GetIncreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("", root.Int2String.GetIncreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("", root.Int2String.GetDecreasingEnumerator(0).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("A", root.Int2String.GetDecreasingEnumerator(1).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("A", root.Int2String.GetDecreasingEnumerator(2).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("CA", root.Int2String.GetDecreasingEnumerator(3).Aggregate("", (current, p) => current + p.Value));
+                Assert.Equal("CA", root.Int2String.GetDecreasingEnumerator(4).Aggregate("", (current, p) => current + p.Value));
             }
         }
 
-        [Test]
+        [Fact]
         public void CanQuerySizeOfKeyInOrderedDictionary()
         {
             using (var tr = _db.StartTransaction())
@@ -840,12 +838,12 @@ namespace BTDBTest
                 root.Int2String.Add(3, "C");
                 var qs = (IQuerySizeDictionary<int>)root.Int2String;
                 var size = qs.QuerySizeByKey(3);
-                Assert.AreEqual(3, size.Key);
-                Assert.AreEqual(2, size.Value);
+                Assert.Equal(3u, size.Key);
+                Assert.Equal(2u, size.Value);
                 root.Int2String.Add(1, "A");
                 size = qs.QuerySizeEnumerator().First();
-                Assert.AreEqual(3, size.Key);
-                Assert.AreEqual(2, size.Value);
+                Assert.Equal(3u, size.Key);
+                Assert.Equal(2u, size.Value);
             }
         }
 
@@ -854,7 +852,7 @@ namespace BTDBTest
             public IDictionary<string, Person> String2Person { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void DictionariesOfComplexValues()
         {
             using (var tr = _db.StartTransaction())
@@ -867,33 +865,33 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                Assert.AreEqual(2, root.String2Person.Count);
-                Assert.IsTrue(root.String2Person.ContainsKey("Boris"));
-                Assert.IsTrue(root.String2Person.ContainsKey("null"));
+                Assert.Equal(2, root.String2Person.Count);
+                Assert.True(root.String2Person.ContainsKey("Boris"));
+                Assert.True(root.String2Person.ContainsKey("null"));
                 var p = root.String2Person["Boris"];
                 Assert.NotNull(p);
-                Assert.AreEqual("Boris", p.Name);
-                Assert.AreEqual(35, root.String2Person["Boris"].Age);
-                Assert.AreEqual(null, root.String2Person["null"]);
-                Assert.AreEqual(new[] { "Boris", "null" }, root.String2Person.Keys);
-                Assert.AreEqual(p, root.String2Person.Values.First());
+                Assert.Equal("Boris", p.Name);
+                Assert.Equal(35u, root.String2Person["Boris"].Age);
+                Assert.Equal(null, root.String2Person["null"]);
+                Assert.Equal(new[] { "Boris", "null" }, root.String2Person.Keys.ToList());
+                Assert.Equal(p, root.String2Person.Values.First());
                 root.String2Person.Clear();
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                Assert.AreEqual(0, root.String2Person.Count);
+                Assert.Equal(0, root.String2Person.Count);
             }
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ComplexDictionary>();
-                Assert.AreEqual(0, root.String2Person.Count);
+                Assert.Equal(0, root.String2Person.Count);
             }
         }
 
-        [Test]
+        [Fact]
         public void DictionariesOfComplexValuesSkip()
         {
             _db.RegisterType(typeof(Person));
@@ -916,7 +914,7 @@ namespace BTDBTest
             public IDictionary<byte[], byte[]> Bytes2Bytes { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void DictionaryOfByteArrayKeysAndValues()
         {
             using (var tr = _db.StartTransaction())
@@ -971,7 +969,7 @@ namespace BTDBTest
             public TestEnumEx E { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void EnumUpgrade()
         {
             TestEnum2TestEnumUlong(TestEnum.Item1, TestEnumUlong.Item1);
@@ -992,13 +990,13 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var e = tr.Enumerate<CTestEnumUlong>().First();
-                Assert.AreEqual(to, e.E);
+                Assert.Equal(to, e.E);
                 tr.Delete(e);
                 tr.Commit();
             }
         }
 
-        [Test]
+        [Fact]
         public void EnumUpgradeAddItem()
         {
             TestEnum2TestEnumEx(TestEnum.Item1, TestEnumEx.Item1);
@@ -1019,7 +1017,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var e = tr.Enumerate<CTestEnumEx>().First();
-                Assert.AreEqual(to, e.E);
+                Assert.Equal(to, e.E);
                 tr.Delete(e);
                 tr.Commit();
             }
@@ -1030,7 +1028,7 @@ namespace BTDBTest
             public List<Person> Managing { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void InheritanceSupportedWithAutoRegistration()
         {
             using (var tr = _db.StartTransaction())
@@ -1047,15 +1045,15 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<ComplexDictionary>();
                 var dict = root.String2Person;
-                Assert.IsInstanceOf<Person>(dict["slave"]);
-                Assert.IsInstanceOf<Manager>(dict["master"]);
-                Assert.AreEqual(3, dict.Count);
-                Assert.AreEqual("Chief", dict["master"].Name);
-                Assert.AreSame(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
+                Assert.IsType<Person>(dict["slave"]);
+                Assert.IsType<Manager>(dict["master"]);
+                Assert.Equal(3, dict.Count);
+                Assert.Equal("Chief", dict["master"].Name);
+                Assert.Same(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
             }
         }
 
-        [Test]
+        [Fact]
         public void NotStoredProperties()
         {
             var personObjDbName = _db.RegisterType(typeof(PersonWithNonStoredProperty));
@@ -1069,8 +1067,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<Person>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(0, p.Age);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(0u, p.Age);
             }
         }
 
@@ -1084,7 +1082,7 @@ namespace BTDBTest
             public List<InlinePerson> InlinePersons { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void SupportOfInlineObjects()
         {
             using (var tr = _db.StartTransaction())
@@ -1103,11 +1101,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ListOfInlinePersons>();
-                Assert.AreEqual(1, root.InlinePersons[0].Age);
+                Assert.Equal(1u, root.InlinePersons[0].Age);
             }
         }
 
-        [Test]
+        [Fact]
         public void ForbidToStoreInlinedObjectDirectly()
         {
             using (var tr = _db.StartTransaction())
@@ -1128,7 +1126,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SupportForStorageOfPrivateProperties()
         {
             using (var tr = _db.StartTransaction())
@@ -1139,24 +1137,24 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var p = tr.Enumerate<PersonWithPrivateAge>().First();
-                Assert.AreEqual("Bobris", p.Name);
-                Assert.AreEqual(35, p.PublicAge);
+                Assert.Equal("Bobris", p.Name);
+                Assert.Equal(35u, p.PublicAge);
             }
         }
 
-        [Test]
+        [Fact]
         public void CanGetSizeOfObject()
         {
             using (var tr = _db.StartTransaction())
             {
                 var oid = tr.StoreAndFlush(new Person { Name = "Bobris", Age = 35 });
                 var s = tr.GetStorageSize(oid);
-                Assert.AreEqual(2, s.Key);
-                Assert.AreEqual(10, s.Value);
+                Assert.Equal(2u, s.Key);
+                Assert.Equal(10u, s.Value);
             }
         }
 
-        [Test]
+        [Fact]
         public void SingletonShouldNotNeedWritableTransactionIfNotCommited()
         {
             using (var tr = _db.StartTransaction())
@@ -1174,7 +1172,7 @@ namespace BTDBTest
             public string Content { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void IndirectLazyReferencesWorks()
         {
             using (var tr = _db.StartTransaction())
@@ -1198,7 +1196,7 @@ namespace BTDBTest
             public IDictionary<string, PersonNew> String2PersonNew { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UpgradingWithNewComplexDictionary()
         {
             var typeName = _db.RegisterType(typeof(ComplexDictionary));
@@ -1214,16 +1212,16 @@ namespace BTDBTest
             {
                 var d = tr.Singleton<TwoComplexDictionary>();
                 tr.Store(d);
-                Assert.AreEqual(1, d.String2Person.Count);
-                Assert.AreEqual("A", d.String2Person["A"].Name);
+                Assert.Equal(1, d.String2Person.Count);
+                Assert.Equal("A", d.String2Person["A"].Name);
                 d.String2PersonNew.Add("B", new PersonNew { Name = "B" });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<TwoComplexDictionary>();
-                Assert.AreEqual("A", d.String2Person["A"].Name);
-                Assert.AreEqual("B", d.String2PersonNew["B"].Name);
+                Assert.Equal("A", d.String2Person["A"].Name);
+                Assert.Equal("B", d.String2PersonNew["B"].Name);
             }
         }
 
@@ -1238,7 +1236,7 @@ namespace BTDBTest
             public String Added { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeWithDictString2ListOfUInt64Works()
         {
             var typeName = _db.RegisterType(typeof(ObjectWithDictString2ListOfUInt64));
@@ -1268,7 +1266,7 @@ namespace BTDBTest
             public String Added { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeWithDictInt2StringWorks()
         {
             var typeName = _db.RegisterType(typeof(ObjectWithDictInt2String));
@@ -1287,7 +1285,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void PossibleToAllocateNewPreinitializedObject()
         {
             using (var tr = _db.StartTransaction())
@@ -1302,11 +1300,11 @@ namespace BTDBTest
             {
                 var d = tr.Enumerate<Object2WithDictString2ListOfUInt64>().First();
                 Assert.NotNull(d.Dict);
-                Assert.AreEqual("Stored", d.Added);
+                Assert.Equal("Stored", d.Added);
             }
         }
 
-        [Test]
+        [Fact]
         public void BiggerTransactionWithGC()
         {
             using (var tr = _db.StartTransaction())
@@ -1328,7 +1326,7 @@ namespace BTDBTest
             public IDictionary<InlinePerson, int> Dict { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void DictionaryContainsMustWorkInReadOnlyTransaction()
         {
             using (var tr = _db.StartReadOnlyTransaction())
@@ -1347,7 +1345,7 @@ namespace BTDBTest
             public IDictionary<InlinePersonNew, int> Dict { get; set; }
         }
 
-        [Test, Ignore("This is very difficult to do")]
+        [Fact(Skip="This is very difficult to do")]
         public void UpgradingKeyInDictionary()
         {
             var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
@@ -1365,8 +1363,8 @@ namespace BTDBTest
             {
                 var d = tr.Singleton<ObjectWithDictWithInlineKeyNew>();
                 var p = d.Dict.Keys.First();
-                Assert.AreEqual("A", p.Name);
-                Assert.AreEqual(1, d.Dict[p]);
+                Assert.Equal("A", p.Name);
+                Assert.Equal(1, d.Dict[p]);
             }
         }
 
@@ -1375,7 +1373,7 @@ namespace BTDBTest
             public IDictionary<DateTime, DateTime> Dist { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void ForbidToStoreDateTimeUnknownKindInKey()
         {
             using (var tr = _db.StartTransaction())
@@ -1388,7 +1386,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void PitOfSuccessForbidStoreDictionary()
         {
             using (var tr = _db.StartTransaction())
@@ -1430,7 +1428,7 @@ namespace BTDBTest
             public IDictionary<ulong, CC1V2T2> Dict { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void CC1Upgrade()
         {
             var t1Name = _db.RegisterType(typeof(CC1V1T1));
@@ -1452,7 +1450,7 @@ namespace BTDBTest
             {
                 var d = tr.Singleton<CC1V2T1>();
                 var d2 = d.Dict[1];
-                Assert.AreEqual(10, d2.Dict2[CC1V2T3.Item1]);
+                Assert.Equal(10, d2.Dict2[CC1V2T3.Item1]);
             }
         }
 
@@ -1461,7 +1459,7 @@ namespace BTDBTest
             public IDictionary<int, IIndirect<Person>> Dict { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void BasicIndirectInDict()
         {
             using (var tr = _db.StartTransaction())
@@ -1473,23 +1471,23 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(2, tr.Enumerate<Person>().Count());
+                Assert.Equal(2, tr.Enumerate<Person>().Count());
                 var d = tr.Singleton<IndirectValueDict>();
-                Assert.AreEqual(10, d.Dict[1].Value.Age);
-                Assert.AreEqual("B", d.Dict[2].Value.Name);
+                Assert.Equal(10u, d.Dict[1].Value.Age);
+                Assert.Equal("B", d.Dict[2].Value.Name);
                 tr.Delete(d.Dict[2].Value);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
+                Assert.Equal(1, tr.Enumerate<Person>().Count());
                 var d = tr.Singleton<IndirectValueDict>();
-                Assert.AreEqual(10, d.Dict[1].Value.Age);
+                Assert.Equal(10u, d.Dict[1].Value.Age);
                 Assert.Null(d.Dict[2].Value);
             }
         }
 
-        [Test]
+        [Fact]
         public void DeleteIndirectWithoutMaterialization()
         {
             using (var tr = _db.StartTransaction())
@@ -1507,22 +1505,22 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.AreEqual(1, tr.Enumerate<Person>().Count());
+                Assert.Equal(1, tr.Enumerate<Person>().Count());
                 var d = tr.Singleton<IndirectValueDict>();
-                Assert.AreEqual(10, d.Dict[1].Value.Age);
+                Assert.Equal(10u, d.Dict[1].Value.Age);
                 Assert.Null(d.Dict[2].Value);
             }
         }
 
-        [Test]
-        [TestCase(2, false, 4, false, "1245", 1)]
-        [TestCase(2, true, 4, false, "145", 2)]
-        [TestCase(2, false, 4, true, "125", 2)]
-        [TestCase(2, true, 4, true, "15", 3)]
-        [TestCase(3, false, 3, false, "12345", 0)]
-        [TestCase(6, true, 5, true, "12345", 0)]
-        [TestCase(0, true, 6, true, "", 5)]
-        [TestCase(0, false, 6, false, "", 5)]
+        [Theory]
+        [InlineData(2, false, 4, false, "1245", 1)]
+        [InlineData(2, true, 4, false, "145", 2)]
+        [InlineData(2, false, 4, true, "125", 2)]
+        [InlineData(2, true, 4, true, "15", 3)]
+        [InlineData(3, false, 3, false, "12345", 0)]
+        [InlineData(6, true, 5, true, "12345", 0)]
+        [InlineData(0, true, 6, true, "", 5)]
+        [InlineData(0, false, 6, false, "", 5)]
         public void RemoveRange(int start, bool includeStart, int end, bool includeEnd, string result, int removedCount)
         {
             using (var tr = _db.StartTransaction())
@@ -1532,12 +1530,12 @@ namespace BTDBTest
                 {
                     d[i] = i.ToString(CultureInfo.InvariantCulture);
                 }
-                Assert.AreEqual(removedCount, d.RemoveRange(start, includeStart, end, includeEnd));
-                Assert.AreEqual(result, d.Aggregate("", (s, p) => s + p.Value));
+                Assert.Equal(removedCount, d.RemoveRange(start, includeStart, end, includeEnd));
+                Assert.Equal(result, d.Aggregate("", (s, p) => s + p.Value));
             }
         }
 
-        [Test]
+        [Fact]
         public void PossibleToEnumerateSingletons()
         {
             using (var tr = _db.StartTransaction())
@@ -1563,16 +1561,16 @@ namespace BTDBTest
         void CheckSingletonTypes(IEnumerable<Type> types)
         {
             var a = types.ToArray();
-            Assert.AreEqual(2, a.Length);
+            Assert.Equal(2, a.Length);
             if (a[0] == typeof(Root))
             {
-                Assert.AreEqual(typeof(Root), a[0]);
-                Assert.AreEqual(typeof(Tree), a[1]);
+                Assert.Equal(typeof(Root), a[0]);
+                Assert.Equal(typeof(Tree), a[1]);
             }
             else
             {
-                Assert.AreEqual(typeof(Tree), a[0]);
-                Assert.AreEqual(typeof(Root), a[1]);
+                Assert.Equal(typeof(Tree), a[0]);
+                Assert.Equal(typeof(Root), a[1]);
             }
         }
 
@@ -1602,7 +1600,7 @@ namespace BTDBTest
             public Rule2 C { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeDeletedInlineObjectWorks()
         {
             var typeNameWfd = _db.RegisterType(typeof(ObjectWfd1));
@@ -1623,7 +1621,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var wfd = tr.Singleton<ObjectWfd2>();
-                Assert.AreEqual("C", wfd.C.Name);
+                Assert.Equal("C", wfd.C.Name);
             }
         }
 
@@ -1648,7 +1646,7 @@ namespace BTDBTest
             public IOrderedDictionary<ulong, IDictionary<MapEnumEx, int>> Items { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UpgradeNestedMapWithEnumWorks()
         {
             var typeComplexMap = _db.RegisterType(typeof(ComplexMap));
@@ -1668,7 +1666,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var wfd = tr.Singleton<ComplexMapEx>();
-                Assert.AreEqual(11, wfd.Items[0][MapEnumEx.A]);
+                Assert.Equal(11, wfd.Items[0][MapEnumEx.A]);
             }
         }
 
@@ -1683,7 +1681,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanStoreObjectWithIndexer()
         {
             using (var tr = _db.StartTransaction())
@@ -1697,12 +1695,12 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var t = tr.Singleton<SimpleWithIndexer>();
-                Assert.AreEqual("oddy", t.OddName);
-                Assert.AreEqual("evvy", t[12]);
+                Assert.Equal("oddy", t.OddName);
+                Assert.Equal("evvy", t[12]);
             }
         }
 
-        [Test]
+        [Fact]
         public void LoopsThroughAllItemsEvenIfDeleteIsPerformed()
         {
             using (var tr = _db.StartTransaction())
@@ -1718,7 +1716,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var sd = tr.Singleton<SimpleDictionary>().Int2String;
-                Assert.AreEqual(sd.Count, 3);
+                Assert.Equal(sd.Count, 3);
 
                 Assert.Throws<InvalidOperationException>(() =>
                 {
@@ -1743,7 +1741,7 @@ namespace BTDBTest
             public ulong CollisionId { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void CanRemoveRangeOfCompoundKeys()
         {
             using (var tr = _db.StartTransaction())
@@ -1762,9 +1760,8 @@ namespace BTDBTest
                 var deleted = sd.RemoveRange(new LogId { Key = "key", DateTime = DateTime.MinValue.ToUniversalTime(), CollisionId = ushort.MinValue },
                     true, new LogId { Key = "key", DateTime = DateTime.MaxValue.ToUniversalTime(), CollisionId = ushort.MaxValue }, true);
 
-                Assert.AreEqual(3, deleted);
-
-                CollectionAssert.IsEmpty(sd);
+                Assert.Equal(3, deleted);
+                Assert.Equal(0, sd.Count);
             }
         }
 
@@ -1782,7 +1779,7 @@ namespace BTDBTest
             public TestRenamedEnum EE { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void UnderstandPersistedNameInEnum()
         {
             TestEnum2TestRenamedEnum(TestEnum.Item1, TestRenamedEnum.ItemA);
@@ -1803,7 +1800,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var e = tr.Enumerate<CTestRenamedEnum>().First();
-                Assert.AreEqual(to, e.EE);
+                Assert.Equal(to, e.EE);
                 tr.Delete(e);
                 tr.Commit();
             }
@@ -1826,7 +1823,7 @@ namespace BTDBTest
             public IOrderedDictionary<Guid, string> Items { get; set; }
         }
 
-        [Test]
+        [Fact]
         public void GuidInKey()
         {
             var guid = Guid.NewGuid();
@@ -1841,13 +1838,13 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<GuidMap>().Items;
                 string value;
-                Assert.AreEqual(true, items.TryGetValue(guid, out value));
+                Assert.Equal(true, items.TryGetValue(guid, out value));
 
-                Assert.AreEqual("a", value);
+                Assert.Equal("a", value);
             }
         }
 
-        [Test]
+        [Fact]
         public void GuidInComplexKey()
         {
             var guid = Guid.NewGuid();
@@ -1862,9 +1859,9 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<UlongGuidMap>().Items;
                 string value;
-                Assert.AreEqual(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
+                Assert.Equal(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
 
-                Assert.AreEqual("a", value);
+                Assert.Equal("a", value);
             }
         }
 
@@ -1880,7 +1877,7 @@ namespace BTDBTest
         }
 
 
-        [Test, Ignore("Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
+        [Fact(Skip="Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
         public void CannotStoreDateTimeKindUnspecified()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>

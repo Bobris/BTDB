@@ -4,15 +4,14 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using BTDB.KVDBLayer;
-using NUnit.Framework;
+using Xunit;
+using SnappyCompressionStrategy = BTDB.KVDBLayer.SnappyCompressionStrategy;
 
 namespace BTDBTest
-{
-    [TestFixture, Ignore("Takes too long time")]
+{   
     public class KeyValueDBCustomTest
     {
-        [SetUp]
-        public void Initialization()
+        public KeyValueDBCustomTest()
         {
             if (Directory.Exists("data"))
             {
@@ -23,7 +22,7 @@ namespace BTDBTest
                 Directory.CreateDirectory("data");
         }
 
-        [Test]
+        [Fact(Skip="Takes too long time")]
         public void Reader()
         {
             IEnumerable<KeyValuePair<long, Tick>> flow = TicksGenerator.GetFlow(1000000, KeysType.Random);
@@ -62,7 +61,7 @@ namespace BTDBTest
                             {
                                 var id = Reverse(tr.GetKeyAsByteArray());
                                 var tick = ToTick(tr.GetValueAsByteArray());
-                                Assert.AreEqual(item.Key, id);
+                                Assert.Equal(item.Key, id);
                             }
                         }
                     }

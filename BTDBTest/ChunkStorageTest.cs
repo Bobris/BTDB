@@ -1,16 +1,13 @@
 using System;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using BTDB.Buffer;
-using BTDB.ChunkCache;
 using BTDB.KVDBLayer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
-    public class ChunkStorageTest
+    public class ChunkStorageTest : IDisposable
     {
         readonly ThreadLocal<HashAlgorithm> _hashAlg =
             new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
@@ -24,16 +21,14 @@ namespace BTDBTest
             return ByteBuffer.NewAsync(_hashAlg.Value.ComputeHash(bytes));
         }
 
-        [OneTimeSetUp]
-        public void CreateChunkStorageSubDB()
+        public ChunkStorageTest()
         {
             _fileCollection = new InMemoryFileCollection();
             _kvdb = new KeyValueDB(_fileCollection);
             _cs = _kvdb.GetSubDB<IChunkStorage>(1);
         }
 
-        [OneTimeTearDown]
-        public void DestroyChunkStorageSubDB()
+        public void Dispose()
         {
             _kvdb.Dispose();
             _fileCollection.Dispose();
@@ -46,13 +41,13 @@ namespace BTDBTest
             _cs = _kvdb.GetSubDB<IChunkStorage>(1);
         }
 
-        [Test]
+        [Fact]
         public void CreateEmptyStorage()
         {
             Assert.NotNull(_cs);
         }
 
-        [Test]
+        [Fact]
         public void CreateTransaction()
         {
             using (var tr = _cs.StartTransaction())
@@ -61,17 +56,17 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void WhatIPutICanGetInSameTransaction()
         {
             using (var tr = _cs.StartTransaction())
             {
                 tr.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }), true);
-                Assert.AreEqual(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
             }
         }
 
-        [Test]
+        [Fact]
         public void WhatIPutICanGetInNextTransaction()
         {
             using (var tr = _cs.StartTransaction())
@@ -80,11 +75,11 @@ namespace BTDBTest
             }
             using (var tr = _cs.StartTransaction())
             {
-                Assert.AreEqual(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
             }
         }
 
-        [Test]
+        [Fact]
         public void ItRemebersContentAfterReopen()
         {
             using (var tr = _cs.StartTransaction())
@@ -94,7 +89,7 @@ namespace BTDBTest
             ReopenStorage();
             using (var tr = _cs.StartTransaction())
             {
-                Assert.AreEqual(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
+                Assert.Equal(new byte[] { 1 }, tr.Get(CalcHash(new byte[] { 0 })).Result.ToByteArray());
             }
         }
     }

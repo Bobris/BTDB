@@ -1,15 +1,20 @@
 using System.Collections.Generic;
 using BTDB.Buffer;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
-    [TestFixture]
     public class PackUnpackTest
     {
 
-        [Test, TestCaseSource("GenerateULongs")]
-        public void PackVUIntIsOrderable(ulong t)
+        [Fact]
+        public void PackVUIntIsOrderable()
+        {
+            foreach(var ul in GenerateULongs())
+                PackVUIntIsOrderable(ul);
+        }
+
+        void PackVUIntIsOrderable(ulong t)
         {
             var buf1 = new byte[9];
             var o1 = 0;
@@ -19,22 +24,20 @@ namespace BTDBTest
             PackUnpack.PackVUInt(buf2, ref o2, t);
             if (t <= uint.MaxValue)
             {
-                Assert.AreEqual(o2, PackUnpack.LengthVUInt((uint)t));
+                Assert.Equal(o2, PackUnpack.LengthVUInt((uint)t));
             }
-            Assert.AreEqual(o2, PackUnpack.LengthVUInt(t));
-            Assert.AreEqual(o2, PackUnpack.LengthVUInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
+            Assert.Equal(o2, PackUnpack.LengthVUInt(t));
+            Assert.Equal(o2, PackUnpack.LengthVUInt(buf2, 0));
+            Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
             var o1A = 0;
-            Assert.AreEqual(t - 1, PackUnpack.UnpackVUInt(buf1, ref o1A));
-            Assert.AreEqual(o1, o1A);
+            Assert.Equal(t - 1, PackUnpack.UnpackVUInt(buf1, ref o1A));
+            Assert.Equal(o1, o1A);
             var o2A = 0;
-            Assert.AreEqual(t, PackUnpack.UnpackVUInt(buf2, ref o2A));
-            Assert.AreEqual(o2, o2A);
+            Assert.Equal(t, PackUnpack.UnpackVUInt(buf2, ref o2A));
+            Assert.Equal(o2, o2A);
         }
-
-        // ReSharper disable UnusedMember.Global
-        public static IEnumerable<ulong> GenerateULongs()
-        // ReSharper restore UnusedMember.Global
+        
+        static IEnumerable<ulong> GenerateULongs()
         {
             yield return 1;
             yield return 2;
@@ -49,8 +52,14 @@ namespace BTDBTest
             yield return 123456789123456789UL;
         }
 
-        [Test, TestCaseSource("GeneratePositiveLongs")]
-        public void PackVIntIsOrderableForPositive(long t)
+        [Fact]
+        public void PackVIntIsOrderableForPositive()
+        {
+            foreach (var l in GeneratePositiveLongs())
+                PackVIntIsOrderableForPositive(l);
+        }
+
+        void PackVIntIsOrderableForPositive(long t)
         {
             var buf1 = new byte[9];
             var o1 = 0;
@@ -60,22 +69,20 @@ namespace BTDBTest
             PackUnpack.PackVInt(buf2, ref o2, t);
             if (t >= int.MinValue && t <= int.MaxValue)
             {
-                Assert.AreEqual(o2, PackUnpack.LengthVInt((int)t));
+                Assert.Equal(o2, PackUnpack.LengthVInt((int)t));
             }
-            Assert.AreEqual(o2, PackUnpack.LengthVInt(t));
-            Assert.AreEqual(o2, PackUnpack.LengthVInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
+            Assert.Equal(o2, PackUnpack.LengthVInt(t));
+            Assert.Equal(o2, PackUnpack.LengthVInt(buf2, 0));
+            Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2));
             var o1A = 0;
-            Assert.AreEqual(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
-            Assert.AreEqual(o1, o1A);
+            Assert.Equal(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
+            Assert.Equal(o1, o1A);
             var o2A = 0;
-            Assert.AreEqual(t, PackUnpack.UnpackVInt(buf2, ref o2A));
-            Assert.AreEqual(o2, o2A);
+            Assert.Equal(t, PackUnpack.UnpackVInt(buf2, ref o2A));
+            Assert.Equal(o2, o2A);
         }
 
-        // ReSharper disable UnusedMember.Global
-        public static IEnumerable<long> GeneratePositiveLongs()
-        // ReSharper restore UnusedMember.Global
+        static IEnumerable<long> GeneratePositiveLongs()
         {
             yield return 0;
             yield return 1;
@@ -91,7 +98,13 @@ namespace BTDBTest
             yield return 123456789123456789L;
         }
 
-        [Test, TestCaseSource("GenerateNegativeLongs")]
+        [Fact]
+        public void PackVIntIsOrderableForNegative()
+        {
+            foreach (var l in GenerateNegativeLongs())
+                PackVIntIsOrderableForNegative(l);
+        }
+
         public void PackVIntIsOrderableForNegative(long t)
         {
             var buf1 = new byte[9];
@@ -102,22 +115,20 @@ namespace BTDBTest
             PackUnpack.PackVInt(buf2, ref o2, t);
             if (t >= int.MinValue && t <= int.MaxValue)
             {
-                Assert.AreEqual(o2, PackUnpack.LengthVInt((int)t));
+                Assert.Equal(o2, PackUnpack.LengthVInt((int)t));
             }
-            Assert.AreEqual(o2, PackUnpack.LengthVInt(t));
-            Assert.AreEqual(o2, PackUnpack.LengthVInt(buf2, 0));
-            Assert.Greater(0, BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), "{0} is not before {1}", t - 1, t);
+            Assert.Equal(o2, PackUnpack.LengthVInt(t));
+            Assert.Equal(o2, PackUnpack.LengthVInt(buf2, 0));
+            Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), $"{t-1} is not before {t}");
             var o1A = 0;
-            Assert.AreEqual(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
-            Assert.AreEqual(o1, o1A);
+            Assert.Equal(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
+            Assert.Equal(o1, o1A);
             var o2A = 0;
-            Assert.AreEqual(t, PackUnpack.UnpackVInt(buf2, ref o2A));
-            Assert.AreEqual(o2, o2A);
+            Assert.Equal(t, PackUnpack.UnpackVInt(buf2, ref o2A));
+            Assert.Equal(o2, o2A);
         }
-
-        // ReSharper disable UnusedMember.Global
-        public static IEnumerable<long> GenerateNegativeLongs()
-        // ReSharper restore UnusedMember.Global
+        
+        static IEnumerable<long> GenerateNegativeLongs()
         {
             yield return -1;
             yield return -2;

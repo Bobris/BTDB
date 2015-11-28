@@ -3,16 +3,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTDB.IOC;
-using NUnit.Framework;
+using Xunit;
 
 namespace BTDBTest
 {
     using IOCDomain;
 
-    [TestFixture]
     public class IocTests
     {
-        [Test]
+        [Fact]
         public void AlwaysNew()
         {
             var builder = new ContainerBuilder();
@@ -22,10 +21,10 @@ namespace BTDBTest
             Assert.NotNull(log1);
             var log2 = container.Resolve<ILogger>();
             Assert.NotNull(log2);
-            Assert.AreNotSame(log1, log2);
+            Assert.NotSame(log1, log2);
         }
 
-        [Test]
+        [Fact]
         public void Singleton()
         {
             var builder = new ContainerBuilder();
@@ -35,10 +34,10 @@ namespace BTDBTest
             Assert.NotNull(log1);
             var log2 = container.Resolve<ILogger>();
             Assert.NotNull(log2);
-            Assert.AreSame(log1, log2);
+            Assert.Same(log1, log2);
         }
 
-        [Test]
+        [Fact]
         public void CreatesFuncFactory()
         {
             var builder = new ContainerBuilder();
@@ -49,10 +48,10 @@ namespace BTDBTest
             Assert.NotNull(log1);
             var log2 = logFactory();
             Assert.NotNull(log2);
-            Assert.AreNotSame(log1, log2);
+            Assert.NotSame(log1, log2);
         }
 
-        [Test]
+        [Fact]
         public void CreatesLazyFactory()
         {
             var builder = new ContainerBuilder();
@@ -63,7 +62,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void InjectionToConstructorWithOneParameterAlwaysNew()
         {
             var builder = new ContainerBuilder();
@@ -76,11 +75,11 @@ namespace BTDBTest
             var obj2 = container.Resolve<IErrorHandler>();
             Assert.NotNull(obj2);
             Assert.NotNull(obj2.Logger);
-            Assert.AreNotSame(obj, obj2);
-            Assert.AreNotSame(obj.Logger, obj2.Logger);
+            Assert.NotSame(obj, obj2);
+            Assert.NotSame(obj.Logger, obj2.Logger);
         }
 
-        [Test]
+        [Fact]
         public void InjectionToConstructorWithOneParameterSingleton()
         {
             var builder = new ContainerBuilder();
@@ -93,11 +92,11 @@ namespace BTDBTest
             var obj2 = container.Resolve<IErrorHandler>();
             Assert.NotNull(obj2);
             Assert.NotNull(obj2.Logger);
-            Assert.AreNotSame(obj, obj2);
-            Assert.AreSame(obj.Logger, obj2.Logger);
+            Assert.NotSame(obj, obj2);
+            Assert.Same(obj.Logger, obj2.Logger);
         }
 
-        [Test]
+        [Fact]
         public void ReusingSingletonMultipleTimesInOneResolve()
         {
             var builder = new ContainerBuilder();
@@ -109,7 +108,7 @@ namespace BTDBTest
             Assert.NotNull(obj);
             Assert.NotNull(obj.ErrorHandler);
             Assert.NotNull(obj.Logger);
-            Assert.AreSame(obj.Logger, obj.ErrorHandler.Logger);
+            Assert.Same(obj.Logger, obj.ErrorHandler.Logger);
         }
 
         public class SpecialCase
@@ -119,7 +118,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void SingletonInSecondParameterTransientAsSecondParameterToTransient()
         {
             var builder = new ContainerBuilder();
@@ -131,7 +130,7 @@ namespace BTDBTest
             container.Resolve<SpecialCase>();
         }
 
-        [Test]
+        [Fact]
         public void ReusingSingletonMultipleTimesInOneResolveOnceInSingleton()
         {
             var builder = new ContainerBuilder();
@@ -143,15 +142,15 @@ namespace BTDBTest
             Assert.NotNull(obj);
             Assert.NotNull(obj.ErrorHandler);
             Assert.NotNull(obj.Logger);
-            Assert.AreSame(obj.Logger, obj.ErrorHandler.Logger);
+            Assert.Same(obj.Logger, obj.ErrorHandler.Logger);
             var obj2 = container.Resolve<IDatabase>();
             Assert.NotNull(obj2);
-            Assert.AreNotSame(obj, obj2);
-            Assert.AreSame(obj.ErrorHandler, obj2.ErrorHandler);
-            Assert.AreSame(obj.Logger, obj2.Logger);
+            Assert.NotSame(obj, obj2);
+            Assert.Same(obj.ErrorHandler, obj2.ErrorHandler);
+            Assert.Same(obj.Logger, obj2.Logger);
         }
 
-        [Test]
+        [Fact]
         public void CreatesFastFuncFactory()
         {
             var builder = new ContainerBuilder();
@@ -160,10 +159,10 @@ namespace BTDBTest
             var obj = container.Resolve<ILogger>();
             var fastFactory = container.Resolve<Func<ILogger>>();
             var obj2 = fastFactory();
-            Assert.AreSame(obj, obj2);
+            Assert.Same(obj, obj2);
         }
 
-        [Test]
+        [Fact]
         public void InjectionToConstructorWithOneParameterSingletonWithOptimization()
         {
             var builder = new ContainerBuilder();
@@ -175,11 +174,11 @@ namespace BTDBTest
             var obj2 = container.Resolve<IErrorHandler>();
             Assert.NotNull(obj2);
             Assert.NotNull(obj2.Logger);
-            Assert.AreNotSame(obj, obj2);
-            Assert.AreSame(obj, obj2.Logger);
+            Assert.NotSame(obj, obj2);
+            Assert.Same(obj, obj2.Logger);
         }
 
-        [Test]
+        [Fact]
         public void CanRegisterInstance()
         {
             var builder = new ContainerBuilder();
@@ -187,7 +186,7 @@ namespace BTDBTest
             builder.RegisterInstance(instance).As<ILogger>();
             var container = builder.Build();
             var obj = container.Resolve<ILogger>();
-            Assert.AreSame(instance, obj);
+            Assert.Same(instance, obj);
         }
 
         public interface ICycle1
@@ -230,7 +229,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanBuildLazyCycle()
         {
             var builder = new ContainerBuilder();
@@ -239,7 +238,7 @@ namespace BTDBTest
             var container = builder.Build();
             var obj1 = container.Resolve<ICycle1>();
             var obj2 = obj1.Cycle2Prop;
-            Assert.AreSame(obj1, obj2.Cycle1Prop);
+            Assert.Same(obj1, obj2.Cycle1Prop);
         }
 
         public class InjectingContainer
@@ -257,39 +256,39 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void CanInjectContainer()
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<InjectingContainer>().As<InjectingContainer>();
             var container = builder.Build();
             var obj = container.Resolve<InjectingContainer>();
-            Assert.AreSame(container, obj.Container);
+            Assert.Same(container, obj.Container);
         }
 
-        [Test]
+        [Fact]
         public void RegisterFactory()
         {
             var builder = new ContainerBuilder();
             builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>();
             var container = builder.Build();
             var obj = container.Resolve<InjectingContainer>();
-            Assert.AreSame(container, obj.Container);
-            Assert.AreNotSame(obj, container.Resolve<InjectingContainer>());
+            Assert.Same(container, obj.Container);
+            Assert.NotSame(obj, container.Resolve<InjectingContainer>());
         }
 
-        [Test]
+        [Fact]
         public void RegisterFactoryAsSingleton()
         {
             var builder = new ContainerBuilder();
             builder.RegisterFactory(c => new InjectingContainer(c)).As<InjectingContainer>().SingleInstance();
             var container = builder.Build();
             var obj = container.Resolve<InjectingContainer>();
-            Assert.AreSame(container, obj.Container);
-            Assert.AreSame(obj, container.Resolve<InjectingContainer>());
+            Assert.Same(container, obj.Container);
+            Assert.Same(obj, container.Resolve<InjectingContainer>());
         }
 
-        [Test]
+        [Fact]
         public void RegisterAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
@@ -299,7 +298,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void RegisterAsSelf()
         {
             var builder = new ContainerBuilder();
@@ -309,7 +308,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void RegisterDefaultAsSelf()
         {
             var builder = new ContainerBuilder();
@@ -319,7 +318,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void UnresolvableThrowsException()
         {
             var builder = new ContainerBuilder();
@@ -327,7 +326,7 @@ namespace BTDBTest
             Assert.Throws<ArgumentException>(() => container.Resolve<string>());
         }
 
-        [Test]
+        [Fact]
         public void RegisterAssemblyTypes()
         {
             var builder = new ContainerBuilder();
@@ -337,7 +336,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
@@ -347,10 +346,10 @@ namespace BTDBTest
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
             Assert.NotNull(root.Authenticator.Database.Logger);
-            Assert.AreNotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+            Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
         }
 
-        [Test]
+        [Fact]
         public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
         {
             var builder = new ContainerBuilder();
@@ -360,10 +359,10 @@ namespace BTDBTest
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
             Assert.NotNull(root.Authenticator.Database.Logger);
-            Assert.AreSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+            Assert.Same(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
         }
 
-        [Test]
+        [Fact]
         public void RegisterNamedService()
         {
             var builder = new ContainerBuilder();
@@ -373,7 +372,7 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void RegisterKeyedService()
         {
             var builder = new ContainerBuilder();
@@ -383,17 +382,17 @@ namespace BTDBTest
             Assert.NotNull(log);
         }
 
-        [Test]
+        [Fact]
         public void LastRegisteredHasPriority()
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<Logger>().As<ILogger>();
             builder.RegisterInstance(default(ILogger)).As<ILogger>();
             var container = builder.Build();
-            Assert.IsNull(container.Resolve<ILogger>());
+            Assert.Null(container.Resolve<ILogger>());
         }
 
-        [Test]
+        [Fact]
         public void CanPreserveExistingDefaults()
         {
             var builder = new ContainerBuilder();
@@ -403,7 +402,7 @@ namespace BTDBTest
             Assert.NotNull(container.Resolve<ILogger>());
         }
 
-        [Test]
+        [Fact]
         public void BasicEnumerableResolve()
         {
             var builder = new ContainerBuilder();
@@ -412,10 +411,10 @@ namespace BTDBTest
             builder.RegisterInstance("two").Keyed<string>(true);
             var container = builder.Build();
             var result = container.ResolveKeyed<IEnumerable<string>>(true);
-            Assert.AreEqual(new[] { "one", "two" }, result.ToArray());
+            Assert.Equal(new[] { "one", "two" }, result.ToArray());
         }
 
-        [Test]
+        [Fact]
         public void NullInstanceResovedAsConstructorParameter()
         {
             var builder = new ContainerBuilder();
@@ -423,10 +422,12 @@ namespace BTDBTest
             builder.RegisterType<ErrorHandler>().As<IErrorHandler>();
             var container = builder.Build();
             var obj = container.Resolve<IErrorHandler>();
-            Assert.IsNull(obj.Logger);
+            Assert.Null(obj.Logger);
         }
 
-        [Test, TestCase(false), TestCase(true)]
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
         public void FuncWithOneObjectParameter(bool overload)
         {
             var builder = new ContainerBuilder();
@@ -436,10 +437,10 @@ namespace BTDBTest
             var factory = container.Resolve<Func<ILogger, IErrorHandler>>();
             var logger = new Logger();
             var obj = factory(logger);
-            Assert.AreEqual(logger, obj.Logger);
+            Assert.Equal(logger, obj.Logger);
         }
 
-        [Test]
+        [Fact]
         public void FuncWithTwoObjectParameters()
         {
             var builder = new ContainerBuilder();
@@ -464,7 +465,7 @@ namespace BTDBTest
 
         delegate KlassWith2IntParams KlassWith2IntParamsFactory(int param2, int param1);
 
-        [Test]
+        [Fact]
         public void DelegateWithNamedParameters()
         {
             var builder = new ContainerBuilder();
@@ -472,8 +473,8 @@ namespace BTDBTest
             var container = builder.Build();
             var factory = container.Resolve<KlassWith2IntParamsFactory>();
             var obj = factory(22, 11);
-            Assert.AreEqual(11, obj.Param1);
-            Assert.AreEqual(22, obj.Param2);
+            Assert.Equal(11, obj.Param1);
+            Assert.Equal(22, obj.Param2);
         }
 
         public class Logger1 : ILogger
@@ -494,20 +495,20 @@ namespace BTDBTest
 
         static void AssertTwoLoggers(IEnumerable<string> enumTypes)
         {
-            Assert.AreEqual(new[] { "Logger1", "Logger2" }, enumTypes);
+            Assert.Equal(new[] { "Logger1", "Logger2" }, enumTypes);
         }
 
-        [Test]
+        [Fact]
         public void AnythingCouldBeEnumerated()
         {
             var builder = new ContainerBuilder();
             var container = builder.Build();
             var allInstances = container.Resolve<IEnumerable<ILogger>>();
             Assert.NotNull(allInstances);
-            Assert.IsEmpty(allInstances);
+            Assert.Empty(allInstances);
         }
 
-        [Test]
+        [Fact]
         public void EnumerateAllInstances()
         {
             var container = BuildContainerWithTwoLoggers();
@@ -516,7 +517,7 @@ namespace BTDBTest
             AssertTwoLoggers(enumTypes);
         }
 
-        [Test]
+        [Fact]
         public void EnumerateAllInstanceFactories()
         {
             var container = BuildContainerWithTwoLoggers();
@@ -525,7 +526,7 @@ namespace BTDBTest
             AssertTwoLoggers(enumTypes);
         }
 
-        [Test]
+        [Fact]
         public void EnumerateAllLazyInstances()
         {
             var container = BuildContainerWithTwoLoggers();
@@ -534,7 +535,7 @@ namespace BTDBTest
             AssertTwoLoggers(enumTypes);
         }
 
-        [Test]
+        [Fact]
         public void ArrayOfInstances()
         {
             var container = BuildContainerWithTwoLoggers();
@@ -543,7 +544,7 @@ namespace BTDBTest
             AssertTwoLoggers(enumTypes);
         }
 
-        [Test]
+        [Fact]
         public void TupleResolvable()
         {
             var builder = new ContainerBuilder();
@@ -551,8 +552,8 @@ namespace BTDBTest
             builder.RegisterInstance("hello");
             var container = builder.Build();
             var tuple = container.Resolve<Tuple<ILogger, string>>();
-            Assert.AreEqual("Logger1", tuple.Item1.GetType().Name);
-            Assert.AreEqual("hello", tuple.Item2);
+            Assert.Equal("Logger1", tuple.Item1.GetType().Name);
+            Assert.Equal("hello", tuple.Item2);
         }
 
         static IContainer BuildContainerWithTwoLoggersAndTwoStrings()
@@ -565,16 +566,16 @@ namespace BTDBTest
             return builder.Build();
         }
 
-        [Test]
+        [Fact]
         public void EnumerateAllCombinations()
         {
             var container = BuildContainerWithTwoLoggersAndTwoStrings();
             var tuples = container.Resolve<IEnumerable<Tuple<ILogger, string>>>();
             var names = tuples.Select(t => t.Item1.GetType().Name + t.Item2);
-            Assert.AreEqual(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
+            Assert.Equal(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
         }
 
-        [Test]
+        [Fact]
         public void EnumerateAllCombinationsNested()
         {
             var container = BuildContainerWithTwoLoggersAndTwoStrings();
@@ -582,14 +583,14 @@ namespace BTDBTest
             var enumTypes = tuples.Select(t => t.Item1.GetType().Name);
             AssertTwoLoggers(enumTypes);
             var names = tuples.SelectMany(t => t.Item2);
-            Assert.AreEqual(new[] { "A", "B", "A", "B" }, names);
+            Assert.Equal(new[] { "A", "B", "A", "B" }, names);
         }
 
         class PrivateLogger : ILogger
         {
         }
 
-        [Test]
+        [Fact]
         public void CanInstantiatePrivateClassAsSingleton()
         {
             var builder = new ContainerBuilder();
@@ -606,7 +607,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void BuildingContainerWithRegisteredTypeWithPrivateConstructorShouldThrow()
         {
             var builder = new ContainerBuilder();
@@ -644,7 +645,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void ResolvingHardCycleShouldThrowException()
         {
             var builder = new ContainerBuilder();
@@ -654,7 +655,7 @@ namespace BTDBTest
             Assert.Throws<InvalidOperationException>(() => container.Resolve<ICycle1>());
         }
 
-        [Test]
+        [Fact]
         public void SingletonByTwoInterfacesIsStillSameInstance()
         {
             var builder = new ContainerBuilder();
@@ -664,7 +665,7 @@ namespace BTDBTest
             Assert.NotNull(log1);
             var log2 = container.Resolve<ILogger>();
             Assert.NotNull(log2);
-            Assert.AreSame(log1, log2);
+            Assert.Same(log1, log2);
         }
 
         public class MultipleConstructors
@@ -693,7 +694,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void UsingConstructorWorks()
         {
             var builder = new ContainerBuilder();
@@ -706,11 +707,11 @@ namespace BTDBTest
             builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(string)).Keyed<MultipleConstructors>(4);
             builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int), typeof(int)).Keyed<MultipleConstructors>(5);
             var container = builder.Build();
-            Assert.AreEqual("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(1).Desc);
-            Assert.AreEqual("", container.ResolveKeyed<MultipleConstructors>(2).Desc);
-            Assert.AreEqual("Int 7", container.ResolveKeyed<MultipleConstructors>(3).Desc);
-            Assert.AreEqual("String A", container.ResolveKeyed<MultipleConstructors>(4).Desc);
-            Assert.AreEqual("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
+            Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(1).Desc);
+            Assert.Equal("", container.ResolveKeyed<MultipleConstructors>(2).Desc);
+            Assert.Equal("Int 7", container.ResolveKeyed<MultipleConstructors>(3).Desc);
+            Assert.Equal("String A", container.ResolveKeyed<MultipleConstructors>(4).Desc);
+            Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
         }
 
         public interface ISupport { }
@@ -739,7 +740,7 @@ namespace BTDBTest
         {
             public RefinePreview(Lazy<IWorld> world, INotify notify)
             {
-                Assert.That(notify, Is.InstanceOf<NotificationOverride>());
+                Assert.IsType<NotificationOverride>(notify);
             }
         }
 
@@ -748,7 +749,7 @@ namespace BTDBTest
         {
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
             {
-                Assert.AreEqual(1,refinables.Count());
+                Assert.Equal(1,refinables.Count());
             }
         }
 
@@ -761,7 +762,7 @@ namespace BTDBTest
         }
 
 
-        [Test]
+        [Fact]
         public void DependenciesInEnumerablesWorks()
         {
             var builder = new ContainerBuilder();
@@ -774,7 +775,7 @@ namespace BTDBTest
 
             var container = builder.Build();
             var notificationOverride = container.Resolve<INotify>();
-            Assert.That(notificationOverride, Is.InstanceOf<NotificationOverride>());
+            Assert.IsType<NotificationOverride>(notificationOverride);
             var world = container.Resolve<IWorld>();
         }
 
@@ -790,7 +791,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void FunctionDependencyWithSubdependency()
         {
             var containerBuilder = new ContainerBuilder();
@@ -817,7 +818,7 @@ namespace BTDBTest
             }
         }
 
-        [Test]
+        [Fact]
         public void EnhancingImplementationPossible()
         {
             var containerBuilder = new ContainerBuilder();
@@ -825,8 +826,8 @@ namespace BTDBTest
             containerBuilder.RegisterType<EnhancedLogger>().AsImplementedInterfaces();
             var container = containerBuilder.Build();
             var handler = container.Resolve<ILogger>();
-            Assert.IsInstanceOf<EnhancedLogger>(handler);
-            Assert.IsInstanceOf<Logger>(((EnhancedLogger)handler).Parent);
+            Assert.IsType<EnhancedLogger>(handler);
+            Assert.IsType<Logger>(((EnhancedLogger)handler).Parent);
         }
     }
 }
