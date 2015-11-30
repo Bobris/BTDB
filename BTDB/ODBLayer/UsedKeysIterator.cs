@@ -1,5 +1,9 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 
 namespace BTDB.ODBLayer
 {
@@ -13,41 +17,83 @@ namespace BTDB.ODBLayer
 
     public class UsedKeysIterator
     {
+        IInternalObjectDBTransaction _tr;
+        IUsedKeysStore _store;
+        ObjectDB _db;
+
         public void Iterate(IObjectDBTransaction tr, IUsedKeysStore store)
         {
-            var itr = tr as IInternalObjectDBTransaction;
-            InContext(store, "Singletons", () => IterateSingletons(itr, store));
+            _tr = tr as IInternalObjectDBTransaction;
+            _store = store;
+            _db = _tr.Owner as ObjectDB;
+            InContext("Singletons", IterateSingletons);
         }
 
-        void IterateSingletons(IInternalObjectDBTransaction tr, IUsedKeysStore store)
+        void IterateSingletons()
         {
-            var db = tr.Owner as ObjectDB;
-            foreach (var type in tr.EnumerateSingletonTypes())
+
+            foreach (var type in _tr.EnumerateSingletonTypes())
             {
-                store.PushContext(type.Name);
-                var singleton = tr.Singleton(type);
-                var ti = db.TablesInfo.FindByType(type);
-                store.Add(ObjectDB.TableSingletonsPrefix, BuildKeyFromOid(ti.Id));
-                IterateObject(tr, store, singleton, ti.ClientTableVersionInfo);
-                store.PopContext();
+                _store.PushContext(type.Name);
+                var singleton = _tr.Singleton(type);
+                var ti = _db.TablesInfo.FindByType(type);
+                _store.Add(ObjectDB.TableSingletonsPrefix, BuildKeyFromOid(ti.Id));
+                IterateObject(singleton, type);
+                _store.PopContext();
             }
         }
 
-        void IterateObject(IInternalObjectDBTransaction tr, IUsedKeysStore store, object obj, TableVersionInfo tvi)
+        void IterateObject(object obj, Type type)
         {
+            var oid = _tr.GetOid(obj);
+            if (oid != 0)
+                _store.Add(ObjectDB.AllObjectsPrefix, BuildKeyFromOid(oid));
+            var tvi = _db.TablesInfo.FindByType(type).ClientTableVersionInfo;
             for (var i = 0; i < tvi.FieldCount; i++)
             {
                 var tvfi = tvi[i];
-                if (tvfi.Handler.Name == "ODBDictionary")
+                var fieldType = tvfi.Handler.HandledType();
+                if (DictionaryFieldHandler.IsCompatibleWith(fieldType))
                 {
-                    store.PushContext(tvfi.Name + "[]");
-                    //var db=obj[tvfi.Name]
-                    //store.Add(db._prefix);
-                    store.PopContext();
+                    var keyType = fieldType.GetGenericArguments()[0];
+                    var valueType = fieldType.GetGenericArguments()[1];
+                    var iterateKeys = NeedIterate(keyType);
+                    var iterateValues = NeedIterate(valueType);
+
+                    if (iterateKeys || iterateValues)
+                    {
+                        InContext("[]", () =>
+                        {
+                            var keyValueType = typeof(KeyValuePair<,>).MakeGenericType(keyType, valueType);
+                            var keyProp = keyValueType.GetProperty("Key");
+                            var valueProp = keyValueType.GetProperty("Value");
+
+                            var dictField = type.GetProperty(tvfi.Name);
+                            var content = dictField.GetValue(obj) as IEnumerable;
+
+                            foreach (var kvp in content)
+                            {
+                                if (iterateKeys)
+                                    IterateObject(keyProp.GetValue(kvp), keyType);
+                                if (iterateValues)
+                                    IterateObject(valueProp.GetValue(kvp), valueType);
+                            }
+                        });
+                    }
                 }
-                //if !StoredInline object
-                //IterateObject(tr, store, obj[tvfi.Name], ..)
+                else if (NeedIterate(fieldType))
+                {
+                    var fieldGetter = type.GetProperty(tvfi.Name);
+                    InContext(tvfi.Name, () => IterateObject(fieldGetter.GetValue(obj), tvfi.Handler.HandledType()));
+                }
+                //todo IIndirect
             }
+        }
+
+        bool NeedIterate(Type type)
+        {
+            //todo better check & cache for speed
+            return !type.IsValueType && type != typeof(string);
         }
 
         static byte[] BuildKeyFromOid(ulong oid)
@@ -58,16 +104,16 @@ namespace BTDB.ODBLayer
             return key;
         }
 
-        void InContext(IUsedKeysStore store, string name, Action action)
+        void InContext(string name, Action action)
         {
-            store.PushContext(name);
+            _store.PushContext(name);
             try
             {
                 action();
             }
             finally
             {
-                store.PopContext();
+                _store.PopContext();
             }
         }
     }

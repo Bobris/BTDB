@@ -24,7 +24,7 @@ namespace BTDBTest
         }
 
         public class Duty
-        {            
+        {
             public string Name { get; set; }
         }
 
@@ -47,7 +47,7 @@ namespace BTDBTest
             public void PushContext(string name)
             {
                 _ctxLengths.Push(_currentCtx.Length);
-                _currentCtx += "." + name;               
+                _currentCtx += "." + name;
             }
 
             public void Add(byte[] key)
@@ -77,7 +77,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var jobs = tr.Singleton<JobMap>();
-                jobs.Jobs[1] = new Job { Duty = new Duty { Name = "Code"} };
+                jobs.Jobs[1] = new Job { Duty = new Duty { Name = "Code" } };
                 tr.Commit();
             }
             using (var tr = _db.StartReadOnlyTransaction())
@@ -87,7 +87,7 @@ namespace BTDBTest
                 traversal.Iterate(tr, store);
                 Assert.True(store.Keys.Count > 0);
             }
-                
+
         }
 
         public void Dispose()
