@@ -129,5 +129,11 @@ namespace BTDB.KVDBLayer
         /// </summary>
         /// <returns>Size of key and value (possibly even compressed size)</returns>
         KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
+
+        /// <summary>
+        /// Gets current prefix. Do not modify resulting bytes!
+        /// </summary>
+        /// <returns>Prefix. DO NOT MODIFY!</returns>
+        Byte[] GetKeyPrefix();
     }
 }

@@ -78,7 +78,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
+        internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
             tr.SetKeyPrefixUnsafe(TableNamesPrefix);
             var keyReader = new KeyValueDBKeyReader(tr);

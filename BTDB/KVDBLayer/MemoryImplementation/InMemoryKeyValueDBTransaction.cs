@@ -317,5 +317,10 @@ namespace BTDB.KVDBLayer
                 (uint)((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length,
                 (uint)((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx).Length);
         }
+
+        public byte[] GetKeyPrefix()
+        {
+            return _prefix;
+        }
     }
 }

@@ -272,12 +272,14 @@
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
     <Compile Include="ODBLayer\IInternalObjectDBTransaction.cs" />
     <Compile Include="ODBLayer\InstanceRegistry.cs" />
+    <Compile Include="ODBLayer\IODBVisitor.cs" />
     <Compile Include="ODBLayer\IOrderedDictionary.cs" />
     <Compile Include="ODBLayer\IQuerySizeDictionary.cs" />
     <Compile Include="ODBLayer\NotStoredAttribute.cs" />
     <Compile Include="ODBLayer\ODBDictionary.cs" />
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
+    <Compile Include="ODBLayer\ODBIterator.cs" />
     <Compile Include="ODBLayer\PrimaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\SecondaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\StoredInlineAttribute.cs" />
