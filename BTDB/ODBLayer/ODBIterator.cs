@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.Buffer;
@@ -15,14 +16,37 @@ namespace BTDB.ODBLayer
         readonly HashSet<uint> _usedTableIds;
         readonly byte[] _tempBytes = new byte[32];
         readonly HashSet<ulong> _visitedOids;
+        readonly HashSet<TableIdVersion> _usedTableVersions;
 
+        struct TableIdVersion : IEquatable<TableIdVersion>
+        {
+            readonly uint _tableid;
+            readonly uint _version;
+
+            public TableIdVersion(uint tableid, uint version)
+            {
+                _tableid = tableid;
+                _version = version;
+            }
+
+            public bool Equals(TableIdVersion other)
+            {
+                return _tableid == other._tableid && _version == other._version;
+            }
+
+            public override int GetHashCode()
+            {
+                return (int)(_tableid * 33 + _version);
+            }
+        }
         public ODBIterator(IObjectDBTransaction tr, IODBVisitor visitor)
         {
-            _tr = (IInternalObjectDBTransaction) tr;
+            _tr = (IInternalObjectDBTransaction)tr;
             _trkv = _tr.KeyValueDBTransaction;
             _visitor = visitor;
             _usedTableIds = new HashSet<uint>();
             _visitedOids = new HashSet<ulong>();
+            _usedTableVersions = new HashSet<TableIdVersion>();
         }
 
         public void Iterate()
@@ -67,12 +91,24 @@ namespace BTDB.ODBLayer
             var reader = new KeyValueDBValueReader(_trkv);
             var tableId = reader.ReadVUInt32();
             var version = reader.ReadVUInt32();
+            MarkTableIdVersionFieldInfo(tableId, version);
             string tableName;
             if (!_visitor.StartObject(oid, tableId, _tableId2Name.TryGetValue(tableId, out tableName) ? tableName : null,
                 version))
                 return;
             // TODO
             _visitor.EndObject();
+        }
+
+        void MarkTableIdVersionFieldInfo(uint tableId, uint version)
+        {
+            if (!_usedTableVersions.Add(new TableIdVersion(tableId, version)))
+                return;
+            _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
+            if (_trkv.Find(TwiceVuint2ByteBuffer(tableId,version))==FindResult.Exact)
+            {
+                _visitor.MarkCurrentKeyAsUsed(_trkv);
+            }
         }
 
         void MarkLastDictId()
@@ -106,6 +142,14 @@ namespace BTDB.ODBLayer
         {
             var ofs = 0;
             PackUnpack.PackVUInt(_tempBytes, ref ofs, v);
+            return ByteBuffer.NewSync(_tempBytes, 0, ofs);
+        }
+
+        ByteBuffer TwiceVuint2ByteBuffer(uint v1,uint v2)
+        {
+            var ofs = 0;
+            PackUnpack.PackVUInt(_tempBytes, ref ofs, v1);
+            PackUnpack.PackVUInt(_tempBytes, ref ofs, v2);
             return ByteBuffer.NewSync(_tempBytes, 0, ofs);
         }
 
