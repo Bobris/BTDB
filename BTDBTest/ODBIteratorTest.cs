@@ -86,52 +86,104 @@ namespace BTDBTest
 
             public bool StartField(string name)
             {
-                throw new NotImplementedException();
+                _builder.AppendLine($"StartField {name}");
+                return true;
             }
 
-            public bool SimpleField(object content)
+            public bool NeedScalarAsObject()
             {
-                throw new NotImplementedException();
+                return true;
             }
 
-            public bool EndField()
+            public void ScalarAsObject(object content)
             {
-                throw new NotImplementedException();
+                _builder.AppendLine($"ScalarObj {content}");
             }
 
-            public bool VisitFieldText(string name, string content)
+            public bool NeedScalarAsText()
             {
-                throw new NotImplementedException();
+                return true;
             }
 
-            public void VisitOidField(string name, ulong oid)
+            public void ScalarAsText(string content)
             {
-                throw new NotImplementedException();
+                _builder.AppendLine($"ScalarStr {content}");
             }
 
-            public bool StartDictionary(string name)
+            public void OidReference(ulong oid)
             {
-                throw new NotImplementedException();
+                _builder.AppendLine($"OidReference {oid}");
+            }
+
+            public bool StartInlineObject(uint tableId, string tableName, uint version)
+            {
+                _builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
+                return true;
+            }
+
+            public void EndInlineObject()
+            {
+                _builder.AppendLine("EndInlineObject");
+            }
+
+            public bool StartList()
+            {
+                _builder.AppendLine("StartList");
+                return true;
+            }
+
+            public bool StartItem()
+            {
+                _builder.AppendLine("StartItem");
+                return true;
+            }
+
+            public void EndItem()
+            {
+                _builder.AppendLine("EndItem");
+            }
+
+            public void EndList()
+            {
+                _builder.AppendLine("EndList");
+            }
+
+            public bool StartDictionary()
+            {
+                _builder.AppendLine("StartDictionary");
+                return true;
             }
 
             public bool StartDictKey()
             {
-                throw new NotImplementedException();
+                _builder.AppendLine("StartDictKey");
+                return true;
             }
 
             public void EndDictKey()
             {
-                throw new NotImplementedException();
+                _builder.AppendLine("EndDictKey");
             }
 
             public bool StartDictValue()
             {
-                throw new NotImplementedException();
+                _builder.AppendLine("StartDictValue");
+                return true;
+            }
+
+            public void EndDictValue()
+            {
+                _builder.AppendLine("EndDictValue");
             }
 
             public void EndDictionary()
             {
-                throw new NotImplementedException();
+                _builder.AppendLine("EndDictionary");
+            }
+
+            public void EndField()
+            {
+                _builder.AppendLine("EndField");
             }
 
             public void EndObject()

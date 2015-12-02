@@ -17,6 +17,7 @@ namespace BTDB.ODBLayer
         readonly byte[] _tempBytes = new byte[32];
         readonly HashSet<ulong> _visitedOids;
         readonly HashSet<TableIdVersion> _usedTableVersions;
+        readonly Dictionary<TableIdVersion, TableVersionInfo> _tableVersionInfos;
 
         struct TableIdVersion : IEquatable<TableIdVersion>
         {
@@ -47,6 +48,7 @@ namespace BTDB.ODBLayer
             _usedTableIds = new HashSet<uint>();
             _visitedOids = new HashSet<ulong>();
             _usedTableVersions = new HashSet<TableIdVersion>();
+            _tableVersionInfos = new Dictionary<TableIdVersion, TableVersionInfo>();
         }
 
         public void Iterate()
@@ -96,6 +98,7 @@ namespace BTDB.ODBLayer
             if (!_visitor.StartObject(oid, tableId, _tableId2Name.TryGetValue(tableId, out tableName) ? tableName : null,
                 version))
                 return;
+            var tvi = GetTableVersionInfo(tableId, version);
             // TODO
             _visitor.EndObject();
         }
@@ -156,6 +159,21 @@ namespace BTDB.ODBLayer
         void LoadTableNamesDict()
         {
             _tableId2Name = ObjectDB.LoadTablesEnum(_tr.KeyValueDBTransaction).ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
+        {
+            TableVersionInfo res;
+            if (_tableVersionInfos.TryGetValue(new TableIdVersion(tableId, version), out res))
+                return res;
+            _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
+            if (_trkv.Find(TwiceVuint2ByteBuffer(tableId, version)) == FindResult.Exact)
+            {
+                var reader = new KeyValueDBValueReader(_trkv);
+                res = TableVersionInfo.Load(reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
+                return res;
+            }
+            throw new ArgumentException($"TableVersionInfo not found {tableId}-{version}");
         }
     }
 }
