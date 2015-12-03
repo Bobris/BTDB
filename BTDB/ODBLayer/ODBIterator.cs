@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -99,8 +102,120 @@ namespace BTDB.ODBLayer
                 version))
                 return;
             var tvi = GetTableVersionInfo(tableId, version);
-            // TODO
+            for (var i = 0; i < tvi.FieldCount; i++)
+            {
+                var fi = tvi[i];
+                if (_visitor.StartField(fi.Name))
+                {
+                    IterateHandler(reader, fi.Handler);
+                    _visitor.EndField();
+                }
+            }
             _visitor.EndObject();
+        }
+
+        void IterateDict(ulong dictId, IFieldHandler keyHandler, IFieldHandler valueHandler)
+        {
+            if (!_visitor.StartDictionary())
+                return;
+            var o = ObjectDB.AllDictionariesPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+            Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, dictId);
+            _trkv.SetKeyPrefix(prefix);
+            var count = _trkv.GetKeyValueCount();
+            var protector = _tr.TransactionProtector;
+            long prevProtectionCounter = 0;
+            long pos = 0;
+            while (true)
+            {
+                protector.Start();
+                if (pos == 0)
+                {
+                    _trkv.SetKeyPrefix(prefix);
+                    if (!_trkv.FindFirstKey()) break;
+                }
+                else
+                {
+                    if (protector.WasInterupted(prevProtectionCounter))
+                    {
+                        _trkv.SetKeyPrefix(prefix);
+                        if (!_trkv.SetKeyIndex(pos)) break;
+                    }
+                    else
+                    {
+                        if (!_trkv.FindNextKey()) break;
+                    }
+                }
+                _visitor.MarkCurrentKeyAsUsed(_trkv);
+                prevProtectionCounter = protector.ProtectionCounter;
+                if (_visitor.StartDictKey())
+                {
+                    var keyReader = new KeyValueDBKeyReader(_trkv);
+                    IterateHandler(keyReader, keyHandler);
+                    _visitor.EndDictKey();
+                }
+                if (protector.WasInterupted(prevProtectionCounter))
+                {
+                    _trkv.SetKeyPrefix(prefix);
+                    if (!_trkv.SetKeyIndex(pos)) break;
+                }
+                if (_visitor.StartDictValue())
+                {
+                    var valueReader = new KeyValueDBValueReader(_trkv);
+                    IterateHandler(valueReader, valueHandler);
+                    _visitor.EndDictValue();
+                }
+                pos++;
+            }
+            _visitor.EndDictionary();
+        }
+
+        void IterateHandler(AbstractBufferedReader reader, IFieldHandler handler)
+        {
+            if (handler is ODBDictionaryFieldHandler)
+            {
+                var dictId = reader.ReadVUInt64();
+                var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
+                IterateDict(dictId, kvHandlers[0], kvHandlers[1]);
+            }
+            else if (handler is DBObjectFieldHandler)
+            {
+                var oid = reader.ReadVInt64();
+                if (oid == 0)
+                {
+                    _visitor.OidReference(0);
+                } else if (oid <= int.MinValue || oid > 0)
+                {
+                    _visitor.OidReference((ulong) oid);
+                    IterateOid((ulong) oid);
+                }
+                else
+                {
+                    // TODO inline object
+                }
+            }
+            else if (handler.NeedsCtx() || handler.HandledType() == null)
+            {
+                throw new BTDBException("Don't know how to iterate " + handler.Name);
+            }
+            else
+            {
+                var meth =
+                    ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, object>>("Load" + handler.Name);
+                var il = meth.Generator;
+                handler.Load(il, il2 => il2.Ldarg(0));
+                il.Box(handler.HandledType()).Ret();
+                var obj = meth.Create()(reader);
+                if (_visitor.NeedScalarAsObject())
+                {
+                    _visitor.ScalarAsObject(obj);
+                }
+                if (_visitor.NeedScalarAsText())
+                {
+                    _visitor.ScalarAsText(obj.ToString());
+                }
+            }
         }
 
         void MarkTableIdVersionFieldInfo(uint tableId, uint version)
@@ -108,7 +223,7 @@ namespace BTDB.ODBLayer
             if (!_usedTableVersions.Add(new TableIdVersion(tableId, version)))
                 return;
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
-            if (_trkv.Find(TwiceVuint2ByteBuffer(tableId,version))==FindResult.Exact)
+            if (_trkv.Find(TwiceVuint2ByteBuffer(tableId, version)) == FindResult.Exact)
             {
                 _visitor.MarkCurrentKeyAsUsed(_trkv);
             }
@@ -148,7 +263,7 @@ namespace BTDB.ODBLayer
             return ByteBuffer.NewSync(_tempBytes, 0, ofs);
         }
 
-        ByteBuffer TwiceVuint2ByteBuffer(uint v1,uint v2)
+        ByteBuffer TwiceVuint2ByteBuffer(uint v1, uint v2)
         {
             var ofs = 0;
             PackUnpack.PackVUInt(_tempBytes, ref ofs, v1);
