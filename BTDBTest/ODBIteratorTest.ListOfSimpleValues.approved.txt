@@ -1,0 +1,51 @@
+﻿Singleton 1-VariousLists oid:1
+Used key: 00 00|01 Value len:13
+Used key: 00 02|01 Value len:1
+Used key: 01|01 Value len:21
+Used key: 00 01|01 01 Value len:70
+Object oid:1 1-VariousLists version:1
+StartField IntList
+StartList
+StartItem
+ScalarObj 5
+ScalarStr 5
+EndItem
+StartItem
+ScalarObj 10
+ScalarStr 10
+EndItem
+StartItem
+ScalarObj 2000
+ScalarStr 2000
+EndItem
+EndList
+EndField
+StartField StringList
+StartList
+StartItem
+ScalarObj A
+ScalarStr A
+EndItem
+StartItem
+ScalarObj 
+ScalarStr null
+EndItem
+StartItem
+ScalarObj AB!
+ScalarStr AB!
+EndItem
+EndList
+EndField
+StartField ByteList
+StartList
+StartItem
+ScalarObj 0
+ScalarStr 0
+EndItem
+StartItem
+ScalarObj 255
+ScalarStr 255
+EndItem
+EndList
+EndField
+EndObject

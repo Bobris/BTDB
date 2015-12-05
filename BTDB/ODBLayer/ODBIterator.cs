@@ -195,6 +195,24 @@ namespace BTDB.ODBLayer
                     // TODO inline object
                 }
             }
+            else if (handler is ListFieldHandler)
+            {
+                var oid = reader.ReadVInt64();
+                var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                if (oid == 0)
+                {
+                    _visitor.OidReference(0);
+                }
+                else if (oid <= int.MinValue || oid > 0)
+                {
+                    _visitor.OidReference((ulong)oid);
+                    IterateOid((ulong)oid);
+                }
+                else
+                {
+                    IterateInlineList(reader, itemHandler);
+                }
+            }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
             {
                 throw new BTDBException("Don't know how to iterate " + handler.Name);
@@ -213,9 +231,22 @@ namespace BTDB.ODBLayer
                 }
                 if (_visitor.NeedScalarAsText())
                 {
-                    _visitor.ScalarAsText(obj.ToString());
+                    _visitor.ScalarAsText(obj?.ToString() ?? "null");
                 }
             }
+        }
+
+        void IterateInlineList(AbstractBufferedReader reader, IFieldHandler itemHandler)
+        {
+            var skip = !_visitor.StartList();
+            var count = reader.ReadVUInt32();
+            while (count-- > 0)
+            {
+                var itemskip = skip || !_visitor.StartItem();
+                IterateHandler(reader, itemHandler); // TODO pass itemskip
+                if (!itemskip) _visitor.EndItem();
+            }
+            if (!skip) _visitor.EndList();
         }
 
         void MarkTableIdVersionFieldInfo(uint tableId, uint version)
