@@ -89,6 +89,7 @@ namespace BTDB.ODBLayer
         {
             if (!_visitedOids.Add(oid))
                 return;
+            _tr.TransactionProtector.Start();
             _trkv.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
             if (_trkv.Find(Vuint2ByteBuffer(oid)) != FindResult.Exact)
                 return; // Object oid was deleted
@@ -123,7 +124,6 @@ namespace BTDB.ODBLayer
             Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, dictId);
             _trkv.SetKeyPrefix(prefix);
-            var count = _trkv.GetKeyValueCount();
             var protector = _tr.TransactionProtector;
             long prevProtectionCounter = 0;
             long pos = 0;
@@ -185,14 +185,30 @@ namespace BTDB.ODBLayer
                 if (oid == 0)
                 {
                     _visitor.OidReference(0);
-                } else if (oid <= int.MinValue || oid > 0)
+                }
+                else if (oid <= int.MinValue || oid > 0)
                 {
-                    _visitor.OidReference((ulong) oid);
-                    IterateOid((ulong) oid);
+                    _visitor.OidReference((ulong)oid);
+                    IterateOid((ulong)oid);
                 }
                 else
                 {
-                    // TODO inline object
+                    var tableId = reader.ReadVUInt32();
+                    var version = reader.ReadVUInt32();
+                    MarkTableIdVersionFieldInfo(tableId, version);
+                    string tableName;
+                    var skip =
+                        !_visitor.StartInlineObject(tableId,
+                            _tableId2Name.TryGetValue(tableId, out tableName) ? tableName : null, version);
+                    var tvi = GetTableVersionInfo(tableId, version);
+                    for (var i = 0; i < tvi.FieldCount; i++)
+                    {
+                        var fi = tvi[i];
+                        var skipField = skip || !_visitor.StartField(fi.Name);
+                        IterateHandler(reader, fi.Handler);
+                        if (!skipField) _visitor.EndField();
+                    }
+                    if (!skip) _visitor.EndInlineObject();
                 }
             }
             else if (handler is ListFieldHandler)
@@ -242,9 +258,9 @@ namespace BTDB.ODBLayer
             var count = reader.ReadVUInt32();
             while (count-- > 0)
             {
-                var itemskip = skip || !_visitor.StartItem();
-                IterateHandler(reader, itemHandler); // TODO pass itemskip
-                if (!itemskip) _visitor.EndItem();
+                var skipItem = skip || !_visitor.StartItem();
+                IterateHandler(reader, itemHandler); // TODO pass skipItem
+                if (!skipItem) _visitor.EndItem();
             }
             if (!skip) _visitor.EndList();
         }
@@ -317,6 +333,7 @@ namespace BTDB.ODBLayer
             {
                 var reader = new KeyValueDBValueReader(_trkv);
                 res = TableVersionInfo.Load(reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
+                _tableVersionInfos.Add(new TableIdVersion(tableId, version), res);
                 return res;
             }
             throw new ArgumentException($"TableVersionInfo not found {tableId}-{version}");

@@ -1,0 +1,32 @@
+﻿Singleton 1-ObjectWfd1 oid:1
+Used key: 00 00|01 Value len:11
+Used key: 00 02|01 Value len:1
+Used key: 01|01 Value len:14
+Used key: 00 01|01 02 Value len:33
+Object oid:1 1-ObjectWfd1 version:2
+StartField A
+Used key: 00 01|02 02 Value len:27
+StartInlineObject 2-Rule1-2
+StartField Name
+ScalarObj A
+ScalarStr A
+EndField
+StartField Type
+ScalarObj 0
+ScalarStr 0
+EndField
+EndInlineObject
+EndField
+StartField C
+StartInlineObject 2-Rule1-2
+StartField Name
+ScalarObj C
+ScalarStr C
+EndField
+StartField Type
+ScalarObj 2
+ScalarStr 2
+EndField
+EndInlineObject
+EndField
+EndObject

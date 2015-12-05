@@ -20,6 +20,12 @@ namespace BTDBTest
             OpenDb();
         }
 
+        void ReopenDb()
+        {
+            _db.Dispose();
+            OpenDb();
+        }
+
         void OpenDb()
         {
             _db = new ObjectDB();
@@ -295,6 +301,60 @@ namespace BTDBTest
                 root.IntList = new List<int> { 5, 10, 2000 };
                 root.StringList = new List<string> { "A", null, "AB!" };
                 root.ByteList = new List<byte> { 0, 255 };
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
+        [StoredInline]
+        public class Rule1
+        {
+            public string Name { get; set; }
+        }
+
+        [StoredInline]
+        public class Rule2
+        {
+            public string Name { get; set; }
+            public int Type { get; set; }
+        }
+        public class ObjectWfd1
+        {
+            public Rule1 A { get; set; }
+            public Rule1 B { get; set; }
+            public Rule1 C { get; set; }
+        }
+
+        public class ObjectWfd2
+        {
+            public Rule2 A { get; set; }
+            //public Rule2 B { get; set; }
+            public Rule2 C { get; set; }
+        }
+
+        [Fact]
+        public void UpgradeDeletedInlineObjectWorks()
+        {
+            var typeNameWfd = _db.RegisterType(typeof(ObjectWfd1));
+            var typeNameRule = _db.RegisterType(typeof(Rule1));
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ObjectWfd1>();
+                wfd.A = new Rule1 { Name = "A" };
+                wfd.B = new Rule1 { Name = "B" };
+                wfd.C = new Rule1 { Name = "C" };
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(ObjectWfd2), typeNameWfd);
+            _db.RegisterType(typeof(Rule2), typeNameRule);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var wfd = tr.Singleton<ObjectWfd2>();
+                wfd.C.Type = 2;
+                tr.Store(wfd);
                 tr.Commit();
             }
             IterateWithApprove();
