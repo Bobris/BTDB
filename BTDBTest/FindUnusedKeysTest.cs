@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using ApprovalTests;
 using BTDB.KVDBLayer;
@@ -57,21 +56,28 @@ namespace BTDBTest
             }
         }
 
-        [Fact(Skip = "Not finished")]
+        [Fact(Skip = "Not all tableNames are marked 0000|02 Value  0000|03")]
         public void DoesNotReportFalsePositive()
         {
             StoreJob(1, "Not create leak");
+            AssertNoLeaksInDb();
+        }
+
+        void AssertNoLeaksInDb()
+        {
             using (var visitor = new FindUnusedKeysVisitor())
-            using (var tr = _db.StartReadOnlyTransaction())
             {
-                visitor.ImportAllKeys(tr);
-                visitor.Iterate(tr);
-                //var report = DumpUnseenKeys(visitor);
-                Assert.Equal(0, visitor.UnseenKeys().Count());
+                using (var tr = _db.StartReadOnlyTransaction())
+                {
+                    visitor.ImportAllKeys(tr);
+                    visitor.Iterate(tr);
+                    var report = DumpUnseenKeys(visitor, " ");
+                    Assert.Equal(string.Empty, report);
+                }
             }
         }
 
-        [Fact(Skip = "Not finished")]
+        [Fact(Skip = "Not all tableNames are marked 0000|02 Value  0000|03")]
         public void FindAndRemovesUnusedKeys()
         {
             StoreJob(1, "Create leak");
@@ -85,7 +91,7 @@ namespace BTDBTest
                     visitor.Iterate(tr);
                 }
 
-                var report = DumpUnseenKeys(visitor);
+                var report = DumpUnseenKeys(visitor, "\r\n");
                 Approvals.Verify(report);
 
                 using (var tr = _db.StartTransaction())
@@ -93,30 +99,27 @@ namespace BTDBTest
                     visitor.DeleteUnused(tr);
                     tr.Commit();
                 }
-                ReopenDb();
-                //check that db is not broken after removing unused keys
-                using (var tr = _db.StartReadOnlyTransaction())
-                {
-                    var jobs = tr.Singleton<JobMap>();
-                    Assert.Equal(jobs.Jobs[1].Duty.Name, "Code");
-                }
+            }
+            ReopenDb();
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var jobs = tr.Singleton<JobMap>();
+                //check that db has is not broken after removing unused keys
+                Assert.Equal(jobs.Jobs[1].Duty.Name, "Code");
             }
         }
 
-        static string DumpUnseenKeys(FindUnusedKeysVisitor visitor)
+        static string DumpUnseenKeys(FindUnusedKeysVisitor visitor, string concat)
         {
             var builder = new StringBuilder();
             foreach (var unseenKey in visitor.UnseenKeys())
             {
                 if (builder.Length > 0)
-                {
-                    builder.AppendLine();
-                }
+                    builder.Append(concat);
                 foreach (var b in unseenKey.Key)
-                {
                     builder.Append(b.ToString("X2"));
-                }
-                builder.Append(" value size: ");
+                builder.Append(" Value len:");
                 builder.Append(unseenKey.ValueSize);
             }
             return builder.ToString();

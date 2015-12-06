@@ -1,16 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class FindUnusedKeysVisitor : IODBVisitor, IDisposable
+    public class FindUnusedKeysVisitor : IDisposable
     {
         IFileCollection _memoryFileCollection;
         IKeyValueDB _keyValueDb;
         IKeyValueDBTransaction _kvtr;
         readonly byte[] _tempBytes = new byte[32];
+        readonly byte[] _tempKeyBytes = new byte[32];
 
         public struct UnseenKey
         {
@@ -37,22 +39,23 @@ namespace BTDB.ODBLayer
         public void ImportAllKeys(IObjectDBTransaction sourceDbTr)
         {
             var itr = (IInternalObjectDBTransaction)sourceDbTr;
-            var trkv = itr.KeyValueDBTransaction;
+            var sourceKvTr = itr.KeyValueDBTransaction;
             foreach (var prefix in SupportedKeySpaces())
-                ImportKeysWithPrefix(prefix, trkv);
+                ImportKeysWithPrefix(prefix, sourceKvTr);
         }
 
         void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBTransaction sourceKvTr)
         {
-            sourceKvTr.SetKeyPrefixUnsafe(prefix);
+            sourceKvTr.SetKeyPrefix(prefix);
             if (!sourceKvTr.FindFirstKey())
                 return;
             using (var kvtr = _keyValueDb.StartWritingTransaction().Result)
             {
+                kvtr.SetKeyPrefix(prefix);
                 do
                 {
-                    //create all keys instead of value store only byte length of value
-                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer((uint)kvtr.GetValue().Length));
+                    //create all keys, instead of value store only byte length of value
+                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(kvtr.GetStorageSizeOfCurrentKey().Value));
                 } while (sourceKvTr.FindNextKey());
                 kvtr.Commit();
             }
@@ -60,7 +63,7 @@ namespace BTDB.ODBLayer
 
         public void Iterate(IObjectDBTransaction tr)
         {
-            var iterator = new ODBIterator(tr, this);
+            var iterator = new ODBIterator(tr, new VisitorForFindUnused(this));
             using (_kvtr = _keyValueDb.StartWritingTransaction().Result)
             {
                 iterator.Iterate();
@@ -84,7 +87,7 @@ namespace BTDB.ODBLayer
                         reader.Restart();
                         yield return new UnseenKey
                         {
-                            Key = trkv.GetKey().ToByteArray(),
+                            Key = Merge(prefix, trkv.GetKeyAsByteArray()),
                             ValueSize = reader.ReadVUInt32()
                         };
                     } while (trkv.FindNextKey());
@@ -92,6 +95,14 @@ namespace BTDB.ODBLayer
             }
         }
 
+        byte[] Merge(byte[] prefix, byte[] suffix)
+        {
+            var result = new byte[prefix.Length + suffix.Length];
+            System.Buffer.BlockCopy(prefix, 0, result, 0, prefix.Length);
+            System.Buffer.BlockCopy(suffix, 0, result, prefix.Length, suffix.Length);
+            return result;
+        }
+   
         public void DeleteUnused(IObjectDBTransaction tr)
         {
             var itr = (IInternalObjectDBTransaction)tr;
@@ -111,79 +122,132 @@ namespace BTDB.ODBLayer
             _memoryFileCollection = null;
         }
 
-        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
-        {
-            _kvtr.SetKeyPrefix(tr.GetKey());            
-            if (_kvtr.FindFirstKey())
-                _kvtr.EraseAll();
-        }
-
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
-        {
-            return true;
-        }
-
-        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
-        {
-            return true;
-        }
-
-        public bool StartField(string name)
-        {
-            return true;
-        }
-
-        public bool SimpleField(object content)
-        {
-            return true;
-        }
-
-        public bool EndField()
-        {
-            return true;
-        }
-
-        public bool VisitFieldText(string name, string content)
-        {
-            return true;
-        }
-
-        public void VisitOidField(string name, ulong oid)
-        {
-        }
-
-        public bool StartDictionary(string name)
-        {
-            return true;
-        }
-
-        public bool StartDictKey()
-        {
-            return true;
-        }
-
-        public void EndDictKey()
-        {
-        }
-
-        public bool StartDictValue()
-        {
-            return true;
-        }
-
-        public void EndDictionary()
-        {
-        }
-
-        public void EndObject()
-        {
-        }
-
         ByteBuffer Vuint2ByteBuffer(uint v)
         {
             var ofs = 0;
             PackUnpack.PackVUInt(_tempBytes, ref ofs, v);
             return ByteBuffer.NewSync(_tempBytes, 0, ofs);
+        }
+
+        void MarkKeyAsUsed(IKeyValueDBTransaction tr)
+        {
+            _kvtr.SetKeyPrefix(Merge(tr.GetKeyPrefix(), tr.GetKeyAsByteArray()));
+            _kvtr.EraseAll();
+        }
+
+        class VisitorForFindUnused : IODBVisitor
+        {
+            readonly FindUnusedKeysVisitor _finder;
+
+            public VisitorForFindUnused(FindUnusedKeysVisitor finder)
+            {
+                _finder = finder;
+            }
+
+            public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
+            {
+                _finder.MarkKeyAsUsed(tr);
+            }
+
+            public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+            {
+                return true;
+            }
+
+            public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+            {
+                return true;
+            }
+
+            public bool StartField(string name)
+            {
+                return true;
+            }
+
+            public bool NeedScalarAsObject()
+            {
+                return false;
+            }
+
+            public void ScalarAsObject(object content)
+            {
+            }
+
+            public bool NeedScalarAsText()
+            {
+                return false;
+            }
+
+            public void ScalarAsText(string content)
+            {
+            }
+
+            public void OidReference(ulong oid)
+            {
+            }
+
+            public bool StartInlineObject(uint tableId, string tableName, uint version)
+            {
+                return true;
+            }
+
+            public void EndInlineObject()
+            {
+            }
+
+            public bool StartList()
+            {
+                return true;
+            }
+
+            public bool StartItem()
+            {
+                return true;
+            }
+
+            public void EndItem()
+            {
+            }
+
+            public void EndList()
+            {
+            }
+
+            public bool StartDictionary()
+            {
+                return true;
+            }
+
+            public bool StartDictKey()
+            {
+                return true;
+            }
+
+            public void EndDictKey()
+            {
+            }
+
+            public bool StartDictValue()
+            {
+                return true;
+            }
+
+            public void EndDictValue()
+            {
+            }
+
+            public void EndDictionary()
+            {
+            }
+
+            public void EndField()
+            {
+            }
+
+            public void EndObject()
+            {
+            }
+
         }
     }
 }
