@@ -284,7 +284,7 @@
     <Compile Include="ODBLayer\SecondaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\StoredInlineAttribute.cs" />
     <Compile Include="ODBLayer\UniqueIndexAttribute.cs" />
-    <Compile Include="ODBLayer\UsedKeysIterator.cs" />
+    <Compile Include="ODBLayer\FindUnusedKeysVisitor.cs" />
     <Compile Include="Reactive\AnonymousObserver.cs" />
     <Compile Include="Reactive\FastSubject.cs" />
     <Compile Include="Reactive\FastSubjectHelpers.cs" />

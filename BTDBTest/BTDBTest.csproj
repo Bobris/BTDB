@@ -129,7 +129,7 @@
     <Compile Include="TcpipClientServerChannelTest.cs" />
     <Compile Include="TypeSerializersTest.cs" />
     <Compile Include="ODBIteratorTest.cs" />
-    <Compile Include="UnusedKeysFinderTest.cs" />
+    <Compile Include="FindUnusedKeysTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BTDB\BTDB.csproj">
