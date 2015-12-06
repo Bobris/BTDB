@@ -269,6 +269,8 @@ namespace BTDB.ODBLayer
         {
             if (!_usedTableVersions.Add(new TableIdVersion(tableId, version)))
                 return;
+            MarkTableName(tableId);
+            _tr.TransactionProtector.Start();
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
             if (_trkv.Find(TwiceVuint2ByteBuffer(tableId, version)) == FindResult.Exact)
             {
@@ -289,6 +291,7 @@ namespace BTDB.ODBLayer
         {
             if (!_usedTableIds.Add(tableId))
                 return;
+            _tr.TransactionProtector.Start();
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableNamesPrefix);
             if (_trkv.Find(Vuint2ByteBuffer(tableId)) == FindResult.Exact)
             {

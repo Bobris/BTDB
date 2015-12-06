@@ -56,7 +56,7 @@ namespace BTDBTest
             }
         }
 
-        [Fact(Skip = "Not all tableNames are marked 0000|02 Value  0000|03")]
+        [Fact]
         public void DoesNotReportFalsePositive()
         {
             StoreJob(1, "Not create leak");
@@ -77,7 +77,7 @@ namespace BTDBTest
             }
         }
 
-        [Fact(Skip = "Not all tableNames are marked 0000|02 Value  0000|03")]
+        [Fact]
         public void FindAndRemovesUnusedKeys()
         {
             StoreJob(1, "Create leak");
