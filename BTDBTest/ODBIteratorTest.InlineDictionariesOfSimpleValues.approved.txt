@@ -1,0 +1,27 @@
+﻿Singleton 1-InlineDictionary oid:1
+Used key: 00 00|01 Value len:17
+Used key: 00 02|01 Value len:1
+Used key: 01|01 Value len:11
+Used key: 00 01|01 01 Value len:40
+Object oid:1 1-InlineDictionary version:1
+StartField Int2String
+StartDictionary
+StartDictKey
+ScalarObj 1
+ScalarStr 1
+EndDictKey
+StartDictValue
+ScalarObj one
+ScalarStr one
+EndDictValue
+StartDictKey
+ScalarObj 0
+ScalarStr 0
+EndDictKey
+StartDictValue
+ScalarObj 
+ScalarStr null
+EndDictValue
+EndDictionary
+EndField
+EndObject

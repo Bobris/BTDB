@@ -315,6 +315,23 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
+        public class InlineDictionary
+        {
+            public Dictionary<int, string> Int2String { get; set; }
+        }
+
+        [Fact]
+        public void InlineDictionariesOfSimpleValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<InlineDictionary>();
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
         [StoredInline]
         public class Rule1
         {

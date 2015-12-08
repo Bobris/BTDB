@@ -230,7 +230,6 @@ namespace BTDB.ODBLayer
             else if (handler is ListFieldHandler)
             {
                 var oid = reader.ReadVInt64();
-                var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
                 if (oid == 0)
                 {
                     if (!skipping) _visitor?.OidReference(0);
@@ -245,7 +244,29 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
+                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
                     IterateInlineList(reader, itemHandler, skipping);
+                }
+            }
+            else if (handler is DictionaryFieldHandler)
+            {
+                var oid = reader.ReadVInt64();
+                if (oid == 0)
+                {
+                    if (!skipping) _visitor?.OidReference(0);
+                }
+                else if (oid <= int.MinValue || oid > 0)
+                {
+                    if (!skipping)
+                    {
+                        _visitor?.OidReference((ulong)oid);
+                        IterateOid((ulong)oid);
+                    }
+                }
+                else
+                {
+                    var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
+                    IterateInlineDict(reader, kvHandlers[0], kvHandlers[1], skipping);
                 }
             }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
@@ -293,6 +314,22 @@ namespace BTDB.ODBLayer
                     }
                 }
             }
+        }
+
+        void IterateInlineDict(AbstractBufferedReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping)
+        {
+            var skip = skipping || _visitor != null && !_visitor.StartDictionary();
+            var count = reader.ReadVUInt32();
+            while (count-- > 0)
+            {
+                var skipKey = skip || _visitor != null && !_visitor.StartDictKey();
+                IterateHandler(reader, keyHandler, skipKey);
+                if (!skipKey) _visitor?.EndDictKey();
+                var skipValue = skip || _visitor != null && !_visitor.StartDictValue();
+                IterateHandler(reader, valueHandler, skipValue);
+                if (!skipValue) _visitor?.EndDictValue();
+            }
+            if (!skip) _visitor?.EndDictionary();
         }
 
         void IterateInlineList(AbstractBufferedReader reader, IFieldHandler itemHandler, bool skipping)
