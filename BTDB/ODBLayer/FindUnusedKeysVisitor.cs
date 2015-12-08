@@ -135,7 +135,7 @@ namespace BTDB.ODBLayer
             _kvtr.EraseAll();
         }
 
-        class VisitorForFindUnused : IODBVisitor
+        class VisitorForFindUnused : IODBFastVisitor
         {
             readonly FindUnusedKeysVisitor _finder;
 
@@ -148,106 +148,6 @@ namespace BTDB.ODBLayer
             {
                 _finder.MarkKeyAsUsed(tr);
             }
-
-            public bool VisitSingleton(uint tableId, string tableName, ulong oid)
-            {
-                return true;
-            }
-
-            public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
-            {
-                return true;
-            }
-
-            public bool StartField(string name)
-            {
-                return true;
-            }
-
-            public bool NeedScalarAsObject()
-            {
-                return false;
-            }
-
-            public void ScalarAsObject(object content)
-            {
-            }
-
-            public bool NeedScalarAsText()
-            {
-                return false;
-            }
-
-            public void ScalarAsText(string content)
-            {
-            }
-
-            public void OidReference(ulong oid)
-            {
-            }
-
-            public bool StartInlineObject(uint tableId, string tableName, uint version)
-            {
-                return true;
-            }
-
-            public void EndInlineObject()
-            {
-            }
-
-            public bool StartList()
-            {
-                return true;
-            }
-
-            public bool StartItem()
-            {
-                return true;
-            }
-
-            public void EndItem()
-            {
-            }
-
-            public void EndList()
-            {
-            }
-
-            public bool StartDictionary()
-            {
-                return true;
-            }
-
-            public bool StartDictKey()
-            {
-                return true;
-            }
-
-            public void EndDictKey()
-            {
-            }
-
-            public bool StartDictValue()
-            {
-                return true;
-            }
-
-            public void EndDictValue()
-            {
-            }
-
-            public void EndDictionary()
-            {
-            }
-
-            public void EndField()
-            {
-            }
-
-            public void EndObject()
-            {
-            }
-
         }
     }
 }

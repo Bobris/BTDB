@@ -47,52 +47,57 @@ namespace BTDBTest
             public IDictionary<ulong, Job> Jobs { get; set; }
         }
 
-        class ToStringVisitor : IODBVisitor
+        class ToStringFastVisitor : IODBFastVisitor
         {
-            readonly StringBuilder _builder = new StringBuilder();
+            protected readonly StringBuilder Builder = new StringBuilder();
+            public ByteBuffer Keys = ByteBuffer.NewEmpty();
 
             public override string ToString()
             {
-                return _builder.ToString();
+                return Builder.ToString();
             }
 
             public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
             {
-                _builder.Append("Used key: ");
+                Keys = Keys.ResizingAppend(ByteBuffer.NewSync(tr.GetKeyPrefix())).ResizingAppend(tr.GetKey());
+                Builder.Append("Used key: ");
                 Print(ByteBuffer.NewSync(tr.GetKeyPrefix()));
-                _builder.Append('|');
+                Builder.Append('|');
                 Print(tr.GetKey());
-                _builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
-                _builder.AppendLine();
+                Builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
+                Builder.AppendLine();
             }
 
             void Print(ByteBuffer b)
             {
                 for (int i = 0; i < b.Length; i++)
                 {
-                    if (i > 0) _builder.Append(' ');
-                    _builder.Append(b[i].ToString("X2"));
+                    if (i > 0) Builder.Append(' ');
+                    Builder.Append(b[i].ToString("X2"));
                 }
             }
+        }
 
+        class ToStringVisitor : ToStringFastVisitor, IODBVisitor
+        {
             public bool VisitSingleton(uint tableId, string tableName, ulong oid)
             {
-                _builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
-                _builder.AppendLine();
+                Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
+                Builder.AppendLine();
                 return true;
             }
 
             public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
             {
-                _builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
+                Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
                     version);
-                _builder.AppendLine();
+                Builder.AppendLine();
                 return true;
             }
 
             public bool StartField(string name)
             {
-                _builder.AppendLine($"StartField {name}");
+                Builder.AppendLine($"StartField {name}");
                 return true;
             }
 
@@ -103,7 +108,7 @@ namespace BTDBTest
 
             public void ScalarAsObject(object content)
             {
-                _builder.AppendLine($"ScalarObj {content}");
+                Builder.AppendLine($"ScalarObj {content}");
             }
 
             public bool NeedScalarAsText()
@@ -113,88 +118,88 @@ namespace BTDBTest
 
             public void ScalarAsText(string content)
             {
-                _builder.AppendLine($"ScalarStr {content}");
+                Builder.AppendLine($"ScalarStr {content}");
             }
 
             public void OidReference(ulong oid)
             {
-                _builder.AppendLine($"OidReference {oid}");
+                Builder.AppendLine($"OidReference {oid}");
             }
 
             public bool StartInlineObject(uint tableId, string tableName, uint version)
             {
-                _builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
+                Builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
                 return true;
             }
 
             public void EndInlineObject()
             {
-                _builder.AppendLine("EndInlineObject");
+                Builder.AppendLine("EndInlineObject");
             }
 
             public bool StartList()
             {
-                _builder.AppendLine("StartList");
+                Builder.AppendLine("StartList");
                 return true;
             }
 
             public bool StartItem()
             {
-                _builder.AppendLine("StartItem");
+                Builder.AppendLine("StartItem");
                 return true;
             }
 
             public void EndItem()
             {
-                _builder.AppendLine("EndItem");
+                Builder.AppendLine("EndItem");
             }
 
             public void EndList()
             {
-                _builder.AppendLine("EndList");
+                Builder.AppendLine("EndList");
             }
 
             public bool StartDictionary()
             {
-                _builder.AppendLine("StartDictionary");
+                Builder.AppendLine("StartDictionary");
                 return true;
             }
 
             public bool StartDictKey()
             {
-                _builder.AppendLine("StartDictKey");
+                Builder.AppendLine("StartDictKey");
                 return true;
             }
 
             public void EndDictKey()
             {
-                _builder.AppendLine("EndDictKey");
+                Builder.AppendLine("EndDictKey");
             }
 
             public bool StartDictValue()
             {
-                _builder.AppendLine("StartDictValue");
+                Builder.AppendLine("StartDictValue");
                 return true;
             }
 
             public void EndDictValue()
             {
-                _builder.AppendLine("EndDictValue");
+                Builder.AppendLine("EndDictValue");
             }
 
             public void EndDictionary()
             {
-                _builder.AppendLine("EndDictionary");
+                Builder.AppendLine("EndDictionary");
             }
 
             public void EndField()
             {
-                _builder.AppendLine("EndField");
+                Builder.AppendLine("EndField");
             }
 
             public void EndObject()
             {
-                _builder.AppendLine("EndObject");
+                Builder.AppendLine("EndObject");
             }
         }
 
@@ -277,11 +282,15 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
+                var fastVisitor = new ToStringFastVisitor();
                 var visitor = new ToStringVisitor();
-                var iterator = new ODBIterator(tr, visitor);
+                var iterator = new ODBIterator(tr, fastVisitor);
+                iterator.Iterate();
+                iterator = new ODBIterator(tr, visitor);
                 iterator.Iterate();
                 var text = visitor.ToString();
                 Approvals.Verify(text);
+                Assert.Equal(fastVisitor.Keys.ToByteArray(), visitor.Keys.ToByteArray());
             }
         }
 

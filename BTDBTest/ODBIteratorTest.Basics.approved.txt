@@ -15,11 +15,13 @@ EndDictKey
 StartDictValue
 OidReference 2
 Used key: 01|02 Value len:3
+Used key: 00 00|02 Value len:4
 Used key: 00 01|02 01 Value len:19
 Object oid:2 2-Job version:1
 StartField Duty
 OidReference 3
 Used key: 01|03 Value len:16
+Used key: 00 00|03 Value len:5
 Used key: 00 01|03 01 Value len:14
 Object oid:3 3-Duty version:1
 StartField Name

@@ -2,9 +2,13 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    public interface IODBVisitor
+    public interface IODBFastVisitor
     {
         void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr);
+    }
+
+    public interface IODBVisitor: IODBFastVisitor
+    {
         bool VisitSingleton(uint tableId, string tableName, ulong oid);
         bool StartObject(ulong oid, uint tableId, string tableName, uint version);
         bool StartField(string name);
