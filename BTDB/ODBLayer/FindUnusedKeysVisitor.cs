@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
@@ -12,7 +11,6 @@ namespace BTDB.ODBLayer
         IKeyValueDB _keyValueDb;
         IKeyValueDBTransaction _kvtr;
         readonly byte[] _tempBytes = new byte[32];
-        readonly byte[] _tempKeyBytes = new byte[32];
 
         public struct UnseenKey
         {
@@ -131,8 +129,8 @@ namespace BTDB.ODBLayer
 
         void MarkKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            _kvtr.SetKeyPrefix(Merge(tr.GetKeyPrefix(), tr.GetKeyAsByteArray()));
-            _kvtr.EraseAll();
+            _kvtr.SetKeyPrefix(tr.GetKeyPrefix());
+            if (_kvtr.Find(tr.GetKey())==FindResult.Exact) _kvtr.EraseCurrent();
         }
 
         class VisitorForFindUnused : IODBFastVisitor
