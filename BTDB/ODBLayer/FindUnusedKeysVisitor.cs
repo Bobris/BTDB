@@ -26,10 +26,6 @@ namespace BTDB.ODBLayer
 
         IEnumerable<byte[]> SupportedKeySpaces()
         {
-            yield return ObjectDB.TableNamesPrefix;
-            yield return ObjectDB.TableVersionsPrefix;
-            yield return ObjectDB.TableSingletonsPrefix;
-            yield return ObjectDB.LastDictIdKey;
             yield return ObjectDB.AllObjectsPrefix;
             yield return ObjectDB.AllDictionariesPrefix;
         }

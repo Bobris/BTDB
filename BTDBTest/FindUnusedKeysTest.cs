@@ -110,6 +110,21 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void TablesWithNoInstancesAreNotReported()
+        {
+            StoreJob(1, "Sleep");
+            using (var tr = _db.StartTransaction())
+            {
+                var jobs = tr.Singleton<JobMap>();
+                tr.Delete(jobs.Jobs[1].Duty);
+                tr.Delete(jobs.Jobs[1]);
+                jobs.Jobs.Remove(1);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         static string DumpUnseenKeys(FindUnusedKeysVisitor visitor, string concat)
         {
             var builder = new StringBuilder();

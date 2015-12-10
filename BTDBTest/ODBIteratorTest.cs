@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using ApprovalTests;
 using BTDB.Buffer;
@@ -108,7 +109,7 @@ namespace BTDBTest
 
             public void ScalarAsObject(object content)
             {
-                Builder.AppendLine($"ScalarObj {content}");
+                Builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "ScalarObj {0}", content));
             }
 
             public bool NeedScalarAsText()
@@ -118,7 +119,7 @@ namespace BTDBTest
 
             public void ScalarAsText(string content)
             {
-                Builder.AppendLine($"ScalarStr {content}");
+                Builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "ScalarStr {0}", content));
             }
 
             public void OidReference(ulong oid)
