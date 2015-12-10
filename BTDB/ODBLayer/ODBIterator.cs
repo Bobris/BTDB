@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
@@ -310,7 +311,7 @@ namespace BTDB.ODBLayer
                     }
                     if (_visitor.NeedScalarAsText())
                     {
-                        _visitor.ScalarAsText(obj?.ToString() ?? "null");
+                        _visitor.ScalarAsText(string.Format(CultureInfo.InvariantCulture, "{0}", obj?.ToString() ?? "null"));
                     }
                 }
             }
