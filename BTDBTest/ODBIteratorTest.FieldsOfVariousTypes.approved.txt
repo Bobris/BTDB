@@ -52,15 +52,15 @@ ScalarStr True
 EndField
 StartField DoubleField
 ScalarObj 12.34
-ScalarStr 12,34
+ScalarStr 12.34
 EndField
 StartField FloatField
 ScalarObj -12.34
-ScalarStr -12,34
+ScalarStr -12.34
 EndField
 StartField DecimalField
 ScalarObj 123456.789
-ScalarStr 123456,789
+ScalarStr 123456.789
 EndField
 StartField GuidField
 ScalarObj 39aabab2-9971-4113-9998-a30fc7d5606a
@@ -68,7 +68,7 @@ ScalarStr 39aabab2-9971-4113-9998-a30fc7d5606a
 EndField
 StartField DateTimeField
 ScalarObj 01/01/2000 12:34:56
-ScalarStr 1. 1. 2000 12:34:56
+ScalarStr 01/01/2000 12:34:56
 EndField
 StartField TimeSpanField
 ScalarObj 1.02:03:04

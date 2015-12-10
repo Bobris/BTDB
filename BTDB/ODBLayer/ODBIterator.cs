@@ -311,7 +311,9 @@ namespace BTDB.ODBLayer
                     }
                     if (_visitor.NeedScalarAsText())
                     {
-                        _visitor.ScalarAsText(string.Format(CultureInfo.InvariantCulture, "{0}", obj?.ToString() ?? "null"));
+                        _visitor.ScalarAsText(obj == null
+                            ? "null"
+                            : string.Format(CultureInfo.InvariantCulture, "{0}", obj));
                     }
                 }
             }
