@@ -119,7 +119,7 @@ namespace BTDBTest
 
             public void ScalarAsText(string content)
             {
-                Builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "ScalarStr {0}", content));
+                Builder.AppendLine($"ScalarStr {content}");
             }
 
             public void OidReference(ulong oid)
