@@ -1,11 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using ApprovalTests;
+﻿using ApprovalTests;
+using ApprovalTests.Reporters;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using System;
+using System.Collections.Generic;
+using System.Text;
 using Xunit;
-using ApprovalTests.Reporters;
 
 namespace BTDBTest
 {
@@ -66,16 +67,56 @@ namespace BTDBTest
 
         void AssertNoLeaksInDb()
         {
+            Assert.Equal(string.Empty, FindLeaks());
+        }
+
+        string FindLeaks()
+        {
             using (var visitor = new FindUnusedKeysVisitor())
             {
                 using (var tr = _db.StartReadOnlyTransaction())
                 {
                     visitor.ImportAllKeys(tr);
                     visitor.Iterate(tr);
-                    var report = DumpUnseenKeys(visitor, " ");
-                    Assert.Equal(string.Empty, report);
+                    return DumpUnseenKeys(visitor, " ");
                 }
             }
+        }
+
+        void AssertLeaksInDb()
+        {
+            Assert.False(string.IsNullOrEmpty(FindLeaks()));
+        }
+
+        public class IndirectDuty
+        {
+            public IIndirect<Duty> Duty { get; set; }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void HandlesCorrectlyIIndirect(bool deleteCorrectly)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var duty = tr.Singleton<IndirectDuty>();
+                duty.Duty.Value = new Duty { Name = "Read" };
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var duty = tr.Singleton<IndirectDuty>();
+                if (deleteCorrectly)
+                    tr.Delete(duty.Duty.Value);
+                duty.Duty.Value = new Duty { Name = "Write" };
+                tr.Store(duty);
+                tr.Commit();
+            }
+            if (deleteCorrectly)
+                AssertNoLeaksInDb();
+            else
+                AssertLeaksInDb();
         }
 
         [Fact]
