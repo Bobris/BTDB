@@ -49,7 +49,7 @@ namespace BTDB.ODBLayer
                 do
                 {
                     //create all keys, instead of value store only byte length of value
-                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(kvtr.GetStorageSizeOfCurrentKey().Value));
+                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
                 } while (sourceKvTr.FindNextKey());
                 kvtr.Commit();
             }

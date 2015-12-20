@@ -5,6 +5,7 @@ using ApprovalTests;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
+using ApprovalTests.Reporters;
 
 namespace BTDBTest
 {
@@ -78,6 +79,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [UseReporter(typeof(DiffReporter))]
         public void FindAndRemovesUnusedKeys()
         {
             StoreJob(1, "Create leak");
@@ -90,7 +92,6 @@ namespace BTDBTest
                     visitor.ImportAllKeys(tr);
                     visitor.Iterate(tr);
                 }
-
                 var report = DumpUnseenKeys(visitor, "\r\n");
                 Approvals.Verify(report);
 
