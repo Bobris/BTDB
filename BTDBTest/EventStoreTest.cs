@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
+using BTDB.ODBLayer;
 using Xunit;
 
 namespace BTDBTest
@@ -655,6 +657,41 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file);
             var e = new UsersIList { Users = new[] { new User { Name = "A" }, new User { Name = "B" } } };
             appender.Store(null, new object[] { e });
+        }
+
+        [StoredInline]
+        public class ClassWithChangedUINTtoULONG
+        {
+            public ulong A { get; set; }
+            public uint B { get; set; }
+        }
+
+        public class Ev1
+        {
+            public ClassWithChangedUINTtoULONG ClassWithChangedUinTtoUlong { get; set; }
+        }
+
+        // event stream generated with uint  (ClassWithChangedUINTtoULONG.A)
+        string base64EventFile = "J3uX1C1UAAAzAR9CVERCVGVzdC5FdmVudFN0b3JlVGVzdCtDcmVkaXQCAkEIAkIIMgEcQlREQlRlc3QuRXZlbnRTdG9yZVRlc3QrRXYxAQdDcmVkaXQzADIzAQIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+        [Fact]
+        public void Read()
+        {
+            var manager = new EventStoreManager();
+
+            using (var file = new StreamEventFileStorage(new MemoryStream(Convert.FromBase64String(base64EventFile))))
+            {
+                var appender = manager.AppendToStore(file);
+
+                var observer = new StoringEventObserver();
+                appender.ReadFromStartToEnd(observer);
+                Assert.Equal(observer.Events.Count, 1);
+                Assert.Equal(observer.Events[0].Length, 1);
+                var e = observer.Events[0][0] as Ev1;
+                Assert.Equal(e.ClassWithChangedUinTtoUlong.A, 1u);
+                Assert.Equal(e.ClassWithChangedUinTtoUlong.B, 2u);
+
+            }
         }
     }
 }
