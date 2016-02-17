@@ -1,3 +1,5 @@
+using BTDB.FieldHandler;
+
 namespace BTDB.EventStoreLayer
 {
     interface ITypeSerializers : ITypeSerializerMappingFactory
@@ -5,5 +7,6 @@ namespace BTDB.EventStoreLayer
         void SetTypeNameMapper(ITypeNameMapper typeNameMapper);
         void ForgotAllTypesAndSerializers();
         ITypeDescriptor DescriptorOf(object obj);
+        ITypeConvertorGenerator ConvertorGenerator { get; }
     }
 }

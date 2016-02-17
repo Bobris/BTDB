@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -14,9 +15,11 @@ namespace BTDB.EventStoreLayer
         Type _itemType;
         ITypeDescriptor _itemDescriptor;
         string _name;
+        readonly ITypeConvertorGenerator _convertorGenerator;
 
         public ListTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             _type = type;
             _itemType = GetItemType(type);
@@ -24,6 +27,7 @@ namespace BTDB.EventStoreLayer
 
         public ListTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             InitFromItemDescriptor(nestedDescriptorReader(reader));
         }
@@ -119,7 +123,7 @@ namespace BTDB.EventStoreLayer
                 .Sub()
                 .Stloc(localCount)
                 .Ldloc(localList);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType);
+            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
             ilGenerator
                 .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
                 .Br(next)
@@ -191,6 +195,7 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get; private set; }
         public bool StoredInline => true;
+        public bool LoadNeedsHelpWithConversion => false;
 
         public void ClearMappingToType()
         {

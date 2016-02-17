@@ -60,6 +60,8 @@ namespace BTDB.EventStoreLayer
 
         public bool StoredInline => true;
 
+        public bool LoadNeedsHelpWithConversion => true;
+
         public void ClearMappingToType()
         {
         }

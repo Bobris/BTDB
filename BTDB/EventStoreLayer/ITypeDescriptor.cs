@@ -23,6 +23,7 @@ namespace BTDB.EventStoreLayer
         void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map);
         bool Sealed { get; }
         bool StoredInline { get; }
+        bool LoadNeedsHelpWithConversion { get; }
         void ClearMappingToType();
         bool ContainsField(string name);
     }

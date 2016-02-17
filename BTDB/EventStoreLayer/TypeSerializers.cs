@@ -33,6 +33,7 @@ namespace BTDB.EventStoreLayer
 
         public TypeSerializers(ITypeNameMapper typeNameMapper)
         {
+            ConvertorGenerator = new DefaultTypeConvertorGenerator();
             SetTypeNameMapper(typeNameMapper);
             ForgotAllTypesAndSerializers();
             _newSimpleSaverAction = NewSimpleSaver;
@@ -54,6 +55,8 @@ namespace BTDB.EventStoreLayer
             if (knowDescriptor != null) return knowDescriptor.GetDescriptor();
             return DescriptorOf(obj.GetType());
         }
+
+        public ITypeConvertorGenerator ConvertorGenerator { get; private set; }
 
         public ITypeDescriptor DescriptorOf(Type objType)
         {

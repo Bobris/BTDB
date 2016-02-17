@@ -668,7 +668,7 @@ namespace BTDBTest
 
         public class Ev1
         {
-            public ClassWithChangedUINTtoULONG ClassWithChangedUinTtoUlong { get; set; }
+            public ClassWithChangedUINTtoULONG Credit { get; set; }
         }
 
         // event stream generated with uint  (ClassWithChangedUINTtoULONG.A)
@@ -678,7 +678,8 @@ namespace BTDBTest
         public void Read()
         {
             var manager = new EventStoreManager();
-
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ClassWithChangedUINTtoULONG), "BTDBTest.EventStoreTest+Credit"));
+            
             using (var file = new StreamEventFileStorage(new MemoryStream(Convert.FromBase64String(base64EventFile))))
             {
                 var appender = manager.AppendToStore(file);
@@ -688,8 +689,8 @@ namespace BTDBTest
                 Assert.Equal(observer.Events.Count, 1);
                 Assert.Equal(observer.Events[0].Length, 1);
                 var e = observer.Events[0][0] as Ev1;
-                Assert.Equal(e.ClassWithChangedUinTtoUlong.A, 1u);
-                Assert.Equal(e.ClassWithChangedUinTtoUlong.B, 2u);
+                Assert.Equal(e.Credit.A, 1u);
+                Assert.Equal(e.Credit.B, 2u);
 
             }
         }

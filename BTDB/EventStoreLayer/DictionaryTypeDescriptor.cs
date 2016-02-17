@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
@@ -17,9 +18,11 @@ namespace BTDB.EventStoreLayer
         ITypeDescriptor _keyDescriptor;
         ITypeDescriptor _valueDescriptor;
         string _name;
+        readonly ITypeConvertorGenerator _convertorGenerator;
 
         public DictionaryTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             _type = type;
             var genericArguments = type.GetGenericArguments();
@@ -29,6 +32,7 @@ namespace BTDB.EventStoreLayer
 
         public DictionaryTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             InitFromKeyValueDescriptors(nestedDescriptorReader(reader), nestedDescriptorReader(reader));
         }
@@ -128,8 +132,8 @@ namespace BTDB.EventStoreLayer
                 .Sub()
                 .Stloc(localCount)
                 .Ldloc(localDict);
-            _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType);
-            _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType);
+            _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType, _convertorGenerator);
+            _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType, _convertorGenerator);
             ilGenerator
                 .Callvirt(dictionaryType.GetMethod("Add"))
                 .Br(next)
@@ -220,6 +224,7 @@ namespace BTDB.EventStoreLayer
 
         public bool Sealed { get; private set; }
         public bool StoredInline => true;
+        public bool LoadNeedsHelpWithConversion => false;
 
         public void ClearMappingToType()
         {

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 
 namespace BTDB.EventStoreLayer
@@ -11,7 +13,7 @@ namespace BTDB.EventStoreLayer
         public static string Describe(this ITypeDescriptor descriptor)
         {
             var sb = new StringBuilder();
-            descriptor.BuildHumanReadableFullName(sb,new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
+            descriptor.BuildHumanReadableFullName(sb, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
             return sb.ToString();
         }
 
@@ -44,11 +46,27 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateLoadEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType)
+        public static void GenerateLoadEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType, ITypeConvertorGenerator convertorGenerator)
         {
             if (descriptor.StoredInline)
             {
-                descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, asType);
+                if (descriptor.LoadNeedsHelpWithConversion && asType!=typeof(object))
+                {
+                    var origType = descriptor.GetPreferedType();
+                    descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, origType);
+                    if (origType != asType)
+                    {
+                        var conv = convertorGenerator.GenerateConversion(origType, asType);
+                        if (conv == null)
+                            throw new BTDBException("Don't know how to convert " + descriptor.Name + " from " +
+                                                    origType.ToSimpleName() + " to " + asType.ToSimpleName());
+                        conv(ilGenerator);
+                    }
+                }
+                else
+                {
+                    descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, asType);
+                }
             }
             else
             {
@@ -62,7 +80,7 @@ namespace BTDB.EventStoreLayer
 
         public static StringBuilder AppendJsonLike(this StringBuilder sb, object obj)
         {
-            if (obj==null)
+            if (obj == null)
             {
                 return sb.Append("null");
             }
@@ -71,9 +89,9 @@ namespace BTDB.EventStoreLayer
             {
                 return sb.Append('"').Append(str).Append('"');
             }
-// ReSharper disable RedundantToStringCall it is speed optimization
+            // ReSharper disable RedundantToStringCall it is speed optimization
             return sb.Append(obj.ToString());
-// ReSharper restore RedundantToStringCall
+            // ReSharper restore RedundantToStringCall
         }
     }
 }

@@ -56,7 +56,7 @@ namespace BTDB.EventStoreLayer
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(reader, NestedDescriptorReader);
+                        descriptor = new ObjectTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.List:
                         descriptor = new ListTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
@@ -186,6 +186,8 @@ namespace BTDB.EventStoreLayer
             bool ITypeDescriptor.Sealed => false;
 
             bool ITypeDescriptor.StoredInline => false;
+
+            public bool LoadNeedsHelpWithConversion => false;
 
             void ITypeDescriptor.ClearMappingToType()
             {

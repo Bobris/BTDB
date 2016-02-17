@@ -16,16 +16,19 @@ namespace BTDB.EventStoreLayer
         Type _type;
         readonly string _name;
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
+        readonly ITypeConvertorGenerator _convertorGenerator;
 
         public ObjectTypeDescriptor(TypeSerializers typeSerializers, Type type)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _type = type;
             Sealed = _type.IsSealed;
             _name = typeSerializers.TypeToName(type);
         }
 
-        public ObjectTypeDescriptor(AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
+            _convertorGenerator = typeSerializers.ConvertorGenerator;
             _type = null;
             Sealed = false;
             _name = reader.ReadString();
@@ -153,7 +156,7 @@ namespace BTDB.EventStoreLayer
                         il =>
                             il.Do(pushDescriptor)
                                 .LdcI4(idxForCapture)
-                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object));
+                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
                     ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
                     idx++;
                 }
@@ -188,7 +191,7 @@ namespace BTDB.EventStoreLayer
                     ilGenerator.Ldloc(resultLoc);
                     pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                                             il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
-                                            prop.PropertyType);
+                                            prop.PropertyType, _convertorGenerator);
                     ilGenerator.Callvirt(prop.GetSetMethod());
                 }
                 ilGenerator.Ldloc(resultLoc);
@@ -376,6 +379,8 @@ namespace BTDB.EventStoreLayer
         public bool Sealed { get; private set; }
 
         public bool StoredInline => false;
+
+        public bool LoadNeedsHelpWithConversion => false;
 
         public void ClearMappingToType()
         {
