@@ -1,11 +1,18 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 14
+VisualStudioVersion = 14.0.24720.0
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDB", "BTDB\BTDB.csproj", "{4B16680A-547C-495F-8BB2-8DA239E34194}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTDBTest", "BTDBTest\BTDBTest.csproj", "{E7CEDF6F-B13F-48C4-A8E6-2DECAC4C7088}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleTester", "SimpleTester\SimpleTester.csproj", "{3D5A4597-2377-4D6A-B31E-505AC96E6D78}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ODbDump", "ODbDump\ODbDump.csproj", "{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}"
+	ProjectSection(ProjectDependencies) = postProject
+		{4B16680A-547C-495F-8BB2-8DA239E34194} = {4B16680A-547C-495F-8BB2-8DA239E34194}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -67,6 +74,22 @@ Global
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x64.Build.0 = Release|x64
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x86.ActiveCfg = Release|x86
 		{3D5A4597-2377-4D6A-B31E-505AC96E6D78}.Release|x86.Build.0 = Release|x86
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|x64.Build.0 = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Debug|x86.Build.0 = Debug|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|x64.ActiveCfg = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|x64.Build.0 = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|x86.ActiveCfg = Release|Any CPU
+		{BA58E91F-BB8C-4A17-B73C-8DA76E858BB6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
