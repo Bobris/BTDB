@@ -417,6 +417,47 @@ namespace BTDBTest
             Assert.Equal("B", ((User)eventObserver.Events[0][1]).Name);
         }
 
+        public enum ApplicationsType
+        {
+            None = 0,
+            First = 1,
+        }
+
+        public enum ApplicationsRenamedType
+        {
+            None = 0,
+            First = 1,
+        }
+
+        public class ApplicationInfo
+        {
+            public ApplicationsType Type { get; set; }
+        }
+
+        public class ApplicationInfoPropertyEnumTypeChanged
+        {
+            public ApplicationsRenamedType Type { get; set; }
+        }
+
+        [Fact]
+        public void UpgradeToDifferentEnumProperties()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ApplicationInfo), "ApplicationInfo"));
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var applicationInfo = new ApplicationInfo { Type = ApplicationsType.First };
+            appender.Store(null, new object[] { applicationInfo });
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ApplicationInfoPropertyEnumTypeChanged), "ApplicationInfo"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            var readApplicationInfo = (ApplicationInfoPropertyEnumTypeChanged)eventObserver.Events[0][0];
+            Assert.Equal(readApplicationInfo.Type, ApplicationsRenamedType.First);
+        }
+
         public class UserEventList : IEquatable<UserEventList>
         {
             public long Id { get; set; }
