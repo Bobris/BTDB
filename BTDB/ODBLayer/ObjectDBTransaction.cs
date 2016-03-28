@@ -815,6 +815,9 @@ namespace BTDB.ODBLayer
 
         public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
         {
+            var relationInfo = _owner.RelationsInfo.FindByName(relationName) ??
+                               _owner.RelationsInfo.LinkType2Name(typeof (T), relationName);
+
             var interfaceType = typeof(T);
             var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, typeof(object),new [] { interfaceType });
             var transactionField = classImpl.DefineField("transaction", typeof(IInternalObjectDBTransaction), System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
