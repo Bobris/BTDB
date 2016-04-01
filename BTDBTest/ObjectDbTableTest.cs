@@ -65,6 +65,16 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void RefuseUnshapedInterface()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IDisposable>("Person"));
+                Assert.True(ex.Message.Contains("Cannot deduce"));
+            }
+        }
+
         public class Person
         {
             [PrimaryKey(1)]

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
@@ -45,6 +46,10 @@ namespace BTDB.ODBLayer
                 return RelationVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, relationName);
             }
         }
+
+        public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
+
+        public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
     }
 
     class RelationsInfo
@@ -103,7 +108,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal RelationInfo LinkType2Name(Type type, string name)
+        internal RelationInfo LinkInterfaceType2Name(Type interfaceType, string name)
         {
             var t = FindByName(name);
             if (t == null)
@@ -113,8 +118,24 @@ namespace BTDB.ODBLayer
                     t = FindByName(name) ?? PrivateCreateRelation(name);
                 }
             }
-            t.ClientType = type;
+            t.ClientType = FindClientType(interfaceType);
             return t;
         }
+
+        Type FindClientType(Type interfaceType)
+        {
+            var methods = interfaceType.GetMethods();
+            foreach (var method in methods)
+            {
+                if (method.Name != "Insert")
+                    continue;
+                var @params = method.GetParameters();
+                if (@params.Length != 1)
+                    continue;
+                return @params[0].ParameterType;
+            }
+            throw new BTDBException($"Cannot deduce client type from interface {interfaceType.Name}");
+        }
+
     }
 }
