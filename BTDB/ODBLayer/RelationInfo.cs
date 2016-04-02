@@ -202,30 +202,45 @@ namespace BTDB.ODBLayer
             if (ClientTypeVersion != 0) return;
             EnsureKnownLastPersistedVersion();
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
+            var secondaryKeysInfo = new Dictionary<uint, SecondaryKeyAttribute>(); //field idx->attribute info
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
                 if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
+                var pks = pi.GetCustomAttributes(typeof(PrimaryKeyAttribute), true);
+                if (pks.Length != 0)
+                {
+                    var pkinfo = (PrimaryKeyAttribute)pks[0];
+                    primaryKeys.Add(pkinfo.Order, TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
+                    continue;
+                }
+                var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
+                if (sks.Length != 0)
+                {
+                    var skinfo = (SecondaryKeyAttribute)sks[0];
+                    secondaryKeysInfo.Add((uint)fields.Count, skinfo);
+                }
                 fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
             }
-            var tvi = new RelationVersionInfo(fields.ToArray());
+            var rvi = new RelationVersionInfo(primaryKeys, secondaryKeysInfo, fields.ToArray());
             if (LastPersistedVersion == 0)
             {
-                _relationVersions.TryAdd(1, tvi);
+                _relationVersions.TryAdd(1, rvi);
                 ClientTypeVersion = 1;
             }
             else
             {
                 var last = _relationVersions.GetOrAdd(LastPersistedVersion, v => _relationInfoResolver.LoadRelationVersionInfo(_id, v, Name));
-                if (RelationVersionInfo.Equal(last, tvi))
+                if (RelationVersionInfo.Equal(last, rvi))
                 {
-                    _relationVersions[LastPersistedVersion] = tvi; // tvi was build from real types and not loaded so it is more exact
+                    _relationVersions[LastPersistedVersion] = rvi; // tvi was build from real types and not loaded so it is more exact
                     ClientTypeVersion = LastPersistedVersion;
                 }
                 else
                 {
-                    _relationVersions.TryAdd(LastPersistedVersion + 1, tvi);
+                    _relationVersions.TryAdd(LastPersistedVersion + 1, rvi);
                     ClientTypeVersion = LastPersistedVersion + 1;
                 }
             }

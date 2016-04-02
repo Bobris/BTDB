@@ -127,7 +127,7 @@ namespace BTDB.ODBLayer
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
             {
-                if (method.Name != "Insert")
+                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert")
                     continue;
                 var @params = method.GetParameters();
                 if (@params.Length != 1)
