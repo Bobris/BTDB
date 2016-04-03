@@ -345,4 +345,19 @@ namespace BTDB.ODBLayer
         }
 
     }
+
+    public class RelationDBManipulator
+    {
+        readonly RelationInfo _relationInfo;
+
+        public RelationDBManipulator(object relationInfo) //todo better
+        {
+            _relationInfo = (RelationInfo)relationInfo;
+        }
+
+        public void Insert(IInternalObjectDBTransaction tr, object @object)
+        {
+
+        }
+    }
 }

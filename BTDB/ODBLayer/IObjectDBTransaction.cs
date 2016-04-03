@@ -30,6 +30,6 @@ namespace BTDB.ODBLayer
 
         void Commit();
 
-        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
+        IRelationCreator<T> InitRelation<T>(string relationName);
     }
 }

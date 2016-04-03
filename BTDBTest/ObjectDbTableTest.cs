@@ -52,7 +52,7 @@ namespace BTDBTest
         [Fact]
         public void GeneratesCreator()
         {
-            Func<IObjectDBTransaction, IPersonSimpleTableWithJustInsert> creator;
+            IRelationCreator<IPersonSimpleTableWithJustInsert> creator;
             using (var tr = _db.StartTransaction())
             {
                 creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("Person");
@@ -60,7 +60,8 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                creator(tr).Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
+                var personSimpleTable = creator.Create(tr);
+                personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
                 tr.Commit();
             }
         }

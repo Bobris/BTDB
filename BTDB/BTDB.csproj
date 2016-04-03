@@ -275,6 +275,7 @@
     <Compile Include="ODBLayer\IODBVisitor.cs" />
     <Compile Include="ODBLayer\IOrderedDictionary.cs" />
     <Compile Include="ODBLayer\IQuerySizeDictionary.cs" />
+    <Compile Include="ODBLayer\IRelationCreator.cs" />
     <Compile Include="ODBLayer\IRelationInfoResolver.cs" />
     <Compile Include="ODBLayer\NotStoredAttribute.cs" />
     <Compile Include="ODBLayer\ODBDictionary.cs" />
