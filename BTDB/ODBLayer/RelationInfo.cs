@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Threading;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -20,7 +21,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, RelationVersionInfo> _relationVersions = new ConcurrentDictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, DBObjectMetadata, object> _creator;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _primaryKeysSaver;
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _valueSaver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver)
@@ -116,9 +118,9 @@ namespace BTDB.ODBLayer
                         .Stloc(1);
                 }
                 var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                for (int fi = 0; fi < relationVersionInfo.FieldCount; fi++)
+                var allFields = relationVersionInfo.GetAllFields();
+                foreach (var srcFieldInfo in allFields)
                 {
-                    var srcFieldInfo = relationVersionInfo[fi];
                     var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
                     if (iFieldHandlerWithInit == null) continue;
                     Action<IILGen> readerOrCtx;
@@ -144,19 +146,35 @@ namespace BTDB.ODBLayer
             Interlocked.CompareExchange(ref _initializer, initializer, null);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> ValueSaver
         {
             get
             {
-                if (_saver == null) CreateSaver();
-                return _saver;
+                if (_valueSaver == null)
+                {
+                    var saver = CreateSaver(ClientRelationVersionInfo.GetValueFields(), $"RelationValueSaver_{Name}");
+                    Interlocked.CompareExchange(ref _valueSaver, saver, null);
+                }
+                return _valueSaver;
             }
         }
 
-        void CreateSaver()
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> PrimaryKeysSaver
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(
-                $"RelSaver_{Name}");
+            get
+            {
+                if (_primaryKeysSaver == null)
+                {
+                    var saver = CreateSaver(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
+                    Interlocked.CompareExchange(ref _primaryKeysSaver, saver, null);
+                }
+                return _primaryKeysSaver;
+            }
+        }
+
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
+        {
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(saverName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
@@ -174,9 +192,8 @@ namespace BTDB.ODBLayer
                     .Stloc(1);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            for (int i = 0; i < ClientRelationVersionInfo.FieldCount; i++)
+            foreach(var field in fields)
             {
-                var field = ClientRelationVersionInfo[i];
                 var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
                 var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
@@ -193,8 +210,7 @@ namespace BTDB.ODBLayer
             }
             ilGenerator
                 .Ret();
-            var saver = method.Create();
-            Interlocked.CompareExchange(ref _saver, saver, null);
+            return method.Create();
         }
 
         internal void EnsureClientTypeVersion()
@@ -281,9 +297,8 @@ namespace BTDB.ODBLayer
                     .Stloc(1);
             }
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            for (int fi = 0; fi < relationVersionInfo.FieldCount; fi++)
+            foreach (var srcFieldInfo in relationVersionInfo.GetValueFields()) //todo create loader also for primary keys
             {
-                var srcFieldInfo = relationVersionInfo[fi];
                 Action<IILGen> readerOrCtx;
                 if (srcFieldInfo.Handler.NeedsCtx())
                     readerOrCtx = il => il.Ldloc(1);
@@ -311,9 +326,8 @@ namespace BTDB.ODBLayer
             }
             if (ClientTypeVersion != version)
             {
-                for (int fi = 0; fi < clientRelationVersionInfo.FieldCount; fi++)
+                foreach (var srcFieldInfo in clientRelationVersionInfo.GetValueFields())
                 {
-                    var srcFieldInfo = clientRelationVersionInfo[fi];
                     var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
                     if (iFieldHandlerWithInit == null) continue;
                     if (relationVersionInfo[srcFieldInfo.Name] != null) continue;
@@ -357,7 +371,22 @@ namespace BTDB.ODBLayer
 
         public void Insert(IInternalObjectDBTransaction tr, object @object)
         {
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteVUInt32(_relationInfo.Id);
+            _relationInfo.PrimaryKeysSaver(tr, null, keyWriter, @object);
+            var keyBytes = keyWriter.Data.ToByteArray();
 
+            var valueWriter = new ByteBufferWriter();
+            valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
+            _relationInfo.ValueSaver(tr, null, valueWriter, @object);
+            var valueBytes = valueWriter.Data.ToByteArray();
+
+            tr.TransactionProtector.Start();
+            tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+            
+            if (!tr.KeyValueDBTransaction.CreateKey(keyBytes))
+                throw new BTDBException("Trying to insert duplicate key.");
+            tr.KeyValueDBTransaction.SetValue(valueBytes);
         }
     }
 }

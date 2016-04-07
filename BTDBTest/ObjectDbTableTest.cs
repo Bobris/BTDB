@@ -76,6 +76,21 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void CannotInsertSameKeyTwice()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("Person");
+                var personSimpleTable = creator.Create(tr);
+                personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
+                personSimpleTable.Insert(new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Boris" });
+                var ex = Assert.Throws<BTDBException>(() => personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" }));
+                Assert.True(ex.Message.Contains("duplicate"));
+                tr.Commit();
+            }
+        }
+
         public class Person
         {
             [PrimaryKey(1)]

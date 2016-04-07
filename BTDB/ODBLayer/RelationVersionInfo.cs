@@ -22,13 +22,29 @@ namespace BTDB.ODBLayer
             _fields = fields;
         }
 
-        internal int FieldCount => _fields.Length;
-
-        internal TableFieldInfo this[int idx] => _fields[idx];
-
         internal TableFieldInfo this[string name]
         {
             get { return _fields.FirstOrDefault(tfi => tfi.Name == name); }
+        }
+
+        internal IReadOnlyCollection<TableFieldInfo> GetValueFields()
+        {
+            return _fields;
+        }
+
+        internal IReadOnlyCollection<TableFieldInfo> GetPrimaryKeyFields()
+        {
+            return _primaryKeys.Select(kv => kv.Value).ToList();
+        }
+
+        internal IReadOnlyCollection<KeyValuePair<uint, TableFieldInfo>> GetOrderedPrimaryKeys()
+        {
+            return _primaryKeys.OrderBy(kv => kv.Key).ToList();
+        }
+
+        internal IReadOnlyCollection<TableFieldInfo> GetAllFields()
+        {
+            return _primaryKeys.Values.Concat(_fields).ToList();
         }
 
         internal void Save(AbstractBufferedWriter writer)
@@ -47,10 +63,10 @@ namespace BTDB.ODBLayer
                 writer.WriteVUInt32(key.Value.Order);
                 writer.WriteVUInt32(key.Value.IncludePrimaryKeyOrder);
             }
-            writer.WriteVUInt32((uint)FieldCount);
-            for (int i = 0; i < FieldCount; i++)
+            writer.WriteVUInt32((uint)_fields.Length);
+            for (int i = 0; i < _fields.Length; i++)
             {
-                this[i].Save(writer);
+                _fields[i].Save(writer);
             }
         }
 
@@ -113,10 +129,10 @@ namespace BTDB.ODBLayer
                 if (!SecondaryKeyAttribute.Equal(key.Value, battribute)) return false;
             }
 
-            if (a.FieldCount != b.FieldCount) return false;
-            for (int i = 0; i < a.FieldCount; i++)
+            if (a._fields.Length != b._fields.Length) return false;
+            for (int i = 0; i < a._fields.Length; i++)
             {
-                if (!TableFieldInfo.Equal(a[i], b[i])) return false;
+                if (!TableFieldInfo.Equal(a._fields[i], b._fields[i])) return false;
             }
             return true;
         }
