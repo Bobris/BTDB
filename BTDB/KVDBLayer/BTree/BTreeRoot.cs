@@ -167,15 +167,16 @@ namespace BTDB.KVDBLayer.BTree
         public uint TrLogOffset { get; set; }
 
         public int UseCount { get; set; }
+        public ulong CommitUlong { get; set; }
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset};
+            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset, CommitUlong = CommitUlong };
         }
 
         public IBTreeRootNode CloneRoot()
         {
-            return new BTreeRoot(_transactionId) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset };
+            return new BTreeRoot(_transactionId) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, TrLogFileId = TrLogFileId, TrLogOffset = TrLogOffset, CommitUlong = CommitUlong };
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)

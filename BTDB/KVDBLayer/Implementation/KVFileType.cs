@@ -7,6 +7,7 @@ namespace BTDB.KVDBLayer
         PureValues,
         PureValuesWithId,
         HashKeyIndex,
+        KeyIndexWithCommitUlong,
         Unknown,
     }
 }

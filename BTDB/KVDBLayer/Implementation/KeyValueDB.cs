@@ -127,6 +127,7 @@ namespace BTDB.KVDBLayer
                 var keyCount = info.KeyValueCount;
                 _nextRoot.TrLogFileId = info.TrLogFileId;
                 _nextRoot.TrLogOffset = info.TrLogOffset;
+                _nextRoot.CommitUlong = info.CommitUlong;
                 _nextRoot.BuildTree(keyCount, () =>
                     {
                         var keyLength = reader.ReadVInt32();
@@ -286,6 +287,12 @@ namespace BTDB.KVDBLayer
                                 return false;
                             _nextRoot = LastCommited.NewTransactionRoot();
                             break;
+                        case KVCommandType.CommitWithDeltaUlong:
+                            unchecked // overflow is expected in case commitUlong is decreasing but that should be rare
+                            {
+                                _nextRoot.CommitUlong += reader.ReadVUInt64();
+                            }
+                            goto case KVCommandType.Commit;
                         case KVCommandType.Commit:
                             _nextRoot.TrLogFileId = fileId;
                             _nextRoot.TrLogOffset = (uint)reader.GetCurrentPosition();
@@ -459,7 +466,16 @@ namespace BTDB.KVDBLayer
 
         internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot)
         {
-            _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
+            var deltaUlong = unchecked (btreeRoot.CommitUlong - _lastCommited.CommitUlong);
+            if (deltaUlong != 0)
+            {
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
+                _writerWithTransactionLog.WriteVUInt64(deltaUlong);
+            }
+            else
+            {
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
+            }
             _writerWithTransactionLog.FlushBuffer();
             UpdateTransactionLogInBTreeRoot(btreeRoot);
             if (DurableTransactions)
@@ -732,7 +748,7 @@ namespace BTDB.KVDBLayer
             var file = FileCollection.AddFile("kvi");
             var writer = file.GetAppenderWriter();
             var keyCount = root.CalcKeyCount();
-            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), root.TrLogFileId, root.TrLogOffset, keyCount);
+            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong);
             keyIndex.WriteHeader(writer);
             if (keyCount > 0)
             {

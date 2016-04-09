@@ -115,9 +115,22 @@ namespace BTDB.KVDBLayer
         bool IsWritting();
 
         /// <summary>
+        /// Each KeyValueDB has special ulong value which could be modified by commit - it is much faster than regular key
+        /// </summary>
+        /// <returns>value from last commit(ulong commitUlong)</returns>
+        ulong GetCommitUlong();
+
+        /// <summary>
         /// You should call this as last method in using scope if you don't want to rollback transaction. After this method only Dispose() is allowed.
+        /// This will preserve previous value of CommitUlong
         /// </summary>
         void Commit();
+
+        /// <summary>
+        /// You should call this as last method in using scope if you don't want to rollback transaction. After this method only Dispose() is allowed.
+        /// This will update value of CommitUlong. It is stored by delta from previous value to save space even more.
+        /// </summary>
+        void Commit(ulong commitUlong);
 
         /// <summary>
         /// Global unique increasing number of actually running transaction

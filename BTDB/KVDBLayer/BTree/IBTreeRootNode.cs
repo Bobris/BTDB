@@ -9,6 +9,7 @@ namespace BTDB.KVDBLayer.BTree
         uint TrLogFileId { get; set; }
         uint TrLogOffset { get; set; }
         int UseCount { get; set; }
+        ulong CommitUlong { get; set; }
         IBTreeRootNode NewTransactionRoot();
         IBTreeRootNode CloneRoot();
         void EraseRange(long firstKeyIndex, long lastKeyIndex);

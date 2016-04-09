@@ -152,6 +152,24 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void CommitWithUlongWorks()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = new KeyValueDB(fileCollection))
+            {
+                using (var tr1 = db.StartTransaction())
+                {
+                    Assert.Equal(0ul, tr1.GetCommitUlong());
+                    tr1.Commit(42);
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.Equal(42ul, tr2.GetCommitUlong());
+                }
+            }
+        }
+
+        [Fact]
         public void RollbackWorks()
         {
             using (var fileCollection = new InMemoryFileCollection())
@@ -685,7 +703,7 @@ namespace BTDBTest
             foreach (var range in EraseRangeSource())
                 AdvancedEraseRangeWorks(range[0], range[1], range[2]);
         }
-        
+
         void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (var fileCollection = new InMemoryFileCollection())
