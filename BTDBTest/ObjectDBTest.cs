@@ -94,6 +94,24 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void SupportsCommitUlong()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.SetCommitUlong(1234567);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Equal(1234567ul,tr.GetCommitUlong());
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Equal(1234567ul, tr.GetCommitUlong());
+            }
+        }
 
         [Fact]
         public void InsertPerson()
