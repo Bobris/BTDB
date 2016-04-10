@@ -1,3 +1,5 @@
+using System;
+
 namespace BTDB.KVDBLayer
 {
     class UnknownFile : IFileInfo
@@ -7,6 +9,8 @@ namespace BTDB.KVDBLayer
         UnknownFile() { }
 
         public KVFileType FileType => KVFileType.Unknown;
+
+        public Guid? Guid => null;
 
         public long Generation => -1;
 

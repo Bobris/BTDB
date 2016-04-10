@@ -233,7 +233,7 @@ namespace BTDB.KVDBLayer
         {
             _pureValueFile = _fileCollection.AddFile("hpv");
             _pureValueFileWriter = _pureValueFile.GetAppenderWriter();
-            var fileInfo = new FilePureValuesWithId(_subDBId, _fileCollection.NextGeneration());
+            var fileInfo = new FilePureValuesWithId(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid);
             fileInfo.WriteHeader(_pureValueFileWriter);
             _fileCollection.SetInfo(_pureValueFile.Index, fileInfo);
         }
@@ -254,7 +254,7 @@ namespace BTDB.KVDBLayer
         {
             _hashIndexFile = _fileCollection.AddFile("hid");
             _hashIndexWriter = _hashIndexFile.GetAppenderWriter();
-            var fileInfo = new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), (uint)_keyLen);
+            var fileInfo = new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid, (uint)_keyLen);
             fileInfo.WriteHeader(_hashIndexWriter);
             _fileCollection.SetInfo(_hashIndexFile.Index, fileInfo);
         }

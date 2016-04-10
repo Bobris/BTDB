@@ -628,6 +628,13 @@ namespace BTDB.StreamLayer
             return buffer;
         }
 
+        public byte[] ReadByteArrayRaw(int len)
+        {
+            var res = new byte[len];
+            ReadBlock(res);
+            return res;
+        }
+
         public bool CheckMagic(byte[] magic)
         {
             try

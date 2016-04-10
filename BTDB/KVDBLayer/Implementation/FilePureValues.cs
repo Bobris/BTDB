@@ -1,3 +1,4 @@
+using System;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -5,18 +6,23 @@ namespace BTDB.KVDBLayer
     class FilePureValues : IFileInfo
     {
         readonly long _generation;
+        readonly Guid? _guid;
 
-        public FilePureValues(AbstractBufferedReader reader)
+        public FilePureValues(AbstractBufferedReader reader, Guid? guid)
         {
+            _guid = guid;
             _generation = reader.ReadVInt64();
         }
 
-        public FilePureValues(long generation)
+        public FilePureValues(long generation, Guid? guid)
         {
+            _guid = guid;
             _generation = generation;
         }
 
         public KVFileType FileType => KVFileType.PureValues;
+
+        public Guid? Guid => _guid;
 
         public long Generation => _generation;
 
@@ -24,7 +30,7 @@ namespace BTDB.KVDBLayer
 
         public void WriteHeader(AbstractBufferedWriter writer)
         {
-            writer.WriteByteArrayRaw(FileCollectionWithFileInfos.MagicStartOfFile);
+            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
             writer.WriteUInt8((byte)KVFileType.PureValues);
             writer.WriteVInt64(_generation);
         }

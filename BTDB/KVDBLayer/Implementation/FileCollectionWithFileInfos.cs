@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using BTDB.Buffer;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
@@ -12,10 +14,33 @@ namespace BTDB.KVDBLayer
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         long _fileGeneration;
         internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
+        internal static readonly byte[] MagicStartOfFileWithGuid = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'3' };
+
+        internal static void SkipHeader(AbstractBufferedReader reader)
+        {
+            var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
+            var withGuid = BitArrayManipulation.CompareByteArray(magic, magic.Length,
+                MagicStartOfFileWithGuid, MagicStartOfFileWithGuid.Length) == 0;
+            if (withGuid) reader.SkipGuid();
+        }
+
+        internal static void WriteHeader(AbstractBufferedWriter writer, Guid? guid)
+        {
+            if (guid.HasValue)
+            {
+                writer.WriteByteArrayRaw(MagicStartOfFileWithGuid);
+                writer.WriteGuid(guid.Value);
+            }
+            else
+            {
+                writer.WriteByteArrayRaw(MagicStartOfFile);
+            }
+        }
 
         public FileCollectionWithFileInfos(IFileCollection fileCollection)
         {
             _fileCollection = fileCollection;
+            Guid = null;
             LoadInfoAboutFiles();
         }
 
@@ -26,52 +51,72 @@ namespace BTDB.KVDBLayer
                 try
                 {
                     var reader = file.GetExclusiveReader();
-                    if (reader.CheckMagic(MagicStartOfFile))
+                    var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
+                    Guid? guid = null;
+                    if (
+                        BitArrayManipulation.CompareByteArray(magic, magic.Length, MagicStartOfFileWithGuid,
+                            MagicStartOfFileWithGuid.Length) == 0)
                     {
-                        var fileType = (KVFileType)reader.ReadUInt8();
-                        IFileInfo fileInfo;
-                        switch (fileType)
+                        guid = reader.ReadGuid();
+                        if (Guid.HasValue && Guid.Value != guid)
                         {
-                            case KVFileType.TransactionLog:
-                                fileInfo = new FileTransactionLog(reader);
-                                break;
-                            case KVFileType.KeyIndex:
-                                fileInfo = new FileKeyIndex(reader, false);
-                                break;
-                            case KVFileType.KeyIndexWithCommitUlong:
-                                fileInfo = new FileKeyIndex(reader, true);
-                                break;
-                            case KVFileType.PureValues:
-                                fileInfo = new FilePureValues(reader);
-                                break;
-                            case KVFileType.PureValuesWithId:
-                                fileInfo = new FilePureValuesWithId(reader);
-                                break;
-                            case KVFileType.HashKeyIndex:
-                                fileInfo = new HashKeyIndex(reader);
-                                break;
-                            default:
-                                fileInfo = UnknownFile.Instance;
-                                break;
+                            _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
+                            continue;
                         }
-                        if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
-                        _fileInfos.TryAdd(file.Index, fileInfo);
+                        Guid = guid;
                     }
-                    else
+                    else if (
+                        BitArrayManipulation.CompareByteArray(magic, magic.Length, MagicStartOfFile,
+                            MagicStartOfFile.Length) != 0)
                     {
                         _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
+                        continue;
                     }
+                    var fileType = (KVFileType)reader.ReadUInt8();
+                    IFileInfo fileInfo;
+                    switch (fileType)
+                    {
+                        case KVFileType.TransactionLog:
+                            fileInfo = new FileTransactionLog(reader, guid);
+                            break;
+                        case KVFileType.KeyIndex:
+                            fileInfo = new FileKeyIndex(reader, guid, false);
+                            break;
+                        case KVFileType.KeyIndexWithCommitUlong:
+                            fileInfo = new FileKeyIndex(reader, guid, true);
+                            break;
+                        case KVFileType.PureValues:
+                            fileInfo = new FilePureValues(reader, guid);
+                            break;
+                        case KVFileType.PureValuesWithId:
+                            fileInfo = new FilePureValuesWithId(reader, guid);
+                            break;
+                        case KVFileType.HashKeyIndex:
+                            fileInfo = new HashKeyIndex(reader, guid);
+                            break;
+                        default:
+                            fileInfo = UnknownFile.Instance;
+                            break;
+                    }
+                    if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
+                    _fileInfos.TryAdd(file.Index, fileInfo);
                 }
                 catch (Exception)
                 {
                     _fileInfos.TryAdd(file.Index, UnknownFile.Instance);
                 }
             }
+            if (!Guid.HasValue)
+            {
+                Guid = System.Guid.NewGuid();
+            }
         }
 
         public IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos => _fileInfos;
 
         public long LastFileGeneration => _fileGeneration;
+
+        public Guid? Guid { get; private set; }
 
         public IFileInfo FileInfoByIdx(uint idx)
         {

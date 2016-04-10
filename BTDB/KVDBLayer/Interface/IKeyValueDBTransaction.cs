@@ -146,6 +146,6 @@ namespace BTDB.KVDBLayer
         /// Gets current prefix. Do not modify resulting bytes!
         /// </summary>
         /// <returns>Prefix. DO NOT MODIFY!</returns>
-        Byte[] GetKeyPrefix();
+        byte[] GetKeyPrefix();
     }
 }

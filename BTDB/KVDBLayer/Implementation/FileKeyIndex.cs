@@ -1,3 +1,5 @@
+using System;
+using BTDB.Buffer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -5,12 +7,15 @@ namespace BTDB.KVDBLayer
     class FileKeyIndex : IFileInfo, IKeyIndex
     {
         readonly long _generation;
+        readonly Guid? _guid;
         readonly uint _trLogFileId;
         readonly uint _trLogOffset;
         readonly long _keyValueCount;
         readonly ulong _commitUlong;
 
         public KVFileType FileType => KVFileType.KeyIndex;
+
+        public Guid? Guid => _guid;
 
         public long Generation => _generation;
 
@@ -24,8 +29,9 @@ namespace BTDB.KVDBLayer
 
         public ulong CommitUlong => _commitUlong;
 
-        public FileKeyIndex(AbstractBufferedReader reader, bool withCommitUlong)
+        public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong)
         {
+            _guid = guid;
             _generation = reader.ReadVInt64();
             _trLogFileId = reader.ReadVUInt32();
             _trLogOffset = reader.ReadVUInt32();
@@ -33,8 +39,9 @@ namespace BTDB.KVDBLayer
             _commitUlong = withCommitUlong ? reader.ReadVUInt64() : 0;
         }
 
-        public FileKeyIndex(long generation, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong)
+        public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong)
         {
+            _guid = guid;
             _generation = generation;
             _trLogFileId = trLogFileId;
             _trLogOffset = trLogOffset;
@@ -44,7 +51,7 @@ namespace BTDB.KVDBLayer
 
         internal static void SkipHeader(AbstractBufferedReader reader)
         {
-            reader.SkipBlock(FileCollectionWithFileInfos.MagicStartOfFile.Length); // magic
+            FileCollectionWithFileInfos.SkipHeader(reader);
             var withCommitUlong = reader.ReadUInt8() == (byte)KVFileType.KeyIndexWithCommitUlong;
             reader.SkipVInt64(); // generation
             reader.SkipVUInt32(); // trLogFileId
@@ -55,9 +62,9 @@ namespace BTDB.KVDBLayer
 
         internal void WriteHeader(AbstractBufferedWriter writer)
         {
-            writer.WriteByteArrayRaw(FileCollectionWithFileInfos.MagicStartOfFile);
+            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
             var withCommitUlong = _commitUlong != 0;
-            writer.WriteUInt8((byte)(withCommitUlong?KVFileType.KeyIndexWithCommitUlong:KVFileType.KeyIndex));
+            writer.WriteUInt8((byte)(withCommitUlong ? KVFileType.KeyIndexWithCommitUlong : KVFileType.KeyIndex));
             writer.WriteVInt64(_generation);
             writer.WriteVUInt32(_trLogFileId);
             writer.WriteVUInt32(_trLogOffset);

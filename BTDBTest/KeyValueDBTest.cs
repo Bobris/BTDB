@@ -991,7 +991,7 @@ namespace BTDBTest
                         tr.Commit();
                     }
                 }
-                fileCollection.SimulateCorruptionBySetSize(20);
+                fileCollection.SimulateCorruptionBySetSize(20 + 16);
                 using (IKeyValueDB db = new KeyValueDB(fileCollection))
                 {
                     using (var tr = db.StartTransaction())

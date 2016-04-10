@@ -577,7 +577,7 @@ namespace BTDB.KVDBLayer
             }
             _fileWithTransactionLog = FileCollection.AddFile("trl");
             _fileIdWithTransactionLog = _fileWithTransactionLog.Index;
-            var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), _fileIdWithPreviousTransactionLog);
+            var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid, _fileIdWithPreviousTransactionLog);
             _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
             transactionLog.WriteHeader(_writerWithTransactionLog);
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
@@ -748,7 +748,7 @@ namespace BTDB.KVDBLayer
             var file = FileCollection.AddFile("kvi");
             var writer = file.GetAppenderWriter();
             var keyCount = root.CalcKeyCount();
-            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong);
+            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong);
             keyIndex.WriteHeader(writer);
             if (keyCount > 0)
             {
@@ -799,7 +799,7 @@ namespace BTDB.KVDBLayer
         {
             var fId = FileCollection.AddFile("pvl");
             fileId = fId.Index;
-            var pureValues = new FilePureValues(FileCollection.NextGeneration());
+            var pureValues = new FilePureValues(FileCollection.NextGeneration(), FileCollection.Guid);
             var writer = fId.GetAppenderWriter();
             FileCollection.SetInfo(fId.Index, pureValues);
             pureValues.WriteHeader(writer);
