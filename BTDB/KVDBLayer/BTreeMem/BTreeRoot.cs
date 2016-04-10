@@ -151,10 +151,11 @@ namespace BTDB.KVDBLayer.BTreeMem
         }
 
         public long TransactionId => _transactionId;
+        public ulong CommitUlong { get; set; }
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode };
+            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, CommitUlong = CommitUlong };
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)

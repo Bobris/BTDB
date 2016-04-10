@@ -141,6 +141,24 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void CommitWithUlongWorks()
+        {
+            using (IKeyValueDB db = new InMemoryKeyValueDB())
+            {
+                using (var tr1 = db.StartTransaction())
+                {
+                    Assert.Equal(0ul, tr1.GetCommitUlong());
+                    tr1.SetCommitUlong(42);
+                    tr1.Commit();
+                }
+                using (var tr2 = db.StartTransaction())
+                {
+                    Assert.Equal(42ul, tr2.GetCommitUlong());
+                }
+            }
+        }
+
+        [Fact]
         public void RollbackWorks()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())

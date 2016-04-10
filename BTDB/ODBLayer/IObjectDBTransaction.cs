@@ -28,6 +28,9 @@ namespace BTDB.ODBLayer
         void DeleteAll<T>() where T : class;
         void DeleteAll(Type type);
 
+        ulong GetCommitUlong();
+        void SetCommitUlong(ulong value);
+
         void Commit();
 
         IRelationCreator<T> InitRelation<T>(string relationName);

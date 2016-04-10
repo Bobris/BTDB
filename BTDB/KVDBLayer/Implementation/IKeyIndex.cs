@@ -5,5 +5,6 @@ namespace BTDB.KVDBLayer
         uint TrLogFileId { get; }
         uint TrLogOffset { get; }
         long KeyValueCount { get; }
+        ulong CommitUlong { get; }
     }
 }

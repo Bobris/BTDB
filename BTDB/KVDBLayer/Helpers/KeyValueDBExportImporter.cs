@@ -41,6 +41,11 @@ namespace BTDB.KVDBLayer
                 stream.Write(value.Buffer, value.Offset, value.Length);
                 transaction.FindNextKey();
             }
+            if (transaction.GetCommitUlong() != 0)
+            {
+                PackUnpack.PackUInt64LE(tempbuf, 0, transaction.GetCommitUlong());
+                stream.Write(tempbuf, 0, 8);
+            }
         }
 
         /// <summary>
@@ -72,9 +77,13 @@ namespace BTDB.KVDBLayer
                 if (stream.Read(tempbuf2, 0, 4) != 4) throw new EndOfStreamException();
                 var valueSize = PackUnpack.UnpackInt32LE(tempbuf2, 0);
                 if (valueSize < 0) throw new BTDBException("Negative value size");
-                if (valueSize > tempbuf2.Length) tempbuf2 = new byte[valueSize]; 
+                if (valueSize > tempbuf2.Length) tempbuf2 = new byte[valueSize];
                 if (stream.Read(tempbuf2, 0, valueSize) != valueSize) throw new EndOfStreamException();
-                transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(tempbuf,0,keySize),ByteBuffer.NewSync(tempbuf2,0,valueSize));
+                transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(tempbuf, 0, keySize), ByteBuffer.NewSync(tempbuf2, 0, valueSize));
+            }
+            if (stream.Read(tempbuf, 0, 8) == 8)
+            {
+                transaction.SetCommitUlong(PackUnpack.UnpackUInt64LE(tempbuf,0));
             }
         }
     }

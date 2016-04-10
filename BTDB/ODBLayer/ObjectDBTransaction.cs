@@ -722,6 +722,9 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public ulong GetCommitUlong() => _keyValueTr.GetCommitUlong();
+        public void SetCommitUlong(ulong value) => _keyValueTr.SetCommitUlong(value);
+
         public void Commit()
         {
             try
