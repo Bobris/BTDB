@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -88,6 +89,36 @@ namespace BTDBTest
                 var ex = Assert.Throws<BTDBException>(() => personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" }));
                 Assert.True(ex.Message.Contains("duplicate"));
                 tr.Commit();
+            }
+        }
+
+        public interface IPersonTableWithInsertAndEnumerate
+        {
+            void Insert(PersonSimple person);
+            IEnumerator<PersonSimple> GetEnumerator();
+        }
+
+        [Fact]
+        public void CanInsertAndEnumerate()
+        {
+            var insertedPerson = new PersonSimple {TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris"};
+
+            IRelationCreator<IPersonTableWithInsertAndEnumerate> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IPersonTableWithInsertAndEnumerate>("Person");
+                var personSimpleTable = creator.Create(tr);
+                personSimpleTable.Insert(insertedPerson);
+                tr.Commit();
+            }
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                var enumerator = personSimpleTable.GetEnumerator();
+                Assert.True(enumerator.MoveNext());
+                var person = enumerator.Current;
+                Assert.Equal(insertedPerson, person);
+                Assert.False(enumerator.MoveNext(), "Only one Person should be evaluated");
             }
         }
 

@@ -819,11 +819,12 @@ namespace BTDB.ODBLayer
             var relationInfo = _owner.RelationsInfo.FindByName(relationName) ??
                                _owner.RelationsInfo.LinkInterfaceType2Name(interfaceType, relationName);
             relationInfo.EnsureClientTypeVersion();
+            var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
 
             var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, typeof(object), new[] { interfaceType });
             var transactionField = classImpl.DefineField("transaction", typeof(IInternalObjectDBTransaction), System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
-            var manipulatorField = classImpl.DefineField("manipulator", typeof(RelationDBManipulator), System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
-            var constructorMethod = classImpl.DefineConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationDBManipulator) });
+            var manipulatorField = classImpl.DefineField("manipulator", relationDBManipulatorType, System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
+            var constructorMethod = classImpl.DefineConstructor(new[] { typeof(IObjectDBTransaction), relationDBManipulatorType });
             var il = constructorMethod.Generator;
             // super.ctor();
             il.Ldarg(0).Call(() => new object());
@@ -843,24 +844,28 @@ namespace BTDB.ODBLayer
                     .Ldarg(0)
                     .Ldfld(manipulatorField)
                     .Ldarg(0)
-                    .Ldfld(transactionField)
-                    .Ldarg(1)
-                    .Callvirt(typeof(RelationDBManipulator).GetMethod("Insert"))
+                    .Ldfld(transactionField);
+                int paramCount = method.GetParameters().Length;
+                for (ushort i = 1; i <= paramCount; i++)
+                    reqMethod.Generator.Ldarg(i);
+                reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod(method.Name))
                     .Ret();
                 classImpl.DefineMethodOverride(reqMethod, method);
             }
             var classImplType = classImpl.CreateType();
 
-            return BuildRelationCreatorInstance<T>(classImplType, relationName, new RelationDBManipulator(relationInfo));
+            return BuildRelationCreatorInstance<T>(classImplType, relationName, relationInfo);
         }
 
-        IRelationCreator<T> BuildRelationCreatorInstance<T>(Type classImplType, string relationName, RelationDBManipulator manipulator)
+        IRelationCreator<T> BuildRelationCreatorInstance<T>(Type classImplType, string relationName, RelationInfo relationInfo)
         {
             var interfaceType = typeof(IRelationCreator<T>);
+            var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
+
             var classImpl = ILBuilder.Instance.NewType("RelationBuilder" + relationName, typeof(object), new[] { interfaceType });
-            var manipulatorField = classImpl.DefineField("manipulator", typeof(RelationDBManipulator),
+            var manipulatorField = classImpl.DefineField("manipulator", relationDBManipulatorType,
                 System.Reflection.FieldAttributes.InitOnly | System.Reflection.FieldAttributes.Public);
-            var constructorMethod = classImpl.DefineConstructor(new[] { typeof(RelationDBManipulator) });
+            var constructorMethod = classImpl.DefineConstructor(new[] { relationDBManipulatorType });
             var il = constructorMethod.Generator;
             // super.ctor();
             il.Ldarg(0).Call(() => new object());
@@ -883,7 +888,8 @@ namespace BTDB.ODBLayer
             classImpl.DefineMethodOverride(methodBuilder, interfaceType.GetMethod("Create"));
 
             var relationCreatorType = classImpl.CreateType();
-            return (IRelationCreator<T>)relationCreatorType.GetConstructors()[0].Invoke(new object[] { manipulator });
+            var manipulator = Activator.CreateInstance(relationDBManipulatorType, relationInfo);
+            return (IRelationCreator<T>)relationCreatorType.GetConstructors()[0].Invoke(new[] { manipulator });
         }
     }
 }

@@ -360,7 +360,7 @@ namespace BTDB.ODBLayer
 
     }
 
-    public class RelationDBManipulator
+    public class RelationDBManipulator<T>
     {
         readonly RelationInfo _relationInfo;
 
@@ -369,7 +369,7 @@ namespace BTDB.ODBLayer
             _relationInfo = (RelationInfo)relationInfo;
         }
 
-        public void Insert(IInternalObjectDBTransaction tr, object @object)
+        public void Insert(IInternalObjectDBTransaction tr, T @object)
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
@@ -388,5 +388,11 @@ namespace BTDB.ODBLayer
                 throw new BTDBException("Trying to insert duplicate key.");
             tr.KeyValueDBTransaction.SetValue(valueBytes);
         }
+
+        public IEnumerator<T> GetEnumerator(IInternalObjectDBTransaction tr)
+        {
+            return null;
+        }
+
     }
 }
