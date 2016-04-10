@@ -24,7 +24,7 @@ namespace BTDB.ODBLayer
 
         internal TableFieldInfo this[string name]
         {
-            get { return _fields.FirstOrDefault(tfi => tfi.Name == name); }
+            get { return _fields.Concat(_primaryKeys.Values).FirstOrDefault(tfi => tfi.Name == name); }
         }
 
         internal IReadOnlyCollection<TableFieldInfo> GetValueFields()

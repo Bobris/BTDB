@@ -36,13 +36,18 @@ namespace BTDBTest
             _db.Open(_lowDb, false);
         }
 
-        public class PersonSimple
+        public class PersonSimple : IEquatable<PersonSimple>
         {
             [PrimaryKey(1)]
             public ulong TenantId { get; set; }
             [PrimaryKey(2)]
             public string Email { get; set; }
             public string Name { get; set; }
+
+            public bool Equals(PersonSimple other)
+            {
+                return TenantId == other.TenantId && string.Equals(Email, other.Email) && string.Equals(Name, other.Name);
+            }
         }
 
         public interface IPersonSimpleTableWithJustInsert
@@ -101,14 +106,16 @@ namespace BTDBTest
         [Fact]
         public void CanInsertAndEnumerate()
         {
-            var insertedPerson = new PersonSimple {TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris"};
+            var personBoris = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            var personLubos = new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Lubos" };
 
             IRelationCreator<IPersonTableWithInsertAndEnumerate> creator;
             using (var tr = _db.StartTransaction())
             {
                 creator = tr.InitRelation<IPersonTableWithInsertAndEnumerate>("Person");
                 var personSimpleTable = creator.Create(tr);
-                personSimpleTable.Insert(insertedPerson);
+                personSimpleTable.Insert(personBoris);
+                personSimpleTable.Insert(personLubos);
                 tr.Commit();
             }
             using (var tr = _db.StartReadOnlyTransaction())
@@ -117,7 +124,10 @@ namespace BTDBTest
                 var enumerator = personSimpleTable.GetEnumerator();
                 Assert.True(enumerator.MoveNext());
                 var person = enumerator.Current;
-                Assert.Equal(insertedPerson, person);
+                Assert.Equal(personBoris, person);
+                Assert.True(enumerator.MoveNext());
+                person = enumerator.Current;
+                Assert.Equal(personLubos, person);
                 Assert.False(enumerator.MoveNext(), "Only one Person should be evaluated");
             }
         }
@@ -151,7 +161,7 @@ namespace BTDBTest
             Person FindByIdOrDefault(Guid id);
             // Find by secondary key, it will throw if it find multiple Persons with that age
             Person FindByAgeOrDefault(uint age);
-            IEnumerator<Person> FindByAge(uint age);  
+            IEnumerator<Person> FindByAge(uint age);
             // Returns true if removed, if returning void it does throw if does not exists
             bool RemoveById(Guid id);
 

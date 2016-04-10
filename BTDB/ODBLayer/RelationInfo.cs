@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -23,7 +26,12 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _primaryKeysSaver;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _valueSaver;
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>
+            _primaryKeysloaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>
+            _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver)
         {
@@ -76,7 +84,7 @@ namespace BTDB.ODBLayer
         void CreateCreator()
         {
             var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
-                $"RelCreator_{Name}");
+                $"RelationCreator_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
@@ -99,7 +107,7 @@ namespace BTDB.ODBLayer
             EnsureClientTypeVersion();
             var relationVersionInfo = ClientRelationVersionInfo;
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
-                $"RelInitializer_{Name}");
+                $"RelationInitializer_{Name}");
             var ilGenerator = method.Generator;
             if (relationVersionInfo.NeedsInit())
             {
@@ -192,7 +200,7 @@ namespace BTDB.ODBLayer
                     .Stloc(1);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach(var field in fields)
+            foreach (var field in fields)
             {
                 var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
@@ -268,16 +276,20 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _relationInfoResolver.GetLastPersistedVersion(_id);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(uint version)
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
         {
-            return _loaders.GetOrAdd(version, CreateLoader);
+            return _primaryKeysloaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}_{ver}"));
         }
 
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version)
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetValueLoader(uint version)
+        {
+            return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
+        }
+
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
         {
             EnsureClientTypeVersion();
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(
-                $"RelLoader_{Name}_{version}");
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(loaderName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
@@ -297,7 +309,7 @@ namespace BTDB.ODBLayer
                     .Stloc(1);
             }
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var srcFieldInfo in relationVersionInfo.GetValueFields()) //todo create loader also for primary keys
+            foreach (var srcFieldInfo in fields)
             {
                 Action<IILGen> readerOrCtx;
                 if (srcFieldInfo.Handler.NeedsCtx())
@@ -307,7 +319,6 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientRelationVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-
                     var fieldInfo = props.First(p => GetPersistantName(p) == destFieldInfo.Name).GetSetMethod(true);
                     var fieldType = fieldInfo.GetParameters()[0].ParameterType;
                     var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
@@ -358,7 +369,109 @@ namespace BTDB.ODBLayer
             return a != null ? a.Name : p.Name;
         }
 
+        public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        {
+            DBObjectMetadata metadata = null; //todo remove from creator & initializer
+            var obj = Creator(tr, metadata);
+            Initializer(tr, metadata, obj);
+            var keyReader = new ByteBufferReader(keyBytes);
+            keyReader.ReadVUInt32(); //index Relation
+            var valueReader = new ByteBufferReader(valueBytes);
+            var version = valueReader.ReadVUInt32();
+            GetPrimaryKeysLoader(version)(tr, metadata, keyReader, obj);
+            GetValueLoader(version)(tr, metadata, valueReader, obj);
+            return obj;
+        }
     }
+
+    class RelationEnumerator<T> : IEnumerator<T>
+    {
+        readonly IInternalObjectDBTransaction _tr;
+        readonly RelationInfo _relationInfo;
+        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
+        readonly IKeyValueDBTransaction _keyValueTr;
+        long _prevProtectionCounter;
+
+        readonly int _prevModificationCounter;
+
+        uint _pos;
+        bool _seekNeeded;
+
+        readonly ByteBuffer _keyBytes;
+
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo)
+        {
+            _relationInfo = relationInfo;
+            _tr = tr;
+
+            _keyValueTr = _tr.KeyValueDBTransaction;
+            _keyValueTrProtector = _tr.TransactionProtector;
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+
+            _keyBytes = BuildKeyBytes(_relationInfo.Id);
+            _pos = 0;
+            _seekNeeded = true;
+        }
+
+        public bool MoveNext()
+        {
+            if (!_seekNeeded)
+                _pos++;
+            return Seek();
+        }
+
+        bool Seek()
+        {
+            if (!_keyValueTr.SetKeyIndex(_pos))
+                return false;
+            _seekNeeded = false;
+            return true;
+        }
+
+        public T Current
+        {
+            get
+            {
+                _keyValueTrProtector.Start();
+                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                {
+                    _keyValueTr.SetKeyPrefix(_keyBytes);
+                    Seek();
+                }
+                else if (_seekNeeded)
+                {
+                    Seek();
+                    _seekNeeded = false;
+                }
+                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
+                return (T)_relationInfo.CreateInstance(_tr, keyBytes, valueBytes);
+            }
+        }
+
+        object IEnumerator.Current
+        {
+            get { return Current; }
+        }
+
+        public void Reset()
+        {
+            throw new NotSupportedException();
+        }
+
+        ByteBuffer BuildKeyBytes(uint id)
+        {
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteVUInt32(id);
+            return keyWriter.Data.ToAsyncSafe();
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
 
     public class RelationDBManipulator<T>
     {
@@ -383,7 +496,7 @@ namespace BTDB.ODBLayer
 
             tr.TransactionProtector.Start();
             tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
-            
+
             if (!tr.KeyValueDBTransaction.CreateKey(keyBytes))
                 throw new BTDBException("Trying to insert duplicate key.");
             tr.KeyValueDBTransaction.SetValue(valueBytes);
@@ -391,7 +504,8 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator(IInternalObjectDBTransaction tr)
         {
-            return null;
+            tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+            return new RelationEnumerator<T>(tr, _relationInfo);
         }
 
     }
