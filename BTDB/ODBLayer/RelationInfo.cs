@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -16,22 +15,22 @@ namespace BTDB.ODBLayer
 {
     class RelationInfo
     {
-        uint _id;
-        string _name;
-        IRelationInfoResolver _relationInfoResolver;
+        readonly uint _id;
+        readonly string _name;
+        readonly IRelationInfoResolver _relationInfoResolver;
         uint _clientTypeVersion;
         Type _clientType;
         readonly ConcurrentDictionary<uint, RelationVersionInfo> _relationVersions = new ConcurrentDictionary<uint, RelationVersionInfo>();
-        Func<IInternalObjectDBTransaction, DBObjectMetadata, object> _creator;
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _primaryKeysSaver;
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _valueSaver;
+        Func<IInternalObjectDBTransaction, object> _creator;
+        Action<IInternalObjectDBTransaction, object> _initializer;
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _primaryKeysSaver;
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>
-            _primaryKeysloaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
+            _primaryKeysloaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>
-            _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
+            _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver)
         {
@@ -72,7 +71,7 @@ namespace BTDB.ODBLayer
             private set { _clientTypeVersion = value; }
         }
 
-        internal Func<IInternalObjectDBTransaction, DBObjectMetadata, object> Creator
+        internal Func<IInternalObjectDBTransaction, object> Creator
         {
             get
             {
@@ -83,7 +82,7 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
+            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, object>>(
                 $"RelationCreator_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator
@@ -93,7 +92,7 @@ namespace BTDB.ODBLayer
             Interlocked.CompareExchange(ref _creator, creator, null);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, object> Initializer
+        internal Action<IInternalObjectDBTransaction, object> Initializer
         {
             get
             {
@@ -106,14 +105,14 @@ namespace BTDB.ODBLayer
         {
             EnsureClientTypeVersion();
             var relationVersionInfo = ClientRelationVersionInfo;
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, object>>(
                 $"RelationInitializer_{Name}");
             var ilGenerator = method.Generator;
             if (relationVersionInfo.NeedsInit())
             {
                 ilGenerator.DeclareLocal(ClientType);
                 ilGenerator
-                    .Ldarg(2)
+                    .Ldarg(1)
                     .Castclass(ClientType)
                     .Stloc(0);
                 var anyNeedsCtx = relationVersionInfo.NeedsCtx();
@@ -154,7 +153,7 @@ namespace BTDB.ODBLayer
             Interlocked.CompareExchange(ref _initializer, initializer, null);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> ValueSaver
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> ValueSaver
         {
             get
             {
@@ -167,7 +166,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> PrimaryKeysSaver
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> PrimaryKeysSaver
         {
             get
             {
@@ -180,13 +179,13 @@ namespace BTDB.ODBLayer
             }
         }
 
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(saverName);
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>>(saverName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
-                .Ldarg(3)
+                .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
             var anyNeedsCtx = ClientRelationVersionInfo.NeedsCtx();
@@ -195,7 +194,7 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof(IWriterCtx));
                 ilGenerator
                     .Ldarg(0)
-                    .Ldarg(2)
+                    .Ldarg(1)
                     .Newobj(() => new DBWriterCtx(null, null))
                     .Stloc(1);
             }
@@ -208,12 +207,12 @@ namespace BTDB.ODBLayer
                 if (handler.NeedsCtx())
                     writerOrCtx = il => il.Ldloc(1);
                 else
-                    writerOrCtx = il => il.Ldarg(2);
+                    writerOrCtx = il => il.Ldarg(1);
                 handler.Save(ilGenerator, writerOrCtx, il =>
                 {
                     il.Ldloc(0).Callvirt(getter);
                     _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                                                                                 handler.HandledType())(il);
+                                                                                    handler.HandledType())(il);
                 });
             }
             ilGenerator
@@ -276,24 +275,24 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _relationInfoResolver.GetLastPersistedVersion(_id);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
         {
             return _primaryKeysloaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}_{ver}"));
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetValueLoader(uint version)
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
         {
             return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
         }
 
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
+        Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
         {
             EnsureClientTypeVersion();
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(loaderName);
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(loaderName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
             ilGenerator
-                .Ldarg(3)
+                .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
             var relationVersionInfo = _relationVersions.GetOrAdd(version, version1 => _relationInfoResolver.LoadRelationVersionInfo(_id, version1, Name));
@@ -304,7 +303,7 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof(IReaderCtx));
                 ilGenerator
                     .Ldarg(0)
-                    .Ldarg(2)
+                    .Ldarg(1)
                     .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
@@ -315,7 +314,7 @@ namespace BTDB.ODBLayer
                 if (srcFieldInfo.Handler.NeedsCtx())
                     readerOrCtx = il => il.Ldloc(1);
                 else
-                    readerOrCtx = il => il.Ldarg(2);
+                    readerOrCtx = il => il.Ldarg(1);
                 var destFieldInfo = clientRelationVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
@@ -371,15 +370,14 @@ namespace BTDB.ODBLayer
 
         public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            DBObjectMetadata metadata = null; //todo remove from creator & initializer
-            var obj = Creator(tr, metadata);
-            Initializer(tr, metadata, obj);
+            var obj = Creator(tr);
+            Initializer(tr, obj);
             var keyReader = new ByteBufferReader(keyBytes);
             keyReader.ReadVUInt32(); //index Relation
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetPrimaryKeysLoader(version)(tr, metadata, keyReader, obj);
-            GetValueLoader(version)(tr, metadata, valueReader, obj);
+            GetPrimaryKeysLoader(version)(tr, keyReader, obj);
+            GetValueLoader(version)(tr, valueReader, obj);
             return obj;
         }
     }
@@ -391,8 +389,6 @@ namespace BTDB.ODBLayer
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
-
-        readonly int _prevModificationCounter;
 
         uint _pos;
         bool _seekNeeded;
@@ -486,12 +482,12 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.PrimaryKeysSaver(tr, null, keyWriter, @object);
+            _relationInfo.PrimaryKeysSaver(tr, keyWriter, @object);
             var keyBytes = keyWriter.Data.ToByteArray();
 
             var valueWriter = new ByteBufferWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(tr, null, valueWriter, @object);
+            _relationInfo.ValueSaver(tr, valueWriter, @object);
             var valueBytes = valueWriter.Data.ToByteArray();
 
             tr.TransactionProtector.Start();
