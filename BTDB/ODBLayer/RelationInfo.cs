@@ -468,7 +468,6 @@ namespace BTDB.ODBLayer
         }
     }
 
-
     public class RelationDBManipulator<T>
     {
         readonly RelationInfo _relationInfo;
@@ -478,23 +477,63 @@ namespace BTDB.ODBLayer
             _relationInfo = (RelationInfo)relationInfo;
         }
 
-        public void Insert(IInternalObjectDBTransaction tr, T @object)
+        ByteBuffer ValueBytes(IInternalObjectDBTransaction tr, T obj)
+        {
+            var valueWriter = new ByteBufferWriter();
+            valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
+            _relationInfo.ValueSaver(tr, valueWriter, obj);
+            var valueBytes = valueWriter.Data.ToAsyncSafe();
+            return valueBytes;
+        }
+
+        byte[] KeyBytes(IInternalObjectDBTransaction tr, T obj)
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.PrimaryKeysSaver(tr, keyWriter, @object);
+            _relationInfo.PrimaryKeysSaver(tr, keyWriter, obj);
             var keyBytes = keyWriter.Data.ToByteArray();
+            return keyBytes;
+        }
 
-            var valueWriter = new ByteBufferWriter();
-            valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(tr, valueWriter, @object);
-            var valueBytes = valueWriter.Data.ToByteArray();
-
+        static void StartWorkingWithPK(IInternalObjectDBTransaction tr)
+        {
             tr.TransactionProtector.Start();
             tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+        }
+
+        public void Insert(IInternalObjectDBTransaction tr, T obj)
+        {
+            var keyBytes = KeyBytes(tr, obj);
+            var valueBytes = ValueBytes(tr, obj);
+
+            StartWorkingWithPK(tr);
 
             if (!tr.KeyValueDBTransaction.CreateKey(keyBytes))
-                throw new BTDBException("Trying to insert duplicate key.");
+                throw new BTDBException("Trying to insert duplicate key.");  //todo write key in message
+            tr.KeyValueDBTransaction.SetValue(valueBytes);
+        }
+
+        public bool Upsert(IInternalObjectDBTransaction tr, T obj)
+        {
+            var keyBytes = KeyBytes(tr, obj);
+            var valueBytes = ValueBytes(tr, obj);
+
+            StartWorkingWithPK(tr);
+
+            var created = tr.KeyValueDBTransaction.CreateKey(keyBytes);
+            tr.KeyValueDBTransaction.SetValue(valueBytes);
+            return created;
+        }
+
+        public void Update(IInternalObjectDBTransaction tr, T obj)
+        {
+            var keyBytes = KeyBytes(tr, obj);
+            var valueBytes = ValueBytes(tr, obj);
+
+            StartWorkingWithPK(tr);
+
+            if (!tr.KeyValueDBTransaction.FindExactKey(keyBytes))
+                throw new BTDBException("Not found record to update."); //todo write key in message
             tr.KeyValueDBTransaction.SetValue(valueBytes);
         }
 

@@ -97,9 +97,13 @@ namespace BTDBTest
             }
         }
 
-        public interface IPersonTableWithInsertAndEnumerate
+        public interface ISimplePersonTable
         {
             void Insert(PersonSimple person);
+            // Upsert = Insert or Update - return true if inserted
+            bool Upsert(PersonSimple person);
+            // Update will throw if does not exist
+            void Update(PersonSimple person);
             IEnumerator<PersonSimple> GetEnumerator();
         }
 
@@ -109,10 +113,10 @@ namespace BTDBTest
             var personBoris = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
             var personLubos = new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Lubos" };
 
-            IRelationCreator<IPersonTableWithInsertAndEnumerate> creator;
+            IRelationCreator<ISimplePersonTable> creator;
             using (var tr = _db.StartTransaction())
             {
-                creator = tr.InitRelation<IPersonTableWithInsertAndEnumerate>("Person");
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
                 var personSimpleTable = creator.Create(tr);
                 personSimpleTable.Insert(personBoris);
                 personSimpleTable.Insert(personLubos);
@@ -129,6 +133,70 @@ namespace BTDBTest
                 person = enumerator.Current;
                 Assert.Equal(personLubos, person);
                 Assert.False(enumerator.MoveNext(), "Only one Person should be evaluated");
+            }
+        }
+
+        T GetFirst<T>(IEnumerator<T> enumerator)
+        {
+            if (!enumerator.MoveNext())
+                throw new Exception("Empty");
+            return enumerator.Current;
+        }
+
+        [Fact]
+        public void UpsertWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            IRelationCreator<ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator.Create(tr);
+                Assert.True(personSimpleTable.Upsert(person), "Is newly inserted");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                person.Name = "Lubos";
+                Assert.False(personSimpleTable.Upsert(person), "Was already there");
+                var p = GetFirst(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                var p = GetFirst(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+            }
+        }
+
+        [Fact]
+        public void UpdateWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            IRelationCreator<ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator.Create(tr);
+                Assert.Throws<BTDBException>(() => personSimpleTable.Update(person));
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                person.Name = "Lubos";
+                personSimpleTable.Update(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                var p = GetFirst(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
             }
         }
 
