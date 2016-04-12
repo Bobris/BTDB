@@ -5,6 +5,7 @@ using System.Linq;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -54,9 +55,9 @@ namespace BTDB.ODBLayer
 
     class RelationsInfo
     {
-        readonly ConcurrentDictionary<string, RelationInfo> _name2Relation = new ConcurrentDictionary<string, RelationInfo>(ReferenceEqualityComparer<string>.Instance);
-        readonly ConcurrentDictionary<uint, RelationInfo> _id2Relation = new ConcurrentDictionary<uint, RelationInfo>();
-        readonly object _lock = new object();
+        readonly Dictionary<string,uint> _name2Id = new Dictionary<string, uint>(ReferenceEqualityComparer<string>.Instance);
+        readonly Dictionary<uint, RelationInfo> _id2Relation = new Dictionary<uint, RelationInfo>();
+        uint _freeId = 1;
         readonly IRelationInfoResolver _relationInfoResolver;
 
         public RelationsInfo(IRelationInfoResolver relationInfoResolver)
@@ -64,65 +65,50 @@ namespace BTDB.ODBLayer
             _relationInfoResolver = relationInfoResolver;
         }
 
-        internal RelationInfo FindByName(string name)
+        internal RelationInfo CreateByName(IKeyValueDBTransaction tr, string name, Type interfaceType)
         {
             name = string.Intern(name);
-            RelationInfo result;
-            if (_name2Relation.TryGetValue(name, out result)) return result;
-            return null;
+            uint id;
+            if (!_name2Id.TryGetValue(name, out id))
+            {
+                id = _freeId++;
+                _name2Id[name] = id;
+                tr.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
+                var nameWriter = new ByteBufferWriter();
+                nameWriter.WriteString(name);
+                var idWriter = new ByteBufferWriter();
+                idWriter.WriteVUInt32(id);
+                tr.CreateOrUpdateKeyValue(nameWriter.Data, idWriter.Data);
+            }
+            RelationInfo relation;
+            if (_id2Relation.TryGetValue(id, out relation))
+            {
+                throw new BTDBException("Relation with name "+name+" was already initialized");
+            }
+            var clientType = FindClientType(interfaceType);
+            relation = new RelationInfo(id,name,_relationInfoResolver, interfaceType, clientType);
+            _id2Relation[id] = relation;
+            return relation;
         }
 
         internal void LoadRelations(IEnumerable<KeyValuePair<uint, string>> relationNames)
         {
-            lock (_lock)
+            foreach (var name in relationNames)
             {
-                foreach (var name in relationNames)
-                {
-                    PrivateCreateRelation(name.Key, name.Value);
-                }
+                _name2Id[string.Intern(name.Value)] = name.Key;
+                if (name.Key >= _freeId) _freeId = name.Key + 1;
             }
-        }
-
-        RelationInfo PrivateCreateRelation(string name)
-        {
-            return PrivateCreateRelation((_id2Relation.Count == 0) ? 1 : (_id2Relation.Keys.Max() + 1), name);
-        }
-
-        RelationInfo PrivateCreateRelation(uint id, string name)
-        {
-            name = string.Intern(name);
-            var t = new RelationInfo(id, name, _relationInfoResolver);
-            _id2Relation.TryAdd(id, t);
-            _name2Relation.TryAdd(name, t);
-            return t;
         }
 
         public IEnumerable<RelationInfo> EnumerateRelationInfos()
         {
-            lock (_lock)
+            foreach (var relationInfo in _id2Relation)
             {
-                foreach (var relationInfo in _name2Relation.Values)
-                {
-                    yield return relationInfo;
-                }
+                yield return relationInfo.Value;
             }
         }
 
-        internal RelationInfo LinkInterfaceType2Name(Type interfaceType, string name)
-        {
-            var t = FindByName(name);
-            if (t == null)
-            {
-                lock (_lock)
-                {
-                    t = FindByName(name) ?? PrivateCreateRelation(name);
-                }
-            }
-            t.ClientType = FindClientType(interfaceType);
-            return t;
-        }
-
-        Type FindClientType(Type interfaceType)
+        static Type FindClientType(Type interfaceType)
         {
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
@@ -136,6 +122,5 @@ namespace BTDB.ODBLayer
             }
             throw new BTDBException($"Cannot deduce client type from interface {interfaceType.Name}");
         }
-
     }
 }

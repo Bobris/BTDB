@@ -18,8 +18,9 @@ namespace BTDB.ODBLayer
         readonly uint _id;
         readonly string _name;
         readonly IRelationInfoResolver _relationInfoResolver;
+        readonly Type _interfaceType;
+        readonly Type _clientType;
         uint _clientTypeVersion;
-        Type _clientType;
         readonly ConcurrentDictionary<uint, RelationVersionInfo> _relationVersions = new ConcurrentDictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, object> _creator;
         Action<IInternalObjectDBTransaction, object> _initializer;
@@ -32,26 +33,21 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
-        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver)
+
+        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType)
         {
             _id = id;
             _name = name;
             _relationInfoResolver = relationInfoResolver;
+            _interfaceType = interfaceType;
+            _clientType = clientType;
         }
 
         internal uint Id => _id;
 
         internal string Name => _name;
 
-        internal Type ClientType
-        {
-            get { return _clientType; }
-            set
-            {
-                _clientType = value;
-                ClientTypeVersion = 0;
-            }
-        }
+        internal Type ClientType => _clientType;
 
         internal RelationVersionInfo ClientRelationVersionInfo
         {
