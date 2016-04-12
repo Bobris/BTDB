@@ -406,7 +406,8 @@ namespace BTDB.ODBLayer
 
         void LoadTableNamesDict()
         {
-            _tableId2Name = ObjectDB.LoadTablesEnum(_tr.KeyValueDBTransaction).ToDictionary(pair => pair.Key, pair => pair.Value);
+            _tableId2Name = ObjectDB.LoadNamesEnum(_tr.KeyValueDBTransaction, ObjectDB.TableNamesPrefix)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
         TableVersionInfo GetTableVersionInfo(uint tableId, uint version)

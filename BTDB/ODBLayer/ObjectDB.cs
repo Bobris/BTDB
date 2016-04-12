@@ -14,6 +14,7 @@ namespace BTDB.ODBLayer
         IKeyValueDB _keyValueDB;
         readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
         TablesInfo _tablesInfo;
+        RelationsInfo _relationsInfo;
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = { 0, 0 };
         internal static readonly byte[] TableVersionsPrefix = { 0, 1 };
@@ -26,7 +27,8 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
         internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key => Primary Key
         readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
-        TableInfoResolver _tableInfoResolver;
+        ITableInfoResolver _tableInfoResolver;
+        IRelationInfoResolver _relationsInfoResolver;
         long _lastObjId;
         ulong _lastDictId;
 
@@ -42,6 +44,8 @@ namespace BTDB.ODBLayer
 
         internal TablesInfo TablesInfo => _tablesInfo;
 
+        internal RelationsInfo RelationsInfo => _relationsInfo;
+
         public void Open(IKeyValueDB keyValueDB, bool dispose)
         {
             if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
@@ -49,6 +53,8 @@ namespace BTDB.ODBLayer
             _dispose = dispose;
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
+            _relationsInfoResolver = new RelationInfoResolver(keyValueDB, this);
+            _relationsInfo = new RelationsInfo(_relationsInfoResolver);
             _lastObjId = 0;
             using (var tr = _keyValueDB.StartTransaction())
             {
@@ -57,7 +63,8 @@ namespace BTDB.ODBLayer
                 {
                     _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
                 }
-                _tablesInfo.LoadTables(LoadTablesEnum(tr));
+                _tablesInfo.LoadTables(LoadNamesEnum(tr, TableNamesPrefix));
+                _relationsInfo.LoadRelations(LoadNamesEnum(tr, RelationNamesPrefix));
                 tr.SetKeyPrefix(null);
                 if (tr.FindExactKey(LastDictIdKey))
                 {
@@ -78,9 +85,9 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
+        internal static IEnumerable<KeyValuePair<uint, string>> LoadNamesEnum(IKeyValueDBTransaction tr, byte[] prefix)
         {
-            tr.SetKeyPrefixUnsafe(TableNamesPrefix);
+            tr.SetKeyPrefixUnsafe(prefix);
             var keyReader = new KeyValueDBKeyReader(tr);
             var valueReader = new KeyValueDBValueReader(tr);
             while (tr.FindNextKey())
