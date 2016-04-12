@@ -482,16 +482,16 @@ namespace BTDB.ODBLayer
             var valueWriter = new ByteBufferWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
             _relationInfo.ValueSaver(tr, valueWriter, obj);
-            var valueBytes = valueWriter.Data.ToAsyncSafe();
+            var valueBytes = valueWriter.Data; // Data from ByteBufferWriter are always fresh and not reused = AsyncSafe
             return valueBytes;
         }
 
-        byte[] KeyBytes(IInternalObjectDBTransaction tr, T obj)
+        ByteBuffer KeyBytes(IInternalObjectDBTransaction tr, T obj)
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.PrimaryKeysSaver(tr, keyWriter, obj);
-            var keyBytes = keyWriter.Data.ToByteArray();
+            var keyBytes = keyWriter.Data;
             return keyBytes;
         }
 
@@ -508,9 +508,9 @@ namespace BTDB.ODBLayer
 
             StartWorkingWithPK(tr);
 
-            if (!tr.KeyValueDBTransaction.CreateKey(keyBytes))
+            if (tr.KeyValueDBTransaction.Find(keyBytes)==FindResult.Exact)
                 throw new BTDBException("Trying to insert duplicate key.");  //todo write key in message
-            tr.KeyValueDBTransaction.SetValue(valueBytes);
+            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
         public bool Upsert(IInternalObjectDBTransaction tr, T obj)
@@ -520,9 +520,7 @@ namespace BTDB.ODBLayer
 
             StartWorkingWithPK(tr);
 
-            var created = tr.KeyValueDBTransaction.CreateKey(keyBytes);
-            tr.KeyValueDBTransaction.SetValue(valueBytes);
-            return created;
+            return tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
         public void Update(IInternalObjectDBTransaction tr, T obj)
@@ -532,9 +530,9 @@ namespace BTDB.ODBLayer
 
             StartWorkingWithPK(tr);
 
-            if (!tr.KeyValueDBTransaction.FindExactKey(keyBytes))
+            if (tr.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
                 throw new BTDBException("Not found record to update."); //todo write key in message
-            tr.KeyValueDBTransaction.SetValue(valueBytes);
+            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
         public IEnumerator<T> GetEnumerator(IInternalObjectDBTransaction tr)
