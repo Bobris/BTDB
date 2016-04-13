@@ -20,22 +20,6 @@ namespace BTDB.ODBLayer
             _objectDB = objectDB;
         }
 
-        public uint GetLastPersistedVersion(uint id)
-        {
-            using (var tr = _keyValueDB.StartTransaction())
-            {
-                tr.SetKeyPrefix(ObjectDB.RelationVersionsPrefix);
-                var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
-                if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
-                    return 0;
-                var key2 = tr.GetKeyAsByteArray();
-                var ofs = PackUnpack.LengthVUInt(id);
-                if (key2.Length < ofs) return 0;
-                if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
-                return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
-            }
-        }
-
         public RelationVersionInfo LoadRelationVersionInfo(uint id, uint version, string relationName)
         {
             using (var tr = _keyValueDB.StartTransaction())
@@ -55,7 +39,7 @@ namespace BTDB.ODBLayer
 
     class RelationsInfo
     {
-        readonly Dictionary<string,uint> _name2Id = new Dictionary<string, uint>(ReferenceEqualityComparer<string>.Instance);
+        readonly Dictionary<string, uint> _name2Id = new Dictionary<string, uint>(ReferenceEqualityComparer<string>.Instance);
         readonly Dictionary<uint, RelationInfo> _id2Relation = new Dictionary<uint, RelationInfo>();
         uint _freeId = 1;
         readonly IRelationInfoResolver _relationInfoResolver;
@@ -83,10 +67,11 @@ namespace BTDB.ODBLayer
             RelationInfo relation;
             if (_id2Relation.TryGetValue(id, out relation))
             {
-                throw new BTDBException("Relation with name "+name+" was already initialized");
+                throw new BTDBException($"Relation with name '{name}' was already initialized");
             }
             var clientType = FindClientType(interfaceType);
-            relation = new RelationInfo(id,name,_relationInfoResolver, interfaceType, clientType);
+            var lastPersistedVersion = GetLastPersistedVersion(tr, id);
+            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, clientType, lastPersistedVersion);
             _id2Relation[id] = relation;
             return relation;
         }
@@ -121,6 +106,19 @@ namespace BTDB.ODBLayer
                 return @params[0].ParameterType;
             }
             throw new BTDBException($"Cannot deduce client type from interface {interfaceType.Name}");
+        }
+
+        static uint GetLastPersistedVersion(IKeyValueDBTransaction tr, uint id)
+        {
+            tr.SetKeyPrefix(ObjectDB.RelationVersionsPrefix);
+            var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
+            if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
+                return 0;
+            var key2 = tr.GetKeyAsByteArray();
+            var ofs = PackUnpack.LengthVUInt(id);
+            if (key2.Length < ofs) return 0;
+            if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
+            return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
         }
     }
 }

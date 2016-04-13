@@ -34,13 +34,14 @@ namespace BTDB.ODBLayer
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
 
-        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType)
+        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, uint lastPersistedVersion)
         {
             _id = id;
             _name = name;
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
             _clientType = clientType;
+            LastPersistedVersion = lastPersistedVersion;
         }
 
         internal uint Id => _id;
@@ -219,7 +220,6 @@ namespace BTDB.ODBLayer
         internal void EnsureClientTypeVersion()
         {
             if (ClientTypeVersion != 0) return;
-            EnsureKnownLastPersistedVersion();
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
             var secondaryKeysInfo = new Dictionary<uint, SecondaryKeyAttribute>(); //field idx->attribute info
@@ -263,12 +263,6 @@ namespace BTDB.ODBLayer
                     ClientTypeVersion = LastPersistedVersion + 1;
                 }
             }
-        }
-
-        void EnsureKnownLastPersistedVersion()
-        {
-            if (LastPersistedVersion != 0) return;
-            LastPersistedVersion = _relationInfoResolver.GetLastPersistedVersion(_id);
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
