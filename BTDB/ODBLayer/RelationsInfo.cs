@@ -11,25 +11,11 @@ namespace BTDB.ODBLayer
 {
     class RelationInfoResolver : IRelationInfoResolver
     {
-        readonly IKeyValueDB _keyValueDB;
         readonly ObjectDB _objectDB;
 
-        public RelationInfoResolver(IKeyValueDB keyValueDB, ObjectDB objectDB)
+        public RelationInfoResolver(ObjectDB objectDB)
         {
-            _keyValueDB = keyValueDB;
             _objectDB = objectDB;
-        }
-
-        public RelationVersionInfo LoadRelationVersionInfo(uint id, uint version, string relationName)
-        {
-            using (var tr = _keyValueDB.StartTransaction())
-            {
-                tr.SetKeyPrefix(ObjectDB.RelationVersionsPrefix);
-                var key = TableInfo.BuildKeyForTableVersions(id, version);
-                if (!tr.FindExactKey(key))
-                    throw new BTDBException($"Missing RelationVersionInfo Id:{id} Version:{version}");
-                return RelationVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, relationName);
-            }
         }
 
         public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
@@ -70,8 +56,7 @@ namespace BTDB.ODBLayer
                 throw new BTDBException($"Relation with name '{name}' was already initialized");
             }
             var clientType = FindClientType(interfaceType);
-            var lastPersistedVersion = GetLastPersistedVersion(tr, id);
-            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, clientType, lastPersistedVersion);
+            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, clientType, tr);
             _id2Relation[id] = relation;
             return relation;
         }

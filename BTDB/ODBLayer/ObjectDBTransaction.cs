@@ -820,7 +820,6 @@ namespace BTDB.ODBLayer
         {
             var interfaceType = typeof(T);
             var relationInfo = _owner.RelationsInfo.CreateByName(KeyValueDBTransaction, relationName, interfaceType);
-            relationInfo.EnsureClientTypeVersion();
             var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
 
             var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, typeof(object), new[] { interfaceType });

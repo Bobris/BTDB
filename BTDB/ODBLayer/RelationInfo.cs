@@ -20,8 +20,7 @@ namespace BTDB.ODBLayer
         readonly IRelationInfoResolver _relationInfoResolver;
         readonly Type _interfaceType;
         readonly Type _clientType;
-        uint _clientTypeVersion;
-        readonly ConcurrentDictionary<uint, RelationVersionInfo> _relationVersions = new ConcurrentDictionary<uint, RelationVersionInfo>();
+        readonly Dictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, object> _creator;
         Action<IInternalObjectDBTransaction, object> _initializer;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _primaryKeysSaver;
@@ -34,14 +33,54 @@ namespace BTDB.ODBLayer
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
 
-        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, uint lastPersistedVersion)
+        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, IKeyValueDBTransaction tr)
         {
             _id = id;
             _name = name;
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
             _clientType = clientType;
-            LastPersistedVersion = lastPersistedVersion;
+            LoadVersionInfos(tr);
+            ClientRelationVersionInfo = CreateVersionInfoByReflection();
+            if (LastPersistedVersion > 0 && _relationVersions[LastPersistedVersion].Equals(ClientRelationVersionInfo))
+            {
+                _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
+                ClientTypeVersion = LastPersistedVersion;
+            }
+            else
+            {
+                // TODO check and do upgrade
+                ClientTypeVersion = LastPersistedVersion + 1;
+                _relationVersions.Add(ClientTypeVersion, ClientRelationVersionInfo);
+                var writerk = new ByteBufferWriter();
+                writerk.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
+                writerk.WriteVUInt32(_id);
+                writerk.WriteVUInt32(ClientTypeVersion);
+                var writerv = new ByteBufferWriter();
+                ClientRelationVersionInfo.Save(writerv);
+                tr.SetKeyPrefix(ByteBuffer.NewEmpty());
+                tr.CreateOrUpdateKeyValue(writerk.Data, writerv.Data);
+            }
+        }
+
+        void LoadVersionInfos(IKeyValueDBTransaction tr)
+        {
+            LastPersistedVersion = 0;
+            var writer = new ByteBufferWriter();
+            writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
+            writer.WriteVUInt32(_id);
+            tr.SetKeyPrefix(writer.Data);
+            if (!tr.FindFirstKey()) return;
+            var keyReader = new KeyValueDBKeyReader(tr);
+            var valueReader = new KeyValueDBValueReader(tr);
+            do
+            {
+                keyReader.Restart();
+                valueReader.Restart();
+                LastPersistedVersion = keyReader.ReadVUInt32();
+                _relationVersions[LastPersistedVersion] = RelationVersionInfo.Load(valueReader,
+                    _relationInfoResolver.FieldHandlerFactory, _name);
+            } while (tr.FindNextKey());
         }
 
         internal uint Id => _id;
@@ -50,23 +89,11 @@ namespace BTDB.ODBLayer
 
         internal Type ClientType => _clientType;
 
-        internal RelationVersionInfo ClientRelationVersionInfo
-        {
-            get
-            {
-                RelationVersionInfo tvi;
-                if (_relationVersions.TryGetValue(_clientTypeVersion, out tvi)) return tvi;
-                return null;
-            }
-        }
+        internal RelationVersionInfo ClientRelationVersionInfo { get; }
 
         internal uint LastPersistedVersion { get; set; }
 
-        internal uint ClientTypeVersion
-        {
-            get { return _clientTypeVersion; }
-            private set { _clientTypeVersion = value; }
-        }
+        internal uint ClientTypeVersion { get; }
 
         internal Func<IInternalObjectDBTransaction, object> Creator
         {
@@ -100,7 +127,6 @@ namespace BTDB.ODBLayer
 
         void CreateInitializer()
         {
-            EnsureClientTypeVersion();
             var relationVersionInfo = ClientRelationVersionInfo;
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, object>>(
                 $"RelationInitializer_{Name}");
@@ -217,9 +243,8 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        internal void EnsureClientTypeVersion()
+        RelationVersionInfo CreateVersionInfoByReflection()
         {
-            if (ClientTypeVersion != 0) return;
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
             var secondaryKeysInfo = new Dictionary<uint, SecondaryKeyAttribute>(); //field idx->attribute info
@@ -243,26 +268,7 @@ namespace BTDB.ODBLayer
                 }
                 fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
             }
-            var rvi = new RelationVersionInfo(primaryKeys, secondaryKeysInfo, fields.ToArray());
-            if (LastPersistedVersion == 0)
-            {
-                _relationVersions.TryAdd(1, rvi);
-                ClientTypeVersion = 1;
-            }
-            else
-            {
-                var last = _relationVersions.GetOrAdd(LastPersistedVersion, v => _relationInfoResolver.LoadRelationVersionInfo(_id, v, Name));
-                if (RelationVersionInfo.Equal(last, rvi))
-                {
-                    _relationVersions[LastPersistedVersion] = rvi; // tvi was build from real types and not loaded so it is more exact
-                    ClientTypeVersion = LastPersistedVersion;
-                }
-                else
-                {
-                    _relationVersions.TryAdd(LastPersistedVersion + 1, rvi);
-                    ClientTypeVersion = LastPersistedVersion + 1;
-                }
-            }
+            return new RelationVersionInfo(primaryKeys, secondaryKeysInfo, fields.ToArray());
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
@@ -277,7 +283,6 @@ namespace BTDB.ODBLayer
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
         {
-            EnsureClientTypeVersion();
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(loaderName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
@@ -285,7 +290,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
-            var relationVersionInfo = _relationVersions.GetOrAdd(version, version1 => _relationInfoResolver.LoadRelationVersionInfo(_id, version1, Name));
+            var relationVersionInfo = _relationVersions[version];
             var clientRelationVersionInfo = ClientRelationVersionInfo;
             var anyNeedsCtx = relationVersionInfo.NeedsCtx() || clientRelationVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
@@ -363,7 +368,7 @@ namespace BTDB.ODBLayer
             var obj = Creator(tr);
             Initializer(tr, obj);
             var keyReader = new ByteBufferReader(keyBytes);
-            keyReader.ReadVUInt32(); //index Relation
+            keyReader.SkipVUInt32(); //index Relation
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
             GetPrimaryKeysLoader(version)(tr, keyReader, obj);
@@ -498,7 +503,7 @@ namespace BTDB.ODBLayer
 
             StartWorkingWithPK(tr);
 
-            if (tr.KeyValueDBTransaction.Find(keyBytes)==FindResult.Exact)
+            if (tr.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
                 throw new BTDBException("Trying to insert duplicate key.");  //todo write key in message
             tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }

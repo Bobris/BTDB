@@ -53,7 +53,7 @@ namespace BTDB.ODBLayer
             _dispose = dispose;
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
-            _relationsInfoResolver = new RelationInfoResolver(keyValueDB, this);
+            _relationsInfoResolver = new RelationInfoResolver(this);
             _relationsInfo = new RelationsInfo(_relationsInfoResolver);
             _lastObjId = 0;
             using (var tr = _keyValueDB.StartTransaction())
