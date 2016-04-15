@@ -7,6 +7,7 @@ namespace BTDB.FieldHandler
         // Return true if actual content needs to be serialized
         bool WriteObject(object @object);
         void WriteNativeObject(object @object);
+        void WriteNativeObjectPreventInline(object @object);
         AbstractBufferedWriter Writer();
     }
 }

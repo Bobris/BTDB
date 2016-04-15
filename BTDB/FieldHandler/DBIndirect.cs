@@ -64,10 +64,10 @@ namespace BTDB.FieldHandler
             var ind2 = obj as IIndirect<T>;
             if (ind2 != null)
             {
-                writerCtx.WriteNativeObject(ind2.Value);
+                writerCtx.WriteNativeObjectPreventInline(ind2.Value);
                 return;
             }
-            writerCtx.WriteNativeObject(obj);
+            writerCtx.WriteNativeObjectPreventInline(obj);
         }
 
         public static IIndirect<T> LoadImpl(IReaderCtx readerCtx)

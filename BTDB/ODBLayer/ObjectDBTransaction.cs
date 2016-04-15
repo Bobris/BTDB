@@ -514,7 +514,7 @@ namespace BTDB.ODBLayer
             return id;
         }
 
-        public ulong StoreIfNotInlined(object @object, bool autoRegister)
+        public ulong StoreIfNotInlined(object @object, bool autoRegister, bool preferInline)
         {
             TableInfo ti;
             if (autoRegister)
@@ -544,7 +544,7 @@ namespace BTDB.ODBLayer
                     return metadata.Id;
                 }
             }
-            return ti.StoredInline ? ulong.MaxValue : RegisterNewObject(@object);
+            return (ti.StoredInline || preferInline) ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
         ulong RegisterNewObject(object obj)

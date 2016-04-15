@@ -61,6 +61,11 @@ namespace BTDB.Service
             }
         }
 
+        public void WriteNativeObjectPreventInline(object @object)
+        {
+            WriteNativeObject(@object);
+        }
+
         public AbstractBufferedWriter Writer()
         {
             return _writer;

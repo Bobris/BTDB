@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -8,28 +7,30 @@ namespace BTDB.ODBLayer
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
+        readonly bool _preferInline;
         Dictionary<object, int> _objectIdMap;
         int _lastId;
 
-        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
+        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer, bool preferInline)
         {
             _transaction = transaction;
             _writer = writer;
+            _preferInline = preferInline;
         }
 
         public bool WriteObject(object @object)
         {
-            return CommonWriteObject(@object, false);
+            return CommonWriteObject(@object, false, true);
         }
 
-        bool CommonWriteObject(object @object, bool autoRegister)
+        bool CommonWriteObject(object @object, bool autoRegister, bool allowInline)
         {
             if (@object == null)
             {
                 _writer.WriteVInt64(0);
                 return false;
             }
-            var oid = _transaction.StoreIfNotInlined(@object, autoRegister);
+            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline && _preferInline);
             if (oid != ulong.MaxValue)
             {
                 _writer.WriteVInt64((long)oid);
@@ -50,7 +51,13 @@ namespace BTDB.ODBLayer
 
         public void WriteNativeObject(object @object)
         {
-            if (!CommonWriteObject(@object, true)) return;
+            if (!CommonWriteObject(@object, true, true)) return;
+            _transaction.WriteInlineObject(@object, this);
+        }
+
+        public void WriteNativeObjectPreventInline(object @object)
+        {
+            if (!CommonWriteObject(@object, true, false)) return;
             _transaction.WriteInlineObject(@object, this);
         }
 
