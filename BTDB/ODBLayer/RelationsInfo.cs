@@ -90,18 +90,5 @@ namespace BTDB.ODBLayer
             }
             throw new BTDBException($"Cannot deduce client type from interface {interfaceType.Name}");
         }
-
-        static uint GetLastPersistedVersion(IKeyValueDBTransaction tr, uint id)
-        {
-            tr.SetKeyPrefix(ObjectDB.RelationVersionsPrefix);
-            var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
-            if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
-                return 0;
-            var key2 = tr.GetKeyAsByteArray();
-            var ofs = PackUnpack.LengthVUInt(id);
-            if (key2.Length < ofs) return 0;
-            if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
-            return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
-        }
     }
 }
