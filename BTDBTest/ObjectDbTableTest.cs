@@ -217,8 +217,36 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator.Create(tr);
+                Assert.False(personSimpleTable.RemoveById(0, "no@no.cz"));
                 Assert.True(personSimpleTable.RemoveById(person.TenantId, person.Email));
                 Assert.False(personSimpleTable.GetEnumerator().MoveNext());
+            }
+        }
+
+        public interface ISimplePersonTableWithVoidRemove
+        {
+            void Insert(PersonSimple person);
+            // Throws if not removed
+            void RemoveById(ulong tenantId, string email);
+        }
+
+        [Fact]
+        public void RemoveByIdThrowsWhenNotFound()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            IRelationCreator<ISimplePersonTableWithVoidRemove> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTableWithVoidRemove>("PersonSimpleVoidRemove");
+                var personSimpleTable = creator.Create(tr);
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                Assert.Throws<BTDBException>(() => personSimpleTable.RemoveById(0, "no@no.cz"));
+                personSimpleTable.RemoveById(person.TenantId, person.Email);
             }
         }
 

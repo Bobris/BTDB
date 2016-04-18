@@ -378,13 +378,18 @@ namespace BTDB.ODBLayer
         }
 
         void SaveKeyField(IILGen ilGenerator,
-            string fieldName, ushort parameterId,
-            ushort trLoc = 0, ushort manipulatorLoc = 1, ushort writerLoc = 2)
+            string fieldName, ushort parameterId, ushort writerLoc = 2)
         {
+            var field = ClientRelationVersionInfo[fieldName];
+            if (field.Handler.NeedsCtx())
+                throw new BTDBException($"Unsupported key field {fieldName} type.");
+            field.Handler.Save(ilGenerator, 
+                il => il.Ldloc(writerLoc), 
+                il => il.Ldarg(parameterId));
         }
 
         public void SaveKeyBytesAndCallRemoveMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
-            ParameterInfo[] methodParameters)
+            ParameterInfo[] methodParameters, Type methodReturnType)
         {
             //loc 0 - transaction
             //loc 1 - manipulator
@@ -394,6 +399,8 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
                 ilGenerator.Newobj(() => new ByteBufferWriter());
                 ilGenerator.Stloc(2);
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                ilGenerator.Ldloc(2).LdcI4((int)Id).Callvirt(typeof (AbstractBufferedWriter).GetMethod("WriteVUInt32"));
                 var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
                 if (primaryKeyFields.Count != methodParameters.Length)
                     throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
@@ -403,7 +410,7 @@ namespace BTDB.ODBLayer
                     var par = methodParameters[idx++];
                     if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                         throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
-                    SaveKeyField(ilGenerator, par.Name, idx);
+                    SaveKeyField(ilGenerator, field.Name, idx);
                 }
                 //call manipulator.Remove(tr, byteBuffer)
                 ilGenerator
@@ -413,6 +420,15 @@ namespace BTDB.ODBLayer
                 var dataGetter = typeof (ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
                 ilGenerator.Ldloc(2).Callvirt(dataGetter);
                 ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+                if (methodReturnType == typeof (void))
+                {
+                    var finished = ilGenerator.DefineLabel();
+                    ilGenerator.Brtrue(finished)
+                        .Ldstr("Key not found.")
+                        .Newobj(() => new BTDBException(null))
+                        .Throw()
+                        .Mark(finished);
+                }
             }
             else
             {

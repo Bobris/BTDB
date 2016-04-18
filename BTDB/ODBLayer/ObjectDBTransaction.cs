@@ -854,7 +854,7 @@ namespace BTDB.ODBLayer
                     reqMethod.Generator.Stloc(1);
 
                     relationInfo.SaveKeyBytesAndCallRemoveMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
-                        method.GetParameters());
+                        method.GetParameters(), method.ReturnType);
                 }
                 else //call same method name with same parameters
                 {
