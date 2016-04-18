@@ -141,7 +141,7 @@ namespace BTDB.ODBLayer
                 var anyNeedsCtx = relationVersionInfo.NeedsCtx();
                 if (anyNeedsCtx)
                 {
-                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator.DeclareLocal(typeof (IReaderCtx));
                     ilGenerator
                         .Ldarg(0)
                         .Newobj(() => new DBReaderCtx(null))
@@ -376,6 +376,50 @@ namespace BTDB.ODBLayer
             GetValueLoader(version)(tr, valueReader, obj);
             return obj;
         }
+
+        void SaveKeyField(IILGen ilGenerator,
+            string fieldName, ushort parameterId,
+            ushort trLoc = 0, ushort manipulatorLoc = 1, ushort writerLoc = 2)
+        {
+        }
+
+        public void SaveKeyBytesAndCallRemoveMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
+            ParameterInfo[] methodParameters)
+        {
+            //loc 0 - transaction
+            //loc 1 - manipulator
+            if (methodName.StartsWith("RemoveById"))
+            {
+                //loc 2 - writer
+                ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
+                ilGenerator.Newobj(() => new ByteBufferWriter());
+                ilGenerator.Stloc(2);
+                var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
+                if (primaryKeyFields.Count != methodParameters.Length)
+                    throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
+                ushort idx = 0;
+                foreach (var field in primaryKeyFields)
+                {
+                    var par = methodParameters[idx++];
+                    if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
+                        throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
+                    SaveKeyField(ilGenerator, par.Name, idx);
+                }
+                //call manipulator.Remove(tr, byteBuffer)
+                ilGenerator
+                    .Ldloc(1) //manipulator
+                    .Ldloc(0); //transaction
+                //call byteBUffer.data
+                var dataGetter = typeof (ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+                ilGenerator.Ldloc(2).Callvirt(dataGetter);
+                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
+
+        }
     }
 
     class RelationEnumerator<T> : IEnumerator<T>
@@ -536,6 +580,17 @@ namespace BTDB.ODBLayer
             tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
             return new RelationEnumerator<T>(tr, _relationInfo);
         }
+
+        public bool RemoveById(IInternalObjectDBTransaction tr, ByteBuffer keyBytes)
+        {
+            StartWorkingWithPK(tr);
+            if (tr.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+                return false;
+            tr.KeyValueDBTransaction.EraseCurrent();
+            return true;
+        }
+
+
 
     }
 }

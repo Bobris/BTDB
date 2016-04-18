@@ -61,7 +61,7 @@ namespace BTDBTest
             IRelationCreator<IPersonSimpleTableWithJustInsert> creator;
             using (var tr = _db.StartTransaction())
             {
-                creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("Person");
+                creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("PersonSimple");
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -77,7 +77,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IDisposable>("Person"));
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IDisposable>("PersonSimple"));
                 Assert.True(ex.Message.Contains("Cannot deduce"));
             }
         }
@@ -87,7 +87,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("Person");
+                var creator = tr.InitRelation<IPersonSimpleTableWithJustInsert>("PersonSimple");
                 var personSimpleTable = creator.Create(tr);
                 personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
                 personSimpleTable.Insert(new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Boris" });
@@ -105,6 +105,8 @@ namespace BTDBTest
             // Update will throw if does not exist
             void Update(PersonSimple person);
             IEnumerator<PersonSimple> GetEnumerator();
+            // Returns true if removed
+            bool RemoveById(ulong tenantId, string email);
         }
 
         [Fact]
@@ -197,6 +199,26 @@ namespace BTDBTest
                 var personSimpleTable = creator.Create(tr);
                 var p = GetFirst(personSimpleTable.GetEnumerator());
                 Assert.Equal("Lubos", p.Name);
+            }
+        }
+
+        [Fact]
+        public void RemoveByIdWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            IRelationCreator<ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("PersonSimple");
+                var personSimpleTable = creator.Create(tr);
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator.Create(tr);
+                Assert.True(personSimpleTable.RemoveById(person.TenantId, person.Email));
+                Assert.False(personSimpleTable.GetEnumerator().MoveNext());
             }
         }
 
