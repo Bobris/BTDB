@@ -43,21 +43,7 @@ namespace BTDB.ODBLayer
             _count = -1;
         }
 
-        public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config)
-        {
-            _tr = tr;
-            _keyHandler = config.KeyHandler;
-            _valueHandler = config.ValueHandler;
-            _id = tr.AllocateDictionaryId();
-            GeneratePrefix();
-            _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader;
-            _keyWriter = (Action<TKey, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter;
-            _valueReader = (Func<AbstractBufferedReader, IReaderCtx, TValue>)config.ValueReader;
-            _valueWriter = (Action<TValue, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter;
-            _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
-            _count = -1;
-        }
+        public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config) : this(tr, config, tr.AllocateDictionaryId()) { }
 
         static void ThrowModifiedDuringEnum()
         {
