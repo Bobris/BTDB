@@ -846,11 +846,24 @@ namespace BTDB.ODBLayer
                     .Ldfld(manipulatorField)
                     .Ldarg(0)
                     .Ldfld(transactionField);
-                int paramCount = method.GetParameters().Length;
-                for (ushort i = 1; i <= paramCount; i++)
-                    reqMethod.Generator.Ldarg(i);
-                reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod(method.Name))
-                    .Ret();
+                if (method.Name.StartsWith("RemoveBy"))
+                {
+                    reqMethod.Generator.DeclareLocal(typeof(IInternalObjectDBTransaction));
+                    reqMethod.Generator.Stloc(0);
+                    reqMethod.Generator.DeclareLocal(relationDBManipulatorType);
+                    reqMethod.Generator.Stloc(1);
+
+                    relationInfo.SaveKeyBytesAndCallRemoveMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
+                        method.GetParameters(), method.ReturnType);
+                }
+                else //call same method name with same parameters
+                {
+                    int paramCount = method.GetParameters().Length;
+                    for (ushort i = 1; i <= paramCount; i++)
+                        reqMethod.Generator.Ldarg(i);
+                    reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod(method.Name));
+                }
+                reqMethod.Generator.Ret();
                 classImpl.DefineMethodOverride(reqMethod, method);
             }
             var classImplType = classImpl.CreateType();
