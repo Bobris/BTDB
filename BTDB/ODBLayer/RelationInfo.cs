@@ -202,6 +202,39 @@ namespace BTDB.ODBLayer
             }
         }
 
+        void CreateSaverIl(IILGen ilGen, IReadOnlyCollection<TableFieldInfo> fields, Action<IILGen> pushInstance, Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
+        {
+            var anyNeedsCtx = fields.Any(tfi=>tfi.Handler.NeedsCtx());
+            IILLocal writerCtxLocal = null;
+            if (anyNeedsCtx)
+            {
+                writerCtxLocal = ilGen.DeclareLocal(typeof(IWriterCtx));
+                ilGen
+                    .Do(pushTransaction)
+                    .Do(pushWriter)
+                    .LdcI4(1)
+                    .Newobj(() => new DBWriterCtx(null, null, true))
+                    .Stloc(writerCtxLocal);
+            }
+            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            foreach (var field in fields)
+            {
+                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
+                Action<IILGen> writerOrCtx;
+                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
+                if (handler.NeedsCtx())
+                    writerOrCtx = il => il.Ldloc(writerCtxLocal);
+                else
+                    writerOrCtx = pushWriter;
+                handler.Save(ilGen, writerOrCtx, il =>
+                {
+                    il.Do(pushInstance).Callvirt(getter);
+                    _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
+                                                                                    handler.HandledType())(il);
+                });
+            }
+        }
+
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
         {
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>>(saverName);
@@ -211,34 +244,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
-            var anyNeedsCtx = ClientRelationVersionInfo.NeedsCtx();
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IWriterCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Ldarg(1)
-                    .LdcI4(1)
-                    .Newobj(() => new DBWriterCtx(null, null, true))
-                    .Stloc(1);
-            }
-            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var field in fields)
-            {
-                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
-                Action<IILGen> writerOrCtx;
-                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
-                if (handler.NeedsCtx())
-                    writerOrCtx = il => il.Ldloc(1);
-                else
-                    writerOrCtx = il => il.Ldarg(1);
-                handler.Save(ilGenerator, writerOrCtx, il =>
-                {
-                    il.Ldloc(0).Callvirt(getter);
-                    _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                                                                                    handler.HandledType())(il);
-                });
-            }
+            CreateSaverIl(ilGenerator,fields,il=>il.Ldloc(0),il=>il.Ldarg(1),il=>il.Ldarg(0));
             ilGenerator
                 .Ret();
             return method.Create();
