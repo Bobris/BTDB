@@ -191,6 +191,7 @@ namespace BTDBTest
                 personSimpleTable.Insert(person);
                 tr.Commit();
             }
+            ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);

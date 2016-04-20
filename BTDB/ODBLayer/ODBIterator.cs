@@ -21,30 +21,34 @@ namespace BTDB.ODBLayer
         readonly HashSet<uint> _usedTableIds;
         readonly byte[] _tempBytes = new byte[32];
         readonly HashSet<ulong> _visitedOids;
-        readonly HashSet<TableIdVersion> _usedTableVersions;
-        readonly Dictionary<TableIdVersion, TableVersionInfo> _tableVersionInfos;
+        readonly HashSet<IdVersion> _usedTableVersions;
+        readonly Dictionary<IdVersion, TableVersionInfo> _tableVersionInfos;
         readonly Dictionary<IFieldHandler, Action<AbstractBufferedReader>> _skippers;
         readonly Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>> _loaders;
+        //relations
+        Dictionary<uint, string> _relationId2Name;
+        readonly HashSet<IdVersion> _usedRelationVersions;
+        readonly Dictionary<IdVersion, RelationVersionInfo> _relationVersionInfos;
 
-        struct TableIdVersion : IEquatable<TableIdVersion>
+        struct IdVersion : IEquatable<IdVersion>
         {
-            readonly uint _tableid;
+            readonly uint _id;
             readonly uint _version;
 
-            public TableIdVersion(uint tableid, uint version)
+            public IdVersion(uint id, uint version)
             {
-                _tableid = tableid;
+                _id = id;
                 _version = version;
             }
 
-            public bool Equals(TableIdVersion other)
+            public bool Equals(IdVersion other)
             {
-                return _tableid == other._tableid && _version == other._version;
+                return _id == other._id && _version == other._version;
             }
 
             public override int GetHashCode()
             {
-                return (int)(_tableid * 33 + _version);
+                return (int)(_id * 33 + _version);
             }
         }
         public ODBIterator(IObjectDBTransaction tr, IODBFastVisitor visitor)
@@ -55,8 +59,11 @@ namespace BTDB.ODBLayer
             _visitor = visitor as IODBVisitor;
             _usedTableIds = new HashSet<uint>();
             _visitedOids = new HashSet<ulong>();
-            _usedTableVersions = new HashSet<TableIdVersion>();
-            _tableVersionInfos = new Dictionary<TableIdVersion, TableVersionInfo>();
+            _usedTableVersions = new HashSet<IdVersion>();
+            _tableVersionInfos = new Dictionary<IdVersion, TableVersionInfo>();
+            _usedRelationVersions = new HashSet<IdVersion>();
+            _relationVersionInfos = new Dictionary<IdVersion, RelationVersionInfo>();
+
             _skippers = new Dictionary<IFieldHandler, Action<AbstractBufferedReader>>(ReferenceEqualityComparer<IFieldHandler>.Instance);
             _loaders = new Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>>(ReferenceEqualityComparer<IFieldHandler>.Instance);
         }
@@ -64,6 +71,7 @@ namespace BTDB.ODBLayer
         public void Iterate()
         {
             LoadTableNamesDict();
+            LoadRelationNamesDict();
             MarkLastDictId();
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableSingletonsPrefix);
             var keyReader = new KeyValueDBKeyReader(_trkv);
@@ -89,6 +97,13 @@ namespace BTDB.ODBLayer
                     _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
                 }
                 IterateOid(singleton.Value);
+            }
+            foreach (var relation in _relationId2Name)
+            {
+                if (_visitor != null && !_visitor.VisitRelation(relation.Value))
+                    continue;
+                MarkRelationName(relation.Key);
+                IterateRelation(relation.Key);
             }
         }
 
@@ -124,6 +139,11 @@ namespace BTDB.ODBLayer
                 }
             }
             _visitor?.EndObject();
+        }
+
+        void IterateRelation(uint relationIndex)
+        {
+            //TODO
         }
 
         void IterateDict(ulong dictId, IFieldHandler keyHandler, IFieldHandler valueHandler)
@@ -350,7 +370,7 @@ namespace BTDB.ODBLayer
 
         void MarkTableIdVersionFieldInfo(uint tableId, uint version)
         {
-            if (!_usedTableVersions.Add(new TableIdVersion(tableId, version)))
+            if (!_usedTableVersions.Add(new IdVersion(tableId, version)))
                 return;
             MarkTableName(tableId);
             _tr.TransactionProtector.Start();
@@ -382,6 +402,16 @@ namespace BTDB.ODBLayer
             }
         }
 
+        void MarkRelationName(uint relationId)
+        {
+            _tr.TransactionProtector.Start();
+            _trkv.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
+            if (_trkv.Find(Vuint2ByteBuffer(relationId)) == FindResult.Exact)
+            {
+                _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+            }
+        }
+
         ByteBuffer Vuint2ByteBuffer(uint v)
         {
             var ofs = 0;
@@ -406,21 +436,27 @@ namespace BTDB.ODBLayer
 
         void LoadTableNamesDict()
         {
-            _tableId2Name = ObjectDB.LoadNamesEnum(_tr.KeyValueDBTransaction, ObjectDB.TableNamesPrefix)
+            _tableId2Name = ObjectDB.LoadTablesEnum(_tr.KeyValueDBTransaction)
                     .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        void LoadRelationNamesDict()
+        {
+            _relationId2Name = ObjectDB.LoadRelationNamesEnum(_tr.KeyValueDBTransaction)
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
         TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
         {
             TableVersionInfo res;
-            if (_tableVersionInfos.TryGetValue(new TableIdVersion(tableId, version), out res))
+            if (_tableVersionInfos.TryGetValue(new IdVersion(tableId, version), out res))
                 return res;
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
             if (_trkv.Find(TwiceVuint2ByteBuffer(tableId, version)) == FindResult.Exact)
             {
                 var reader = new KeyValueDBValueReader(_trkv);
                 res = TableVersionInfo.Load(reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
-                _tableVersionInfos.Add(new TableIdVersion(tableId, version), res);
+                _tableVersionInfos.Add(new IdVersion(tableId, version), res);
                 return res;
             }
             throw new ArgumentException($"TableVersionInfo not found {tableId}-{version}");

@@ -88,6 +88,13 @@ namespace BTDBTest
                 return true;
             }
 
+            public bool VisitRelation(string relationName)
+            {
+                Builder.AppendFormat($"Relation {relationName}");
+                Builder.AppendLine();
+                return true;
+            }
+
             public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
             {
                 Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
@@ -211,6 +218,33 @@ namespace BTDBTest
             {
                 var jobs = tr.Singleton<JobMap>();
                 jobs.Jobs[1] = new Job { Duty = new Duty { Name = "HardCore Code" } };
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
+        public class DutyWithKey
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface ISimpleDutyRelation
+        {
+            void Insert(DutyWithKey duty);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void BasicsRelation()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimpleDutyRelation>("SimpleDutyRelation");
+                var personSimpleTable = creator(tr);
+                var duty = new DutyWithKey { Id = 1, Name = "HardCore Code" };
+                personSimpleTable.Insert(duty);
                 tr.Commit();
             }
             IterateWithApprove();
