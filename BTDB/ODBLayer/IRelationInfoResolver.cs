@@ -2,7 +2,7 @@ using BTDB.FieldHandler;
 
 namespace BTDB.ODBLayer
 {
-    interface IRelationInfoResolver
+    public interface IRelationInfoResolver
     {
         IFieldHandlerFactory FieldHandlerFactory { get; }
         ITypeConvertorGenerator TypeConvertorGenerator { get; }

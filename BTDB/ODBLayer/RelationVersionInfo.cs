@@ -33,12 +33,7 @@ namespace BTDB.ODBLayer
 
         internal IReadOnlyCollection<TableFieldInfo> GetPrimaryKeyFields()
         {
-            return _primaryKeys.Select(kv => kv.Value).ToList();
-        }
-
-        internal IReadOnlyCollection<KeyValuePair<uint, TableFieldInfo>> GetOrderedPrimaryKeys()
-        {
-            return _primaryKeys.OrderBy(kv => kv.Key).ToList();
+            return _primaryKeys.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
         }
 
         internal IReadOnlyCollection<TableFieldInfo> GetAllFields()

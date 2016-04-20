@@ -13,7 +13,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    class RelationInfo
+    public class RelationInfo
     {
         readonly uint _id;
         readonly string _name;
@@ -141,7 +141,7 @@ namespace BTDB.ODBLayer
                 var anyNeedsCtx = relationVersionInfo.NeedsCtx();
                 if (anyNeedsCtx)
                 {
-                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator.DeclareLocal(typeof (IReaderCtx));
                     ilGenerator
                         .Ldarg(0)
                         .Newobj(() => new DBReaderCtx(null))
@@ -202,6 +202,39 @@ namespace BTDB.ODBLayer
             }
         }
 
+        void CreateSaverIl(IILGen ilGen, IReadOnlyCollection<TableFieldInfo> fields, Action<IILGen> pushInstance, Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
+        {
+            var anyNeedsCtx = fields.Any(tfi=>tfi.Handler.NeedsCtx());
+            IILLocal writerCtxLocal = null;
+            if (anyNeedsCtx)
+            {
+                writerCtxLocal = ilGen.DeclareLocal(typeof(IWriterCtx));
+                ilGen
+                    .Do(pushTransaction)
+                    .Do(pushWriter)
+                    .LdcI4(1)
+                    .Newobj(() => new DBWriterCtx(null, null, true))
+                    .Stloc(writerCtxLocal);
+            }
+            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            foreach (var field in fields)
+            {
+                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
+                Action<IILGen> writerOrCtx;
+                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
+                if (handler.NeedsCtx())
+                    writerOrCtx = il => il.Ldloc(writerCtxLocal);
+                else
+                    writerOrCtx = pushWriter;
+                handler.Save(ilGen, writerOrCtx, il =>
+                {
+                    il.Do(pushInstance).Callvirt(getter);
+                    _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
+                                                                                    handler.HandledType())(il);
+                });
+            }
+        }
+
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
         {
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>>(saverName);
@@ -211,34 +244,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
-            var anyNeedsCtx = ClientRelationVersionInfo.NeedsCtx();
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IWriterCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Ldarg(1)
-                    .LdcI4(1)
-                    .Newobj(() => new DBWriterCtx(null, null, true))
-                    .Stloc(1);
-            }
-            var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var field in fields)
-            {
-                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
-                Action<IILGen> writerOrCtx;
-                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
-                if (handler.NeedsCtx())
-                    writerOrCtx = il => il.Ldloc(1);
-                else
-                    writerOrCtx = il => il.Ldarg(1);
-                handler.Save(ilGenerator, writerOrCtx, il =>
-                {
-                    il.Ldloc(0).Callvirt(getter);
-                    _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                                                                                    handler.HandledType())(il);
-                });
-            }
+            CreateSaverIl(ilGenerator,fields,il=>il.Ldloc(0),il=>il.Ldarg(1),il=>il.Ldarg(0));
             ilGenerator
                 .Ret();
             return method.Create();
@@ -370,11 +376,68 @@ namespace BTDB.ODBLayer
             Initializer(tr, obj);
             var keyReader = new ByteBufferReader(keyBytes);
             keyReader.SkipVUInt32(); //index Relation
+            GetPrimaryKeysLoader(ClientTypeVersion)(tr, keyReader, obj);
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetPrimaryKeysLoader(version)(tr, keyReader, obj);
             GetValueLoader(version)(tr, valueReader, obj);
             return obj;
+        }
+
+        void SaveKeyField(IILGen ilGenerator,
+            string fieldName, ushort parameterId, IILLocal writerLoc)
+        {
+            var field = ClientRelationVersionInfo[fieldName];
+            if (field.Handler.NeedsCtx())
+                throw new BTDBException($"Unsupported key field {fieldName} type.");
+            field.Handler.Save(ilGenerator, 
+                il => il.Ldloc(writerLoc), 
+                il => il.Ldarg(parameterId));
+        }
+
+        public void SaveKeyBytesAndCallRemoveMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
+            ParameterInfo[] methodParameters, Type methodReturnType)
+        {
+            //arg0 = this = manipulator
+            if (methodName.StartsWith("RemoveById"))
+            {
+                var writerLoc = ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
+                ilGenerator.Newobj(() => new ByteBufferWriter());
+                ilGenerator.Stloc(writerLoc);
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                ilGenerator.Ldloc(writerLoc).LdcI4((int)Id).Callvirt(typeof (AbstractBufferedWriter).GetMethod("WriteVUInt32"));
+                var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
+                if (primaryKeyFields.Count != methodParameters.Length)
+                    throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
+                ushort idx = 0;
+                foreach (var field in primaryKeyFields)
+                {
+                    var par = methodParameters[idx++];
+                    if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
+                        throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
+                    SaveKeyField(ilGenerator, field.Name, idx, writerLoc);
+                }
+                //call manipulator.Remove(tr, byteBuffer)
+                ilGenerator
+                    .Ldarg(0); //manipulator
+                //call byteBUffer.data
+                var dataGetter = typeof (ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+                ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+                if (methodReturnType == typeof (void))
+                {
+                    var finished = ilGenerator.DefineLabel();
+                    ilGenerator.Brtrue(finished)
+                        .Ldstr("Key not found.")
+                        .Newobj(() => new BTDBException(null))
+                        .Throw()
+                        .Mark(finished);
+                }
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
+
         }
     }
 
@@ -466,76 +529,89 @@ namespace BTDB.ODBLayer
 
     public class RelationDBManipulator<T>
     {
+        readonly IInternalObjectDBTransaction _transaction;
         readonly RelationInfo _relationInfo;
 
-        public RelationDBManipulator(object relationInfo) //todo better
+        public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
-            _relationInfo = (RelationInfo)relationInfo;
+            _transaction = (IInternalObjectDBTransaction) transation;
+            _relationInfo = relationInfo;
         }
 
-        ByteBuffer ValueBytes(IInternalObjectDBTransaction tr, T obj)
+        ByteBuffer ValueBytes(T obj)
         {
             var valueWriter = new ByteBufferWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(tr, valueWriter, obj);
+            _relationInfo.ValueSaver(_transaction, valueWriter, obj);
             var valueBytes = valueWriter.Data; // Data from ByteBufferWriter are always fresh and not reused = AsyncSafe
             return valueBytes;
         }
 
-        ByteBuffer KeyBytes(IInternalObjectDBTransaction tr, T obj)
+        ByteBuffer KeyBytes(T obj)
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.PrimaryKeysSaver(tr, keyWriter, obj);
+            _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj);
             var keyBytes = keyWriter.Data;
             return keyBytes;
         }
 
-        static void StartWorkingWithPK(IInternalObjectDBTransaction tr)
+        void StartWorkingWithPK()
         {
-            tr.TransactionProtector.Start();
-            tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+            _transaction.TransactionProtector.Start();
+            _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
         }
 
-        public void Insert(IInternalObjectDBTransaction tr, T obj)
+        public void Insert(T obj)
         {
-            var keyBytes = KeyBytes(tr, obj);
-            var valueBytes = ValueBytes(tr, obj);
+            var keyBytes = KeyBytes(obj);
+            var valueBytes = ValueBytes(obj);
 
-            StartWorkingWithPK(tr);
+            StartWorkingWithPK();
 
-            if (tr.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
                 throw new BTDBException("Trying to insert duplicate key.");  //todo write key in message
-            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
-        public bool Upsert(IInternalObjectDBTransaction tr, T obj)
+        public bool Upsert(T obj)
         {
-            var keyBytes = KeyBytes(tr, obj);
-            var valueBytes = ValueBytes(tr, obj);
+            var keyBytes = KeyBytes(obj);
+            var valueBytes = ValueBytes(obj);
 
-            StartWorkingWithPK(tr);
+            StartWorkingWithPK();
 
-            return tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            return _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
-        public void Update(IInternalObjectDBTransaction tr, T obj)
+        public void Update(T obj)
         {
-            var keyBytes = KeyBytes(tr, obj);
-            var valueBytes = ValueBytes(tr, obj);
+            var keyBytes = KeyBytes(obj);
+            var valueBytes = ValueBytes(obj);
 
-            StartWorkingWithPK(tr);
+            StartWorkingWithPK();
 
-            if (tr.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
                 throw new BTDBException("Not found record to update."); //todo write key in message
-            tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
-        public IEnumerator<T> GetEnumerator(IInternalObjectDBTransaction tr)
+        public IEnumerator<T> GetEnumerator()
         {
-            tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
-            return new RelationEnumerator<T>(tr, _relationInfo);
+            _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+            return new RelationEnumerator<T>(_transaction, _relationInfo);
         }
+
+        public bool RemoveById(ByteBuffer keyBytes)
+        {
+            StartWorkingWithPK();
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+                return false;
+            _transaction.KeyValueDBTransaction.EraseCurrent();
+            return true;
+        }
+
+
 
     }
 }
