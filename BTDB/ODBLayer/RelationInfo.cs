@@ -204,7 +204,7 @@ namespace BTDB.ODBLayer
 
         void CreateSaverIl(IILGen ilGen, IReadOnlyCollection<TableFieldInfo> fields, Action<IILGen> pushInstance, Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
         {
-            var anyNeedsCtx = fields.Any(tfi=>tfi.Handler.NeedsCtx());
+            var anyNeedsCtx = fields.Any(tfi => tfi.Handler.NeedsCtx());
             IILLocal writerCtxLocal = null;
             if (anyNeedsCtx)
             {
@@ -244,7 +244,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(2)
                 .Castclass(ClientType)
                 .Stloc(0);
-            CreateSaverIl(ilGenerator,fields,il=>il.Ldloc(0),il=>il.Ldarg(1),il=>il.Ldarg(0));
+            CreateSaverIl(ilGenerator, fields, il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0));
             ilGenerator
                 .Ret();
             return method.Create();
@@ -389,16 +389,16 @@ namespace BTDB.ODBLayer
             var field = ClientRelationVersionInfo[fieldName];
             if (field.Handler.NeedsCtx())
                 throw new BTDBException($"Unsupported key field {fieldName} type.");
-            field.Handler.Save(ilGenerator, 
-                il => il.Ldloc(writerLoc), 
+            field.Handler.Save(ilGenerator,
+                il => il.Ldloc(writerLoc),
                 il => il.Ldarg(parameterId));
         }
 
-        public void SaveKeyBytesAndCallRemoveMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
+        public void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType)
         {
             //arg0 = this = manipulator
-            if (methodName.StartsWith("RemoveById"))
+            if (methodName.StartsWith("RemoveById") || methodName.StartsWith("FindById"))
             {
                 var writerLoc = ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
                 ilGenerator.Newobj(() => new ByteBufferWriter());
@@ -416,28 +416,38 @@ namespace BTDB.ODBLayer
                         throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
                     SaveKeyField(ilGenerator, field.Name, idx, writerLoc);
                 }
-                //call manipulator.Remove(tr, byteBuffer)
+                //call manipulator.RemoveById/FindById(tr, byteBuffer)
                 ilGenerator
                     .Ldarg(0); //manipulator
                 //call byteBUffer.data
                 var dataGetter = typeof (ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
                 ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+                ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
+                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod(WhichMethodToCall(methodName)));
                 if (methodReturnType == typeof (void))
-                {
-                    var finished = ilGenerator.DefineLabel();
-                    ilGenerator.Brtrue(finished)
-                        .Ldstr("Key not found.")
-                        .Newobj(() => new BTDBException(null))
-                        .Throw()
-                        .Mark(finished);
-                }
+                    ilGenerator.Pop();
             }
             else
             {
                 throw new NotImplementedException();
             }
 
+        }
+
+        string WhichMethodToCall(string methodName)
+        {
+            if (methodName.StartsWith("FindById"))
+                return "FindByIdOrDefault";
+            return methodName;
+        }
+
+        bool ShouldThrowWhenKeyNotFound(string methodName, Type methodReturnType)
+        {
+            if (methodName.StartsWith("RemoveBy"))
+                return methodReturnType == typeof(void);
+            if (methodName.StartsWith("FindByIdOrDefault"))
+                return false;
+            return true;
         }
     }
 
@@ -602,16 +612,30 @@ namespace BTDB.ODBLayer
             return new RelationEnumerator<T>(_transaction, _relationInfo);
         }
 
-        public bool RemoveById(ByteBuffer keyBytes)
+        public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
         {
             StartWorkingWithPK();
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found record to delete.");
                 return false;
+            }
             _transaction.KeyValueDBTransaction.EraseCurrent();
             return true;
         }
 
-
-
+        public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
+        {
+            StartWorkingWithPK();
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found.");
+                return default(T);
+            }
+            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+            return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
+        }
     }
 }

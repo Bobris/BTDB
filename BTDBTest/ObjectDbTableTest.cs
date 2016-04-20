@@ -107,6 +107,10 @@ namespace BTDBTest
             IEnumerator<PersonSimple> GetEnumerator();
             // Returns true if removed
             bool RemoveById(ulong tenantId, string email);
+            // It will throw if does not exists
+            PersonSimple FindById(ulong tenantId, string email);
+            // Will return null if not exists
+            PersonSimple FindByIdOrDefault(ulong tenantId, string email);
         }
 
         [Fact]
@@ -222,6 +226,32 @@ namespace BTDBTest
                 Assert.False(personSimpleTable.GetEnumerator().MoveNext());
             }
         }
+
+        [Fact]
+        public void FindByIdWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("PersonSimple");
+                var personSimpleTable = creator(tr);
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                var foundPerson = personSimpleTable.FindById(person.TenantId, person.Email);
+                Assert.True(person.Equals(foundPerson));
+                Assert.Throws<BTDBException>(() => personSimpleTable.FindById(0, "no@no.cz"));
+                foundPerson = personSimpleTable.FindByIdOrDefault(person.TenantId, person.Email);
+                Assert.True(person.Equals(foundPerson));
+                foundPerson = personSimpleTable.FindByIdOrDefault(0, "no@no.cz");
+                Assert.Equal(null, foundPerson);
+            }
+        }
+
 
         public interface ISimplePersonTableWithVoidRemove
         {
