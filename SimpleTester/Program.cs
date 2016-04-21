@@ -47,13 +47,6 @@ namespace SimpleTester
             return true;
         }
 
-        public bool VisitRelation(string relationName)
-        {
-            Builder.AppendFormat($"Relation {relationName}");
-            Builder.AppendLine();
-            return true;
-        }
-
         public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
             Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
@@ -167,6 +160,35 @@ namespace SimpleTester
         public void EndObject()
         {
             Builder.AppendLine("EndObject");
+        }
+
+        public bool VisitRelation(string relationName)
+        {
+            Builder.AppendFormat($"Relation {relationName}");
+            Builder.AppendLine();
+            return true;
+        }
+
+        public bool StartRelationKey()
+        {
+            Builder.AppendLine("BeginKey");
+            return true;
+        }
+
+        public void EndRelationKey()
+        {
+            Builder.AppendLine("EndKey");
+        }
+
+        public bool StartRelationValue()
+        {
+            Builder.AppendLine("BeginValue");
+            return true;
+        }
+
+        public void EndRelationValue()
+        {
+            Builder.AppendLine("EndValue");
         }
     }
 

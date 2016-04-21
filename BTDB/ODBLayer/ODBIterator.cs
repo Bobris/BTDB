@@ -21,34 +21,33 @@ namespace BTDB.ODBLayer
         readonly HashSet<uint> _usedTableIds;
         readonly byte[] _tempBytes = new byte[32];
         readonly HashSet<ulong> _visitedOids;
-        readonly HashSet<IdVersion> _usedTableVersions;
-        readonly Dictionary<IdVersion, TableVersionInfo> _tableVersionInfos;
+        readonly HashSet<TableIdVersion> _usedTableVersions;
+        readonly Dictionary<TableIdVersion, TableVersionInfo> _tableVersionInfos;
         readonly Dictionary<IFieldHandler, Action<AbstractBufferedReader>> _skippers;
         readonly Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>> _loaders;
         //relations
         Dictionary<uint, string> _relationId2Name;
-        readonly HashSet<IdVersion> _usedRelationVersions;
-        readonly Dictionary<IdVersion, RelationVersionInfo> _relationVersionInfos;
 
-        struct IdVersion : IEquatable<IdVersion>
+
+        struct TableIdVersion : IEquatable<TableIdVersion>
         {
-            readonly uint _id;
+            readonly uint _tableid;
             readonly uint _version;
 
-            public IdVersion(uint id, uint version)
+            public TableIdVersion(uint tableid, uint version)
             {
-                _id = id;
+                _tableid = tableid;
                 _version = version;
             }
 
-            public bool Equals(IdVersion other)
+            public bool Equals(TableIdVersion other)
             {
-                return _id == other._id && _version == other._version;
+                return _tableid == other._tableid && _version == other._version;
             }
 
             public override int GetHashCode()
             {
-                return (int)(_id * 33 + _version);
+                return (int)(_tableid * 33 + _version);
             }
         }
         public ODBIterator(IObjectDBTransaction tr, IODBFastVisitor visitor)
@@ -59,10 +58,8 @@ namespace BTDB.ODBLayer
             _visitor = visitor as IODBVisitor;
             _usedTableIds = new HashSet<uint>();
             _visitedOids = new HashSet<ulong>();
-            _usedTableVersions = new HashSet<IdVersion>();
-            _tableVersionInfos = new Dictionary<IdVersion, TableVersionInfo>();
-            _usedRelationVersions = new HashSet<IdVersion>();
-            _relationVersionInfos = new Dictionary<IdVersion, RelationVersionInfo>();
+            _usedTableVersions = new HashSet<TableIdVersion>();
+            _tableVersionInfos = new Dictionary<TableIdVersion, TableVersionInfo>();
 
             _skippers = new Dictionary<IFieldHandler, Action<AbstractBufferedReader>>(ReferenceEqualityComparer<IFieldHandler>.Instance);
             _loaders = new Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>>(ReferenceEqualityComparer<IFieldHandler>.Instance);
@@ -103,7 +100,7 @@ namespace BTDB.ODBLayer
                 if (_visitor != null && !_visitor.VisitRelation(relation.Value))
                     continue;
                 MarkRelationName(relation.Key);
-                IterateRelation(relation.Key);
+                IterateRelation(relation.Key, relation.Value);
             }
         }
 
@@ -141,9 +138,108 @@ namespace BTDB.ODBLayer
             _visitor?.EndObject();
         }
 
-        void IterateRelation(uint relationIndex)
+        void IterateRelation(uint relationIndex, string name)
         {
-            //TODO
+            var relationVersions = new Dictionary<uint, RelationVersionInfo>();
+            var lastPersistedVersion = ReadRelationVersions(relationIndex, name, relationVersions);
+
+            _tr.TransactionProtector.Start();
+
+            var o = ObjectDB.AllRelationsPKPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(relationIndex)];
+            Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, relationIndex);
+
+            var protector = _tr.TransactionProtector;
+            long prevProtectionCounter = 0;
+            long pos = 0;
+            while (true)
+            {
+                protector.Start();
+                if (pos == 0)
+                {
+                    _trkv.SetKeyPrefix(prefix);
+                    if (!_trkv.FindFirstKey()) break;
+                }
+                else
+                {
+                    if (protector.WasInterupted(prevProtectionCounter))
+                    {
+                        _trkv.SetKeyPrefix(prefix);
+                        if (!_trkv.SetKeyIndex(pos)) break;
+                    }
+                    else
+                    {
+                        if (!_trkv.FindNextKey()) break;
+                    }
+                }
+                _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+                prevProtectionCounter = protector.ProtectionCounter;
+                if (_visitor == null || _visitor.StartRelationKey())
+                {
+                    var keyReader = new KeyValueDBKeyReader(_trkv);
+                    var relationInfo = relationVersions[lastPersistedVersion];
+                    IterateFields(keyReader, relationInfo.GetPrimaryKeyFields());
+                    _visitor?.EndRelationValue();
+                }
+                if (protector.WasInterupted(prevProtectionCounter))
+                {
+                    _trkv.SetKeyPrefix(prefix);
+                    if (!_trkv.SetKeyIndex(pos)) break;
+                }
+                if (_visitor == null || _visitor.StartRelationKey())
+                {
+                    var valueReader = new KeyValueDBValueReader(_trkv);
+                    var version = valueReader.ReadVUInt32();
+                    var relationInfo = relationVersions[version];
+                    IterateFields(valueReader, relationInfo.GetValueFields());
+                    _visitor?.EndRelationValue();
+                }
+                pos++;
+            }
+        }
+
+        void IterateFields(ByteBufferReader reader, IReadOnlyCollection<TableFieldInfo> fields)
+        {
+            foreach (var fi in fields)
+            {
+                if (_visitor == null || _visitor.StartField(fi.Name))
+                {
+                    IterateHandler(reader, fi.Handler, false);
+                    _visitor?.EndField();
+                }
+                else
+                {
+                    IterateHandler(reader, fi.Handler, true);
+                }
+            }
+        }
+
+        uint ReadRelationVersions(uint relationIndex, string name, Dictionary<uint, RelationVersionInfo> relationVersions)
+        {
+            uint lastPersistedVersion = 0;
+            {
+                var relationInfoResolver = new RelationInfoResolver((ObjectDB)_tr.Owner);
+                var writer = new ByteBufferWriter();
+                writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
+                writer.WriteVUInt32(relationIndex);
+                _trkv.SetKeyPrefix(writer.Data);
+                if (!_trkv.FindFirstKey())
+                {
+                    return lastPersistedVersion;
+                }
+                var keyReader = new KeyValueDBKeyReader(_trkv);
+                var valueReader = new KeyValueDBValueReader(_trkv);
+                do
+                {
+                    keyReader.Restart();
+                    valueReader.Restart();
+                    lastPersistedVersion = keyReader.ReadVUInt32();
+                    relationVersions[lastPersistedVersion] = RelationVersionInfo.Load(valueReader,
+                        relationInfoResolver.FieldHandlerFactory, name);
+                } while (_trkv.FindNextKey());
+            }
+            return lastPersistedVersion;
         }
 
         void IterateDict(ulong dictId, IFieldHandler keyHandler, IFieldHandler valueHandler)
@@ -370,7 +466,7 @@ namespace BTDB.ODBLayer
 
         void MarkTableIdVersionFieldInfo(uint tableId, uint version)
         {
-            if (!_usedTableVersions.Add(new IdVersion(tableId, version)))
+            if (!_usedTableVersions.Add(new TableIdVersion(tableId, version)))
                 return;
             MarkTableName(tableId);
             _tr.TransactionProtector.Start();
@@ -449,14 +545,14 @@ namespace BTDB.ODBLayer
         TableVersionInfo GetTableVersionInfo(uint tableId, uint version)
         {
             TableVersionInfo res;
-            if (_tableVersionInfos.TryGetValue(new IdVersion(tableId, version), out res))
+            if (_tableVersionInfos.TryGetValue(new TableIdVersion(tableId, version), out res))
                 return res;
             _trkv.SetKeyPrefixUnsafe(ObjectDB.TableVersionsPrefix);
             if (_trkv.Find(TwiceVuint2ByteBuffer(tableId, version)) == FindResult.Exact)
             {
                 var reader = new KeyValueDBValueReader(_trkv);
                 res = TableVersionInfo.Load(reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
-                _tableVersionInfos.Add(new IdVersion(tableId, version), res);
+                _tableVersionInfos.Add(new TableIdVersion(tableId, version), res);
                 return res;
             }
             throw new ArgumentException($"TableVersionInfo not found {tableId}-{version}");

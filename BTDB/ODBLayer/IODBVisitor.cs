@@ -10,7 +10,6 @@ namespace BTDB.ODBLayer
     public interface IODBVisitor: IODBFastVisitor
     {
         bool VisitSingleton(uint tableId, string tableName, ulong oid);
-        bool VisitRelation(string relationName);
         bool StartObject(ulong oid, uint tableId, string tableName, uint version);
         bool StartField(string name);
         bool NeedScalarAsObject(); // return true if needed as object
@@ -32,5 +31,11 @@ namespace BTDB.ODBLayer
         void EndDictionary();
         void EndField();
         void EndObject();
+
+        bool VisitRelation(string relationName);
+        bool StartRelationKey();
+        void EndRelationKey();
+        bool StartRelationValue();
+        void EndRelationValue();
     }
 }
