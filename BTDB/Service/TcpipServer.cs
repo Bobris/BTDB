@@ -30,7 +30,7 @@ namespace BTDB.Service
         {
             _listener.Start(backLog);
             _listening = true;
-            _acceptClientsTask = Task.Factory.StartNew(AcceptNewClients, TaskCreationOptions.LongRunning);
+            _acceptClientsTask = Task.Factory.StartNew(AcceptNewClients, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         public void StopListening()
@@ -183,7 +183,7 @@ namespace BTDB.Service
                                                   return;
                                               }
                                               ReceiveBody();
-                                          }, TaskCreationOptions.LongRunning);
+                                          }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
 
             void ReceiveBody()
@@ -214,7 +214,7 @@ namespace BTDB.Service
 
             internal void StartReceiving()
             {
-                Task.Factory.StartNew(ReceiveBody, TaskCreationOptions.LongRunning);
+                Task.Factory.StartNew(ReceiveBody, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
 
             public IPEndPoint LocalEndPoint => _socket.LocalEndPoint as IPEndPoint;
