@@ -161,6 +161,35 @@ namespace SimpleTester
         {
             Builder.AppendLine("EndObject");
         }
+
+        public bool VisitRelation(string relationName)
+        {
+            Builder.AppendFormat($"Relation {relationName}");
+            Builder.AppendLine();
+            return true;
+        }
+
+        public bool StartRelationKey()
+        {
+            Builder.AppendLine("BeginKey");
+            return true;
+        }
+
+        public void EndRelationKey()
+        {
+            Builder.AppendLine("EndKey");
+        }
+
+        public bool StartRelationValue()
+        {
+            Builder.AppendLine("BeginValue");
+            return true;
+        }
+
+        public void EndRelationValue()
+        {
+            Builder.AppendLine("EndValue");
+        }
     }
 
     static class Program

@@ -834,9 +834,9 @@ namespace BTDB.ODBLayer
                 var reqMethod = classImpl.DefineMethod("_R_"+method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
                     System.Reflection.MethodAttributes.Virtual | System.Reflection.MethodAttributes.Public);
-                if (method.Name.StartsWith("RemoveBy"))
+                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy"))
                 {
-                    relationInfo.SaveKeyBytesAndCallRemoveMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
+                    relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType);
                 }
                 else //call same method name with same parameters

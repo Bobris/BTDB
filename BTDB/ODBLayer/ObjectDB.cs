@@ -63,8 +63,8 @@ namespace BTDB.ODBLayer
                 {
                     _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
                 }
-                _tablesInfo.LoadTables(LoadNamesEnum(tr, TableNamesPrefix));
-                _relationsInfo.LoadRelations(LoadNamesEnum(tr, RelationNamesPrefix));
+                _tablesInfo.LoadTables(LoadTablesEnum(tr));
+                _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
                 tr.SetKeyPrefix(null);
                 if (tr.FindExactKey(LastDictIdKey))
                 {
@@ -85,9 +85,9 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal static IEnumerable<KeyValuePair<uint, string>> LoadNamesEnum(IKeyValueDBTransaction tr, byte[] prefix)
+        internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
-            tr.SetKeyPrefixUnsafe(prefix);
+            tr.SetKeyPrefixUnsafe(TableNamesPrefix);
             var keyReader = new KeyValueDBKeyReader(tr);
             var valueReader = new KeyValueDBValueReader(tr);
             while (tr.FindNextKey())
@@ -95,6 +95,19 @@ namespace BTDB.ODBLayer
                 keyReader.Restart();
                 valueReader.Restart();
                 yield return new KeyValuePair<uint, string>(keyReader.ReadVUInt32(), valueReader.ReadString());
+            }
+        }
+
+        internal static IEnumerable<KeyValuePair<uint, string>> LoadRelationNamesEnum(IKeyValueDBTransaction tr)
+        {
+            tr.SetKeyPrefixUnsafe(RelationNamesPrefix);
+            var keyReader = new KeyValueDBKeyReader(tr);
+            var valueReader = new KeyValueDBValueReader(tr);
+            while (tr.FindNextKey())
+            {
+                keyReader.Restart();
+                valueReader.Restart();
+                yield return new KeyValuePair<uint, string>(valueReader.ReadVUInt32(), keyReader.ReadString());
             }
         }
 
