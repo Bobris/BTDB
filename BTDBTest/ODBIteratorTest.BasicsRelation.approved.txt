@@ -5,8 +5,8 @@ StartField Id
 ScalarObj 1
 ScalarStr 1
 EndField
-EndValue
-BeginKey
+EndKey
+BeginValue
 StartField Name
 ScalarObj HardCore Code
 ScalarStr HardCore Code

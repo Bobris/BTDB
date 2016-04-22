@@ -180,14 +180,14 @@ namespace BTDB.ODBLayer
                     var keyReader = new KeyValueDBKeyReader(_trkv);
                     var relationInfo = relationVersions[lastPersistedVersion];
                     IterateFields(keyReader, relationInfo.GetPrimaryKeyFields());
-                    _visitor?.EndRelationValue();
+                    _visitor?.EndRelationKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
                 {
                     _trkv.SetKeyPrefix(prefix);
                     if (!_trkv.SetKeyIndex(pos)) break;
                 }
-                if (_visitor == null || _visitor.StartRelationKey())
+                if (_visitor == null || _visitor.StartRelationValue())
                 {
                     var valueReader = new KeyValueDBValueReader(_trkv);
                     var version = valueReader.ReadVUInt32();
