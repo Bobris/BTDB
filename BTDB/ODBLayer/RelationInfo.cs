@@ -32,6 +32,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>
+            _valueIDictFinders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>();
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, IKeyValueDBTransaction tr)
         {
@@ -60,6 +62,7 @@ namespace BTDB.ODBLayer
                 ClientRelationVersionInfo.Save(writerv);
                 tr.SetKeyPrefix(ByteBuffer.NewEmpty());
                 tr.CreateOrUpdateKeyValue(writerk.Data, writerv.Data);
+                NeedsFreeContent = ClientRelationVersionInfo.NeedsFreeContent();
             }
         }
 
@@ -78,8 +81,11 @@ namespace BTDB.ODBLayer
                 keyReader.Restart();
                 valueReader.Restart();
                 LastPersistedVersion = keyReader.ReadVUInt32();
-                _relationVersions[LastPersistedVersion] = RelationVersionInfo.Load(valueReader,
+                var relationVersionInfo = RelationVersionInfo.Load(valueReader,
                     _relationInfoResolver.FieldHandlerFactory, _name);
+                _relationVersions[LastPersistedVersion] = relationVersionInfo;
+                if (relationVersionInfo.NeedsFreeContent())
+                    NeedsFreeContent = true;
             } while (tr.FindNextKey());
         }
 
@@ -103,6 +109,8 @@ namespace BTDB.ODBLayer
                 return _creator;
             }
         }
+
+        internal bool NeedsFreeContent { get; set; }
 
         void CreateCreator()
         {
@@ -141,7 +149,7 @@ namespace BTDB.ODBLayer
                 var anyNeedsCtx = relationVersionInfo.NeedsCtx();
                 if (anyNeedsCtx)
                 {
-                    ilGenerator.DeclareLocal(typeof (IReaderCtx));
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
                     ilGenerator
                         .Ldarg(0)
                         .Newobj(() => new DBReaderCtx(null))
@@ -288,6 +296,11 @@ namespace BTDB.ODBLayer
             return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
         }
 
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
+        {
+            return _valueIDictFinders.GetOrAdd(version, ver => CreateIDictFinder(version));
+        }
+
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
         {
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(loaderName);
@@ -383,6 +396,72 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
+        public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
+        {
+            var valueReader = new ByteBufferReader(valueBytes);
+            var version = valueReader.ReadVUInt32();
+
+            var dictionaries = new List<ulong>();
+            GetIDictFinder(version)(tr, valueReader, dictionaries);
+
+            //delete dictionaries
+            foreach (var dictId in dictionaries)
+            {
+                var o = ObjectDB.AllDictionariesPrefix.Length;
+                var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+                Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+                PackUnpack.PackVUInt(prefix, ref o, dictId);
+
+                tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
+                tr.KeyValueDBTransaction.EraseAll();
+            }
+        }
+
+        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> CreateIDictFinder(uint version)
+        {
+            var method = ILBuilder.Instance
+                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
+                    $"Relation{Name}_IDictFinder");
+            var ilGenerator = method.Generator;
+
+            var relationVersionInfo = _relationVersions[version];
+            var anyNeedsCtx = relationVersionInfo.GetValueFields()
+                    .Any(f => f.Handler.NeedsCtx() && !(f.Handler is ODBDictionaryFieldHandler));
+            if (anyNeedsCtx)
+            {
+                ilGenerator.DeclareLocal(typeof(IReaderCtx)); //loc 0
+                ilGenerator
+                    .Ldarg(0)
+                    .Ldarg(1)
+                    .Newobj(() => new DBReaderCtx(null, null))
+                    .Stloc(0);
+            }
+            foreach (var srcFieldInfo in relationVersionInfo.GetValueFields())
+            {
+                if (srcFieldInfo.Handler is ODBDictionaryFieldHandler)
+                {
+                    //currently not supported freeing IDict inside IDict
+                    ilGenerator
+                        .Ldarg(2) //IList<ulong>
+                        .Ldarg(1) //reader
+                        .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64()) //read dictionary id
+                        .Callvirt(() => default(IList<ulong>).Add(0ul)); //store dict id into list
+                }
+                else
+                {
+                    Action<IILGen> readerOrCtx;
+                    if (srcFieldInfo.Handler.NeedsCtx())
+                        readerOrCtx = il => il.Ldloc(0);
+                    else
+                        readerOrCtx = il => il.Ldarg(1);
+                    srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
+                    //todo optimize, do not generate skips when all dicts loaded
+                }
+            }
+            ilGenerator.Ret();
+            return method.Create();
+        }
+
         void SaveKeyField(IILGen ilGenerator,
             string fieldName, ushort parameterId, IILLocal writerLoc)
         {
@@ -400,11 +479,11 @@ namespace BTDB.ODBLayer
             //arg0 = this = manipulator
             if (methodName.StartsWith("RemoveById") || methodName.StartsWith("FindById"))
             {
-                var writerLoc = ilGenerator.DeclareLocal(typeof (AbstractBufferedWriter));
+                var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
                 ilGenerator.Newobj(() => new ByteBufferWriter());
                 ilGenerator.Stloc(writerLoc);
                 //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                ilGenerator.Ldloc(writerLoc).LdcI4((int)Id).Callvirt(typeof (AbstractBufferedWriter).GetMethod("WriteVUInt32"));
+                ilGenerator.Ldloc(writerLoc).LdcI4((int)Id).Callvirt(typeof(AbstractBufferedWriter).GetMethod("WriteVUInt32"));
                 var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
                 if (primaryKeyFields.Count != methodParameters.Length)
                     throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
@@ -420,11 +499,11 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0); //manipulator
                 //call byteBUffer.data
-                var dataGetter = typeof (ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+                var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
                 ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
                 ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
                 ilGenerator.Callvirt(relationDBManipulatorType.GetMethod(WhichMethodToCall(methodName)));
-                if (methodReturnType == typeof (void))
+                if (methodReturnType == typeof(void))
                     ilGenerator.Pop();
             }
             else
@@ -544,7 +623,7 @@ namespace BTDB.ODBLayer
 
         public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
-            _transaction = (IInternalObjectDBTransaction) transation;
+            _transaction = (IInternalObjectDBTransaction)transation;
             _relationInfo = relationInfo;
         }
 
@@ -620,6 +699,17 @@ namespace BTDB.ODBLayer
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
+            }
+            if (_relationInfo.NeedsFreeContent)
+            {
+                long current = _transaction.TransactionProtector.ProtectionCounter;
+                var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+                _relationInfo.FreeContent(_transaction, valueBytes);
+                if (_transaction.TransactionProtector.WasInterupted(current))
+                {
+                    StartWorkingWithPK();
+                    _transaction.KeyValueDBTransaction.Find(keyBytes);
+                }
             }
             _transaction.KeyValueDBTransaction.EraseCurrent();
             return true;

@@ -65,6 +65,42 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public class Link
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public IDictionary<ulong, ulong> Edges { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface ILinks
+        {
+            void Insert(Link link);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void DoesNotReportFalsePositiveInRelations()
+        {
+            Func<IObjectDBTransaction, ILinks> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILinks>("LinksRelation");
+                var links = creator(tr);
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } };
+                links.Insert(link);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                Assert.True(links.RemoveById(1));
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         void AssertNoLeaksInDb()
         {
             Assert.Equal(string.Empty, FindLeaks());
@@ -179,6 +215,7 @@ namespace BTDBTest
                 builder.Append(" Value len:");
                 builder.Append(unseenKey.ValueSize);
             }
+            Console.WriteLine(builder.ToString());
             return builder.ToString();
         }
 

@@ -105,6 +105,11 @@ namespace BTDB.ODBLayer
             return _fields.Any(tfi => tfi.Handler is IFieldHandlerWithInit);
         }
 
+        internal bool NeedsFreeContent()
+        {
+            return _fields.Any(tfi => tfi.Handler is ODBDictionaryFieldHandler);
+        }
+
         internal static bool Equal(RelationVersionInfo a, RelationVersionInfo b)
         {
             if (a._primaryKeys.Count != b._primaryKeys.Count) return false;
