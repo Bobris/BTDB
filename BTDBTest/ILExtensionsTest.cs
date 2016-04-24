@@ -173,5 +173,44 @@ namespace BTDBTest
             Assert.Equal(42, method.Create()().A);
         }
 
+        public int Factorial (int n)
+        {
+            var ret = n;
+            while (n > 2)
+                ret *= --n;
+            return ret;
+        }
+
+        [Fact]
+        public void FactorialWorks()
+        {
+            var method = new ILBuilderDebug().NewMethod<Func<int, int>>("FactorialIL");
+            var il = method.Generator;
+            var finish = il.DefineLabel();
+            var next = il.DefineLabel();
+            var ret = il.DeclareLocal(typeof(int), "ret");
+            il                
+                .Ldarg(0) //[n]
+                .Stloc(ret) //[]
+                .Mark(next)
+                .Ldarg(0) //[n]
+                .LdcI4(2) // [ret, 2]
+                .Blt(finish) //[]
+                .Ldarg(0) //[n]
+                .LdcI4(1) //[n, 1]
+                .Sub() //[n-1]
+                .Dup() //[n-1, n-1]
+                .Starg(0) //[n-1]
+                .Ldloc(ret) //[n-1, ret]
+                .Mul()  //[(n-1)*ret] -> ret
+                .Stloc(ret) //[ret]
+                .Br(next)
+                .Mark(finish)
+                .Ldloc(ret)
+                .Ret();
+
+            Assert.Equal(24, method.Create()(4));
+        }
+
     }
 }

@@ -83,6 +83,15 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Starg(this IILGen il, ushort parameterIndex)
+        {
+            if (parameterIndex <= 255)
+                il.Emit(OpCodes.Starg_S, (byte)parameterIndex);
+            else
+                il.Emit(OpCodes.Starg, parameterIndex);
+            return il;
+        }
+
         public static IILGen Ldfld(this IILGen il, FieldInfo fieldInfo)
         {
             il.Emit(OpCodes.Ldfld, fieldInfo);
@@ -184,6 +193,18 @@ namespace BTDB.IL
         public static IILGen Ldloca(this IILGen il, IILLocal localBuilder)
         {
             il.Emit(OpCodes.Ldloca, localBuilder);
+            return il;
+        }
+
+        public static IILGen Blt(this IILGen il, IILLabel targetLabel)
+        {
+            il.Emit(OpCodes.Blt, targetLabel);
+            return il;
+        }
+
+        public static IILGen Bgt(this IILGen il, IILLabel targetLabel)
+        {
+            il.Emit(OpCodes.Bgt, targetLabel);
             return il;
         }
 
