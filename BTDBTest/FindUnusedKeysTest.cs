@@ -215,7 +215,6 @@ namespace BTDBTest
                 builder.Append(" Value len:");
                 builder.Append(unseenKey.ValueSize);
             }
-            Console.WriteLine(builder.ToString());
             return builder.ToString();
         }
 

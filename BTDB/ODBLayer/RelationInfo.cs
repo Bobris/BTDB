@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
@@ -272,7 +273,10 @@ namespace BTDB.ODBLayer
                 if (pks.Length != 0)
                 {
                     var pkinfo = (PrimaryKeyAttribute)pks[0];
-                    primaryKeys.Add(pkinfo.Order, TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
+                    var fieldInfo = TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory);
+                    if (fieldInfo.Handler.NeedsCtx())
+                        throw new BTDBException($"Unsupported key field {fieldInfo.Name} type.");
+                    primaryKeys.Add(pkinfo.Order, fieldInfo);
                     continue;
                 }
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
@@ -462,19 +466,23 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        void SaveKeyField(IILGen ilGenerator,
-            string fieldName, ushort parameterId, IILLocal writerLoc)
+        void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, ushort parameterId, IILLocal writerLoc)
         {
-            var field = ClientRelationVersionInfo[fieldName];
-            if (field.Handler.NeedsCtx())
-                throw new BTDBException($"Unsupported key field {fieldName} type.");
             field.Handler.Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
                 il => il.Ldarg(parameterId));
         }
 
+        void SaveKeyFieldFromField(IILGen ilGenerator, TableFieldInfo field, FieldBuilder backingField, IILLocal writerLoc)
+        {
+            field.Handler.Save(ilGenerator,
+                il => il.Ldloc(writerLoc),
+                il => il.Ldarg(0).Ldfld(backingField));
+        }
+
         public void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
-            ParameterInfo[] methodParameters, Type methodReturnType)
+            ParameterInfo[] methodParameters, Type methodReturnType,
+            IDictionary<string, FieldBuilder> keyFieldProperties)
         {
             //arg0 = this = manipulator
             if (methodName.StartsWith("RemoveById") || methodName.StartsWith("FindById"))
@@ -483,18 +491,30 @@ namespace BTDB.ODBLayer
                 ilGenerator.Newobj(() => new ByteBufferWriter());
                 ilGenerator.Stloc(writerLoc);
                 //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                ilGenerator.Ldloc(writerLoc).LdcI4((int)Id).Callvirt(typeof(AbstractBufferedWriter).GetMethod("WriteVUInt32"));
+                ilGenerator.Ldloc(writerLoc)
+                    .LdcI4((int)Id)
+                    .Callvirt(typeof(AbstractBufferedWriter).GetMethod("WriteVUInt32"));
                 var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
-                if (primaryKeyFields.Count != methodParameters.Length)
-                    throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
+
                 ushort idx = 0;
                 foreach (var field in primaryKeyFields)
                 {
+                    FieldBuilder backingField;
+                    if (keyFieldProperties.TryGetValue(field.Name, out backingField))
+                    {
+                        SaveKeyFieldFromField(ilGenerator, field, backingField, writerLoc);
+                        continue;
+                    }
+                    if (idx == methodParameters.Length)
+                        throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
                     var par = methodParameters[idx++];
                     if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                         throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
-                    SaveKeyField(ilGenerator, field.Name, idx, writerLoc);
+                    SaveKeyFieldFromArgument(ilGenerator, field, idx, writerLoc);
                 }
+                if (idx != methodParameters.Length)
+                    throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
+
                 //call manipulator.RemoveById/FindById(tr, byteBuffer)
                 ilGenerator
                     .Ldarg(0); //manipulator

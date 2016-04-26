@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.Buffer;
@@ -816,6 +818,36 @@ namespace BTDB.ODBLayer
             }
         }
 
+        IDictionary<string, FieldBuilder> DefineProperties(IILDynamicType classImpl, Type createdType, IReadOnlyCollection<string> allowedNames)
+        {
+            var backingFields = new Dictionary<string, FieldBuilder>();
+            var methods = createdType.GetMethods();
+            foreach (var method in methods)
+            {
+                var name = method.Name;
+                if (!name.StartsWith("get_") && !name.StartsWith("set_"))
+                    continue;
+                FieldBuilder field;
+                var propName = method.Name.Substring(4);
+
+                if (!allowedNames.Contains(propName))
+                    throw new BTDBException($"Invalid property name {propName}.");
+
+                if (!backingFields.TryGetValue(propName, out field))
+                    backingFields[propName] = field = classImpl.DefineField("_" + propName, method.ReturnType,
+                        FieldAttributes.Private);
+                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType, method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
+                    MethodAttributes.Virtual | MethodAttributes.Public);
+
+                if (method.Name.StartsWith("get_"))
+                    reqMethod.Generator.Ldarg(0).Ldfld(field).Ret();
+                else if (method.Name.StartsWith("set_"))
+                    reqMethod.Generator.Ldarg(0).Ldarg(1).Stfld(field).Ret();
+                classImpl.DefineMethodOverride(reqMethod, method);
+            }
+            return backingFields;
+        }
+
         public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
         {
             var interfaceType = typeof(T);
@@ -828,16 +860,19 @@ namespace BTDB.ODBLayer
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2).Call(relationDBManipulatorType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
             .Ret();
+            var keyFieldProperties = DefineProperties(classImpl, interfaceType, 
+                relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields().Select(f => f.Name).ToList());
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
             {
-                var reqMethod = classImpl.DefineMethod("_R_"+method.Name, method.ReturnType,
-                    method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
-                    System.Reflection.MethodAttributes.Virtual | System.Reflection.MethodAttributes.Public);
+                if (method.Name.StartsWith("get_") || method.Name.StartsWith("set_"))
+                    continue;
+                var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
+                    method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
                 if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy"))
                 {
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
-                        method.GetParameters(), method.ReturnType);
+                        method.GetParameters(), method.ReturnType, keyFieldProperties);
                 }
                 else //call same method name with same parameters
                 {
@@ -861,7 +896,7 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(1)
                 .Ldarg(0)
-                .Newobj(classImplType.GetConstructor(new [] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
+                .Newobj(classImplType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
                 .Castclass(typeof(T))
                 .Ret();
             return (Func<IObjectDBTransaction, T>)methodBuilder.Create(relationInfo);

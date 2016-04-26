@@ -253,7 +253,6 @@ namespace BTDBTest
             }
         }
 
-
         public interface ISimplePersonTableWithVoidRemove
         {
             void Insert(PersonSimple person);
@@ -281,12 +280,56 @@ namespace BTDBTest
             }
         }
 
+        public interface InvalidPersonTable
+        {
+            ulong NotCorrespondingField { get; set; }
+            void Insert(PersonSimple person);
+        }
+
+        [Fact]
+        public void DoNotGenerateInterfaceWithPropertiesNotPresentInPrimaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Throws<BTDBException>(() => tr.InitRelation<InvalidPersonTable>("InvalidTable"));
+            }
+        }
+
+        public interface ISimplePersonTableWithTenantId
+        {
+            ulong TenantId { get; set; }
+            void Insert(PersonSimple person);
+            bool RemoveById(string email); //TenantId is used - no need to pass as parameter
+        }
+
+        [Fact]
+        public void BasicRelationWithTenantApartWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            Func<IObjectDBTransaction, ISimplePersonTableWithTenantId> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTableWithTenantId>("PersonSimpleTenantId");
+                var personSimpleTable = creator(tr);
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                personSimpleTable.TenantId = 0;
+                Assert.False(personSimpleTable.RemoveById(person.Email));
+                personSimpleTable.TenantId = 1;
+                Assert.True(personSimpleTable.RemoveById(person.Email));
+            }
+        }
+
         public class Person
         {
             [PrimaryKey(1)]
             public ulong TenantId { get; set; }
             [PrimaryKey(2)]
-            public Guid Id { get; set; }
+            public ulong Id { get; set; }
             [SecondaryKey("Age", Order = 2)]
             [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
             public string Name { get; set; }
@@ -305,14 +348,14 @@ namespace BTDBTest
             // Update will throw if does not exist
             void Update(Person person);
             // It will throw if does not exists
-            Person FindById(Guid id);
+            Person FindById(ulong id);
             // Will return null if not exists
-            Person FindByIdOrDefault(Guid id);
+            Person FindByIdOrDefault(ulong id);
             // Find by secondary key, it will throw if it find multiple Persons with that age
             Person FindByAgeOrDefault(uint age);
             IEnumerator<Person> FindByAge(uint age);
             // Returns true if removed, if returning void it does throw if does not exists
-            bool RemoveById(Guid id);
+            bool RemoveById(ulong id);
 
             // fills all your iterating needs
             IOrderedDictionaryEnumerator<Guid, Person> ListById(AdvancedEnumeratorParam<Guid> param);
