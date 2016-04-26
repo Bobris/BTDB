@@ -16,14 +16,14 @@ namespace BTDB.ODBLayer
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
         bool _dispose;
-        internal static readonly byte[] TableNamesPrefix = { 0, 0 };
-        internal static readonly byte[] TableVersionsPrefix = { 0, 1 };
-        internal static readonly byte[] TableSingletonsPrefix = { 0, 2 };
-        internal static readonly byte[] LastDictIdKey = { 0, 3 };
+        internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
+        internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
+        internal static readonly byte[] TableSingletonsPrefix = { 0, 2 }; // Index Table => singleton oid
+        internal static readonly byte[] LastDictIdKey = { 0, 3 }; //  => Last Dictionary Index
         internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
         internal static readonly byte[] RelationVersionsPrefix = { 0, 5 }; // Index Relation, version number => metadata
-        internal static readonly byte[] AllObjectsPrefix = { 1 };
-        internal static readonly byte[] AllDictionariesPrefix = { 2 };
+        internal static readonly byte[] AllObjectsPrefix = { 1 }; // oid => Index Table, version number, Value
+        internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
         internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
         internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key => Primary Key
         readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
