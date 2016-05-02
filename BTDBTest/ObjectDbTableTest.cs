@@ -305,12 +305,15 @@ namespace BTDBTest
         [Fact]
         public void BasicRelationWithTenantApartWorks()
         {
-            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            var person = new PersonSimple { Email = "nospam@nospam.cz", Name = "Lubos" };
             Func<IObjectDBTransaction, ISimplePersonTableWithTenantId> creator;
             using (var tr = _db.StartTransaction())
             {
                 creator = tr.InitRelation<ISimplePersonTableWithTenantId>("PersonSimpleTenantId");
                 var personSimpleTable = creator(tr);
+                personSimpleTable.TenantId = 1;
+                personSimpleTable.Insert(person);
+                personSimpleTable.TenantId = 2;
                 personSimpleTable.Insert(person);
                 tr.Commit();
             }
@@ -320,6 +323,8 @@ namespace BTDBTest
                 personSimpleTable.TenantId = 0;
                 Assert.False(personSimpleTable.RemoveById(person.Email));
                 personSimpleTable.TenantId = 1;
+                Assert.True(personSimpleTable.RemoveById(person.Email));
+                personSimpleTable.TenantId = 2;
                 Assert.True(personSimpleTable.RemoveById(person.Email));
             }
         }
@@ -358,7 +363,7 @@ namespace BTDBTest
             bool RemoveById(ulong id);
 
             // fills all your iterating needs
-            IOrderedDictionaryEnumerator<Guid, Person> ListById(AdvancedEnumeratorParam<Guid> param);
+            IOrderedDictionaryEnumerator<ulong, Person> ListById(AdvancedEnumeratorParam<ulong> param);
             IEnumerator<Person> GetEnumerator();
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
         }

@@ -21,10 +21,10 @@ namespace BTDB.ODBLayer
         readonly IRelationInfoResolver _relationInfoResolver;
         readonly Type _interfaceType;
         readonly Type _clientType;
-        readonly Dictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
+        readonly IDictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, object> _creator;
         Action<IInternalObjectDBTransaction, object> _initializer;
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _primaryKeysSaver;
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
@@ -45,6 +45,7 @@ namespace BTDB.ODBLayer
             _clientType = clientType;
             LoadVersionInfos(tr);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
+            ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && _relationVersions[LastPersistedVersion].Equals(ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
@@ -112,6 +113,8 @@ namespace BTDB.ODBLayer
         }
 
         internal bool NeedsFreeContent { get; set; }
+
+        internal IDictionary<string, MethodInfo> ApartFields { get; }
 
         void CreateCreator()
         {
@@ -198,20 +201,22 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> PrimaryKeysSaver
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> PrimaryKeysSaver
         {
             get
             {
                 if (_primaryKeysSaver == null)
                 {
-                    var saver = CreateSaver(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
+                    var saver = CreatePrimaryKeysSaver(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
                     Interlocked.CompareExchange(ref _primaryKeysSaver, saver, null);
                 }
                 return _primaryKeysSaver;
             }
         }
 
-        void CreateSaverIl(IILGen ilGen, IReadOnlyCollection<TableFieldInfo> fields, Action<IILGen> pushInstance, Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
+        void CreateSaverIl(IILGen ilGen, IReadOnlyCollection<TableFieldInfo> fields,
+                           Action<IILGen> pushInstance, Action<IILGen> pushRelationIface,
+                           Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
         {
             var anyNeedsCtx = fields.Any(tfi => tfi.Handler.NeedsCtx());
             IILLocal writerCtxLocal = null;
@@ -235,25 +240,68 @@ namespace BTDB.ODBLayer
                     writerOrCtx = il => il.Ldloc(writerCtxLocal);
                 else
                     writerOrCtx = pushWriter;
+                MethodInfo apartFieldGetter = null;
+                if (pushRelationIface != null)
+                    ApartFields.TryGetValue(field.Name, out apartFieldGetter);
                 handler.Save(ilGen, writerOrCtx, il =>
                 {
-                    il.Do(pushInstance).Callvirt(getter);
+                    if (apartFieldGetter != null)
+                    {
+                        il.Do(pushRelationIface);
+                        getter = apartFieldGetter;
+                    }
+                    else
+                    {
+                        il.Do(pushInstance);
+                    }
+                    il.Callvirt(getter);
                     _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
                                                                                     handler.HandledType())(il);
                 });
             }
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> CreateSaver(IReadOnlyCollection<TableFieldInfo> fields, string saverName)
+        void StoreNthArgumentOfTypeIntoLoc(IILGen il, ushort argIdx, Type type, ushort locIdx)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>>(saverName);
+            il
+               .Ldarg(argIdx)
+               .Castclass(type)
+               .Stloc(locIdx);
+        }
+
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> CreatePrimaryKeysSaver(
+            IReadOnlyCollection<TableFieldInfo> fields, string saverName)
+        {
+            var method = ILBuilder.Instance.NewMethod<
+                Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>(saverName);
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType);
+            StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, 0);
+            var hasApartFields = ApartFields.Any();
+            if (hasApartFields)
+            {
+                ilGenerator.DeclareLocal(_interfaceType);
+                StoreNthArgumentOfTypeIntoLoc(ilGenerator, 3, _interfaceType, 1);
+            }
+            CreateSaverIl(ilGenerator, fields,
+                          il => il.Ldloc(0), hasApartFields ? il => il.Ldloc(1) : (Action<IILGen>)null,
+                          il => il.Ldarg(1), il => il.Ldarg(0));
             ilGenerator
-                .Ldarg(2)
-                .Castclass(ClientType)
-                .Stloc(0);
-            CreateSaverIl(ilGenerator, fields, il => il.Ldloc(0), il => il.Ldarg(1), il => il.Ldarg(0));
+                .Ret();
+            return method.Create();
+        }
+
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> CreateSaver(
+            IReadOnlyCollection<TableFieldInfo> fields, string saverName)
+        {
+            var method =
+                ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>>(
+                    saverName);
+            var ilGenerator = method.Generator;
+            ilGenerator.DeclareLocal(ClientType);
+            StoreNthArgumentOfTypeIntoLoc(ilGenerator, 2, ClientType, 0);
+            CreateSaverIl(ilGenerator, fields,
+                          il => il.Ldloc(0), null, il => il.Ldarg(1), il => il.Ldarg(0));
             ilGenerator
                 .Ret();
             return method.Create();
@@ -288,6 +336,27 @@ namespace BTDB.ODBLayer
                 fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
             }
             return new RelationVersionInfo(primaryKeys, secondaryKeysInfo, fields.ToArray());
+        }
+
+        static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
+        {
+            var result = new Dictionary<string, MethodInfo>();
+            var pks = versionInfo.GetPrimaryKeyFields().ToDictionary(tfi => tfi.Name, tfi => tfi);
+            var methods = interfaceType.GetMethods();
+            for (var i = 0; i < methods.Length; i++)
+            {
+                var method = methods[i];
+                if (!method.Name.StartsWith("get_"))
+                    continue;
+                var name = method.Name.Substring(4);
+                TableFieldInfo tfi;
+                if (!pks.TryGetValue(name, out tfi))
+                    throw new BTDBException($"Property {name} is not part of primary key.");
+                if (method.ReturnType != tfi.Handler.HandledType())
+                    throw new BTDBException($"Property {name} has different return type then member of primary key with the same name.");
+                result.Add(name, method);
+            }
+            return result;
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
@@ -660,7 +729,7 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj);
+            _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj, this);  //this for relation interface which is same with manipulator
             var keyBytes = keyWriter.Data;
             return keyBytes;
         }

@@ -818,7 +818,8 @@ namespace BTDB.ODBLayer
             }
         }
 
-        IDictionary<string, FieldBuilder> DefineProperties(IILDynamicType classImpl, Type createdType, IReadOnlyCollection<string> allowedNames)
+        IDictionary<string, FieldBuilder> DefineProperties(RelationInfo relationInfo, IILDynamicType classImpl,
+                                                           Type createdType)
         {
             var backingFields = new Dictionary<string, FieldBuilder>();
             var methods = createdType.GetMethods();
@@ -830,13 +831,14 @@ namespace BTDB.ODBLayer
                 FieldBuilder field;
                 var propName = method.Name.Substring(4);
 
-                if (!allowedNames.Contains(propName))
+                if (!relationInfo.ApartFields.ContainsKey(propName))
                     throw new BTDBException($"Invalid property name {propName}.");
 
                 if (!backingFields.TryGetValue(propName, out field))
                     backingFields[propName] = field = classImpl.DefineField("_" + propName, method.ReturnType,
                         FieldAttributes.Private);
-                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType, method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
+                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType,
+                    method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
                     MethodAttributes.Virtual | MethodAttributes.Public);
 
                 if (method.Name.StartsWith("get_"))
@@ -860,8 +862,7 @@ namespace BTDB.ODBLayer
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2).Call(relationDBManipulatorType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
             .Ret();
-            var keyFieldProperties = DefineProperties(classImpl, interfaceType, 
-                relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields().Select(f => f.Name).ToList());
+            var keyFieldProperties = DefineProperties(relationInfo, classImpl, interfaceType);
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
             {
@@ -874,7 +875,7 @@ namespace BTDB.ODBLayer
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType, keyFieldProperties);
                 }
-                else //call same method name with same parameters
+                else //call same method name with the same parameters
                 {
                     int paramCount = method.GetParameters().Length;
                     for (ushort i = 0; i <= paramCount; i++)
