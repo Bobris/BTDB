@@ -341,6 +341,9 @@ namespace BTDBTest
             [SecondaryKey("Age", IncludePrimaryKeyOrder = 1)]
             public uint Age { get; set; }
         }
+        //SK content
+        //"Age": Age, TenantId, Name => Id
+        //"Name": Name, TenantId => Id
 
         public interface IPersonTableComplexFuture
         {
@@ -366,6 +369,29 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<ulong, Person> ListById(AdvancedEnumeratorParam<ulong> param);
             IEnumerator<Person> GetEnumerator();
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
+        }
+
+        public interface IPersonTable
+        {
+            void Insert(Person person);
+            bool RemoveById(ulong tenantId, ulong id);
+        }
+
+        [Fact]
+        public void GeneratesCreatorWithSecondaryKeys()
+        {
+            Func<IObjectDBTransaction, IPersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IPersonTable>("Person");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personTable = creator(tr);
+                personTable.Insert(new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 28 });
+                tr.Commit();
+            }
         }
 
     }

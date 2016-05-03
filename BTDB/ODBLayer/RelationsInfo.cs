@@ -68,14 +68,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public IEnumerable<RelationInfo> EnumerateRelationInfos()
-        {
-            foreach (var relationInfo in _id2Relation)
-            {
-                yield return relationInfo.Value;
-            }
-        }
-
         static Type FindClientType(Type interfaceType)
         {
             var methods = interfaceType.GetMethods();

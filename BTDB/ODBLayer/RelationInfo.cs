@@ -311,7 +311,8 @@ namespace BTDB.ODBLayer
         {
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
-            var secondaryKeysInfo = new Dictionary<uint, SecondaryKeyAttribute>(); //field idx->attribute info
+            var secondaryKeys = new Dictionary<uint, IList<SecondaryKeyAttribute>>(); //value field index -> list of attributes
+
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
@@ -328,14 +329,20 @@ namespace BTDB.ODBLayer
                     continue;
                 }
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
-                if (sks.Length != 0)
+                for (var i = 0; i < sks.Length; i++)
                 {
-                    var skinfo = (SecondaryKeyAttribute)sks[0];
-                    secondaryKeysInfo.Add((uint)fields.Count, skinfo);
+                    var attribute = (SecondaryKeyAttribute)sks[i];
+                    IList<SecondaryKeyAttribute> skAttrList;
+                    if (!secondaryKeys.TryGetValue((uint)fields.Count, out skAttrList))
+                    {
+                        skAttrList = new List<SecondaryKeyAttribute>();
+                        secondaryKeys[(uint)fields.Count] = skAttrList;
+                    }
+                    skAttrList.Add(attribute);
                 }
                 fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
             }
-            return new RelationVersionInfo(primaryKeys, secondaryKeysInfo, fields.ToArray());
+            return new RelationVersionInfo(primaryKeys, secondaryKeys, fields.ToArray());
         }
 
         static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
