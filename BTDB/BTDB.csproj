@@ -282,6 +282,7 @@
     <Compile Include="ODBLayer\ODBDictionaryFieldHandler.cs" />
     <Compile Include="ODBLayer\ODBIterator.cs" />
     <Compile Include="ODBLayer\PrimaryKeyAttribute.cs" />
+    <Compile Include="ODBLayer\RelationDBManipulator.cs" />
     <Compile Include="ODBLayer\RelationInfo.cs" />
     <Compile Include="ODBLayer\RelationsInfo.cs" />
     <Compile Include="ODBLayer\RelationVersionInfo.cs" />
