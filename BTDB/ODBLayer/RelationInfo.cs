@@ -28,13 +28,21 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
-            _primaryKeysloaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
+            _primaryKeysLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>
             _valueIDictFinders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>();
+
+        //SK
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk key saver
+            _secondaryKeysSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
+
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk value saver
+            _secondaryKeysValueSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
+
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, IKeyValueDBTransaction tr)
         {
@@ -207,7 +215,7 @@ namespace BTDB.ODBLayer
             {
                 if (_primaryKeysSaver == null)
                 {
-                    var saver = CreatePrimaryKeysSaver(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
+                    var saver = CreateSaverWithApartFields(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
                     Interlocked.CompareExchange(ref _primaryKeysSaver, saver, null);
                 }
                 return _primaryKeysSaver;
@@ -269,7 +277,7 @@ namespace BTDB.ODBLayer
                .Stloc(locIdx);
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> CreatePrimaryKeysSaver(
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> CreateSaverWithApartFields(
             IReadOnlyCollection<TableFieldInfo> fields, string saverName)
         {
             var method = ILBuilder.Instance.NewMethod<
@@ -368,17 +376,30 @@ namespace BTDB.ODBLayer
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader(uint version)
         {
-            return _primaryKeysloaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}_{ver}"));
+            return _primaryKeysLoaders.GetOrAdd(version, ver => CreateLoader(ver, _relationVersions[version].GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}_{ver}"));
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
         {
-            return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, ClientRelationVersionInfo.GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
+            return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, _relationVersions[version].GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
         {
             return _valueIDictFinders.GetOrAdd(version, ver => CreateIDictFinder(version));
+        }
+
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> GetSecondaryKeysKeySaver(uint index, string name)
+        {
+            return _secondaryKeysSavers.GetOrAdd(index, idx => CreateSaverWithApartFields(ClientRelationVersionInfo.GetSecondaryKeyFields(index),
+                    $"Relation_{Name}_SK_{name}_KeySaver"));
+        }
+
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> GetSecondaryKeysValueSaver(uint index, string name)
+        {
+            //todo filter out part of primary key included in secondary key
+            return _secondaryKeysValueSavers.GetOrAdd(index, idx => CreateSaverWithApartFields(ClientRelationVersionInfo.GetPrimaryKeyFields(),
+                    $"Relation_{Name}_SK_{name}_ValueSaver"));
         }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version, IReadOnlyCollection<TableFieldInfo> fields, string loaderName)
