@@ -43,8 +43,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk value saver
             _secondaryKeysValueSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
 
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
-            _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, byte[], byte[], AbstractBufferedWriter>>();
+        readonly ConcurrentDictionary<uint, Action<byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
+            _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<uint, Action<byte[], byte[], AbstractBufferedWriter>>();
 
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, IKeyValueDBTransaction tr)
@@ -410,7 +410,7 @@ namespace BTDB.ODBLayer
         }
 
         //takes secondaryKey key & value bytes and restores primary key bytes
-        public Action<IInternalObjectDBTransaction, byte[], byte[], AbstractBufferedWriter> GetSKKeyValuetoPKMerger
+        public Action<byte[], byte[], AbstractBufferedWriter> GetSKKeyValuetoPKMerger
             (uint secondaryKeyIndex)
         {
 
@@ -420,18 +420,16 @@ namespace BTDB.ODBLayer
         }
 
 
-        Action<IInternalObjectDBTransaction, byte[], byte[], AbstractBufferedWriter>
-            CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
+        Action<byte[], byte[], AbstractBufferedWriter> CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
         {
-            var method = ILBuilder.Instance.NewMethod
-                    <Action<IInternalObjectDBTransaction, byte[], byte[], AbstractBufferedWriter>>(mergerName);
+            var method = ILBuilder.Instance.NewMethod<Action<byte[], byte[], AbstractBufferedWriter>>(mergerName);
             var ilGenerator = method.Generator;
             
-            Action<IILGen> pushWriter = il => il.Ldarg(3);
+            Action<IILGen> pushWriter = il => il.Ldarg(2);
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
             if (!skFields.Any(f => f.IsFromPrimaryKey))
             {   //copy whole SK value into writer
-                ilGenerator.Ldarg(2); //ByteBuffer SK value
+                ilGenerator.Ldarg(1); //ByteBuffer SK value
                 pushWriter(ilGenerator);
                 ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
             }
@@ -444,13 +442,13 @@ namespace BTDB.ODBLayer
                 var resetmemoPositionLoc = ilGenerator.DeclareLocal(typeof (IMemorizedPosition)); //for complete SKKeyReader reset
 
                 ilGenerator
-                   .Ldarg(1)
+                   .Ldarg(0)
                    .Newobj(() => new ByteArrayReader(null))
                    .Stloc(krLoc);
                 Action<IILGen> pushReaderSKKey = il => il.Ldloc(krLoc);
 
                 ilGenerator
-                   .Ldarg(2)
+                   .Ldarg(1)
                    .Newobj(() => new ByteArrayReader(null))
                    .Stloc(vrLoc);
                 Action<IILGen> pushReaderSKValue = il => il.Ldloc(vrLoc);
@@ -479,7 +477,7 @@ namespace BTDB.ODBLayer
                     if (!pkFieldsFromskKey.TryGetValue(pkIdx, out skIdx))
                     {   //copy PK field from secondary key value
                         GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pk.Handler, pushReaderSKValue,
-                                                                  positionLoc, memoPositionLoc);
+                                                                  pushWriter, positionLoc, memoPositionLoc);
                     }
                     else
                     {
@@ -491,11 +489,10 @@ namespace BTDB.ODBLayer
                             fieldIdxSKKey = 0;
                         }
                         for (; fieldIdxSKKey < skIdx; fieldIdxSKKey++)
-                        {
                             sks[fieldIdxSKKey].Handler.Skip(ilGenerator, pushReaderSKKey);
-                        }
+
                         GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, sks[(int)skIdx].Handler, pushReaderSKKey,
-                                                                  positionLoc, memoPositionLoc);
+                                                                  pushWriter, positionLoc, memoPositionLoc);
                     }
                     pkIdx++;
                 }
@@ -506,7 +503,7 @@ namespace BTDB.ODBLayer
         }
 
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler, Action<IILGen> pushReader,
-                     IILLocal positionLoc, IILLocal memoPositionLoc )
+                     Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc )
         {
             pushReader(ilGenerator);
             ilGenerator
@@ -520,7 +517,7 @@ namespace BTDB.ODBLayer
 
             handler.Skip(ilGenerator, pushReader);
 
-            ilGenerator.Ldarg(3); //[W]
+            pushWriter(ilGenerator); //[W]
             pushReader(ilGenerator); //[W,VR]
             ilGenerator
                 .Dup() //[W, VR, VR]

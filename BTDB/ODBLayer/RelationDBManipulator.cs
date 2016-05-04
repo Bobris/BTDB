@@ -158,8 +158,8 @@ namespace BTDB.ODBLayer
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(_transaction, keyBytes.ToByteArray(),
-                valueBytes.ToByteArray(), pkWriter);
+            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(keyBytes.ToByteArray(), 
+                                                                     valueBytes.ToByteArray(), pkWriter);
             //if (_transaction.KeyValueDBTransaction.FindNextKey())
             //    throw new BTDBException("Ambiguous result.");
 
