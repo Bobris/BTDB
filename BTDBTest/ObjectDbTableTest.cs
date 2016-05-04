@@ -375,21 +375,28 @@ namespace BTDBTest
         {
             void Insert(Person person);
             bool RemoveById(ulong tenantId, ulong id);
+            Person FindByNameOrDefault(string name);
+            Person FindByAgeOrDefault(uint age);
         }
 
         [Fact]
-        public void GeneratesCreatorWithSecondaryKeys()
+        public void SimpleFindBySecondaryKeyWorks()
         {
             Func<IObjectDBTransaction, IPersonTable> creator;
             using (var tr = _db.StartTransaction())
             {
                 creator = tr.InitRelation<IPersonTable>("Person");
+                var personTable = creator(tr);
+                personTable.Insert(new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 28 });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var personTable = creator(tr);
-                personTable.Insert(new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 28 });
+                var p = personTable.FindByNameOrDefault("Lubos");
+                Assert.Equal(28u, p.Age);
+                p = personTable.FindByAgeOrDefault(28);
+                Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
         }

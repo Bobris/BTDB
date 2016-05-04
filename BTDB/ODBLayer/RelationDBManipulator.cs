@@ -22,8 +22,7 @@ namespace BTDB.ODBLayer
             var valueWriter = new ByteBufferWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
             _relationInfo.ValueSaver(_transaction, valueWriter, obj);
-            var valueBytes = valueWriter.Data; // Data from ByteBufferWriter are always fresh and not reused = AsyncSafe
-            return valueBytes;
+            return valueWriter.Data;
         }
 
         ByteBuffer KeyBytes(T obj)
@@ -31,8 +30,7 @@ namespace BTDB.ODBLayer
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj, this);  //this for relation interface which is same with manipulator
-            var keyBytes = keyWriter.Data;
-            return keyBytes;
+            return keyWriter.Data;
         }
 
         void StartWorkingWithPK()
@@ -145,11 +143,52 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
+        public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound)
+        {
+            StartWorkingWithSK();
+            var findResult = _transaction.KeyValueDBTransaction.Find(secKeyBytes);
+            if (findResult == FindResult.NotFound || 
+                findResult == FindResult.Previous && !_transaction.KeyValueDBTransaction.FindNextKey())
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found.");
+                return default(T);
+            }
+            var keyBytes = _transaction.KeyValueDBTransaction.GetKey();
+            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+            var pkWriter = new ByteBufferWriter();
+            pkWriter.WriteVUInt32(_relationInfo.Id);
+            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(_transaction, keyBytes.ToByteArray(),
+                valueBytes.ToByteArray(), pkWriter);
+            //if (_transaction.KeyValueDBTransaction.FindNextKey())
+            //    throw new BTDBException("Ambiguous result.");
+
+            return FindByIdOrDefault(pkWriter.Data, true);
+        }
+
         //SK manipulations
         void StartWorkingWithSK()
         {
             _transaction.TransactionProtector.Start();
             _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+        }
+
+        ByteBuffer WriteSecodaryKeyKey(uint secondaryKeyIndex, SecondaryKeyInfo keyInfo, T obj)
+        {
+            var keyWriter = new ByteBufferWriter();
+            var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex, keyInfo.Name);
+            keyWriter.WriteVUInt32(_relationInfo.Id);
+            keyWriter.WriteVUInt32(secondaryKeyIndex); //secondary key index
+            keySaver(_transaction, keyWriter, obj, this); //secondary key
+            return keyWriter.Data;
+        }
+
+        ByteBuffer WriteSecondaryKeyValue(uint secondaryKeyIndex, SecondaryKeyInfo keyInfo, T obj)
+        {
+            var valueWriter = new ByteBufferWriter();
+            var valueSaver = _relationInfo.GetSecondaryKeysValueSaver(secondaryKeyIndex, keyInfo.Name);
+            valueSaver(_transaction, valueWriter, obj, this);
+            return valueWriter.Data;
         }
 
         void AddIntoSecondaryIndexes(T obj)
@@ -158,17 +197,10 @@ namespace BTDB.ODBLayer
 
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyWriter = new ByteBufferWriter();
-                var keySaver = _relationInfo.GetSecondaryKeysKeySaver(sk.Key, sk.Value.Name);
-                keyWriter.WriteVUInt32(_relationInfo.Id);
-                keyWriter.WriteVUInt32(sk.Key); //secondary key index
-                keySaver(_transaction, keyWriter, obj, this); //secondary key
+                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
+                var valueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, obj);
 
-                var valueWriter = new ByteBufferWriter();
-                var valueSaver = _relationInfo.GetSecondaryKeysValueSaver(sk.Key, sk.Value.Name);
-                valueSaver(_transaction, valueWriter, obj, this);
-
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyWriter.Data, valueWriter.Data);
+                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             }
         }
 
@@ -177,9 +209,17 @@ namespace BTDB.ODBLayer
             throw new NotImplementedException();
         }
 
-        void RemoveSecondaryIndexes(T objs)
+        void RemoveSecondaryIndexes(T obj)
         {
-            throw new NotImplementedException();
+            StartWorkingWithSK();
+
+            foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            {
+                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
+                if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+                    _transaction.KeyValueDBTransaction.EraseCurrent();
+            }
+
         }
     }
 }

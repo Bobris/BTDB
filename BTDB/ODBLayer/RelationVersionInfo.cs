@@ -30,7 +30,7 @@ namespace BTDB.ODBLayer
     internal class SecondaryKeyInfo
     {
         public IList<FieldId> Fields { get; set; }
-        public uint Index { get; set; }
+        public uint Index { get; set; }  //todo index assigning
         public string Name { get; set; }
     }
 
@@ -45,15 +45,15 @@ namespace BTDB.ODBLayer
 
         public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
                                    Dictionary<uint, IList<SecondaryKeyAttribute>> secondaryKeys,  //value field idx -> attrs
-                                   TableFieldInfo[] fields)
+                                   TableFieldInfo[] fields, uint firstIndex)
         {
             _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
-            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields);
+            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, firstIndex);
             _fields = fields;
         }
 
         void CreateSecondaryKeyInfo(Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
-                                    Dictionary<uint, TableFieldInfo> primaryKeyFields)
+                                    Dictionary<uint, TableFieldInfo> primaryKeyFields, uint firstIndex)
         {
             var idx = 0u;
             _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
@@ -70,7 +70,12 @@ namespace BTDB.ODBLayer
                     indexFields.Add(Tuple.Create(kv.Key, attr));
                 }
                 var orderedAttrs = indexFields.OrderBy(a => a.Item2.Order).ToList();
-                var info = new SecondaryKeyInfo { Fields = new List<FieldId>(), Name = indexName };
+                var info = new SecondaryKeyInfo
+                {
+                    Name = indexName,
+                    Fields = new List<FieldId>(),
+                    Index = firstIndex++
+                };
                 foreach (var attr in orderedAttrs)
                 {
                     info.Fields.Add(new FieldId(false, attr.Item1));
@@ -131,6 +136,21 @@ namespace BTDB.ODBLayer
                     fields.Add(_primaryKeyFields[(int)field.Index]);
                 else
                     fields.Add(_fields[(int)field.Index]);
+            }
+            return fields;
+        }
+
+        public IReadOnlyCollection<TableFieldInfo> GetSecondaryKeyValueKeys(uint secondaryKeyIndex)
+        {
+            SecondaryKeyInfo info;
+            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out info))
+                throw new BTDBException($"Unknown secondary key {secondaryKeyIndex}.");
+            var fields = new List<TableFieldInfo>();
+            for (int i = 0; i < _primaryKeyFields.Count; i++)
+            {
+                if (info.Fields.Any(f => f.IsFromPrimaryKey && f.Index == i))
+                    continue; //do not put again into value fields present in secondary key index
+                fields.Add(_primaryKeyFields[i]);
             }
             return fields;
         }
@@ -202,7 +222,7 @@ namespace BTDB.ODBLayer
                 info.Name = reader.ReadString();
                 var cnt = reader.ReadVUInt32();
                 info.Fields = new List<FieldId>((int)cnt);
-                for (var j = 0; i < cnt; i++)
+                for (var j = 0; j < cnt; j++)
                 {
                     var fromPrimary = reader.ReadBool();
                     var index = reader.ReadVUInt32();
