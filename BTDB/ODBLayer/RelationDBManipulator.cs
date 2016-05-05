@@ -126,7 +126,11 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            return new RelationEnumerator<T>(_transaction, _relationInfo);
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
+            keyWriter.WriteVUInt32(_relationInfo.Id);
+
+            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe());
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
@@ -140,6 +144,44 @@ namespace BTDB.ODBLayer
             }
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
+        }
+
+
+        class RelationSKEnumerator<T> : RelationEnumerator<T>
+        {
+            readonly uint _secondaryKeyIndex;
+            readonly RelationDBManipulator<T> _manipulator;
+
+            public RelationSKEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes, 
+                uint secondaryKeyIndex, RelationDBManipulator<T> manipulator )
+                : base(tr, relationInfo, keyBytes)
+            {
+                _secondaryKeyIndex = secondaryKeyIndex;
+                _manipulator = manipulator;
+            }
+
+            protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
+            {
+                return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, keyBytes, valueBytes);
+            }
+        }
+
+        T CreateInstanceFromSK(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        {
+            var pkWriter = new ByteBufferWriter();
+            pkWriter.WriteVUInt32(_relationInfo.Id);
+            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(keyBytes.ToByteArray(),
+                                                                     valueBytes.ToByteArray(), pkWriter);
+            return FindByIdOrDefault(pkWriter.Data, true);
+        }
+
+        public IEnumerator<T> FindBySecondaryKey(uint secondaryKeyIndex, ByteBuffer secKeyBytes)
+        {
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteBlock(secKeyBytes);
+
+            return new RelationSKEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe(),
+                secondaryKeyIndex, this);
         }
 
         //secKeyBytes contains already AllRelationsSKPrefix
@@ -158,12 +200,7 @@ namespace BTDB.ODBLayer
             if (_transaction.KeyValueDBTransaction.FindNextKey())
                 throw new BTDBException("Ambiguous result.");
 
-            var pkWriter = new ByteBufferWriter();
-            pkWriter.WriteVUInt32(_relationInfo.Id);
-            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(keyBytes.ToByteArray(), 
-                                                                     valueBytes.ToByteArray(), pkWriter);
-
-            return FindByIdOrDefault(pkWriter.Data, true);
+            return CreateInstanceFromSK(secondaryKeyIndex, keyBytes, valueBytes);
         }
 
         //SK manipulations

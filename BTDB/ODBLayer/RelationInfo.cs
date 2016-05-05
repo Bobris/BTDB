@@ -1,4 +1,5 @@
 using System;
+using System.CodeDom;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -422,7 +423,7 @@ namespace BTDB.ODBLayer
         {
             var method = ILBuilder.Instance.NewMethod<Action<byte[], byte[], AbstractBufferedWriter>>(mergerName);
             var ilGenerator = method.Generator;
-            
+
             Action<IILGen> pushWriter = il => il.Ldarg(2);
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
             if (!skFields.Any(f => f.IsFromPrimaryKey))
@@ -434,11 +435,11 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var krLoc = ilGenerator.DeclareLocal(typeof (ByteArrayReader)); //SK key reader
-                var vrLoc = ilGenerator.DeclareLocal(typeof (ByteArrayReader)); //SK value reader
-                var positionLoc = ilGenerator.DeclareLocal(typeof (ulong)); //stored position
-                var memoPositionLoc = ilGenerator.DeclareLocal(typeof (IMemorizedPosition));
-                var resetmemoPositionLoc = ilGenerator.DeclareLocal(typeof (IMemorizedPosition)); //for complete SKKeyReader reset
+                var krLoc = ilGenerator.DeclareLocal(typeof(ByteArrayReader)); //SK key reader
+                var vrLoc = ilGenerator.DeclareLocal(typeof(ByteArrayReader)); //SK value reader
+                var positionLoc = ilGenerator.DeclareLocal(typeof(ulong)); //stored position
+                var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
+                var resetmemoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition)); //for complete SKKeyReader reset
 
                 ilGenerator
                    .Ldarg(0)
@@ -504,7 +505,7 @@ namespace BTDB.ODBLayer
         }
 
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler, Action<IILGen> pushReader,
-                     Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc )
+                     Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc)
         {
             ilGenerator
                 .Do(pushReader)
@@ -802,8 +803,17 @@ namespace BTDB.ODBLayer
                 var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
                 ilGenerator.LdcI4((int)skIndex);
                 ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-                ilGenerator.LdcI4(allowDefault ? 0 : 1); //? should throw
-                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindBySecondaryKeyOrDefault"));
+                var ifcs = methodReturnType.GetInterfaces();
+                if (methodReturnType.IsGenericType && methodReturnType.GetGenericTypeDefinition() == typeof(IEnumerator<>) &&
+                              methodReturnType.GetGenericArguments()[0] == ClientType)
+                {
+                    ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindBySecondaryKey"));
+                }
+                else
+                {
+                    ilGenerator.LdcI4(allowDefault ? 0 : 1); //? should throw
+                    ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindBySecondaryKeyOrDefault"));
+                }
             }
             else
             {
@@ -832,7 +842,7 @@ namespace BTDB.ODBLayer
     class RelationEnumerator<T> : IEnumerator<T>
     {
         readonly IInternalObjectDBTransaction _tr;
-        readonly RelationInfo _relationInfo;
+        protected readonly RelationInfo RelationInfo;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
@@ -842,16 +852,16 @@ namespace BTDB.ODBLayer
 
         readonly ByteBuffer _keyBytes;
 
-        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo)
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes)
         {
-            _relationInfo = relationInfo;
+            RelationInfo = relationInfo;
             _tr = tr;
 
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            _keyBytes = BuildKeyBytes(_relationInfo.Id);
+            _keyBytes = keyBytes;
             _keyValueTr.SetKeyPrefix(_keyBytes);
             _pos = 0;
             _seekNeeded = true;
@@ -890,8 +900,13 @@ namespace BTDB.ODBLayer
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
-                return (T)_relationInfo.CreateInstance(_tr, keyBytes, valueBytes, false);
+                return CreateInstance(keyBytes, valueBytes);
             }
+        }
+
+        protected virtual T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
+        {
+            return (T)RelationInfo.CreateInstance(_tr, keyBytes, valueBytes, false);
         }
 
         object IEnumerator.Current => Current;
@@ -899,14 +914,6 @@ namespace BTDB.ODBLayer
         public void Reset()
         {
             throw new NotSupportedException();
-        }
-
-        ByteBuffer BuildKeyBytes(uint id)
-        {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
-            keyWriter.WriteVUInt32(id);
-            return keyWriter.Data.ToAsyncSafe();
         }
 
         public void Dispose()

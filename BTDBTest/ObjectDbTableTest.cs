@@ -142,7 +142,7 @@ namespace BTDBTest
             }
         }
 
-        T GetFirst<T>(IEnumerator<T> enumerator)
+        T GetNext<T>(IEnumerator<T> enumerator)
         {
             if (!enumerator.MoveNext())
                 throw new Exception("Empty");
@@ -166,14 +166,14 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 Assert.False(personSimpleTable.Upsert(person), "Was already there");
-                var p = GetFirst(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable.GetEnumerator());
                 Assert.Equal("Lubos", p.Name);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetFirst(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable.GetEnumerator());
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -202,7 +202,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personSimpleTable = creator(tr);
-                var p = GetFirst(personSimpleTable.GetEnumerator());
+                var p = GetNext(personSimpleTable.GetEnumerator());
                 Assert.Equal("Lubos", p.Name);
             }
         }
@@ -377,6 +377,7 @@ namespace BTDBTest
             bool RemoveById(ulong tenantId, ulong id);
             Person FindByNameOrDefault(string name);
             Person FindByAgeOrDefault(uint age);
+            IEnumerator<Person> FindByAge(uint age);
         }
 
         [Fact]
@@ -398,6 +399,12 @@ namespace BTDBTest
                 Assert.True(ex.Message.Contains("Ambiguous"));
                 var p = personTable.FindByNameOrDefault("Lubos");
                 Assert.Equal(28u, p.Age);
+                
+                var enumerator = personTable.FindByAge(28);
+                Assert.Equal("Boris", GetNext(enumerator).Name);
+                Assert.Equal("Lubos", GetNext(enumerator).Name);
+                Assert.False(enumerator.MoveNext());
+
                 Assert.True(personTable.RemoveById(1, 2));
                 tr.Commit();
             }
