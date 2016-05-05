@@ -413,12 +413,10 @@ namespace BTDB.ODBLayer
         public Action<byte[], byte[], AbstractBufferedWriter> GetSKKeyValuetoPKMerger
             (uint secondaryKeyIndex)
         {
-
             return _secondaryKeyValuetoPKLoader.GetOrAdd(secondaryKeyIndex,
                 idx => CreatePrimaryKeyFromSKDataMerger(secondaryKeyIndex,
                         $"Relation_SK_to_PK_{ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Name}"));
         }
-
 
         Action<byte[], byte[], AbstractBufferedWriter> CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex, string mergerName)
         {
@@ -429,9 +427,10 @@ namespace BTDB.ODBLayer
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
             if (!skFields.Any(f => f.IsFromPrimaryKey))
             {   //copy whole SK value into writer
-                ilGenerator.Ldarg(1); //ByteBuffer SK value
-                pushWriter(ilGenerator);
-                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
+                ilGenerator
+                    .Do(pushWriter)
+                    .Ldarg(1) //ByteBuffer SK value
+                    .Call(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null));
             }
             else
             {
@@ -458,13 +457,15 @@ namespace BTDB.ODBLayer
                 foreach (var field in skFields)
                 {
                     if (field.IsFromPrimaryKey)
+                    {
+                        if (skIdx == 0)
+                            throw new BTDBException("Secondary index should not start with primary key.");
                         pkFieldsFromskKey.Add(field.Index, skIdx);
+                    }
                     skIdx++;
                 }
-                var fieldIdxSKKey = 0;
+                var fieldIdxSKKey = 1; //secondary index is inside key prefix (not in KeyReader)
                 ilGenerator
-                    .Ldloc(krLoc).Call(() => default(ByteArrayReader).SkipVUInt32()) //skip relation index
-                    .Ldloc(krLoc).Call(() => default(ByteArrayReader).SkipVUInt32()) //skip secondary key index
                     .Ldloc(krLoc).Call(() => default(ByteArrayReader).MemorizeCurrentPosition())
                     .Stloc(resetmemoPositionLoc);
 
@@ -486,7 +487,7 @@ namespace BTDB.ODBLayer
                             ilGenerator
                                 .Ldloc(resetmemoPositionLoc)
                                 .Call(() => default(IMemorizedPosition).Restore());
-                            fieldIdxSKKey = 0;
+                            fieldIdxSKKey = 1;
                         }
                         for (; fieldIdxSKKey < skIdx; fieldIdxSKKey++)
                             sks[fieldIdxSKKey].Handler.Skip(ilGenerator, pushReaderSKKey);
@@ -505,21 +506,20 @@ namespace BTDB.ODBLayer
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler, Action<IILGen> pushReader,
                      Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc )
         {
-            pushReader(ilGenerator);
             ilGenerator
+                .Do(pushReader)
                 .Call(() => default(ByteArrayReader).MemorizeCurrentPosition())
-                .Stloc(memoPositionLoc);
+                .Stloc(memoPositionLoc)
 
-            pushReader(ilGenerator);
-            ilGenerator
+                .Do(pushReader)
                 .Callvirt(() => default(ByteArrayReader).GetCurrentPosition())
                 .Stloc(positionLoc);
 
             handler.Skip(ilGenerator, pushReader);
 
-            pushWriter(ilGenerator); //[W]
-            pushReader(ilGenerator); //[W,VR]
             ilGenerator
+                .Do(pushWriter) //[W]
+                .Do(pushReader) //[W,VR]
                 .Dup() //[W, VR, VR]
                 .Callvirt(() => default(ByteArrayReader).GetCurrentPosition()) //[W, VR, posNew];
                 .Ldloc(positionLoc) //[W, VR, posNew, posOld]
@@ -613,12 +613,14 @@ namespace BTDB.ODBLayer
             return a != null ? a.Name : p.Name;
         }
 
-        public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes,
+            bool keyContainsRelationIndex = true)
         {
             var obj = Creator(tr);
             Initializer(tr, obj);
             var keyReader = new ByteBufferReader(keyBytes);
-            keyReader.SkipVUInt32(); //index Relation
+            if (keyContainsRelationIndex)
+                keyReader.SkipVUInt32(); //index Relation
             GetPrimaryKeysLoader(ClientTypeVersion)(tr, keyReader, obj);
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
@@ -708,10 +710,19 @@ namespace BTDB.ODBLayer
 
         void WriteIdIl(IILGen ilGenerator, Action<IILGen> pushWriter, int id)
         {
-            pushWriter(ilGenerator);
             ilGenerator
+                .Do(pushWriter)
                 .LdcI4(id)
-                .Callvirt(typeof(AbstractBufferedWriter).GetMethod("WriteVUInt32"));
+                .Call(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+        }
+
+        void WriteShortPrefixIl(IILGen ilGenerator, Action<IILGen> pushWriter, byte[] prefix)
+        {
+            foreach (byte b in prefix)
+                ilGenerator
+                    .Do(pushWriter)
+                    .LdcI4(b)
+                    .Call(() => default(AbstractBufferedWriter).WriteUInt8(0));
         }
 
         public void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
@@ -771,12 +782,14 @@ namespace BTDB.ODBLayer
                     skName = skName.Substring(0, skName.Length - 9);
                     allowDefault = true;
                 }
+                Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
 
+                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsSKPrefix);
                 var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
-                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(ilGenerator, il => il.Ldloc(writerLoc), (int)Id);
-                //ByteBufferWriter.WriteVUInt32(skIndex);
-                WriteIdIl(ilGenerator, il => il.Ldloc(writerLoc), (int)skIndex);
+                //ByteBuffered.WriteVUInt32(RelationInfo.Id);
+                WriteIdIl(ilGenerator, pushWriter, (int)Id);
+                //ByteBuffered.WriteVUInt32(skIndex);
+                WriteIdIl(ilGenerator, pushWriter, (int)skIndex);
 
                 if (methodParameters.Length != 1)
                     throw new BTDBException($"Expected one parameter in {methodName}.");
@@ -839,6 +852,7 @@ namespace BTDB.ODBLayer
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
             _keyBytes = BuildKeyBytes(_relationInfo.Id);
+            _keyValueTr.SetKeyPrefix(_keyBytes);
             _pos = 0;
             _seekNeeded = true;
         }
@@ -876,14 +890,11 @@ namespace BTDB.ODBLayer
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
-                return (T)_relationInfo.CreateInstance(_tr, keyBytes, valueBytes);
+                return (T)_relationInfo.CreateInstance(_tr, keyBytes, valueBytes, false);
             }
         }
 
-        object IEnumerator.Current
-        {
-            get { return Current; }
-        }
+        object IEnumerator.Current => Current;
 
         public void Reset()
         {
@@ -893,6 +904,7 @@ namespace BTDB.ODBLayer
         ByteBuffer BuildKeyBytes(uint id)
         {
             var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
             keyWriter.WriteVUInt32(id);
             return keyWriter.Data.ToAsyncSafe();
         }

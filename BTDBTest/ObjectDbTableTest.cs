@@ -388,16 +388,74 @@ namespace BTDBTest
                 creator = tr.InitRelation<IPersonTable>("Person");
                 var personTable = creator(tr);
                 personTable.Insert(new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 28 });
+                personTable.Insert(new Person { TenantId = 1, Id = 3, Name = "Boris", Age = 28 });
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var personTable = creator(tr);
+                var ex = Assert.Throws<BTDBException>(() => personTable.FindByAgeOrDefault(28));
+                Assert.True(ex.Message.Contains("Ambiguous"));
                 var p = personTable.FindByNameOrDefault("Lubos");
                 Assert.Equal(28u, p.Age);
-                p = personTable.FindByAgeOrDefault(28);
-                Assert.Equal("Lubos", p.Name);
+                Assert.True(personTable.RemoveById(1, 2));
                 tr.Commit();
+            }
+        }
+
+        public class Job
+        {
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+            [SecondaryKey("Name")]
+            public string Name { get; set; }
+        }
+
+        public interface IJobTable
+        {
+            void Insert(Job person);
+            bool RemoveById(ulong id);
+            Job FindByIdOrDefault(ulong id);
+            Job FindByNameOrDefault(string name);
+        }
+
+        [Fact]
+        public void SecondaryKeyWorksWithoutIncludedPrimaryWorks()
+        {
+            Func<IObjectDBTransaction, IJobTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IJobTable>("Job");
+                var jobTable = creator(tr);
+                jobTable.Insert(new Job { Id = 11, Name = "Code" });
+                jobTable.Insert(new Job { Id = 22, Name = "Sleep" });
+                jobTable.Insert(new Job { Id = 33, Name = "Bicycle" });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var jobTable = creator(tr);
+                var job = jobTable.FindByNameOrDefault("Dude");
+                Assert.Equal(null, job);
+                job = jobTable.FindByNameOrDefault("Code");
+                Assert.Equal(11u, job.Id);
+                Assert.True(jobTable.RemoveById(11));
+                tr.Commit();
+            }
+        }
+
+        [Fact]
+        public void CannotAddDuplicateSecondaryKeys()
+        {
+            Func<IObjectDBTransaction, IJobTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IJobTable>("Job");
+                var jobTable = creator(tr);
+                jobTable.Insert(new Job { Id = 11, Name = "Code" });
+                var ex = Assert.Throws<BTDBException>(() => jobTable.Insert(new Job { Id = 12, Name = "Code" }));
+                Assert.True(ex.Message.Contains("Duplicate secondary"));
+                //Assert.Equal(null, jobTable.FindByIdOrDefault(12)); //todo
             }
         }
 

@@ -126,7 +126,6 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
             return new RelationEnumerator<T>(_transaction, _relationInfo);
         }
 
@@ -143,12 +142,11 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
+        //secKeyBytes contains already AllRelationsSKPrefix
         public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound)
         {
-            StartWorkingWithSK();
-            var findResult = _transaction.KeyValueDBTransaction.Find(secKeyBytes);
-            if (findResult == FindResult.NotFound || 
-                findResult == FindResult.Previous && !_transaction.KeyValueDBTransaction.FindNextKey())
+            _transaction.KeyValueDBTransaction.SetKeyPrefix(secKeyBytes);
+            if (!_transaction.KeyValueDBTransaction.FindFirstKey())
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found.");
@@ -156,12 +154,14 @@ namespace BTDB.ODBLayer
             }
             var keyBytes = _transaction.KeyValueDBTransaction.GetKey();
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+
+            if (_transaction.KeyValueDBTransaction.FindNextKey())
+                throw new BTDBException("Ambiguous result.");
+
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex)(keyBytes.ToByteArray(), 
                                                                      valueBytes.ToByteArray(), pkWriter);
-            //if (_transaction.KeyValueDBTransaction.FindNextKey())
-            //    throw new BTDBException("Ambiguous result.");
 
             return FindByIdOrDefault(pkWriter.Data, true);
         }
@@ -200,7 +200,8 @@ namespace BTDB.ODBLayer
                 var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
                 var valueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, obj);
 
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                if (!_transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes))
+                    throw new BTDBException("Duplicate secondary index entry.");
             }
         }
 
