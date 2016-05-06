@@ -14,7 +14,7 @@ namespace BTDB.EventStoreLayer
         ITypeNameMapper _typeNameMapper;
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
-        readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>();
+        readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         ConcurrentDictionary<Type, ITypeDescriptor> _type2DescriptorMap = new ConcurrentDictionary<Type, ITypeDescriptor>(ReferenceEqualityComparer<Type>.Instance);
         readonly object _buildTypeLock = new object();
         readonly ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>> _simpleSavers = new ConcurrentDictionary<ITypeDescriptor, Action<AbstractBufferedWriter, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -27,7 +27,7 @@ namespace BTDB.EventStoreLayer
         readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
 
-        public TypeSerializers(): this(null)
+        public TypeSerializers() : this(null)
         {
         }
 
@@ -60,7 +60,9 @@ namespace BTDB.EventStoreLayer
 
         public ITypeDescriptor DescriptorOf(Type objType)
         {
-            return _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
+            var res = _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
+            _descriptorSet.GetOrAdd(res, true);
+            return res;
         }
 
         ITypeDescriptor BuildFromType(Type type)
@@ -186,6 +188,7 @@ namespace BTDB.EventStoreLayer
             {
                 p.Key.ClearMappingToType();
             }
+            _descriptorSet.Clear();
             _type2DescriptorMap = new ConcurrentDictionary<Type, ITypeDescriptor>(EnumDefaultTypes(), ReferenceEqualityComparer<Type>.Instance);
         }
 
@@ -397,13 +400,14 @@ namespace BTDB.EventStoreLayer
 
         public ITypeDescriptor MergeDescriptor(ITypeDescriptor descriptor)
         {
-            foreach (var existingTypeDescriptor in _type2DescriptorMap)
+            foreach (var existingTypeDescriptor in _descriptorSet)
             {
-                if (descriptor.Equals(existingTypeDescriptor.Value))
+                if (descriptor.Equals(existingTypeDescriptor.Key))
                 {
-                    return existingTypeDescriptor.Value;
+                    return existingTypeDescriptor.Key;
                 }
             }
+            _descriptorSet.GetOrAdd(descriptor, true);
             return descriptor;
         }
 
