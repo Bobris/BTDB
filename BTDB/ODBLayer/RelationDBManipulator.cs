@@ -53,7 +53,16 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (HasSecondaryIndexes)
-                AddIntoSecondaryIndexes(obj);
+            {
+                var error = AddIntoSecondaryIndexes(obj);
+                if (error != null)
+                {
+                    StartWorkingWithPK();
+                    _transaction.KeyValueDBTransaction.Find(keyBytes);
+                    _transaction.KeyValueDBTransaction.EraseCurrent();
+                    throw new BTDBException(error);
+                }
+            }
         }
 
         //todo check whether dictionaries are not replaced in upsert - leaks
@@ -65,10 +74,11 @@ namespace BTDB.ODBLayer
             if (HasSecondaryIndexes)
             {
                 var oldValue = FindByIdOrDefault(keyBytes, false);
-                if (oldValue != null)
-                    UpdateSecondaryIndexes(obj, oldValue);
-                else
-                    AddIntoSecondaryIndexes(obj);
+                var error = oldValue != null
+                    ? UpdateSecondaryIndexes(obj, oldValue)
+                    : AddIntoSecondaryIndexes(obj);
+                if (error != null)
+                    throw new BTDBException(error);
             }
             StartWorkingWithPK();
             return _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
@@ -83,7 +93,9 @@ namespace BTDB.ODBLayer
             if (HasSecondaryIndexes)
             {
                 var oldValue = FindByIdOrDefault(keyBytes, true);
-                UpdateSecondaryIndexes(obj, oldValue);
+                var error = UpdateSecondaryIndexes(obj, oldValue);
+                if (error != null)
+                    throw new BTDBException(error);
             }
 
             StartWorkingWithPK();
@@ -146,14 +158,13 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
-
         class RelationSKEnumerator<T> : RelationEnumerator<T>
         {
             readonly uint _secondaryKeyIndex;
             readonly RelationDBManipulator<T> _manipulator;
 
-            public RelationSKEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes, 
-                uint secondaryKeyIndex, RelationDBManipulator<T> manipulator )
+            public RelationSKEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
+                uint secondaryKeyIndex, RelationDBManipulator<T> manipulator)
                 : base(tr, relationInfo, keyBytes)
             {
                 _secondaryKeyIndex = secondaryKeyIndex;
@@ -228,7 +239,7 @@ namespace BTDB.ODBLayer
             return valueWriter.Data;
         }
 
-        void AddIntoSecondaryIndexes(T obj)
+        string AddIntoSecondaryIndexes(T obj)
         {
             StartWorkingWithSK();
 
@@ -237,12 +248,26 @@ namespace BTDB.ODBLayer
                 var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
                 var valueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, obj);
 
-                if (!_transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes))
-                    throw new BTDBException("Duplicate secondary index entry.");
+                if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+                {
+                    //reverting previous sk inserts
+                    foreach (var rsk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+                    {
+                        if (rsk.Key == sk.Key)
+                            break;
+                        var kb = WriteSecodaryKeyKey(rsk.Key, rsk.Value, obj);
+                        if (_transaction.KeyValueDBTransaction.Find(kb) != FindResult.Exact)
+                            throw new BTDBException("Error when reverting failed secondary indexes.");
+                        _transaction.KeyValueDBTransaction.EraseCurrent();
+                    }
+                    return "Try to insert duplicate secondary key";
+                }
+                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             }
+            return null;
         }
 
-        void UpdateSecondaryIndexes(T newValue, T oldValue)
+        string UpdateSecondaryIndexes(T newValue, T oldValue)
         {
             throw new NotImplementedException();
         }

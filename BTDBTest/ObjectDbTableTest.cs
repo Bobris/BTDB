@@ -399,7 +399,7 @@ namespace BTDBTest
                 Assert.True(ex.Message.Contains("Ambiguous"));
                 var p = personTable.FindByNameOrDefault("Lubos");
                 Assert.Equal(28u, p.Age);
-                
+
                 var enumerator = personTable.FindByAge(28);
                 Assert.Equal("Boris", GetNext(enumerator).Name);
                 Assert.Equal("Lubos", GetNext(enumerator).Name);
@@ -461,8 +461,8 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 jobTable.Insert(new Job { Id = 11, Name = "Code" });
                 var ex = Assert.Throws<BTDBException>(() => jobTable.Insert(new Job { Id = 12, Name = "Code" }));
-                Assert.True(ex.Message.Contains("Duplicate secondary"));
-                //Assert.Equal(null, jobTable.FindByIdOrDefault(12)); //todo
+                Assert.True(ex.Message.Contains("duplicate secondary"));
+                Assert.Equal(null, jobTable.FindByIdOrDefault(12));
             }
         }
 
