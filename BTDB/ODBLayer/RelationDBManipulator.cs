@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
@@ -158,26 +157,12 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
-        class RelationSKEnumerator<T> : RelationEnumerator<T>
+        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex, AdvancedEnumeratorParam<T> param)
         {
-            readonly uint _secondaryKeyIndex;
-            readonly RelationDBManipulator<T> _manipulator;
-
-            public RelationSKEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
-                uint secondaryKeyIndex, RelationDBManipulator<T> manipulator)
-                : base(tr, relationInfo, keyBytes)
-            {
-                _secondaryKeyIndex = secondaryKeyIndex;
-                _manipulator = manipulator;
-            }
-
-            protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
-            {
-                return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, keyBytes, valueBytes);
-            }
+            return new RelationAdvancedSecondaryKeyEnumerator<T>(_transaction, _relationInfo, param, secondaryKeyIndex, this);
         }
 
-        T CreateInstanceFromSK(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        internal T CreateInstanceFromSK(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
@@ -191,7 +176,7 @@ namespace BTDB.ODBLayer
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteBlock(secKeyBytes);
 
-            return new RelationSKEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe(),
+            return new RelationSecondaryKeyEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe(),
                 secondaryKeyIndex, this);
         }
 
@@ -221,20 +206,20 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
         }
 
-        ByteBuffer WriteSecodaryKeyKey(uint secondaryKeyIndex, SecondaryKeyInfo keyInfo, T obj)
+        internal ByteBuffer WriteSecodaryKeyKey(uint secondaryKeyIndex, string name, T obj)
         {
             var keyWriter = new ByteBufferWriter();
-            var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex, keyInfo.Name);
+            var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex, name);
             keyWriter.WriteVUInt32(_relationInfo.Id);
             keyWriter.WriteVUInt32(secondaryKeyIndex); //secondary key index
             keySaver(_transaction, keyWriter, obj, this); //secondary key
             return keyWriter.Data;
         }
 
-        ByteBuffer WriteSecondaryKeyValue(uint secondaryKeyIndex, SecondaryKeyInfo keyInfo, T obj)
+        ByteBuffer WriteSecondaryKeyValue(uint secondaryKeyIndex, string name, T obj)
         {
             var valueWriter = new ByteBufferWriter();
-            var valueSaver = _relationInfo.GetSecondaryKeysValueSaver(secondaryKeyIndex, keyInfo.Name);
+            var valueSaver = _relationInfo.GetSecondaryKeysValueSaver(secondaryKeyIndex, name);
             valueSaver(_transaction, valueWriter, obj, this);
             return valueWriter.Data;
         }
@@ -245,8 +230,8 @@ namespace BTDB.ODBLayer
 
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
-                var valueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, obj);
+                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value.Name, obj);
+                var valueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value.Name, obj);
 
                 if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
                 {
@@ -255,7 +240,7 @@ namespace BTDB.ODBLayer
                     {
                         if (rsk.Key == sk.Key)
                             break;
-                        var kb = WriteSecodaryKeyKey(rsk.Key, rsk.Value, obj);
+                        var kb = WriteSecodaryKeyKey(rsk.Key, rsk.Value.Name, obj);
                         if (_transaction.KeyValueDBTransaction.Find(kb) != FindResult.Exact)
                             throw new BTDBException("Error when reverting failed secondary indexes.");
                         _transaction.KeyValueDBTransaction.EraseCurrent();
@@ -287,8 +272,8 @@ namespace BTDB.ODBLayer
             var secKeys = _relationInfo.ClientRelationVersionInfo.SecondaryKeys;
             foreach (var sk in secKeys)
             {
-                var newKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, newValue);
-                var oldKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, oldValue);
+                var newKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value.Name, newValue);
+                var oldKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value.Name, oldValue);
                 if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
                     continue;
                 if (_transaction.KeyValueDBTransaction.Find(newKeyBytes) == FindResult.Exact)
@@ -305,7 +290,7 @@ namespace BTDB.ODBLayer
                     throw new BTDBException("Error in updating secondary indexes, previous index entry not found.");
                 _transaction.KeyValueDBTransaction.EraseCurrent();
                 //insert new value
-                var newValueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, newValue);
+                var newValueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value.Name, newValue);
                 _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(newKeyBytes, newValueBytes);
                 if (secKeys.Count > 0)
                 {
@@ -320,15 +305,15 @@ namespace BTDB.ODBLayer
 
         void RevertUpdateOfSK(uint secondaryKeyIndex, SecondaryKeyInfo secKey, T newValue, T oldValue)
         {
-            var newKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey, newValue);
+            var newKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey.Name, newValue);
 
             if (_transaction.KeyValueDBTransaction.Find(newKeyBytes) == FindResult.Exact)
                 _transaction.KeyValueDBTransaction.EraseCurrent();
             else
                 throw new BTDBException("Error when reverting failed secondary indexes during update.");
 
-            var oldKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey, oldValue);
-            var oldValueBytes = WriteSecondaryKeyValue(secondaryKeyIndex, secKey, oldValue);
+            var oldKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey.Name, oldValue);
+            var oldValueBytes = WriteSecondaryKeyValue(secondaryKeyIndex, secKey.Name, oldValue);
             if (!_transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(oldKeyBytes, oldValueBytes))
                 throw new BTDBException("Error when restoring failed secondary indexes during update.");
         }
@@ -339,7 +324,7 @@ namespace BTDB.ODBLayer
 
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, obj);
+                var keyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value.Name, obj);
                 if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
                     _transaction.KeyValueDBTransaction.EraseCurrent();
             }

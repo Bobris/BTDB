@@ -424,8 +424,11 @@ namespace BTDBTest
             void Insert(Job person);
             void Update(Job person);
             bool RemoveById(ulong id);
+
             Job FindByIdOrDefault(ulong id);
             Job FindByNameOrDefault(string name);
+
+            IEnumerator<Job> ListByName(AdvancedEnumeratorParam<Job> param);
         }
 
         [Fact]
@@ -504,6 +507,26 @@ namespace BTDBTest
 
                 var b1 = personTable.FindByAgeOrDefault(28);
                 Assert.Equal("Boris", b1.Name);
+            }
+        }
+
+        [Fact]
+        public void CanIterateBySecondaryKey()
+        {
+            Func<IObjectDBTransaction, IJobTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IJobTable>("Job");
+                var jobTable = creator(tr);
+                jobTable.Insert(new Job { Id = 11, Name = "Code   " }); //todo different string serialization to make sorting work independent on string length
+                jobTable.Insert(new Job { Id = 22, Name = "Sleep  " });
+                jobTable.Insert(new Job { Id = 33, Name = "Bicycle" });
+
+                var en = jobTable.ListByName(new AdvancedEnumeratorParam<Job>(EnumerationOrder.Descending));
+
+                Assert.Equal("Sleep  ", GetNext(en).Name);
+                Assert.Equal("Code   ", GetNext(en).Name);
+                Assert.Equal("Bicycle", GetNext(en).Name);
             }
         }
 

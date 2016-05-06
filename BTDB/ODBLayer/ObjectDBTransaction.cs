@@ -875,6 +875,14 @@ namespace BTDB.ODBLayer
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType, keyFieldProperties);
                 }
+                else if (method.Name.StartsWith("ListBy"))
+                {
+                    reqMethod.Generator
+                        .Ldarg(0)
+                        .LdcI4((int)relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6)))
+                        .Ldarg(1)
+                        .Callvirt(relationDBManipulatorType.GetMethod("ListBySecondaryKey"));
+                }
                 else //call same method name with the same parameters
                 {
                     int paramCount = method.GetParameters().Length;

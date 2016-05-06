@@ -196,23 +196,24 @@ namespace SimpleTester
     {
         static void Main(string[] args)
         {
-            var st = File.OpenRead(@"c:\Research\inachis\Inachis_21311");
-            var kvdb = new InMemoryKeyValueDB();
-            var odb = new ObjectDB();
-            odb.Open(kvdb,true);
-            using (var tr = kvdb.StartTransaction())
-            {
-                KeyValueDBExportImporter.Import(tr, st);
-                tr.Commit();
-            }
-            using (var tr = odb.StartTransaction())
-            {
-                var visitor = new ToStringVisitor();
-                var iterator = new ODBIterator(tr, visitor);
-                iterator.Iterate();
-                var text = visitor.ToString();
-                Console.WriteLine(text);
-            }
+            //var st = File.OpenRead(@"c:\Research\inachis\Inachis_21311");
+            //var kvdb = new InMemoryKeyValueDB();
+            //var odb = new ObjectDB();
+            //odb.Open(kvdb,true);
+            //using (var tr = kvdb.StartTransaction())
+            //{
+            //    KeyValueDBExportImporter.Import(tr, st);
+            //    tr.Commit();
+            //}
+            //using (var tr = odb.StartTransaction())
+            //{
+            //    var visitor = new ToStringVisitor();
+            //    var iterator = new ODBIterator(tr, visitor);
+            //    iterator.Iterate();
+            //    var text = visitor.ToString();
+            //    Console.WriteLine(text);
+            //}
+
             //new KeyValueDBReplayer("bug.log").Replay();
             //new SpeedTest1().Test();
             //new ChannelSpeedTest().Run(args);
@@ -222,6 +223,7 @@ namespace SimpleTester
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
+            new RelationSpeedTest().Run();
         }
     }
 }

@@ -726,7 +726,7 @@ namespace BTDB.ODBLayer
                     .Call(() => default(AbstractBufferedWriter).WriteUInt8(0));
         }
 
-        public void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
+        internal void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType,
             IDictionary<string, FieldBuilder> keyFieldProperties)
         {
@@ -839,85 +839,5 @@ namespace BTDB.ODBLayer
 
     }
 
-    class RelationEnumerator<T> : IEnumerator<T>
-    {
-        readonly IInternalObjectDBTransaction _tr;
-        protected readonly RelationInfo RelationInfo;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
-        readonly IKeyValueDBTransaction _keyValueTr;
-        long _prevProtectionCounter;
-
-        uint _pos;
-        bool _seekNeeded;
-
-        readonly ByteBuffer _keyBytes;
-
-        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes)
-        {
-            RelationInfo = relationInfo;
-            _tr = tr;
-
-            _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-
-            _keyBytes = keyBytes;
-            _keyValueTr.SetKeyPrefix(_keyBytes);
-            _pos = 0;
-            _seekNeeded = true;
-        }
-
-        public bool MoveNext()
-        {
-            if (!_seekNeeded)
-                _pos++;
-            return Seek();
-        }
-
-        bool Seek()
-        {
-            if (!_keyValueTr.SetKeyIndex(_pos))
-                return false;
-            _seekNeeded = false;
-            return true;
-        }
-
-        public T Current
-        {
-            get
-            {
-                _keyValueTrProtector.Start();
-                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
-                {
-                    _keyValueTr.SetKeyPrefix(_keyBytes);
-                    Seek();
-                }
-                else if (_seekNeeded)
-                {
-                    Seek();
-                    _seekNeeded = false;
-                }
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKey();
-                var valueBytes = _keyValueTr.GetValue();
-                return CreateInstance(keyBytes, valueBytes);
-            }
-        }
-
-        protected virtual T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
-        {
-            return (T)RelationInfo.CreateInstance(_tr, keyBytes, valueBytes, false);
-        }
-
-        object IEnumerator.Current => Current;
-
-        public void Reset()
-        {
-            throw new NotSupportedException();
-        }
-
-        public void Dispose()
-        {
-        }
-    }
+    
 }

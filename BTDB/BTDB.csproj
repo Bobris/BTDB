@@ -284,6 +284,7 @@
     <Compile Include="ODBLayer\PrimaryKeyAttribute.cs" />
     <Compile Include="ODBLayer\RelationDBManipulator.cs" />
     <Compile Include="ODBLayer\RelationInfo.cs" />
+    <Compile Include="ODBLayer\RelationEnumerator.cs" />
     <Compile Include="ODBLayer\RelationsInfo.cs" />
     <Compile Include="ODBLayer\RelationVersionInfo.cs" />
     <Compile Include="ODBLayer\SecondaryKeyAttribute.cs" />

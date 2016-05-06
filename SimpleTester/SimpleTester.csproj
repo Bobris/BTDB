@@ -126,6 +126,7 @@
     <Compile Include="KeyValueSpeedTest.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RelationSpeedTest.cs" />
     <Compile Include="RxSpeedTest.cs" />
   </ItemGroup>
   <ItemGroup>
