@@ -260,16 +260,77 @@ namespace BTDB.ODBLayer
                             throw new BTDBException("Error when reverting failed secondary indexes.");
                         _transaction.KeyValueDBTransaction.EraseCurrent();
                     }
-                    return "Try to insert duplicate secondary key";
+                    return "Try to insert duplicate secondary key.";
                 }
                 _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             }
             return null;
         }
 
+        static bool ByteBuffersHasSameContent(ByteBuffer a, ByteBuffer b)
+        {
+            if (a.Length != b.Length)
+                return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i])
+                    return false;
+            }
+            return true;
+        }
+
         string UpdateSecondaryIndexes(T newValue, T oldValue)
         {
-            throw new NotImplementedException();
+            StartWorkingWithSK();
+
+            List<uint> revertOnFailure = null;
+            var secKeys = _relationInfo.ClientRelationVersionInfo.SecondaryKeys;
+            foreach (var sk in secKeys)
+            {
+                var newKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, newValue);
+                var oldKeyBytes = WriteSecodaryKeyKey(sk.Key, sk.Value, oldValue);
+                if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
+                    continue;
+                if (_transaction.KeyValueDBTransaction.Find(newKeyBytes) == FindResult.Exact)
+                {
+                    if (revertOnFailure != null)
+                    {
+                        foreach (var skIdx in revertOnFailure)
+                            RevertUpdateOfSK(skIdx, secKeys[skIdx], newValue, oldValue);
+                    }
+                    return "Update would create duplicate secondary key.";
+                }
+                //remove old index
+                if (_transaction.KeyValueDBTransaction.Find(oldKeyBytes) != FindResult.Exact)
+                    throw new BTDBException("Error in updating secondary indexes, previous index entry not found.");
+                _transaction.KeyValueDBTransaction.EraseCurrent();
+                //insert new value
+                var newValueBytes = WriteSecondaryKeyValue(sk.Key, sk.Value, newValue);
+                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(newKeyBytes, newValueBytes);
+                if (secKeys.Count > 0)
+                {
+                    if (revertOnFailure == null)
+                        revertOnFailure = new List<uint> { sk.Key };
+                    else
+                        revertOnFailure.Add(sk.Key);
+                }
+            }
+            return null;
+        }
+
+        void RevertUpdateOfSK(uint secondaryKeyIndex, SecondaryKeyInfo secKey, T newValue, T oldValue)
+        {
+            var newKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey, newValue);
+
+            if (_transaction.KeyValueDBTransaction.Find(newKeyBytes) == FindResult.Exact)
+                _transaction.KeyValueDBTransaction.EraseCurrent();
+            else
+                throw new BTDBException("Error when reverting failed secondary indexes during update.");
+
+            var oldKeyBytes = WriteSecodaryKeyKey(secondaryKeyIndex, secKey, oldValue);
+            var oldValueBytes = WriteSecondaryKeyValue(secondaryKeyIndex, secKey, oldValue);
+            if (!_transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(oldKeyBytes, oldValueBytes))
+                throw new BTDBException("Error when restoring failed secondary indexes during update.");
         }
 
         void RemoveSecondaryIndexes(T obj)

@@ -374,6 +374,7 @@ namespace BTDBTest
         public interface IPersonTable
         {
             void Insert(Person person);
+            void Update(Person person);
             bool RemoveById(ulong tenantId, ulong id);
             Person FindByNameOrDefault(string name);
             Person FindByAgeOrDefault(uint age);
@@ -421,6 +422,7 @@ namespace BTDBTest
         public interface IJobTable
         {
             void Insert(Job person);
+            void Update(Job person);
             bool RemoveById(ulong id);
             Job FindByIdOrDefault(ulong id);
             Job FindByNameOrDefault(string name);
@@ -463,6 +465,45 @@ namespace BTDBTest
                 var ex = Assert.Throws<BTDBException>(() => jobTable.Insert(new Job { Id = 12, Name = "Code" }));
                 Assert.True(ex.Message.Contains("duplicate secondary"));
                 Assert.Equal(null, jobTable.FindByIdOrDefault(12));
+            }
+        }
+
+        [Fact]
+        public void UpdateSecondaryIndexWorks()
+        {
+            Func<IObjectDBTransaction, IJobTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IJobTable>("Job");
+                var jobTable = creator(tr);
+                var job = new Job { Id = 11, Name = "Code" };
+                jobTable.Insert(job);
+                job.Name = "HardCore Code";
+                jobTable.Update(job);
+                var j = jobTable.FindByNameOrDefault("HardCore Code");
+                Assert.Equal(11u, j.Id);
+            }
+        }
+
+        [Fact]
+        public void FailedUpdateRevertDataCorrectly()
+        {
+            Func<IObjectDBTransaction, IPersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IPersonTable>("Person");
+                var personTable = creator(tr);
+                var l = new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 42 };
+                var b = new Person { TenantId = 1, Id = 3, Name = "Boris", Age = 28 };
+                personTable.Insert(l);
+                personTable.Insert(b);
+
+                b.Name = "Lubos";
+                var ex = Assert.Throws<BTDBException>(() => personTable.Update(b));
+                Assert.True(ex.Message.Contains("duplicate secondary"));
+
+                var b1 = personTable.FindByAgeOrDefault(28);
+                Assert.Equal("Boris", b1.Name);
             }
         }
 
