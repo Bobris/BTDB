@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
@@ -222,6 +223,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
         {
             Approvals.VerifyAll(BasicSerializersFactory.TypeDescriptors.Select(o => o.Name), "BasicTypes");
@@ -248,6 +250,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void ComplexDescribe()
         {
             var ts = new TypeSerializers();

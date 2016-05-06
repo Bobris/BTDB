@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using ApprovalTests;
 using BTDB.Buffer;
@@ -234,6 +235,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void Basics()
         {
             using (var tr = _db.StartTransaction())
@@ -259,6 +261,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void BasicsRelation()
         {
             using (var tr = _db.StartTransaction())
@@ -359,6 +362,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void ListOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -378,6 +382,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void InlineDictionariesOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -416,6 +421,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void UpgradeDeletedInlineObjectWorks()
         {
             var typeNameWfd = _db.RegisterType(typeof(ObjectWfd1));
