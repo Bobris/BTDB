@@ -12,6 +12,45 @@ namespace BTDBTest
     public class EventStoreTest
     {
         [Fact]
+        public void WhenReadOnlyStoreIsCreatedFromNewEventStoreManagerThenItShouldNotLeakMemory()
+        {
+            var storage = new MemoryEventFileStorage();
+
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(storage);
+            var metadata = new User {Name = "A", Age = 1};
+            var events = new object[]
+            {
+                new User {Name = "B", Age = 2},
+                new User {Name = "C", Age = 3}
+            };
+            appender.Store(metadata, events);
+            appender.FinalizeStore();
+
+            manager = new EventStoreManager();
+            var eventObserver = new StoringEventObserver();
+            long baselineMemory = 0;
+            for (int i = 0; i <= 100000; i++)
+            {
+                var reader = manager.OpenReadOnlyStore(storage);
+                reader.ReadToEnd(eventObserver);
+
+                Assert.Equal(1, eventObserver.Events.Count);
+                eventObserver.Events.Clear();
+                eventObserver.Metadata.Clear();
+
+                GC.Collect(1);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(1);
+
+                if (i == 100)
+                    baselineMemory = GC.GetTotalMemory(false);
+            }
+
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*3F);
+        }
+
+        [Fact]
         public void CanWriteSimpleEvent()
         {
             var manager = new EventStoreManager();
@@ -553,7 +592,7 @@ namespace BTDBTest
             var readUserEvent = (UserEventDictionary)eventObserver.Events[0][0];
             Assert.Equal(readUserEvent, userEvent);
         }
-        
+
         public class ErrorInfo
         {
             public IDictionary<string, IList<ErrorInfo>> PropertyErrors { get; set; }
@@ -637,7 +676,7 @@ namespace BTDBTest
             Assert.False(reader.IsKnownAsCorrupted());
             Assert.False(reader.IsKnownAsFinished());
             Assert.False(reader.IsKnownAsAppendable());
-            Assert.Equal(new List<object>{ metadata }, eventObserver.Metadata);
+            Assert.Equal(new List<object> { metadata }, eventObserver.Metadata);
             Assert.Equal(new[] { events }, eventObserver.Events);
         }
 
@@ -720,7 +759,7 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ClassWithChangedUINTtoULONG), "BTDBTest.EventStoreTest+Credit"));
-            
+
             using (var file = new StreamEventFileStorage(new MemoryStream(Convert.FromBase64String(base64EventFile))))
             {
                 var appender = manager.AppendToStore(file);
