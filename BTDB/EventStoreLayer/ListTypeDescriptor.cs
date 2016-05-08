@@ -10,14 +10,14 @@ namespace BTDB.EventStoreLayer
 {
     class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
-        readonly TypeSerializers _typeSerializers;
+        readonly ITypeDescriptorCallbacks _typeSerializers;
         Type _type;
         Type _itemType;
         ITypeDescriptor _itemDescriptor;
         string _name;
         readonly ITypeConvertorGenerator _convertorGenerator;
 
-        public ListTypeDescriptor(TypeSerializers typeSerializers, Type type)
+        public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
@@ -25,7 +25,7 @@ namespace BTDB.EventStoreLayer
             _itemType = GetItemType(type);
         }
 
-        public ListTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;

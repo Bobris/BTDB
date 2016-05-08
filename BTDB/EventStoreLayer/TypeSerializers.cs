@@ -58,6 +58,8 @@ namespace BTDB.EventStoreLayer
 
         public ITypeConvertorGenerator ConvertorGenerator { get; private set; }
 
+        public ITypeNameMapper TypeNameMapper => _typeNameMapper;
+
         public ITypeDescriptor DescriptorOf(Type objType)
         {
             var res = _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);

@@ -12,18 +12,18 @@ namespace BTDB.EventStoreLayer
 {
     class EnumTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
-        readonly TypeSerializers _typeSerializers;
+        readonly ITypeDescriptorCallbacks _typeSerializers;
         Type _type;
         readonly string _name;
         readonly bool _signed;
         readonly bool _flags;
         readonly List<KeyValuePair<string, ulong>> _pairs;
 
-        public EnumTypeDescriptor(TypeSerializers typeSerializers, Type type)
+        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
             _typeSerializers = typeSerializers;
             _type = type;
-            _name = typeSerializers.TypeToName(type);
+            _name = typeSerializers.TypeNameMapper.ToName(type);
             _signed = IsSignedEnum(type);
             _flags = IsFlagsEnum(type);
             var undertype = type.GetEnumUnderlyingType();
@@ -40,7 +40,7 @@ namespace BTDB.EventStoreLayer
             _pairs = type.GetEnumNames().Zip(enumValuesUlongs.ToArray(), (s, v) => new KeyValuePair<string, ulong>(s, v)).ToList();
         }
 
-        public EnumTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader)
+        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader)
         {
             _typeSerializers = typeSerializers;
             _name = reader.ReadString();

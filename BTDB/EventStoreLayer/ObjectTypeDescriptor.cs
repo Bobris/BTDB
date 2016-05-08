@@ -18,15 +18,15 @@ namespace BTDB.EventStoreLayer
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
         readonly ITypeConvertorGenerator _convertorGenerator;
 
-        public ObjectTypeDescriptor(TypeSerializers typeSerializers, Type type)
+        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _type = type;
             Sealed = _type.IsSealed;
-            _name = typeSerializers.TypeToName(type);
+            _name = typeSerializers.TypeNameMapper.ToName(type);
         }
 
-        public ObjectTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _type = null;

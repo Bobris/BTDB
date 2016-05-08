@@ -11,7 +11,7 @@ namespace BTDB.EventStoreLayer
 {
     class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
-        readonly TypeSerializers _typeSerializers;
+        readonly ITypeDescriptorCallbacks _typeSerializers;
         Type _type;
         Type _keyType;
         Type _valueType;
@@ -20,7 +20,7 @@ namespace BTDB.EventStoreLayer
         string _name;
         readonly ITypeConvertorGenerator _convertorGenerator;
 
-        public DictionaryTypeDescriptor(TypeSerializers typeSerializers, Type type)
+        public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
@@ -30,7 +30,7 @@ namespace BTDB.EventStoreLayer
             _valueType = genericArguments[1];
         }
 
-        public DictionaryTypeDescriptor(TypeSerializers typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
