@@ -37,7 +37,7 @@ namespace BTDB.ODBLayer
             var fieldInfos = new TableFieldInfo[fieldCount];
             for (int i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, tableName);
+                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
             }
             return new TableVersionInfo(fieldInfos);
         }

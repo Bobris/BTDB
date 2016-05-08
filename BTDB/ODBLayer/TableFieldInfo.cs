@@ -21,20 +21,22 @@ namespace BTDB.ODBLayer
 
         internal IFieldHandler Handler => _handler;
 
-        internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
+        internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory,
+            string tableName, FieldHandlerOptions handlerOptions)
         {
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration, FieldHandlerOptions.None);
+            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration, handlerOptions);
             if (fieldHandler == null) throw new BTDBException(
                 $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
             return new TableFieldInfo(name, fieldHandler);
         }
 
-        public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory)
+        public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory,
+              FieldHandlerOptions handlerOptions)
         {
-            var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType, FieldHandlerOptions.None);
+            var fieldHandler = fieldHandlerFactory.CreateFromType(pi.PropertyType, handlerOptions);
             if (fieldHandler == null) throw new BTDBException(string.Format("FieldHandlerFactory did not build property {0} of type {2} in {1}", pi.Name, tableName, pi.PropertyType.FullName));
             var a = pi.GetCustomAttribute<PersistedNameAttribute>();
             return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler);

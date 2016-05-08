@@ -518,14 +518,14 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
-                jobTable.Insert(new Job { Id = 11, Name = "Code   " }); //todo different string serialization to make sorting work independent on string length
-                jobTable.Insert(new Job { Id = 22, Name = "Sleep  " });
+                jobTable.Insert(new Job { Id = 11, Name = "Code" });
+                jobTable.Insert(new Job { Id = 22, Name = "Sleep" });
                 jobTable.Insert(new Job { Id = 33, Name = "Bicycle" });
 
                 var en = jobTable.ListByName(new AdvancedEnumeratorParam<Job>(EnumerationOrder.Descending));
 
-                Assert.Equal("Sleep  ", GetNext(en).Name);
-                Assert.Equal("Code   ", GetNext(en).Name);
+                Assert.Equal("Sleep", GetNext(en).Name);
+                Assert.Equal("Code", GetNext(en).Name);
                 Assert.Equal("Bicycle", GetNext(en).Name);
             }
         }

@@ -203,7 +203,7 @@ namespace BTDB.ODBLayer
             var primaryKeys = new List<TableFieldInfo>((int)pkCount);
             for (var i = 0u; i < pkCount; i++)
             {
-                primaryKeys.Add(TableFieldInfo.Load(reader, fieldHandlerFactory, relationName));
+                primaryKeys.Add(TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.Orderable));
             }
 
             var skCount = reader.ReadVUInt32();
@@ -235,7 +235,7 @@ namespace BTDB.ODBLayer
             var fieldInfos = new TableFieldInfo[fieldCount];
             for (int i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName);
+                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.Orderable);
             }
 
             return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeysNames, fieldInfos);

@@ -255,7 +255,7 @@ namespace BTDB.ODBLayer
             {
                 if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
-                fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory));
+                fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory, FieldHandlerOptions.None));
             }
             var tvi = new TableVersionInfo(fields.ToArray());
             if (LastPersistedVersion == 0)

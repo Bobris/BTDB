@@ -334,7 +334,8 @@ namespace BTDB.ODBLayer
                 if (pks.Length != 0)
                 {
                     var pkinfo = (PrimaryKeyAttribute)pks[0];
-                    var fieldInfo = TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory);
+                    var fieldInfo = TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
+                        FieldHandlerOptions.Orderable);
                     if (fieldInfo.Handler.NeedsCtx())
                         throw new BTDBException($"Unsupported key field {fieldInfo.Name} type.");
                     primaryKeys.Add(pkinfo.Order, fieldInfo);
@@ -352,7 +353,8 @@ namespace BTDB.ODBLayer
                     }
                     skAttrList.Add(attribute);
                 }
-                fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory));
+                fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
+                    FieldHandlerOptions.Orderable));
             }
             var firstSecondaryKeyIndex = 0u; //todo loading/upgrading/...
             return new RelationVersionInfo(primaryKeys, secondaryKeys, fields.ToArray(), firstSecondaryKeyIndex);
