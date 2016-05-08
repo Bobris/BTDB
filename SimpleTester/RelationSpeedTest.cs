@@ -8,6 +8,7 @@ namespace SimpleTester
 {
     public class RelationSpeedTest
     {
+        [StoredInline]
         public class Person
         {
             [PrimaryKey(1)]
@@ -16,7 +17,7 @@ namespace SimpleTester
             public string Email { get; set; }
         }
 
-        ObjectDB CreateDb()
+        static ObjectDB CreateInMemoryDb()
         {
             var lowDb = new InMemoryKeyValueDB();
             var db = new ObjectDB();
@@ -24,49 +25,111 @@ namespace SimpleTester
             return db;
         }
 
-        IEnumerable<string> GenerateEmails(int count)
+        static ObjectDB CreateDb(IFileCollection fc)
+        {
+            var lowDb = new KeyValueDB(fc);
+            var db = new ObjectDB();
+            db.Open(lowDb, true);
+            return db;
+        }
+
+        static IEnumerable<string> GenerateEmails(int count)
         {
             var rnd = new Random();
             while (count-- > 0)
                 yield return $"a{rnd.Next(999)}@b{count}.com";
         }
 
+        interface IMesureOperations
+        {
+            void Insert();
+            void List();
+            void Update();
+            void Remove();
+        }
+
         //definitinos for relations
         public interface IPersonTable
         {
             void Insert(Person person);
+            void Update(Person person);
+            Person FindById(ulong id);
+            void RemoveById(ulong id);
             IEnumerator<Person> ListByEmail(AdvancedEnumeratorParam<Person> param);
         }
         //
 
-        void InsertPersonsAndIterateByEmailRelation(int count)
+        class RelationPersonTest : IMesureOperations
         {
-            using (var db = CreateDb())
+            readonly int _count;
+            readonly ObjectDB _db;
+            readonly Func<IObjectDBTransaction, IPersonTable> _creator;
+
+            public RelationPersonTest(ObjectDB db, int count)
             {
-                Func<IObjectDBTransaction, IPersonTable> creator;
-                using (var tr = db.StartTransaction())
+                _count = count;
+                _db = db;
+                using (var tr = _db.StartTransaction())
                 {
-                    creator = tr.InitRelation<IPersonTable>("Job");
-                    var jobTable = creator(tr);
-                    ulong idx = 0;
-                    foreach (var email in GenerateEmails(count))
-                    {
-                        jobTable.Insert(new Person { Email = email, Id = idx++ });
-                    }
-                    tr.Commit();
+                    _creator = tr.InitRelation<IPersonTable>("Job");
                 }
-                ulong sum = 0;
-                using (var tr = db.StartTransaction())
+            }
+
+            public void Insert()
+            {
+                ulong idx = 0;
+                foreach (var email in GenerateEmails(_count))
                 {
-                    var jobTable = creator(tr);
-                    var en = jobTable.ListByEmail(new AdvancedEnumeratorParam<Person>());
+                    using (var tr = _db.StartTransaction())
+                    {
+                        var personTable = _creator(tr);
+                        personTable.Insert(new Person { Email = email, Id = idx++ });
+                        tr.Commit();
+                    }
+                }
+            }
+
+            public void List()
+            {
+                ulong sum = 0;
+                using (var tr = _db.StartTransaction())
+                {
+                    var personTable = _creator(tr);
+                    var en = personTable.ListByEmail(new AdvancedEnumeratorParam<Person>());
                     while (en.MoveNext())
                     {
                         sum += en.Current.Id;
                     }
                 }
             }
+
+            public void Update()
+            {
+                for (var id = 0ul; id < (ulong)_count; id++)
+                {
+                    using (var tr = _db.StartTransaction())
+                    {
+                        var personTable = _creator(tr);
+                        var p = personTable.FindById(id);
+                        p.Email += "a";
+                        personTable.Update(p);
+                    }
+                }
+            }
+
+            public void Remove()
+            {
+                for (var id = 0ul; id < (ulong)_count; id++)
+                {
+                    using (var tr = _db.StartTransaction())
+                    {
+                        var personTable = _creator(tr);
+                        personTable.RemoveById(id);
+                    }
+                }
+            }
         }
+       
 
         //definitions for singletons
         public class PersonMap
@@ -80,24 +143,39 @@ namespace SimpleTester
         }
         //
 
-        void InsertPersonsAndIterateByEmailRelationSingleton(int count)
+        class SingletonPersonTest : IMesureOperations
         {
-            using (var db = CreateDb())
+            readonly int _count;
+            readonly ObjectDB _db;
+            readonly Func<IObjectDBTransaction, IPersonTable> _creator;
+
+            public SingletonPersonTest(ObjectDB db, int count)
             {
-                using (var tr = db.StartTransaction())
+                _db = db;
+                _count = count;
+            }
+
+            public void Insert()
+            {
+                ulong idx = 0;
+                foreach (var email in GenerateEmails(_count))
                 {
-                    var persons = tr.Singleton<PersonMap>();
-                    var emails = tr.Singleton<PersonNameIndex>();
-                    ulong idx = 0;
-                    foreach (var email in GenerateEmails(count))
+                    using (var tr = _db.StartTransaction())
                     {
+                        var persons = tr.Singleton<PersonMap>();
+                        var emails = tr.Singleton<PersonNameIndex>();
+
                         persons.Items[idx] = new Person { Email = email, Id = idx };
                         emails.Items[email] = idx;
                         idx++;
+                        tr.Commit();
                     }
-                    tr.Commit();
                 }
-                using (var tr = db.StartReadOnlyTransaction())
+            }
+
+            public void List()
+            {
+                using (var tr = _db.StartReadOnlyTransaction())
                 {
                     var persons = tr.Singleton<PersonMap>();
                     var emails = tr.Singleton<PersonNameIndex>();
@@ -109,24 +187,99 @@ namespace SimpleTester
                     }
                 }
             }
+
+            public void Update()
+            {
+                for (var id = 0ul; id < (ulong)_count; id++)
+                {
+                    using (var tr = _db.StartTransaction())
+                    {
+                        var persons = tr.Singleton<PersonMap>();
+                        var emails = tr.Singleton<PersonNameIndex>();
+
+                        var p = persons.Items[id];
+                        emails.Items.Remove(p.Email);
+                        p.Email += "a";
+                        emails.Items[p.Email] = id;
+
+                    }
+                }
+            }
+
+            public void Remove()
+            {
+                for (var id = 0ul; id < (ulong)_count; id++)
+                {
+                    using (var tr = _db.StartTransaction())
+                    {
+                        var persons = tr.Singleton<PersonMap>();
+                        var emails = tr.Singleton<PersonNameIndex>();
+
+                        var p = persons.Items[id];
+                        emails.Items.Remove(p.Email);
+                        persons.Items.Remove(id);
+                    }
+                }
+            }
+
+            public void Dispose()
+            {
+                _db.Dispose();
+            }
+        }
+
+
+        void Measure(string name, IMesureOperations testImpl)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Console.WriteLine($"Measure {name}");
+            var sw = new Stopwatch();
+            sw.Start();
+
+            Do("Insert", testImpl.Insert);
+            Do("Update", testImpl.Update);
+            Do("List  ", testImpl.List);
+            Do("Remove", testImpl.Remove);
+
+            sw.Stop();
+
+            Console.WriteLine($"Total : {TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds)}");
+            Console.WriteLine();
+
+        }
+
+        void Do(string operationName, Action action)
+        {
+            var sw = new Stopwatch();
+            sw.Start();
+            action();
+            sw.Stop();
+            Console.WriteLine($"{operationName}: {TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds)}");
         }
 
         public void Run()
         {
-            var sw = new Stopwatch();
-            sw.Start();
-            InsertPersonsAndIterateByEmailRelationSingleton(1000000);
-            sw.Stop();
-            Console.WriteLine($"2 Maps: {TimeSpan.FromTicks(sw.ElapsedTicks)}");
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
-            sw.Reset();
-            sw.Start();
-            InsertPersonsAndIterateByEmailRelation(1000000);
-            sw.Stop();
-            Console.WriteLine($"Relation: {TimeSpan.FromTicks(sw.ElapsedTicks)}");
+            int cnt = 500000;
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateDb(fc))
+            {
+                Measure("Relation: ", new RelationPersonTest(db, cnt));
+            }
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateDb(fc))
+            {
+                Measure("2 Maps: ", new SingletonPersonTest(db, cnt));
+            }
+            using (var db = CreateInMemoryDb())
+            {
+                Measure("Relation (mem): ", new RelationPersonTest(db, cnt));
+            }
+            using (var db = CreateInMemoryDb())
+            {
+                Measure("2 Maps (mem): ", new SingletonPersonTest(db, cnt));
+            }
         }
     }
 }
