@@ -84,6 +84,14 @@ namespace BTDB.EventStore2Layer
             return info.Descriptor;
         }
 
+        public ITypeDescriptor DescriptorOf(Type type)
+        {
+            SerializerTypeInfo info;
+            if (!_typeOrDescriptor2Info.TryGetValue(type, out info))
+                return null;
+            return info.Descriptor;
+        }
+
         public ITypeConvertorGenerator ConvertorGenerator { get; }
 
         public ITypeNameMapper TypeNameMapper => _typeNameMapper;

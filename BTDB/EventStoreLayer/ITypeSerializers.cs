@@ -6,6 +6,7 @@ namespace BTDB.EventStoreLayer
     public interface ITypeDescriptorCallbacks
     {
         ITypeDescriptor DescriptorOf(object obj);
+        ITypeDescriptor DescriptorOf(Type type);
         ITypeConvertorGenerator ConvertorGenerator { get; }
         ITypeNameMapper TypeNameMapper { get; }
         Type LoadAsType(ITypeDescriptor descriptor);
