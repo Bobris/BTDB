@@ -66,6 +66,7 @@
     <Compile Include="EventStore2Layer\EventSerializer.cs" />
     <Compile Include="EventStore2Layer\IEventDeserializer.cs" />
     <Compile Include="EventStore2Layer\IEventSerializer.cs" />
+    <Compile Include="EventStore2Layer\PlaceHolderDescriptor.cs" />
     <Compile Include="EventStore2Layer\SerializerTypeInfo.cs" />
     <Compile Include="EventStoreLayer\AppendingEventStore.cs" />
     <Compile Include="EventStoreLayer\BlockType.cs" />

@@ -17,6 +17,9 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2Info = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
         readonly List<SerializerTypeInfo> _id2Info = new List<SerializerTypeInfo>();
+        readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
+        readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+        readonly List<object> _visited = new List<object>();
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -124,9 +127,103 @@ namespace BTDB.EventStore2Layer
             return descriptor.GetPreferedType() ?? _typeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
+        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        {
+            var typeId = reader.ReadVInt32();
+            if (typeId < 0 && -typeId - 1 < _id2InfoNew.Count)
+            {
+                var infoForType = _id2InfoNew[-typeId - 1];
+                if (infoForType != null)
+                    return infoForType.Descriptor;
+            }
+            else if (typeId > 0)
+            {
+                if (typeId >= _id2Info.Count)
+                    throw new BTDBException("Metadata corrupted");
+                var infoForType = _id2Info[typeId];
+                if (infoForType == null)
+                    throw new BTDBException("Metadata corrupted");
+                return infoForType.Descriptor;
+            }
+            return new PlaceHolderDescriptor(typeId);
+        }
+
         public void ProcessMetadataLog(ByteBuffer buffer)
         {
-            throw new NotImplementedException();
+            var reader = new ByteBufferReader(buffer);
+            var typeId = reader.ReadVInt32();
+            while (typeId != 0)
+            {
+                var typeCategory = (TypeCategory)reader.ReadUInt8();
+                ITypeDescriptor descriptor;
+                switch (typeCategory)
+                {
+                    case TypeCategory.BuildIn:
+                        throw new ArgumentOutOfRangeException();
+                    case TypeCategory.Class:
+                        descriptor = new ObjectTypeDescriptor(this, reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.List:
+                        descriptor = new ListTypeDescriptor(this, reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Dictionary:
+                        descriptor = new DictionaryTypeDescriptor(this, reader, NestedDescriptorReader);
+                        break;
+                    case TypeCategory.Enum:
+                        descriptor = new EnumTypeDescriptor(this, reader);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+                while (-typeId - 1 >= _id2InfoNew.Count)
+                    _id2InfoNew.Add(null);
+                if (_id2InfoNew[-typeId - 1] == null)
+                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                typeId = reader.ReadVInt32();
+            }
+            for (var i = 0; i < _id2InfoNew.Count; i++)
+            {
+                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                {
+                    var placeHolderDescriptor = d as PlaceHolderDescriptor;
+                    return placeHolderDescriptor != null ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor : d;
+                });
+            }
+            // This additional cycle is needed to fill names of recursive structures
+            for (var i = 0; i < _id2InfoNew.Count; i++)
+            {
+                _id2InfoNew[i].Descriptor.MapNestedTypes(d => d);
+            }
+            for (var i = 0; i < _id2InfoNew.Count; i++)
+            {
+                var infoForType = _id2InfoNew[i];
+                for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
+                {
+                    if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
+                    {
+                        _remapToOld[infoForType.Descriptor] = _id2Info[j].Descriptor;
+                        _id2InfoNew[i] = _id2Info[j];
+                        infoForType = _id2InfoNew[i];
+                        break;
+                    }
+                }
+                if (infoForType.Id < 0)
+                {
+                    infoForType.Id = _id2Info.Count;
+                    _id2Info.Add(infoForType);
+                    _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
+                }
+            }
+            for (var i = 0; i < _id2InfoNew.Count; i++)
+            {
+                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                {
+                    ITypeDescriptor res;
+                    return _remapToOld.TryGetValue(d, out res) ? res : d;
+                });
+            }
+            _id2InfoNew.Clear();
+            _remapToOld.Clear();
         }
 
         public bool Serialize(AbstractBufferedWriter writer, object obj)
@@ -140,9 +237,16 @@ namespace BTDB.EventStore2Layer
             if (_typeOrDescriptor2InfoNew.Count > 0)
             {
                 if (MergeTypesByShapeAndStoreNew(writer))
+                {
+                    _typeOrDescriptor2InfoNew.Clear();
+                    _visited.Clear();
                     return true;
+                }
+                _typeOrDescriptor2InfoNew.Clear();
             }
-            throw new NotImplementedException();
+            _visited.Clear();
+            // TODO
+            return false;
         }
 
         public ITypeDescriptor Create(Type type)
@@ -191,6 +295,12 @@ namespace BTDB.EventStore2Layer
 
         public void StoreNewDescriptors(object obj)
         {
+            if (obj == null) return;
+            for (var i = 0; i < _visited.Count; i++)
+            {
+                if (_visited[i] == obj) return;
+            }
+            _visited.Add(obj);
             SerializerTypeInfo info;
             var knowDescriptor = obj as IKnowDescriptor;
             if (knowDescriptor != null)
