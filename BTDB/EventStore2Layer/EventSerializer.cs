@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer
 {
-    public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDescriptorSerializerLiteContext, ITypeDescriptorFactory
+    public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDescriptorSerializerLiteContext, ITypeDescriptorFactory, ITypeBinarySerializerContext
     {
         public const int ReservedBuildinTypes = 50;
         readonly ITypeNameMapper _typeNameMapper;
@@ -20,6 +20,7 @@ namespace BTDB.EventStore2Layer
         readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly List<object> _visited = new List<object>();
+        AbstractBufferedWriter _writer;
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -32,10 +33,7 @@ namespace BTDB.EventStore2Layer
                 var infoForType = new SerializerTypeInfo
                 {
                     Id = _id2Info.Count,
-                    Descriptor = predefinedType,
-                    SimpleSaver = BuildSimpleSaver(predefinedType),
-                    ComplexSaver = BuildComplexSaver(predefinedType),
-                    NestedObjGatherer = BuildNestedObjGatherer(predefinedType)
+                    Descriptor = predefinedType
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2Info.Add(infoForType);
@@ -50,27 +48,9 @@ namespace BTDB.EventStore2Layer
             while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
         }
 
-        Action<AbstractBufferedWriter, object> BuildSimpleSaver(ITypeDescriptor descriptor)
-        {
-            if (descriptor.AnyOpNeedsCtx()) return null;
-            var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, object>>(descriptor.Name + "SimpleSaver");
-            var il = method.Generator;
-            descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
-            {
-                ilgen.Ldarg(1);
-                var type = descriptor.GetPreferedType();
-                if (type != typeof(object))
-                {
-                    ilgen.UnboxAny(type);
-                }
-            }, descriptor.GetPreferedType());
-            il.Ret();
-            return method.Create();
-        }
-
         Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> BuildComplexSaver(ITypeDescriptor descriptor)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(descriptor.Name + "ComplexSaver");
+            var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(descriptor.Name + "Saver");
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
@@ -92,6 +72,7 @@ namespace BTDB.EventStore2Layer
             {
                 return (obj, ctx) => { };
             }
+            // TODO: Add cache here to do this only once instead of 3 times for every type
             var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
             var il = method.Generator;
             gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1));
@@ -233,7 +214,7 @@ namespace BTDB.EventStore2Layer
                 writer.WriteUInt8(0); // null
                 return false;
             }
-            StoreNewDescriptors(obj);
+            var info=StoreNewDescriptorsAndReturnInfo(obj);
             if (_typeOrDescriptor2InfoNew.Count > 0)
             {
                 if (MergeTypesByShapeAndStoreNew(writer))
@@ -243,9 +224,30 @@ namespace BTDB.EventStore2Layer
                     return true;
                 }
                 _typeOrDescriptor2InfoNew.Clear();
+                var knowDescriptor = obj as IKnowDescriptor;
+                if (knowDescriptor != null)
+                {
+                    if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
+                    {
+                        throw new BTDBException("Forgot descriptor");
+                    }
+                }
+                else
+                {
+                    if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+                    {
+                        throw new BTDBException("Forgot type");
+                    }
+                }
             }
             _visited.Clear();
-            // TODO
+            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
+            _visited.Add(obj); // first backreference
+            writer.WriteVUInt32((uint) info.Id);
+            _writer = writer;
+            info.ComplexSaver(writer, this, obj);
+            _writer = null;
+            _visited.Clear();
             return false;
         }
 
@@ -295,10 +297,15 @@ namespace BTDB.EventStore2Layer
 
         public void StoreNewDescriptors(object obj)
         {
-            if (obj == null) return;
+            StoreNewDescriptorsAndReturnInfo(obj);
+        }
+
+        SerializerTypeInfo StoreNewDescriptorsAndReturnInfo(object obj)
+        {
+            if (obj == null) return null;
             for (var i = 0; i < _visited.Count; i++)
             {
-                if (_visited[i] == obj) return;
+                if (_visited[i] == obj) return null;
             }
             _visited.Add(obj);
             SerializerTypeInfo info;
@@ -319,13 +326,8 @@ namespace BTDB.EventStore2Layer
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
                 {
-                    info = new SerializerTypeInfo
-                    {
-                        Id = 0,
-                        Descriptor = Create(obj.GetType())
-                    };
-                    _typeOrDescriptor2InfoNew[info.Descriptor] = info;
-                    _typeOrDescriptor2InfoNew[obj.GetType()] = info;
+                    var desc=Create(obj.GetType());
+                    info = _typeOrDescriptor2InfoNew[desc];
                 }
             }
             if (info.NestedObjGatherer == null)
@@ -333,6 +335,7 @@ namespace BTDB.EventStore2Layer
                 info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor);
             }
             info.NestedObjGatherer(obj, this);
+            return info;
         }
 
         bool MergeTypesByShapeAndStoreNew(AbstractBufferedWriter writer)
@@ -361,7 +364,7 @@ namespace BTDB.EventStore2Layer
                 }
                 else if (info.Id > 0)
                 {
-                    if (typeDescriptor.Key.GetType() == typeof(Type))
+                    if (typeDescriptor.Key is Type)
                     {
                         _typeOrDescriptor2Info[typeDescriptor.Key] = _id2Info[info.Id];
                     }
@@ -412,5 +415,42 @@ namespace BTDB.EventStore2Layer
             });
         }
 
+        public void StoreObject(object obj)
+        {
+            if (obj == null)
+            {
+                _writer.WriteUInt8(0);
+                return;
+            }
+            for (int i = 0; i < _visited.Count; i++)
+            {
+                if (_visited[i] == obj)
+                {
+                    _writer.WriteUInt8(1); // backreference
+                    _writer.WriteVUInt32((uint) i);
+                    return;
+                }
+            }
+            _visited.Add(obj);
+            SerializerTypeInfo info;
+            var knowDescriptor = obj as IKnowDescriptor;
+            if (knowDescriptor != null)
+            {
+                if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
+                {
+                    throw new BTDBException("Forgot descriptor");
+                }
+            }
+            else
+            {
+                if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+                {
+                    throw new BTDBException("Forgot type");
+                }
+            }
+            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
+            _writer.WriteVUInt32((uint)info.Id);
+            info.ComplexSaver(_writer, this, obj);
+        }
     }
 }

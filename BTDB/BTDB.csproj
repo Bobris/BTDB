@@ -63,6 +63,7 @@
     <Compile Include="ChunkedFile\IOptimalLeafChunkSizeDetector.cs" />
     <Compile Include="DtoChannel\DtoChannel.cs" />
     <Compile Include="DtoChannel\IDtoChannel.cs" />
+    <Compile Include="EventStore2Layer\EventDeserializer.cs" />
     <Compile Include="EventStore2Layer\EventSerializer.cs" />
     <Compile Include="EventStore2Layer\IEventDeserializer.cs" />
     <Compile Include="EventStore2Layer\IEventSerializer.cs" />

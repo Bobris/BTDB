@@ -12,7 +12,6 @@ namespace BTDB.EventStore2Layer
         public int Id;
         public ITypeDescriptor Descriptor;
         public Action<object, IDescriptorSerializerLiteContext> NestedObjGatherer;
-        public Action<AbstractBufferedWriter, object> SimpleSaver;
         public Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> ComplexSaver;
     }
 }

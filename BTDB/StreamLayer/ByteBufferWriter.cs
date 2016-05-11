@@ -13,6 +13,13 @@ namespace BTDB.StreamLayer
             End = Buf.Length;
         }
 
+        public void Reset()
+        {
+            Buf = new byte[32];
+            End = Buf.Length;
+            Pos = 0;
+        }
+
         public ByteBuffer Data
         {
             get

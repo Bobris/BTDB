@@ -29,7 +29,6 @@ namespace BTDB.EventStoreLayer
         public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
-            _type = null;
             Sealed = false;
             _name = reader.ReadString();
             var fieldCount = reader.ReadVUInt32();
@@ -37,6 +36,7 @@ namespace BTDB.EventStoreLayer
             {
                 _fields.Add(new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
             }
+            _type = typeSerializers.TypeNameMapper.ToType(_name);
         }
 
         public bool Equals(ITypeDescriptor other)
