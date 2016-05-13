@@ -13,7 +13,6 @@ namespace BTDB.EventStore2Layer
     public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDescriptorSerializerLiteContext, ITypeDescriptorFactory, ITypeBinarySerializerContext
     {
         public const int ReservedBuildinTypes = 50;
-        readonly ITypeNameMapper _typeNameMapper;
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2Info = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
         readonly List<SerializerTypeInfo> _id2Info = new List<SerializerTypeInfo>();
@@ -24,7 +23,7 @@ namespace BTDB.EventStore2Layer
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
-            _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
+            TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? new DefaultTypeConvertorGenerator();
             _id2Info.Add(null); // 0 = null
             _id2Info.Add(null); // 1 = back reference
@@ -101,11 +100,11 @@ namespace BTDB.EventStore2Layer
 
         public ITypeConvertorGenerator ConvertorGenerator { get; }
 
-        public ITypeNameMapper TypeNameMapper => _typeNameMapper;
+        public ITypeNameMapper TypeNameMapper { get; }
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferedType() ?? _typeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferedType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
         ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)

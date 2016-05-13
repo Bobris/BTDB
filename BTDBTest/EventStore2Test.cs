@@ -57,5 +57,24 @@ namespace BTDBTest
             }
             Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory);
         }
+
+        [Fact]
+        public void DeserializeSimpleClass()
+        {
+            var serializer = new EventSerializer();
+            var writer = new ByteBufferWriter();
+            var obj = new User { Name = "Boris", Age = 40 };
+            serializer.Serialize(writer, obj);
+            var meta = writer.Data;
+            serializer.ProcessMetadataLog(meta);
+            writer = new ByteBufferWriter();
+            serializer.Serialize(writer, obj);
+            var data = writer.Data;
+
+            var deserializer = new EventDeserializer();
+            Assert.Null(deserializer.Deserialize(data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.Equal(deserializer.Deserialize(data), obj);
+        }
     }
 }
