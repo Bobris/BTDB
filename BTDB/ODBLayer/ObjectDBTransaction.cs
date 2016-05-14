@@ -875,12 +875,26 @@ namespace BTDB.ODBLayer
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType, keyFieldProperties);
                 }
-                else if (method.Name.StartsWith("ListBy"))
+                else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(AdvancedEnumeratorParam)
                 {
+                    //IEnumerator< T > ListBySecondaryKey(uint secondaryKeyIndex, EnumerationOrder order,
+                    //      KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+                    //      KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+                    var paramType = method.GetParameters()[0].ParameterType;
+                    var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
+                    var secondaryKeyIndex = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
                     reqMethod.Generator
                         .Ldarg(0)
-                        .LdcI4((int)relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6)))
-                        .Ldarg(1)
+                        .LdcI4((int)secondaryKeyIndex)
+                        .Ldarg(1).Ldfld(paramType.GetField("Order"))
+                        .Ldarg(1).Ldfld(paramType.GetField("StartProposition"));
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, emptyBufferLoc, paramType.GetField("Start"),
+                        reqMethod.Generator, relationDBManipulatorType);
+                    reqMethod.Generator
+                        .Ldarg(1).Ldfld(paramType.GetField("EndProposition"));
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, emptyBufferLoc, paramType.GetField("End"),
+                        reqMethod.Generator, relationDBManipulatorType);
+                    reqMethod.Generator
                         .Callvirt(relationDBManipulatorType.GetMethod("ListBySecondaryKey"));
                 }
                 else //call same method name with the same parameters

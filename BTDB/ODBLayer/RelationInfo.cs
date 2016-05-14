@@ -801,11 +801,10 @@ namespace BTDB.ODBLayer
                 SaveKeyFieldFromArgument(ilGenerator, firstField, 1, writerLoc);
                 //call public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound)
                 ilGenerator.Ldarg(0); //manipulator
+                ilGenerator.LdcI4((int)skIndex);
                 //call byteBuffer.data
                 var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-                ilGenerator.LdcI4((int)skIndex);
                 ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-                var ifcs = methodReturnType.GetInterfaces();
                 if (methodReturnType.IsGenericType && methodReturnType.GetGenericTypeDefinition() == typeof(IEnumerator<>) &&
                               methodReturnType.GetGenericArguments()[0] == ClientType)
                 {
@@ -839,7 +838,33 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        internal void FillBufferWhenNotIgnoredKeyPropositionIl(uint skIndex, IILLocal emptyBufferLoc,
+            FieldInfo instField, IILGen ilGenerator, Type relationDBManipulatorType)
+        {
+            //stack contains KeyProposition
+            var ignoreLabel = ilGenerator.DefineLabel(instField + "_ignore");
+            var doneLabel = ilGenerator.DefineLabel(instField + "_done");
+            var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            ilGenerator
+                .Dup()
+                .LdcI4((int)KeyProposition.Ignored)
+                .BeqS(ignoreLabel)
+                .Newobj(() => new ByteBufferWriter())
+                .Stloc(writerLoc);
+            var firstField = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex).First();
+            firstField.Handler.Save(ilGenerator,
+                il => il.Ldloc(writerLoc),
+                il => il.Ldarg(1).Ldfld(instField));
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+            ilGenerator
+                .Br(doneLabel)
+                .Mark(ignoreLabel)
+                .Ldloc(emptyBufferLoc)
+                .Mark(doneLabel);
+        }
+
     }
 
-    
+
 }

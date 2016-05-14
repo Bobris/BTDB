@@ -157,9 +157,14 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
-        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex, AdvancedEnumeratorParam<T> param)
+        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex, EnumerationOrder order,
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
         {
-            return new RelationAdvancedSecondaryKeyEnumerator<T>(_transaction, _relationInfo, param, secondaryKeyIndex, this);
+            return new RelationAdvancedSecondaryKeyEnumerator<T>(_transaction, _relationInfo,
+                    order,
+                    startKeyProposition, startKeyBytes,
+                    endKeyProposition, endKeyBytes, secondaryKeyIndex, this);
         }
 
         internal T CreateInstanceFromSK(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)

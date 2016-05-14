@@ -428,7 +428,7 @@ namespace BTDBTest
             Job FindByIdOrDefault(ulong id);
             Job FindByNameOrDefault(string name);
 
-            IEnumerator<Job> ListByName(AdvancedEnumeratorParam<Job> param);
+            IEnumerator<Job> ListByName(AdvancedEnumeratorParam<string> param);
         }
 
         [Fact]
@@ -513,20 +513,25 @@ namespace BTDBTest
         [Fact]
         public void CanIterateBySecondaryKey()
         {
-            Func<IObjectDBTransaction, IJobTable> creator;
             using (var tr = _db.StartTransaction())
             {
-                creator = tr.InitRelation<IJobTable>("Job");
+                var creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
                 jobTable.Insert(new Job { Id = 11, Name = "Code" });
                 jobTable.Insert(new Job { Id = 22, Name = "Sleep" });
                 jobTable.Insert(new Job { Id = 33, Name = "Bicycle" });
 
-                var en = jobTable.ListByName(new AdvancedEnumeratorParam<Job>(EnumerationOrder.Descending));
+                var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending));
 
                 Assert.Equal("Sleep", GetNext(en).Name);
                 Assert.Equal("Code", GetNext(en).Name);
                 Assert.Equal("Bicycle", GetNext(en).Name);
+
+                en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, 
+                                         "B", KeyProposition.Included, 
+                                         "C", KeyProposition.Included));
+                Assert.Equal("Bicycle", GetNext(en).Name);
+                Assert.False(en.MoveNext());
             }
         }
 

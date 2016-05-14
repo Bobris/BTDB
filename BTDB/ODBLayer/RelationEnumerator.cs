@@ -119,16 +119,19 @@ namespace BTDB.ODBLayer
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
-        readonly uint _startPos = 0;
-        readonly uint _count = 0;
+        readonly uint _startPos;
+        readonly uint _count;
         uint _pos;
         bool _seekNeeded;
         readonly bool _ascending;
 
         readonly ByteBuffer _keyBytes;
 
-        public RelationAdvancedSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
-            AdvancedEnumeratorParam<T> param,
+
+        public RelationAdvancedSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, 
+            EnumerationOrder order, 
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes, 
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes, 
             uint secondaryKeyIndex, RelationDBManipulator<T> manipulator)
         {
             _relationInfo = relationInfo;
@@ -136,29 +139,28 @@ namespace BTDB.ODBLayer
             _secondaryKeyName = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[_secondaryKeyIndex].Name;
             _manipulator = manipulator;
             _tr = tr;
+            _ascending = order == EnumerationOrder.Ascending;
 
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
             _keyBytes = BuildKeyBytes();
-            _keyValueTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+            _keyValueTr.SetKeyPrefix(_keyBytes);
 
             long startIndex;
             long endIndex;
-            if (param.EndProposition == KeyProposition.Ignored)
+            if (endKeyProposition == KeyProposition.Ignored)
             {
                 endIndex = _keyValueTr.GetKeyValueCount() - 1;
             }
             else
             {
-                var keyBytes = _manipulator.WriteSecodaryKeyKey(_secondaryKeyIndex,
-                    _secondaryKeyName, param.End);
-                switch (_keyValueTr.Find(keyBytes))
+                switch (_keyValueTr.Find(endKeyBytes))
                 {
                     case FindResult.Exact:
                         endIndex = _keyValueTr.GetKeyIndex();
-                        if (param.EndProposition == KeyProposition.Excluded)
+                        if (endKeyProposition == KeyProposition.Excluded)
                         {
                             endIndex--;
                         }
@@ -176,19 +178,17 @@ namespace BTDB.ODBLayer
                         throw new ArgumentOutOfRangeException();
                 }
             }
-            if (param.StartProposition == KeyProposition.Ignored)
+            if (startKeyProposition == KeyProposition.Ignored)
             {
                 startIndex = 0;
             }
             else
             {
-                var keyBytes = _manipulator.WriteSecodaryKeyKey(_secondaryKeyIndex,
-                    _secondaryKeyName, param.Start);
-                switch (_keyValueTr.Find(keyBytes))
+                switch (_keyValueTr.Find(startKeyBytes))
                 {
                     case FindResult.Exact:
                         startIndex = _keyValueTr.GetKeyIndex();
-                        if (param.StartProposition == KeyProposition.Excluded)
+                        if (startKeyProposition == KeyProposition.Excluded)
                         {
                             startIndex++;
                         }
@@ -206,7 +206,6 @@ namespace BTDB.ODBLayer
                         throw new ArgumentOutOfRangeException();
                 }
             }
-            _keyValueTr.SetKeyPrefix(_keyBytes);
             _count = (uint)Math.Max(0, endIndex - startIndex + 1);
             _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
