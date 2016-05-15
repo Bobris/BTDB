@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Net;
-using System.Text;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -18,6 +17,8 @@ namespace BTDB.StreamLayer
         protected byte[] Buf;
         protected int Pos; // -1 for eof
         protected int End; // -1 for eof
+        protected char[] CharBuf;
+        protected byte[] Bytes16;
 
         protected abstract void FillBuffer();
 
@@ -350,6 +351,20 @@ namespace BTDB.StreamLayer
             SkipVInt64();
         }
 
+        protected void ReserveCharBuf(int size)
+        {
+            if (CharBuf == null)
+            {
+                CharBuf = new char[size];
+            }
+            else
+            {
+                if (size <= CharBuf.Length) return;
+                var newLen = Math.Max((int)Math.Min((long)CharBuf.Length * 2, 2147483591 / 2), size);
+                Array.Resize(ref CharBuf, newLen);
+            }
+        }
+
         public string ReadString()
         {
             var len = ReadVUInt64();
@@ -358,7 +373,8 @@ namespace BTDB.StreamLayer
             if (len > int.MaxValue) throw new InvalidDataException($"Reading String length overflowed with {len}");
             var l = (int)len;
             if (l == 0) return "";
-            var res = new char[l];
+            ReserveCharBuf(l);
+            var res = CharBuf;
             var i = 0;
             while (i < l)
             {
@@ -389,12 +405,12 @@ namespace BTDB.StreamLayer
                     i++;
                 }
             }
-            return new string(res);
+            return new string(res, 0, l);
         }
 
         public string ReadStringOrdered()
         {
-            var res = new StringBuilder();
+            var len = 0;
             while (true)
             {
                 var c = ReadVUInt32();
@@ -404,19 +420,21 @@ namespace BTDB.StreamLayer
                 {
                     if (c > 0x10ffff)
                     {
-                        if (res.Length == 0 && c == 0x110000) return null;
+                        if (len == 0 && c == 0x110000) return null;
                         throw new InvalidDataException($"Reading String unicode value overflowed with {c}");
                     }
                     c -= 0x10000;
-                    res.Append((char)((c >> 10) + 0xD800));
-                    res.Append((char)((c & 0x3FF) + 0xDC00));
+                    ReserveCharBuf(len + 2);
+                    CharBuf[len++] = (char)((c >> 10) + 0xD800);
+                    CharBuf[len++] = (char)((c & 0x3FF) + 0xDC00);
                 }
                 else
                 {
-                    res.Append((char)c);
+                    ReserveCharBuf(len + 1);
+                    CharBuf[len++] = (char)c;
                 }
             }
-            return res.ToString();
+            return new string(CharBuf, 0, len);
         }
 
         public void SkipString()
@@ -518,9 +536,14 @@ namespace BTDB.StreamLayer
             ReadBlock(buffer.Buffer, buffer.Offset, buffer.Length);
         }
 
+        protected byte[] Get16Bytes()
+        {
+            return Bytes16 ?? (Bytes16 = new byte[16]);
+        }
+
         public Guid ReadGuid()
         {
-            var res = new byte[16];
+            var res = Get16Bytes();
             ReadBlock(res, 0, 16);
             return new Guid(res);
         }
@@ -661,13 +684,13 @@ namespace BTDB.StreamLayer
                     return new IPAddress((uint)ReadInt32LE());
                 case 1:
                     {
-                        var ip6Bytes = new byte[16];
+                        var ip6Bytes = Get16Bytes();
                         ReadBlock(ip6Bytes);
                         return new IPAddress(ip6Bytes);
                     }
                 case 2:
                     {
-                        var ip6Bytes = new byte[16];
+                        var ip6Bytes = Get16Bytes();
                         ReadBlock(ip6Bytes);
                         var scopeid = (long)ReadVUInt64();
                         return new IPAddress(ip6Bytes, scopeid);

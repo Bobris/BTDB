@@ -11,7 +11,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer
 {
-    class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, ITypeBinaryDeserializerContext
+    public class EventDeserializer : IEventDeserializer, ITypeDescriptorCallbacks, ITypeBinaryDeserializerContext
     {
         public const int ReservedBuildinTypes = 50;
         readonly Dictionary<object, DeserializerTypeInfo> _typeOrDescriptor2Info = new Dictionary<object, DeserializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);

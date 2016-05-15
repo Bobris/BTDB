@@ -15,9 +15,17 @@ namespace BTDB.StreamLayer
 
         public void Reset()
         {
+            _result = ByteBuffer.NewEmpty();
             Buf = new byte[32];
             End = Buf.Length;
             Pos = 0;
+        }
+
+        public ByteBuffer GetDataAndRewind()
+        {
+            var len = Pos;
+            Pos = 0;
+            return ByteBuffer.NewSync(Buf, 0, len);
         }
 
         public ByteBuffer Data
