@@ -17,7 +17,6 @@ namespace BTDB.StreamLayer
         protected byte[] Buf;
         protected int Pos;
         protected int End;
-        protected byte[] Bytes16;
 
         public abstract void FlushBuffer();
         public abstract long GetCurrentPosition();
