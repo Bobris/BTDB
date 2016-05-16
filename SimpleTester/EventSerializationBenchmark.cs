@@ -9,34 +9,13 @@ using BenchmarkDotNet.Running;
 using BTDB.Buffer;
 using BTDB.EventStore2Layer;
 using BTDB.StreamLayer;
-using ProtoBuf;
+using FluentAssertions;
+using ProtoBuf.Meta;
+using SimpleTester.TestModel;
+using SimpleTester.TestModel.Events;
 
 namespace SimpleTester
 {
-    [ProtoContract]
-    public class EventHolder
-    {
-        [ProtoMember(1)]
-        public Event Content { get; set; }
-    }
-
-    [ProtoContract]
-    [ProtoInclude(1, typeof(NewUser))]
-    public class Event
-    {
-    }
-
-    [ProtoContract]
-    public class NewUser : Event
-    {
-        [ProtoMember(1)]
-        public ulong CompanyId { get; set; }
-        [ProtoMember(2)]
-        public string Name { get; set; }
-        [ProtoMember(3)]
-        public byte[] Password { get; set; }
-    }
-
     public class ColumnOrderFirst : IColumn
     {
         readonly IColumn _parent;
@@ -112,15 +91,21 @@ namespace SimpleTester
         IEventDeserializer _eventDeserializer;
         ByteBufferWriter _writer;
         Event _ev;
-        EventHolder _eventHolder;
-        ByteBuffer _deserData;
+        ByteBuffer _btdbSerializedData;
         MemoryStream _memStream;
+        RuntimeTypeModel Serializer;
+        Type _eventType;
+
+        [Params("Simple", "Complex")]
+        public string Complexity { get; set; }
 
         [Setup]
         public void Setup()
         {
-            _ev = new NewUser { CompanyId = 123456, Name = "Boris Letocha", Password = new byte[20] };
-            _eventHolder = new EventHolder { Content = _ev };
+            if (Complexity == "Simple")
+                _ev = TestData.SimpleEventInstance();
+            else
+                _ev = TestData.ComplexEventInstance();
 
             // BTDB Setup
             _eventSerializer = new EventSerializer();
@@ -131,16 +116,23 @@ namespace SimpleTester
             _eventSerializer.ProcessMetadataLog(meta);
             _eventDeserializer.ProcessMetadataLog(meta);
             _eventSerializer.Serialize(_writer, _ev);
-            _deserData = _writer.GetDataAndRewind().ToAsyncSafe();
-            BtdbByteSize = _deserData.Length;
-            _eventDeserializer.Deserialize(_deserData);
+            _btdbSerializedData = _writer.GetDataAndRewind().ToAsyncSafe();
+            BtdbByteSize = _btdbSerializedData.Length;
+            _eventDeserializer.Deserialize(_btdbSerializedData).ShouldBeEquivalentTo(_ev);
 
             // ProtoBuf Setup
+            Serializer = ModelFactory.CreateModel();
+            _eventType = typeof(Event);
             _memStream = new MemoryStream();
-            Serializer.Serialize(_memStream, _eventHolder);
+            Serializer.Serialize(_memStream, _ev);
             ProtoBufByteSize = (int)_memStream.Length;
             _memStream.Position = 0;
-            Serializer.Deserialize<EventHolder>(_memStream);
+            Serializer.Deserialize(_memStream, null, _eventType).ShouldBeEquivalentTo(_ev);
+
+            BtdbSerialization();
+            BtdbDeserialization();
+            ProtoBufSerialization();
+            ProtoBufDeserialization();
         }
 
         public int BtdbByteSize { get; set; }
@@ -156,21 +148,21 @@ namespace SimpleTester
         [Benchmark]
         public void BtdbDeserialization()
         {
-            _eventDeserializer.Deserialize(_deserData);
+            _eventDeserializer.Deserialize(_btdbSerializedData);
         }
 
         [Benchmark]
         public void ProtoBufSerialization()
         {
             _memStream.Position = 0;
-            Serializer.Serialize(_memStream, _eventHolder);
+            Serializer.Serialize(_memStream, _ev);
         }
 
         [Benchmark]
         public void ProtoBufDeserialization()
         {
             _memStream.Position = 0;
-            Serializer.Deserialize<EventHolder>(_memStream);
+            Serializer.Deserialize(_memStream, null, _eventType);
         }
     }
 }
