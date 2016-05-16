@@ -192,6 +192,8 @@ namespace BTDBTest
         public void GuidTest()
         {
             TestWriteRead(w => w.WriteGuid(Guid.Empty), Guid.Empty.ToByteArray(), r => Assert.Equal(Guid.Empty, r.ReadGuid()), s => s.SkipGuid());
+            var g = Guid.NewGuid();
+            TestWriteRead(w => w.WriteGuid(g), g.ToByteArray(), r => Assert.Equal(g, r.ReadGuid()), s => s.SkipGuid());
         }
 
         [Fact]

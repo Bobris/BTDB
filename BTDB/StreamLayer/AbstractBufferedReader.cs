@@ -434,6 +434,7 @@ namespace BTDB.StreamLayer
                     CharBuf[len++] = (char)c;
                 }
             }
+            if (len == 0) return "";
             return new string(CharBuf, 0, len);
         }
 
