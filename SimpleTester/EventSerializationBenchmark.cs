@@ -46,6 +46,8 @@ namespace SimpleTester
         {
             var target = benchmark.Target;
             var instance = Activator.CreateInstance(target.Type);
+            var param = benchmark.Parameters[0];
+            target.Type.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
             target.SetupMethod.Invoke(instance, new object[0]);
             var propName = target.MethodTitle.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
             return target.Type.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
