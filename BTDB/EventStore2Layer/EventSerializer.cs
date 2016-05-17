@@ -64,7 +64,7 @@ namespace BTDB.EventStore2Layer
             return method.Create();
         }
 
-        Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor)
+        Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)
         {
             var gen = descriptor.BuildNewDescriptorGenerator();
             if (gen == null)
@@ -74,7 +74,7 @@ namespace BTDB.EventStore2Layer
             // TODO: Add cache here to do this only once instead of 3 times for every type
             var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
             var il = method.Generator;
-            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1));
+            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
             il.Ret();
             return method.Create();
         }
@@ -213,7 +213,7 @@ namespace BTDB.EventStore2Layer
                 writer.WriteUInt8(0); // null
                 return false;
             }
-            var info=StoreNewDescriptorsAndReturnInfo(obj);
+            var info = StoreNewDescriptorsAndReturnInfo(obj);
             if (_typeOrDescriptor2InfoNew.Count > 0)
             {
                 if (MergeTypesByShapeAndStoreNew(writer))
@@ -242,7 +242,7 @@ namespace BTDB.EventStore2Layer
             _visited.Clear();
             if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
             _visited.Add(obj); // first backreference
-            writer.WriteVUInt32((uint) info.Id);
+            writer.WriteVUInt32((uint)info.Id);
             _writer = writer;
             info.ComplexSaver(writer, this, obj);
             _writer = null;
@@ -325,13 +325,13 @@ namespace BTDB.EventStore2Layer
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
                 {
-                    var desc=Create(obj.GetType());
+                    var desc = Create(obj.GetType());
                     info = _typeOrDescriptor2InfoNew[desc];
                 }
             }
             if (info.NestedObjGatherer == null)
             {
-                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor);
+                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : null);
             }
             info.NestedObjGatherer(obj, this);
             return info;
@@ -426,7 +426,7 @@ namespace BTDB.EventStore2Layer
                 if (_visited[i] == obj)
                 {
                     _writer.WriteUInt8(1); // backreference
-                    _writer.WriteVUInt32((uint) i);
+                    _writer.WriteVUInt32((uint)i);
                     return;
                 }
             }

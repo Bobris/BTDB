@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -157,18 +158,23 @@ namespace BTDB.EventStoreLayer
                 _owner = owner;
             }
 
-            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx)
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
                 var finish = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor);
                 var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor);
-                var typeAsIDictionary = typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
-                var typeAsICollection = typeAsIDictionary.GetInterface("ICollection`1");
-                var typeAsIEnumerable = typeAsIDictionary.GetInterface("IEnumerable`1");
-                var getEnumeratorMethod = typeAsIEnumerable.GetMethod("GetEnumerator");
+                if (_owner._type == null) _owner._type = type;
+                var isDict = _owner._type != null && _owner._type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+                var typeAsIDictionary = isDict ? _owner._type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
+                var getEnumeratorMethod = isDict
+                    ? typeAsIDictionary.GetMethods()
+                        .Single(
+                            m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
+                    : typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod("GetEnumerator");
                 var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var typeKeyValuePair = typeAsICollection.GetGenericArguments()[0];
+                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var typeKeyValuePair = currentGetter.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
                 ilGenerator
@@ -178,11 +184,37 @@ namespace BTDB.EventStoreLayer
                     .Stloc(localEnumerator)
                     .Try()
                     .Mark(next)
-                    .Ldloc(localEnumerator)
-                    .Callvirt(() => default(IEnumerator).MoveNext())
+                    .Do(il =>
+                    {
+                        if (isDict)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Call(typeAsIEnumerator.GetMethod("MoveNext"));
+                        }
+                        else
+                        {
+                            il
+                                .Ldloc(localEnumerator)
+                                .Callvirt(() => default(IEnumerator).MoveNext());
+                        }
+                    })
                     .Brfalse(finish)
-                    .Ldloc(localEnumerator)
-                    .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
+                    .Do(il =>
+                    {
+                        if (isDict)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Call(currentGetter);
+                        }
+                        else
+                        {
+                            il
+                                .Ldloc(localEnumerator)
+                                .Callvirt(currentGetter);
+                        }
+                    })
                     .Stloc(localPair);
                 if (!_owner._keyDescriptor.Sealed)
                 {
@@ -204,7 +236,19 @@ namespace BTDB.EventStoreLayer
                     .Br(next)
                     .Mark(finish)
                     .Finally()
-                    .Ldloc(localEnumerator)
+                    .Do(il =>
+                    {
+                        if (isDict)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Constrained(typeAsIEnumerator);
+                        }
+                        else
+                        {
+                            il.Ldloc(localEnumerator);
+                        }
+                    })
                     .Callvirt(() => default(IDisposable).Dispose())
                     .EndTry();
             }
@@ -244,23 +288,17 @@ namespace BTDB.EventStoreLayer
             nestedDescriptorPersistor(writer, _valueDescriptor);
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type saveType)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue, Type saveType)
         {
-            var finish = ilGenerator.DefineLabel();
-            var next = ilGenerator.DefineLabel();
             var notnull = ilGenerator.DefineLabel();
             var completeFinish = ilGenerator.DefineLabel();
+            var notDictionary = ilGenerator.DefineLabel();
             var keyType = saveType.GetGenericArguments()[0];
             var valueType = saveType.GetGenericArguments()[1];
             var typeAsIDictionary = typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
             var typeAsICollection = typeAsIDictionary.GetInterface("ICollection`1");
-            var typeAsIEnumerable = typeAsIDictionary.GetInterface("IEnumerable`1");
-            var getEnumeratorMethod = typeAsIEnumerable.GetMethod("GetEnumerator");
-            var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-            var typeKeyValuePair = typeAsICollection.GetGenericArguments()[0];
             var localDict = ilGenerator.DeclareLocal(typeAsIDictionary);
-            var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
-            var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
             ilGenerator
                 .Do(pushValue)
                 .Castclass(typeAsIDictionary)
@@ -278,28 +316,83 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Add()
                 .ConvU4()
-                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
-                .Ldloc(localDict)
-                .Callvirt(getEnumeratorMethod)
-                .Stloc(localEnumerator)
-                .Try()
-                .Mark(next)
-                .Ldloc(localEnumerator)
-                .Callvirt(() => default(IEnumerator).MoveNext())
-                .Brfalse(finish)
-                .Ldloc(localEnumerator)
-                .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
-                .Stloc(localPair);
-            _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
-            _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
-            ilGenerator
-                .Br(next)
-                .Mark(finish)
-                .Finally()
-                .Ldloc(localEnumerator)
-                .Callvirt(() => default(IDisposable).Dispose())
-                .EndTry()
-                .Mark(completeFinish);
+                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+
+            {
+                var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+                var getEnumeratorMethod = typeAsDictionary.GetMethods()
+                        .Single(m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var typeKeyValuePair = currentGetter.ReturnType;
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
+                var finish = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Ldloc(localDict)
+                    .Castclass(typeAsDictionary)
+                    .Brfalse(notDictionary)
+                    .Ldloc(localDict)
+                    .Castclass(typeAsDictionary)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
+                    .Mark(next)
+                    .Ldloca(localEnumerator)
+                    .Call(typeAsIEnumerator.GetMethod("MoveNext"))
+                    .Brfalse(finish)
+                    .Ldloca(localEnumerator)
+                    .Call(currentGetter)
+                    .Stloc(localPair);
+                _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
+                _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
+                ilGenerator
+                    .Br(next)
+                    .Mark(finish)
+                    .Finally()
+                    .Ldloca(localEnumerator)
+                    .Constrained(typeAsIEnumerator)
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry()
+                    .Br(completeFinish);
+            }
+            {
+                var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod("GetEnumerator");
+                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var typeKeyValuePair = currentGetter.ReturnType;
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
+                var finish = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Mark(notDictionary)
+                    .Ldloc(localDict)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
+                    .Mark(next)
+                    .Ldloc(localEnumerator)
+                    .Callvirt(() => default(IEnumerator).MoveNext())
+                    .Brfalse(finish)
+                    .Ldloc(localEnumerator)
+                    .Callvirt(currentGetter)
+                    .Stloc(localPair);
+                _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
+                _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
+                ilGenerator
+                    .Br(next)
+                    .Mark(finish)
+                    .Finally()
+                    .Ldloc(localEnumerator)
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry()
+                    .Mark(completeFinish);
+            }
+
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

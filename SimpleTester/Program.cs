@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+//using JetBrains.Profiler.Windows.Api;
 
 namespace SimpleTester
 {
@@ -14,6 +15,16 @@ namespace SimpleTester
     {
         static void Main(string[] args)
         {
+            //var b = new EventSerializationBenchmark();
+            //b.Complexity = "Complex";
+            //if (MemoryProfiler.IsActive && MemoryProfiler.CanControlAllocations)
+            //    MemoryProfiler.EnableAllocations();
+            //if (MemoryProfiler.IsActive)
+            //    MemoryProfiler.Dump();
+            //b.Setup();
+            //b.BtdbDeserialization();
+            //if (MemoryProfiler.IsActive)
+            //    MemoryProfiler.Dump();
             //new KeyValueDBReplayer("bug.log").Replay();
             //new SpeedTest1().Test();
             //new ChannelSpeedTest().Run(args);
@@ -24,7 +35,7 @@ namespace SimpleTester
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
             //new RelationSpeedTest().Run();
-            BenchmarkRunner.Run<EventSerializationBenchmark>();
+            //BenchmarkRunner.Run<EventSerializationBenchmark>();
         }
     }
 }

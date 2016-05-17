@@ -147,7 +147,7 @@ namespace BTDB.EventStoreLayer
                 _listTypeDescriptor = listTypeDescriptor;
             }
 
-            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx)
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
                 var finish = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();

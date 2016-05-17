@@ -342,7 +342,7 @@ namespace BTDB.EventStoreLayer
                 _objectTypeDescriptor = objectTypeDescriptor;
             }
 
-            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx)
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
                 var allProps = _objectTypeDescriptor._type.GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)

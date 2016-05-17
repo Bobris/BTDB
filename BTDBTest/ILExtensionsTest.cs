@@ -260,7 +260,7 @@ namespace BTDBTest
                 .Mark(finishedLabel)
                 .Ldloca(enumeratorLocal)
                 .Constrained(enumeratorType)
-                .Callvirt(()=>((IDisposable)null).Dispose())
+                .Callvirt(()=>default(IDisposable).Dispose())
                 .Ldloc(sumLocal)
                 .Ret();
             Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));

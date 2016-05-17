@@ -262,6 +262,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Beq(this IILGen il, IILLabel targetLabel)
+        {
+            il.Emit(OpCodes.Beq, targetLabel);
+            return il;
+        }
+
         public static IILGen BgeUnS(this IILGen il, IILLabel targetLabel)
         {
             il.Emit(OpCodes.Bge_Un_S, targetLabel);
@@ -532,6 +538,12 @@ namespace BTDB.IL
         public static IILGen UnboxAny(this IILGen il, Type anyType)
         {
             il.Emit(OpCodes.Unbox_Any, anyType);
+            return il;
+        }
+
+        public static IILGen Break(this IILGen il)
+        {
+            il.Emit(OpCodes.Break);
             return il;
         }
     }
