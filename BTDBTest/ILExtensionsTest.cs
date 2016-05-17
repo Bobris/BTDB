@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -114,7 +115,7 @@ namespace BTDBTest
         [Fact]
         public void CanFixFirstParameterRelease()
         {
-            var method = new ILBuilderRelease().NewMethod("SampleCall", typeof(Func<Nested>),typeof(string));
+            var method = new ILBuilderRelease().NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -148,7 +149,7 @@ namespace BTDBTest
             var n = action();
             Assert.Equal("Test", n.PassedParam);
         }
-    
+
         public class PrivateConstructor
         {
             readonly int _a;
@@ -168,12 +169,12 @@ namespace BTDBTest
             var il = method.Generator;
             il
                 .LdcI4(42)
-                .Newobj(typeof (PrivateConstructor).GetConstructors(BindingFlags.NonPublic|BindingFlags.Instance)[0])
+                .Newobj(typeof(PrivateConstructor).GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance)[0])
                 .Ret();
             Assert.Equal(42, method.Create()().A);
         }
 
-        public int Factorial (int n)
+        public int Factorial(int n)
         {
             var ret = n;
             while (n > 2)
@@ -189,7 +190,7 @@ namespace BTDBTest
             var finish = il.DefineLabel();
             var next = il.DefineLabel();
             var ret = il.DeclareLocal(typeof(int), "ret");
-            il                
+            il
                 .Ldarg(0) //[n]
                 .Stloc(ret) //[]
                 .Mark(next)
@@ -212,5 +213,57 @@ namespace BTDBTest
             Assert.Equal(24, method.Create()(4));
         }
 
+        [Fact]
+        public void AllocationLessDictionaryIteration()
+        {
+            var method = new ILBuilderDebug().NewMethod<Func<Dictionary<int, int>, int>>("PrintDict");
+            var il = method.Generator;
+            var sumLocal = il.DeclareLocal(typeof(int), "sum");
+            var dictType = typeof(Dictionary<int, int>);
+            var getEnumeratorMethod =
+                dictType.GetMethods().Single(m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+            var enumeratorType = getEnumeratorMethod.ReturnType;
+            var moveNextMethod = enumeratorType.GetMethod("MoveNext");
+            var currentGetter =
+                enumeratorType.GetProperties()
+                    .Single(m => m.Name == "Current" && m.PropertyType.IsValueType)
+                    .GetGetMethod();
+            var keyValuePairType = currentGetter.ReturnType;
+            var enumeratorLocal = il.DeclareLocal(enumeratorType);
+            var keyValuePairLocal = il.DeclareLocal(keyValuePairType);
+            var againLabel = il.DefineLabel("again");
+            var finishedLabel = il.DefineLabel("finished");
+            il
+                .LdcI4(0)
+                .Stloc(sumLocal)
+                .Ldarg(0)
+                .Callvirt(getEnumeratorMethod)
+                .Stloc(enumeratorLocal)
+                .Mark(againLabel)
+                .Ldloca(enumeratorLocal)
+                .Call(moveNextMethod)
+                .BrfalseS(finishedLabel)
+                .Ldloca(enumeratorLocal)
+                .Call(currentGetter)
+                .Stloc(keyValuePairLocal)
+                .Ldloca(keyValuePairLocal)
+                .Call(keyValuePairType.GetProperty("Key").GetGetMethod())
+                .Ldloc(sumLocal)
+                .Add()
+                .Stloc(sumLocal)
+                .Ldloca(keyValuePairLocal)
+                .Call(keyValuePairType.GetProperty("Value").GetGetMethod())
+                .Ldloc(sumLocal)
+                .Add()
+                .Stloc(sumLocal)
+                .BrS(againLabel)
+                .Mark(finishedLabel)
+                .Ldloca(enumeratorLocal)
+                .Constrained(enumeratorType)
+                .Callvirt(()=>((IDisposable)null).Dispose())
+                .Ldloc(sumLocal)
+                .Ret();
+            Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));
+        }
     }
 }
