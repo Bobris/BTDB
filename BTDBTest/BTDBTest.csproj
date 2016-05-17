@@ -124,6 +124,7 @@
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
     <Compile Include="ObjectDbTableTest.cs" />
+    <Compile Include="ObjectDbTableUpgradeTest.cs" />
     <Compile Include="ObjectDBTest.cs" />
     <Compile Include="PackUnpackTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

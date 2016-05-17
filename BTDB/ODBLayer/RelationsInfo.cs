@@ -33,7 +33,7 @@ namespace BTDB.ODBLayer
             _relationInfoResolver = relationInfoResolver;
         }
 
-        internal RelationInfo CreateByName(IKeyValueDBTransaction tr, string name, Type interfaceType)
+        internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType)
         {
             name = string.Intern(name);
             uint id;
@@ -41,12 +41,12 @@ namespace BTDB.ODBLayer
             {
                 id = _freeId++;
                 _name2Id[name] = id;
-                tr.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
+                tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
                 var nameWriter = new ByteBufferWriter();
                 nameWriter.WriteString(name);
                 var idWriter = new ByteBufferWriter();
                 idWriter.WriteVUInt32(id);
-                tr.CreateOrUpdateKeyValue(nameWriter.Data, idWriter.Data);
+                tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(nameWriter.Data, idWriter.Data);
             }
             RelationInfo relation;
             if (_id2Relation.TryGetValue(id, out relation))

@@ -45,15 +45,15 @@ namespace BTDB.ODBLayer
 
         public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
                                    Dictionary<uint, IList<SecondaryKeyAttribute>> secondaryKeys,  //value field idx -> attrs
-                                   TableFieldInfo[] fields, uint firstIndex)
+                                   TableFieldInfo[] fields, RelationVersionInfo prevVersion)
         {
             _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
-            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, firstIndex);
+            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
             _fields = fields;
         }
 
         void CreateSecondaryKeyInfo(Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
-                                    Dictionary<uint, TableFieldInfo> primaryKeyFields, uint firstIndex)
+                                    Dictionary<uint, TableFieldInfo> primaryKeyFields, RelationVersionInfo prevVersion)
         {
             var idx = 0u;
             _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
@@ -74,7 +74,7 @@ namespace BTDB.ODBLayer
                 {
                     Name = indexName,
                     Fields = new List<FieldId>(),
-                    Index = firstIndex++
+                    Index = SelectSecondaryKeyIndex(indexName, prevVersion)
                 };
                 foreach (var attr in orderedAttrs)
                 {
@@ -90,6 +90,22 @@ namespace BTDB.ODBLayer
             }
         }
 
+        uint SelectSecondaryKeyIndex(string indexName, RelationVersionInfo prevVersion)
+        {
+            uint index = 1;
+            if (prevVersion != null)
+            {
+                if (prevVersion._secondaryKeysNames.TryGetValue(indexName, out index))
+                    return index;
+                index = 0;
+                while (prevVersion._secondaryKeys.ContainsKey(index))
+                    index++;
+            }
+            while (_secondaryKeys.ContainsKey(index))
+                index++;
+            return index; //use fresh one
+        }
+
         RelationVersionInfo(IList<TableFieldInfo> primaryKeyFields,
                             Dictionary<uint, SecondaryKeyInfo> secondaryKeys,
                             Dictionary<string, uint> secondaryKeysNames,
@@ -97,6 +113,7 @@ namespace BTDB.ODBLayer
         {
             _primaryKeyFields = primaryKeyFields;
             _secondaryKeys = secondaryKeys;
+            _secondaryKeysNames = secondaryKeysNames;
             _fields = fields;
         }
 

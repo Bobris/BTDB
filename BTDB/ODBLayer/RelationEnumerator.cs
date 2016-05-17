@@ -39,7 +39,13 @@ namespace BTDB.ODBLayer
         {
             if (!_seekNeeded)
                 _pos++;
-            return Seek();
+            _keyValueTrProtector.Start();
+            bool ret;
+            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                _keyValueTr.SetKeyPrefix(_keyBytes);
+            ret = Seek();
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            return ret;
         }
 
         bool Seek()

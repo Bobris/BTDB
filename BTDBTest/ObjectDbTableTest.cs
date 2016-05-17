@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -9,7 +8,7 @@ namespace BTDBTest
 {
     public class ObjectDbTableTest : IDisposable
     {
-        IKeyValueDB _lowDb;
+        readonly IKeyValueDB _lowDb;
         IObjectDB _db;
 
         public ObjectDbTableTest()
@@ -481,7 +480,14 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 var job = new Job { Id = 11, Name = "Code" };
                 jobTable.Insert(job);
-                job.Name = "HardCore Code";
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IJobTable>("Job");
+                var jobTable = creator(tr);
+                var job = new Job { Id = 11, Name = "HardCore Code" };
                 jobTable.Update(job);
                 var j = jobTable.FindByNameOrDefault("HardCore Code");
                 Assert.Equal(11u, j.Id);

@@ -47,15 +47,15 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<uint, Action<byte[], byte[], AbstractBufferedWriter>>();
 
-
-        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType, Type clientType, IKeyValueDBTransaction tr)
+        public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
+                            Type clientType, IInternalObjectDBTransaction tr)
         {
             _id = id;
             _name = name;
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
             _clientType = clientType;
-            LoadVersionInfos(tr);
+            LoadVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && _relationVersions[LastPersistedVersion].Equals(ClientRelationVersionInfo))
@@ -65,7 +65,6 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                // TODO check and do upgrade
                 ClientTypeVersion = LastPersistedVersion + 1;
                 _relationVersions.Add(ClientTypeVersion, ClientRelationVersionInfo);
                 var writerk = new ByteBufferWriter();
@@ -74,9 +73,95 @@ namespace BTDB.ODBLayer
                 writerk.WriteVUInt32(ClientTypeVersion);
                 var writerv = new ByteBufferWriter();
                 ClientRelationVersionInfo.Save(writerv);
-                tr.SetKeyPrefix(ByteBuffer.NewEmpty());
-                tr.CreateOrUpdateKeyValue(writerk.Data, writerv.Data);
+                tr.KeyValueDBTransaction.SetKeyPrefix(ByteBuffer.NewEmpty());
+                tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerk.Data, writerv.Data);
                 NeedsFreeContent = ClientRelationVersionInfo.NeedsFreeContent();
+
+                if (LastPersistedVersion > 0)
+                {
+                    CheckThatPrimaryKeyHasNotChanged(ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
+                    UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
+                }
+            }
+        }
+
+        void CheckThatPrimaryKeyHasNotChanged(RelationVersionInfo info, RelationVersionInfo previousInfo)
+        {
+            var pkFields = info.GetPrimaryKeyFields();
+            var prevPkFields = previousInfo.GetPrimaryKeyFields();
+            if (pkFields.Count != prevPkFields.Count)
+                throw new BTDBException("Change of primary key in relation is not allowed.");
+            var en = pkFields.GetEnumerator();
+            var pen = prevPkFields.GetEnumerator();
+            while (en.MoveNext() && pen.MoveNext())
+            {
+                if (en.Current.Handler.HandledType() != pen.Current.Handler.HandledType())
+                    throw new BTDBException("Change of primary key in relation is not allowed.");
+            }
+        }
+
+        void UpdateSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info, RelationVersionInfo previousInfo)
+        {
+            foreach (var prevIdx in previousInfo.SecondaryKeys.Keys)
+            {
+                if (!info.SecondaryKeys.ContainsKey(prevIdx))
+                    DeleteSecondaryKey(tr.KeyValueDBTransaction, prevIdx);
+            }
+            var secKeysToAdd = new List<KeyValuePair<uint, SecondaryKeyInfo>>();
+            foreach (var sk in info.SecondaryKeys)
+            {
+                if (!previousInfo.SecondaryKeys.ContainsKey(sk.Key))
+                    secKeysToAdd.Add(sk);
+            }
+            if (secKeysToAdd.Count > 0)
+                CalculateSecondaryKey(tr, secKeysToAdd);
+        }
+
+        void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint prevIdx)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(ObjectDB.AllRelationsSKPrefix);
+            writer.WriteVUInt32(Id);
+            writer.WriteVUInt32(prevIdx);
+
+            keyValueTr.SetKeyPrefix(writer.Data);
+
+            keyValueTr.EraseAll();
+        }
+
+        void CalculateSecondaryKey(IInternalObjectDBTransaction tr, IList<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
+        {
+            var pkwriter = new ByteBufferWriter();
+            var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
+            pkwriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
+            pkwriter.WriteVUInt32(Id);
+            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, pkwriter.Data);
+
+            while (enumerator.MoveNext())
+            {
+                var obj = enumerator.Current;
+
+                tr.TransactionProtector.Start();
+                tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+
+                for (int i = 0; i < indexes.Count; i++)
+                {
+                    var keyWriter = new ByteBufferWriter();
+                    keyWriter.WriteVUInt32(Id);
+                    keyWriter.WriteVUInt32(indexes[i].Key);
+                    var keySaver = GetSecondaryKeysKeySaver(indexes[i].Key, indexes[i].Value.Name);
+                    keySaver(tr, keyWriter, obj, null); //todo - need different saver - cannot use Apart fields from interface
+                    var keyBytes = keyWriter.GetDataAndRewind();
+
+                    var valueWriter = new ByteBufferWriter();
+                    var valueSaver = GetSecondaryKeysValueSaver(indexes[i].Key, indexes[i].Value.Name);
+                    valueSaver(tr, valueWriter, obj, null);  //todo - need different saver - cannot use Apart fields from interface
+                    var valueBytes = valueWriter.GetDataAndRewind();
+
+                    if (tr.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+                       throw new BTDBException($"Cannot create secondary key {indexes[i].Value.Name} - duplicate key.");
+                    tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                 }
             }
         }
 
@@ -356,8 +441,8 @@ namespace BTDB.ODBLayer
                 fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
                     FieldHandlerOptions.Orderable));
             }
-            var firstSecondaryKeyIndex = 0u; //todo loading/upgrading/...
-            return new RelationVersionInfo(primaryKeys, secondaryKeys, fields.ToArray(), firstSecondaryKeyIndex);
+            var prevVersion = LastPersistedVersion > 0 ? _relationVersions[LastPersistedVersion] : null;
+            return new RelationVersionInfo(primaryKeys, secondaryKeys, fields.ToArray(), prevVersion);
         }
 
         static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
