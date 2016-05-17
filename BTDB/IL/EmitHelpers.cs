@@ -88,9 +88,12 @@ namespace BTDB.IL
                 $"{ToSimpleName(type.GetElementType())}[{new string(',', type.GetArrayRank() - 1)}]";
             if (type.IsGenericType)
             {
+                var simpleName = type.Name;
+                var backTickPos = simpleName.IndexOf('`');
+                if (backTickPos > 0) simpleName = simpleName.Substring(0, backTickPos);
                 return String.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
                     type.Namespace, 
-                    type.Name.Substring(0, type.Name.IndexOf('`')), 
+                    simpleName, 
                     String.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
             }
             if (type == typeof(byte)) return "byte";

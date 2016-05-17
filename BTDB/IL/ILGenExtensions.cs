@@ -196,6 +196,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Constrained(this IILGen il, Type type)
+        {
+            il.Emit(OpCodes.Constrained, type);
+            return il;
+        }
+
         public static IILGen Blt(this IILGen il, IILLabel targetLabel)
         {
             il.Emit(OpCodes.Blt, targetLabel);
