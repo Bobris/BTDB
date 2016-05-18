@@ -131,11 +131,26 @@ namespace BTDB.ODBLayer
 
         void CalculateSecondaryKey(IInternalObjectDBTransaction tr, IList<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
         {
-            var pkwriter = new ByteBufferWriter();
+            var keyWriter = new ByteBufferWriter();
+
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-            pkwriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
-            pkwriter.WriteVUInt32(Id);
-            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, pkwriter.Data);
+            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
+            keyWriter.WriteVUInt32(Id);
+            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, keyWriter.GetDataAndRewind().ToAsyncSafe());
+
+            var valueWriter = new ByteBufferWriter();
+
+            //need different savers without Apart fields (TenantId)
+            var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
+            var valueSavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
+
+            for (int i = 0; i < indexes.Count; i++)
+            {
+                keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
+                    $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
+                valueSavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyValueKeys(indexes[i].Key),
+                    $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_ValueSaver");
+            }
 
             while (enumerator.MoveNext())
             {
@@ -146,16 +161,12 @@ namespace BTDB.ODBLayer
 
                 for (int i = 0; i < indexes.Count; i++)
                 {
-                    var keyWriter = new ByteBufferWriter();
                     keyWriter.WriteVUInt32(Id);
                     keyWriter.WriteVUInt32(indexes[i].Key);
-                    var keySaver = GetSecondaryKeysKeySaver(indexes[i].Key, indexes[i].Value.Name);
-                    keySaver(tr, keyWriter, obj, null); //todo - need different saver - cannot use Apart fields from interface
+                    keySavers[i](tr, keyWriter, obj);
                     var keyBytes = keyWriter.GetDataAndRewind();
 
-                    var valueWriter = new ByteBufferWriter();
-                    var valueSaver = GetSecondaryKeysValueSaver(indexes[i].Key, indexes[i].Value.Name);
-                    valueSaver(tr, valueWriter, obj, null);  //todo - need different saver - cannot use Apart fields from interface
+                    valueSavers[i](tr, valueWriter, obj);
                     var valueBytes = valueWriter.GetDataAndRewind();
 
                     if (tr.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
