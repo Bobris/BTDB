@@ -20,6 +20,7 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly List<object> _visited = new List<object>();
         AbstractBufferedWriter _writer;
+        Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -66,17 +67,27 @@ namespace BTDB.EventStore2Layer
 
         Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)
         {
+            Action<object, IDescriptorSerializerLiteContext> res;
+            if (type != null)
+            {
+                if (_gathererCache.TryGetValue(type, out res))
+                    return res;
+            }
             var gen = descriptor.BuildNewDescriptorGenerator();
             if (gen == null)
             {
-                return (obj, ctx) => { };
+                res = (obj, ctx) => { };
             }
-            // TODO: Add cache here to do this only once instead of 3 times for every type
-            var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
-            var il = method.Generator;
-            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
-            il.Ret();
-            return method.Create();
+            else
+            {
+                var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
+                var il = method.Generator;
+                gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
+                il.Ret();
+                res = method.Create();
+            }
+            if (type != null) _gathererCache[type] = res;
+            return res;
         }
 
         public ITypeDescriptor DescriptorOf(object obj)
