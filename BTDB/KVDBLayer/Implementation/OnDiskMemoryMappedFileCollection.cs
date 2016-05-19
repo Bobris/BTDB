@@ -241,7 +241,7 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
-            public void RandomRead(byte[] data, int offset, int size, ulong position)
+            public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
             {
                 lock (_lock)
                 {

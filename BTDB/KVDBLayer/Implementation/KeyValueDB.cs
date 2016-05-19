@@ -690,7 +690,7 @@ namespace BTDB.KVDBLayer
             }
             var result = ByteBuffer.NewAsync(new byte[valueSize]);
             var file = FileCollection.GetFile(valueFileId);
-            file.RandomRead(result.Buffer, 0, valueSize, valueOfs);
+            file.RandomRead(result.Buffer, 0, valueSize, valueOfs, false);
             if (compressed)
                 _compression.DecompressValue(ref result);
             return result;

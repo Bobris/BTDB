@@ -279,7 +279,7 @@ namespace BTDB.ChunkCache
                         var cacheValue = itemPair.Value;
                         var content = new byte[cacheValue.ContentLength];
                         _fileCollection.GetFile(cacheValue.FileId).RandomRead(content, 0, (int)cacheValue.ContentLength,
-                                                                              cacheValue.FileOfs);
+                                                                              cacheValue.FileOfs, true);
                         var writer = _cacheValueWriter;
                         if (writer == null)
                         {
@@ -350,7 +350,7 @@ namespace BTDB.ChunkCache
                     // It is not problem if update fails, it will have just lower access rate then real
                     var result = new byte[cacheValue.ContentLength];
                     _fileCollection.GetFile(cacheValue.FileId).RandomRead(result, 0, (int)cacheValue.ContentLength,
-                                                                          cacheValue.FileOfs);
+                                                                          cacheValue.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(result));
                     return tcs.Task;
                 }

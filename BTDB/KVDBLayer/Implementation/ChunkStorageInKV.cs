@@ -186,7 +186,7 @@ namespace BTDB.KVDBLayer
                 if (d.TryGetValue(key20, out val))
                 {
                     var buf = new byte[val.ContentLength];
-                    _chunkStorageInKV._fileCollection.GetFile(val.FileId).RandomRead(buf, 0, buf.Length, val.FileOfs);
+                    _chunkStorageInKV._fileCollection.GetFile(val.FileId).RandomRead(buf, 0, buf.Length, val.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(buf));
                 }
                 else

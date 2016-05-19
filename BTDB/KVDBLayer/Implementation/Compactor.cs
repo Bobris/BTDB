@@ -131,7 +131,7 @@ namespace BTDB.KVDBLayer
                 wasteInMemory[i] = new byte[blockSize];
                 var readSize = totalSize - pos;
                 if (readSize > blockSize) readSize = blockSize;
-                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos);
+                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos, true);
                 pos += readSize;
             }
             _root.Iterate((valueFileId, valueOfs, valueSize) =>
