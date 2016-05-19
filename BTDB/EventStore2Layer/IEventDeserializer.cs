@@ -9,11 +9,13 @@ namespace BTDB.EventStore2Layer
         /// </summary>
         /// <param name="buffer">content of single log item</param>
         void ProcessMetadataLog(ByteBuffer buffer);
+
         /// <summary>
         /// Deserialize data to object
         /// </summary>
+        /// <param name="object">contains deserializer object</param>
         /// <param name="buffer">buffer from data log</param>
-        /// <returns>null if it needs to wait for metadata</returns>
-        object Deserialize(ByteBuffer buffer);
+        /// <returns>false if it needs to wait for metadata</returns>
+        bool Deserialize(out object @object, ByteBuffer buffer);
     }
 }

@@ -30,7 +30,7 @@ namespace BTDBTest
             manager = new EventStoreManager();
             var eventObserver = new StoringEventObserver();
             long baselineMemory = 0;
-            for (int i = 0; i <= 100000; i++)
+            for (int i = 0; i <= 10000; i++)
             {
                 var reader = manager.OpenReadOnlyStore(storage);
                 reader.ReadToEnd(eventObserver);
@@ -39,15 +39,18 @@ namespace BTDBTest
                 eventObserver.Events.Clear();
                 eventObserver.Metadata.Clear();
 
-                GC.Collect(1);
-                GC.WaitForPendingFinalizers();
-                GC.Collect(1);
-
                 if (i == 100)
+                {
+                    GC.Collect(2);
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect(2);
                     baselineMemory = GC.GetTotalMemory(false);
+                }
             }
-
-            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*3F);
+            GC.Collect(2);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2);
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*2F);
         }
 
         [Fact]

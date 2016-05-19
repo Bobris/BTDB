@@ -112,15 +112,16 @@ namespace SimpleTester
             // BTDB Setup
             _eventSerializer = new EventSerializer();
             _eventDeserializer = new EventDeserializer();
-            _writer = new ByteBufferWriter();
-            _eventSerializer.Serialize(_writer, _ev);
-            var meta = _writer.GetDataAndRewind().ToAsyncSafe();
+            bool hasMedataData;
+            var meta = _eventSerializer.Serialize(out hasMedataData, _ev).ToAsyncSafe();
             _eventSerializer.ProcessMetadataLog(meta);
             _eventDeserializer.ProcessMetadataLog(meta);
-            _eventSerializer.Serialize(_writer, _ev);
+            _eventSerializer.Serialize(out hasMedataData, _ev);
             _btdbSerializedData = _writer.GetDataAndRewind().ToAsyncSafe();
             BtdbByteSize = _btdbSerializedData.Length;
-            _eventDeserializer.Deserialize(_btdbSerializedData).ShouldBeEquivalentTo(_ev);
+            object obj;
+            _eventDeserializer.Deserialize(out obj, _btdbSerializedData);
+            obj.ShouldBeEquivalentTo(_ev);
 
             // ProtoBuf Setup
             Serializer = ModelFactory.CreateModel();
@@ -143,14 +144,15 @@ namespace SimpleTester
         [Benchmark]
         public void BtdbSerialization()
         {
-            _eventSerializer.Serialize(_writer, _ev);
-            _writer.GetDataAndRewind();
+            bool hasMetaData;
+            _eventSerializer.Serialize(out hasMetaData, _ev);
         }
 
         [Benchmark]
         public void BtdbDeserialization()
         {
-            _eventDeserializer.Deserialize(_btdbSerializedData);
+            object obj;
+            _eventDeserializer.Deserialize(out obj, _btdbSerializedData);
         }
 
         [Benchmark]

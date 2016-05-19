@@ -19,8 +19,8 @@ namespace BTDB.EventStore2Layer
         readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly List<object> _visited = new List<object>();
-        AbstractBufferedWriter _writer;
-        Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
+        readonly ByteBufferWriter _writer = new ByteBufferWriter();
+        readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -217,21 +217,23 @@ namespace BTDB.EventStore2Layer
             _remapToOld.Clear();
         }
 
-        public bool Serialize(AbstractBufferedWriter writer, object obj)
+        public ByteBuffer Serialize(out bool hasMetaData, object obj)
         {
             if (obj == null)
             {
-                writer.WriteUInt8(0); // null
-                return false;
+                hasMetaData = false;
+                _writer.WriteUInt8(0); // null
+                return _writer.GetDataAndRewind();
             }
             var info = StoreNewDescriptorsAndReturnInfo(obj);
             if (_typeOrDescriptor2InfoNew.Count > 0)
             {
-                if (MergeTypesByShapeAndStoreNew(writer))
+                if (MergeTypesByShapeAndStoreNew())
                 {
                     _typeOrDescriptor2InfoNew.Clear();
                     _visited.Clear();
-                    return true;
+                    hasMetaData = true;
+                    return _writer.GetDataAndRewind();
                 }
                 _typeOrDescriptor2InfoNew.Clear();
                 var knowDescriptor = obj as IKnowDescriptor;
@@ -253,12 +255,11 @@ namespace BTDB.EventStore2Layer
             _visited.Clear();
             if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
             _visited.Add(obj); // first backreference
-            writer.WriteVUInt32((uint)info.Id);
-            _writer = writer;
-            info.ComplexSaver(writer, this, obj);
-            _writer = null;
+            _writer.WriteVUInt32((uint)info.Id);
+            info.ComplexSaver(_writer, this, obj);
             _visited.Clear();
-            return false;
+            hasMetaData = false;
+            return _writer.GetDataAndRewind();
         }
 
         public ITypeDescriptor Create(Type type)
@@ -348,7 +349,7 @@ namespace BTDB.EventStore2Layer
             return info;
         }
 
-        bool MergeTypesByShapeAndStoreNew(AbstractBufferedWriter writer)
+        bool MergeTypesByShapeAndStoreNew()
         {
             List<SerializerTypeInfo> toStore = null;
             foreach (var typeDescriptor in _typeOrDescriptor2InfoNew)
@@ -384,16 +385,16 @@ namespace BTDB.EventStore2Layer
             {
                 for (int i = toStore.Count - 1; i >= 0; i--)
                 {
-                    writer.WriteVInt32(toStore[i].Id);
-                    StoreDescriptor(toStore[i].Descriptor, writer);
+                    _writer.WriteVInt32(toStore[i].Id);
+                    StoreDescriptor(toStore[i].Descriptor, _writer);
                 }
-                writer.WriteVInt32(0);
+                _writer.WriteVInt32(0);
                 return true;
             }
             return false;
         }
 
-        public void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer)
+        void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer)
         {
             if (descriptor is ListTypeDescriptor)
             {

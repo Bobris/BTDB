@@ -1,5 +1,4 @@
 ﻿using BTDB.Buffer;
-using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer
 {
@@ -11,13 +10,12 @@ namespace BTDB.EventStore2Layer
         /// <param name="buffer">content of single log item</param>
         void ProcessMetadataLog(ByteBuffer buffer);
         /// <summary>
-        /// returns true if written data must go to metadata log, 
-        /// after they will be processed call this again, so it will return false
-        /// and writer data are real data
+        /// returns actual data or metadata to write to log, 
+        /// if hasMetaData is true they must go to metadata log
         /// </summary>
-        /// <param name="writer">where to write data</param>
+        /// <param name="hasMetaData">true if returned data must go to metadata log</param>
         /// <param name="object">what to write</param>
-        /// <returns>true if there are new metadata to store</returns>
-        bool Serialize(AbstractBufferedWriter writer, object @object);
+        /// <returns>data or metadata to store</returns>
+        ByteBuffer Serialize(out bool hasMetaData, object @object);
     }
 }

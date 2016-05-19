@@ -192,20 +192,21 @@ namespace BTDB.EventStore2Layer
             return methodBuilder.Create();
         }
 
-        public object Deserialize(ByteBuffer buffer)
+        public bool Deserialize(out object @object, ByteBuffer buffer)
         {
             _reader.Restart(buffer);
-            object res = null;
+            @object = null;
             try
             {
-                res = LoadObject();
+                @object = LoadObject();
             }
             catch (BtdbMissingMetadataException)
             {
+                return false;
             }
             _visited.Clear();
             _reader.Restart(ByteBuffer.NewEmpty());
-            return res;
+            return true;
         }
 
         class BtdbMissingMetadataException : Exception
