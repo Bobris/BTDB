@@ -126,6 +126,11 @@ namespace BTDB.KVDBLayer
         void SetCommitUlong(ulong value);
 
         /// <summary>
+        /// This creates safe checkpoint for next open in transaction log
+        /// </summary>
+        void NextCommitTemporaryCloseTransactionLog();
+
+        /// <summary>
         /// You should call this as last method in using scope if you don't want to rollback transaction. After this method only Dispose() is allowed.
         /// This will preserve previous value of CommitUlong
         /// </summary>

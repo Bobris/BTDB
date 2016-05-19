@@ -290,6 +290,11 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        public void NextCommitTemporaryCloseTransactionLog()
+        {
+            // There is no transaction log ...
+        }
+
         public void Commit()
         {
             if (BtreeRoot == null) throw new BTDBException("Transaction already commited or disposed");

@@ -464,7 +464,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot)
+        internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
         {
             var deltaUlong = unchecked (btreeRoot.CommitUlong - _lastCommited.CommitUlong);
             if (deltaUlong != 0)
@@ -476,10 +476,19 @@ namespace BTDB.KVDBLayer
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
             }
-            _writerWithTransactionLog.FlushBuffer();
+            if (DurableTransactions || !temporaryCloseTransactionLog)
+                _writerWithTransactionLog.FlushBuffer();
             UpdateTransactionLogInBTreeRoot(btreeRoot);
             if (DurableTransactions)
                 _fileWithTransactionLog.HardFlush();
+            if (temporaryCloseTransactionLog)
+            {
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+                _writerWithTransactionLog.FlushBuffer();
+                if (DurableTransactions)
+                    _fileWithTransactionLog.HardFlush();
+                _fileWithTransactionLog.Truncate();
+            }
             lock (_writeLock)
             {
                 _writingTransaction = null;
