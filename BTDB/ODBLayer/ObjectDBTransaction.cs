@@ -875,25 +875,33 @@ namespace BTDB.ODBLayer
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType, keyFieldProperties);
                 }
-                else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(AdvancedEnumeratorParam)
+                else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
-                    //IEnumerator< T > ListBySecondaryKey(uint secondaryKeyIndex, EnumerationOrder order,
+                    //IEnumerator< T > ListBySecondaryKey(uint secondaryKeyIndex, 
+                    //      ByteBuffer prefixBytes, uint prefixFieldCount,
+                    //      EnumerationOrder order,
                     //      KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
                     //      KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
                     var paramType = method.GetParameters()[0].ParameterType;
                     var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                     var secondaryKeyIndex = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
+                    var prefixParamCount = method.GetParameters().Length - 1;
                     reqMethod.Generator
                         .Ldarg(0)
-                        .LdcI4((int)secondaryKeyIndex)
+                        .LdcI4((int)secondaryKeyIndex);
+                    relationInfo.SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
+                        method.GetParameters(), emptyBufferLoc, keyFieldProperties);
+                    reqMethod.Generator
+                        .LdcI4(prefixParamCount)
                         .Ldarg(1).Ldfld(paramType.GetField("Order"))
                         .Ldarg(1).Ldfld(paramType.GetField("StartProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, emptyBufferLoc, paramType.GetField("Start"),
-                        reqMethod.Generator, relationDBManipulatorType);
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
+                                emptyBufferLoc, paramType.GetField("Start"), reqMethod.Generator);
                     reqMethod.Generator
                         .Ldarg(1).Ldfld(paramType.GetField("EndProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, emptyBufferLoc, paramType.GetField("End"),
-                        reqMethod.Generator, relationDBManipulatorType);
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
+                        emptyBufferLoc, paramType.GetField("End"),
+                        reqMethod.Generator);
                     reqMethod.Generator
                         .Callvirt(relationDBManipulatorType.GetMethod("ListBySecondaryKey"));
                 }

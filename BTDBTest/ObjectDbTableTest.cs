@@ -341,8 +341,8 @@ namespace BTDBTest
             public uint Age { get; set; }
         }
         //SK content
-        //"Age": Age, TenantId, Name => Id
-        //"Name": Name, TenantId => Id
+        //"Age": TenantId, Age, Name => Id
+        //"Name": TenantId, Name => Id
 
         public interface IPersonTableComplexFuture
         {
@@ -375,9 +375,9 @@ namespace BTDBTest
             void Insert(Person person);
             void Update(Person person);
             bool RemoveById(ulong tenantId, ulong id);
-            Person FindByNameOrDefault(string name);
-            Person FindByAgeOrDefault(uint age);
-            IEnumerator<Person> FindByAge(uint age);
+            Person FindByNameOrDefault(ulong tenantId, string name);
+            Person FindByAgeOrDefault(ulong tenantId, uint age);
+            IEnumerator<Person> FindByAge(ulong tenantId, uint age);
         }
 
         [Fact]
@@ -395,12 +395,12 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var personTable = creator(tr);
-                var ex = Assert.Throws<BTDBException>(() => personTable.FindByAgeOrDefault(28));
+                var ex = Assert.Throws<BTDBException>(() => personTable.FindByAgeOrDefault(1, 28));
                 Assert.True(ex.Message.Contains("Ambiguous"));
-                var p = personTable.FindByNameOrDefault("Lubos");
+                var p = personTable.FindByNameOrDefault(1, "Lubos");
                 Assert.Equal(28u, p.Age);
 
-                var enumerator = personTable.FindByAge(28);
+                var enumerator = personTable.FindByAge(1, 28);
                 Assert.Equal("Boris", GetNext(enumerator).Name);
                 Assert.Equal("Lubos", GetNext(enumerator).Name);
                 Assert.False(enumerator.MoveNext());
@@ -456,7 +456,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CannotAddDuplicateSecondaryKeys()
+        public void CanAddButCannotGetDuplicateSecondaryKeys()
         {
             Func<IObjectDBTransaction, IJobTable> creator;
             using (var tr = _db.StartTransaction())
@@ -464,9 +464,9 @@ namespace BTDBTest
                 creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
                 jobTable.Insert(new Job { Id = 11, Name = "Code" });
-                var ex = Assert.Throws<BTDBException>(() => jobTable.Insert(new Job { Id = 12, Name = "Code" }));
-                Assert.True(ex.Message.Contains("duplicate secondary"));
-                Assert.Equal(null, jobTable.FindByIdOrDefault(12));
+                jobTable.Insert(new Job { Id = 12, Name = "Code" });
+                var ex = Assert.Throws<BTDBException>(() => jobTable.FindByNameOrDefault("Code"));
+                Assert.True(ex.Message.Contains("Ambiguous"));
             }
         }
 
@@ -491,28 +491,6 @@ namespace BTDBTest
                 jobTable.Update(job);
                 var j = jobTable.FindByNameOrDefault("HardCore Code");
                 Assert.Equal(11u, j.Id);
-            }
-        }
-
-        [Fact]
-        public void FailedUpdateRevertDataCorrectly()
-        {
-            Func<IObjectDBTransaction, IPersonTable> creator;
-            using (var tr = _db.StartTransaction())
-            {
-                creator = tr.InitRelation<IPersonTable>("Person");
-                var personTable = creator(tr);
-                var l = new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 42 };
-                var b = new Person { TenantId = 1, Id = 3, Name = "Boris", Age = 28 };
-                personTable.Insert(l);
-                personTable.Insert(b);
-
-                b.Name = "Lubos";
-                var ex = Assert.Throws<BTDBException>(() => personTable.Update(b));
-                Assert.True(ex.Message.Contains("duplicate secondary"));
-
-                var b1 = personTable.FindByAgeOrDefault(28);
-                Assert.Equal("Boris", b1.Name);
             }
         }
 

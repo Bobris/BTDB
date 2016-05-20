@@ -199,7 +199,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void IterateFields(ByteBufferReader reader, IReadOnlyCollection<TableFieldInfo> fields)
+        void IterateFields(ByteBufferReader reader, IEnumerable<TableFieldInfo> fields)
         {
             foreach (var fi in fields)
             {

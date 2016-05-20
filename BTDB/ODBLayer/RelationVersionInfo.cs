@@ -76,14 +76,22 @@ namespace BTDB.ODBLayer
                     Fields = new List<FieldId>(),
                     Index = SelectSecondaryKeyIndex(indexName, prevVersion)
                 };
+                var usedPKFields = new Dictionary<uint, object>();
                 foreach (var attr in orderedAttrs)
                 {
-                    info.Fields.Add(new FieldId(false, attr.Item1));
-                    if (attr.Item2.IncludePrimaryKeyOrder != default(uint))
+                    for (uint i=1; i<=attr.Item2.IncludePrimaryKeyOrder; i++)
                     {
-                        var pi = _primaryKeyFields.IndexOf(primaryKeyFields[attr.Item2.IncludePrimaryKeyOrder]);
+                        usedPKFields.Add(i, null);
+                        var pi = _primaryKeyFields.IndexOf(primaryKeyFields[i]);
                         info.Fields.Add(new FieldId(true, (uint)pi));
                     }
+                    info.Fields.Add(new FieldId(false, attr.Item1));
+                }
+                //fill all not present parts of primary key
+                foreach (var pk in primaryKeyFields)
+                {
+                    if (!usedPKFields.ContainsKey(pk.Key))
+                        info.Fields.Add(new FieldId(true, (uint)_primaryKeyFields.IndexOf(primaryKeyFields[pk.Key])));
                 }
                 _secondaryKeysNames[indexName] = idx;
                 _secondaryKeys[idx++] = info;
@@ -127,14 +135,19 @@ namespace BTDB.ODBLayer
             return _fields;
         }
 
-        internal IReadOnlyCollection<TableFieldInfo> GetPrimaryKeyFields()
+        internal IList<TableFieldInfo> GetPrimaryKeyFields()
         {
-            return (IReadOnlyCollection<TableFieldInfo>)_primaryKeyFields;
+            return _primaryKeyFields;
         }
 
         internal IReadOnlyCollection<TableFieldInfo> GetAllFields()
         {
             return _primaryKeyFields.Concat(_fields).ToList();
+        }
+
+        internal TableFieldInfo GetField(int index)
+        {
+            return _fields[index];
         }
 
         internal bool HasSecondaryIndexes => _secondaryKeys.Count > 0;

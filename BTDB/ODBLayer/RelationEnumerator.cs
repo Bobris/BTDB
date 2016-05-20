@@ -18,7 +18,7 @@ namespace BTDB.ODBLayer
         uint _pos;
         bool _seekNeeded;
 
-        readonly ByteBuffer _keyBytes;
+        protected ByteBuffer KeyBytes;
 
         public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes)
         {
@@ -29,8 +29,8 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            _keyBytes = keyBytes;
-            _keyValueTr.SetKeyPrefix(_keyBytes);
+            KeyBytes = keyBytes;
+            _keyValueTr.SetKeyPrefix(KeyBytes);
             _pos = 0;
             _seekNeeded = true;
         }
@@ -42,7 +42,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             bool ret;
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
-                _keyValueTr.SetKeyPrefix(_keyBytes);
+                _keyValueTr.SetKeyPrefix(KeyBytes);
             ret = Seek();
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             return ret;
@@ -63,7 +63,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
-                    _keyValueTr.SetKeyPrefix(_keyBytes);
+                    _keyValueTr.SetKeyPrefix(KeyBytes);
                     Seek();
                 }
                 else if (_seekNeeded)
@@ -98,19 +98,21 @@ namespace BTDB.ODBLayer
     internal class RelationSecondaryKeyEnumerator<T> : RelationEnumerator<T>
     {
         readonly uint _secondaryKeyIndex;
+        readonly uint _fieldCountInKey;
         readonly RelationDBManipulator<T> _manipulator;
 
         public RelationSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
-            uint secondaryKeyIndex, RelationDBManipulator<T> manipulator)
+            uint secondaryKeyIndex, uint fieldCountInKey, RelationDBManipulator<T> manipulator)
             : base(tr, relationInfo, keyBytes)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
+            _fieldCountInKey = fieldCountInKey;
             _manipulator = manipulator;
         }
 
         protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, keyBytes, valueBytes);
+            return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, _fieldCountInKey, KeyBytes, keyBytes);
         }
     }
 
@@ -119,6 +121,7 @@ namespace BTDB.ODBLayer
         readonly IInternalObjectDBTransaction _tr;
         readonly RelationInfo _relationInfo;
         readonly uint _secondaryKeyIndex;
+        readonly uint _prefixFieldCount;
         readonly string _secondaryKeyName;
         readonly RelationDBManipulator<T> _manipulator;
 
@@ -134,7 +137,8 @@ namespace BTDB.ODBLayer
         readonly ByteBuffer _keyBytes;
 
 
-        public RelationAdvancedSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, 
+        public RelationAdvancedSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
+            ByteBuffer prefixBytes, uint prefixFieldCount,
             EnumerationOrder order, 
             KeyProposition startKeyProposition, ByteBuffer startKeyBytes, 
             KeyProposition endKeyProposition, ByteBuffer endKeyBytes, 
@@ -143,6 +147,7 @@ namespace BTDB.ODBLayer
             _relationInfo = relationInfo;
             _secondaryKeyIndex = secondaryKeyIndex;
             _secondaryKeyName = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[_secondaryKeyIndex].Name;
+            _prefixFieldCount = prefixFieldCount;
             _manipulator = manipulator;
             _tr = tr;
             _ascending = order == EnumerationOrder.Ascending;
@@ -281,8 +286,7 @@ namespace BTDB.ODBLayer
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
-                var valueBytes = _keyValueTr.GetValue();
-                return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, keyBytes, valueBytes);
+                return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, _prefixFieldCount, _keyBytes, keyBytes);
             }
 
             set

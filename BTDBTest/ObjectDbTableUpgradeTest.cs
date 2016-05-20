@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
-using BTDB.StreamLayer;
 using Xunit;
 
 namespace BTDBTest
@@ -57,16 +56,16 @@ namespace BTDBTest
             [SecondaryKey("Name")]
             public string Name { get; set; }
 
-            [SecondaryKey("Cost")] //todo [SecondaryKey("Cost", IncludePrimaryKeyOrder = 1)]
-            public int Cost { get; set; }
+            [SecondaryKey("Cost", IncludePrimaryKeyOrder = 1)]
+            public uint Cost { get; set; }
         }
 
         public interface IJobTable2
         {
             void Insert(JobV2 job);
             JobV2 FindByNameOrDefault(string name);
-            JobV2 FindByCostOrDefault(int cost);
-            IEnumerator<JobV2> ListByCost(AdvancedEnumeratorParam<int> param);
+            JobV2 FindByCostOrDefault(ulong id, uint cost);
+            IEnumerator<JobV2> ListByCost(AdvancedEnumeratorParam<uint> param);
         }
 
         public class JobV3
@@ -127,14 +126,14 @@ namespace BTDBTest
                 jobTable.Insert(job);
                 var j = jobTable.FindByNameOrDefault("Code");
                 Assert.Equal("Code", j.Name);
-                j = jobTable.FindByCostOrDefault(42);
+                j = jobTable.FindByCostOrDefault(21, 42);
                 Assert.Equal("Build", j.Name);
 
-                var en = jobTable.ListByCost(new AdvancedEnumeratorParam<int>(EnumerationOrder.Ascending));
+                var en = jobTable.ListByCost(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 Assert.True(en.MoveNext());
-                Assert.Equal(0, en.Current.Cost);
+                Assert.Equal(0u, en.Current.Cost);
                 Assert.True(en.MoveNext());
-                Assert.Equal(42, en.Current.Cost);
+                Assert.Equal(42u, en.Current.Cost);
                 tr.Commit();
             }
         }
