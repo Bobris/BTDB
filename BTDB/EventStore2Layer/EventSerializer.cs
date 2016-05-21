@@ -21,6 +21,7 @@ namespace BTDB.EventStore2Layer
         readonly List<object> _visited = new List<object>();
         readonly ByteBufferWriter _writer = new ByteBufferWriter();
         readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
+        bool _newTypeFound;
 
         public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -225,9 +226,19 @@ namespace BTDB.EventStore2Layer
                 _writer.WriteUInt8(0); // null
                 return _writer.GetDataAndRewind();
             }
-            var info = StoreNewDescriptorsAndReturnInfo(obj);
+            _newTypeFound = false;
+            StoreObject(obj);
+            _visited.Clear();
+            if (!_newTypeFound)
+            {
+                // No unknown metadata found - to be optimistic pays off
+                hasMetaData = false;
+                return _writer.GetDataAndRewind();
+            }
+            StoreNewDescriptors(obj);
             if (_typeOrDescriptor2InfoNew.Count > 0)
             {
+                _writer.GetDataAndRewind();
                 if (MergeTypesByShapeAndStoreNew())
                 {
                     _typeOrDescriptor2InfoNew.Clear();
@@ -236,27 +247,14 @@ namespace BTDB.EventStore2Layer
                     return _writer.GetDataAndRewind();
                 }
                 _typeOrDescriptor2InfoNew.Clear();
-                var knowDescriptor = obj as IKnowDescriptor;
-                if (knowDescriptor != null)
-                {
-                    if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
-                    {
-                        throw new BTDBException("Forgot descriptor");
-                    }
-                }
-                else
-                {
-                    if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
-                    {
-                        throw new BTDBException("Forgot type");
-                    }
-                }
             }
             _visited.Clear();
-            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
-            _visited.Add(obj); // first backreference
-            _writer.WriteVUInt32((uint)info.Id);
-            info.ComplexSaver(_writer, this, obj);
+            _newTypeFound = false;
+            StoreObject(obj);
+            if (_newTypeFound)
+            {
+                throw new BTDBException("Forgot descriptor or type");
+            }
             _visited.Clear();
             hasMetaData = false;
             return _writer.GetDataAndRewind();
@@ -308,15 +306,10 @@ namespace BTDB.EventStore2Layer
 
         public void StoreNewDescriptors(object obj)
         {
-            StoreNewDescriptorsAndReturnInfo(obj);
-        }
-
-        SerializerTypeInfo StoreNewDescriptorsAndReturnInfo(object obj)
-        {
-            if (obj == null) return null;
+            if (obj == null) return;
             for (var i = 0; i < _visited.Count; i++)
             {
-                if (_visited[i] == obj) return null;
+                if (_visited[i] == obj) return;
             }
             _visited.Add(obj);
             SerializerTypeInfo info;
@@ -346,7 +339,6 @@ namespace BTDB.EventStore2Layer
                 info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : null);
             }
             info.NestedObjGatherer(obj, this);
-            return info;
         }
 
         bool MergeTypesByShapeAndStoreNew()
@@ -428,6 +420,7 @@ namespace BTDB.EventStore2Layer
 
         public void StoreObject(object obj)
         {
+            if (_newTypeFound) return;
             if (obj == null)
             {
                 _writer.WriteUInt8(0);
@@ -449,14 +442,16 @@ namespace BTDB.EventStore2Layer
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
                 {
-                    throw new BTDBException("Forgot descriptor");
+                    _newTypeFound = true;
+                    return;
                 }
             }
             else
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
                 {
-                    throw new BTDBException("Forgot type");
+                    _newTypeFound = true;
+                    return;
                 }
             }
             if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);

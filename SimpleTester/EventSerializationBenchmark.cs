@@ -116,8 +116,7 @@ namespace SimpleTester
             var meta = _eventSerializer.Serialize(out hasMedataData, _ev).ToAsyncSafe();
             _eventSerializer.ProcessMetadataLog(meta);
             _eventDeserializer.ProcessMetadataLog(meta);
-            _eventSerializer.Serialize(out hasMedataData, _ev);
-            _btdbSerializedData = _writer.GetDataAndRewind().ToAsyncSafe();
+            _btdbSerializedData = _eventSerializer.Serialize(out hasMedataData, _ev).ToAsyncSafe();
             BtdbByteSize = _btdbSerializedData.Length;
             object obj;
             _eventDeserializer.Deserialize(out obj, _btdbSerializedData);

@@ -22,7 +22,7 @@ namespace SimpleTester
             //if (MemoryProfiler.IsActive)
             //    MemoryProfiler.Dump();
             //b.Setup();
-            //b.BtdbDeserialization();
+            //b.BtdbSerialization();
             //if (MemoryProfiler.IsActive)
             //    MemoryProfiler.Dump();
             //new KeyValueDBReplayer("bug.log").Replay();
@@ -35,7 +35,7 @@ namespace SimpleTester
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
             //new RelationSpeedTest().Run();
-            //BenchmarkRunner.Run<EventSerializationBenchmark>();
+            BenchmarkRunner.Run<EventSerializationBenchmark>();
         }
     }
 }
