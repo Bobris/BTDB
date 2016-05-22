@@ -39,7 +39,7 @@ namespace BTDBTest
                 eventObserver.Events.Clear();
                 eventObserver.Metadata.Clear();
 
-                if (i == 100)
+                if (i == 10)
                 {
                     GC.Collect(2);
                     GC.WaitForPendingFinalizers();
@@ -50,7 +50,7 @@ namespace BTDBTest
             GC.Collect(2);
             GC.WaitForPendingFinalizers();
             GC.Collect(2);
-            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*2F);
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*3F);
         }
 
         [Fact]
