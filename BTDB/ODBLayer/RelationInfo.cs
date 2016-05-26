@@ -419,6 +419,7 @@ namespace BTDB.ODBLayer
         {
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
+            var secondaryKeyFields = new List<TableFieldInfo>();
             var secondaryKeys = new Dictionary<uint, IList<SecondaryKeyAttribute>>(); //value field index -> list of attributes
 
             var fields = new List<TableFieldInfo>(props.Length);
@@ -438,22 +439,25 @@ namespace BTDB.ODBLayer
                     continue;
                 }
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
+                var skFieldId = (uint)secondaryKeys.Count;
                 for (var i = 0; i < sks.Length; i++)
                 {
-                    var attribute = (SecondaryKeyAttribute)sks[i];
-                    IList<SecondaryKeyAttribute> skAttrList;
-                    if (!secondaryKeys.TryGetValue((uint)fields.Count, out skAttrList))
+                    if (i == 0)
                     {
-                        skAttrList = new List<SecondaryKeyAttribute>();
-                        secondaryKeys[(uint)fields.Count] = skAttrList;
+                        secondaryKeyFields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
+                            FieldHandlerOptions.Orderable));
+                        secondaryKeys[skFieldId] = new List<SecondaryKeyAttribute>
+                            { (SecondaryKeyAttribute)sks[i] };
                     }
-                    skAttrList.Add(attribute);
+                    else
+                    {
+                        secondaryKeys[skFieldId].Add((SecondaryKeyAttribute)sks[i]);
+                    }
                 }
-                fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
-                    FieldHandlerOptions.Orderable));
+                fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.None));
             }
             var prevVersion = LastPersistedVersion > 0 ? _relationVersions[LastPersistedVersion] : null;
-            return new RelationVersionInfo(primaryKeys, secondaryKeys, fields.ToArray(), prevVersion);
+            return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray(), prevVersion);
         }
 
         static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
@@ -573,7 +577,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    var f = ClientRelationVersionInfo.GetField((int)field.Index);
+                    var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
                     f.Handler.Skip(ilGenerator, pushReader);
                 }
 
@@ -885,8 +889,8 @@ namespace BTDB.ODBLayer
             }
         }
 
-        ushort SaveMethodParameters(IILGen ilGenerator, string methodName, 
-                                    ParameterInfo[] methodParameters, int paramCount, 
+        ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
+                                    ParameterInfo[] methodParameters, int paramCount,
                                     IDictionary<string, FieldBuilder> keyFieldProperties,
                                     IEnumerable<TableFieldInfo> secondaryKeyFields, IILLocal writerLoc)
         {

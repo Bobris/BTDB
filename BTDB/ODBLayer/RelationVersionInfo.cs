@@ -30,13 +30,14 @@ namespace BTDB.ODBLayer
     internal class SecondaryKeyInfo
     {
         public IList<FieldId> Fields { get; set; }
-        public uint Index { get; set; }  //todo index assigning
+        public uint Index { get; set; }
         public string Name { get; set; }
     }
 
     class RelationVersionInfo
     {
-        readonly IList<TableFieldInfo> _primaryKeyFields;  //field info
+        readonly IList<TableFieldInfo> _primaryKeyFields;
+        readonly IList<TableFieldInfo> _secondaryKeyFields;
         IDictionary<string, uint> _secondaryKeysNames;
         IDictionary<uint, SecondaryKeyInfo> _secondaryKeys; 
 
@@ -44,15 +45,17 @@ namespace BTDB.ODBLayer
 
 
         public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
-                                   Dictionary<uint, IList<SecondaryKeyAttribute>> secondaryKeys,  //value field idx -> attrs
+                                   Dictionary<uint, IList<SecondaryKeyAttribute>> secondaryKeys,  //sec key field idx -> attrs
+                                   TableFieldInfo[] secondaryKeyFields,
                                    TableFieldInfo[] fields, RelationVersionInfo prevVersion)
         {
             _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
-            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
+            _secondaryKeyFields = secondaryKeyFields;
+            CreateSecondaryKeyInfo(secondaryKeyFields, secondaryKeys, primaryKeyFields, prevVersion);
             _fields = fields;
         }
 
-        void CreateSecondaryKeyInfo(Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
+        void CreateSecondaryKeyInfo(TableFieldInfo[] secondaryKeyFields, Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
                                     Dictionary<uint, TableFieldInfo> primaryKeyFields, RelationVersionInfo prevVersion)
         {
             var idx = 0u;
@@ -145,9 +148,9 @@ namespace BTDB.ODBLayer
             return _primaryKeyFields.Concat(_fields).ToList();
         }
 
-        internal TableFieldInfo GetField(int index)
+        internal TableFieldInfo GetSecondaryKeyField(int index)
         {
-            return _fields[index];
+            return _secondaryKeyFields[index];
         }
 
         internal bool HasSecondaryIndexes => _secondaryKeys.Count > 0;
@@ -165,7 +168,7 @@ namespace BTDB.ODBLayer
                 if (field.IsFromPrimaryKey)
                     fields.Add(_primaryKeyFields[(int)field.Index]);
                 else
-                    fields.Add(_fields[(int)field.Index]);
+                    fields.Add(_secondaryKeyFields[(int)field.Index]);
             }
             return fields;
         }
@@ -201,6 +204,10 @@ namespace BTDB.ODBLayer
                 field.Save(writer);
             }
             writer.WriteVUInt32((uint)_secondaryKeys.Count);
+            foreach (var field in _secondaryKeyFields)
+            {
+                field.Save(writer);
+            }
             foreach (var key in _secondaryKeys)
             {
                 writer.WriteVUInt32(key.Key);
@@ -229,10 +236,15 @@ namespace BTDB.ODBLayer
             {
                 primaryKeys.Add(TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.Orderable));
             }
-
             var skCount = reader.ReadVUInt32();
             var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
             var secondaryKeysNames = new Dictionary<string, uint>((int)skCount);
+            var secondaryKeyFields = new TableFieldInfo[skCount];
+            for (var i = 0; i < skCount; i++)
+            {
+                secondaryKeyFields[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName,
+                    FieldHandlerOptions.Orderable);
+            }
             for (var i = 0; i < skCount; i++)
             {
                 var skIndex = reader.ReadVUInt32();
@@ -255,7 +267,7 @@ namespace BTDB.ODBLayer
             var fieldInfos = new TableFieldInfo[fieldCount];
             for (int i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.Orderable);
+                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.None);
             }
 
             return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeysNames, fieldInfos);
