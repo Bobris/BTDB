@@ -59,7 +59,7 @@ namespace BTDB.EventStore2Layer
                 var type = descriptor.GetPreferedType();
                 if (type != typeof(object))
                 {
-                    ilgen.UnboxAny(type);
+                    ilgen.Castclass(type);
                 }
             }, descriptor.GetPreferedType());
             il.Ret();
@@ -426,29 +426,28 @@ namespace BTDB.EventStore2Layer
                 _writer.WriteUInt8(0);
                 return;
             }
-            for (int i = 0; i < _visited.Count; i++)
+            var visited = _visited;
+            for (int i = 0; i < visited.Count; i++)
             {
-                if (_visited[i] == obj)
-                {
-                    _writer.WriteUInt8(1); // backreference
-                    _writer.WriteVUInt32((uint)i);
-                    return;
-                }
+                if (visited[i] != obj) continue;
+                _writer.WriteUInt8(1); // backreference
+                _writer.WriteVUInt32((uint)i);
+                return;
             }
-            _visited.Add(obj);
+            visited.Add(obj);
             SerializerTypeInfo info;
-            var knowDescriptor = obj as IKnowDescriptor;
-            if (knowDescriptor != null)
+            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
             {
-                if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
+                var knowDescriptor = obj as IKnowDescriptor;
+                if (knowDescriptor != null)
                 {
-                    _newTypeFound = true;
-                    return;
+                    if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
+                    {
+                        _newTypeFound = true;
+                        return;
+                    }
                 }
-            }
-            else
-            {
-                if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+                else
                 {
                     _newTypeFound = true;
                     return;

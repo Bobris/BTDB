@@ -302,12 +302,11 @@ namespace BTDB.EventStoreLayer
             ilGenerator
                 .Do(pushValue)
                 .Castclass(typeAsIDictionary)
-                .Dup()
                 .Stloc(localDict)
+                .Ldloc(localDict)
                 .Brtrue(notnull)
                 .Do(pushWriter)
-                .LdcI4(0)
-                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
+                .Callvirt(() => default(AbstractBufferedWriter).WriteByteZero())
                 .Br(completeFinish)
                 .Mark(notnull)
                 .Do(pushWriter)
@@ -315,9 +314,7 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(typeAsICollection.GetProperty("Count").GetGetMethod())
                 .LdcI4(1)
                 .Add()
-                .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
-
             {
                 var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = typeAsDictionary.GetMethods()
@@ -397,25 +394,22 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var skipFinished = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
-                .ConvI4()
-                .Dup()
-                .LdcI4(1)
-                .Sub()
                 .Stloc(localCount)
+                .Ldloc(localCount)
                 .Brfalse(skipFinished)
                 .Mark(next)
                 .Ldloc(localCount)
-                .Brfalse(skipFinished)
-                .Ldloc(localCount)
                 .LdcI4(1)
                 .Sub()
-                .Stloc(localCount);
+                .Stloc(localCount)
+                .Ldloc(localCount)
+                .Brfalse(skipFinished);
             _keyDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             _valueDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
