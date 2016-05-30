@@ -213,6 +213,11 @@ namespace BTDB.KVDBLayer
             return _files.Values;
         }
 
+        public void ConcurentTemporaryTruncate(uint index, uint offset)
+        {
+            // Nothing to do
+        }
+
         public void Dispose()
         {
         }

@@ -138,15 +138,15 @@ namespace BTDB.KVDBLayer
                             _compression.DecompressKey(ref key);
                         }
                         return new BTreeLeafMember
-                            {
-                                Key = key.ToByteArray(),
-                                ValueFileId = reader.ReadVUInt32(),
-                                ValueOfs = reader.ReadVUInt32(),
-                                ValueSize = reader.ReadVInt32()
-                            };
+                        {
+                            Key = key.ToByteArray(),
+                            ValueFileId = reader.ReadVUInt32(),
+                            ValueOfs = reader.ReadVUInt32(),
+                            ValueSize = reader.ReadVInt32()
+                        };
                     });
                 if (reader.Eof) return true;
-                if (reader.ReadInt32()==EndOfIndexFileMarker) return true;
+                if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
                 return false;
             }
             catch (Exception)
@@ -195,9 +195,9 @@ namespace BTDB.KVDBLayer
                 while (!reader.Eof)
                 {
                     var command = (KVCommandType)reader.ReadUInt8();
-                    if (command==0 && afterTemporaryEnd)
+                    if (command == 0 && afterTemporaryEnd)
                     {
-                        collectionFile.SetSize(reader.GetCurrentPosition()-1);
+                        collectionFile.SetSize(reader.GetCurrentPosition() - 1);
                         return true;
                     }
                     afterTemporaryEnd = false;
@@ -466,7 +466,7 @@ namespace BTDB.KVDBLayer
 
         internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
         {
-            var deltaUlong = unchecked (btreeRoot.CommitUlong - _lastCommited.CommitUlong);
+            var deltaUlong = unchecked(btreeRoot.CommitUlong - _lastCommited.CommitUlong);
             if (deltaUlong != 0)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
@@ -651,9 +651,9 @@ namespace BTDB.KVDBLayer
             if (valueSize == 0) return 0;
             if (valueFileId == 0)
             {
-                return (uint) (valueSize >> 24);
+                return (uint)(valueSize >> 24);
             }
-            return (uint) Math.Abs(valueSize);
+            return (uint)Math.Abs(valueSize);
         }
 
         public ByteBuffer ReadValue(uint valueFileId, uint valueOfs, int valueSize)
@@ -757,6 +757,8 @@ namespace BTDB.KVDBLayer
             var file = FileCollection.AddFile("kvi");
             var writer = file.GetAppenderWriter();
             var keyCount = root.CalcKeyCount();
+            if (root.TrLogFileId != 0)
+                FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
             var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong);
             keyIndex.WriteHeader(writer);
             if (keyCount > 0)
@@ -914,7 +916,7 @@ namespace BTDB.KVDBLayer
             object subDB;
             if (_subDBs.TryGetValue(id, out subDB))
             {
-                if (!(subDB is T)) throw new ArgumentException($"SubDB of id {id} is not type {typeof (T).FullName}");
+                if (!(subDB is T)) throw new ArgumentException($"SubDB of id {id} is not type {typeof(T).FullName}");
                 return (T)subDB;
             }
             if (typeof(T) == typeof(IChunkStorage))

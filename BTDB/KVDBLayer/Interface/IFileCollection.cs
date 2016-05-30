@@ -9,5 +9,6 @@ namespace BTDB.KVDBLayer
         uint GetCount();
         IFileCollectionFile GetFile(uint index);
         IEnumerable<IFileCollectionFile> Enumerate();
+        void ConcurentTemporaryTruncate(uint index, uint offset);
     }
 }

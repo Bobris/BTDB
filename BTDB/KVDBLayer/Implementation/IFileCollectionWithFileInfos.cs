@@ -17,5 +17,6 @@ namespace BTDB.KVDBLayer
         IFileCollectionFile AddFile(string humanHint);
         long NextGeneration();
         void SetInfo(uint idx, IFileInfo fileInfo);
+        void ConcurentTemporaryTruncate(uint idx, uint offset);
     }
 }

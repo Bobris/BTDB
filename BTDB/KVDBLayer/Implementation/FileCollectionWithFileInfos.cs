@@ -167,5 +167,10 @@ namespace BTDB.KVDBLayer
         {
             _fileInfos.TryAdd(idx, fileInfo);
         }
+
+        public void ConcurentTemporaryTruncate(uint idx, uint offset)
+        {
+            _fileCollection.ConcurentTemporaryTruncate(idx, offset);
+        }
     }
 }
