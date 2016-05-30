@@ -31,6 +31,11 @@ namespace BTDB.ODBLayer
         ulong GetCommitUlong();
         void SetCommitUlong(ulong value);
 
+        /// <summary>
+        /// This creates safe checkpoint for next open in transaction log
+        /// </summary>
+        void NextCommitTemporaryCloseTransactionLog();
+
         void Commit();
 
         Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
