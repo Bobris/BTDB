@@ -143,5 +143,10 @@ namespace BTDB.FieldHandler
         {
             ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type).GetConstructor(Type.EmptyTypes));
         }
+
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        {
+            Skip(ilGenerator, pushReaderOrCtx); //todo
+        }
     }
 }

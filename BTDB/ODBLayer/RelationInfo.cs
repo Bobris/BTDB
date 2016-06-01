@@ -1,5 +1,4 @@
 using System;
-using System.CodeDom;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -75,7 +74,6 @@ namespace BTDB.ODBLayer
                 ClientRelationVersionInfo.Save(writerv);
                 tr.KeyValueDBTransaction.SetKeyPrefix(ByteBuffer.NewEmpty());
                 tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerk.Data, writerv.Data);
-                NeedsFreeContent = ClientRelationVersionInfo.NeedsFreeContent();
 
                 if (LastPersistedVersion > 0)
                 {
@@ -194,8 +192,6 @@ namespace BTDB.ODBLayer
                 var relationVersionInfo = RelationVersionInfo.Load(valueReader,
                     _relationInfoResolver.FieldHandlerFactory, _name);
                 _relationVersions[LastPersistedVersion] = relationVersionInfo;
-                if (relationVersionInfo.NeedsFreeContent())
-                    NeedsFreeContent = true;
             } while (tr.FindNextKey());
         }
 
@@ -219,8 +215,6 @@ namespace BTDB.ODBLayer
                 return _creator;
             }
         }
-
-        internal bool NeedsFreeContent { get; set; }
 
         internal IDictionary<string, MethodInfo> ApartFields { get; }
 
@@ -714,7 +708,7 @@ namespace BTDB.ODBLayer
 
         public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
         {
-            var valueReader = new ByteBufferReader(valueBytes);
+            var valueReader = new ByteArrayReader(valueBytes.ToByteArray());
             var version = valueReader.ReadVUInt32();
 
             var dictionaries = new List<ulong>();
@@ -741,38 +735,25 @@ namespace BTDB.ODBLayer
             var ilGenerator = method.Generator;
 
             var relationVersionInfo = _relationVersions[version];
-            var anyNeedsCtx = relationVersionInfo.GetValueFields()
-                    .Any(f => f.Handler.NeedsCtx() && !(f.Handler is ODBDictionaryFieldHandler));
+            var anyNeedsCtx = relationVersionInfo.GetValueFields().Any(f => f.Handler.NeedsCtx());
             if (anyNeedsCtx)
             {
                 ilGenerator.DeclareLocal(typeof(IReaderCtx)); //loc 0
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(1)
-                    .Newobj(() => new DBReaderCtx(null, null))
+                    .Ldarg(2)
+                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
                     .Stloc(0);
             }
             foreach (var srcFieldInfo in relationVersionInfo.GetValueFields())
             {
-                if (srcFieldInfo.Handler is ODBDictionaryFieldHandler)
-                {
-                    //currently not supported freeing IDict inside IDict
-                    ilGenerator
-                        .Ldarg(2) //IList<ulong>
-                        .Ldarg(1) //reader
-                        .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64()) //read dictionary id
-                        .Callvirt(() => default(IList<ulong>).Add(0ul)); //store dict id into list
-                }
+                Action<IILGen> readerOrCtx;
+                if (srcFieldInfo.Handler.NeedsCtx())
+                    readerOrCtx = il => il.Ldloc(0);
                 else
-                {
-                    Action<IILGen> readerOrCtx;
-                    if (srcFieldInfo.Handler.NeedsCtx())
-                        readerOrCtx = il => il.Ldloc(0);
-                    else
-                        readerOrCtx = il => il.Ldarg(1);
-                    srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
-                    //todo optimize, do not generate skips when all dicts loaded
-                }
+                    readerOrCtx = il => il.Ldarg(1);
+                srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx);
             }
             ilGenerator.Ret();
             return method.Create();
@@ -994,5 +975,19 @@ namespace BTDB.ODBLayer
         }
     }
 
+    public class DBReaderWithFreeInfoCtx : DBReaderCtx
+    {
+        readonly IList<ulong> _freeDictionaries;
 
+        public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader, 
+            IList<ulong> freeDictionaries) : base(transaction, reader)
+        {
+            _freeDictionaries = freeDictionaries;
+        }
+
+        public override void RegisterDict(ulong dictId)
+        {
+            _freeDictionaries.Add(dictId);
+        }
+    }
 }

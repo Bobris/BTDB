@@ -13,7 +13,9 @@ namespace BTDB.FieldHandler
         // Returns true if actual content needs to be deserialized
         bool SkipObject();
         void SkipNativeObject();
-        
+
+        void RegisterDict(ulong dictId);
+
         AbstractBufferedReader Reader();
     }
 }

@@ -211,7 +211,7 @@ namespace BTDB.ODBLayer
             }
             var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
             var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1], wantedValueHandler);
-            if (wantedKeyHandler == specializedKeyHandler && (wantedValueHandler == specializedValueHandler || wantedValueHandler.HandledType()==specializedValueHandler.HandledType()))
+            if (wantedKeyHandler == specializedKeyHandler && (wantedValueHandler == specializedValueHandler || wantedValueHandler.HandledType() == specializedValueHandler.HandledType()))
             {
                 return typeHandler;
             }
@@ -238,6 +238,17 @@ namespace BTDB.ODBLayer
         {
             yield return _keysHandler;
             yield return _valuesHandler;
+        }
+
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        {
+            ilGenerator
+                .Do(pushReaderOrCtx)
+                .Castclass(typeof(IDBReaderCtx))
+                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
+                .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
+            //todo iterate when needed
         }
     }
 }

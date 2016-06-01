@@ -147,7 +147,6 @@ namespace SimpleTester
         {
             readonly int _count;
             readonly ObjectDB _db;
-            readonly Func<IObjectDBTransaction, IPersonTable> _creator;
 
             public SingletonPersonTest(ObjectDB db, int count)
             {

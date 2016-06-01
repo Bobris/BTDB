@@ -120,17 +120,16 @@ namespace BTDB.ODBLayer
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
-            if (_relationInfo.NeedsFreeContent)
+
+            long current = _transaction.TransactionProtector.ProtectionCounter;
+            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+            _relationInfo.FreeContent(_transaction, valueBytes);
+            if (_transaction.TransactionProtector.WasInterupted(current))
             {
-                long current = _transaction.TransactionProtector.ProtectionCounter;
-                var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
-                _relationInfo.FreeContent(_transaction, valueBytes);
-                if (_transaction.TransactionProtector.WasInterupted(current))
-                {
-                    StartWorkingWithPK();
-                    _transaction.KeyValueDBTransaction.Find(keyBytes);
-                }
+                StartWorkingWithPK();
+                _transaction.KeyValueDBTransaction.Find(keyBytes);
             }
+
             _transaction.KeyValueDBTransaction.EraseCurrent();
             return true;
         }

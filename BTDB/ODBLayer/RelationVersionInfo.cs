@@ -51,11 +51,11 @@ namespace BTDB.ODBLayer
         {
             _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
             _secondaryKeyFields = secondaryKeyFields;
-            CreateSecondaryKeyInfo(secondaryKeyFields, secondaryKeys, primaryKeyFields, prevVersion);
+            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
             _fields = fields;
         }
 
-        void CreateSecondaryKeyInfo(TableFieldInfo[] secondaryKeyFields, Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
+        void CreateSecondaryKeyInfo(Dictionary<uint, IList<SecondaryKeyAttribute>> attributes, 
                                     Dictionary<uint, TableFieldInfo> primaryKeyFields, RelationVersionInfo prevVersion)
         {
             var idx = 0u;
@@ -281,11 +281,6 @@ namespace BTDB.ODBLayer
         internal bool NeedsInit()
         {
             return _fields.Any(tfi => tfi.Handler is IFieldHandlerWithInit);
-        }
-
-        internal bool NeedsFreeContent()
-        {
-            return _fields.Any(tfi => tfi.Handler is ODBDictionaryFieldHandler);
         }
 
         internal static bool Equal(RelationVersionInfo a, RelationVersionInfo b)

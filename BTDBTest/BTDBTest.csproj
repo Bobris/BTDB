@@ -123,6 +123,7 @@
     <Compile Include="KeyValueDBCustomTest.cs" />
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
+    <Compile Include="ObjectDbTableFreeContentTest.cs" />
     <Compile Include="ObjectDbTableTest.cs" />
     <Compile Include="ObjectDbTableUpgradeTest.cs" />
     <Compile Include="ObjectDBTest.cs" />

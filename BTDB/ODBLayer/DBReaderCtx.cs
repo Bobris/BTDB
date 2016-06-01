@@ -155,5 +155,9 @@ namespace BTDB.ODBLayer
         {
             return _transaction;
         }
+
+        public virtual void RegisterDict(ulong dictId)
+        {
+        }
     }
 }

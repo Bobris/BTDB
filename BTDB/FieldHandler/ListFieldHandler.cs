@@ -233,5 +233,30 @@ namespace BTDB.FieldHandler
         {
             yield return _itemsHandler;
         }
+
+        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        {
+            var localCount = ilGenerator.DeclareLocal(typeof(uint));
+            var finish = ilGenerator.DefineLabel();
+            var next = ilGenerator.DefineLabel();
+            ilGenerator
+                .Do(pushReaderOrCtx)
+                .Callvirt(() => default(IReaderCtx).SkipObject())
+                .Brfalse(finish)
+                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .Stloc(localCount)
+                .Mark(next)
+                .Ldloc(localCount)
+                .Brfalse(finish)
+                .Ldloc(localCount)
+                .LdcI4(1)
+                .Sub()
+                .ConvU4()
+                .Stloc(localCount)
+                .GenerateFreeContent(_itemsHandler, pushReaderOrCtx)
+                .Br(next)
+                .Mark(finish);
+        }
     }
 }
