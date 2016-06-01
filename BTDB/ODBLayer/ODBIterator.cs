@@ -65,7 +65,7 @@ namespace BTDB.ODBLayer
             _loaders = new Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>>(ReferenceEqualityComparer<IFieldHandler>.Instance);
         }
 
-        public void Iterate()
+        public void Iterate(bool sortTableByNameAsc = false)
         {
             LoadTableNamesDict();
             LoadRelationNamesDict();
@@ -80,6 +80,16 @@ namespace BTDB.ODBLayer
                 valueReader.Restart();
                 _singletons.Add(keyReader.ReadVUInt32(), valueReader.ReadVUInt64());
             }
+
+            if (sortTableByNameAsc)
+            {
+                _singletons = _singletons.OrderBy(item =>
+                {
+                    string name;
+                    return _tableId2Name.TryGetValue(item.Key, out name) ? name : string.Empty;
+                }).ToDictionary(item => item.Key, item => item.Value);
+            }
+
             foreach (var singleton in _singletons)
             {
                 string name;
