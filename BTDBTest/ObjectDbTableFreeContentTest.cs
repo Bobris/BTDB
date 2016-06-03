@@ -24,18 +24,11 @@ namespace BTDBTest
             _db.Open(_lowDb, false);
         }
 
-        void ReopenDb()
-        {
-            _db.Dispose();
-            OpenDb();
-        }
-
         public class Link
         {
             [PrimaryKey]
             public ulong Id { get; set; }
             public IDictionary<ulong, ulong> Edges { get; set; }
-            public string Name { get; set; }
         }
 
         public interface ILinks
@@ -71,7 +64,6 @@ namespace BTDBTest
             [PrimaryKey]
             public ulong Id { get; set; }
             public List<IDictionary<ulong, ulong>> EdgesList { get; set; }
-            public string Name { get; set; }
         }
 
         public interface ILinksInList
@@ -115,7 +107,7 @@ namespace BTDBTest
         {
             [PrimaryKey]
             public ulong Id { get; set; }
-            public Dictionary<int, IDictionary<ulong, ulong>> EdgesDict { get; set; }
+            public Dictionary<int, IDictionary<ulong, ulong>> EdgesIDict { get; set; }
             public string Name { get; set; }
         }
 
@@ -136,7 +128,7 @@ namespace BTDBTest
                 var link = new LinkInDict
                 {
                     Id = 1,
-                    EdgesDict = new Dictionary<int, IDictionary<ulong, ulong>>
+                    EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
                     {
                         [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
                         [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
@@ -154,6 +146,97 @@ namespace BTDBTest
             }
             AssertNoLeaksInDb();
         }
+
+        public class LinkInIDict
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public IDictionary<int, IDictionary<ulong, ulong>> EdgesIDict { get; set; }
+        }
+
+        public interface ILinksInIDict
+        {
+            void Insert(LinkInIDict link);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact(Skip = "not finished")] //todo
+        public void FreeIDictionaryInIDictionary()
+        {
+            Func<IObjectDBTransaction, ILinksInIDict> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILinksInIDict>("IDictLinksRelation");
+                var links = creator(tr);
+                var link = new LinkInIDict
+                {
+                    Id = 1,
+                    EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
+                    {
+                        [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
+                        [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                    }
+                };
+                links.Insert(link);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                Assert.True(links.RemoveById(1));
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+        public class Nodes
+        {
+            public IDictionary<ulong, ulong> Edges { get; set; }
+        }
+
+        public class Links
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public Nodes Nodes { get; set; }
+        }
+
+        public interface ILinksWithNodes
+        {
+            void Insert(Links link);
+            Links FindByIdOrDefault(ulong id);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void FreeIDictionaryInInlineObject()
+        {
+            Func<IObjectDBTransaction, ILinksWithNodes> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILinksWithNodes>("IDictObjLinksRelation");
+                var links = creator(tr);
+                var link = new Links
+                {
+                    Id = 1,
+                    Nodes = new Nodes { Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } }
+                };
+                links.Insert(link);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var l = links.FindByIdOrDefault(1);
+                Assert.Equal(2ul, l.Nodes.Edges[1]);
+                Assert.True(links.RemoveById(1));
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
 
         void AssertNoLeaksInDb()
         {

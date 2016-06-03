@@ -73,6 +73,17 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
+        public void FreeContentInNativeObject(IReaderCtx readerCtx)
+        {
+            var reader = readerCtx.Reader();
+            var tableId = reader.ReadVUInt32();
+            var tableVersion = reader.ReadVUInt32();
+            var tableInfo = _owner.TablesInfo.FindById(tableId);
+            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
+            EnsureClientTypeNotNull(tableInfo);
+            tableInfo.GetFreeContent(tableVersion)(this, null, reader, ((DBReaderWithFreeInfoCtx)readerCtx).DictIds);
+        }
+
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());

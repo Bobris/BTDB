@@ -135,5 +135,10 @@ namespace BTDB.Service
         {
             throw new InvalidOperationException();
         }
+
+        public void FreeContentInNativeObject()
+        {
+            throw new InvalidOperationException();
+        }
     }
 }

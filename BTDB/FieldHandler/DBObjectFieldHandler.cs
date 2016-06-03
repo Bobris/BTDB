@@ -146,7 +146,9 @@ namespace BTDB.FieldHandler
 
         public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            Skip(ilGenerator, pushReaderOrCtx); //todo
+            ilGenerator
+                .Do(pushReaderOrCtx)
+                .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
         }
     }
 }

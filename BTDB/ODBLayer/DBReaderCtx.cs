@@ -116,6 +116,7 @@ namespace BTDB.ODBLayer
                 return false;
             }
             _objects[ido] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
+            _lastIdOfObj = ido;
             return true;
         }
 
@@ -126,6 +127,15 @@ namespace BTDB.ODBLayer
             {
                 // This should be skip inline object, but it is easier just to throw away result
                 _transaction.ReadInlineObject(this);
+            }
+        }
+
+        public virtual void FreeContentInNativeObject()
+        {
+            var test = SkipObject();
+            if (test)
+            {
+                _transaction.FreeContentInNativeObject(this);
             }
         }
 

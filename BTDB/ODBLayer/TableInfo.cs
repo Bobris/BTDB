@@ -24,6 +24,7 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>>> _freeContent = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>>>();
         long _singletonOid;
         long _cachedSingletonTrNum;
         byte[] _cachedSingletonContent;
@@ -366,6 +367,43 @@ namespace BTDB.ODBLayer
                     converterGenerator(ilGenerator);
                     ilGenerator.Call(setterMethod);
                 }
+            }
+            ilGenerator.Ret();
+            return method.Create();
+        }
+
+        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>> GetFreeContent(uint version)
+        {
+            return _freeContent.GetOrAdd(version, CreateFreeContent);
+        }
+
+        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>> CreateFreeContent(uint version)
+        {
+            EnsureClientTypeVersion();
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, 
+                AbstractBufferedReader, IList<ulong>>>($"FreeContent_{Name}_{version}");
+            var ilGenerator = method.Generator;
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
+            var anyNeedsCtx = tableVersionInfo.NeedsCtx();
+            if (anyNeedsCtx)
+            {
+                ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                ilGenerator
+                    .Ldarg(0)
+                    .Ldarg(2)
+                    .Ldarg(3)
+                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
+                    .Stloc(0);
+            }
+            for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+            {
+                var srcFieldInfo = tableVersionInfo[fi];
+                Action<IILGen> readerOrCtx;
+                if (srcFieldInfo.Handler.NeedsCtx())
+                    readerOrCtx = il => il.Ldloc(0);
+                else
+                    readerOrCtx = il => il.Ldarg(2);
+                srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx);
             }
             ilGenerator.Ret();
             return method.Create();

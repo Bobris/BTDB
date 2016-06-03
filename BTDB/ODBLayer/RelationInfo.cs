@@ -985,6 +985,8 @@ namespace BTDB.ODBLayer
             _freeDictionaries = freeDictionaries;
         }
 
+        public IList<ulong> DictIds => _freeDictionaries;
+
         public override void RegisterDict(ulong dictId)
         {
             _freeDictionaries.Add(dictId);

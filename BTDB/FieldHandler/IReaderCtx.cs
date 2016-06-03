@@ -14,6 +14,7 @@ namespace BTDB.FieldHandler
         bool SkipObject();
         void SkipNativeObject();
 
+        void FreeContentInNativeObject();
         void RegisterDict(ulong dictId);
 
         AbstractBufferedReader Reader();
