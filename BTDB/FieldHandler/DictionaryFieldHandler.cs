@@ -276,8 +276,9 @@ namespace BTDB.FieldHandler
             yield return _valuesHandler;
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
+            var needsFreeContent = false;
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
@@ -296,10 +297,11 @@ namespace BTDB.FieldHandler
                 .Sub()
                 .ConvU4()
                 .Stloc(localCount)
-                .GenerateFreeContent(_keysHandler, pushReaderOrCtx)
-                .GenerateFreeContent(_valuesHandler, pushReaderOrCtx)
+                .GenerateFreeContent(_keysHandler, pushReaderOrCtx, ref needsFreeContent)
+                .GenerateFreeContent(_valuesHandler, pushReaderOrCtx, ref needsFreeContent)
                 .Br(next)
                 .Mark(finish);
+            return needsFreeContent;
         }
     }
 }

@@ -93,7 +93,7 @@ namespace BTDB.Service
             return this;
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             throw new InvalidOperationException();
         }

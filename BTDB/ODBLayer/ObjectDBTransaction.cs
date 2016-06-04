@@ -73,7 +73,7 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
-        public void FreeContentInNativeObject(IReaderCtx readerCtx)
+        public bool FreeContentInNativeObject(IReaderCtx readerCtx)
         {
             var reader = readerCtx.Reader();
             var tableId = reader.ReadVUInt32();
@@ -81,7 +81,9 @@ namespace BTDB.ODBLayer
             var tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             EnsureClientTypeNotNull(tableInfo);
-            tableInfo.GetFreeContent(tableVersion)(this, null, reader, ((DBReaderWithFreeInfoCtx)readerCtx).DictIds);
+            var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
+            freeContentTuple.Item2(this, null, reader, ((DBReaderWithFreeInfoCtx)readerCtx).DictIds);
+            return freeContentTuple.Item1;
         }
 
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)

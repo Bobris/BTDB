@@ -240,7 +240,7 @@ namespace BTDB.ODBLayer
             yield return _valuesHandler;
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             ilGenerator
                 .Do(pushReaderOrCtx)
@@ -249,6 +249,7 @@ namespace BTDB.ODBLayer
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
                 .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
             //todo iterate when needed
+            return true;
         }
     }
 }

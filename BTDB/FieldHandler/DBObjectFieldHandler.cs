@@ -144,11 +144,15 @@ namespace BTDB.FieldHandler
             ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type).GetConstructor(Type.EmptyTypes));
         }
 
-        public void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
+            var tableInfo = ((ObjectDB)_objectDB).TablesInfo.FindByType(HandledType());
+            //decides upon current version
+            var needsContent = tableInfo.GetFreeContent(tableInfo.ClientTypeVersion).Item1;
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
+            return needsContent;
         }
     }
 }

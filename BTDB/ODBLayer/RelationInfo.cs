@@ -735,6 +735,21 @@ namespace BTDB.ODBLayer
             var ilGenerator = method.Generator;
 
             var relationVersionInfo = _relationVersions[version];
+            var needGenerateFreeFor = 0;
+            var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
+            var fakeGenerator = fakeMethod.Generator;
+            var valueFields = relationVersionInfo.GetValueFields().ToArray();
+            for (int i = 0; i < valueFields.Length; i++)
+            {
+                var needsFreeContent = valueFields[i].Handler.FreeContent(fakeGenerator, _ => { });
+                if (needsFreeContent)
+                    needGenerateFreeFor = i + 1;
+            }
+            if (needGenerateFreeFor == 0)
+            {
+                ilGenerator.Ret();
+                return method.Create();
+            }
             var anyNeedsCtx = relationVersionInfo.GetValueFields().Any(f => f.Handler.NeedsCtx());
             if (anyNeedsCtx)
             {
@@ -746,14 +761,14 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
                     .Stloc(0);
             }
-            foreach (var srcFieldInfo in relationVersionInfo.GetValueFields())
+            for (int i = 0; i < needGenerateFreeFor; i++)
             {
                 Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler.NeedsCtx())
+                if (valueFields[i].Handler.NeedsCtx())
                     readerOrCtx = il => il.Ldloc(0);
                 else
                     readerOrCtx = il => il.Ldarg(1);
-                srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx);
+                valueFields[i].Handler.FreeContent(ilGenerator, readerOrCtx);
             }
             ilGenerator.Ret();
             return method.Create();

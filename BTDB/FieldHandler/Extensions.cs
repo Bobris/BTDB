@@ -50,10 +50,10 @@ namespace BTDB.FieldHandler
             return ilGenerator;
         }
 
-        public static IILGen GenerateFreeContent(this IILGen ilGenerator, IFieldHandler fieldHandler, Action<IILGen> pushReaderOrCtx)
+        public static IILGen GenerateFreeContent(this IILGen ilGenerator, IFieldHandler fieldHandler, Action<IILGen> pushReaderOrCtx, ref bool needsFreeContent)
         {
-            fieldHandler.FreeContent(ilGenerator,
-                                     fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx));
+            if (fieldHandler.FreeContent(ilGenerator, fieldHandler.NeedsCtx() ? pushReaderOrCtx : PushReaderFromCtx(pushReaderOrCtx)))
+                needsFreeContent = true;
             return ilGenerator;
         }
 

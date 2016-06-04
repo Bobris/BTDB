@@ -14,7 +14,7 @@ namespace BTDB.FieldHandler
         void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
         void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue);
 
-        void FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
+        bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx); //returns true if needs to be called
 
         // typeHandler is preferred FieldHandler for type could be null if unknown
         IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler);
