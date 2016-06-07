@@ -69,7 +69,7 @@ namespace BTDB.FieldHandler
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
-            if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
+            if ((options & FieldHandlerOptions.Orderable) != 0) return false;
             return IsCompatibleWith(type);
         }
 

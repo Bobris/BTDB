@@ -104,7 +104,7 @@ namespace BTDB.ODBLayer
 
         public static bool IsCompatibleWithStatic(Type type, FieldHandlerOptions options)
         {
-            if (options.HasFlag(FieldHandlerOptions.Orderable)) return false;
+            if ((options & FieldHandlerOptions.Orderable) != 0) return false;
             if (!type.IsGenericType) return false;
             return IsCompatibleWithCore(type);
         }

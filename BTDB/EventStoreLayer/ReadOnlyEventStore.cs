@@ -211,22 +211,22 @@ namespace BTDB.EventStoreLayer
 
         bool Process(BlockType blockType, ByteBuffer block, IEventStoreObserver observer)
         {
-            if (blockType.HasFlag(BlockType.Compressed))
+            if ((blockType & BlockType.Compressed) != 0)
             {
                 CompressionStrategy.Decompress(ref block);
             }
             var reader = new ByteBufferReader(block);
-            if (blockType.HasFlag(BlockType.HasTypeDeclaration))
+            if ((blockType & BlockType.HasTypeDeclaration) != 0)
             {
                 Mapping.LoadTypeDescriptors(reader);
             }
-            var metadata = blockType.HasFlag(BlockType.HasMetadata) ? Mapping.LoadObject(reader) : null;
+            var metadata = (blockType & BlockType.HasMetadata) != 0 ? Mapping.LoadObject(reader) : null;
             uint eventCount;
-            if (blockType.HasFlag(BlockType.HasOneEvent))
+            if ((blockType & BlockType.HasOneEvent) != 0)
             {
                 eventCount = 1;
             }
-            else if (blockType.HasFlag(BlockType.HasMoreEvents))
+            else if ((blockType & BlockType.HasMoreEvents) != 0)
             {
                 eventCount = reader.ReadVUInt32();
             }

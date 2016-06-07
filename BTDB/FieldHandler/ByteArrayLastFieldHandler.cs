@@ -35,7 +35,7 @@ namespace BTDB.FieldHandler
 
         public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
-            if (!options.HasFlag(FieldHandlerOptions.AtEndOfStream)) return false;
+            if ((options & FieldHandlerOptions.AtEndOfStream) == 0) return false;
             return base.IsCompatibleWith(type, options);
         }
     }

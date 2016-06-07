@@ -83,13 +83,13 @@ namespace BTDB.IL
         {
             var before = "";
             var firstArgIdx = 1;
-            if (methodAttributes.HasFlag(MethodAttributes.Public)) before += "public ";
-            if (methodAttributes.HasFlag(MethodAttributes.Static))
+            if ((methodAttributes & MethodAttributes.Public) != 0) before += "public ";
+            if ((methodAttributes & MethodAttributes.Static) != 0)
             {
                 firstArgIdx = 0;
                 before += "static ";
             }
-            if (methodAttributes.HasFlag(MethodAttributes.Virtual)) before += "virtual ";
+            if ((methodAttributes & MethodAttributes.Virtual) != 0) before += "virtual ";
 
             switch (parameters.Length)
             {
