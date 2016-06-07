@@ -16,11 +16,11 @@ namespace BTDB.EventStoreLayer
         Type _type;
         readonly string _name;
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
-        readonly ITypeConvertorGenerator _convertorGenerator;
+        readonly ITypeDescriptorCallbacks _typeSerializers;
 
         public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
-            _convertorGenerator = typeSerializers.ConvertorGenerator;
+            _typeSerializers = typeSerializers;
             _type = type;
             Sealed = _type.IsSealed;
             _name = typeSerializers.TypeNameMapper.ToName(type);
@@ -28,7 +28,7 @@ namespace BTDB.EventStoreLayer
 
         public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
-            _convertorGenerator = typeSerializers.ConvertorGenerator;
+            _typeSerializers = typeSerializers;
             Sealed = false;
             _name = reader.ReadString();
             var fieldCount = reader.ReadVUInt32();
@@ -36,7 +36,6 @@ namespace BTDB.EventStoreLayer
             {
                 _fields.Add(new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
             }
-            _type = typeSerializers.TypeNameMapper.ToType(_name);
         }
 
         public bool Equals(ITypeDescriptor other)
@@ -121,6 +120,8 @@ namespace BTDB.EventStoreLayer
 
         public Type GetPreferedType()
         {
+            if (_type == null)
+                _type = _typeSerializers.TypeNameMapper.ToType(_name);
             return _type;
         }
 
@@ -156,7 +157,7 @@ namespace BTDB.EventStoreLayer
                         il =>
                             il.Do(pushDescriptor)
                                 .LdcI4(idxForCapture)
-                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
+                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _typeSerializers.ConvertorGenerator);
                     ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
                     idx++;
                 }
@@ -191,7 +192,7 @@ namespace BTDB.EventStoreLayer
                     ilGenerator.Ldloc(resultLoc);
                     pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                                             il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
-                                            prop.PropertyType, _convertorGenerator);
+                                            prop.PropertyType, _typeSerializers.ConvertorGenerator);
                     ilGenerator.Callvirt(prop.GetSetMethod());
                 }
                 ilGenerator.Ldloc(resultLoc);
@@ -344,7 +345,7 @@ namespace BTDB.EventStoreLayer
 
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
-                var allProps = _objectTypeDescriptor._type.GetProperties();
+                var allProps = _objectTypeDescriptor.GetPreferedType().GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
                     if (pair.Value.Sealed) continue;
@@ -409,7 +410,7 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
-            if (_type != valueType)
+            if (GetPreferedType() != valueType)
                 throw new ArgumentException("value type does not match my type");
             var locValue = ilGenerator.DeclareLocal(_type, "value");
             ilGenerator
