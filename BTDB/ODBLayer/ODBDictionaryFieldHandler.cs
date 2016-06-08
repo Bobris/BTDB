@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -242,13 +243,40 @@ namespace BTDB.ODBLayer
 
         public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            ilGenerator
-                .Do(pushReaderOrCtx)
-                .Castclass(typeof(IDBReaderCtx))
-                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
-                .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
-            //todo iterate when needed
+            var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
+            var fakeGenerator = fakeMethod.Generator;
+            if (_keysHandler.FreeContent(fakeGenerator, _ => { }))
+                throw new BTDBException("Not supported IDictionary in IDictionary key");
+            var containsNestedIDictionaries = _valuesHandler.FreeContent(fakeGenerator, _ => { });
+            if (!containsNestedIDictionaries)
+            {
+                ilGenerator
+                    .Do(pushReaderOrCtx)
+                    .Castclass(typeof (IDBReaderCtx))
+                    .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
+                    .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
+            }
+            else
+            {
+                var genericArguments = _type.GetGenericArguments();
+                var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+
+                var dictId = ilGenerator.DeclareLocal(typeof (ulong));
+                ilGenerator
+                    .Do(pushReaderOrCtx)
+                    .Castclass(typeof(IDBReaderCtx))
+                    .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
+                    .Stloc(dictId)
+                    .Ldloc(dictId)
+                    .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul))
+                    .Do(pushReaderOrCtx)
+                    .Ldloc(dictId)
+                    .LdcI4(_configurationId)
+                    //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
+                    .Call(instanceType.GetMethod("DoFreeContent"));
+            }
             return true;
         }
     }

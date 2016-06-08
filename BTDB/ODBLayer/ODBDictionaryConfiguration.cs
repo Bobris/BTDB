@@ -23,5 +23,7 @@ namespace BTDB.ODBLayer
         public object KeyWriter { get; set; }
         public object ValueReader { get; set; }
         public object ValueWriter { get; set; }
+
+        public object FreeContent { get; set; }
     }
 }

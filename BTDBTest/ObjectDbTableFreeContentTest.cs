@@ -160,7 +160,7 @@ namespace BTDBTest
             bool RemoveById(ulong id);
         }
 
-        [Fact(Skip = "not finished")] //todo
+        [Fact]
         public void FreeIDictionaryInIDictionary()
         {
             Func<IObjectDBTransaction, ILinksInIDict> creator;
