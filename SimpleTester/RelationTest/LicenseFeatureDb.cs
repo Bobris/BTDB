@@ -1,5 +1,4 @@
 ﻿using System;
-using BTDB.ODBLayer;
 
 namespace SimpleTester.RelationTest
 {
@@ -11,7 +10,6 @@ namespace SimpleTester.RelationTest
         Three
     }
 
-    [StoredInline]
     public class LicenseFeatureDb
     {
         public EvidenceCode EvidenceCode { get; set; }

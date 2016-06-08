@@ -1,5 +1,4 @@
 ﻿using System;
-using BTDB.ODBLayer;
 
 namespace SimpleTester.RelationTest
 {
@@ -9,7 +8,6 @@ namespace SimpleTester.RelationTest
         public string Name { get; set; }
     }
 
-    [StoredInline]
     public class LicenseFileDb
     {
         public string FileName { get; set; }
