@@ -245,27 +245,47 @@ namespace BTDBTest
         }
 
         [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(500)]
-        [InlineData(1200000)]
-        public void BiggerKey(int keyLength)
+        [InlineData(0,0,0)]
+        [InlineData(0,0,1)]
+        [InlineData(0,0,2)]
+        [InlineData(0,0,500)]
+        [InlineData(0,0,1200000)]
+        [InlineData(0, 1, 1)]
+        [InlineData(0, 1, 2)]
+        [InlineData(0, 1, 500)]
+        [InlineData(1, 0, 1200000)]
+        [InlineData(1, 0, 1)]
+        [InlineData(1, 0, 2)]
+        [InlineData(1, 0, 500)]
+        [InlineData(1, 0, 1200000)]
+        [InlineData(1, 1, 1)]
+        [InlineData(1, 1, 2)]
+        [InlineData(1, 1, 500)]
+        [InlineData(2000, 5000, 1200000)]
+        [InlineData(2000, 5000, 1)]
+        [InlineData(2000, 5000, 2)]
+        [InlineData(2000, 5000, 500)]
+        [InlineData(2000, 5000, 1200000)]
+        public void BiggerKey(int prefixLength, int offsetKey, int keyLength)
         {
-            var key = new byte[keyLength];
-            for (int i = 0; i < keyLength; i++) key[i] = (byte)i;
+            var prefix = new byte[prefixLength];
+            var keyb = new byte[offsetKey+keyLength];
+            for (int i = offsetKey; i < offsetKey+keyLength; i++) keyb[i] = (byte)i;
+            var key = ByteBuffer.NewAsync(keyb, offsetKey, keyLength);
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = new KeyValueDB(fileCollection))
             {
                 using (var tr1 = db.StartTransaction())
                 {
-                    tr1.CreateKey(key);
+                    tr1.SetKeyPrefix(prefix);
+                    tr1.CreateOrUpdateKeyValue(key,ByteBuffer.NewEmpty());
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
                 {
-                    Assert.True(tr2.FindExactKey(key));
-                    Assert.Equal(key, tr2.GetKeyAsByteArray());
+                    tr2.SetKeyPrefix(prefix);
+                    Assert.True(tr2.FindExactKey(key.ToByteArray()));
+                    Assert.Equal(key.ToByteArray(), tr2.GetKeyAsByteArray());
                 }
             }
         }

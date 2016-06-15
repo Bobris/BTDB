@@ -601,7 +601,7 @@ namespace BTDB.KVDBLayer
                 {
                     var fullkey = new byte[prefix.Length + key.Length];
                     Array.Copy(prefix, 0, fullkey, 0, prefix.Length);
-                    Array.Copy(key.Buffer, prefix.Length + key.Offset, fullkey, prefix.Length, key.Length);
+                    Array.Copy(key.Buffer, key.Offset, fullkey, prefix.Length, key.Length);
                     prefix = BitArrayManipulation.EmptyByteArray;
                     key = ByteBuffer.NewAsync(fullkey);
                 }
