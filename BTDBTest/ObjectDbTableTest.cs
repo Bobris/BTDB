@@ -341,8 +341,8 @@ namespace BTDBTest
             public uint Age { get; set; }
         }
         //SK content
-        //"Age": TenantId, Age, Name => Id
-        //"Name": TenantId, Name => Id
+        //"Age": TenantId, Age, Name, Id => void
+        //"Name": TenantId, Name, Id => void
 
         public interface IPersonTableComplexFuture
         {
