@@ -35,7 +35,6 @@ namespace SimpleTester
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
             //new RelationSpeedTest().Run();
-            new RelationLicTest().Run();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
         }
     }
