@@ -519,5 +519,39 @@ namespace BTDBTest
             }
         }
 
+        public class Lic
+        {
+            [SecondaryKey("CompanyId")]
+            [SecondaryKey("CompanyIdAndStatus")]
+            public ulong CompanyId { get; set; }
+
+            [SecondaryKey("UserId")]
+            [SecondaryKey("UserIdAndStatus")]
+            public ulong UserId { get; set; }
+
+            [SecondaryKey("Status")]
+            public string Status { get; set; }
+        }
+
+        public interface ILicTable
+        {
+            void Insert(Lic lic);
+        }
+
+        [Fact]
+        public void CanHaveMoreSecondaryIndexesThanKeys()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.InitRelation<ILicTable>("Lic");
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ILicTable>("Lic");
+                creator(tr).Insert(new Lic { CompanyId = 1, UserId = 2, Status = "ok" });
+            }
+        }
     }
 }

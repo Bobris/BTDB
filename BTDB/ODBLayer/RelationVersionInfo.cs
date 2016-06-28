@@ -203,11 +203,12 @@ namespace BTDB.ODBLayer
             {
                 field.Save(writer);
             }
-            writer.WriteVUInt32((uint)_secondaryKeys.Count);
+            writer.WriteVUInt32((uint)_secondaryKeyFields.Count);
             foreach (var field in _secondaryKeyFields)
             {
                 field.Save(writer);
             }
+            writer.WriteVUInt32((uint)_secondaryKeys.Count);
             foreach (var key in _secondaryKeys)
             {
                 writer.WriteVUInt32(key.Key);
@@ -236,15 +237,16 @@ namespace BTDB.ODBLayer
             {
                 primaryKeys.Add(TableFieldInfo.Load(reader, fieldHandlerFactory, relationName, FieldHandlerOptions.Orderable));
             }
-            var skCount = reader.ReadVUInt32();
-            var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
-            var secondaryKeysNames = new Dictionary<string, uint>((int)skCount);
-            var secondaryKeyFields = new TableFieldInfo[skCount];
-            for (var i = 0; i < skCount; i++)
+            var skFieldCount = reader.ReadVUInt32();
+            var secondaryKeyFields = new TableFieldInfo[skFieldCount];
+            for (var i = 0; i < skFieldCount; i++)
             {
                 secondaryKeyFields[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, relationName,
                     FieldHandlerOptions.Orderable);
             }
+            var skCount = reader.ReadVUInt32();
+            var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
+            var secondaryKeysNames = new Dictionary<string, uint>((int)skCount);
             for (var i = 0; i < skCount; i++)
             {
                 var skIndex = reader.ReadVUInt32();
