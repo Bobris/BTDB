@@ -5,7 +5,7 @@ Relations provides easy way how to store "table" like data in object db.
 	
 Let's first define data entity we want to store (note that it is not ne defined as [StoredInline] but it is still inlined)
 
-	public class User
+	public class Person
 	{
 		[PrimaryKey(1)]
 		public ulong Id { get; set; }
@@ -14,14 +14,14 @@ Let's first define data entity we want to store (note that it is not ne defined 
 		public ulong Age { get; set; }
 	}
 
-	public class IUserTable
+	public class IPersonTable
 	{
-		void Insert(User user);
+		void Insert(Person person);
 		bool RemoveById(ulong id);
-        PersonSimple FindById(ulong id);
+        Person FindById(ulong id);
 	}
 	
-How do we get `IUserTable` interface to actually insert users? First we need [obtain transaction](ODBDictionary.md)
+How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
 From transaction we get creator of relation which we should keep and use for creating relation interface for transaction every time we need it.
 
