@@ -136,18 +136,12 @@ namespace BTDB.ODBLayer
             keyWriter.WriteVUInt32(Id);
             var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, keyWriter.GetDataAndRewind().ToAsyncSafe());
 
-            var valueWriter = new ByteBufferWriter();
-
-            //need different savers without Apart fields (TenantId)
             var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
-            var valueSavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
 
             for (int i = 0; i < indexes.Count; i++)
             {
                 keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
                     $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
-                valueSavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyValueKeys(indexes[i].Key),
-                    $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_ValueSaver");
             }
 
             while (enumerator.MoveNext())
@@ -164,12 +158,8 @@ namespace BTDB.ODBLayer
                     keySavers[i](tr, keyWriter, obj);
                     var keyBytes = keyWriter.GetDataAndRewind();
 
-                    valueSavers[i](tr, valueWriter, obj);
-                    var valueBytes = valueWriter.GetDataAndRewind();
-
-                    if (tr.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
-                        throw new BTDBException($"Cannot create secondary key {indexes[i].Value.Name} - duplicate key.");
-                    tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                    if(!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty()))
+                        throw new BTDBException("Internal error, secondary key bytes must be always unique.");
                 }
             }
         }
