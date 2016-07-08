@@ -530,6 +530,8 @@ namespace BTDBTest
             public ulong UserId { get; set; }
 
             [SecondaryKey("Status")]
+            [SecondaryKey("CompanyIdAndStatus", Order = 2)]
+            [SecondaryKey("UserIdAndStatus", Order = 2)]
             public string Status { get; set; }
         }
 

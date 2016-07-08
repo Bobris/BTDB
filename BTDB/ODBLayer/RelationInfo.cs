@@ -708,23 +708,34 @@ namespace BTDB.ODBLayer
 
         public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
         {
+            var dictionaries = FindUsedIDictionaries(tr, valueBytes);
+
+            //delete dictionaries
+            foreach (var dictId in dictionaries)
+            {
+                FreeIDictionary(tr, dictId);
+            }
+        }
+
+        internal static void FreeIDictionary(IInternalObjectDBTransaction tr, ulong dictId)
+        {
+            var o = ObjectDB.AllDictionariesPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+            Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, dictId);
+
+            tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
+            tr.KeyValueDBTransaction.EraseAll();
+        }
+
+        public List<ulong> FindUsedIDictionaries(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
+        {
             var valueReader = new ByteArrayReader(valueBytes.ToByteArray());
             var version = valueReader.ReadVUInt32();
 
             var dictionaries = new List<ulong>();
             GetIDictFinder(version)(tr, valueReader, dictionaries);
-
-            //delete dictionaries
-            foreach (var dictId in dictionaries)
-            {
-                var o = ObjectDB.AllDictionariesPrefix.Length;
-                var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
-                Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
-                PackUnpack.PackVUInt(prefix, ref o, dictId);
-
-                tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
-                tr.KeyValueDBTransaction.EraseAll();
-            }
+            return dictionaries;
         }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> CreateIDictFinder(uint version)

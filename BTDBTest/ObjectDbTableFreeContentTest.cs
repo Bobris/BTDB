@@ -34,11 +34,26 @@ namespace BTDBTest
         public interface ILinks
         {
             void Insert(Link link);
+            void Update(Link link);
+            bool Upsert(Link link);
             bool RemoveById(ulong id);
+            Link FindById(ulong id);
         }
 
         [Fact]
         public void FreeIDictionary()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                Assert.True(links.RemoveById(1));
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+        Func<IObjectDBTransaction, ILinks> InitILinks()
         {
             Func<IObjectDBTransaction, ILinks> creator;
             using (var tr = _db.StartTransaction())
@@ -49,11 +64,38 @@ namespace BTDBTest
                 links.Insert(link);
                 tr.Commit();
             }
-            AssertNoLeaksInDb();
+            return creator;
+        }
+
+        [Fact]
+        public void FreeIDictionaryInUpdate()
+        {
+            var creator = InitILinks();
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                Assert.True(links.RemoveById(1));
+                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.Update(link); //replace dict
+                link = links.FindById(2);
+                link.Edges.Add(20, 30);
+                links.Update(link); //update dict, must not free
+                link = links.FindById(2);
+                Assert.Equal(2, link.Edges.Count);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+        [Fact]
+        public void FreeIDictionaryInUpsert()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.Upsert(link); //replace dict
                 tr.Commit();
             }
             AssertNoLeaksInDb();
@@ -69,6 +111,8 @@ namespace BTDBTest
         public interface ILinksInList
         {
             void Insert(LinkInList link);
+            void Update(LinkInList link);
+            LinkInList FindById(ulong id);
             bool RemoveById(ulong id);
         }
 
@@ -96,12 +140,45 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
+
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
             AssertNoLeaksInDb();
         }
 
+        [Fact]
+        public void FreeIDictionaryInListInUpdate()
+        {
+            Func<IObjectDBTransaction, ILinksInList> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILinksInList>("ListLinksRelation");
+                var links = creator(tr);
+                var link = new LinkInList
+                {
+                    Id = 1,
+                    EdgesList = new List<IDictionary<ulong, ulong>>
+                    {
+                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } ,
+                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                    }
+                };
+                links.Insert(link);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var link = links.FindById(1);
+                for (int i = 0; i < 20; i++)
+                    link.EdgesList.Add(new Dictionary<ulong, ulong> { [10] = 20 });
+                links.Update(link);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
 
         public class LinkInDict
         {

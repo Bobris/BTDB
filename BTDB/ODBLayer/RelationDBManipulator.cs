@@ -64,7 +64,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        //todo check whether dictionaries are not replaced in upsert - leaks
         public bool Upsert(T obj)
         {
             var keyBytes = KeyBytes(obj);
@@ -80,10 +79,21 @@ namespace BTDB.ODBLayer
                     throw new BTDBException(error);
             }
             StartWorkingWithPK();
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+            {
+                long current = _transaction.TransactionProtector.ProtectionCounter;
+
+                FreeContentInUpdate(_transaction.KeyValueDBTransaction.GetValue(), valueBytes);
+
+                if (_transaction.TransactionProtector.WasInterupted(current))
+                {
+                    StartWorkingWithPK();
+                    _transaction.KeyValueDBTransaction.Find(keyBytes);
+                }
+            }
             return _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
-        //todo check whether dictionaries are not replaced in update - leaks
         public void Update(T obj)
         {
             var keyBytes = KeyBytes(obj);
@@ -100,8 +110,52 @@ namespace BTDB.ODBLayer
             StartWorkingWithPK();
 
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
-                throw new BTDBException("Not found record to update."); //todo write key in message
+                throw new BTDBException("Not found record to update.");
+
+            long current = _transaction.TransactionProtector.ProtectionCounter;
+
+            FreeContentInUpdate(_transaction.KeyValueDBTransaction.GetValue(), valueBytes);
+
+            if (_transaction.TransactionProtector.WasInterupted(current))
+            {
+                StartWorkingWithPK();
+                _transaction.KeyValueDBTransaction.Find(keyBytes);
+            }
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+        }
+
+        void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
+        {
+            var oldDicts = _relationInfo.FindUsedIDictionaries(_transaction, oldValueBytes);
+            if (oldDicts.Count == 0)
+                return;
+            var newDicts = _relationInfo.FindUsedIDictionaries(_transaction, newValueBytes);
+            if (newDicts.Count == 0)
+            {
+                foreach(var dictId in oldDicts)
+                    RelationInfo.FreeIDictionary(_transaction, dictId);
+            }
+            else if (newDicts.Count < 10)
+            {
+                foreach (var dictId in oldDicts)
+                {
+                    if (newDicts.Contains(dictId))
+                        continue;
+                    RelationInfo.FreeIDictionary(_transaction, dictId);
+                }
+            }
+            else
+            {
+                var newDictsDictionary = new Dictionary<ulong, object>();
+                foreach(var d in newDicts)
+                    newDictsDictionary[d] = null;
+                foreach (var dictId in oldDicts)
+                {
+                    if (newDictsDictionary.ContainsKey(dictId))
+                        continue;
+                    RelationInfo.FreeIDictionary(_transaction, dictId);
+                }
+            }
         }
 
         public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
@@ -156,7 +210,7 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
-        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex, 
+        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex,
             ByteBuffer prefixBytes, uint prefixFieldCount,
             EnumerationOrder order,
             KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
@@ -174,7 +228,7 @@ namespace BTDB.ODBLayer
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                                                 (keyBytes.ToByteArray(),valueBytes.ToByteArray(), pkWriter);
+                                                 (keyBytes.ToByteArray(), valueBytes.ToByteArray(), pkWriter);
             return FindByIdOrDefault(pkWriter.Data, true);
         }
 
