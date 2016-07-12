@@ -116,7 +116,7 @@ namespace BTDB.ODBLayer
         }
     }
 
-    internal class RelationAdvancedSecondaryKeyEnumerator<T> : IEnumerator<T>
+    public class RelationAdvancedSecondaryKeyEnumerator<T> : IEnumerator<T>
     {
         readonly IInternalObjectDBTransaction _tr;
         readonly RelationInfo _relationInfo;
@@ -137,19 +137,20 @@ namespace BTDB.ODBLayer
         readonly ByteBuffer _keyBytes;
 
 
-        public RelationAdvancedSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
+        public RelationAdvancedSecondaryKeyEnumerator(
+            RelationDBManipulator<T> manipulator,
             ByteBuffer prefixBytes, uint prefixFieldCount,
             EnumerationOrder order, 
             KeyProposition startKeyProposition, ByteBuffer startKeyBytes, 
             KeyProposition endKeyProposition, ByteBuffer endKeyBytes, 
-            uint secondaryKeyIndex, RelationDBManipulator<T> manipulator)
+            uint secondaryKeyIndex)
         {
-            _relationInfo = relationInfo;
+            _relationInfo = manipulator.RelationInfo;
             _secondaryKeyIndex = secondaryKeyIndex;
             _secondaryKeyName = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[_secondaryKeyIndex].Name;
             _prefixFieldCount = prefixFieldCount;
             _manipulator = manipulator;
-            _tr = tr;
+            _tr = manipulator.Transaction;
             _ascending = order == EnumerationOrder.Ascending;
 
             _keyValueTr = _tr.KeyValueDBTransaction;
@@ -311,4 +312,26 @@ namespace BTDB.ODBLayer
         }
     }
 
+    public class RelationAdvancedOrderedSecondaryKeyEnumerator<TKey, TValue> :
+                     IOrderedDictionaryEnumerator<TKey, TValue>
+    {
+        public RelationAdvancedOrderedSecondaryKeyEnumerator(RelationDBManipulator<TValue> manipulator,
+            ByteBuffer prefixBytes, uint prefixFieldCount,
+            EnumerationOrder order,
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes,
+            uint secondaryKeyIndex)
+        {
+            //todo implement
+        }
+
+        public bool NextKey(out TKey key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public uint Position { get; set; }
+        public uint Count { get; }
+        public TValue CurrentValue { get; set; }
+    }
 }

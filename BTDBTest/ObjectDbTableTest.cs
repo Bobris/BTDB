@@ -365,9 +365,31 @@ namespace BTDBTest
             bool RemoveById(ulong id);
 
             // fills all your iterating needs
-            IOrderedDictionaryEnumerator<ulong, Person> ListById(AdvancedEnumeratorParam<ulong> param);
+            IOrderedDictionaryEnumerator<string, Person> ListByName(AdvancedEnumeratorParam<string> param);
             IEnumerator<Person> GetEnumerator();
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
+        }
+
+        [Fact]
+        public void AdvancedIteratingWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonTableComplexFuture>("PersonComplex");
+                var personTable = creator(tr);
+
+                personTable.TenantId = 1;
+                personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 28 });
+                personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 29 });
+
+                personTable.TenantId = 2;
+                personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
+                personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
+
+                var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                //todo test enumerate using param & tenant
+                tr.Commit();
+            }
         }
 
         public interface IPersonTable
@@ -415,7 +437,10 @@ namespace BTDBTest
             [PrimaryKey(1)]
             public ulong Id { get; set; }
             [SecondaryKey("Name")]
+            [SecondaryKey("PrioritizedName", Order = 2)]
             public string Name { get; set; }
+            [SecondaryKey("PrioritizedName")]
+            public short Priority { get; set; }
         }
 
         public interface IJobTable
@@ -428,6 +453,7 @@ namespace BTDBTest
             Job FindByNameOrDefault(string name);
 
             IEnumerator<Job> ListByName(AdvancedEnumeratorParam<string> param);
+            IOrderedDictionaryEnumerator<string, Job> ListByPrioritizedName(short priority, AdvancedEnumeratorParam<string> param); //todo test this
         }
 
         [Fact]

@@ -895,35 +895,61 @@ namespace BTDB.ODBLayer
                 }
                 else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
-                    //IEnumerator< T > ListBySecondaryKey(uint secondaryKeyIndex, 
-                    //      ByteBuffer prefixBytes, uint prefixFieldCount,
-                    //      EnumerationOrder order,
-                    //      KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
-                    //      KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
-                    var paramType = method.GetParameters()[0].ParameterType;
+                    var parameters = method.GetParameters();
+                    var advEnumParam = parameters[parameters.Length - 1].ParameterType;
+                    var advEnumParamType = advEnumParam.GenericTypeArguments[0];
+
                     var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                     var secondaryKeyIndex = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
                     var prefixParamCount = method.GetParameters().Length - 1;
                     reqMethod.Generator
-                        .Ldarg(0)
-                        .LdcI4((int)secondaryKeyIndex);
+                        .Ldarg(0);
                     relationInfo.SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
                         method.GetParameters(), emptyBufferLoc, keyFieldProperties);
                     reqMethod.Generator
                         .LdcI4(prefixParamCount)
-                        .Ldarg(1).Ldfld(paramType.GetField("Order"))
-                        .Ldarg(1).Ldfld(paramType.GetField("StartProposition"));
+                        .Ldarg(1).Ldfld(advEnumParam.GetField("Order"))
+                        .Ldarg(1).Ldfld(advEnumParam.GetField("StartProposition"));
                     relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
-                                emptyBufferLoc, paramType.GetField("Start"), reqMethod.Generator);
+                                emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
                     reqMethod.Generator
-                        .Ldarg(1).Ldfld(paramType.GetField("EndProposition"));
+                        .Ldarg(1).Ldfld(advEnumParam.GetField("EndProposition"));
                     relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
-                        emptyBufferLoc, paramType.GetField("End"),
+                        emptyBufferLoc, advEnumParam.GetField("End"),
                         reqMethod.Generator);
                     reqMethod.Generator
-                        .Callvirt(relationDBManipulatorType.GetMethod("ListBySecondaryKey"));
+                        .LdcI4((int)secondaryKeyIndex);
+
+
+                    if (typeof(IEnumerator<>).MakeGenericType(relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
+                    {
+                        //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
+                        //    prefixBytes, prefixFieldCount,
+                        //    order,
+                        //    startKeyProposition, startKeyBytes,
+                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
+                        var enumType = typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(relationInfo.ClientType);
+                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+                    }
+                    else if (typeof(IOrderedDictionaryEnumerator<,>).MakeGenericType(advEnumParamType, relationInfo.ClientType)
+                        .IsAssignableFrom(method.ReturnType))
+                    {
+                        //return new RelationAdvancedOrderedSecondaryKeyEnumerator<T>(relationManipulator,
+                        //    prefixBytes, prefixFieldCount,
+                        //    order,
+                        //    startKeyProposition, startKeyBytes,
+                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
+                        var enumType = typeof(RelationAdvancedOrderedSecondaryKeyEnumerator<,>).MakeGenericType(advEnumParamType, relationInfo.ClientType);
+                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+                    }
+                    else
+                    {
+                        throw new BTDBException("Invalid method " + method.Name);
+                    }
                 }
-                else //call same method name with the same parameters
+                else //call the same method name with the same parameters
                 {
                     int paramCount = method.GetParameters().Length;
                     for (ushort i = 0; i <= paramCount; i++)

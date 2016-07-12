@@ -10,6 +10,9 @@ namespace BTDB.ODBLayer
         readonly IInternalObjectDBTransaction _transaction;
         readonly RelationInfo _relationInfo;
 
+        public IInternalObjectDBTransaction Transaction => _transaction;
+        public RelationInfo RelationInfo => _relationInfo;
+
         public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
             _transaction = (IInternalObjectDBTransaction)transation;
@@ -48,7 +51,7 @@ namespace BTDB.ODBLayer
             StartWorkingWithPK();
 
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
-                throw new BTDBException("Trying to insert duplicate key.");  //todo write key in message
+                throw new BTDBException("Trying to insert duplicate key.");
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (HasSecondaryIndexes)
@@ -208,19 +211,6 @@ namespace BTDB.ODBLayer
             }
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
-        }
-
-        public IEnumerator<T> ListBySecondaryKey(uint secondaryKeyIndex,
-            ByteBuffer prefixBytes, uint prefixFieldCount,
-            EnumerationOrder order,
-            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
-            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
-        {
-            return new RelationAdvancedSecondaryKeyEnumerator<T>(_transaction, _relationInfo,
-                    prefixBytes, prefixFieldCount,
-                    order,
-                    startKeyProposition, startKeyBytes,
-                    endKeyProposition, endKeyBytes, secondaryKeyIndex, this);
         }
 
         internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer keyBytes, ByteBuffer valueBytes)
