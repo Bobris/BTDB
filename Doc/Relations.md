@@ -14,7 +14,7 @@ Let's first define data entity we want to store (note that it is not ne defined 
 		public ulong Age { get; set; }
 	}
 
-	public class IPersonTable
+	public interface IPersonTable
 	{
 		void Insert(Person person);
 		bool RemoveById(ulong id);
@@ -149,7 +149,7 @@ When secondary definition is changed (for example new index is defined) then it 
 [ObjectDbTableUpgradeTest](..\BTDBTest\ObjectDbTableUpgradeTest.cs)
 
 ## Free content ##
-During removing of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks. You can see examples in
+During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks. You can see examples in
 [ObjectDbTableFreeContentTest](..\BTDBTest\ObjectDbTableFreeContentTest.cs)
 
 ### StoredInline ###
