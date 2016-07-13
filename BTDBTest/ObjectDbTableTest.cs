@@ -39,13 +39,16 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             public ulong TenantId { get; set; }
+
             [PrimaryKey(2)]
             public string Email { get; set; }
+
             public string Name { get; set; }
 
             public bool Equals(PersonSimple other)
             {
-                return TenantId == other.TenantId && string.Equals(Email, other.Email) && string.Equals(Name, other.Name);
+                return TenantId == other.TenantId && string.Equals(Email, other.Email) &&
+                       string.Equals(Name, other.Name);
             }
         }
 
@@ -90,7 +93,15 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
                 personSimpleTable.Insert(new PersonSimple { TenantId = 2, Email = "nospam@nospam.cz", Name = "Boris" });
-                var ex = Assert.Throws<BTDBException>(() => personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" }));
+                var ex =
+                    Assert.Throws<BTDBException>(
+                        () =>
+                            personSimpleTable.Insert(new PersonSimple
+                            {
+                                TenantId = 1,
+                                Email = "nospam@nospam.cz",
+                                Name = "Boris"
+                            }));
                 Assert.True(ex.Message.Contains("duplicate"));
                 tr.Commit();
             }
@@ -332,14 +343,18 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             public ulong TenantId { get; set; }
+
             [PrimaryKey(2)]
             public ulong Id { get; set; }
+
             [SecondaryKey("Age", Order = 2)]
             [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
             public string Name { get; set; }
+
             [SecondaryKey("Age", IncludePrimaryKeyOrder = 1)]
             public uint Age { get; set; }
         }
+
         //SK content
         //"Age": TenantId, Age, Name, Id => void
         //"Name": TenantId, Name, Id => void
@@ -386,7 +401,8 @@ namespace BTDBTest
                 personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
                 personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
 
-                var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                var orderedEnumerator =
+                    personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 //todo test enumerate using param & tenant
                 tr.Commit();
             }
@@ -436,9 +452,11 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             public ulong Id { get; set; }
+
             [SecondaryKey("Name")]
             [SecondaryKey("PrioritizedName", Order = 2)]
             public string Name { get; set; }
+
             [SecondaryKey("PrioritizedName")]
             public short Priority { get; set; }
         }
@@ -453,7 +471,9 @@ namespace BTDBTest
             Job FindByNameOrDefault(string name);
 
             IEnumerator<Job> ListByName(AdvancedEnumeratorParam<string> param);
-            IOrderedDictionaryEnumerator<string, Job> ListByPrioritizedName(short priority, AdvancedEnumeratorParam<string> param); //todo test this
+
+            IOrderedDictionaryEnumerator<string, Job> ListByPrioritizedName(short priority,
+                AdvancedEnumeratorParam<string> param); //todo test this
         }
 
         [Fact]
@@ -537,9 +557,9 @@ namespace BTDBTest
                 Assert.Equal("Code", GetNext(en).Name);
                 Assert.Equal("Bicycle", GetNext(en).Name);
 
-                en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, 
-                                         "B", KeyProposition.Included, 
-                                         "C", KeyProposition.Included));
+                en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "B", KeyProposition.Included,
+                    "C", KeyProposition.Included));
                 Assert.Equal("Bicycle", GetNext(en).Name);
                 Assert.False(en.MoveNext());
             }
@@ -547,10 +567,12 @@ namespace BTDBTest
 
         public class Lic
         {
+            [PrimaryKey(1)]
             [SecondaryKey("CompanyId")]
             [SecondaryKey("CompanyIdAndStatus")]
             public ulong CompanyId { get; set; }
 
+            [PrimaryKey(2)]
             [SecondaryKey("UserId")]
             [SecondaryKey("UserIdAndStatus")]
             public ulong UserId { get; set; }
@@ -579,6 +601,48 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ILicTable>("Lic");
                 creator(tr).Insert(new Lic { CompanyId = 1, UserId = 2, Status = "ok" });
+            }
+        }
+
+        public class Room
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("CompanyId")]
+            public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)]
+            public ulong Id { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public interface IRoomTable
+        {
+            void Insert(Room room);
+            IEnumerator<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
+        }
+
+        [Fact]
+        public void SecondaryKeyCanBeDefinedOnSameFieldAsPrimaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRoomTable>("Room");
+
+                var rooms = creator(tr);
+                rooms.Insert(new Room { CompanyId = 1, Id = 1, Name = "First 1" });
+                rooms.Insert(new Room { CompanyId = 1, Id = 2, Name = "Second 1" });
+                rooms.Insert(new Room { CompanyId = 2, Id = 1, Name = "First 2" });
+
+                var en = rooms.ListByCompanyId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                                               1, KeyProposition.Included,
+                                               1 + 1, KeyProposition.Excluded));
+
+                var m = GetNext(en);
+                Assert.Equal("First 1", m.Name);
+                m = GetNext(en);
+                Assert.Equal("Second 1", m.Name);
+                Assert.False(en.MoveNext());
             }
         }
     }

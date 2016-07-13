@@ -78,7 +78,11 @@ Find by secondary key, it will throw if it find multiple Persons with that age. 
             IEnumerator<Person> FindByAge(uint age);
 Find all items with given secondary key. 
 
-### List ###
+### Enumerate ###
+            IEnumerator<Person> GetEnumerator();
+Enumerates all items sorted by primary key 
+
+### List (by secondary index)###
 		IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
 
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](..\BTDBTest\\ObjectDbTableTest.cs)

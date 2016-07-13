@@ -405,43 +405,44 @@ namespace BTDB.ODBLayer
             var primaryKeys = new Dictionary<uint, TableFieldInfo>(1); //PK order->fieldInfo
             var secondaryKeyFields = new List<TableFieldInfo>();
             var secondaryKeys = new Dictionary<uint, IList<SecondaryKeyAttribute>>(); //value field index -> list of attributes
-
+            var skFromPk = new Dictionary<uint, uint>();
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
                 if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
                 var pks = pi.GetCustomAttributes(typeof(PrimaryKeyAttribute), true);
+                PrimaryKeyAttribute actualPKAttribute = null;
                 if (pks.Length != 0)
                 {
-                    var pkinfo = (PrimaryKeyAttribute)pks[0];
+                    actualPKAttribute = (PrimaryKeyAttribute)pks[0];
                     var fieldInfo = TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.Orderable);
                     if (fieldInfo.Handler.NeedsCtx())
                         throw new BTDBException($"Unsupported key field {fieldInfo.Name} type.");
-                    primaryKeys.Add(pkinfo.Order, fieldInfo);
-                    continue;
+                    primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
                 }
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
-                var skFieldId = (uint)secondaryKeys.Count;
+                var skFieldId = (uint)fields.Count;
                 for (var i = 0; i < sks.Length; i++)
                 {
                     if (i == 0)
                     {
-                        secondaryKeyFields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
-                            FieldHandlerOptions.Orderable));
-                        secondaryKeys[skFieldId] = new List<SecondaryKeyAttribute>
-                            { (SecondaryKeyAttribute)sks[i] };
+                        secondaryKeys[skFieldId] = new List<SecondaryKeyAttribute>();
+                        if (actualPKAttribute == null)
+                            secondaryKeyFields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.Orderable));
                     }
-                    else
+                    secondaryKeys[skFieldId].Add((SecondaryKeyAttribute)sks[i]);
+                    if (actualPKAttribute != null)
                     {
-                        secondaryKeys[skFieldId].Add((SecondaryKeyAttribute)sks[i]);
+                        skFromPk[skFieldId] = actualPKAttribute.Order;
                     }
                 }
-                fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.None));
+                if (actualPKAttribute == null)
+                    fields.Add(TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.None));
             }
             var prevVersion = LastPersistedVersion > 0 ? _relationVersions[LastPersistedVersion] : null;
-            return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray(), prevVersion);
+            return new RelationVersionInfo(primaryKeys, secondaryKeys, skFromPk, secondaryKeyFields.ToArray(), fields.ToArray(), prevVersion);
         }
 
         static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
