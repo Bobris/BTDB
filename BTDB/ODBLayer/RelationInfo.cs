@@ -158,7 +158,7 @@ namespace BTDB.ODBLayer
                     keySavers[i](tr, keyWriter, obj);
                     var keyBytes = keyWriter.GetDataAndRewind();
 
-                    if(!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty()))
+                    if (!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty()))
                         throw new BTDBException("Internal error, secondary key bytes must be always unique.");
                 }
             }
@@ -931,7 +931,7 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        internal void FillBufferWhenNotIgnoredKeyPropositionIl(uint skIndex, int paramIdx, IILLocal emptyBufferLoc,
+        internal void FillBufferWhenNotIgnoredKeyPropositionIl(ushort advEnumParamOrder, uint skIndex, int paramIdx, IILLocal emptyBufferLoc,
                                                                FieldInfo instField, IILGen ilGenerator)
         {
             //stack contains KeyProposition
@@ -953,7 +953,7 @@ namespace BTDB.ODBLayer
                 field = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex).ToArray()[skField.Index];
             field.Handler.Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
-                il => il.Ldarg(1).Ldfld(instField));
+                il => il.Ldarg(advEnumParamOrder).Ldfld(instField));
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
             ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
             ilGenerator
@@ -966,29 +966,26 @@ namespace BTDB.ODBLayer
         public void SaveListPrefixBytes(uint secondaryKeyIndex, IILGen ilGenerator, string methodName, ParameterInfo[] methodParameters,
                                         IILLocal emptyBufferLoc, IDictionary<string, FieldBuilder> keyFieldProperties)
         {
+            var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
+            ilGenerator
+                .Newobj(() => new ByteBufferWriter())
+                .Stloc(writerLoc);
+
+            Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
+
+            WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsSKPrefix);
+            //ByteBuffered.WriteVUInt32(RelationInfo.Id);
+            WriteIdIl(ilGenerator, pushWriter, (int)Id);
+            //ByteBuffered.WriteVUInt32(skIndex);
+            WriteIdIl(ilGenerator, pushWriter, (int)secondaryKeyIndex);
+
+            var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             var paramCount = methodParameters.Length - 1; //last param is key proposition
-            if (paramCount == 0)
-            {
-                ilGenerator.Ldloc(emptyBufferLoc);
-            }
-            else
-            {
-                var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
-                ilGenerator.Newobj(() => new ByteBufferWriter());
-                ilGenerator.Stloc(writerLoc);
+            SaveMethodParameters(ilGenerator, methodName, methodParameters, paramCount, keyFieldProperties,
+                secondaryKeyFields, writerLoc);
 
-                Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
-
-                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsSKPrefix);
-                //ByteBuffered.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(ilGenerator, pushWriter, (int)Id);
-                //ByteBuffered.WriteVUInt32(skIndex);
-                WriteIdIl(ilGenerator, pushWriter, (int)secondaryKeyIndex);
-
-                var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
-                SaveMethodParameters(ilGenerator, methodName, methodParameters, paramCount, keyFieldProperties,
-                    secondaryKeyFields, writerLoc);
-            }
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
         }
     }
 
@@ -996,7 +993,7 @@ namespace BTDB.ODBLayer
     {
         readonly IList<ulong> _freeDictionaries;
 
-        public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader, 
+        public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader,
             IList<ulong> freeDictionaries) : base(transaction, reader)
         {
             _freeDictionaries = freeDictionaries;

@@ -471,9 +471,7 @@ namespace BTDBTest
             Job FindByNameOrDefault(string name);
 
             IEnumerator<Job> ListByName(AdvancedEnumeratorParam<string> param);
-
-            IOrderedDictionaryEnumerator<string, Job> ListByPrioritizedName(short priority,
-                AdvancedEnumeratorParam<string> param); //todo test this
+            IEnumerator<Job> ListByPrioritizedName(short priority, AdvancedEnumeratorParam<string> param);
         }
 
         [Fact]
@@ -484,10 +482,18 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
-                jobTable.Insert(new Job { Id = 11, Name = "Code" });
-                jobTable.Insert(new Job { Id = 22, Name = "Sleep" });
-                jobTable.Insert(new Job { Id = 33, Name = "Bicycle" });
+                jobTable.Insert(new Job { Id = 11, Name = "Code", Priority = 1 });
+                jobTable.Insert(new Job { Id = 22, Name = "Sleep", Priority = 2 });
+                jobTable.Insert(new Job { Id = 33, Name = "Bicycle", Priority = 1 });
                 tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var jobTable = creator(tr);
+                var en = jobTable.ListByPrioritizedName(2, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
+                var j = GetNext(en);
+                Assert.Equal("Sleep", j.Name);
+                Assert.False(en.MoveNext());
             }
             using (var tr = _db.StartTransaction())
             {

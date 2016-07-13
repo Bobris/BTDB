@@ -86,6 +86,7 @@ Enumerates all items sorted by primary key
 		IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
 
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](..\BTDBTest\\ObjectDbTableTest.cs)
+``ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)``
 
 ## Primary Key ##
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:

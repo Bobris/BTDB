@@ -896,7 +896,8 @@ namespace BTDB.ODBLayer
                 else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
                     var parameters = method.GetParameters();
-                    var advEnumParam = parameters[parameters.Length - 1].ParameterType;
+                    var advEnumParamOrder = (ushort)(parameters.Length);
+                    var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                     var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
                     var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
@@ -908,13 +909,13 @@ namespace BTDB.ODBLayer
                         method.GetParameters(), emptyBufferLoc, keyFieldProperties);
                     reqMethod.Generator
                         .LdcI4(prefixParamCount)
-                        .Ldarg(1).Ldfld(advEnumParam.GetField("Order"))
-                        .Ldarg(1).Ldfld(advEnumParam.GetField("StartProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
+                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
+                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, secondaryKeyIndex, prefixParamCount,
                                 emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
                     reqMethod.Generator
-                        .Ldarg(1).Ldfld(advEnumParam.GetField("EndProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(secondaryKeyIndex, prefixParamCount,
+                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
+                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, secondaryKeyIndex, prefixParamCount,
                         emptyBufferLoc, advEnumParam.GetField("End"),
                         reqMethod.Generator);
                     reqMethod.Generator

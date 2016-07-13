@@ -157,7 +157,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            _keyBytes = BuildKeyBytes();
+            _keyBytes = prefixBytes;
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
             long startIndex;
@@ -222,15 +222,6 @@ namespace BTDB.ODBLayer
             _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
             _seekNeeded = true;
-        }
-
-        ByteBuffer BuildKeyBytes()
-        {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsSKPrefix);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
-            keyWriter.WriteVUInt32(_secondaryKeyIndex);
-            return keyWriter.Data.ToAsyncSafe();
         }
 
         public bool MoveNext()
