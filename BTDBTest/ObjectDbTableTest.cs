@@ -401,8 +401,7 @@ namespace BTDBTest
                 personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
                 personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
 
-                var orderedEnumerator =
-                    personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 //todo test enumerate using param & tenant
                 tr.Commit();
             }
@@ -617,6 +616,7 @@ namespace BTDBTest
             public ulong CompanyId { get; set; }
 
             [PrimaryKey(2)]
+            [SecondaryKey("Id")]
             public ulong Id { get; set; }
 
             public string Name { get; set; }
@@ -626,6 +626,7 @@ namespace BTDBTest
         {
             void Insert(Room room);
             IEnumerator<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
+            IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
         }
 
         [Fact]
@@ -649,6 +650,9 @@ namespace BTDBTest
                 m = GetNext(en);
                 Assert.Equal("Second 1", m.Name);
                 Assert.False(en.MoveNext());
+
+                var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Descending));
+                //Assert.Equal(3u, oen.Count); //todo
             }
         }
     }

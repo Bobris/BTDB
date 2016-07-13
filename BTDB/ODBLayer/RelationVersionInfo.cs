@@ -45,34 +45,33 @@ namespace BTDB.ODBLayer
 
 
         public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
-                                   Dictionary<uint, IList<SecondaryKeyAttribute>> secondaryKeys,  //sec key field idx -> attrs
-                                   Dictionary<uint, uint> skFromPk, //sec key field idx -> order of primary field
+                                   List<Tuple<int, IList<SecondaryKeyAttribute>>> secondaryKeys,  //positive: sec key field idx, negative: pk order, attrs
                                    TableFieldInfo[] secondaryKeyFields,
                                    TableFieldInfo[] fields, RelationVersionInfo prevVersion)
         {
             _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
             _secondaryKeyFields = secondaryKeyFields;
-            CreateSecondaryKeyInfo(secondaryKeys, skFromPk, primaryKeyFields, prevVersion);
+            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
             _fields = fields;
         }
 
-        void CreateSecondaryKeyInfo(Dictionary<uint, IList<SecondaryKeyAttribute>> attributes,
-                                    Dictionary<uint, uint> skFromPk, Dictionary<uint, TableFieldInfo> primaryKeyFields,
+        void CreateSecondaryKeyInfo(List<Tuple<int, IList<SecondaryKeyAttribute>>> attributes,
+                                    Dictionary<uint, TableFieldInfo> primaryKeyFields,
                                     RelationVersionInfo prevVersion)
         {
             var idx = 0u;
             _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
             _secondaryKeysNames = new Dictionary<string, uint>();
-            var skIndexNames = attributes.SelectMany(kv => kv.Value).Select(a => a.Name).Distinct();
+            var skIndexNames = attributes.SelectMany(t => t.Item2).Select(a => a.Name).Distinct();
             foreach (var indexName in skIndexNames)
             {
-                var indexFields = new List<Tuple<uint, SecondaryKeyAttribute>>(); //fieldIndex, attribute
+                var indexFields = new List<Tuple<int, SecondaryKeyAttribute>>(); //fieldIndex, attribute
                 foreach (var kv in attributes)
                 {
-                    var attr = kv.Value.FirstOrDefault(a => a.Name == indexName);
+                    var attr = kv.Item2.FirstOrDefault(a => a.Name == indexName);
                     if (attr == null)
                         continue;
-                    indexFields.Add(Tuple.Create(kv.Key, attr));
+                    indexFields.Add(Tuple.Create(kv.Item1, attr));
                 }
                 var orderedAttrs = indexFields.OrderBy(a => a.Item2.Order).ToList();
                 var info = new SecondaryKeyInfo
@@ -90,16 +89,16 @@ namespace BTDB.ODBLayer
                         var pi = _primaryKeyFields.IndexOf(primaryKeyFields[i]);
                         info.Fields.Add(new FieldId(true, (uint)pi));
                     }
-                    uint pkOrder;
-                    if (skFromPk.TryGetValue(attr.Item1, out pkOrder))
+                    if (attr.Item1 < 0)
                     {
+                        var pkOrder = (uint)-attr.Item1;
                         usedPKFields.Add(pkOrder, null);
                         var pi = _primaryKeyFields.IndexOf(primaryKeyFields[pkOrder]);
                         info.Fields.Add(new FieldId(true, (uint)pi));
                     }
                     else
                     {
-                        info.Fields.Add(new FieldId(false, attr.Item1));
+                        info.Fields.Add(new FieldId(false, (uint)attr.Item1));
                     }
                 }
                 //fill all not present parts of primary key
