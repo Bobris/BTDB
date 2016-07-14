@@ -21,6 +21,8 @@ namespace BTDB.ODBLayer
         readonly IRelationInfoResolver _relationInfoResolver;
         readonly Type _interfaceType;
         readonly Type _clientType;
+        readonly ITypeConvertorGenerator _typeConvertorGenerator;
+
         readonly IDictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, object> _creator;
         Action<IInternalObjectDBTransaction, object> _initializer;
@@ -45,6 +47,29 @@ namespace BTDB.ODBLayer
 
         readonly ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>();
+
+        public struct SimpleLoaderType : IEquatable<SimpleLoaderType>
+        {
+            readonly IFieldHandler _fieldHandler;
+            readonly Type _realType;
+
+            public IFieldHandler FieldHandler => _fieldHandler;
+            public Type RealType => _realType;
+
+            public SimpleLoaderType(IFieldHandler fieldHandler, Type realType)
+            {
+                _fieldHandler = fieldHandler;
+                _realType = realType;
+            }
+
+            public bool Equals(SimpleLoaderType other)
+            {
+                return _fieldHandler == other._fieldHandler && _realType == other._realType;
+            }
+        }
+
+        readonly ConcurrentDictionary<SimpleLoaderType, object>    //object is of type Action<AbstractBufferedReader, IReaderCtx, (object or value type same as in conc. dic. key)>
+            _simpleLoader = new ConcurrentDictionary<SimpleLoaderType, object>();
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
                             Type clientType, IInternalObjectDBTransaction tr)
@@ -81,6 +106,7 @@ namespace BTDB.ODBLayer
                     UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
                 }
             }
+            _typeConvertorGenerator = tr.Owner.TypeConvertorGenerator;
         }
 
         void CheckThatPrimaryKeyHasNotChanged(RelationVersionInfo info, RelationVersionInfo previousInfo)
@@ -568,6 +594,24 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             return method.Create();
+        }
+
+        public object GetSimpleLoader(SimpleLoaderType handler)
+        {
+            return _simpleLoader.GetOrAdd(handler, h => CreateSimpleLoader(h));
+        }
+
+        object CreateSimpleLoader(SimpleLoaderType loaderType)
+        {
+            var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx), loaderType.FieldHandler.HandledType());
+            var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
+            var ilGenerator = dm.Generator;
+            Action<IILGen> pushReaderOrCtx = il => il.Ldarg((ushort)(loaderType.FieldHandler.NeedsCtx() ? 1 : 0));
+            loaderType.FieldHandler.Load(ilGenerator, pushReaderOrCtx);
+            ilGenerator
+                .Do(_typeConvertorGenerator.GenerateConversion(loaderType.FieldHandler.HandledType(), loaderType.RealType))
+                .Ret();
+            return dm.Create();
         }
 
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler, Action<IILGen> pushReader,
