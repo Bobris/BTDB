@@ -896,7 +896,7 @@ namespace BTDB.ODBLayer
                 else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
                     var parameters = method.GetParameters();
-                    var advEnumParamOrder = (ushort)(parameters.Length);
+                    var advEnumParamOrder = (ushort)parameters.Length;
                     var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                     var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -908,7 +908,7 @@ namespace BTDB.ODBLayer
                     relationInfo.SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
                         method.GetParameters(), emptyBufferLoc, keyFieldProperties);
                     reqMethod.Generator
-                        .LdcI4(prefixParamCount)
+                        .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
                     relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, secondaryKeyIndex, prefixParamCount,

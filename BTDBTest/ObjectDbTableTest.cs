@@ -401,9 +401,15 @@ namespace BTDBTest
                 personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
                 personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
 
-                //var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
-                //Assert.Equal(2u, orderedEnumerator.Count);
-                //todo test enumerate using param & tenant
+                var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                Assert.Equal(2u, orderedEnumerator.Count);
+
+                uint age;
+                Assert.True(orderedEnumerator.NextKey(out age));
+                Assert.Equal(128u, age);
+                Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
+                Assert.True(orderedEnumerator.NextKey(out age));
+                Assert.Equal(129u, age);
                 tr.Commit();
             }
         }

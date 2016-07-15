@@ -290,7 +290,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
                     converterGenerator = _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
@@ -351,7 +351,7 @@ namespace BTDB.ODBLayer
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             foreach (var field in fields)
             {
-                var getter = props.First(p => GetPersistantName(p) == field.Name).GetGetMethod(true);
+                var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
                 var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
                 if (handler.NeedsCtx())
@@ -603,7 +603,7 @@ namespace BTDB.ODBLayer
 
         object CreateSimpleLoader(SimpleLoaderType loaderType)
         {
-            var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx), loaderType.FieldHandler.HandledType());
+            var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx), loaderType.RealType);
             var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
             var ilGenerator = dm.Generator;
             Action<IILGen> pushReaderOrCtx = il => il.Ldarg((ushort)(loaderType.FieldHandler.NeedsCtx() ? 1 : 0));
@@ -674,7 +674,7 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientRelationVersionInfo[srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    var fieldInfo = props.First(p => GetPersistantName(p) == destFieldInfo.Name).GetSetMethod(true);
+                    var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetSetMethod(true);
                     var fieldType = fieldInfo.GetParameters()[0].ParameterType;
                     var specializedSrcHandler = srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
                     var willLoad = specializedSrcHandler.HandledType();
@@ -704,7 +704,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistantName(p) == srcFieldInfo.Name).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
                     var converterGenerator = _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
                     if (!iFieldHandlerWithInit.NeedInit()) continue;
@@ -718,7 +718,7 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        static string GetPersistantName(PropertyInfo p)
+        static string GetPersistentName(PropertyInfo p)
         {
             var a = p.GetCustomAttribute<PersistedNameAttribute>();
             return a != null ? a.Name : p.Name;
@@ -934,6 +934,7 @@ namespace BTDB.ODBLayer
                                     IDictionary<string, FieldBuilder> keyFieldProperties,
                                     IEnumerable<TableFieldInfo> secondaryKeyFields, IILLocal writerLoc)
         {
+            if (paramCount == 0) return 0;
             ushort idx = 0;
             foreach (var field in secondaryKeyFields)
             {
@@ -1020,6 +1021,22 @@ namespace BTDB.ODBLayer
             WriteIdIl(ilGenerator, pushWriter, (int)Id);
             //ByteBuffered.WriteVUInt32(skIndex);
             WriteIdIl(ilGenerator, pushWriter, (int)secondaryKeyIndex);
+
+            //write apart fields
+            foreach (var af in ApartFields)
+            {
+                var pkFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
+                var pkField = pkFields.First(tfi => tfi.Name == af.Key);
+
+                pkField.Handler.Save(ilGenerator, pushWriter,
+                    il =>
+                    {
+                        il.Ldarg(0)  //IRelation iface this
+                          .Callvirt(af.Value);
+                        _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(af.Value.ReturnType,
+                            pkField.Handler.HandledType())(il);
+                    });
+            }
 
             var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             var paramCount = methodParameters.Length - 1; //last param is key proposition
