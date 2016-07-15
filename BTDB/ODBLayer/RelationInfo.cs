@@ -825,7 +825,7 @@ namespace BTDB.ODBLayer
                 il => il.Ldarg(parameterId));
         }
 
-        void SaveKeyFieldFromField(IILGen ilGenerator, TableFieldInfo field, FieldBuilder backingField, IILLocal writerLoc)
+        void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, FieldBuilder backingField, IILLocal writerLoc)
         {
             field.Handler.Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
@@ -851,20 +851,22 @@ namespace BTDB.ODBLayer
 
         internal void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType,
-            IDictionary<string, FieldBuilder> keyFieldProperties)
+            IDictionary<string, FieldBuilder> apartFields)
         {
+            var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            ilGenerator.Newobj(() => new ByteBufferWriter());
+            ilGenerator.Stloc(writerLoc);
+            Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
+
             //arg0 = this = manipulator
             if (methodName.StartsWith("RemoveById") || methodName.StartsWith("FindById"))
             {
-                var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
-                ilGenerator.Newobj(() => new ByteBufferWriter());
-                ilGenerator.Stloc(writerLoc);
                 //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(ilGenerator, il => il.Ldloc(writerLoc), (int)Id);
+                WriteIdIl(ilGenerator, pushWriter, (int)Id);
                 var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
 
                 var idx = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
-                    keyFieldProperties, primaryKeyFields, writerLoc);
+                    apartFields, primaryKeyFields, writerLoc);
                 if (idx != methodParameters.Length)
                     throw new BTDBException($"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
 
@@ -881,10 +883,6 @@ namespace BTDB.ODBLayer
             }
             else if (methodName.StartsWith("FindBy"))
             {
-                var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
-                ilGenerator.Newobj(() => new ByteBufferWriter());
-                ilGenerator.Stloc(writerLoc);
-
                 bool allowDefault = false;
                 var skName = methodName.Substring(6);
                 if (skName.EndsWith("OrDefault"))
@@ -892,7 +890,6 @@ namespace BTDB.ODBLayer
                     skName = skName.Substring(0, skName.Length - 9);
                     allowDefault = true;
                 }
-                Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
 
                 WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsSKPrefix);
                 var skIndex = ClientRelationVersionInfo.GetSecondaryKeyIndex(skName);
@@ -903,7 +900,7 @@ namespace BTDB.ODBLayer
 
                 var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
                 SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
-                    keyFieldProperties, secondaryKeyFields, writerLoc);
+                    apartFields, secondaryKeyFields, writerLoc);
 
                 //call public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound)
                 ilGenerator.Ldarg(0); //manipulator
@@ -923,6 +920,26 @@ namespace BTDB.ODBLayer
                     ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindBySecondaryKeyOrDefault"));
                 }
             }
+            else if (methodName == "GetEnumerator")
+            {
+                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
+
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                WriteIdIl(ilGenerator, pushWriter, (int)Id);
+                var primaryKeyFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
+
+                var paramsCount = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
+                    apartFields, primaryKeyFields, writerLoc);
+
+                //call manipulator.GetEnumerator(tr, byteBuffer)
+                ilGenerator
+                    .Ldarg(0); //manipulator
+                //call byteBuffer.data
+                var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+                ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+                ilGenerator.LdcI4(paramsCount + apartFields.Count);
+                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod(methodName));
+            }
             else
             {
                 throw new NotImplementedException();
@@ -931,17 +948,16 @@ namespace BTDB.ODBLayer
 
         ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
                                     ParameterInfo[] methodParameters, int paramCount,
-                                    IDictionary<string, FieldBuilder> keyFieldProperties,
-                                    IEnumerable<TableFieldInfo> secondaryKeyFields, IILLocal writerLoc)
+                                    IDictionary<string, FieldBuilder> apartFields,
+                                    IEnumerable<TableFieldInfo> fields, IILLocal writerLoc)
         {
-            if (paramCount == 0) return 0;
             ushort idx = 0;
-            foreach (var field in secondaryKeyFields)
+            foreach (var field in fields)
             {
                 FieldBuilder backingField;
-                if (keyFieldProperties.TryGetValue(field.Name, out backingField))
+                if (apartFields.TryGetValue(field.Name, out backingField))
                 {
-                    SaveKeyFieldFromField(ilGenerator, field, backingField, writerLoc);
+                    SaveKeyFieldFromApartField(ilGenerator, field, backingField, writerLoc);
                     continue;
                 }
                 if (idx == paramCount)
@@ -951,7 +967,7 @@ namespace BTDB.ODBLayer
                 var par = methodParameters[idx++];
                 if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                 {
-                    throw new BTDBException($"Parameter and primary keys mismatch in {methodName}, {field.Name}!={par.Name}.");
+                    throw new BTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
                 }
                 SaveKeyFieldFromArgument(ilGenerator, field, idx, writerLoc);
             }
@@ -1007,7 +1023,7 @@ namespace BTDB.ODBLayer
         }
 
         public void SaveListPrefixBytes(uint secondaryKeyIndex, IILGen ilGenerator, string methodName, ParameterInfo[] methodParameters,
-                                        IILLocal emptyBufferLoc, IDictionary<string, FieldBuilder> keyFieldProperties)
+            IDictionary<string, FieldBuilder> apartFields)
         {
             var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
             ilGenerator
@@ -1022,25 +1038,25 @@ namespace BTDB.ODBLayer
             //ByteBuffered.WriteVUInt32(skIndex);
             WriteIdIl(ilGenerator, pushWriter, (int)secondaryKeyIndex);
 
-            //write apart fields
-            foreach (var af in ApartFields)
-            {
-                var pkFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
-                var pkField = pkFields.First(tfi => tfi.Name == af.Key);
+            ////write apart fields
+            //foreach (var af in ApartFields)
+            //{
+            //    var pkFields = ClientRelationVersionInfo.GetPrimaryKeyFields();
+            //    var pkField = pkFields.First(tfi => tfi.Name == af.Key);
 
-                pkField.Handler.Save(ilGenerator, pushWriter,
-                    il =>
-                    {
-                        il.Ldarg(0)  //IRelation iface this
-                          .Callvirt(af.Value);
-                        _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(af.Value.ReturnType,
-                            pkField.Handler.HandledType())(il);
-                    });
-            }
+            //    pkField.Handler.Save(ilGenerator, pushWriter,
+            //        il =>
+            //        {
+            //            il.Ldarg(0)  //IRelation iface this
+            //              .Callvirt(af.Value);
+            //            _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(af.Value.ReturnType,
+            //                pkField.Handler.HandledType())(il);
+            //        });
+            //}
 
             var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             var paramCount = methodParameters.Length - 1; //last param is key proposition
-            SaveMethodParameters(ilGenerator, methodName, methodParameters, paramCount, keyFieldProperties,
+            SaveMethodParameters(ilGenerator, methodName, methodParameters, paramCount, apartFields,
                 secondaryKeyFields, writerLoc);
 
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);

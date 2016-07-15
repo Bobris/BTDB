@@ -97,6 +97,30 @@ namespace BTDB.ODBLayer
         }
     }
 
+    internal class RelationKeyEnumerationWithFieldsInPrefix<T> : RelationEnumerator<T>
+    {
+        readonly uint _fieldCountInPrefix;
+        readonly RelationDBManipulator<T> _manipulator;
+        readonly int _lengthOfNonDataPrefix;
+
+        public RelationKeyEnumerationWithFieldsInPrefix(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
+           uint fieldCountInPrefix, RelationDBManipulator<T> manipulator)
+            : base(tr, relationInfo, keyBytes)
+        {
+            _fieldCountInPrefix = fieldCountInPrefix;
+            _manipulator = manipulator;
+            _lengthOfNonDataPrefix = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(relationInfo.Id);
+        }
+
+        protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + _lengthOfNonDataPrefix, KeyBytes.Length - _lengthOfNonDataPrefix);
+            writer.WriteBlock(keyBytes);
+            return base.CreateInstance(writer.Data, valueBytes);
+        }
+    }
+
     internal class RelationSecondaryKeyEnumerator<T> : RelationEnumerator<T>
     {
         readonly uint _secondaryKeyIndex;

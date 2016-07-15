@@ -191,13 +191,12 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        public IEnumerator<T> GetEnumerator()
+        public IEnumerator<T> GetEnumerator(ByteBuffer keyBytes, uint fieldsCountInPrefix)
         {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
-
-            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe());
+            if (fieldsCountInPrefix == 0)
+                return new RelationEnumerator<T>(_transaction, _relationInfo, keyBytes);
+            return new RelationKeyEnumerationWithFieldsInPrefix<T>(_transaction, _relationInfo, keyBytes,
+                fieldsCountInPrefix, this);
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
@@ -213,12 +212,12 @@ namespace BTDB.ODBLayer
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
-        internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
         {
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                                                 (keyBytes.ToByteArray(), valueBytes.ToByteArray(), pkWriter);
+                                                 (firstPart.ToByteArray(), secondPart.ToByteArray(), pkWriter);
             return FindByIdOrDefault(pkWriter.Data, true);
         }
 

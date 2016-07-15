@@ -76,11 +76,11 @@ Will return null if not exists
 Find by secondary key, it will throw if it find multiple Persons with that age. Note "Age" in the name is name of secondary key index.
 
             IEnumerator<Person> FindByAge(uint age);
-Find all items with given secondary key. 
+Find all items with given secondary key.
 
 ### Enumerate ###
             IEnumerator<Person> GetEnumerator();
-Enumerates all items sorted by primary key 
+Enumerates all items sorted by primary key. Part of primary key may be fixed, for example if the key is order 1: CompanyId, order 2: Id then method ``IEnumerator<Item> GetEnumerator(ulong companyId)``; will iterate items for company
 
 ### List (by secondary index)###
 		IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);

@@ -410,6 +410,12 @@ namespace BTDBTest
                 Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
                 Assert.True(orderedEnumerator.NextKey(out age));
                 Assert.Equal(129u, age);
+
+                var en = personTable.GetEnumerator(); //enumerate only TenantId==2
+                Assert.Equal(128u, GetNext(en).Age);
+                Assert.Equal(129u, GetNext(en).Age);
+                Assert.False(en.MoveNext());
+
                 tr.Commit();
             }
         }
@@ -634,6 +640,8 @@ namespace BTDBTest
             void Insert(Room room);
             IEnumerator<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
+
+            IEnumerator<Room> GetEnumerator(ulong companyId);
         }
 
         [Fact]
@@ -668,6 +676,10 @@ namespace BTDBTest
                 Assert.True(oen.NextKey(out key));
                 Assert.Equal(1ul, key);
                 Assert.False(oen.NextKey(out key));
+
+                var cen = rooms.GetEnumerator(2);
+                Assert.Equal("First 2", GetNext(cen).Name);
+                Assert.False(cen.MoveNext());
             }
         }
     }

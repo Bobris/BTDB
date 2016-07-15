@@ -839,7 +839,7 @@ namespace BTDB.ODBLayer
         IDictionary<string, FieldBuilder> DefineProperties(RelationInfo relationInfo, IILDynamicType classImpl,
                                                            Type createdType)
         {
-            var backingFields = new Dictionary<string, FieldBuilder>();
+            var apartFields = new Dictionary<string, FieldBuilder>();
             var methods = createdType.GetMethods();
             foreach (var method in methods)
             {
@@ -852,8 +852,8 @@ namespace BTDB.ODBLayer
                 if (!relationInfo.ApartFields.ContainsKey(propName))
                     throw new BTDBException($"Invalid property name {propName}.");
 
-                if (!backingFields.TryGetValue(propName, out field))
-                    backingFields[propName] = field = classImpl.DefineField("_" + propName, method.ReturnType,
+                if (!apartFields.TryGetValue(propName, out field))
+                    apartFields[propName] = field = classImpl.DefineField("_" + propName, method.ReturnType,
                         FieldAttributes.Private);
                 var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
@@ -865,7 +865,7 @@ namespace BTDB.ODBLayer
                     reqMethod.Generator.Ldarg(0).Ldarg(1).Stfld(field).Ret();
                 classImpl.DefineMethodOverride(reqMethod, method);
             }
-            return backingFields;
+            return apartFields;
         }
 
         public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
@@ -880,7 +880,7 @@ namespace BTDB.ODBLayer
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2).Call(relationDBManipulatorType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
             .Ret();
-            var keyFieldProperties = DefineProperties(relationInfo, classImpl, interfaceType);
+            var apartFields = DefineProperties(relationInfo, classImpl, interfaceType);
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
             {
@@ -888,10 +888,10 @@ namespace BTDB.ODBLayer
                     continue;
                 var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
-                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy"))
+                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy") || method.Name == "GetEnumerator")
                 {
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
-                        method.GetParameters(), method.ReturnType, keyFieldProperties);
+                        method.GetParameters(), method.ReturnType, apartFields);
                 }
                 else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
@@ -906,7 +906,7 @@ namespace BTDB.ODBLayer
                     reqMethod.Generator
                         .Ldarg(0);
                     relationInfo.SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                        method.GetParameters(), emptyBufferLoc, keyFieldProperties);
+                        method.GetParameters(), apartFields);
                     reqMethod.Generator
                         .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
