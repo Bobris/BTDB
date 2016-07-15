@@ -315,6 +315,53 @@ namespace BTDBTest
         }
 
 
+        public class BlobLocation
+        {
+            public string Name { get; set; }
+        }
+
+        public class LicenseFileDb
+        {
+            public string FileName { get; set; }
+            public BlobLocation Location { get; set; }
+        }
+
+        public class LicenseDb
+        {
+            [PrimaryKey(1)]
+            public ulong ItemId { get; set; }
+            public LicenseFileDb LicenseFile { get; set; }
+        }
+
+        public interface ILicenseTable
+        {
+            void Insert(LicenseDb license);
+            void Update(LicenseDb license);
+        }
+
+        [Fact]
+        public void DoNotCrashOnUnknownType()
+        {
+            Func<IObjectDBTransaction, ILicenseTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILicenseTable>("LicRel");
+                var lics = creator(tr);
+                var license = new LicenseDb{ ItemId = 1 }; //no LicenseFileDb inserted
+                lics.Insert(license);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var lics = creator(tr);
+                var license = new LicenseDb { ItemId = 1 };
+                lics.Update(license);
+
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         void AssertNoLeaksInDb()
         {
             Assert.Equal("", FindLeaks());

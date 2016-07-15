@@ -147,8 +147,8 @@ namespace BTDB.FieldHandler
         public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var tableInfo = ((ObjectDB)_objectDB).TablesInfo.FindByType(HandledType());
-            //decides upon current version
-            var needsContent = tableInfo.GetFreeContent(tableInfo.ClientTypeVersion).Item1;
+            //decides upon current version  (null for object types never stored in DB)
+            var needsContent = tableInfo == null || tableInfo.GetFreeContent(tableInfo.ClientTypeVersion).Item1;
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
