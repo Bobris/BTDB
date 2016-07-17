@@ -380,8 +380,12 @@ namespace BTDBTest
             bool RemoveById(ulong id);
 
             // fills all your iterating needs
-            IOrderedDictionaryEnumerator<string, Person> ListByName(AdvancedEnumeratorParam<string> param);
+
+            //ListBy primary key (only for active tenant)
+            IOrderedDictionaryEnumerator<ulong, Person> ListById(AdvancedEnumeratorParam<ulong> param);
+            //enumerate all items - not using TenantId
             IEnumerator<Person> GetEnumerator();
+            //ListBy{SecondaryKeyName}
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
         }
 
@@ -411,10 +415,20 @@ namespace BTDBTest
                 Assert.True(orderedEnumerator.NextKey(out age));
                 Assert.Equal(129u, age);
 
-                var en = personTable.GetEnumerator(); //enumerate only TenantId==2
+                var en = personTable.GetEnumerator(); //enumerate for all tenants
+                Assert.Equal(28u, GetNext(en).Age);
+                Assert.Equal(29u, GetNext(en).Age);
                 Assert.Equal(128u, GetNext(en).Age);
                 Assert.Equal(129u, GetNext(en).Age);
                 Assert.False(en.MoveNext());
+
+                var orderedById = personTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+                ulong id;
+                Assert.True(orderedById.NextKey(out id));
+                Assert.Equal(2ul, id);
+                Assert.True(orderedById.NextKey(out id));
+                Assert.Equal(3ul, id);
+                Assert.False(orderedById.NextKey(out id));
 
                 tr.Commit();
             }
@@ -622,6 +636,28 @@ namespace BTDBTest
             }
         }
 
+        public class WronglyDefined
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("Id")]
+            public ulong Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface IWronglyDefined
+        {
+            void Insert(WronglyDefined room);
+        }
+
+        [Fact]
+        public void NameIdIsReservedAndCannotBeUsedForSecondaryKeyName()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefined>("No"));
+            }
+        }
+
         public class Room
         {
             [PrimaryKey(1)]
@@ -629,7 +665,6 @@ namespace BTDBTest
             public ulong CompanyId { get; set; }
 
             [PrimaryKey(2)]
-            [SecondaryKey("Id")]
             public ulong Id { get; set; }
 
             public string Name { get; set; }
@@ -640,8 +675,7 @@ namespace BTDBTest
             void Insert(Room room);
             IEnumerator<Room> ListByCompanyId(AdvancedEnumeratorParam<ulong> param);
             IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
-
-            IEnumerator<Room> GetEnumerator(ulong companyId);
+            IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
         }
 
         [Fact]
@@ -652,9 +686,9 @@ namespace BTDBTest
                 var creator = tr.InitRelation<IRoomTable>("Room");
 
                 var rooms = creator(tr);
-                rooms.Insert(new Room { CompanyId = 1, Id = 1, Name = "First 1" });
-                rooms.Insert(new Room { CompanyId = 1, Id = 2, Name = "Second 1" });
-                rooms.Insert(new Room { CompanyId = 2, Id = 1, Name = "First 2" });
+                rooms.Insert(new Room { CompanyId = 1, Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { CompanyId = 1, Id = 20, Name = "Second 1" });
+                rooms.Insert(new Room { CompanyId = 2, Id = 30, Name = "First 2" });
 
                 var en = rooms.ListByCompanyId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
                                                1, KeyProposition.Included,
@@ -677,9 +711,10 @@ namespace BTDBTest
                 Assert.Equal(1ul, key);
                 Assert.False(oen.NextKey(out key));
 
-                var cen = rooms.GetEnumerator(2);
-                Assert.Equal("First 2", GetNext(cen).Name);
-                Assert.False(cen.MoveNext());
+                oen = rooms.ListById(2ul, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+                Assert.True(oen.NextKey(out key));
+                Assert.Equal(30ul, key);
+                Assert.False(oen.NextKey(out key));
             }
         }
     }

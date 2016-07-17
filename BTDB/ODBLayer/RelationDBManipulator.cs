@@ -191,12 +191,13 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        public IEnumerator<T> GetEnumerator(ByteBuffer keyBytes, uint fieldsCountInPrefix)
+        public IEnumerator<T> GetEnumerator()
         {
-            if (fieldsCountInPrefix == 0)
-                return new RelationEnumerator<T>(_transaction, _relationInfo, keyBytes);
-            return new RelationKeyEnumerationWithFieldsInPrefix<T>(_transaction, _relationInfo, keyBytes,
-                fieldsCountInPrefix, this);
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
+            keyWriter.WriteVUInt32(_relationInfo.Id);
+
+            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe());
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)

@@ -78,15 +78,30 @@ Find by secondary key, it will throw if it find multiple Persons with that age. 
             IEnumerator<Person> FindByAge(uint age);
 Find all items with given secondary key.
 
+### List ###
+		IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);
+
+List by ascending/descending order and specified range. Apart fields are taken into account for listing by primary key. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two ``ListById`` method. (Both ``IOrderedDictionaryEnumerator`` and ``IEnumerator`` can be used as return values.)
+
+		public class Room
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface IRoomTable
+        {
+            void Insert(Room room);
+            IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
+            IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+        }
+
 ### Enumerate ###
             IEnumerator<Person> GetEnumerator();
-Enumerates all items sorted by primary key. Part of primary key may be fixed, for example if the key is order 1: CompanyId, order 2: Id then method ``IEnumerator<Item> GetEnumerator(ulong companyId)``; will iterate items for company
-
-### List (by secondary index)###
-		IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
-
-List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](..\BTDBTest\\ObjectDbTableTest.cs)
-``ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)``
+Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. 
 
 ## Primary Key ##
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
@@ -148,6 +163,13 @@ we have two indexes Age and Name. They are serialized in form:
     "Name": TenantId, Name, Id => void 
 
 It is always possible to insert duplicate items for secondary key (it would cause problems when adding new indexes during upgrade). That's why secondary field contains in key also all primary key fields which ensures they are unique. From this key is always possible to construct primary key. `IncludePrimaryKeyOrder` can propagate up the primary keys - typically useful for keeping together data for one tenant. 
+
+### List (by secondary index)###
+		IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
+
+List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](..\BTDBTest\\ObjectDbTableTest.cs)
+``ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)``
+
 
 ### Upgrade ###
 When secondary definition is changed (for example new index is defined) then it is automatically added/recalculated/removed in `InitRelation` call. You can see examples in 
