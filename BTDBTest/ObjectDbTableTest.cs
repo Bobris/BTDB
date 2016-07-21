@@ -717,5 +717,49 @@ namespace BTDBTest
                 Assert.False(oen.NextKey(out key));
             }
         }
+
+        public class Document
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("CompanyId")]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong Id { get; set; }
+
+            public string Name { get; set; }
+
+            [SecondaryKey("DocumentType")]
+            public uint DocumentType { get; set; }
+            public DateTime CreatedDate { get; set; }
+        }
+
+        public interface IDocumentTable
+        {
+            void Insert(Document item);
+            void Update(Document item);
+            Document FindById(ulong companyId, ulong id);
+            Document FindByIdOrDefault(ulong companyId, ulong id);
+            IEnumerator<Document> ListByDocumentType(AdvancedEnumeratorParam<uint> param);
+        }
+
+        [Fact]
+        public void SecondaryKeyOnBothPrimaryKeyAndNormalFieldWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.InitRelation<IDocumentTable>("Doc");
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDocumentTable>("Doc");
+                var docTable = creator(tr);
+                docTable.Insert(new Document { CompanyId = 1, Id = 2, DocumentType = 3, CreatedDate = DateTime.UtcNow });
+                var en = docTable.ListByDocumentType(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                Assert.True(en.MoveNext());
+                Assert.Equal(2u, en.Current.Id);
+            }
+        }
     }
 }

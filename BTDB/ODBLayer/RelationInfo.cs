@@ -449,7 +449,7 @@ namespace BTDB.ODBLayer
                     primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
                 }
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
-                var id = (int)(-actualPKAttribute?.Order ?? fields.Count);
+                var id = (int)(-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
                 List<SecondaryKeyAttribute> currentList = null;
                 for (var i = 0; i < sks.Length; i++)
                 {
