@@ -761,5 +761,73 @@ namespace BTDBTest
                 Assert.Equal(2u, en.Current.Id);
             }
         }
+
+        public interface IWronglyDefinedUnknownMethod
+        {
+            void Insert(Person room);
+            void Delete(Person room);
+        }
+
+        [Fact]
+        public void ReportsProblemAboutUsageOfUnknownMethod()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedUnknownMethod>("No"));
+                Assert.True(ex.Message.Contains("Delete"));
+                Assert.True(ex.Message.Contains("not supported"));
+            }
+        }
+
+        public interface IWronglyDefinedWrongReturnType
+        {
+            void Insert(Person room);
+            void Upsert(Person room);
+        }
+
+        [Fact]
+        public void ReportsProblemAboutWrongReturnType()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongReturnType>("No"));
+                Assert.True(ex.Message.Contains("Upsert"));
+                Assert.True(ex.Message.Contains("return type"));
+            }
+        }
+
+        public interface IWronglyDefinedWrongParamCount
+        {
+            void Insert(Person room);
+            bool Upsert();
+        }
+
+        [Fact]
+        public void ReportsProblemAboutWrongParamCount()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamCount>("No"));
+                Assert.True(ex.Message.Contains("Upsert"));
+                Assert.True(ex.Message.Contains("parameters count"));
+            }
+        }
+
+        public interface IWronglyDefinedWrongParamType
+        {
+            void Insert(Person room);
+            bool Upsert(PersonSimple room);
+        }
+
+        [Fact]
+        public void ReportsProblemAboutWrongParamType()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamType>("No"));
+                Assert.True(ex.Message.Contains("Upsert"));
+                Assert.True(ex.Message.Contains("Person"));
+            }
+        }
     }
 }

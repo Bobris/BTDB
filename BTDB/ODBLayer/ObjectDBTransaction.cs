@@ -905,7 +905,7 @@ namespace BTDB.ODBLayer
 
                     var pkFields = relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
                     var field = pkFields[prefixParamCount];
-                    
+
                     reqMethod.Generator
                         .Ldarg(0);
                     relationInfo.SavePKListPrefixBytes(reqMethod.Generator, method.Name,
@@ -1023,9 +1023,19 @@ namespace BTDB.ODBLayer
                     for (ushort i = 0; i <= paramCount; i++)
                         reqMethod.Generator.Ldarg(i);
                     var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
+                    if (methodInfo == null)
+                        throw new BTDBException($"Method {method} is not supported.");
+                    var returnType = method.ReturnType;
+                    if (returnType != methodInfo.ReturnType)
+                        throw new BTDBException($"Method {method} should be defined with {methodInfo.ReturnType.Name} return type.");
                     var calledMethodParams = methodInfo.GetParameters();
                     if (methodParams.Length != calledMethodParams.Length)
                         throw new BTDBException($"Method {method} expects {calledMethodParams.Length} parameters count.");
+                    for (int i = 0; i < methodParams.Length; i++)
+                    {
+                        if (methodParams[i].ParameterType != calledMethodParams[i].ParameterType)
+                            throw new BTDBException($"Method {method} expects {i}th parameter of type {calledMethodParams[i].ParameterType.Name}.");
+                    }
                     reqMethod.Generator.Callvirt(methodInfo);
                 }
                 reqMethod.Generator.Ret();
