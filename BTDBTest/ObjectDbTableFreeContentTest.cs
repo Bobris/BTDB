@@ -24,6 +24,12 @@ namespace BTDBTest
             _db.Open(_lowDb, false);
         }
 
+        void ReopenDb()
+        {
+            _db.Dispose();
+            OpenDb();
+        }
+
         public class Link
         {
             [PrimaryKey]
@@ -347,7 +353,7 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILicenseTable>("LicRel");
                 var lics = creator(tr);
-                var license = new LicenseDb{ ItemId = 1 }; //no LicenseFileDb inserted
+                var license = new LicenseDb { ItemId = 1 }; //no LicenseFileDb inserted
                 lics.Insert(license);
                 tr.Commit();
             }
@@ -362,9 +368,63 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public class License
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            public IDictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>> ConcurrentFeautureItemsSessions { get; set; }
+        }
+
+        public class ConcurrentFeatureItemInfo
+        {
+            public DateTime UsedFrom { get; set; }
+        }
+
+        public interface ILicenses
+        {
+            void Insert(License license);
+            bool RemoveById(ulong companyId);
+        }
+
+        [Fact]
+        public void AlsoFieldsInsideIDictionaryAreStoredInlineByDefault()
+        {
+            Func<IObjectDBTransaction, ILicenses> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILicenses>("LicenseRel");
+                var lics = creator(tr);
+                lics.Insert(new License());
+                var license = new License
+                {
+                    CompanyId = 1,
+                    ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                    {
+                        [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
+                    }
+                };
+                lics.Insert(license);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILicenses>("LicenseRel");
+                var lics = creator(tr);
+                lics.RemoveById(0);
+                lics.RemoveById(1);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+
+
         void AssertNoLeaksInDb()
         {
-            Assert.Equal("", FindLeaks());
+            var leaks = FindLeaks();
+            Assert.Equal("", leaks);
         }
 
         string FindLeaks()

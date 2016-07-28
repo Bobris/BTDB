@@ -81,14 +81,13 @@ namespace BTDB.ODBLayer
                 if (error != null)
                     throw new BTDBException(error);
             }
+            var prevProtectionCounter = _transaction.TransactionProtector.ProtectionCounter;
             StartWorkingWithPK();
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
             {
-                long current = _transaction.TransactionProtector.ProtectionCounter;
-
                 FreeContentInUpdate(_transaction.KeyValueDBTransaction.GetValue(), valueBytes);
 
-                if (_transaction.TransactionProtector.WasInterupted(current))
+                if (_transaction.TransactionProtector.WasInterupted(prevProtectionCounter))
                 {
                     StartWorkingWithPK();
                     _transaction.KeyValueDBTransaction.Find(keyBytes);
@@ -110,16 +109,15 @@ namespace BTDB.ODBLayer
                     throw new BTDBException(error);
             }
 
+            var prevProtectionCounter = _transaction.TransactionProtector.ProtectionCounter;
             StartWorkingWithPK();
 
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
                 throw new BTDBException("Not found record to update.");
 
-            long current = _transaction.TransactionProtector.ProtectionCounter;
-
             FreeContentInUpdate(_transaction.KeyValueDBTransaction.GetValue(), valueBytes);
 
-            if (_transaction.TransactionProtector.WasInterupted(current))
+            if (_transaction.TransactionProtector.WasInterupted(prevProtectionCounter))
             {
                 StartWorkingWithPK();
                 _transaction.KeyValueDBTransaction.Find(keyBytes);
@@ -170,6 +168,7 @@ namespace BTDB.ODBLayer
                     RemoveSecondaryIndexes(obj);
             }
 
+            var prevProtectionCounter = _transaction.TransactionProtector.ProtectionCounter;
             StartWorkingWithPK();
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
             {
@@ -178,10 +177,9 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            long current = _transaction.TransactionProtector.ProtectionCounter;
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
             _relationInfo.FreeContent(_transaction, valueBytes);
-            if (_transaction.TransactionProtector.WasInterupted(current))
+            if (_transaction.TransactionProtector.WasInterupted(prevProtectionCounter))
             {
                 StartWorkingWithPK();
                 _transaction.KeyValueDBTransaction.Find(keyBytes);

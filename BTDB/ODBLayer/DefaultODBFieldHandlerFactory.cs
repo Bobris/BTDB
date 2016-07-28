@@ -5,7 +5,7 @@ namespace BTDB.ODBLayer
 {
     public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
     {
-        readonly IObjectDB _odb;
+        protected readonly IObjectDB _odb;
 
         public DefaultODBFieldHandlerFactory(IObjectDB odb)
             : base(odb)
@@ -23,7 +23,7 @@ namespace BTDB.ODBLayer
 
         public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
         {
-            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBDictionaryFieldHandler(_odb, type);
+            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options)) return new ODBDictionaryFieldHandler(_odb, type, false, this);
             var result = base.CreateFromType(type, options);
             if (result != null) return result;
             if (DBObjectFieldHandler.IsCompatibleWith(type)) return new DBObjectFieldHandler(_odb, type);

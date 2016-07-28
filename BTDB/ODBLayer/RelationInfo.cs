@@ -759,7 +759,7 @@ namespace BTDB.ODBLayer
             var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, dictId);
-
+            tr.TransactionProtector.Start();
             tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
             tr.KeyValueDBTransaction.EraseAll();
         }
@@ -923,7 +923,7 @@ namespace BTDB.ODBLayer
                     ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindBySecondaryKeyOrDefault"));
                 }
             }
-            else if (methodName == "ListById") //todo finish
+            else if (methodName == "ListById")
             {
                 WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
 
@@ -945,7 +945,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                throw new NotImplementedException();
+                throw new NotSupportedException();
             }
         }
 

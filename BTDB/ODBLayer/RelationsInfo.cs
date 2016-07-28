@@ -1,24 +1,41 @@
 using System;
 using System.Collections.Generic;
-using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
+    class RelationODBFieldHandlerFactory : DefaultODBFieldHandlerFactory
+    {
+        public RelationODBFieldHandlerFactory(IObjectDB odb) : base(odb)
+        {
+        }
+
+        public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
+        {
+            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options))
+                return new ODBDictionaryFieldHandler(_odb, type, true, this);
+            return base.CreateFromType(type, options);
+        }
+    }
+
+
+
     class RelationInfoResolver : IRelationInfoResolver
     {
-        readonly ObjectDB _objectDB;
+        readonly IFieldHandlerFactory _fieldHandlerFactory;
+        readonly ITypeConvertorGenerator _typeConvertorGenerator;
 
         public RelationInfoResolver(ObjectDB objectDB)
         {
-            _objectDB = objectDB;
+            _fieldHandlerFactory = new RelationODBFieldHandlerFactory(objectDB);
+            _typeConvertorGenerator = objectDB.TypeConvertorGenerator;
         }
 
-        public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
+        public IFieldHandlerFactory FieldHandlerFactory => _fieldHandlerFactory;
 
-        public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
+        public ITypeConvertorGenerator TypeConvertorGenerator => _typeConvertorGenerator;
     }
 
     class RelationsInfo

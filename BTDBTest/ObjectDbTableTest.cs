@@ -204,6 +204,7 @@ namespace BTDBTest
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
                 personSimpleTable.Update(person);
