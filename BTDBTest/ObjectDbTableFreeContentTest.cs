@@ -419,7 +419,44 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public class Setting
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public License License { get; set; }
+        }
 
+        public interface ISetings
+        {
+            void Insert(Setting license);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact(Skip="todo")]
+        public void PreferInlineIsTransferedThroughDBObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISetings>("SettingRel");
+                var settings = creator(tr);
+                var setting = new Setting
+                {
+                    Id = 1,
+                    License = new License
+                    {
+                        CompanyId = 1,
+                        ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                        {
+                            [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
+                        }
+                    }
+                };
+                settings.Insert(setting);
+                settings.RemoveById(1);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
 
         void AssertNoLeaksInDb()
         {
