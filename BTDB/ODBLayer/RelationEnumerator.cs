@@ -287,8 +287,8 @@ namespace BTDB.ODBLayer
             var writer = new ByteBufferWriter();
             writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
             writer.WriteBlock(keyBytes);
-            
-            return (T)_manipulator.RelationInfo.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue(), false);
+
+            return (T)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
         }
 
         void Seek()
@@ -451,7 +451,7 @@ namespace BTDB.ODBLayer
             writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
             writer.WriteBlock(keyBytes);
 
-            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue(), false);
+            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
         }
 
         public TValue CurrentValue

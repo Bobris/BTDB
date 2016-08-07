@@ -830,5 +830,37 @@ namespace BTDBTest
                 Assert.True(ex.Message.Contains("Person"));
             }
         }
+
+        public class UserNotice
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong UserId { get; set; }
+            [PrimaryKey(3)]
+            public ulong NoticeId { get; set; }
+        }
+
+        public interface IUserNoticeTable
+        {
+            void Insert(UserNotice un);
+            IEnumerator<UserNotice> ListById(ulong companyId, ulong userId, AdvancedEnumeratorParam<ulong> param);
+        }
+
+        [Fact]
+        public void UserNoticeWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IUserNoticeTable>("UserNotice");
+                var userNoticeTable = creator(tr);
+                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 30 });
+                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 31 });
+                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 32 });
+                var un = userNoticeTable.ListById(10, 20, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+                Assert.True(un.MoveNext());
+                Assert.Equal(30u, un.Current.NoticeId);
+            }
+        }
     }
 }
