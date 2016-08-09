@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -414,6 +415,55 @@ namespace BTDBTest
                 var lics = creator(tr);
                 lics.RemoveById(0);
                 lics.RemoveById(1);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+
+        public class File
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+
+            public IIndirect<RawData> Data { get; set; }
+        }
+
+        public class RawData
+        {
+            public byte [] Data { get; set; }
+        }
+
+        public interface IHddRelation
+        {
+            void Insert(File file);
+            void RemoveById(ulong id);
+            File FindById(ulong id);
+        }
+
+        [Fact]
+        public void FreeIIndirect()
+        {
+            Func<IObjectDBTransaction, IHddRelation> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IHddRelation>("HddRelation");
+                var files = creator(tr);
+                var file = new File
+                {
+                    Id = 1,
+                    Data = new DBIndirect<RawData>(new RawData() {Data = new byte[] {1,2,3}})
+                };
+                files.Insert(file);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var files = creator(tr);
+                var file = files.FindById(1);
+                Assert.Equal(file.Data.Value.Data, new byte[] {1,2,3});
+                files.RemoveById(1);
                 tr.Commit();
             }
             AssertNoLeaksInDb();
