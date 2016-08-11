@@ -85,7 +85,7 @@ namespace BTDB.ODBLayer
             if (config.FreeContent == null)
             {
                 var method = ILBuilder.Instance
-                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
+                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>>>(
                     $"IDictFinder_Cfg_{cfgId}");
                 var ilGenerator = method.Generator;
 
@@ -94,7 +94,8 @@ namespace BTDB.ODBLayer
                     .Ldarg(0)
                     .Ldarg(1)
                     .Ldarg(2)
-                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
+                    .Ldarg(3)
+                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null, null))
                     .Stloc(readerLoc);
 
                 Action<IILGen> readerOrCtx;
@@ -107,7 +108,7 @@ namespace BTDB.ODBLayer
                 config.FreeContent = method.Create();
             }
 
-            var findIDictAction = (Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>)config.FreeContent;
+            var findIDictAction = (Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList <ulong>>)config.FreeContent;
 
             long prevProtectionCounter = 0;
             var prevModificationCounter = 0;
@@ -139,7 +140,7 @@ namespace BTDB.ODBLayer
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var valueBytes = _keyValueTr.GetValueAsByteArray();
                 var valueReader = new ByteArrayReader(valueBytes);
-                findIDictAction(ctx.GetTransaction(), valueReader, ctx.DictIds);
+                findIDictAction(ctx.GetTransaction(), valueReader, ctx.DictIds, ctx.Oids);
 
                 pos++;
             }

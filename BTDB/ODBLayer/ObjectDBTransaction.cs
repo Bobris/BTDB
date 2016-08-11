@@ -82,7 +82,8 @@ namespace BTDB.ODBLayer
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             EnsureClientTypeNotNull(tableInfo);
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-            freeContentTuple.Item2(this, null, reader, ((DBReaderWithFreeInfoCtx)readerCtx).DictIds);
+            var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
+            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds, readerWithFree.Oids);
             return freeContentTuple.Item1;
         }
 
@@ -594,7 +595,7 @@ namespace BTDB.ODBLayer
             return oid;
         }
 
-        static byte[] BuildKeyFromOid(ulong oid)
+        internal static byte[] BuildKeyFromOid(ulong oid)
         {
             var key = new byte[PackUnpack.LengthVUInt(oid)];
             int ofs = 0;

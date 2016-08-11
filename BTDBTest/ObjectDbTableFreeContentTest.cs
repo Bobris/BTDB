@@ -431,7 +431,8 @@ namespace BTDBTest
 
         public class RawData
         {
-            public byte [] Data { get; set; }
+            public byte[] Data { get; set; }
+            public IDictionary<ulong, ulong> Edges { get; set; }
         }
 
         public interface IHddRelation
@@ -452,7 +453,11 @@ namespace BTDBTest
                 var file = new File
                 {
                     Id = 1,
-                    Data = new DBIndirect<RawData>(new RawData() {Data = new byte[] {1,2,3}})
+                    Data = new DBIndirect<RawData>(new RawData
+                    {
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 } 
+                    })
                 };
                 files.Insert(file);
                 tr.Commit();
@@ -462,7 +467,7 @@ namespace BTDBTest
             {
                 var files = creator(tr);
                 var file = files.FindById(1);
-                Assert.Equal(file.Data.Value.Data, new byte[] {1,2,3});
+                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
                 files.RemoveById(1);
                 tr.Commit();
             }
@@ -482,7 +487,7 @@ namespace BTDBTest
             bool RemoveById(ulong id);
         }
 
-        [Fact(Skip="todo")]
+        [Fact(Skip = "todo")]
         public void PreferInlineIsTransferedThroughDBObject()
         {
             using (var tr = _db.StartTransaction())

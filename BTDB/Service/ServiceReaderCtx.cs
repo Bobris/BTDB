@@ -136,6 +136,11 @@ namespace BTDB.Service
             throw new InvalidOperationException();
         }
 
+        public void RegisterOid(ulong oid)
+        {
+            throw new InvalidOperationException();
+        }
+
         public void FreeContentInNativeObject()
         {
             throw new InvalidOperationException();

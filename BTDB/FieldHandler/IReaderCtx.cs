@@ -16,6 +16,7 @@ namespace BTDB.FieldHandler
 
         void FreeContentInNativeObject();
         void RegisterDict(ulong dictId);
+        void RegisterOid(ulong oid);
 
         AbstractBufferedReader Reader();
     }

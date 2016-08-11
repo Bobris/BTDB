@@ -1,14 +1,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
     public class DBReaderCtx : IDBReaderCtx
     {
-        readonly IInternalObjectDBTransaction _transaction;
-        readonly AbstractBufferedReader _reader;
+        protected readonly IInternalObjectDBTransaction _transaction;
+        protected readonly AbstractBufferedReader _reader;
         List<object> _objects;
         Stack<IMemorizedPosition> _returningStack;
         int _lastIdOfObj;
@@ -130,15 +129,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public virtual void FreeContentInNativeObject()
-        {
-            var test = SkipObject();
-            if (test)
-            {
-                _transaction.FreeContentInNativeObject(this);
-            }
-        }
-
         object RetriveObj(int ido)
         {
             if (_objects == null) _objects = new List<object>();
@@ -167,6 +157,14 @@ namespace BTDB.ODBLayer
         }
 
         public virtual void RegisterDict(ulong dictId)
+        {
+        }
+
+        public virtual void RegisterOid(ulong oid)
+        {
+        }
+
+        public virtual void FreeContentInNativeObject()
         {
         }
     }

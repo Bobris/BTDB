@@ -35,8 +35,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>
             _valueLoaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>();
 
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>
-            _valueIDictFinders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>();
+        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>>>
+            _valueIDictFinders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>>>();
 
         //SK
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk key saver
@@ -503,7 +503,7 @@ namespace BTDB.ODBLayer
             return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, _relationVersions[version].GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>> GetIDictFinder(uint version)
         {
             return _valueIDictFinders.GetOrAdd(version, ver => CreateIDictFinder(version));
         }
@@ -744,12 +744,19 @@ namespace BTDB.ODBLayer
 
         public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
         {
-            var dictionaries = FindUsedIDictionaries(tr, valueBytes);
+            var dictionaries = new List<ulong>();
+            var oids = new List<ulong>();
 
-            //delete dictionaries
+            FindUsedObjectsToFree(tr, valueBytes, dictionaries, oids);
+
             foreach (var dictId in dictionaries)
             {
                 FreeIDictionary(tr, dictId);
+            }
+
+            foreach (var oid in oids)
+            {
+                FreeObject(tr, oid);
             }
         }
 
@@ -764,20 +771,29 @@ namespace BTDB.ODBLayer
             tr.KeyValueDBTransaction.EraseAll();
         }
 
-        public List<ulong> FindUsedIDictionaries(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
+        internal static void FreeObject(IInternalObjectDBTransaction tr, ulong oid)
+        {
+            var o = ObjectDB.AllDictionariesPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(oid)];
+            Array.Copy(ObjectDB.AllObjectsPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, oid);
+            tr.TransactionProtector.Start();
+            tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
+            tr.KeyValueDBTransaction.EraseAll();
+        }
+
+        public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, ByteBuffer valueBytes, IList<ulong> dictionaries, IList<ulong> oids)
         {
             var valueReader = new ByteArrayReader(valueBytes.ToByteArray());
             var version = valueReader.ReadVUInt32();
 
-            var dictionaries = new List<ulong>();
-            GetIDictFinder(version)(tr, valueReader, dictionaries);
-            return dictionaries;
+            GetIDictFinder(version)(tr, valueReader, dictionaries, oids);
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> CreateIDictFinder(uint version)
+        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>> CreateIDictFinder(uint version)
         {
             var method = ILBuilder.Instance
-                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
+                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>>>(
                     $"Relation{Name}_IDictFinder");
             var ilGenerator = method.Generator;
 
@@ -805,7 +821,8 @@ namespace BTDB.ODBLayer
                     .Ldarg(0)
                     .Ldarg(1)
                     .Ldarg(2)
-                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
+                    .Ldarg(3)
+                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null, null))
                     .Stloc(0);
             }
             for (int i = 0; i < needGenerateFreeFor; i++)
@@ -1070,18 +1087,58 @@ namespace BTDB.ODBLayer
     public class DBReaderWithFreeInfoCtx : DBReaderCtx
     {
         readonly IList<ulong> _freeDictionaries;
+        readonly IList<ulong> _freeOids;
 
         public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader,
-            IList<ulong> freeDictionaries) : base(transaction, reader)
+                                       IList<ulong> freeDictionaries, IList<ulong> freeOids)
+            : base(transaction, reader)
         {
             _freeDictionaries = freeDictionaries;
+            _freeOids = freeOids;
         }
 
         public IList<ulong> DictIds => _freeDictionaries;
+        public IList<ulong> Oids => _freeOids;
 
         public override void RegisterDict(ulong dictId)
         {
             _freeDictionaries.Add(dictId);
+        }
+
+        public override void RegisterOid(ulong oid)
+        {
+            _freeOids.Add(oid);
+        }
+
+        public override void FreeContentInNativeObject()
+        {
+            var oid = _reader.ReadVInt64();
+            if (oid == 0)
+            {
+            }
+            else if (oid <= int.MinValue || oid > 0)
+            {
+                RegisterOid((ulong)oid);
+                _transaction.TransactionProtector.Start();
+                _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                if (!_transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong)oid)))
+                    return;
+                var reader = new ByteArrayReader(_transaction.KeyValueDBTransaction.GetValueAsByteArray());
+                var tableId = reader.ReadVUInt32();
+                var tableInfo = ((ObjectDB)_transaction.Owner).TablesInfo.FindById(tableId);
+                if (tableInfo == null)
+                    return;
+                var tableVersion = reader.ReadVUInt32();
+                var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
+                if (freeContentTuple.Item1)
+                {
+                    freeContentTuple.Item2(_transaction, null, reader, _freeDictionaries, _freeOids);
+                }
+            }
+            else
+            {
+                _transaction.FreeContentInNativeObject(this);
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
@@ -125,38 +126,48 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
-        void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
+        void CompareAndRelease(List<ulong> oldItems, List<ulong> newItems, Action<IInternalObjectDBTransaction, ulong> freeAction)
         {
-            var oldDicts = _relationInfo.FindUsedIDictionaries(_transaction, oldValueBytes);
-            if (oldDicts.Count == 0)
-                return;
-            var newDicts = _relationInfo.FindUsedIDictionaries(_transaction, newValueBytes);
-            if (newDicts.Count == 0)
+            if (newItems.Count == 0)
             {
-                foreach(var dictId in oldDicts)
-                    RelationInfo.FreeIDictionary(_transaction, dictId);
+                foreach (var id in oldItems)
+                    freeAction(_transaction, id);
             }
-            else if (newDicts.Count < 10)
+            else if (newItems.Count < 10)
             {
-                foreach (var dictId in oldDicts)
+                foreach (var id in oldItems)
                 {
-                    if (newDicts.Contains(dictId))
+                    if (newItems.Contains(id))
                         continue;
-                    RelationInfo.FreeIDictionary(_transaction, dictId);
+                    freeAction(_transaction, id);
                 }
             }
             else
             {
-                var newDictsDictionary = new Dictionary<ulong, object>();
-                foreach(var d in newDicts)
-                    newDictsDictionary[d] = null;
-                foreach (var dictId in oldDicts)
+                var newItemsDictionary = new Dictionary<ulong, object>();
+                foreach (var id in newItems)
+                    newItemsDictionary[id] = null;
+                foreach (var id in oldItems)
                 {
-                    if (newDictsDictionary.ContainsKey(dictId))
+                    if (newItemsDictionary.ContainsKey(id))
                         continue;
-                    RelationInfo.FreeIDictionary(_transaction, dictId);
+                    freeAction(_transaction, id);
                 }
             }
+        }
+
+        void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
+        {
+            var oldDicts = new List<ulong>();
+            var newDicts = new List<ulong>();
+            var oldOids = new List<ulong>();
+            var newOids = new List<ulong>();
+            _relationInfo.FindUsedObjectsToFree(_transaction, oldValueBytes, oldDicts, oldOids);
+            if (oldDicts.Count == 0 && oldOids.Count == 0)
+                return;
+            _relationInfo.FindUsedObjectsToFree(_transaction, newValueBytes, newDicts, newOids);
+            CompareAndRelease(oldDicts, newDicts, RelationInfo.FreeIDictionary);
+            CompareAndRelease(oldOids, newOids, RelationInfo.FreeObject);
         }
 
         public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
