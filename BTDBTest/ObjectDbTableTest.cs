@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -860,6 +861,60 @@ namespace BTDBTest
                 var un = userNoticeTable.ListById(10, 20, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
                 Assert.True(un.MoveNext());
                 Assert.Equal(30u, un.Current.NoticeId);
+            }
+        }
+
+        public class File
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+
+            public IIndirect<RawData> Data { get; set; }
+        }
+
+        public class RawData
+        {
+            public byte[] Data { get; set; }
+            public IDictionary<ulong, ulong> Edges { get; set; }
+        }
+
+        public interface IHddRelation
+        {
+            void Insert(File file);
+            void RemoveById(ulong id);
+            File FindById(ulong id);
+        }
+
+        [Fact]
+        public void IIndirectIsProperlyLoadedAfterDbReopen()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IHddRelation>("HddRelation");
+                var files = creator(tr);
+                var file = new File
+                {
+                    Id = 1,
+                    Data = new DBIndirect<RawData>(new RawData
+                    {
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+                    })
+                };
+                files.Insert(file);
+                tr.Commit();
+            }
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IHddRelation>("HddRelation");
+                var files = creator(tr);
+                var file = files.FindById(1);
+                Assert.NotNull(file);
+                Assert.NotNull(file.Data.Value);
+                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
+                tr.Commit();
             }
         }
     }
