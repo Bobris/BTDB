@@ -126,6 +126,10 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
+            if (this == typeHandler) return this;
+            var myType = HandledType();
+            if (type != myType && Unwrap(type) == myType && typeHandler.HandledType() == type)
+                return typeHandler;
             return this;
         }
 
