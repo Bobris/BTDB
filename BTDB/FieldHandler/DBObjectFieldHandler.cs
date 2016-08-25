@@ -90,7 +90,7 @@ namespace BTDB.FieldHandler
             {
                 ilGenerator
                     .Do(pushReaderOrCtx)
-                    .Call(typeof (DBIndirect<>).MakeGenericType(_type).GetMethod("LoadImpl"));
+                    .Call(typeof(DBIndirect<>).MakeGenericType(_type).GetMethod("LoadImpl"));
                 return;
             }
             ilGenerator
@@ -150,7 +150,7 @@ namespace BTDB.FieldHandler
 
         public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            var tableInfo = ((ObjectDB)_objectDB).TablesInfo.FindByType(HandledType());
+            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(HandledType());
             //decides upon current version  (null for object types never stored in DB)
             var needsContent = tableInfo == null || tableInfo.GetFreeContent(tableInfo.ClientTypeVersion).Item1;
             ilGenerator
