@@ -1067,7 +1067,7 @@ namespace BTDBTest
                 Assert.IsType<Manager>(dict["master"]);
                 Assert.Equal(3, dict.Count);
                 Assert.Equal("Chief", dict["master"].Name);
-                Assert.Same(dict["slave2"], ((Manager)dict["master"]).Managing[1]);
+                Assert.Equal(dict["slave2"].Name, ((Manager)dict["master"]).Managing[1].Name);
             }
         }
 

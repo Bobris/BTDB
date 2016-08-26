@@ -344,8 +344,7 @@ namespace BTDB.ODBLayer
                 ilGen
                     .Do(pushTransaction)
                     .Do(pushWriter)
-                    .LdcI4(1)
-                    .Newobj(() => new DBWriterCtx(null, null, true))
+                    .Newobj(() => new DBWriterCtx(null, null))
                     .Stloc(writerCtxLocal);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using ApprovalTests;
+using ApprovalTests.Reporters;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -236,6 +237,7 @@ namespace BTDBTest
 
         [Fact]
         [MethodImpl(MethodImplOptions.NoInlining)]
+        [UseReporter(typeof(DiffReporter))]
         public void Basics()
         {
             using (var tr = _db.StartTransaction())

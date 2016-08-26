@@ -7,15 +7,13 @@ namespace BTDB.ODBLayer
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
-        readonly bool _preferInline;
         Dictionary<object, int> _objectIdMap;
         int _lastId;
 
-        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer, bool preferInline)
+        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
         {
             _transaction = transaction;
             _writer = writer;
-            _preferInline = preferInline;
         }
 
         public bool WriteObject(object @object)
@@ -30,7 +28,7 @@ namespace BTDB.ODBLayer
                 _writer.WriteVInt64(0);
                 return false;
             }
-            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline && _preferInline);
+            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline);
             if (oid != ulong.MaxValue)
             {
                 _writer.WriteVInt64((long)oid);

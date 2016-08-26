@@ -3,34 +3,30 @@ Singleton 1-JobMap oid:1
 Used key: 00 00|01 Value len:7
 Used key: 00 02|01 Value len:1
 Used key: 01|01 Value len:3
-Used key: 00 01|01 01 Value len:44
+Used key: 00 01|01 01 Value len:43
 Object oid:1 1-JobMap version:1
 StartField Jobs
 StartDictionary
-Used key: 02 00|01 Value len:1
+Used key: 02 00|01 Value len:20
 StartDictKey
 ScalarObj 1
 ScalarStr 1
 EndDictKey
 StartDictValue
-OidReference 2
-Used key: 01|02 Value len:3
 Used key: 00 00|02 Value len:4
 Used key: 00 01|02 01 Value len:19
-Object oid:2 2-Job version:1
+StartInlineObject 2-Job-1
 StartField Duty
-OidReference 3
-Used key: 01|03 Value len:16
 Used key: 00 00|03 Value len:5
 Used key: 00 01|03 01 Value len:14
-Object oid:3 3-Duty version:1
+StartInlineObject 3-Duty-1
 StartField Name
 ScalarObj HardCore Code
 ScalarStr HardCore Code
 EndField
-EndObject
+EndInlineObject
 EndField
-EndObject
+EndInlineObject
 EndDictValue
 EndDictionary
 EndField

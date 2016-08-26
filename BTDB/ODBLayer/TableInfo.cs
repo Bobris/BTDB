@@ -218,8 +218,7 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(2)
-                    .LdcI4(0)
-                    .Newobj(() => new DBWriterCtx(null, null, false))
+                    .Newobj(() => new DBWriterCtx(null, null))
                     .Stloc(1);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

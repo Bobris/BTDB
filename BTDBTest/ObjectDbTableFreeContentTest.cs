@@ -487,7 +487,7 @@ namespace BTDBTest
             bool RemoveById(ulong id);
         }
 
-        [Fact(Skip = "todo")]
+        [Fact]
         public void PreferInlineIsTransferedThroughDBObject()
         {
             using (var tr = _db.StartTransaction())

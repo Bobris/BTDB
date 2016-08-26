@@ -15,7 +15,6 @@ namespace BTDB.ODBLayer
         readonly IInternalObjectDBTransaction _tr;
         readonly IFieldHandler _keyHandler;
         readonly IFieldHandler _valueHandler;
-        readonly bool _preferInline;
         readonly Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
         readonly Action<TKey, AbstractBufferedWriter, IWriterCtx> _keyWriter;
         readonly Func<AbstractBufferedReader, IReaderCtx, TValue> _valueReader;
@@ -34,7 +33,6 @@ namespace BTDB.ODBLayer
             _tr = tr;
             _keyHandler = config.KeyHandler;
             _valueHandler = config.ValueHandler;
-            _preferInline = config.PreferInline;
             _id = id;
             GeneratePrefix();
             _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader;
@@ -227,7 +225,7 @@ namespace BTDB.ODBLayer
         {
             var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
-            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer, _preferInline);
+            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _keyWriter(key, writer, ctx);
             return writer.Data.ToByteArray();
         }
@@ -236,7 +234,7 @@ namespace BTDB.ODBLayer
         {
             var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
-            if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer, _preferInline);
+            if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _valueWriter(value, writer, ctx);
             return writer.Data.ToByteArray();
         }

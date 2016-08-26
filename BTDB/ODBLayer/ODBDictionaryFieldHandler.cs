@@ -15,7 +15,6 @@ namespace BTDB.ODBLayer
         readonly byte[] _configuration;
         readonly IFieldHandler _keysHandler;
         readonly IFieldHandler _valuesHandler;
-        readonly bool _preferInline;
         int _configurationId;
         Type _type;
 
@@ -27,11 +26,9 @@ namespace BTDB.ODBLayer
             _type = type;
             _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
             _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
-            _preferInline = preferInline;
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
-            writer.WriteBool(preferInline);
             _configuration = writer.Data.ToByteArray();
             CreateConfiguration();
         }
@@ -45,7 +42,6 @@ namespace BTDB.ODBLayer
             var reader = new ByteArrayReader(configuration);
             _keysHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
             _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
-            _preferInline = !reader.Eof && reader.ReadBool();
             CreateConfiguration();
         }
 
@@ -63,7 +59,7 @@ namespace BTDB.ODBLayer
         void CreateConfiguration()
         {
             HandledType();
-            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, _valuesHandler, _preferInline)
+            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, _valuesHandler)
                 {
                     KeyReader = CreateReader(_keysHandler, _type.GetGenericArguments()[0]),
                     KeyWriter = CreateWriter(_keysHandler, _type.GetGenericArguments()[0]),
