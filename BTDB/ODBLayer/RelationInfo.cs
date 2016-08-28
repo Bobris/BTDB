@@ -73,6 +73,11 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<SimpleLoaderType, object>    //object is of type Action<AbstractBufferedReader, IReaderCtx, (object or value type same as in conc. dic. key)>
             _simpleLoader = new ConcurrentDictionary<SimpleLoaderType, object>();
 
+        internal List<ulong> FreeContentOldDict { get; } = new List<ulong>();
+        internal List<ulong> FreeContentNewDict { get; } = new List<ulong>();
+        internal List<ulong> FreeContentOldOid { get; } = new List<ulong>();
+        internal List<ulong> FreeContentNewOid { get; } = new List<ulong>();
+
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
                             Type clientType, IInternalObjectDBTransaction tr)
         {
@@ -746,17 +751,17 @@ namespace BTDB.ODBLayer
 
         public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
         {
-            var dictionaries = new List<ulong>();
-            var oids = new List<ulong>();
+            FreeContentOldDict.Clear();
+            FreeContentOldOid.Clear();
 
-            FindUsedObjectsToFree(tr, valueBytes, dictionaries, oids);
+            FindUsedObjectsToFree(tr, valueBytes, FreeContentOldDict, FreeContentOldOid);
 
-            foreach (var dictId in dictionaries)
+            foreach (var dictId in FreeContentOldDict)
             {
                 FreeIDictionary(tr, dictId);
             }
 
-            foreach (var oid in oids)
+            foreach (var oid in FreeContentOldOid)
             {
                 FreeObject(tr, oid);
             }

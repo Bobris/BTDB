@@ -163,13 +163,17 @@ namespace BTDB.ODBLayer
 
         void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
         {
-            var oldDicts = new List<ulong>();
-            var newDicts = new List<ulong>();
-            var oldOids = new List<ulong>();
-            var newOids = new List<ulong>();
+            var oldDicts = _relationInfo.FreeContentOldDict;
+            var oldOids = _relationInfo.FreeContentOldOid;
+            oldDicts.Clear();
+            oldOids.Clear();
             _relationInfo.FindUsedObjectsToFree(_transaction, oldValueBytes, oldDicts, oldOids);
             if (oldDicts.Count == 0 && oldOids.Count == 0)
                 return;
+            var newDicts = _relationInfo.FreeContentNewDict;
+            var newOids = _relationInfo.FreeContentNewOid;
+            newDicts.Clear();
+            newOids.Clear();
             _relationInfo.FindUsedObjectsToFree(_transaction, newValueBytes, newDicts, newOids);
             CompareAndRelease(oldDicts, newDicts, RelationInfo.FreeIDictionary);
             CompareAndRelease(oldOids, newOids, RelationInfo.FreeObject);
