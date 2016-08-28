@@ -66,6 +66,7 @@ namespace BTDB.ODBLayer
                     throw new BTDBException(error);
                 }
             }
+            _relationInfo.MarkModification();
         }
 
         public bool Upsert(T obj)
@@ -93,6 +94,10 @@ namespace BTDB.ODBLayer
                     StartWorkingWithPK();
                     _transaction.KeyValueDBTransaction.Find(keyBytes);
                 }
+            }
+            else
+            {
+                _relationInfo.MarkModification();
             }
             return _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
@@ -197,6 +202,7 @@ namespace BTDB.ODBLayer
             }
 
             _transaction.KeyValueDBTransaction.EraseCurrent();
+            _relationInfo.MarkModification();
             return true;
         }
 

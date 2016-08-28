@@ -21,6 +21,7 @@ namespace BTDB.ODBLayer
         bool _seekNeeded;
 
         protected ByteBuffer KeyBytes;
+        int _prevModificationCounter;
 
         public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes)
         {
@@ -35,6 +36,7 @@ namespace BTDB.ODBLayer
             _keyValueTr.SetKeyPrefix(KeyBytes);
             _pos = 0;
             _seekNeeded = true;
+            _prevModificationCounter = relationInfo.ModificationCounter;
         }
 
         public bool MoveNext()
@@ -42,10 +44,12 @@ namespace BTDB.ODBLayer
             if (!_seekNeeded)
                 _pos++;
             _keyValueTrProtector.Start();
-            bool ret;
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            {
+                RelationInfo.CheckModifiedDuringEnum(_prevModificationCounter);
                 _keyValueTr.SetKeyPrefix(KeyBytes);
-            ret = Seek();
+            }
+            var ret = Seek();
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             return ret;
         }
@@ -65,6 +69,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
+                    RelationInfo.CheckModifiedDuringEnum(_prevModificationCounter);
                     _keyValueTr.SetKeyPrefix(KeyBytes);
                     Seek();
                 }
@@ -133,6 +138,8 @@ namespace BTDB.ODBLayer
         readonly bool _ascending;
         protected readonly ByteBuffer _keyBytes;
         readonly int _lengthOfNonDataPrefix;
+        readonly RelationInfo _relationInfo;
+        int _prevModificationCounter;
 
         public RelationAdvancedEnumerator(
             RelationDBManipulator<T> manipulator,
@@ -153,6 +160,9 @@ namespace BTDB.ODBLayer
 
             _keyBytes = prefixBytes;
             _keyValueTr.SetKeyPrefix(_keyBytes);
+
+            _relationInfo = manipulator.RelationInfo;
+            _prevModificationCounter = _relationInfo.ModificationCounter;
 
             long startIndex;
             long endIndex;
@@ -228,6 +238,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
             {
+                _relationInfo.CheckModifiedDuringEnum(_prevModificationCounter);
                 _keyValueTr.SetKeyPrefix(_keyBytes);
                 Seek();
             }
@@ -263,6 +274,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
+                    _relationInfo.CheckModifiedDuringEnum(_prevModificationCounter);
                     _keyValueTr.SetKeyPrefix(_keyBytes);
                     Seek();
                 }

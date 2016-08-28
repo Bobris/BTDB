@@ -48,6 +48,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>();
 
+        int _modificationCounter;
+
         public struct SimpleLoaderType : IEquatable<SimpleLoaderType>
         {
             readonly IFieldHandler _fieldHandler;
@@ -1082,6 +1084,19 @@ namespace BTDB.ODBLayer
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
             ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
         }
+
+        public int ModificationCounter => _modificationCounter;
+
+        public void MarkModification()
+        {
+            _modificationCounter++;
+        }
+
+        public void CheckModifiedDuringEnum(int prevModification)
+        {
+            if (prevModification != _modificationCounter)
+                throw new InvalidOperationException("Relation modified during iteration.");
+        }
     }
 
     public class DBReaderWithFreeInfoCtx : DBReaderCtx
@@ -1140,5 +1155,6 @@ namespace BTDB.ODBLayer
                 _transaction.FreeContentInNativeObject(this);
             }
         }
+
     }
 }

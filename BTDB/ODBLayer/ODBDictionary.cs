@@ -111,14 +111,12 @@ namespace BTDB.ODBLayer
             var findIDictAction = (Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList <ulong>>)config.FreeContent;
 
             long prevProtectionCounter = 0;
-            var prevModificationCounter = 0;
             long pos = 0;
             while (true)
             {
                 _keyValueTrProtector.Start();
                 if (pos == 0)
                 {
-                    prevModificationCounter = _modificationCounter;
                     _keyValueTr.SetKeyPrefix(_prefix);
                     if (!_keyValueTr.FindFirstKey()) break;
                 }
@@ -126,8 +124,6 @@ namespace BTDB.ODBLayer
                 {
                     if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                     {
-                        if (prevModificationCounter != _modificationCounter)
-                            ThrowModifiedDuringEnum();
                         _keyValueTr.SetKeyPrefix(_prefix);
                         if (!_keyValueTr.SetKeyIndex(pos)) break;
                     }

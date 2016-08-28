@@ -917,5 +917,39 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+
+        public interface IRoomTable2
+        {
+            ulong CompanyId { get; set; }
+            void Insert(Room room);
+            IEnumerator<Room> ListById(AdvancedEnumeratorParam<ulong> param);
+            void RemoveById(ulong id);
+            IEnumerator<Room> GetEnumerator();
+        }
+
+
+        [Fact]
+        public void EnumerateAndDeleteTest()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRoomTable2>("Room");
+
+                var rooms = creator(tr);
+                rooms.CompanyId = 1;
+                rooms.Insert(new Room { Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
+
+                var en = rooms.GetEnumerator();
+                var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+                Assert.True(oen.MoveNext());
+                rooms.RemoveById(oen.Current.Id);
+                var ex = Assert.Throws<InvalidOperationException>(() => oen.MoveNext());
+                Assert.True(ex.Message.Contains("modified"));
+                var ex2 = Assert.Throws<InvalidOperationException>(() => en.MoveNext());
+                Assert.True(ex2.Message.Contains("modified"));
+            }
+        }
     }
 }
