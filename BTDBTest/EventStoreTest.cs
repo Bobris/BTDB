@@ -477,6 +477,33 @@ namespace BTDBTest
             }
         }
 
+        public class EventDictionaryInDictionary
+        {
+            public Dictionary<string, Dictionary<string, string>> DictInDict { get; set; }
+        }
+
+        [Test]
+        public void SupportsDictionaryInDictionary()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+
+            var dictInDictEvent = new EventDictionaryInDictionary
+            {
+                DictInDict = new Dictionary<string, Dictionary<string, string>>
+                {
+                    {"level-A", new Dictionary<string, string> {{"level-B", "level-C"}}}
+                }
+            };
+            appender.Store(null, new object[] { dictInDictEvent });
+
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+        }
+
         [Test]
         public void SupportsDictionary()
         {
