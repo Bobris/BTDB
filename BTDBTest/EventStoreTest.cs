@@ -18,7 +18,7 @@ namespace BTDBTest
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(storage);
-            var metadata = new User {Name = "A", Age = 1};
+            var metadata = new User { Name = "A", Age = 1 };
             var events = new object[]
             {
                 new User {Name = "B", Age = 2},
@@ -50,7 +50,7 @@ namespace BTDBTest
             GC.Collect(2);
             GC.WaitForPendingFinalizers();
             GC.Collect(2);
-            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory*3F);
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory * 3F);
         }
 
         [Fact]
@@ -776,6 +776,32 @@ namespace BTDBTest
                 Assert.Equal(e.Credit.B, 2u);
 
             }
+        }
+
+        public class EventDictionaryInDictionary
+        {
+            public Dictionary<string, IDictionary<string, string>> DictInDict { get; set; }
+        }
+
+        [Fact]
+        public void SupportsDictionaryInDictionary()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+
+            var dictInDictEvent = new EventDictionaryInDictionary
+            {
+                DictInDict = new Dictionary<string, IDictionary<string, string>>
+                {
+                    {"level-A", new Dictionary<string, string> {{"level-B", "level-C"}}}
+                }
+            };
+            appender.Store(null, new object[] { dictInDictEvent });
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
         }
     }
 }
