@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -45,11 +46,36 @@ namespace BTDBTest
             public string Email { get; set; }
 
             public string Name { get; set; }
+            
+            public Dictionary<string, IList<byte>> Ratings { get; set; }
 
             public bool Equals(PersonSimple other)
             {
-                return TenantId == other.TenantId && string.Equals(Email, other.Email) &&
-                       string.Equals(Name, other.Name);
+                if (TenantId != other.TenantId || !string.Equals(Email, other.Email) || 
+                    !string.Equals(Name, other.Name))
+                    return false;
+
+                if (Ratings == other.Ratings)
+                    return true;
+                if (Ratings == null || other.Ratings == null)
+                    return false;
+                if (Ratings.Count != other.Ratings.Count)
+                    return false;
+
+                foreach (var r in Ratings)
+                {
+                    IList<byte> otherValue;
+                    if (!other.Ratings.TryGetValue(r.Key, out otherValue))
+                        return false;
+                    if (r.Value == otherValue)
+                        return true;
+                    if (r.Value == null || otherValue == null)
+                        return false;
+                    if (!r.Value.SequenceEqual(otherValue))
+                        return false;
+                }
+
+                return true;
             }
         }
 
@@ -192,7 +218,9 @@ namespace BTDBTest
         [Fact]
         public void UpdateWorks()
         {
-            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris",
+                Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
+            };
             Func<IObjectDBTransaction, ISimplePersonTable> creator;
             using (var tr = _db.StartTransaction())
             {
@@ -208,6 +236,7 @@ namespace BTDBTest
                 creator = tr.InitRelation<ISimplePersonTable>("Person");
                 var personSimpleTable = creator(tr);
                 person.Name = "Lubos";
+                person.Ratings.Add("History", new List<byte> { 3 });
                 personSimpleTable.Update(person);
                 tr.Commit();
             }
@@ -216,6 +245,7 @@ namespace BTDBTest
                 var personSimpleTable = creator(tr);
                 var p = GetNext(personSimpleTable.GetEnumerator());
                 Assert.Equal("Lubos", p.Name);
+                Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
             }
         }
 
