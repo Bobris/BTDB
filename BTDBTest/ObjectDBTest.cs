@@ -104,7 +104,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.Equal(1234567ul,tr.GetCommitUlong());
+                Assert.Equal(1234567ul, tr.GetCommitUlong());
             }
             ReopenDb();
             using (var tr = _db.StartTransaction())
@@ -1363,7 +1363,7 @@ namespace BTDBTest
             public IDictionary<InlinePersonNew, int> Dict { get; set; }
         }
 
-        [Fact(Skip="This is very difficult to do")]
+        [Fact(Skip = "This is very difficult to do")]
         public void UpgradingKeyInDictionary()
         {
             var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
@@ -1874,7 +1874,7 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<UlongGuidMap>().Items;
                 string value;
-                Assert.Equal(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
+                Assert.Equal(true, items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
 
                 Assert.Equal("a", value);
             }
@@ -1892,7 +1892,7 @@ namespace BTDBTest
         }
 
 
-        [Fact(Skip="Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
+        [Fact(Skip = "Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
         public void CannotStoreDateTimeKindUnspecified()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -2048,6 +2048,64 @@ namespace BTDBTest
                     res = val + res;
                 }
                 Assert.Equal(result.Substring(0, Math.Max(0, result.Length - 2)), res);
+            }
+        }
+
+        [StoredInline]
+        public class InlineSelfRef
+        {
+            public string Content { get; set; }
+            public InlineSelfRef Ref { get; set; }
+            public IDictionary<string, InlineSelfRef> DictIndirect { get; set; }
+            public Dictionary<string, InlineSelfRef> DictInline { get; set; }
+        }
+
+        public class RootOfObject
+        {
+            public object Obj { get; set; }
+        }
+
+        [Fact]
+        public void InlineSelfRefWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var r = tr.Singleton<RootOfObject>();
+                var o = new InlineSelfRef { Content = "A" };
+                o.Ref = o;
+                r.Obj = o;
+                tr.Store(r);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var r = tr.Singleton<RootOfObject>();
+                var o = (InlineSelfRef)r.Obj;
+                Assert.Same(o, o.Ref);
+            }
+        }
+
+        [Fact]
+        public void InlineSelfRefDictWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var r = tr.Singleton<RootOfObject>();
+                var o = new InlineSelfRef { Content = "A" };
+                //You cannot make indirect dictionary storeinline cycle -> StackOverflow unpreventable
+                //o.DictIndirect = new Dictionary<string, InlineSelfRef> {{"B", o}};
+                o.DictInline = new Dictionary<string, InlineSelfRef> { {"C", o} };
+                o.Ref = o;
+                r.Obj = o;
+                tr.Store(r);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var r = tr.Singleton<RootOfObject>();
+                var o = (InlineSelfRef)r.Obj;
+                Assert.Same(o, o.Ref);
+                Assert.Same(o, o.DictInline["C"]);
             }
         }
 

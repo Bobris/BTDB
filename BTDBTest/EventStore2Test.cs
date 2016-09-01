@@ -59,7 +59,7 @@ namespace BTDBTest
             GC.Collect(2);
             GC.WaitForPendingFinalizers();
             GC.Collect(2);
-            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory+100);
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory+400);
         }
 
         [Fact]
