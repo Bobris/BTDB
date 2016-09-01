@@ -151,6 +151,8 @@ namespace BTDB.FieldHandler
             var localIndex = ilGenerator.DeclareLocal(typeof(int));
             var localCount = ilGenerator.DeclareLocal(typeof(int));
             ilGenerator
+                .LdcI4(0)
+                .Stloc(localIndex)
                 .Do(pushValue)
                 .Stloc(localValue)
                 .Do(pushWriterOrCtx)
