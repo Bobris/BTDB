@@ -352,7 +352,7 @@ namespace BTDB.ODBLayer
                     .Do(pushTransaction)
                     .Do(pushWriter)
                     .LdcI4(1)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null, true))
+                    .Newobj(() => new DBWriterCtx(null, null, true))
                     .Stloc(writerCtxLocal);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -670,7 +670,7 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(1)
-                    .Callvirt(()=>default(IInternalObjectDBTransaction).GetReaderCtx(null))
+                    .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -738,18 +738,14 @@ namespace BTDB.ODBLayer
                                      bool keyContainsRelationIndex = true)
         {
             var obj = Creator(tr);
-            Initializer(tr, obj); // <= IS THIS REALLY NEEDED? loader should initialize all fields
+            Initializer(tr, obj);
             var keyReader = new ByteBufferReader(keyBytes);
             if (keyContainsRelationIndex)
                 keyReader.SkipVUInt32(); //index Relation
-            var backup = tr.ExtractReaderCtx();
-            tr.InjectReaderCtx(null);
             GetPrimaryKeysLoader(ClientTypeVersion)(tr, keyReader, obj);
-            tr.InjectReaderCtx(null);
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
             GetValueLoader(version)(tr, valueReader, obj);
-            tr.InjectReaderCtx(backup);
             return obj;
         }
 

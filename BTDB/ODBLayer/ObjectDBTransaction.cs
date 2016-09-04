@@ -73,39 +73,6 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
-        IWriterCtx _writerCtx;
-        IReaderCtx _readerCtx;
-
-        public IWriterCtx GetWriterCtx(AbstractBufferedWriter writer, bool preferInline)
-        {
-            return _writerCtx ?? (_writerCtx = new DBWriterCtx(this, writer, preferInline));
-        }
-
-        public IWriterCtx ExtractWriterCtx()
-        {
-            return _writerCtx;
-        }
-
-        public void InjectWriterCtx(IWriterCtx writer)
-        {
-            _writerCtx = writer;
-        }
-
-        public IReaderCtx GetReaderCtx(AbstractBufferedReader reader)
-        {
-            return _readerCtx ?? (_readerCtx = new DBReaderCtx(this, reader));
-        }
-
-        public IReaderCtx ExtractReaderCtx()
-        {
-            return _readerCtx;
-        }
-
-        public void InjectReaderCtx(IReaderCtx reader)
-        {
-            _readerCtx = reader;
-        }
-
         public bool FreeContentInNativeObject(IReaderCtx readerCtx)
         {
             var reader = readerCtx.Reader();
@@ -248,10 +215,7 @@ namespace BTDB.ODBLayer
             var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
             var obj = tableInfo.Creator(this, metadata);
             AddToObjCache(oid, obj, metadata);
-            var backup = ExtractReaderCtx();
-            InjectReaderCtx(null);
             tableInfo.GetLoader(tableVersion)(this, metadata, reader, obj);
-            InjectReaderCtx(backup);
             return obj;
         }
 
@@ -345,12 +309,8 @@ namespace BTDB.ODBLayer
                 return null;
             }
             TableInfo tableInfo;
-            var backup = ExtractReaderCtx();
-            InjectReaderCtx(null);
             var reader = ReadObjStart(oid, out tableInfo);
-            var res= ReadObjFinish(oid, tableInfo, reader);
-            InjectReaderCtx(backup);
-            return res;
+            return ReadObjFinish(oid, tableInfo, reader);
         }
 
         public ulong GetOid(object obj)
@@ -834,10 +794,7 @@ namespace BTDB.ODBLayer
             var writer = new ByteBufferWriter();
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
-            var backup = ExtractWriterCtx();
-            InjectWriterCtx(null);
             tableInfo.Saver(this, metadata, writer, o);
-            InjectWriterCtx(backup);
             if (tableInfo.IsSingletonOid(metadata.Id))
             {
                 tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
