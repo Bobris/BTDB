@@ -9,7 +9,7 @@ namespace BTDB.ODBLayer
         readonly AbstractBufferedWriter _writer;
         readonly bool _preferInline;
         Dictionary<object, int> _objectIdMap;
-        int _lastId;
+        int _lastId = 1; // Skip Zero inline index due to backward compatibility
 
         public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer, bool preferInline)
         {

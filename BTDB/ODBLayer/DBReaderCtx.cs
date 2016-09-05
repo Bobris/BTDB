@@ -40,6 +40,12 @@ namespace BTDB.ODBLayer
                 return false;
             }
             var ido = (int)(-id) - 1;
+            if (ido == 0) // Never remember zero inline object - backward compatibility
+            {
+                _lastIdOfObj = 0;
+                @object = null;
+                return true;
+            }
             var o = RetriveObj(ido);
             if (o != null)
             {
@@ -75,6 +81,7 @@ namespace BTDB.ODBLayer
         public void RegisterObject(object @object)
         {
             Debug.Assert(@object != null);
+            if (_lastIdOfObj == 0) return; // Zero inline object is never remembered
             _objects[_lastIdOfObj] = @object;
         }
 
@@ -109,6 +116,11 @@ namespace BTDB.ODBLayer
                 return false;
             }
             var ido = (int)(-id) - 1;
+            if (ido == 0) // Never remember zero inline object - backward compatibility
+            {
+                _lastIdOfObj = 0;
+                return true;
+            }
             var o = RetriveObj(ido);
             if (o != null)
             {
