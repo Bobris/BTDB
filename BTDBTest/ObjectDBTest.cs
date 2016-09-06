@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -2109,5 +2111,100 @@ namespace BTDBTest
             }
         }
 
+        public enum MyEnum
+        {
+            Val = 0,
+            Val2 = 1
+        }
+
+        [StoredInline]
+        public class ConversionItemOld
+        {
+            public ulong Id { get; set; }
+            public MyEnum En { get; set; }
+        }
+
+        public class ConversionItemsOld
+        {
+            public IDictionary<ulong, ConversionItemOld> Items { get; set; }
+        }
+
+        [StoredInline]
+        public class ConversionItemNew
+        {
+            public ulong Id { get; set; }
+            public string En { get; set; }
+        }
+
+        public class ConversionItemsNew
+        {
+            public IDictionary<ulong, ConversionItemNew> Items { get; set; }
+        }
+
+        public class EnumToStringTypeConvertorGenerator : DefaultTypeConvertorGenerator
+        {
+            public override Action<IILGen> GenerateConversion(Type from, Type to)
+            {
+                if (from.IsEnum && to == typeof(string))
+                {
+                    var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
+                    if (fromcfg.Flags) return null; // Flags are hard :-)
+                    var cfgIdx = 0;
+                    while(true)
+                    {
+                        var oldEnumCfgs = _enumCfgs;
+                        var newEnumCfgs = oldEnumCfgs;
+                        Array.Resize(ref newEnumCfgs,oldEnumCfgs?.Length+1 ?? 1);
+                        cfgIdx = newEnumCfgs.Length - 1;
+                        newEnumCfgs[cfgIdx] = fromcfg;
+                        if (Interlocked.CompareExchange(ref _enumCfgs, newEnumCfgs, oldEnumCfgs) == oldEnumCfgs) break;
+                    }
+                    return il =>
+                    {
+                        il
+                            .ConvU8()
+                            .LdcI4(cfgIdx)
+                            .Call(() => EnumToString(0, 0));
+                    };
+                }
+                return base.GenerateConversion(from, to);
+            }
+
+            static EnumFieldHandler.EnumConfiguration[] _enumCfgs;
+
+            public static string EnumToString(ulong value, int cfgIdx)
+            {
+                var cfg = _enumCfgs[cfgIdx];
+                // What should happen if not found? for now just crash.
+                return cfg.Names[Array.IndexOf(cfg.Values, value)];
+            }
+        }
+
+        [Fact]
+        public void CustomFieldConversionTest_Perform()
+        {
+            _db.RegisterType(typeof(ConversionItemsOld), "ConversionItems");
+            _db.RegisterType(typeof(ConversionItemOld), "ConversionItem");
+            using (var tr = _db.StartTransaction())
+            {
+                var singleton = tr.Singleton<ConversionItemsOld>();
+                singleton.Items[1] = new ConversionItemOld { En = MyEnum.Val2, Id = 1 };
+                tr.Store(singleton);
+                tr.Commit();
+            }
+
+            ReopenDb();
+            _db.TypeConvertorGenerator = new EnumToStringTypeConvertorGenerator();
+            _db.RegisterType(typeof(ConversionItemsNew), "ConversionItems");
+            _db.RegisterType(typeof(ConversionItemNew), "ConversionItem");
+
+            using (var tr = _db.StartTransaction())
+            {
+                var singleton = tr.Singleton<ConversionItemsNew>().Items;
+
+                Assert.Equal("Val2", singleton[1].En);
+                tr.Commit();
+            }
+        }
     }
 }
