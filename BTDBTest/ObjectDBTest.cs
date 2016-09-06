@@ -1,6 +1,8 @@
-﻿using System;
+﻿//#define GENERATE
+using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using BTDB.Buffer;
@@ -2108,6 +2110,88 @@ namespace BTDBTest
                 Assert.Same(o, o.DictInline["C"]);
             }
         }
+
+        public enum MyEnum
+        {
+            Val = 0,
+            Val2 = 1
+        }
+
+        [StoredInline]
+        public class ConversionItem
+        {
+            public ulong Id { get; set; }
+#if GENERATE
+            public MyEnum En { get; set; }
+#else
+            public string En { get; set; }
+#endif
+        }
+
+        public class ConversionItems
+        {
+            public IDictionary<ulong, ConversionItem> Items { get; set; }
+        }
+
+        private string _data =
+            "QlREQkVYUDIIAAAAAAAAAAMAAAAAAAEQAAAAEENvbnZlcnNpb25JdGVtcwMAAAAAAAIPAAAAD0NvbnZlcnNpb25JdGVtBAAAAAABAQE4AAAAAQZJdGVtcw5PREJEaWN0aW9uYXJ5IwlVbnNpZ25lZAAHT2JqZWN0EA9Db252ZXJzaW9uSXRlbQAEAAAAAAECASMAAAACA0lkCVVuc2lnbmVkAANFbgVFbnVtDQkEVmFsBVZhbDKAgQMAAAAAAgEBAAAAAQIAAAAAAwEAAAABAgAAAAEBAwAAAAEBAAMAAAACAAEFAAAAfwIBAYE=";
+
+#if GENERATE
+        [Fact]
+        public void CustomFieldConversionTest_Generate()
+        {
+            // generate
+            _db.RegisterType((typeof(ConversionItems)), "ConversionItems");
+            _db.RegisterType((typeof(ConversionItem)), "ConversionItem");
+            using (var tr = _db.StartTransaction())
+            {
+                var singleton = tr.Singleton<ConversionItems>();
+                singleton.Items[1] = new ConversionItem { En = MyEnum.Val2, Id = 1 };
+                tr.Store(singleton);
+                tr.Commit();
+            }
+
+            using (var stream = new MemoryStream())
+            {
+                using (var tr = _lowDb.StartReadOnlyTransaction())
+                {
+                    KeyValueDBExportImporter.Export(tr, stream);
+                }
+                stream.Position = 0;
+                // PUT THIS TO _data
+                var str = Convert.ToBase64String(stream.ToArray());
+
+            }
+        }
+#else
+
+        [Fact]
+        public void CustomFieldConversionTest_Perform()
+        {
+            _lowDb = new InMemoryKeyValueDB();
+            _db = new ObjectDB();
+            _db.RegisterType((typeof(ConversionItems)), "ConversionItems");
+            _db.RegisterType((typeof(ConversionItem)), "ConversionItem");
+            using (var stream = new MemoryStream(Convert.FromBase64String(_data)))
+            {
+                using (var tr = _lowDb.StartWritingTransaction().Result)
+                {
+                    KeyValueDBExportImporter.Import(tr, stream);
+                    tr.Commit();
+                }
+            }
+            _db.Open(_lowDb, false);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var singleton = tr.Singleton<ConversionItems>().Items;
+
+                Assert.Equal("Val2", singleton[1].En);
+                tr.Commit();
+            }
+
+        }
+#endif
 
     }
 }
