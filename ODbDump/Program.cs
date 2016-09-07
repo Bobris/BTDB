@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -35,6 +32,8 @@ namespace ODbDump
 
     class ToStringVisitor : ToStringFastVisitor, IODBVisitor
     {
+        uint _inlineId;
+
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
             Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
@@ -81,9 +80,21 @@ namespace ODbDump
             Builder.AppendLine($"OidReference {oid}");
         }
 
+        public void InlineObjectCycleId(uint id, bool firstInstance)
+        {
+            if (firstInstance)
+            {
+                _inlineId = id;
+            }
+            else
+            {
+                Builder.AppendLine($"InlineObjectReference #{id}");
+            }
+        }
+
         public bool StartInlineObject(uint tableId, string tableName, uint version)
         {
-            Builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
+            Builder.AppendLine($"StartInlineObject #{_inlineId} {tableId}-{tableName}-{version}");
             return true;
         }
 
