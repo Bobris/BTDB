@@ -303,10 +303,10 @@ namespace BTDB.KVDBLayer
                             _nextRoot = null;
                             break;
                         case KVCommandType.EndOfFile:
-                            collectionFile.SetSize(reader.GetCurrentPosition());
-                            collectionFile.Truncate();
                             return false;
                         case KVCommandType.TemporaryEndOfFile:
+                            _lastCommited.TrLogFileId = fileId;
+                            _lastCommited.TrLogOffset = (uint)reader.GetCurrentPosition();
                             afterTemporaryEnd = true;
                             break;
                         default:
