@@ -1,12 +1,12 @@
-﻿//#define GENERATE
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -2118,80 +2118,93 @@ namespace BTDBTest
         }
 
         [StoredInline]
-        public class ConversionItem
+        public class ConversionItemOld
         {
             public ulong Id { get; set; }
-#if GENERATE
             public MyEnum En { get; set; }
-#else
+        }
+
+        public class ConversionItemsOld
+        {
+            public IDictionary<ulong, ConversionItemOld> Items { get; set; }
+        }
+
+        [StoredInline]
+        public class ConversionItemNew
+        {
+            public ulong Id { get; set; }
             public string En { get; set; }
-#endif
         }
 
-        public class ConversionItems
+        public class ConversionItemsNew
         {
-            public IDictionary<ulong, ConversionItem> Items { get; set; }
+            public IDictionary<ulong, ConversionItemNew> Items { get; set; }
         }
 
-        private string _data =
-            "QlREQkVYUDIIAAAAAAAAAAMAAAAAAAEQAAAAEENvbnZlcnNpb25JdGVtcwMAAAAAAAIPAAAAD0NvbnZlcnNpb25JdGVtBAAAAAABAQE4AAAAAQZJdGVtcw5PREJEaWN0aW9uYXJ5IwlVbnNpZ25lZAAHT2JqZWN0EA9Db252ZXJzaW9uSXRlbQAEAAAAAAECASMAAAACA0lkCVVuc2lnbmVkAANFbgVFbnVtDQkEVmFsBVZhbDKAgQMAAAAAAgEBAAAAAQIAAAAAAwEAAAABAgAAAAEBAwAAAAEBAAMAAAACAAEFAAAAfwIBAYE=";
-
-#if GENERATE
-        [Fact]
-        public void CustomFieldConversionTest_Generate()
+        public class EnumToStringTypeConvertorGenerator : DefaultTypeConvertorGenerator
         {
-            // generate
-            _db.RegisterType((typeof(ConversionItems)), "ConversionItems");
-            _db.RegisterType((typeof(ConversionItem)), "ConversionItem");
-            using (var tr = _db.StartTransaction())
+            public override Action<IILGen> GenerateConversion(Type from, Type to)
             {
-                var singleton = tr.Singleton<ConversionItems>();
-                singleton.Items[1] = new ConversionItem { En = MyEnum.Val2, Id = 1 };
-                tr.Store(singleton);
-                tr.Commit();
-            }
-
-            using (var stream = new MemoryStream())
-            {
-                using (var tr = _lowDb.StartReadOnlyTransaction())
+                if (from.IsEnum && to == typeof(string))
                 {
-                    KeyValueDBExportImporter.Export(tr, stream);
+                    var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
+                    if (fromcfg.Flags) return null; // Flags are hard :-)
+                    var cfgIdx = 0;
+                    while(true)
+                    {
+                        var oldEnumCfgs = _enumCfgs;
+                        var newEnumCfgs = oldEnumCfgs;
+                        Array.Resize(ref newEnumCfgs,oldEnumCfgs?.Length+1 ?? 1);
+                        cfgIdx = newEnumCfgs.Length - 1;
+                        newEnumCfgs[cfgIdx] = fromcfg;
+                        if (Interlocked.CompareExchange(ref _enumCfgs, newEnumCfgs, oldEnumCfgs) == oldEnumCfgs) break;
+                    }
+                    return il =>
+                    {
+                        il
+                            .ConvU8()
+                            .LdcI4(cfgIdx)
+                            .Call(() => EnumToString(0, 0));
+                    };
                 }
-                stream.Position = 0;
-                // PUT THIS TO _data
-                var str = Convert.ToBase64String(stream.ToArray());
+                return base.GenerateConversion(from, to);
+            }
 
+            static EnumFieldHandler.EnumConfiguration[] _enumCfgs;
+
+            public static string EnumToString(ulong value, int cfgIdx)
+            {
+                var cfg = _enumCfgs[cfgIdx];
+                // What should happen if not found? for now just crash.
+                return cfg.Names[Array.IndexOf(cfg.Values, value)];
             }
         }
-#else
 
         [Fact]
         public void CustomFieldConversionTest_Perform()
         {
-            _lowDb = new InMemoryKeyValueDB();
-            _db = new ObjectDB();
-            _db.RegisterType((typeof(ConversionItems)), "ConversionItems");
-            _db.RegisterType((typeof(ConversionItem)), "ConversionItem");
-            using (var stream = new MemoryStream(Convert.FromBase64String(_data)))
+            _db.RegisterType(typeof(ConversionItemsOld), "ConversionItems");
+            _db.RegisterType(typeof(ConversionItemOld), "ConversionItem");
+            using (var tr = _db.StartTransaction())
             {
-                using (var tr = _lowDb.StartWritingTransaction().Result)
-                {
-                    KeyValueDBExportImporter.Import(tr, stream);
-                    tr.Commit();
-                }
+                var singleton = tr.Singleton<ConversionItemsOld>();
+                singleton.Items[1] = new ConversionItemOld { En = MyEnum.Val2, Id = 1 };
+                tr.Store(singleton);
+                tr.Commit();
             }
-            _db.Open(_lowDb, false);
+
+            ReopenDb();
+            _db.TypeConvertorGenerator = new EnumToStringTypeConvertorGenerator();
+            _db.RegisterType(typeof(ConversionItemsNew), "ConversionItems");
+            _db.RegisterType(typeof(ConversionItemNew), "ConversionItem");
 
             using (var tr = _db.StartTransaction())
             {
-                var singleton = tr.Singleton<ConversionItems>().Items;
+                var singleton = tr.Singleton<ConversionItemsNew>().Items;
 
                 Assert.Equal("Val2", singleton[1].En);
                 tr.Commit();
             }
-
         }
-#endif
-
     }
 }

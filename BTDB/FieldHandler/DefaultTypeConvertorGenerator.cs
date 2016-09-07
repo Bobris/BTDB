@@ -48,7 +48,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public Action<IILGen> GenerateConversion(Type from, Type to)
+        public virtual Action<IILGen> GenerateConversion(Type from, Type to)
         {
             if (from == to) return ilg => { };
             if (!from.IsValueType && to == typeof(object))

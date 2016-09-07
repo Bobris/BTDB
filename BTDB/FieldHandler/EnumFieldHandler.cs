@@ -69,11 +69,11 @@ namespace BTDB.FieldHandler
 
             public bool Signed => _signed;
 
-            bool Flags => _flags;
+            public bool Flags => _flags;
 
-            string[] Names => _names;
+            public string[] Names => _names;
 
-            ulong[] Values => _values;
+            public ulong[] Values => _values;
 
             public byte[] ToConfiguration()
             {
@@ -273,7 +273,7 @@ namespace BTDB.FieldHandler
                     return typeHandler;
                 }
             }
-            if (_enumType == null)
+            if (_enumType == null && type.IsEnum)
             {
                 if (_configuration.SequenceEqual(new EnumConfiguration(type).ToConfiguration()))
                 {
