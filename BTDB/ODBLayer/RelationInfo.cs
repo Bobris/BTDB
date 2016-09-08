@@ -89,7 +89,7 @@ namespace BTDB.ODBLayer
             LoadVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
-            if (LastPersistedVersion > 0 && _relationVersions[LastPersistedVersion].Equals(ClientRelationVersionInfo))
+            if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
                 ClientTypeVersion = LastPersistedVersion;
