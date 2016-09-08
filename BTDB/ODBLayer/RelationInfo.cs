@@ -351,8 +351,7 @@ namespace BTDB.ODBLayer
                 ilGen
                     .Do(pushTransaction)
                     .Do(pushWriter)
-                    .LdcI4(1)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null, true))
+                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null))
                     .Stloc(writerCtxLocal);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

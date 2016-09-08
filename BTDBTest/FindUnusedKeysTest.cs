@@ -5,6 +5,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Xunit;
 
@@ -119,12 +120,23 @@ namespace BTDBTest
                 AssertLeaksInDb();
         }
 
+        public class Directory
+        {
+            public IDictionary<string, JobMap> Dir { get; set; }
+        }
+
         [Fact]
         [UseReporter(typeof(DiffReporter))]
         public void FindAndRemovesUnusedKeys()
         {
-            StoreJob(1, "Create leak");
-            StoreJob(1, "Code");
+            StoreJobInDictionary("programming", "code");
+            StoreJobInDictionary("chess", "mate");
+            using (var tr = _db.StartTransaction())
+            {
+                var sports = tr.Singleton<Directory>();
+                sports.Dir["programming"] = new JobMap();
+                tr.Commit();
+            }
 
             using (var visitor = new FindUnusedKeysVisitor())
             {
@@ -146,9 +158,19 @@ namespace BTDBTest
             AssertNoLeaksInDb();
             using (var tr = _db.StartReadOnlyTransaction())
             {
-                var jobs = tr.Singleton<JobMap>();
                 //check that db has is not broken after removing unused keys
-                Assert.Equal(jobs.Jobs[1].Duty.Name, "Code");
+                var sports = tr.Singleton<Directory>();
+                Assert.Equal(sports.Dir["chess"].Jobs[0].Duty.Name, "mate");
+            }
+        }
+
+        void StoreJobInDictionary(string sport, string activity)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var sports = tr.Singleton<Directory>();
+                sports.Dir[sport] = new JobMap { Jobs = new Dictionary<ulong, Job> { [0] = new Job { Duty = new Duty { Name = activity } } } };
+                tr.Commit();
             }
         }
 

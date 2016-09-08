@@ -5,7 +5,7 @@ namespace BTDB.ODBLayer
 {
     public class DefaultODBFieldHandlerFactory : DefaultFieldHandlerFactory
     {
-        protected readonly IObjectDB _odb;
+        readonly IObjectDB _odb;
 
         public DefaultODBFieldHandlerFactory(IObjectDB odb)
             : base(odb)

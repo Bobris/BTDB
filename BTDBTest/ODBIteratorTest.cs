@@ -252,6 +252,7 @@ namespace BTDBTest
 
         [Fact]
         [MethodImpl(MethodImplOptions.NoInlining)]
+        [UseReporter(typeof(DiffReporter))]
         public void Basics()
         {
             using (var tr = _db.StartTransaction())

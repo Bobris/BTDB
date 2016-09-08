@@ -76,9 +76,9 @@ namespace BTDB.ODBLayer
         IWriterCtx _writerCtx;
         IReaderCtx _readerCtx;
 
-        public IWriterCtx GetWriterCtx(AbstractBufferedWriter writer, bool preferInline)
+        public IWriterCtx GetWriterCtx(AbstractBufferedWriter writer)
         {
-            return _writerCtx ?? (_writerCtx = new DBWriterCtx(this, writer, preferInline));
+            return _writerCtx ?? (_writerCtx = new DBWriterCtx(this, writer));
         }
 
         public IWriterCtx ExtractWriterCtx()

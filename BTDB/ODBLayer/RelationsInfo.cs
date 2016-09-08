@@ -5,23 +5,7 @@ using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
-{
-    class RelationODBFieldHandlerFactory : DefaultODBFieldHandlerFactory
-    {
-        public RelationODBFieldHandlerFactory(IObjectDB odb) : base(odb)
-        {
-        }
-
-        public override IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
-        {
-            if (ODBDictionaryFieldHandler.IsCompatibleWithStatic(type, options))
-                return new ODBDictionaryFieldHandler(_odb, type, true, this);
-            return base.CreateFromType(type, options);
-        }
-    }
-
-
-
+{   
     class RelationInfoResolver : IRelationInfoResolver
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
@@ -29,7 +13,7 @@ namespace BTDB.ODBLayer
 
         public RelationInfoResolver(ObjectDB objectDB)
         {
-            _fieldHandlerFactory = new RelationODBFieldHandlerFactory(objectDB);
+            _fieldHandlerFactory = objectDB.FieldHandlerFactory;
             _typeConvertorGenerator = objectDB.TypeConvertorGenerator;
         }
 
