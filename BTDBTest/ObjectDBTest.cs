@@ -2206,5 +2206,41 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        [StoredInline]
+        public class Key
+        {
+            public ulong Id { get; set; }
+            public string Name { get; set; }
+        }
+
+        public class EmailAtttachments
+        {
+            public IOrderedDictionary<Key, IIndirect<Value>> Attachments { get; set; }
+        }
+
+        public class Value
+        {
+            public byte[] Val { get; set; }
+        }
+
+        private string data =
+            "QlREQkVYUDILAAAAAAAAAAMAAAAAAAESAAAAEkVtYWlsQXR0dGFjaG1lbnRzAwAAAAAAAgQAAAAES2V5AwAAAAAAAwYAAAAGVmFsdWUEAAAAAAEBATYAAAABDEF0dGFjaG1lbnRzDk9EQkRpY3Rpb25hcnkbB09iamVjdAUES2V5B09iamVjdAcGVmFsdWUEAAAAAAECARsAAAACA0lkCVVuc2lnbmVkAAVOYW1lB1N0cmluZwAEAAAAAAEDAQ0AAAABBFZhbAdCeXRlW10AAwAAAAACAQEAAAABAgAAAAADAQAAAAECAAAAAQEDAAAAAQEAAgAAAAECBAAAAAMBAgEMAAAAAgB/AgE3BmFob3BqAQAAAII=";
+        [Fact]
+        public void IIndirectTest()
+        {
+            using (var tr = _lowDb.StartWritingTransaction().Result)
+            {
+                KeyValueDBExportImporter.Import(tr, new MemoryStream(Convert.FromBase64String(data)));
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var att = tr.Singleton<EmailAtttachments>().Attachments;
+                Assert.NotNull(att);
+                tr.Commit();
+            }
+        }
     }
 }

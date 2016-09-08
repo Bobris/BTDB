@@ -220,7 +220,9 @@ namespace BTDB.ODBLayer
             {
                 return typeHandler;
             }
-            return new ODBDictionaryFieldHandler(_odb, _configuration, _configurationId, specializedKeyHandler, specializedValueHandler);
+            var res = new ODBDictionaryFieldHandler(_odb, _configuration, _configurationId, specializedKeyHandler, specializedValueHandler);
+            res.GenerateType(type);
+            return res;
         }
 
         Type GenerateType(Type compatibleWith)
