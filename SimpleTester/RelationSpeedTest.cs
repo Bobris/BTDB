@@ -8,7 +8,6 @@ namespace SimpleTester
 {
     public class RelationSpeedTest
     {
-        [StoredInline]
         public class Person
         {
             [PrimaryKey(1)]

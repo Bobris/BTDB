@@ -411,18 +411,17 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
-        [StoredInline]
         public class Rule1
         {
             public string Name { get; set; }
         }
 
-        [StoredInline]
         public class Rule2
         {
             public string Name { get; set; }
             public int Type { get; set; }
         }
+
         public class ObjectWfd1
         {
             public Rule1 A { get; set; }
@@ -466,7 +465,6 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
-        [StoredInline]
         public class SelfRef
         {
             public SelfRef A { get; set; }

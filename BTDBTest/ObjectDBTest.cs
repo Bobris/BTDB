@@ -1092,14 +1092,9 @@ namespace BTDBTest
             }
         }
 
-        [StoredInline]
-        public class InlinePerson : Person
-        {
-        }
-
         public class ListOfInlinePersons
         {
-            public List<InlinePerson> InlinePersons { get; set; }
+            public List<Person> InlinePersons { get; set; }
         }
 
         [Fact]
@@ -1108,7 +1103,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<ListOfInlinePersons>();
-                root.InlinePersons = new List<InlinePerson> { new InlinePerson { Name = "Me" } };
+                root.InlinePersons = new List<Person> { new Person { Name = "Me" } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -1122,15 +1117,6 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<ListOfInlinePersons>();
                 Assert.Equal(1u, root.InlinePersons[0].Age);
-            }
-        }
-
-        [Fact]
-        public void ForbidToStoreInlinedObjectDirectly()
-        {
-            using (var tr = _db.StartTransaction())
-            {
-                Assert.Throws<BTDBException>(() => tr.Store(new InlinePerson()));
             }
         }
 
@@ -1314,6 +1300,7 @@ namespace BTDBTest
                 Assert.NotNull(d.Dict);
                 Assert.Null(d.Added);
                 d.Added = "Stored";
+                tr.Store(d);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -1343,7 +1330,7 @@ namespace BTDBTest
 
         public class ObjectWithDictWithInlineKey
         {
-            public IDictionary<InlinePerson, int> Dict { get; set; }
+            public IDictionary<Person, int> Dict { get; set; }
         }
 
         [Fact]
@@ -1351,34 +1338,29 @@ namespace BTDBTest
         {
             using (var tr = _db.StartReadOnlyTransaction())
             {
-                tr.Singleton<ObjectWithDictWithInlineKey>().Dict.ContainsKey(new InlinePerson());
+                tr.Singleton<ObjectWithDictWithInlineKey>().Dict.ContainsKey(new Person());
             }
-        }
-
-        [StoredInline]
-        public class InlinePersonNew : PersonNew
-        {
         }
 
         public class ObjectWithDictWithInlineKeyNew
         {
-            public IDictionary<InlinePersonNew, int> Dict { get; set; }
+            public IDictionary<PersonNew, int> Dict { get; set; }
         }
 
         [Fact(Skip = "This is very difficult to do")]
         public void UpgradingKeyInDictionary()
         {
             var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
-            var persName = _db.RegisterType(typeof(InlinePerson));
+            var persName = _db.RegisterType(typeof(Person));
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<ObjectWithDictWithInlineKey>();
-                d.Dict.Add(new InlinePerson { Name = "A" }, 1);
+                d.Dict.Add(new Person { Name = "A" }, 1);
                 tr.Commit();
             }
             ReopenDb();
             _db.RegisterType(typeof(ObjectWithDictWithInlineKeyNew), singName);
-            _db.RegisterType(typeof(InlinePersonNew), persName);
+            _db.RegisterType(typeof(PersonNew), persName);
             using (var tr = _db.StartTransaction())
             {
                 var d = tr.Singleton<ObjectWithDictWithInlineKeyNew>();
@@ -1594,18 +1576,17 @@ namespace BTDBTest
             }
         }
 
-        [StoredInline]
         public class Rule1
         {
             public string Name { get; set; }
         }
 
-        [StoredInline]
         public class Rule2
         {
             public string Name { get; set; }
             public int Type { get; set; }
         }
+
         public class ObjectWfd1
         {
             public Rule1 A { get; set; }
@@ -1750,7 +1731,6 @@ namespace BTDBTest
             public IOrderedDictionary<LogId, string> Items { get; set; }
         }
 
-        [StoredInline]
         public class LogId
         {
             public string Key { get; set; }
@@ -1823,7 +1803,6 @@ namespace BTDBTest
             }
         }
 
-        [StoredInline]
         public class UlongGuidKey
         {
             public ulong Ulong { get; set; }
@@ -1886,7 +1865,6 @@ namespace BTDBTest
         {
             public IOrderedDictionary<TimeIndexKey, ulong> Items { get; set; }
 
-            [StoredInline]
             public class TimeIndexKey
             {
                 public DateTime Time { get; set; }
@@ -2053,7 +2031,6 @@ namespace BTDBTest
             }
         }
 
-        [StoredInline]
         public class InlineSelfRef
         {
             public string Content { get; set; }
@@ -2117,7 +2094,6 @@ namespace BTDBTest
             Val2 = 1
         }
 
-        [StoredInline]
         public class ConversionItemOld
         {
             public ulong Id { get; set; }
@@ -2129,7 +2105,6 @@ namespace BTDBTest
             public IDictionary<ulong, ConversionItemOld> Items { get; set; }
         }
 
-        [StoredInline]
         public class ConversionItemNew
         {
             public ulong Id { get; set; }
@@ -2207,7 +2182,6 @@ namespace BTDBTest
             }
         }
 
-        [StoredInline]
         public class Key
         {
             public ulong Id { get; set; }
