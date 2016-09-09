@@ -2031,7 +2031,7 @@ namespace BTDBTest
             }
         }
 
-        public class InlineSelfRef
+        public class InlineSelfRef: IPartOfCycleMarker
         {
             public string Content { get; set; }
             public InlineSelfRef Ref { get; set; }

@@ -6,6 +6,7 @@ using System.Text;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -465,7 +466,7 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
-        public class SelfRef
+        public class SelfRef: IPartOfCycleMarker
         {
             public SelfRef A { get; set; }
         }
