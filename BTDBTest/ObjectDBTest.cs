@@ -2216,5 +2216,40 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        public class UserKey
+        {
+            public ulong CompanyId { get; set; }
+            public string Email { get; set; }
+        }
+
+        public class ItemsDict
+        {
+            public IOrderedDictionary<UserKey, ulong> Items { get; set; }
+        }
+
+        private string data2 =
+            "QlREQkVYUDIIAAAAAAAAAAMAAAAAAAEKAAAACkl0ZW1zRGljdAMAAAAAAAIIAAAACFVzZXJLZXkEAAAAAAEBATAAAAABBkl0ZW1zDk9EQkRpY3Rpb25hcnkbB09iamVjdAkIVXNlcktleQlVbnNpZ25lZAAEAAAAAAECASMAAAACCkNvbXBhbnlJZAlVbnNpZ25lZAAGRW1haWwHU3RyaW5nAAMAAAAAAgEBAAAAAQIAAAAAAwEAAAABAgAAAAEBAwAAAAEBABYAAAACAH8CAQEQbmVrZG9AbmVrZGUubmV0AQAAAGU=";
+
+        [Fact]
+        public void NotMaterializingDict2()
+        {
+            using (var tr = _lowDb.StartWritingTransaction().Result)
+            {
+                KeyValueDBExportImporter.Import(tr, new MemoryStream(Convert.FromBase64String(data2)));
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var att = tr.Singleton<ItemsDict>().Items;
+                Assert.NotNull(att);
+                Assert.Equal(1, att.Count);
+                var key = new UserKey() { CompanyId = 1, Email = "nekdo@nekde.net" };
+                Assert.True(att.ContainsKey(key));
+                Assert.Equal(att[key], 101UL);
+                tr.Commit();
+            }
+        }
     }
 }
