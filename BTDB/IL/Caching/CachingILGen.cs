@@ -11,6 +11,7 @@ namespace BTDB.IL.Caching
         interface IReplayILGen
         {
             void ReplayTo(IILGen target);
+            void FreeTemps();
             bool Equals(IReplayILGen other);
         }
 
@@ -68,6 +69,11 @@ namespace BTDB.IL.Caching
                 Label = target.DefineLabel(_name);
             }
 
+            public void FreeTemps()
+            {
+                Label = null;
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as ILLabel;
@@ -112,6 +118,11 @@ namespace BTDB.IL.Caching
                 Debug.Assert(Local.Index == Index);
             }
 
+            public void FreeTemps()
+            {
+                Local = null;
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as ILLocal;
@@ -142,6 +153,10 @@ namespace BTDB.IL.Caching
                 target.Comment(_text);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as CommentInst;
@@ -168,6 +183,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Mark(((ILLabel)_label).Label);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -198,6 +217,10 @@ namespace BTDB.IL.Caching
                 target.Ldftn(_method);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as LdftnInst;
@@ -226,6 +249,10 @@ namespace BTDB.IL.Caching
                 target.Ldstr(_str);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as LdstrInst;
@@ -245,6 +272,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Try();
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -274,6 +305,10 @@ namespace BTDB.IL.Caching
                 target.Catch(_exceptionType);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as CatchInst;
@@ -295,6 +330,10 @@ namespace BTDB.IL.Caching
                 target.Finally();
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as FinallyInst;
@@ -313,6 +352,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.EndTry();
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -339,6 +382,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Emit(_opCode);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -370,6 +417,10 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, _param);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitSbyteInst;
@@ -397,6 +448,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Emit(_opCode, _param);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -428,6 +483,10 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, _param);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitUshortInst;
@@ -455,6 +514,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Emit(_opCode, _param);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -486,6 +549,10 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, _fieldInfo);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitFieldInfoInst;
@@ -513,6 +580,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Emit(_opCode, _constructorInfo);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -544,6 +615,10 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, _methodInfo);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitMethodInfoInst;
@@ -571,6 +646,10 @@ namespace BTDB.IL.Caching
             public void ReplayTo(IILGen target)
             {
                 target.Emit(_opCode, _type);
+            }
+
+            public void FreeTemps()
+            {
             }
 
             public bool Equals(IReplayILGen other)
@@ -602,6 +681,10 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, ((ILLocal)_ilLocal).Local);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitILLocal;
@@ -631,11 +714,23 @@ namespace BTDB.IL.Caching
                 target.Emit(_opCode, ((ILLabel)_ilLabel).Label);
             }
 
+            public void FreeTemps()
+            {
+            }
+
             public bool Equals(IReplayILGen other)
             {
                 var v = other as EmitILLabel;
                 if (v == null) return false;
                 return _opCode == v._opCode && ((ILLabel)_ilLabel).Index == ((ILLabel)v._ilLabel).Index;
+            }
+        }
+
+        internal void FreeTemps()
+        {
+            foreach (var inst in _instructions)
+            {
+                inst.FreeTemps();
             }
         }
     }

@@ -35,6 +35,7 @@ namespace BTDB.IL.Caching
                     var method = _cachingILBuilder.Wrapping.NewMethod(_name, _delegate);
                     if (_expectedLength != -1) method.ExpectedLength(_expectedLength);
                     _ilGen.ReplayTo(method.Generator);
+                    _ilGen.FreeTemps();
                     item.Object = method.Create();
                 }
                 return item.Object;
