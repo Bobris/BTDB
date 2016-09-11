@@ -6,5 +6,6 @@ namespace BTDB.KVDBLayer
         uint TrLogOffset { get; }
         long KeyValueCount { get; }
         ulong CommitUlong { get; }
+        KeyIndexCompression Compression { get; }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BTDB.KVDBLayer
@@ -15,5 +16,8 @@ namespace BTDB.KVDBLayer
         Task<IKeyValueDBTransaction> StartWritingTransaction();
 
         string CalcStats();
+
+        // Returns true if there was big compaction (probably will need another one)
+        bool Compact(CancellationToken cancellation);
     }
 }

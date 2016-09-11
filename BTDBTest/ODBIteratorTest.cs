@@ -477,6 +477,7 @@ namespace BTDBTest
         }
 
         [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void InlineSelfRefsWorks()
         {
             using (var tr = _db.StartTransaction())

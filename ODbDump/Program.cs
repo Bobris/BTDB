@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Globalization;
+using System.IO;
 using System.Text;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -208,19 +210,72 @@ namespace ODbDump
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 return;
             }
-            using (var dfc = new OnDiskFileCollection(args[0]))
-            using (var kdb = new KeyValueDB(dfc))
-            using (var odb = new ObjectDB())
+            var action = "dump";
+            if (args.Length > 1)
             {
-                odb.Open(kdb, false);
-                using (var tr = odb.StartTransaction())
-                {
-                    var visitor = new ToStringVisitor();
-                    var iterator = new ODBIterator(tr, visitor);
-                    iterator.Iterate();
-                    var text = visitor.ToString();
-                    Console.WriteLine(text);
-                }
+                action = args[1].ToLowerInvariant();
+            }
+
+            switch (action)
+            {
+                case "dump":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        using (var odb = new ObjectDB())
+                        {
+                            odb.Open(kdb, false);
+                            using (var tr = odb.StartTransaction())
+                            {
+                                var visitor = new ToStringVisitor();
+                                var iterator = new ODBIterator(tr, visitor);
+                                iterator.Iterate();
+                                var text = visitor.ToString();
+                                Console.WriteLine(text);
+                            }
+                        }
+                        break;
+                    }
+                case "stat":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        {
+                            Console.WriteLine(kdb.CalcStats());
+                        }
+                        break;
+                    }
+                case "compact":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                        {
+                            Console.WriteLine("Starting first compaction");
+                            while (kdb.Compact(new CancellationToken()))
+                            {
+                                Console.WriteLine(kdb.CalcStats());
+                                Console.WriteLine("Another compaction needed");
+                            }
+                            Console.WriteLine(kdb.CalcStats());
+                        }
+                        break;
+                    }
+                case "export":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        using (var tr = kdb.StartReadOnlyTransaction())
+                        using (var st = File.Create(Path.Combine(args[0], "export.dat")))
+                        {
+                            KeyValueDBExportImporter.Export(tr, st);
+                        }
+                        break;
+                    }
+                default:
+                    {
+                        Console.WriteLine($"Unknown action: {action}");
+                        break;
+                    }
             }
         }
     }
