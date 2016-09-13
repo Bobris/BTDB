@@ -7,7 +7,7 @@ Object oid:1 1-ObjectWfd1 version:2
 StartField A
 Used key: 00 00|02 Value len:6
 Used key: 00 01|02 02 Value len:27
-StartInlineObject #0 2-Rule1-2
+StartInlineObject 2-Rule1-2
 StartField Name
 ScalarObj A
 ScalarStr A
@@ -19,7 +19,7 @@ EndField
 EndInlineObject
 EndField
 StartField C
-StartInlineObject #0 2-Rule1-2
+StartInlineObject 2-Rule1-2
 StartField Name
 ScalarObj C
 ScalarStr C

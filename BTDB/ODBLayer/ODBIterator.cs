@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using BTDB.Buffer;
@@ -26,7 +25,6 @@ namespace BTDB.ODBLayer
         readonly Dictionary<TableIdVersion, TableVersionInfo> _tableVersionInfos;
         readonly Dictionary<IFieldHandler, Action<AbstractBufferedReader>> _skippers;
         readonly Dictionary<IFieldHandler, Func<AbstractBufferedReader, object>> _loaders;
-        uint _highestKnownInlineObj;
         //relations
         Dictionary<uint, string> _relationId2Name;
 
@@ -134,8 +132,6 @@ namespace BTDB.ODBLayer
                 version))
                 return;
             var tvi = GetTableVersionInfo(tableId, version);
-            var highestBackup = _highestKnownInlineObj;
-            _highestKnownInlineObj = 0;
             for (var i = 0; i < tvi.FieldCount; i++)
             {
                 var fi = tvi[i];
@@ -149,7 +145,6 @@ namespace BTDB.ODBLayer
                     IterateHandler(reader, fi.Handler, true);
                 }
             }
-            _highestKnownInlineObj = highestBackup;
             _visitor?.EndObject();
         }
 
@@ -194,10 +189,7 @@ namespace BTDB.ODBLayer
                 {
                     var keyReader = new KeyValueDBKeyReader(_trkv);
                     var relationInfo = relationVersions[lastPersistedVersion];
-                    var highestBackup = _highestKnownInlineObj;
-                    _highestKnownInlineObj = 0;
                     IterateFields(keyReader, relationInfo.GetPrimaryKeyFields());
-                    _highestKnownInlineObj = highestBackup;
                     _visitor?.EndRelationKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
@@ -210,10 +202,7 @@ namespace BTDB.ODBLayer
                     var valueReader = new KeyValueDBValueReader(_trkv);
                     var version = valueReader.ReadVUInt32();
                     var relationInfo = relationVersions[version];
-                    var highestBackup = _highestKnownInlineObj;
-                    _highestKnownInlineObj = 0;
                     IterateFields(valueReader, relationInfo.GetValueFields());
-                    _highestKnownInlineObj = highestBackup;
                     _visitor?.EndRelationValue();
                 }
                 pos++;
@@ -300,10 +289,7 @@ namespace BTDB.ODBLayer
                 if (_visitor == null || _visitor.StartDictKey())
                 {
                     var keyReader = new KeyValueDBKeyReader(_trkv);
-                    var highestBackup = _highestKnownInlineObj;
-                    _highestKnownInlineObj = 0;
                     IterateHandler(keyReader, keyHandler, false);
-                    _highestKnownInlineObj = highestBackup;
                     _visitor?.EndDictKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
@@ -314,10 +300,7 @@ namespace BTDB.ODBLayer
                 if (_visitor == null || _visitor.StartDictValue())
                 {
                     var valueReader = new KeyValueDBValueReader(_trkv);
-                    var highestBackup = _highestKnownInlineObj;
-                    _highestKnownInlineObj = 0;
                     IterateHandler(valueReader, valueHandler, false);
-                    _highestKnownInlineObj = highestBackup;
                     _visitor?.EndDictValue();
                 }
                 pos++;
@@ -353,21 +336,6 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    var inlineId = (uint)(-1 - oid);
-                    if (inlineId > 0 && inlineId <= _highestKnownInlineObj)
-                    {
-                        if (!skipping)
-                        {
-                            _visitor?.InlineObjectCycleId(inlineId, false);
-                        }
-                        return;
-                    }
-                    _visitor?.InlineObjectCycleId(inlineId, true);
-                    if (inlineId != 0)
-                    {
-                        Debug.Assert(_highestKnownInlineObj+1 == inlineId);
-                        _highestKnownInlineObj = inlineId;
-                    }
                     var tableId = reader.ReadVUInt32();
                     var version = reader.ReadVUInt32();
                     if (!skipping) MarkTableIdVersionFieldInfo(tableId, version);

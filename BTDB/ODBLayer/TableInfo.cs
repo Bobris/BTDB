@@ -213,7 +213,7 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(2)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null))
+                    .Newobj(() => new DBWriterCtx(null, null))
                     .Stloc(1);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -305,7 +305,7 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(2)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetReaderCtx(null))
+                    .Newobj(() => new DBReaderCtx(null, null))
                     .Stloc(1);
             }
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

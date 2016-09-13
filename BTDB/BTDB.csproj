@@ -125,7 +125,6 @@
     <Compile Include="FieldHandler\IFieldHandlerWithInit.cs" />
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\IIndirect.cs" />
-    <Compile Include="FieldHandler\IPartOfCycleMarker.cs" />
     <Compile Include="FieldHandler\PersistedNameAttribute.cs" />
     <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
     <Compile Include="GlobalSuppressions.cs" />

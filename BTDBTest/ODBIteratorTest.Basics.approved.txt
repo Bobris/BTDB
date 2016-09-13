@@ -15,11 +15,11 @@ EndDictKey
 StartDictValue
 Used key: 00 00|02 Value len:4
 Used key: 00 01|02 01 Value len:19
-StartInlineObject #0 2-Job-1
+StartInlineObject 2-Job-1
 StartField Duty
 Used key: 00 00|03 Value len:5
 Used key: 00 01|03 01 Value len:14
-StartInlineObject #0 3-Duty-1
+StartInlineObject 3-Duty-1
 StartField Name
 ScalarObj HardCore Code
 ScalarStr HardCore Code

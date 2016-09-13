@@ -221,16 +221,8 @@ namespace BTDB.ODBLayer
         {
             var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
-
-            var backup = _tr.ExtractWriterCtx();
-            if (_keyHandler.NeedsCtx())
-            {
-                ctx = new DBWriterCtx(_tr, writer);
-                _tr.InjectWriterCtx(ctx);
-            }
-
+            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _keyWriter(key, writer, ctx);
-            _tr.InjectWriterCtx(backup);
             return writer.Data.ToByteArray();
         }
 
@@ -238,16 +230,8 @@ namespace BTDB.ODBLayer
         {
             var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
-
-            var backup = _tr.ExtractWriterCtx();
-            if (_valueHandler.NeedsCtx())
-            {
-                ctx = new DBWriterCtx(_tr, writer);
-                _tr.InjectWriterCtx(ctx);
-            }
-
+            if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _valueWriter(value, writer, ctx);
-            _tr.InjectWriterCtx(backup);
             return writer.Data.ToByteArray();
         }
 
@@ -255,30 +239,16 @@ namespace BTDB.ODBLayer
         {
             var reader = new ByteArrayReader(data);
             IReaderCtx ctx = null;
-            IReaderCtx backup = _tr.ExtractReaderCtx();
-            if (_keyHandler.NeedsCtx())
-            {
-                ctx = new DBReaderCtx(_tr, reader);
-                _tr.InjectReaderCtx(ctx);
-            }
-            var res=_keyReader(reader, ctx);
-            _tr.InjectReaderCtx(backup);
-            return res;
+            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr, reader);
+            return _keyReader(reader, ctx);
         }
 
         TValue ByteArrayToValue(byte[] data)
         {
             var reader = new ByteArrayReader(data);
             IReaderCtx ctx = null;
-            IReaderCtx backup = _tr.ExtractReaderCtx();
-            if (_valueHandler.NeedsCtx())
-            {
-                ctx = new DBReaderCtx(_tr, reader);
-                _tr.InjectReaderCtx(ctx);
-            }
-            var res = _valueReader(reader, ctx);
-            _tr.InjectReaderCtx(backup);
-            return res;
+            if (_valueHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr, reader);
+            return _valueReader(reader, ctx);
         }
 
         public bool ContainsKey(TKey key)

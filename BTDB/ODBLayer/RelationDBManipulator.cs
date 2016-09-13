@@ -24,9 +24,7 @@ namespace BTDB.ODBLayer
         {
             var valueWriter = new ByteBufferWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            var backup = _transaction.ExtractWriterCtx();
             _relationInfo.ValueSaver(_transaction, valueWriter, obj);
-            _transaction.InjectWriterCtx(backup);
             return valueWriter.Data;
         }
 
@@ -34,9 +32,7 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
-            var backup = _transaction.ExtractWriterCtx();
             _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj, this);  //this for relation interface which is same with manipulator
-            _transaction.InjectWriterCtx(backup);
             return keyWriter.Data;
         }
 

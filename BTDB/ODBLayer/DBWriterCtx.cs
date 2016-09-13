@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -9,7 +8,7 @@ namespace BTDB.ODBLayer
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
         Dictionary<object, int> _objectIdMap;
-        int _lastId = 1; // Skip Zero inline index due to backward compatibility
+        int _lastId; 
 
         public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
         {
@@ -35,23 +34,16 @@ namespace BTDB.ODBLayer
                 _writer.WriteVInt64((long)oid);
                 return false;
             }
-            if (@object is IPartOfCycleMarker)
+            if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
+            int cid;
+            if (_objectIdMap.TryGetValue(@object, out cid))
             {
-                if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
-                int cid;
-                if (_objectIdMap.TryGetValue(@object, out cid))
-                {
-                    _writer.WriteVInt64(-cid);
-                    return false;
-                }
-                _lastId++;
-                _objectIdMap.Add(@object, _lastId);
-                _writer.WriteVInt64(-_lastId);
+                _writer.WriteVInt64(-cid);
+                return false;
             }
-            else
-            {
-                _writer.WriteVInt64(-1);
-            }
+            _lastId++;
+            _objectIdMap.Add(@object, _lastId);
+            _writer.WriteVInt64(-_lastId);
             return true;
         }
 

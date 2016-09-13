@@ -6,7 +6,6 @@ using System.Text;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
-using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -16,7 +15,7 @@ namespace BTDBTest
     [UseReporter(typeof(DiffReporter))]
     public class ODBIteratorTest : IDisposable
     {
-        IKeyValueDB _lowDb;
+        readonly IKeyValueDB _lowDb;
         IObjectDB _db;
 
         public ODBIteratorTest()
@@ -85,8 +84,6 @@ namespace BTDBTest
 
         internal class ToStringVisitor : ToStringFastVisitor, IODBVisitor
         {
-            uint _inlineId;
-
             public bool VisitSingleton(uint tableId, string tableName, ulong oid)
             {
                 Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
@@ -133,21 +130,9 @@ namespace BTDBTest
                 Builder.AppendLine($"OidReference {oid}");
             }
 
-            public void InlineObjectCycleId(uint id, bool firstInstance)
-            {
-                if (firstInstance)
-                {
-                    _inlineId = id;
-                }
-                else
-                {
-                    Builder.AppendLine($"InlineObjectReference #{id}");
-                }
-            }
-
             public bool StartInlineObject(uint tableId, string tableName, uint version)
             {
-                Builder.AppendLine($"StartInlineObject #{_inlineId} {tableId}-{tableName}-{version}");
+                Builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
                 return true;
             }
 
@@ -253,7 +238,6 @@ namespace BTDBTest
 
         [Fact]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        [UseReporter(typeof(DiffReporter))]
         public void Basics()
         {
             using (var tr = _db.StartTransaction())
@@ -461,32 +445,6 @@ namespace BTDBTest
                 var wfd = tr.Singleton<ObjectWfd2>();
                 wfd.C.Type = 2;
                 tr.Store(wfd);
-                tr.Commit();
-            }
-            IterateWithApprove();
-        }
-
-        public class SelfRef: IPartOfCycleMarker
-        {
-            public SelfRef A { get; set; }
-        }
-
-        public interface ISelfRefRel
-        {
-            void Insert(SelfRef value);
-        }
-
-        [Fact]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public void InlineSelfRefsWorks()
-        {
-            using (var tr = _db.StartTransaction())
-            {
-                var o1 = new SelfRef();
-                var o2 = new SelfRef();
-                o1.A = o2;
-                o2.A = o1;
-                tr.InitRelation<ISelfRefRel>("SelfRef")(tr).Insert(o1);
                 tr.Commit();
             }
             IterateWithApprove();
