@@ -52,7 +52,7 @@ namespace BTDBTest
             public IDictionary<ulong, Job> Jobs { get; set; }
         }
 
-        class ToStringFastVisitor : IODBFastVisitor
+        internal class ToStringFastVisitor : IODBFastVisitor
         {
             protected readonly StringBuilder Builder = new StringBuilder();
             public ByteBuffer Keys = ByteBuffer.NewEmpty();
@@ -83,7 +83,7 @@ namespace BTDBTest
             }
         }
 
-        class ToStringVisitor : ToStringFastVisitor, IODBVisitor
+        internal class ToStringVisitor : ToStringFastVisitor, IODBVisitor
         {
             uint _inlineId;
 
