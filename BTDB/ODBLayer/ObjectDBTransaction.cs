@@ -478,6 +478,14 @@ namespace BTDB.ODBLayer
 
         public ulong Store(object @object)
         {
+            var indirect = @object as IIndirect;
+            if (indirect != null)
+            {
+                if (GetObjFromObjCacheByOid(indirect.Oid) == null)
+                    return indirect.Oid;
+                @object = indirect.ValueAsObject;
+            }
+
             var ti = AutoRegisterType(@object.GetType());
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
@@ -521,6 +529,14 @@ namespace BTDB.ODBLayer
 
         public ulong StoreAndFlush(object @object)
         {
+            var indirect = @object as IIndirect;
+            if (indirect != null)
+            {
+                if (GetObjFromObjCacheByOid(indirect.Oid) == null)
+                    return indirect.Oid;
+                @object = indirect.ValueAsObject;
+            }
+
             var ti = AutoRegisterType(@object.GetType());
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
