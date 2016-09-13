@@ -76,9 +76,9 @@ namespace BTDB.ODBLayer
         IWriterCtx _writerCtx;
         IReaderCtx _readerCtx;
 
-        public IWriterCtx GetWriterCtx(AbstractBufferedWriter writer, bool preferInline)
+        public IWriterCtx GetWriterCtx(AbstractBufferedWriter writer)
         {
-            return _writerCtx ?? (_writerCtx = new DBWriterCtx(this, writer, preferInline));
+            return _writerCtx ?? (_writerCtx = new DBWriterCtx(this, writer));
         }
 
         public IWriterCtx ExtractWriterCtx()
@@ -460,7 +460,6 @@ namespace BTDB.ODBLayer
             var tableInfo = AutoRegisterType(type);
             tableInfo.EnsureClientTypeVersion();
             var oid = 0ul;
-            if (!tableInfo.StoredInline) oid = _owner.AllocateNewOid();
             var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
             var obj = tableInfo.Creator(this, metadata);
             tableInfo.Initializer(this, metadata, obj);
@@ -480,7 +479,6 @@ namespace BTDB.ODBLayer
         public ulong Store(object @object)
         {
             var ti = AutoRegisterType(@object.GetType());
-            CheckStoredInline(ti);
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -521,18 +519,9 @@ namespace BTDB.ODBLayer
             return RegisterNewObject(@object);
         }
 
-        static void CheckStoredInline(TableInfo ti)
-        {
-            if (ti.StoredInline)
-            {
-                throw new BTDBException($"Object {ti.Name} should be stored inline and not directly");
-            }
-        }
-
         public ulong StoreAndFlush(object @object)
         {
             var ti = AutoRegisterType(@object.GetType());
-            CheckStoredInline(ti);
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -600,7 +589,7 @@ namespace BTDB.ODBLayer
                     return metadata.Id;
                 }
             }
-            return (ti.StoredInline || preferInline) ? ulong.MaxValue : RegisterNewObject(@object);
+            return preferInline ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
         ulong RegisterNewObject(object obj)

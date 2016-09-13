@@ -18,7 +18,6 @@ namespace BTDB.ODBLayer
         readonly ITableInfoResolver _tableInfoResolver;
         uint _clientTypeVersion;
         Type _clientType;
-        bool _storedInline;
         readonly ConcurrentDictionary<uint, TableVersionInfo> _tableVersions = new ConcurrentDictionary<uint, TableVersionInfo>();
         Func<IInternalObjectDBTransaction, DBObjectMetadata, object> _creator;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
@@ -35,11 +34,8 @@ namespace BTDB.ODBLayer
             _id = id;
             _name = name;
             _tableInfoResolver = tableInfoResolver;
-            _storedInline = false;
             NeedStoreSingletonOid = false;
         }
-
-        internal bool StoredInline => _storedInline;
 
         internal uint Id => _id;
 
@@ -51,7 +47,6 @@ namespace BTDB.ODBLayer
             set
             {
                 _clientType = value;
-                _storedInline |= _clientType.GetCustomAttributes(typeof(StoredInlineAttribute), true).Length != 0;
                 ClientTypeVersion = 0;
             }
         }
@@ -218,8 +213,7 @@ namespace BTDB.ODBLayer
                 ilGenerator
                     .Ldarg(0)
                     .Ldarg(2)
-                    .LdcI4(0)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null, false))
+                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null))
                     .Stloc(1);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);

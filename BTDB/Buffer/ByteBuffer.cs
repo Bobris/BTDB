@@ -25,7 +25,7 @@ namespace BTDB.Buffer
 
         public static ByteBuffer NewSync(byte[] buffer, int offset, int length)
         {
-            return new ByteBuffer(buffer, (((uint)offset) | 0x80000000u), length);
+            return new ByteBuffer(buffer, (uint)offset | 0x80000000u, length);
         }
 
         public static ByteBuffer NewEmpty()

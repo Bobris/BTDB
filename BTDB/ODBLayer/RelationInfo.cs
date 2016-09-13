@@ -25,7 +25,6 @@ namespace BTDB.ODBLayer
 
         readonly IDictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
         Func<IInternalObjectDBTransaction, object> _creator;
-        Action<IInternalObjectDBTransaction, object> _initializer;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
@@ -89,7 +88,7 @@ namespace BTDB.ODBLayer
             LoadVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
-            if (LastPersistedVersion > 0 && _relationVersions[LastPersistedVersion].Equals(ClientRelationVersionInfo))
+            if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
                 ClientTypeVersion = LastPersistedVersion;
@@ -253,66 +252,6 @@ namespace BTDB.ODBLayer
             Interlocked.CompareExchange(ref _creator, creator, null);
         }
 
-        internal Action<IInternalObjectDBTransaction, object> Initializer
-        {
-            get
-            {
-                if (_initializer == null) CreateInitializer();
-                return _initializer;
-            }
-        }
-
-        void CreateInitializer()
-        {
-            var relationVersionInfo = ClientRelationVersionInfo;
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, object>>(
-                $"RelationInitializer_{Name}");
-            var ilGenerator = method.Generator;
-            if (relationVersionInfo.NeedsInit())
-            {
-                ilGenerator.DeclareLocal(ClientType);
-                ilGenerator
-                    .Ldarg(1)
-                    .Castclass(ClientType)
-                    .Stloc(0);
-                var anyNeedsCtx = relationVersionInfo.NeedsCtx();
-                if (anyNeedsCtx)
-                {
-                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                    ilGenerator
-                        .Ldarg(0)
-                        .Newobj(() => new DBReaderCtx(null))
-                        .Stloc(1);
-                }
-                var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                var allFields = relationVersionInfo.GetAllFields();
-                foreach (var srcFieldInfo in allFields)
-                {
-                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
-                    if (iFieldHandlerWithInit == null) continue;
-                    Action<IILGen> readerOrCtx;
-                    if (srcFieldInfo.Handler.NeedsCtx())
-                        readerOrCtx = il => il.Ldloc(1);
-                    else
-                        readerOrCtx = il => il.Ldnull();
-                    var specializedSrcHandler = srcFieldInfo.Handler;
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
-                    var converterGenerator = _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
-                    if (converterGenerator == null) continue;
-                    converterGenerator = _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, setterMethod.GetParameters()[0].ParameterType);
-                    if (!iFieldHandlerWithInit.NeedInit()) continue;
-                    ilGenerator.Ldloc(0);
-                    iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
-                    converterGenerator(ilGenerator);
-                    ilGenerator.Call(setterMethod);
-                }
-            }
-            ilGenerator.Ret();
-            var initializer = method.Create();
-            Interlocked.CompareExchange(ref _initializer, initializer, null);
-        }
-
         internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> ValueSaver
         {
             get
@@ -351,8 +290,7 @@ namespace BTDB.ODBLayer
                 ilGen
                     .Do(pushTransaction)
                     .Do(pushWriter)
-                    .LdcI4(1)
-                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null, true))
+                    .Callvirt(() => default(IInternalObjectDBTransaction).GetWriterCtx(null))
                     .Stloc(writerCtxLocal);
             }
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -738,7 +676,6 @@ namespace BTDB.ODBLayer
                                      bool keyContainsRelationIndex = true)
         {
             var obj = Creator(tr);
-            Initializer(tr, obj); // <= IS THIS REALLY NEEDED? loader should initialize all fields
             var keyReader = new ByteBufferReader(keyBytes);
             if (keyContainsRelationIndex)
                 keyReader.SkipVUInt32(); //index Relation

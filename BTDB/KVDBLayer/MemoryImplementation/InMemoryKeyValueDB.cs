@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using BTDB.KVDBLayer.BTreeMem;
 
@@ -63,6 +64,11 @@ namespace BTDB.KVDBLayer
         public string CalcStats()
         {
             return "KeyValueCount:" + LastCommited.CalcKeyCount() + Environment.NewLine;
+        }
+
+        public bool Compact(CancellationToken cancellation)
+        {
+            return false;
         }
 
         internal IBTreeRootNode MakeWrittableTransaction(InMemoryKeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)

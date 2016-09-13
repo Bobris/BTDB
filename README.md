@@ -14,6 +14,7 @@ Currently this project these parts:
 All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, main code is without any dependency. Code is tested using NUnit Framework.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>
+It is also available as Source Nuget <https://www.nuget.org/packages/BTDB.Sources>
 
 ---
 ## Key Value Database
@@ -28,7 +29,7 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>
 * Export/Import to stream - could be used for compaction, snapshotting
 * Automatic compaction
 * Customizable compression
-* Relatively Fast DB Open due to key index file
+* Relatively Fast DB Open due to key index file - though it still needs to load all keys to memory
 * Inspired by Bitcask [https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf]
 
 ### Design limits:
@@ -52,6 +53,7 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>
 ### Roadmap:
 
 * Everything is there just use it
+* Try prefix/postfix key compression in memory BTree
 
 ---
 ## Wrapped Dynamic IL generation with debugging + extensions
@@ -89,8 +91,11 @@ This help you to write fluent code which generates IL code in runtime. It is use
 * Automatic versioning of model changes.
 * Enumeration of all objects
 * Each object type could store its "singleton" - very useful for root objects
+* Relations - Table with primary key and multiple secondary keys
+* By default objects are stored inline in parent object, use IIndirect for objects with Oid which will load lazily 
 
 Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/ODBDictionary.md]
+Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ### Sample code:
 
@@ -152,7 +157,8 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 * Deserialization also to dynamic
 * Storage is transactional
 * As storage could be used Azure Page Blobs
- 
+* EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
+
 ---
 ## Dto Channel
 

@@ -1,5 +1,4 @@
 using System;
-using BTDB.Buffer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -12,6 +11,7 @@ namespace BTDB.KVDBLayer
         readonly uint _trLogOffset;
         readonly long _keyValueCount;
         readonly ulong _commitUlong;
+        readonly KeyIndexCompression _compressionType;
 
         public KVFileType FileType => KVFileType.KeyIndex;
 
@@ -29,7 +29,9 @@ namespace BTDB.KVDBLayer
 
         public ulong CommitUlong => _commitUlong;
 
-        public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong)
+        public KeyIndexCompression Compression => _compressionType;
+
+        public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong, bool modern)
         {
             _guid = guid;
             _generation = reader.ReadVInt64();
@@ -37,9 +39,10 @@ namespace BTDB.KVDBLayer
             _trLogOffset = reader.ReadVUInt32();
             _keyValueCount = (long)reader.ReadVUInt64();
             _commitUlong = withCommitUlong ? reader.ReadVUInt64() : 0;
+            _compressionType = modern ? (KeyIndexCompression)reader.ReadUInt8() : KeyIndexCompression.Old;
         }
 
-        public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong)
+        public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong, KeyIndexCompression compression)
         {
             _guid = guid;
             _generation = generation;
@@ -47,30 +50,32 @@ namespace BTDB.KVDBLayer
             _trLogOffset = trLogOffset;
             _keyValueCount = keyCount;
             _commitUlong = commitUlong;
+            _compressionType = compression;
         }
 
         internal static void SkipHeader(AbstractBufferedReader reader)
         {
             FileCollectionWithFileInfos.SkipHeader(reader);
-            var withCommitUlong = reader.ReadUInt8() == (byte)KVFileType.KeyIndexWithCommitUlong;
+            var type = (KVFileType)reader.ReadUInt8();
+            var withCommitUlong = type == KVFileType.KeyIndexWithCommitUlong || type == KVFileType.ModernKeyIndex;
             reader.SkipVInt64(); // generation
             reader.SkipVUInt32(); // trLogFileId
             reader.SkipVUInt32(); // trLogOffset
             reader.SkipVUInt64(); // keyValueCount
             if (withCommitUlong) reader.SkipVUInt64(); // commitUlong
+            if (type == KVFileType.ModernKeyIndex) reader.SkipUInt8();
         }
 
         internal void WriteHeader(AbstractBufferedWriter writer)
         {
             FileCollectionWithFileInfos.WriteHeader(writer, _guid);
-            var withCommitUlong = _commitUlong != 0;
-            writer.WriteUInt8((byte)(withCommitUlong ? KVFileType.KeyIndexWithCommitUlong : KVFileType.KeyIndex));
+            writer.WriteUInt8((byte)KVFileType.ModernKeyIndex);
             writer.WriteVInt64(_generation);
             writer.WriteVUInt32(_trLogFileId);
             writer.WriteVUInt32(_trLogOffset);
             writer.WriteVUInt64((ulong)_keyValueCount);
-            if (withCommitUlong)
-                writer.WriteVUInt64(_commitUlong);
+            writer.WriteVUInt64(_commitUlong);
+            writer.WriteUInt8((byte) _compressionType);
         }
     }
 }

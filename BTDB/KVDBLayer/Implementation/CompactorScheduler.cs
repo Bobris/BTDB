@@ -3,28 +3,82 @@ using System.Threading;
 
 namespace BTDB.KVDBLayer
 {
-    class CompactorScheduler: IDisposable
+    public class CompactorScheduler : IDisposable, ICompactorScheduler
     {
-        readonly Func<CancellationToken, bool> _coreAction;
+        Func<CancellationToken, bool>[] _coreActions = new Func<CancellationToken, bool>[0];
         readonly Timer _timer;
-        readonly CancellationTokenSource _cancellationSource = new CancellationTokenSource();
+        CancellationTokenSource _cancellationSource = new CancellationTokenSource();
         readonly object _lock = new object();
         bool _running;
         bool _advicedRunning;
         bool _firstTime;
+        bool _disposed;
         internal TimeSpan WaitTime { get; set; }
 
-        internal CompactorScheduler(Func<CancellationToken,bool> coreAction)
+        static ICompactorScheduler _instance;
+
+        public static ICompactorScheduler Instance
         {
-            _coreAction = coreAction;
-            _timer = new Timer(OnTimer);
-            _firstTime = true;
-            WaitTime = TimeSpan.FromMinutes(5);
+            get
+            {
+                if (_instance == null)
+                {
+                    Interlocked.CompareExchange(ref _instance, new CompactorScheduler(), null);
+                }
+                return _instance;
+            }
+            set { _instance = value; }
         }
 
-        internal void AdviceRunning()
+        internal CompactorScheduler()
         {
-            lock(_lock)
+            _timer = new Timer(OnTimer);
+            _firstTime = true;
+            WaitTime = TimeSpan.FromMinutes(10 + new Random().NextDouble() * 5);
+        }
+
+        public Func<CancellationToken, bool> AddCompactAction(Func<CancellationToken, bool> compactAction)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(CompactorScheduler));
+            while (true)
+            {
+                var oldA = _coreActions;
+                var newA = oldA;
+                Array.Resize(ref newA, oldA.Length + 1);
+                newA[oldA.Length] = compactAction;
+                if (Interlocked.CompareExchange(ref _coreActions, newA, oldA) == oldA) break;
+            }
+            return compactAction;
+        }
+
+        public void RemoveCompactAction(Func<CancellationToken, bool> compactAction)
+        {
+            if (_disposed) return;
+            lock (_lock)
+            {
+                _cancellationSource.Cancel();
+                while (_running)
+                {
+                    Monitor.Wait(_lock);
+                }
+                _cancellationSource = new CancellationTokenSource();
+                while (true)
+                {
+                    var oldA = _coreActions;
+                    var newA = oldA;
+                    var idx = Array.IndexOf(newA, compactAction);
+                    if (idx < 0) break;
+                    Array.Resize(ref newA, oldA.Length - 1);
+                    if (idx > 0) Array.Copy(oldA, 0, newA, 0, idx);
+                    if (idx < newA.Length) Array.Copy(oldA, idx + 1, newA, idx, newA.Length - idx);
+                    if (Interlocked.CompareExchange(ref _coreActions, newA, oldA) == oldA) break;
+                }
+            }
+        }
+
+        public void AdviceRunning()
+        {
+            lock (_lock)
             {
                 if (_running)
                 {
@@ -33,7 +87,6 @@ namespace BTDB.KVDBLayer
                 }
                 if (_firstTime)
                 {
-                    _firstTime = false;
                     _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
                 }
                 else
@@ -53,13 +106,18 @@ namespace BTDB.KVDBLayer
             try
             {
                 var needed = false;
+                _firstTime = false;
                 do
                 {
-                    if (_cancellationSource.IsCancellationRequested) break;
                     _advicedRunning = false;
-                    needed = _coreAction(_cancellationSource.Token);
+                    var actions = _coreActions;
+                    for (var i = 0; i < actions.Length; i++)
+                    {
+                        if (_cancellationSource.IsCancellationRequested) break;
+                        needed |= actions[i](_cancellationSource.Token);
+                    }
                 } while (_advicedRunning);
-                lock(_lock)
+                lock (_lock)
                 {
                     _running = false;
                     Monitor.PulseAll(_lock);
@@ -82,9 +140,10 @@ namespace BTDB.KVDBLayer
 
         public void Dispose()
         {
-            _cancellationSource.Cancel();
-            lock(_lock)
+            _disposed = true;
+            lock (_lock)
             {
+                _cancellationSource.Cancel();
                 while (_running)
                 {
                     Monitor.Wait(_lock);

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -7,15 +8,13 @@ namespace BTDB.ODBLayer
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly AbstractBufferedWriter _writer;
-        readonly bool _preferInline;
         Dictionary<object, int> _objectIdMap;
         int _lastId = 1; // Skip Zero inline index due to backward compatibility
 
-        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer, bool preferInline)
+        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
         {
             _transaction = transaction;
             _writer = writer;
-            _preferInline = preferInline;
         }
 
         public bool WriteObject(object @object)
@@ -30,22 +29,29 @@ namespace BTDB.ODBLayer
                 _writer.WriteVInt64(0);
                 return false;
             }
-            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline && _preferInline);
+            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline);
             if (oid != ulong.MaxValue)
             {
                 _writer.WriteVInt64((long)oid);
                 return false;
             }
-            if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
-            int cid;
-            if (_objectIdMap.TryGetValue(@object, out cid))
+            if (@object is IPartOfCycleMarker)
             {
-                _writer.WriteVInt64(-cid);
-                return false;
+                if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
+                int cid;
+                if (_objectIdMap.TryGetValue(@object, out cid))
+                {
+                    _writer.WriteVInt64(-cid);
+                    return false;
+                }
+                _lastId++;
+                _objectIdMap.Add(@object, _lastId);
+                _writer.WriteVInt64(-_lastId);
             }
-            _lastId++;
-            _objectIdMap.Add(@object, _lastId);
-            _writer.WriteVInt64(-_lastId);
+            else
+            {
+                _writer.WriteVInt64(-1);
+            }
             return true;
         }
 

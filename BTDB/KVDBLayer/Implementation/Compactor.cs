@@ -79,7 +79,7 @@ namespace BTDB.KVDBLayer
             var totalWaste = CalcTotalWaste();
             if (totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4)
             {
-                if (_keyValueDB.DistanceFromLastKeyIndex(_root) < (ulong)_keyValueDB.MaxTrLogFileSize / 4) return false;
+                if (_keyValueDB.DistanceFromLastKeyIndex(_root) < (ulong)(_keyValueDB.MaxTrLogFileSize / 4)) return false;
                 _keyValueDB.CreateIndexFile(_cancellation);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;

@@ -742,7 +742,6 @@ namespace BTDBTest
             appender.Store(null, new object[] { e });
         }
 
-        [StoredInline]
         public class ClassWithChangedUINTtoULONG
         {
             public ulong A { get; set; }

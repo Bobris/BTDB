@@ -46,12 +46,12 @@ namespace BTDBTest
             public string Email { get; set; }
 
             public string Name { get; set; }
-            
+
             public Dictionary<string, IList<byte>> Ratings { get; set; }
 
             public bool Equals(PersonSimple other)
             {
-                if (TenantId != other.TenantId || !string.Equals(Email, other.Email) || 
+                if (TenantId != other.TenantId || !string.Equals(Email, other.Email) ||
                     !string.Equals(Name, other.Name))
                     return false;
 
@@ -218,7 +218,11 @@ namespace BTDBTest
         [Fact]
         public void UpdateWorks()
         {
-            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris",
+            var person = new PersonSimple
+            {
+                TenantId = 1,
+                Email = "nospam@nospam.cz",
+                Name = "Boris",
                 Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
             };
             Func<IObjectDBTransaction, ISimplePersonTable> creator;
@@ -891,6 +895,14 @@ namespace BTDBTest
                 var un = userNoticeTable.ListById(10, 20, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
                 Assert.True(un.MoveNext());
                 Assert.Equal(30u, un.Current.NoticeId);
+                tr.Commit();
+            }
+            ReopenDb();
+            var db = (ObjectDB)_db;
+            using (var tr = _db.StartTransaction())
+            {
+                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction)tr, "UserNotice", typeof (IUserNoticeTable));
+                Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }
 
@@ -948,7 +960,6 @@ namespace BTDBTest
             }
         }
 
-
         public interface IRoomTable2
         {
             ulong CompanyId { get; set; }
@@ -957,7 +968,6 @@ namespace BTDBTest
             void RemoveById(ulong id);
             IEnumerator<Room> GetEnumerator();
         }
-
 
         [Fact]
         public void EnumerateAndDeleteTest()

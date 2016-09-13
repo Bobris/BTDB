@@ -1,0 +1,19 @@
+﻿Relation SelfRef
+Used key: 03 01| Value len:8
+BeginKey
+EndKey
+BeginValue
+StartField A
+Used key: 00 00|01 Value len:8
+Used key: 00 01|01 01 Value len:19
+StartInlineObject #1 1-SelfRef-1
+StartField A
+StartInlineObject #2 1-SelfRef-1
+StartField A
+InlineObjectReference #1
+EndField
+EndInlineObject
+EndField
+EndInlineObject
+EndField
+EndValue

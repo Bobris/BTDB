@@ -11,12 +11,13 @@ namespace BTDBTest
         public void ItWillNotStartImidietly()
         {
             var run = false;
-            using (new CompactorScheduler(token =>
+            using (var sch = new CompactorScheduler())
+            {
+                sch.AddCompactAction(token =>
                 {
                     run = true;
                     return false;
-                }))
-            {
+                });
             }
             Assert.False(run, "Should not Start imidietly");
         }
@@ -25,12 +26,13 @@ namespace BTDBTest
         public void ItWillRunFirstTimeAfterWaitTime()
         {
             var e = new AutoResetEvent(false);
-            using (var s = new CompactorScheduler(token =>
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
                 {
                     e.Set();
                     return false;
-                }))
-            {
+                });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
                 Assert.True(e.WaitOne(1000));
@@ -42,7 +44,9 @@ namespace BTDBTest
         {
             var e = new AutoResetEvent(false);
             var first = true;
-            using (var s = new CompactorScheduler(token =>
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
                 {
                     if (first)
                     {
@@ -51,8 +55,7 @@ namespace BTDBTest
                     }
                     e.Set();
                     return false;
-                }))
-            {
+                });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
                 Assert.True(e.WaitOne(1000));
@@ -64,7 +67,9 @@ namespace BTDBTest
         public void ItShouldCancelRunningCompaction()
         {
             var e = new AutoResetEvent(false);
-            using (var s = new CompactorScheduler(token =>
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
                 {
                     e.Set();
                     while (true)
@@ -75,8 +80,7 @@ namespace BTDBTest
                             token.ThrowIfCancellationRequested();
                         }
                     }
-                }))
-            {
+                });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
                 s.AdviceRunning();
                 Assert.True(e.WaitOne(1000));

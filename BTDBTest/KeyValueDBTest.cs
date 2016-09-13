@@ -245,11 +245,11 @@ namespace BTDBTest
         }
 
         [Theory]
-        [InlineData(0,0,0)]
-        [InlineData(0,0,1)]
-        [InlineData(0,0,2)]
-        [InlineData(0,0,500)]
-        [InlineData(0,0,1200000)]
+        [InlineData(0, 0, 0)]
+        [InlineData(0, 0, 1)]
+        [InlineData(0, 0, 2)]
+        [InlineData(0, 0, 500)]
+        [InlineData(0, 0, 1200000)]
         [InlineData(0, 1, 1)]
         [InlineData(0, 1, 2)]
         [InlineData(0, 1, 500)]
@@ -269,8 +269,8 @@ namespace BTDBTest
         public void BiggerKey(int prefixLength, int offsetKey, int keyLength)
         {
             var prefix = new byte[prefixLength];
-            var keyb = new byte[offsetKey+keyLength];
-            for (int i = offsetKey; i < offsetKey+keyLength; i++) keyb[i] = (byte)i;
+            var keyb = new byte[offsetKey + keyLength];
+            for (int i = offsetKey; i < offsetKey + keyLength; i++) keyb[i] = (byte)i;
             var key = ByteBuffer.NewAsync(keyb, offsetKey, keyLength);
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = new KeyValueDB(fileCollection))
@@ -278,7 +278,7 @@ namespace BTDBTest
                 using (var tr1 = db.StartTransaction())
                 {
                     tr1.SetKeyPrefix(prefix);
-                    tr1.CreateOrUpdateKeyValue(key,ByteBuffer.NewEmpty());
+                    tr1.CreateOrUpdateKeyValue(key, ByteBuffer.NewEmpty());
                     tr1.Commit();
                 }
                 using (var tr2 = db.StartTransaction())
@@ -1068,7 +1068,7 @@ namespace BTDBTest
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
-                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024, null))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -1083,7 +1083,10 @@ namespace BTDBTest
                         tr.EraseCurrent();
                         tr.Commit();
                     }
-                    db.Compact();
+                    Task.Run(() =>
+                    {
+                        db.Compact(new CancellationToken());
+                    });
                     Thread.Sleep(2000);
                     Console.WriteLine(db.CalcStats());
                     Assert.True(4 <= fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex, (optinal 1 Unknown (old KeyIndex))

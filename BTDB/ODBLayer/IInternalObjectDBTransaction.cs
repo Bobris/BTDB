@@ -11,7 +11,7 @@ namespace BTDB.ODBLayer
         KeyValueDBTransactionProtector TransactionProtector { get; }
         ulong AllocateDictionaryId();
         object ReadInlineObject(IReaderCtx readerCtx);
-        IWriterCtx GetWriterCtx(AbstractBufferedWriter writer, bool preferInline);
+        IWriterCtx GetWriterCtx(AbstractBufferedWriter writer);
         IWriterCtx ExtractWriterCtx();
         void InjectWriterCtx(IWriterCtx writer);
         IReaderCtx GetReaderCtx(AbstractBufferedReader reader);

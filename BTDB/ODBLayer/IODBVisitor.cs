@@ -17,6 +17,7 @@ namespace BTDB.ODBLayer
         bool NeedScalarAsText(); // return true if needed as string
         void ScalarAsText(string content);
         void OidReference(ulong oid);
+        void InlineObjectCycleId(uint id, bool firstInstance);
         bool StartInlineObject(uint tableId, string tableName, uint version); // false to skip
         void EndInlineObject();
         bool StartList();
