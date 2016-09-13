@@ -2251,5 +2251,36 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        [Fact]
+        public void IIndirectCanBeUpdatedDirectlyUsingTrStore()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var att = tr.Singleton<IndirectTree>();
+                att.Content = "a";
+                att.Left = new DBIndirect<IndirectTree>(new IndirectTree() {Content = "b"}) {};
+                tr.Store(tr);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var att = tr.Singleton<IndirectTree>();
+                var ii = att.Left;
+                Assert.Equal("b", ii.Value.Content);
+                ii.Value.Content = "c";
+                tr.Store(ii); // Store directly IIndirect
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var att = tr.Singleton<IndirectTree>();
+                var ii = att.Left;
+                Assert.Equal("c", ii.Value.Content);
+                tr.Commit();
+            }
+        }
     }
 }
