@@ -32,6 +32,22 @@ namespace BTDB.ODBLayer
         public IList<FieldId> Fields { get; set; }
         public uint Index { get; set; }
         public string Name { get; set; }
+
+        public static bool Equal(SecondaryKeyInfo a, SecondaryKeyInfo b)
+        {
+            if (a.Name != b.Name)
+                return false;
+            if (a.Index != b.Index)
+                return false;
+            if (a.Fields.Count != b.Fields.Count)
+                return false;
+            for (int i = 0; i < a.Fields.Count; i++)
+            {
+                if (!a.Fields[i].Equals(b.Fields[i]))
+                    return false;
+            }
+            return true;
+        }
     }
 
     class RelationVersionInfo
@@ -59,7 +75,6 @@ namespace BTDB.ODBLayer
                                     Dictionary<uint, TableFieldInfo> primaryKeyFields,
                                     RelationVersionInfo prevVersion)
         {
-            var idx = 0u;
             _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
             _secondaryKeysNames = new Dictionary<string, uint>();
             var skIndexNames = attributes.SelectMany(t => t.Item2).Select(a => a.Name).Distinct();
@@ -107,8 +122,8 @@ namespace BTDB.ODBLayer
                     if (!usedPKFields.ContainsKey(pk.Key))
                         info.Fields.Add(new FieldId(true, (uint)_primaryKeyFields.IndexOf(primaryKeyFields[pk.Key])));
                 }
-                _secondaryKeysNames[indexName] = idx;
-                _secondaryKeys[idx++] = info;
+                _secondaryKeysNames[indexName] = info.Index;
+                _secondaryKeys[info.Index] = info;
             }
         }
 
@@ -310,7 +325,7 @@ namespace BTDB.ODBLayer
             {
                 SecondaryKeyInfo bInfo;
                 if (!b._secondaryKeys.TryGetValue(key.Key, out bInfo)) return false;
-                if (!key.Value.Equals(bInfo)) return false;
+                if (!SecondaryKeyInfo.Equal(key.Value, bInfo)) return false;
             }
             //Fields
             if (a._fields.Length != b._fields.Length) return false;
