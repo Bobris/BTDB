@@ -677,6 +677,7 @@ namespace BTDBTest
             [PrimaryKey(1)]
             [SecondaryKey("Id")]
             public ulong Id { get; set; }
+
             public string Name { get; set; }
         }
 
@@ -759,6 +760,7 @@ namespace BTDBTest
             [PrimaryKey(1)]
             [SecondaryKey("CompanyId")]
             public ulong CompanyId { get; set; }
+
             [PrimaryKey(2)]
             public ulong Id { get; set; }
 
@@ -766,6 +768,7 @@ namespace BTDBTest
 
             [SecondaryKey("DocumentType")]
             public uint DocumentType { get; set; }
+
             public DateTime CreatedDate { get; set; }
         }
 
@@ -869,17 +872,16 @@ namespace BTDBTest
         public class UserNotice
         {
             [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
-            [PrimaryKey(2)]
             public ulong UserId { get; set; }
-            [PrimaryKey(3)]
+            [PrimaryKey(2)]
+            [SecondaryKey("NoticeId")]
             public ulong NoticeId { get; set; }
         }
 
         public interface IUserNoticeTable
         {
             void Insert(UserNotice un);
-            IEnumerator<UserNotice> ListById(ulong companyId, ulong userId, AdvancedEnumeratorParam<ulong> param);
+            IEnumerator<UserNotice> ListByNoticeId(AdvancedEnumeratorParam<ulong> noticeId);
         }
 
         [Fact]
@@ -888,20 +890,19 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IUserNoticeTable>("UserNotice");
-                var userNoticeTable = creator(tr);
-                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 30 });
-                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 31 });
-                userNoticeTable.Insert(new UserNotice { CompanyId = 10, UserId = 20, NoticeId = 32 });
-                var un = userNoticeTable.ListById(10, 20, new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
-                Assert.True(un.MoveNext());
-                Assert.Equal(30u, un.Current.NoticeId);
+                var table = creator(tr);
+                table.Insert(new UserNotice { UserId = 1, NoticeId = 2 });
+                var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
+                Assert.True(en.MoveNext());
+                Assert.Equal(2u, en.Current.NoticeId);
                 tr.Commit();
             }
             ReopenDb();
             var db = (ObjectDB)_db;
             using (var tr = _db.StartTransaction())
             {
-                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction)tr, "UserNotice", typeof (IUserNoticeTable));
+                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction)tr, "UserNotice",
+                    typeof(IUserNoticeTable));
                 Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }
@@ -989,6 +990,54 @@ namespace BTDBTest
                 Assert.True(ex.Message.Contains("modified"));
                 var ex2 = Assert.Throws<InvalidOperationException>(() => en.MoveNext());
                 Assert.True(ex2.Message.Contains("modified"));
+            }
+        }
+
+        public class PermutationOfKeys
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("Sec", Order = 1)]
+            public string A { get; set; }
+            [PrimaryKey(2)]
+            [SecondaryKey("Sec", Order = 4)]
+            public string B { get; set; }
+            [PrimaryKey(3)]
+            [SecondaryKey("Sec", Order = 3)]
+            public string C { get; set; }
+            [PrimaryKey(4)]
+            [SecondaryKey("Sec", Order = 2)]
+            public string D { get; set; }
+            [PrimaryKey(5)]
+            [SecondaryKey("Sec", Order = 5)]
+            public string E { get; set; }
+        }
+
+        public interface IPermutationOfKeysTable
+        {
+            void Insert(PermutationOfKeys per);
+            IEnumerator<PermutationOfKeys> ListBySec(AdvancedEnumeratorParam<string> a);
+        }
+
+        [Fact]
+        public void SecondaryKeyCanContainsPrimaryKeyFieldsInAnyOrder()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPermutationOfKeysTable>("Permutation");
+                var table = creator(tr);
+                table.Insert(new PermutationOfKeys { A = "o", B = "oo", C = "ooo", D = "oooo", E = "ooooo" });
+                var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "", KeyProposition.Excluded, "oo", KeyProposition.Excluded));
+                Assert.True(en.MoveNext());
+                Assert.Equal("o", en.Current.A);
+                tr.Commit();
+            }
+            ReopenDb();
+            var db = (ObjectDB)_db;
+            using (var tr = _db.StartTransaction())
+            {
+                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction)tr, "Permutation",
+                    typeof(IPermutationOfKeysTable));
+                Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }
     }

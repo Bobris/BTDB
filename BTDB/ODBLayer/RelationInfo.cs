@@ -479,6 +479,12 @@ namespace BTDB.ODBLayer
                         $"Relation_SK_to_PK_{ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Name}_p{paramFieldCountInFirstBuffer}"));
         }
 
+        struct MemorizedPositionWithLength
+        {
+            public IILLocal Pos { get; set; } // IMemorizedPosition
+            public IILLocal Length { get; set; } // int
+        }
+
         Action<byte[], byte[], AbstractBufferedWriter> CreatePrimaryKeyFromSKDataMerger(uint secondaryKeyIndex,
                                                           uint paramFieldCountInFirstBuffer, string mergerName)
         {
@@ -492,7 +498,6 @@ namespace BTDB.ODBLayer
             var positionLoc = ilGenerator.DeclareLocal(typeof(ulong)); //stored position
             var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
 
-            //ilGenerator.LdcI4(0).Stloc(readerLoc);
             Action<IILGen> pushReader = il => il.Ldloc(readerLoc);
 
             if (paramFieldCountInFirstBuffer > 0)
@@ -515,8 +520,11 @@ namespace BTDB.ODBLayer
             var pks = ClientRelationVersionInfo.GetPrimaryKeyFields().ToList();
             int processedFieldCount = 0;
             int lastPKIndex = -1;
-            foreach (var field in skFields)
+            var outOfOrderPKParts = new Dictionary<int, MemorizedPositionWithLength>(); //index -> IMemorizedPosition, length
+            var seekPositions = new Dictionary<int, IILLocal>(); //index - > IMemorizedPosition
+            for (int i = 0; i < skFields.Count; i++)
             {
+                var field = skFields[i];
                 if (processedFieldCount == paramFieldCountInFirstBuffer)
                 {
                     ilGenerator
@@ -527,10 +535,34 @@ namespace BTDB.ODBLayer
 
                 if (field.IsFromPrimaryKey)
                 {
-                    if (field.Index != ++lastPKIndex)
-                        throw new BTDBException("Secondary key creating error.");
+                    if (outOfOrderPKParts.ContainsKey((int)field.Index))
+                    {
+                        var memo = outOfOrderPKParts[(int)field.Index];
+                        CopyFromMemorizedPosition(ilGenerator, pushReader, pushWriter, memo);
+                        continue;
+                    }
+                    while (lastPKIndex + 1 < field.Index)
+                    {   //memorize position & length in local variables
+                        lastPKIndex++;
+                        outOfOrderPKParts[lastPKIndex] = SkipWithMemorizing(ilGenerator, pushReader,
+                                                                   pks[lastPKIndex].Handler, positionLoc);
+                    }
+                    if (seekPositions.ContainsKey((int)field.Index))
+                    {
+                        var position = seekPositions[(int)field.Index];
+                        ilGenerator
+                            .Ldloc(position) //[Memorize]
+                            .Callvirt(() => default(IMemorizedPosition).Restore()); //[]
+                    }
                     GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)field.Index].Handler, pushReader,
                                                               pushWriter, positionLoc, memoPositionLoc);
+                    if (NeedMemorizeCurrentPosition(i, skFields))
+                    {
+                        var position = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
+                        seekPositions[(int)field.Index + 1] = position;
+                        MemorizeCurrentPosition(ilGenerator, pushReader, position);
+                    }
+                    lastPKIndex = (int)field.Index;
                 }
                 else
                 {
@@ -544,35 +576,66 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        public object GetSimpleLoader(SimpleLoaderType handler)
+        MemorizedPositionWithLength SkipWithMemorizing(IILGen ilGenerator, Action<IILGen> pushReader, IFieldHandler handler, IILLocal tempPosition)
         {
-            return _simpleLoader.GetOrAdd(handler, h => CreateSimpleLoader(h));
+            var memoPos = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
+            var memoLen = ilGenerator.DeclareLocal(typeof(int));
+            var position = new MemorizedPositionWithLength { Pos = memoPos, Length = memoLen };
+            MemorizeCurrentPosition(ilGenerator, pushReader, memoPos);
+            StoreCurrentPosition(ilGenerator, pushReader, tempPosition);
+            handler.Skip(ilGenerator, pushReader);
+            ilGenerator
+                .Do(pushReader) //[VR]
+                .Callvirt(() => default(ByteArrayReader).GetCurrentPosition()) //[posNew];
+                .Ldloc(tempPosition) //[posNew, posOld]
+                .Sub() //[readLen]
+                .ConvI4() //[readLen(i)]
+                .Stloc(memoLen); //[]
+            return position;
         }
 
-        object CreateSimpleLoader(SimpleLoaderType loaderType)
+        void CopyFromMemorizedPosition(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushWriter, MemorizedPositionWithLength memo)
         {
-            var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx), loaderType.RealType);
-            var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
-            var ilGenerator = dm.Generator;
-            Action<IILGen> pushReaderOrCtx = il => il.Ldarg((ushort)(loaderType.FieldHandler.NeedsCtx() ? 1 : 0));
-            loaderType.FieldHandler.Load(ilGenerator, pushReaderOrCtx);
             ilGenerator
-                .Do(_typeConvertorGenerator.GenerateConversion(loaderType.FieldHandler.HandledType(), loaderType.RealType))
-                .Ret();
-            return dm.Create();
+                .Do(pushWriter) //[W]
+                .Do(pushReader) //[W,VR]
+                .Ldloc(memo.Length) //[W, VR, readLen]
+                .Ldloc(memo.Pos) //[W, VR, readLen, Memorize]
+                .Callvirt(() => default(IMemorizedPosition).Restore()) //[W, VR]
+                .Call(() => default(ByteArrayReader).ReadByteArrayRaw(0)) //[W, byte[]]
+                .Call(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null)); //[]
+        }
+
+        bool NeedMemorizeCurrentPosition(int currentFieldIndex, IList<FieldId> skFields)
+        {
+            if (currentFieldIndex + 1 == skFields.Count)
+                return false;
+            var pkIndex = skFields[currentFieldIndex].Index;
+            var nextPkIndex = skFields[currentFieldIndex + 1].Index;
+            return pkIndex > nextPkIndex;
+        }
+
+        void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
+        {
+            ilGenerator
+                .Do(pushReader)
+                .Call(() => default(ByteArrayReader).MemorizeCurrentPosition())
+                .Stloc(memoPositionLoc);
+        }
+
+        void StoreCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal positionLoc)
+        {
+            ilGenerator
+                .Do(pushReader)
+                .Callvirt(() => default(ByteArrayReader).GetCurrentPosition())
+                .Stloc(positionLoc);
         }
 
         void GenerateCopyFieldFromByteBufferToWriterIl(IILGen ilGenerator, IFieldHandler handler, Action<IILGen> pushReader,
                                                        Action<IILGen> pushWriter, IILLocal positionLoc, IILLocal memoPositionLoc)
         {
-            ilGenerator
-                .Do(pushReader)
-                .Call(() => default(ByteArrayReader).MemorizeCurrentPosition())
-                .Stloc(memoPositionLoc)
-
-                .Do(pushReader)
-                .Callvirt(() => default(ByteArrayReader).GetCurrentPosition())
-                .Stloc(positionLoc);
+            MemorizeCurrentPosition(ilGenerator, pushReader, memoPositionLoc);
+            StoreCurrentPosition(ilGenerator, pushReader, positionLoc);
 
             handler.Skip(ilGenerator, pushReader);
 
@@ -588,6 +651,24 @@ namespace BTDB.ODBLayer
                 .Callvirt(() => default(IMemorizedPosition).Restore()) //[W, VR, readLen]
                 .Call(() => default(ByteArrayReader).ReadByteArrayRaw(0)) //[W, byte[]]
                 .Call(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null)); //[]
+        }
+
+        public object GetSimpleLoader(SimpleLoaderType handler)
+        {
+            return _simpleLoader.GetOrAdd(handler, CreateSimpleLoader);
+        }
+
+        object CreateSimpleLoader(SimpleLoaderType loaderType)
+        {
+            var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx), loaderType.RealType);
+            var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
+            var ilGenerator = dm.Generator;
+            Action<IILGen> pushReaderOrCtx = il => il.Ldarg((ushort)(loaderType.FieldHandler.NeedsCtx() ? 1 : 0));
+            loaderType.FieldHandler.Load(ilGenerator, pushReaderOrCtx);
+            ilGenerator
+                .Do(_typeConvertorGenerator.GenerateConversion(loaderType.FieldHandler.HandledType(), loaderType.RealType))
+                .Ret();
+            return dm.Create();
         }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version, IEnumerable<TableFieldInfo> fields, string loaderName)
