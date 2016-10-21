@@ -111,6 +111,10 @@ namespace BTDB.EventStoreLayer
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
+                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                        {
+                            return null;
+                        }
                     }
                     else if (type.IsArray)
                     {
@@ -127,7 +131,13 @@ namespace BTDB.EventStoreLayer
                 }
                 _temporaryMap[type] = result;
                 if (result != null)
-                    result.FinishBuildFromType(this);
+                {
+                    if (!result.FinishBuildFromType(this))
+                    {
+                        _temporaryMap.Remove(type);
+                        return null;
+                    }
+                }
                 return result;
             }
 

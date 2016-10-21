@@ -11,8 +11,9 @@ namespace BTDB.EventStoreLayer
     {
         public string Name => "Byte[]";
 
-        public void FinishBuildFromType(ITypeDescriptorFactory factory)
+        public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
+            return true;
         }
 
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)

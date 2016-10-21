@@ -45,7 +45,7 @@ namespace BTDB.EventStoreLayer
 
         public string Name => _name;
 
-        public void FinishBuildFromType(ITypeDescriptorFactory factory)
+        public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
             var props = _type.GetProperties();
             foreach (var propertyInfo in props)
@@ -56,6 +56,7 @@ namespace BTDB.EventStoreLayer
                     _fields.Add(new KeyValuePair<string, ITypeDescriptor>(GetPersitentName(propertyInfo), descriptor));
                 }
             }
+            return true;
         }
 
         static string GetPersitentName(System.Reflection.PropertyInfo propertyInfo)

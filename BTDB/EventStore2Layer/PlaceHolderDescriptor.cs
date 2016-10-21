@@ -22,7 +22,7 @@ namespace BTDB.EventStore2Layer
 
         string ITypeDescriptor.Name => "";
 
-        void ITypeDescriptor.FinishBuildFromType(ITypeDescriptorFactory factory)
+        bool ITypeDescriptor.FinishBuildFromType(ITypeDescriptorFactory factory)
         {
             throw new InvalidOperationException();
         }

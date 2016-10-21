@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
+using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using Xunit;
 
@@ -802,5 +803,33 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
         }
+
+        public class EventWithIIndirect
+        {
+            public string Name { get; set; }
+            public IIndirect<User> Ind1 { get; set; }
+            public List<IIndirect<User>> Ind2 { get; set; }
+        }
+
+        [Fact]
+        public void SkipsIIndirect()
+        {
+            var manager = new EventStoreManager();
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+
+            var ev = new EventWithIIndirect
+            {
+                Name = "A",
+                Ind1 = new DBIndirect<User>(),
+                Ind2 = new List<IIndirect<User>>()
+            };
+            appender.Store(null, new object[] { ev });
+            manager = new EventStoreManager();
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+        }
+
     }
 }

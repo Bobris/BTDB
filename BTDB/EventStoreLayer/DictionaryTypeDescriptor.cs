@@ -65,9 +65,14 @@ namespace BTDB.EventStoreLayer
             private set { _name = value; }
         }
 
-        public void FinishBuildFromType(ITypeDescriptorFactory factory)
+        public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
-            InitFromKeyValueDescriptors(factory.Create(_keyType), factory.Create(_valueType));
+            var keyDescriptor = factory.Create(_keyType);
+            if (keyDescriptor == null) return false;
+            var valueDescriptor = factory.Create(_valueType);
+            if (valueDescriptor == null) return false;
+            InitFromKeyValueDescriptors(keyDescriptor, valueDescriptor);
+            return true;
         }
 
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)

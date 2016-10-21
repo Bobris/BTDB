@@ -300,7 +300,10 @@ namespace BTDB.EventStore2Layer
             };
             _typeOrDescriptor2InfoNew[desc] = result;
             _typeOrDescriptor2InfoNew[type] = result;
-            desc.FinishBuildFromType(this);
+            if (!desc.FinishBuildFromType(this))
+            {
+                throw new BTDBException("Don't know how to serialize type " + type.ToSimpleName());
+            }
             return desc;
         }
 
