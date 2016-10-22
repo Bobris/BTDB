@@ -842,38 +842,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        IDictionary<string, FieldBuilder> DefineProperties(RelationInfo relationInfo, IILDynamicType classImpl,
-                                                           Type createdType)
-        {
-            var apartFields = new Dictionary<string, FieldBuilder>();
-            var methods = createdType.GetMethods();
-            foreach (var method in methods)
-            {
-                var name = method.Name;
-                if (!name.StartsWith("get_") && !name.StartsWith("set_"))
-                    continue;
-                FieldBuilder field;
-                var propName = method.Name.Substring(4);
-
-                if (!relationInfo.ApartFields.ContainsKey(propName))
-                    throw new BTDBException($"Invalid property name {propName}.");
-
-                if (!apartFields.TryGetValue(propName, out field))
-                    apartFields[propName] = field = classImpl.DefineField("_" + propName, method.ReturnType,
-                        FieldAttributes.Private);
-                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType,
-                    method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
-                    MethodAttributes.Virtual | MethodAttributes.Public);
-
-                if (method.Name.StartsWith("get_"))
-                    reqMethod.Generator.Ldarg(0).Ldfld(field).Ret();
-                else if (method.Name.StartsWith("set_"))
-                    reqMethod.Generator.Ldarg(0).Ldarg(1).Stfld(field).Ret();
-                classImpl.DefineMethodOverride(reqMethod, method);
-            }
-            return apartFields;
-        }
-
         public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
         {
             var interfaceType = typeof(T);
@@ -886,7 +854,7 @@ namespace BTDB.ODBLayer
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2).Call(relationDBManipulatorType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
             .Ret();
-            var apartFields = DefineProperties(relationInfo, classImpl, interfaceType);
+            relationInfo.GenerateApartFieldsProperties(classImpl, interfaceType);
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
             {
@@ -897,7 +865,7 @@ namespace BTDB.ODBLayer
                 if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy"))
                 {
                     relationInfo.SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
-                        method.GetParameters(), method.ReturnType, apartFields);
+                        method.GetParameters(), method.ReturnType, relationInfo.ApartFields);
                 }
                 else if (method.Name == "ListById") //list by primary key
                 {
@@ -915,7 +883,7 @@ namespace BTDB.ODBLayer
                     reqMethod.Generator
                         .Ldarg(0);
                     relationInfo.SavePKListPrefixBytes(reqMethod.Generator, method.Name,
-                        method.GetParameters(), apartFields);
+                        method.GetParameters(), relationInfo.ApartFields);
                     reqMethod.Generator
                         .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
@@ -980,7 +948,7 @@ namespace BTDB.ODBLayer
                     reqMethod.Generator
                         .Ldarg(0);
                     relationInfo.SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                        method.GetParameters(), apartFields);
+                        method.GetParameters(), relationInfo.ApartFields);
                     reqMethod.Generator
                         .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))

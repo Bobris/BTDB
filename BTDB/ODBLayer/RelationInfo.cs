@@ -870,11 +870,11 @@ namespace BTDB.ODBLayer
                 il => il.Ldarg(parameterId));
         }
 
-        void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, FieldBuilder backingField, IILLocal writerLoc)
+        void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, MethodInfo fieldGetter, IILLocal writerLoc)
         {
             field.Handler.Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
-                il => il.Ldarg(0).Ldfld(backingField));
+                il => il.Ldarg(0).Callvirt(fieldGetter));
         }
 
         void WriteIdIl(IILGen ilGenerator, Action<IILGen> pushWriter, int id)
@@ -896,7 +896,7 @@ namespace BTDB.ODBLayer
 
         internal void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType,
-            IDictionary<string, FieldBuilder> apartFields)
+            IDictionary<string, MethodInfo> apartFields)
         {
             var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
             ilGenerator.Newobj(() => new ByteBufferWriter());
@@ -993,16 +993,16 @@ namespace BTDB.ODBLayer
 
         ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
                                     ParameterInfo[] methodParameters, int paramCount,
-                                    IDictionary<string, FieldBuilder> apartFields,
+                                    IDictionary<string, MethodInfo> apartFields,
                                     IEnumerable<TableFieldInfo> fields, IILLocal writerLoc)
         {
             ushort idx = 0;
             foreach (var field in fields)
             {
-                FieldBuilder backingField;
-                if (apartFields.TryGetValue(field.Name, out backingField))
+                MethodInfo fieldGetter;
+                if (apartFields.TryGetValue(field.Name, out fieldGetter))
                 {
-                    SaveKeyFieldFromApartField(ilGenerator, field, backingField, writerLoc);
+                    SaveKeyFieldFromApartField(ilGenerator, field, fieldGetter, writerLoc);
                     continue;
                 }
                 if (idx == paramCount)
@@ -1061,7 +1061,7 @@ namespace BTDB.ODBLayer
         }
 
         public void SaveListPrefixBytes(uint secondaryKeyIndex, IILGen ilGenerator, string methodName, ParameterInfo[] methodParameters,
-            IDictionary<string, FieldBuilder> apartFields)
+            IDictionary<string, MethodInfo> apartFields)
         {
             var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
             ilGenerator
@@ -1086,7 +1086,7 @@ namespace BTDB.ODBLayer
         }
 
         public void SavePKListPrefixBytes(IILGen ilGenerator, string methodName, ParameterInfo[] methodParameters,
-                                         IDictionary<string, FieldBuilder> apartFields)
+                                         IDictionary<string, MethodInfo> apartFields)
         {
             var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
             ilGenerator
@@ -1119,6 +1119,61 @@ namespace BTDB.ODBLayer
         {
             if (prevModification != _modificationCounter)
                 throw new InvalidOperationException("Relation modified during iteration.");
+        }
+
+        internal void GenerateApartFieldsProperties(IILDynamicType classImpl, Type createdType)
+        {
+            var apartFields = new Dictionary<string, FieldBuilder>();
+            var initializedFields = new Dictionary<string, FieldBuilder>();
+            var methods = createdType.GetMethods();
+            foreach (var method in methods)
+            {
+                var name = method.Name;
+                if (!name.StartsWith("get_") && !name.StartsWith("set_"))
+                    continue;
+
+                FieldBuilder field;
+                FieldBuilder initCheckField = null;
+                var propName = method.Name.Substring(4);
+
+                if (!ApartFields.ContainsKey(propName))
+                    throw new BTDBException($"Invalid property name {propName}.");
+
+                if (!apartFields.TryGetValue(propName, out field))
+                {
+                    field = classImpl.DefineField("_" + propName, method.ReturnType, FieldAttributes.Private);
+                    apartFields[propName] = field;
+                    initCheckField = classImpl.DefineField("_initialized_" + propName, typeof(bool), FieldAttributes.Private);
+                    initializedFields[propName] = initCheckField;
+                }
+                else
+                {
+                    initCheckField = initializedFields[propName];
+                }
+
+                var reqMethod = classImpl.DefineMethod(method.Name, method.ReturnType,
+                    method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
+                    MethodAttributes.Virtual | MethodAttributes.Public);
+                if (name.StartsWith("set_"))
+                {
+                    reqMethod.Generator.Ldarg(0).Ldarg(1).Stfld(field)
+                        .Ldarg(0).LdcI4(1).Stfld(initCheckField)
+                        .Ret();
+                }
+                else
+                {
+                    var initializedLabel = reqMethod.Generator.DefineLabel("initialized");
+                    reqMethod.Generator
+                        .Ldarg(0).Ldfld(initCheckField)
+                        .Brtrue(initializedLabel)
+                        .Ldstr($"Cannot use uninitialized apart field {propName}")
+                        .Newobj(() => new BTDBException(null))
+                        .Throw()
+                        .Mark(initializedLabel)
+                        .Ldarg(0).Ldfld(field).Ret();
+                }
+                classImpl.DefineMethodOverride(reqMethod, method);
+            }
         }
     }
 

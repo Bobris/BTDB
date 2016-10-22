@@ -375,6 +375,26 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void CannotUseUninitializedApartFields()
+        {
+            var person = new PersonSimple { Email = "nospam@nospam.cz", Name = "Lubos" };
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimplePersonTableWithTenantId>("PersonSimpleTenantId");
+                var personSimpleTable = creator(tr);
+                ThrowsUninitialized(() => personSimpleTable.Insert(person));
+                ThrowsUninitialized(() => personSimpleTable.RemoveById("nospam@nospam.cz"));
+                tr.Commit();
+            }
+        }
+
+        void ThrowsUninitialized(Action action)
+        {
+            var ex = Assert.Throws<BTDBException>(action);
+            Assert.True(ex.Message.Contains("uninitialized"));
+        }
+
         public class Person
         {
             [PrimaryKey(1)]
