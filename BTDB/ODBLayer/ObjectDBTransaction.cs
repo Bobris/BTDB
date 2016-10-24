@@ -535,7 +535,7 @@ namespace BTDB.ODBLayer
             return id;
         }
 
-        public ulong StoreIfNotInlined(object @object, bool autoRegister, bool preferInline)
+        public ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline)
         {
             TableInfo ti;
             if (autoRegister)
@@ -554,6 +554,11 @@ namespace BTDB.ODBLayer
                 if (_objSmallMetadata.TryGetValue(@object, out metadata))
                 {
                     if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
+                    if (forceInline)
+                    {
+                        Delete(metadata.Id);
+                        return ulong.MaxValue;
+                    }
                     return metadata.Id;
                 }
             }
@@ -562,10 +567,15 @@ namespace BTDB.ODBLayer
                 if (_objBigMetadata.TryGetValue(@object, out metadata))
                 {
                     if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return 0;
+                    if (forceInline)
+                    {
+                        Delete(metadata.Id);
+                        return ulong.MaxValue;
+                    }
                     return metadata.Id;
                 }
             }
-            return preferInline ? ulong.MaxValue : RegisterNewObject(@object);
+            return forceInline ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
         ulong RegisterNewObject(object obj)

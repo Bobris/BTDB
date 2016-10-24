@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using ApprovalTests;
 using ApprovalTests.Reporters;
+using ApprovalTests.Wpf;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -108,7 +109,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {
-                Assert.Equal(1234567ul,tr.GetCommitUlong());
+                Assert.Equal(1234567ul, tr.GetCommitUlong());
             }
             ReopenDb();
             using (var tr = _db.StartTransaction())
@@ -463,8 +464,8 @@ namespace BTDBTest
             public uint UIntField { get; set; }
             public long LongField { get; set; }
             public ulong ULongField { get; set; }
-            public object DbObjectField { get; set; }
-            public VariousFieldTypes VariousFieldTypesField { get; set; }
+            public IIndirect<object> DbObjectField { get; set; }
+            public IIndirect<VariousFieldTypes> VariousFieldTypesField { get; set; }
             public bool BoolField { get; set; }
             public double DoubleField { get; set; }
             public float FloatField { get; set; }
@@ -492,8 +493,8 @@ namespace BTDBTest
                 Assert.Equal(0u, o.UIntField);
                 Assert.Equal(0, o.LongField);
                 Assert.Equal(0u, o.ULongField);
-                Assert.Null(o.DbObjectField);
-                Assert.Null(o.VariousFieldTypesField);
+                Assert.Equal(0u, o.DbObjectField.Oid);
+                Assert.Equal(0u, o.VariousFieldTypesField.Oid);
                 Assert.False(o.BoolField);
                 Assert.Equal(0d, o.DoubleField);
                 Assert.Equal(0f, o.FloatField);
@@ -514,8 +515,8 @@ namespace BTDBTest
                 o.UIntField = 100000;
                 o.LongField = -1000000000000;
                 o.ULongField = 1000000000000;
-                o.DbObjectField = o;
-                o.VariousFieldTypesField = o;
+                o.DbObjectField = new DBIndirect<object>(o);
+                o.VariousFieldTypesField = new DBIndirect<VariousFieldTypes>(o);
                 o.BoolField = true;
                 o.DoubleField = 12.34;
                 o.FloatField = -12.34f;
@@ -548,8 +549,8 @@ namespace BTDBTest
             Assert.Equal(100000u, o.UIntField);
             Assert.Equal(-1000000000000, o.LongField);
             Assert.Equal(1000000000000u, o.ULongField);
-            Assert.Same(o, o.DbObjectField);
-            Assert.Same(o, o.VariousFieldTypesField);
+            Assert.Same(o, o.DbObjectField.Value);
+            Assert.Same(o, o.VariousFieldTypesField.Value);
             Assert.True(o.BoolField);
             Assert.InRange(12.34 - o.DoubleField, -1e-10, 1e10);
             Assert.InRange(-12.34 - o.FloatField, -1e-6, 1e6);
@@ -1349,7 +1350,7 @@ namespace BTDBTest
             public IDictionary<PersonNew, int> Dict { get; set; }
         }
 
-        [Fact(Skip="This is very difficult to do")]
+        [Fact(Skip = "This is very difficult to do")]
         public void UpgradingKeyInDictionary()
         {
             var singName = _db.RegisterType(typeof(ObjectWithDictWithInlineKey));
@@ -1857,7 +1858,7 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<UlongGuidMap>().Items;
                 string value;
-                Assert.Equal(true, items.TryGetValue(new UlongGuidKey {Ulong = 1, Guid = guid}, out value));
+                Assert.Equal(true, items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
 
                 Assert.Equal("a", value);
             }
@@ -1874,7 +1875,7 @@ namespace BTDBTest
         }
 
 
-        [Fact(Skip="Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
+        [Fact(Skip = "Very difficult without breaking backward compatibility of database. And what is worse problem string inside object is not ordered correctly!")]
         public void CannotStoreDateTimeKindUnspecified()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -2070,11 +2071,11 @@ namespace BTDBTest
                     var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
                     if (fromcfg.Flags) return null; // Flags are hard :-)
                     var cfgIdx = 0;
-                    while(true)
+                    while (true)
                     {
                         var oldEnumCfgs = _enumCfgs;
                         var newEnumCfgs = oldEnumCfgs;
-                        Array.Resize(ref newEnumCfgs,oldEnumCfgs?.Length+1 ?? 1);
+                        Array.Resize(ref newEnumCfgs, oldEnumCfgs?.Length + 1 ?? 1);
                         cfgIdx = newEnumCfgs.Length - 1;
                         newEnumCfgs[cfgIdx] = fromcfg;
                         if (Interlocked.CompareExchange(ref _enumCfgs, newEnumCfgs, oldEnumCfgs) == oldEnumCfgs) break;
@@ -2204,7 +2205,7 @@ namespace BTDBTest
             {
                 var att = tr.Singleton<IndirectTree>();
                 att.Content = "a";
-                att.Left = new DBIndirect<IndirectTree>(new IndirectTree() {Content = "b"}) {};
+                att.Left = new DBIndirect<IndirectTree>(new IndirectTree() { Content = "b" }) { };
                 tr.Store(tr);
                 tr.Commit();
             }
@@ -2248,6 +2249,41 @@ namespace BTDBTest
                 var text = visitor.ToString();
                 Approvals.Verify(text);
             }
+        }
+
+        [Fact]
+        public void Indirect2InlineAutoConversion()
+        {
+            var treeDBName = _db.RegisterType(typeof(IndirectTree));
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<IndirectTree>();
+                root.Content = "Root";
+                var left = tr.New<IndirectTree>();
+                left.Content = "Left";
+                root.Left = new DBIndirect<IndirectTree>(left);
+                left.Parent = new DBIndirect<IndirectTree>(root);
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(Tree), treeDBName);
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<Tree>();
+                root.Content = "ModifiedRoot";
+                Assert.NotEqual(0u, tr.GetOid(root.Left));
+                root.Left.Content = "ModifiedLeft";
+                tr.Store(root);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<Tree>();
+                Assert.Equal(0, (int)tr.GetOid(root.Left));
+                Assert.Equal("ModifiedRoot", root.Content);
+                Assert.Equal("ModifiedLeft", root.Left.Content);
+            }
+
         }
     }
 }

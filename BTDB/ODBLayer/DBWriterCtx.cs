@@ -21,14 +21,14 @@ namespace BTDB.ODBLayer
             return CommonWriteObject(@object, false, true);
         }
 
-        bool CommonWriteObject(object @object, bool autoRegister, bool allowInline)
+        bool CommonWriteObject(object @object, bool autoRegister, bool forceInline)
         {
             if (@object == null)
             {
                 _writer.WriteVInt64(0);
                 return false;
             }
-            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, allowInline);
+            var oid = _transaction.StoreIfNotInlined(@object, autoRegister, forceInline);
             if (oid != ulong.MaxValue)
             {
                 _writer.WriteVInt64((long)oid);

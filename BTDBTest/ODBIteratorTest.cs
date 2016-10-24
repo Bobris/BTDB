@@ -6,6 +6,7 @@ using System.Text;
 using ApprovalTests;
 using ApprovalTests.Reporters;
 using BTDB.Buffer;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -294,8 +295,8 @@ namespace BTDBTest
             public uint UIntField { get; set; }
             public long LongField { get; set; }
             public ulong ULongField { get; set; }
-            public object DbObjectField { get; set; }
-            public VariousFieldTypes VariousFieldTypesField { get; set; }
+            public IIndirect<object> DbObjectField { get; set; }
+            public IIndirect<VariousFieldTypes> VariousFieldTypesField { get; set; }
             public bool BoolField { get; set; }
             public double DoubleField { get; set; }
             public float FloatField { get; set; }
@@ -323,8 +324,8 @@ namespace BTDBTest
                 o.UIntField = 100000;
                 o.LongField = -1000000000000;
                 o.ULongField = 1000000000000;
-                o.DbObjectField = o;
-                o.VariousFieldTypesField = o;
+                o.DbObjectField = new DBIndirect<object>(o);
+                o.VariousFieldTypesField = new DBIndirect<VariousFieldTypes>(o);
                 o.BoolField = true;
                 o.DoubleField = 12.34;
                 o.FloatField = -12.34f;
