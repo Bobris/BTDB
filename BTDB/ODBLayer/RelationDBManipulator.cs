@@ -6,7 +6,14 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class RelationDBManipulator<T>
+    public interface IRelationModificationCounter
+    {
+        int ModificationCounter { get; }
+        void MarkModification();
+        void CheckModifiedDuringEnum(int prevModification);
+    }
+
+    public class RelationDBManipulator<T> : IRelationModificationCounter
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly RelationInfo _relationInfo;
@@ -14,10 +21,25 @@ namespace BTDB.ODBLayer
         public IInternalObjectDBTransaction Transaction => _transaction;
         public RelationInfo RelationInfo => _relationInfo;
 
+        int _modificationCounter;
+
         public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
             _transaction = (IInternalObjectDBTransaction)transation;
             _relationInfo = relationInfo;
+        }
+
+        public int ModificationCounter => _modificationCounter;
+
+        public void MarkModification()
+        {
+            _modificationCounter++;
+        }
+
+        public void CheckModifiedDuringEnum(int prevModification)
+        {
+            if (prevModification != _modificationCounter)
+                throw new InvalidOperationException("Relation modified during iteration.");
         }
 
         ByteBuffer ValueBytes(T obj)
@@ -66,7 +88,7 @@ namespace BTDB.ODBLayer
                     throw new BTDBException(error);
                 }
             }
-            _relationInfo.MarkModification();
+            MarkModification();
         }
 
         public bool Upsert(T obj)
@@ -97,7 +119,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                _relationInfo.MarkModification();
+                MarkModification();
             }
             return _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
@@ -206,7 +228,7 @@ namespace BTDB.ODBLayer
             }
 
             _transaction.KeyValueDBTransaction.EraseCurrent();
-            _relationInfo.MarkModification();
+            MarkModification();
             return true;
         }
 
@@ -216,7 +238,7 @@ namespace BTDB.ODBLayer
             keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
             keyWriter.WriteVUInt32(_relationInfo.Id);
 
-            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe());
+            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe(), this);
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)

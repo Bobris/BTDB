@@ -1060,5 +1060,40 @@ namespace BTDBTest
                 Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }
+
+        [Fact]
+        public void ModificationCheckIsNotConfusedByOtherTransaction()
+        {
+            Func<IObjectDBTransaction, IRoomTable2> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IRoomTable2>("Room");
+
+                var rooms = creator(tr);
+                rooms.CompanyId = 1;
+                rooms.Insert(new Room { Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
+                tr.Commit();
+            }
+
+            var roTr = _db.StartReadOnlyTransaction();
+            var roTable = creator(roTr);
+            var en = roTable.GetEnumerator();
+            Assert.True(en.MoveNext());
+
+            using (var tr = _db.StartTransaction())
+            {
+                var rooms = creator(tr);
+                rooms.CompanyId = 1;
+                rooms.Insert(new Room { Id = 30, Name = "First 1" });
+                tr.Commit();
+            }
+
+            roTable.CompanyId = 1;
+            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Excluded, 100, KeyProposition.Excluded));
+            Assert.True(en.MoveNext());
+            Assert.Equal(20ul, en.Current.Id);
+            roTr.Dispose();
+        }
     }
 }

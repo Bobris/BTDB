@@ -47,8 +47,6 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>  //secondary key idx => 
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>();
 
-        int _modificationCounter;
-
         public struct SimpleLoaderType : IEquatable<SimpleLoaderType>
         {
             readonly IFieldHandler _fieldHandler;
@@ -166,7 +164,7 @@ namespace BTDB.ODBLayer
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
             keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
             keyWriter.WriteVUInt32(Id);
-            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, keyWriter.GetDataAndRewind().ToAsyncSafe());
+            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, keyWriter.GetDataAndRewind().ToAsyncSafe(), new SimpleModificationCounter());
 
             var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
 
@@ -1108,19 +1106,6 @@ namespace BTDB.ODBLayer
             ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
         }
 
-        public int ModificationCounter => _modificationCounter;
-
-        public void MarkModification()
-        {
-            _modificationCounter++;
-        }
-
-        public void CheckModifiedDuringEnum(int prevModification)
-        {
-            if (prevModification != _modificationCounter)
-                throw new InvalidOperationException("Relation modified during iteration.");
-        }
-
         internal void GenerateApartFieldsProperties(IILDynamicType classImpl, Type createdType)
         {
             var apartFields = new Dictionary<string, FieldBuilder>();
@@ -1233,6 +1218,16 @@ namespace BTDB.ODBLayer
                 _transaction.FreeContentInNativeObject(this);
             }
         }
+    }
 
+    class SimpleModificationCounter : IRelationModificationCounter
+    {
+        public int ModificationCounter => 0;
+
+        public void MarkModification() { }
+
+        public void CheckModifiedDuringEnum(int prevModification)
+        {
+        }
     }
 }
