@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using Xunit;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 
 namespace BTDBTest
 {
@@ -260,10 +261,33 @@ namespace BTDBTest
                 .Mark(finishedLabel)
                 .Ldloca(enumeratorLocal)
                 .Constrained(enumeratorType)
-                .Callvirt(()=>default(IDisposable).Dispose())
+                .Callvirt(() => default(IDisposable).Dispose())
                 .Ldloc(sumLocal)
                 .Ret();
             Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));
+        }
+
+        [Theory]
+        [InlineData("abc", 10, "abc")]
+        [InlineData("abc", 2, null)]
+        [InlineData("p_a.b.c_d.e.f_s", 7, "p_c_f_s")]
+        [InlineData("p_a.b.c_d.e.f_s", 9, "p_b.c_f_s")]
+        [InlineData("p_a.b.c_d.e.f_s", 11, "p_a.b.c_f_s")]
+        [InlineData("p_a.b.c_d.e.f_s", 12, "p_a.b.c_f_s")]
+        [InlineData("p_a.b.c_d.e.f_s", 14, "p_a.b.c_e.f_s")]
+        [InlineData("AlwaysNew_Gmc.Cloud.Infrastructure.Database.Relation_Gmc.Cloud.Infrastructure.ActionProcessing.IActionInputTable_Gmc.Cloud.MobileBackend.Actions.HandleExpiredPublicDcState.Data.ExpiredPublicDcStateInput__.dll", 80,
+                    "AlwaysNew_Database.Relation_IActionInputTable_ExpiredPublicDcStateInput__.dll")]
+        public void CanShortenDebugPathWhenNeeded(string path, int length, string expectedResult)
+        {
+            if (expectedResult == null)
+            {
+                var ex = Assert.Throws<BTDBException>(() => ILDynamicTypeDebugImpl.ShortenIfNeeded(path, length));
+                Assert.True(ex.Message.Contains(path));
+            }
+            else
+            {
+                Assert.Equal(expectedResult, ILDynamicTypeDebugImpl.ShortenIfNeeded(path, length));
+            }
         }
     }
 }
