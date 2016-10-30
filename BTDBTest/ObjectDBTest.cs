@@ -2206,7 +2206,6 @@ namespace BTDBTest
                 var att = tr.Singleton<IndirectTree>();
                 att.Content = "a";
                 att.Left = new DBIndirect<IndirectTree>(new IndirectTree() { Content = "b" }) { };
-                tr.Store(tr);
                 tr.Commit();
             }
 
