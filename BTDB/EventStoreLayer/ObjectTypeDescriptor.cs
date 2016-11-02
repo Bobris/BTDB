@@ -185,7 +185,7 @@ namespace BTDB.EventStoreLayer
                     var idxForCapture = idx;
                     var pair = _fields[idx];
                     var prop = props.FirstOrDefault(p => GetPersitentName(p) == pair.Key);
-                    if (prop == null)
+                    if (prop == null || _typeSerializers.DescriptorOf(prop.PropertyType) == null)
                     {
                         pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
                         continue;
@@ -420,7 +420,7 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                var methodInfo = _type.GetProperties().First(p=>GetPersitentName(p)==pair.Key).GetGetMethod();
+                var methodInfo = _type.GetProperties().First(p => GetPersitentName(p) == pair.Key).GetGetMethod();
                 pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }

@@ -63,7 +63,7 @@ namespace BTDB.EventStoreLayer
         public ITypeDescriptor DescriptorOf(Type objType)
         {
             var res = _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
-            _descriptorSet.GetOrAdd(res, true);
+            if (res!=null) _descriptorSet.GetOrAdd(res, true);
             return res;
         }
 
@@ -177,7 +177,7 @@ namespace BTDB.EventStoreLayer
                     if (_remap.TryGetValue(result, out result2)) return result2;
                     return result;
                 }
-                throw new InvalidOperationException();
+                return null;
             }
 
             public void SetNewDescriptors()
