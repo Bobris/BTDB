@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
@@ -13,7 +14,7 @@ namespace BTDB.ODBLayer
         void CheckModifiedDuringEnum(int prevModification);
     }
 
-    public class RelationDBManipulator<T> : IRelationModificationCounter
+    public class RelationDBManipulator<T> : IRelationModificationCounter, IReadOnlyCollection<T>
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly RelationInfo _relationInfo;
@@ -363,6 +364,25 @@ namespace BTDB.ODBLayer
                 if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
                     _transaction.KeyValueDBTransaction.EraseCurrent();
             }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public int Count
+        {
+            get
+            {
+                _transaction.TransactionProtector.Start();
+                var o = ObjectDB.AllRelationsPKPrefix.Length;
+                var prefix = new byte[o + PackUnpack.LengthVUInt(_relationInfo.Id)];
+                Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
+                PackUnpack.PackVUInt(prefix, ref o, _relationInfo.Id);
+                _transaction.KeyValueDBTransaction.SetKeyPrefix(prefix);
+                return (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();
+            } 
         }
     }
 }

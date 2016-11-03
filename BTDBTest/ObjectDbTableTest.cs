@@ -79,7 +79,7 @@ namespace BTDBTest
             }
         }
 
-        public interface IPersonSimpleTableWithJustInsert
+        public interface IPersonSimpleTableWithJustInsert : IReadOnlyCollection<PersonSimple>
         {
             void Insert(PersonSimple person);
         }
@@ -97,6 +97,10 @@ namespace BTDBTest
             {
                 var personSimpleTable = creator(tr);
                 personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" });
+                Assert.Equal(1, personSimpleTable.Count);
+                var en = personSimpleTable.GetEnumerator();
+                en.MoveNext();
+                Assert.Equal("Boris", en.Current.Name);
                 tr.Commit();
             }
         }
