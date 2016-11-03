@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 //      Minor Version 
 //      Build Number
 //      Revision
-[assembly: AssemblyVersion("5.6.4.0")]
-[assembly: AssemblyFileVersion("5.6.4.0")]
+[assembly: AssemblyVersion("5.7.0.0")]
+[assembly: AssemblyFileVersion("5.7.0.0")]
 
 [assembly: InternalsVisibleTo("BTDBTest")]
