@@ -936,7 +936,7 @@ namespace BTDB.ODBLayer
                         throw new BTDBException("Invalid method " + method.Name);
                     }
                 }
-                else if (method.Name.StartsWith("ListBy")) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
+                else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal)) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
                     var parameters = method.GetParameters();
                     var advEnumParamOrder = (ushort)parameters.Length;
@@ -947,13 +947,8 @@ namespace BTDB.ODBLayer
                     var secondaryKeyIndex = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
                     var prefixParamCount = method.GetParameters().Length - 1;
 
-                    var skFields = relationInfo.ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
-                    var skField = skFields[prefixParamCount];
-                    TableFieldInfo field;
-                    if (skField.IsFromPrimaryKey)
-                        field = relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields().ToArray()[skField.Index];
-                    else
-                        field = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex).ToArray()[skField.Index];
+                    var field = relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex)
+                        .Skip(relationInfo.ApartFields.Count + prefixParamCount).First();
 
                     reqMethod.Generator
                         .Ldarg(0);

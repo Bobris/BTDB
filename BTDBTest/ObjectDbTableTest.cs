@@ -1099,5 +1099,45 @@ namespace BTDBTest
             Assert.Equal(20ul, en.Current.Id);
             roTr.Dispose();
         }
+
+        public interface IPersonTableNamePrefixSearch
+        {
+            ulong TenantId { get; set; }
+            void Insert(Person person);
+            //ListBy secondary key (only for active tenant)
+            IOrderedDictionaryEnumerator<string, Person> ListByName(AdvancedEnumeratorParam<string> param);
+        }
+
+        [Fact]
+        public void StringPrefixExample()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonTableNamePrefixSearch>("PersonStringPrefix");
+                var personTable = creator(tr);
+
+                personTable.TenantId = 1;
+                personTable.Insert(new Person { Id = 2, Name = "Cecil" });
+                personTable.Insert(new Person { Id = 3, Name = "Boris" });
+                personTable.Insert(new Person { Id = 4, Name = "Alena" });
+                personTable.Insert(new Person { Id = 5, Name = "Bob" });
+                personTable.Insert(new Person { Id = 6, Name = "B" });
+                personTable.Insert(new Person { Id = 7, Name = "C" });
+
+                var orderedEnumerator = personTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "B", KeyProposition.Included, "C", KeyProposition.Excluded));
+                Assert.Equal(3u, orderedEnumerator.Count);
+
+                string name;
+                Assert.True(orderedEnumerator.NextKey(out name));
+                Assert.Equal("B", name);
+                Assert.True(orderedEnumerator.NextKey(out name));
+                Assert.Equal("Bob", name);
+                Assert.True(orderedEnumerator.NextKey(out name));
+                Assert.Equal("Boris", name);
+                Assert.False(orderedEnumerator.NextKey(out name));
+                tr.Commit();
+            }
+        }
+
     }
 }
