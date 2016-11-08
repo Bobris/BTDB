@@ -887,8 +887,8 @@ namespace BTDB.ODBLayer
                     var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                     var prefixParamCount = method.GetParameters().Length - 1;
 
-                    var pkFields = relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-                    var field = pkFields[prefixParamCount];
+                    var field = relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields()
+                                     .Skip(relationInfo.ApartFields.Count + prefixParamCount).First();
 
                     reqMethod.Generator
                         .Ldarg(0);

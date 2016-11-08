@@ -1135,6 +1135,35 @@ namespace BTDBTest
                 Assert.True(orderedEnumerator.NextKey(out name));
                 Assert.Equal("Boris", name);
                 Assert.False(orderedEnumerator.NextKey(out name));
+            }
+        }
+
+        public interface IPersonSimpleListTable
+        {
+            ulong TenantId { get; set; }
+            void Insert(PersonSimple person);
+            IOrderedDictionaryEnumerator<string, PersonSimple> ListById(AdvancedEnumeratorParam<string> param);
+        }
+
+        [Fact]
+        public void ListByIdWithApartField()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonSimpleListTable>("ListByIdWithApartField");
+                var personTable = creator(tr);
+
+                personTable.TenantId = 1;
+                personTable.Insert(new PersonSimple { Email = "a@d.cz", Name = "A" });
+                personTable.Insert(new PersonSimple { Email = "b@d.cz", Name = "B" });
+
+                var enumerator = personTable.ListById(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "a", KeyProposition.Included, "c", KeyProposition.Excluded));
+                Assert.Equal(2u, enumerator.Count);
+                string email;
+                Assert.True(enumerator.NextKey(out email));
+                Assert.Equal("a@d.cz", email);
+                Assert.True(enumerator.NextKey(out email));
+                Assert.Equal("b@d.cz", email);
                 tr.Commit();
             }
         }
