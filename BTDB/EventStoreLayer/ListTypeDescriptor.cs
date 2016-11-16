@@ -47,6 +47,14 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
+        public override int GetHashCode()
+        {
+#pragma warning disable RECS0025 // Non-readonly field referenced in 'GetHashCode()'
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
+            return 33 *_itemDescriptor.GetHashCode();
+#pragma warning restore RECS0025 // Non-readonly field referenced in 'GetHashCode()'
+        }
+
         public string Name
         {
             get
@@ -89,6 +97,15 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            if (_type == targetType) return _type;
+            var targetIList = targetType.GetInterface("IList`1") ?? targetType;
+            var targetTypeArguments = targetIList.GetGenericArguments();
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor, targetTypeArguments[0]);
+            return targetType.GetGenericTypeDefinition().MakeGenericType(itemType);
+        }
+
         public bool AnyOpNeedsCtx()
         {
             return !_itemDescriptor.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
@@ -97,7 +114,9 @@ namespace BTDB.EventStoreLayer
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var itemType = _typeSerializers.LoadAsType(_itemDescriptor);
+            var targetIList = targetType.GetInterface("IList`1") ?? targetType;
+            var targetTypeArguments = targetIList.GetGenericArguments();
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor, targetTypeArguments[0]);
             var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
             if (!targetType.IsAssignableFrom(listType)) throw new NotSupportedException();
             var localList = ilGenerator.DeclareLocal(listType);

@@ -75,6 +75,11 @@ namespace BTDB.EventStore2Layer
             return descriptor.GetPreferedType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
+        public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
+        {
+            return descriptor.GetPreferedType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+        }
+
         ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
         {
             var typeId = reader.ReadVInt32();

@@ -266,6 +266,11 @@ namespace BTDB.EventStoreLayer
             return descriptor.GetPreferedType() ?? NameToType(descriptor.Name) ?? typeof(object);
         }
 
+        public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
+        {
+            return descriptor.GetPreferedType(targetType) ?? NameToType(descriptor.Name) ?? typeof(object);
+        }
+
         class DeserializerCtx : ITypeBinaryDeserializerContext
         {
             readonly AbstractBufferedReader _reader;

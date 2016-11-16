@@ -126,6 +126,11 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            return GetPreferedType();
+        }
+
         public bool AnyOpNeedsCtx()
         {
             return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.AnyOpNeedsCtx());

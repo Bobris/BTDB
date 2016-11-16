@@ -831,5 +831,46 @@ namespace BTDBTest
             reader.ReadFromStartToEnd(eventObserver);
         }
 
+        public class SomethingWithoutList
+        {
+        }
+
+        public class SomethingWithList
+        {
+            public Dictionary<ulong, List<string>> B { get; set; }
+        }
+
+        public class SomethingWithNestedIList
+        {
+            public Dictionary<ulong, IList<string>> B { get; set; }
+        }
+
+        [Fact]
+        public void SurvivesListVsIList()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(SomethingWithoutList), "Some"));
+            var file = new MemoryEventFileStorage();
+            var file2 = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            
+            var ev = new SomethingWithList();
+            appender.Store(null, new object[] { ev });
+            var ev2 = new SomethingWithNestedIList
+            {
+                B = new Dictionary<ulong, IList<string>> {{1, new List<string> {"a1"}}}
+            };
+            appender.Store(null, new object[] { ev2 });
+            var appender2 = manager.AppendToStore(file);
+            appender2.Store(null, new object[] { ev2 });
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(SomethingWithList), "Some"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new StoringEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            reader = manager.OpenReadOnlyStore(file2);
+            reader.ReadFromStartToEnd(eventObserver);
+        }
+
     }
 }

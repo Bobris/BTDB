@@ -124,6 +124,11 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            return _type;
+        }
+
         public class DynamicEnum : IKnowDescriptor
         {
             readonly ITypeDescriptor _descriptor;

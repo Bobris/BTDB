@@ -100,6 +100,16 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            if (_type == targetType) return _type;
+            var targetIDictionary = targetType.GetInterface("IDictionary`2") ?? targetType;
+            var targetTypeArguments = targetIDictionary.GetGenericArguments();
+            var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
+            var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
+            return targetType.GetGenericTypeDefinition().MakeGenericType(keyType, valueType);
+        }
+
         public bool AnyOpNeedsCtx()
         {
             return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
@@ -110,8 +120,10 @@ namespace BTDB.EventStoreLayer
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var keyType = _typeSerializers.LoadAsType(_keyDescriptor);
-            var valueType = _typeSerializers.LoadAsType(_valueDescriptor);
+            var targetIDictionary = targetType.GetInterface("IDictionary`2") ?? targetType;
+            var targetTypeArguments = targetIDictionary.GetGenericArguments();
+            var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
+            var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
             var dictionaryType = typeof(DictionaryWithDescriptor<,>).MakeGenericType(keyType, valueType);
             if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
             var localDict = ilGenerator.DeclareLocal(dictionaryType);

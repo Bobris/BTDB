@@ -31,6 +31,11 @@ namespace BTDB.EventStoreLayer
             return typeof(byte[]);
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            return GetPreferedType();
+        }
+
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
             return null;

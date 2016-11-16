@@ -10,6 +10,7 @@ namespace BTDB.EventStoreLayer
         ITypeConvertorGenerator ConvertorGenerator { get; }
         ITypeNameMapper TypeNameMapper { get; }
         Type LoadAsType(ITypeDescriptor descriptor);
+        Type LoadAsType(ITypeDescriptor descriptor, Type targetType);
     }
 
     interface ITypeSerializers : ITypeSerializerMappingFactory, ITypeDescriptorCallbacks

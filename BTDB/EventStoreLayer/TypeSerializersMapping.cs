@@ -148,6 +148,11 @@ namespace BTDB.EventStoreLayer
                 return null;
             }
 
+            public Type GetPreferedType(Type targetType)
+            {
+                return null;
+            }
+
             public bool AnyOpNeedsCtx()
             {
                 throw new InvalidOperationException();

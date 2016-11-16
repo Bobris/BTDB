@@ -43,6 +43,11 @@ namespace BTDB.EventStoreLayer
             return _loader.ReturnType;
         }
 
+        public Type GetPreferedType(Type targetType)
+        {
+            return GetPreferedType();
+        }
+
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
         {
             return null;
