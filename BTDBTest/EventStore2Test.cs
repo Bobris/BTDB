@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using BTDB.EventStore2Layer;
 using BTDB.StreamLayer;
@@ -68,6 +69,190 @@ namespace BTDBTest
             var serializer = new EventSerializer();
             bool hasMetadata;
             var obj = new User { Name = "Boris", Age = 40 };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        public enum StateEnum
+        {
+            Dead = 0,
+            Alive = 1
+        }
+
+        public class ObjectWithEnum : IEquatable<ObjectWithEnum>
+        {
+            public StateEnum State { get; set; }
+            public bool Equals(ObjectWithEnum other)
+            {
+                if (other == null) return false;
+                return State == other.State;
+            }
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ObjectWithEnum);
+            }
+        }
+
+        [Fact]
+        public void DeserializesClassWithEnum()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithEnum { State = StateEnum.Alive};
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        public class ObjectWithList : IEquatable<ObjectWithList>
+        {
+            public List<int> Items { get; set; }
+            public bool Equals(ObjectWithList other)
+            {
+                if (other == null)
+                    return false;
+
+                if (Items == null && other.Items == null)
+                    return true;
+                if (Items == null && other.Items != null)
+                    return false;
+                if (Items != null && other.Items == null)
+                    return false;
+
+                for (int i = 0; i < Items.Count; i++)
+                {
+                    if (Items[i] != other.Items[i])
+                        return false;
+                }
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ObjectWithList);
+            }
+        }
+
+        public class ObjectWithIList : IEquatable<ObjectWithIList>
+        {
+            public IList<int> Items { get; set; }
+
+            public bool Equals(ObjectWithIList other)
+            {
+                if (other == null)
+                    return false;
+
+                if (Items == null && other.Items == null)
+                    return true;
+                if (Items == null && other.Items != null)
+                    return false;
+                if (Items != null && other.Items == null)
+                    return false;
+
+                for (int i = 0; i < Items.Count; i++)
+                {
+                    if (Items[i] != other.Items[i])
+                        return false;
+                }
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ObjectWithIList);
+            }
+        }
+
+        [Fact]
+        public void DeserializesClassWithList()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithList { Items = new List<int> {1} };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DeserializesClassWithIList()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithIList { Items = new List<int> { 1 } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        public class ObjectWithDictionaryOfSimpleType : IEquatable<ObjectWithDictionaryOfSimpleType>
+        {
+            public IDictionary<int, string> Items { get; set; }
+
+            public bool Equals(ObjectWithDictionaryOfSimpleType other)
+            {
+                if (other == null)
+                    return false;
+                if (Items == null && other.Items == null)
+                    return true;
+
+
+                if (Items == null && other.Items != null || Items != null && other.Items == null)
+                    return false;
+
+                if (Items.Count != other.Items.Count)
+                    return false;
+
+                foreach (var key in Items.Keys)
+                {
+                    if (Items[key] != other.Items[key])
+                        return false;
+                }
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ObjectWithDictionaryOfSimpleType);
+            }
+        }
+
+        [Fact]
+        public void DeserializesClassWithDictionaryOfSimpleTypes()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>(){ {1, "Ahoj"} } };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
