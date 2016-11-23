@@ -190,7 +190,7 @@ namespace BTDB.EventStoreLayer
                     var idxForCapture = idx;
                     var pair = _fields[idx];
                     var prop = props.FirstOrDefault(p => GetPersitentName(p) == pair.Key);
-                    if (prop == null || _typeSerializers.DescriptorOf(prop.PropertyType) == null)
+                    if (prop == null || !_typeSerializers.IsSafeToLoad(prop.PropertyType))
                     {
                         pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
                         continue;

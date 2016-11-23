@@ -110,6 +110,11 @@ namespace BTDB.EventStore2Layer
             return info.Descriptor;
         }
 
+        public bool IsSafeToLoad(Type type)
+        {
+            throw new InvalidOperationException();
+        }
+
         public ITypeConvertorGenerator ConvertorGenerator { get; }
 
         public ITypeNameMapper TypeNameMapper { get; }

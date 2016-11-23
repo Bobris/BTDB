@@ -56,6 +56,11 @@ namespace BTDB.EventStoreLayer
             return DescriptorOf(obj.GetType());
         }
 
+        public bool IsSafeToLoad(Type type)
+        {
+            return DescriptorOf(type) != null;
+        }
+
         public ITypeConvertorGenerator ConvertorGenerator { get; private set; }
 
         public ITypeNameMapper TypeNameMapper => _typeNameMapper;

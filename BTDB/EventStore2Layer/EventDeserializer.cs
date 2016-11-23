@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
@@ -64,6 +65,14 @@ namespace BTDB.EventStore2Layer
             if (!_typeOrDescriptor2Info.TryGetValue(type, out info))
                 return null;
             return info.Descriptor;
+        }
+
+        public bool IsSafeToLoad(Type type)
+        {
+            if (!type.IsGenericType) return true;
+            if (type.GetGenericTypeDefinition() == typeof(IIndirect<>)) return false;
+            if (type.GetGenericArguments().Any(t => !IsSafeToLoad(t))) return false;
+            return true;
         }
 
         public ITypeConvertorGenerator ConvertorGenerator { get; }
