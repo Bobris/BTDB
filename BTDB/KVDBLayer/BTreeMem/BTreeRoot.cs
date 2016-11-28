@@ -260,5 +260,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 return new BTreeBranch(_transactionId, todo, generator);
             });
         }
+
+        public string DescriptionForLeaks { get; set; }
     }
 }

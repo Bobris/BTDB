@@ -163,6 +163,7 @@ namespace BTDB.KVDBLayer.BTree
 
         public long TransactionId => _transactionId;
 
+        public string DescriptionForLeaks { get; set; }
         public uint TrLogFileId { get; set; }
         public uint TrLogOffset { get; set; }
 

@@ -19,5 +19,7 @@ namespace BTDB.KVDBLayer
 
         // Returns true if there was big compaction (probably will need another one)
         bool Compact(CancellationToken cancellation);
+
+        IKeyValueDBLogger Logger { get; set; }
     }
 }

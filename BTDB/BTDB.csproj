@@ -251,6 +251,7 @@
     <Compile Include="KVDBLayer\Implementation\IDeleteFileCollectionStrategy.cs" />
     <Compile Include="KVDBLayer\Implementation\KeyIndexCompression.cs" />
     <Compile Include="KVDBLayer\Implementation\OnDiskMemoryMappedFileCollection.cs" />
+    <Compile Include="KVDBLayer\Interface\IKeyValueDBLogger.cs" />
     <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDBTransaction.cs" />
     <Compile Include="KVDBLayer\MemoryImplementation\InMemoryKeyValueDB.cs" />
     <Compile Include="KVDBLayer\Implementation\JustDeleteFileCollectionStrategy.cs" />

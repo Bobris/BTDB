@@ -125,6 +125,7 @@ namespace BTDB.KVDBLayer
             }
             var oldBTreeRoot = BtreeRoot;
             _btreeRoot = _keyValueDB.MakeWrittableTransaction(this, oldBTreeRoot);
+            _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
             _writting = true;
             InvalidateCurrentKey();
         }
@@ -340,6 +341,17 @@ namespace BTDB.KVDBLayer
         public byte[] GetKeyPrefix()
         {
             return _prefix;
+        }
+
+        string _descriptionForLeaks;
+        public string DescriptionForLeaks
+        {
+            get { return _descriptionForLeaks; }
+            set
+            {
+                _descriptionForLeaks = value;
+                if (_preapprovedWritting || _writting) _btreeRoot.DescriptionForLeaks = value;
+            }
         }
     }
 }

@@ -32,6 +32,15 @@ namespace BTDB.KVDBLayer
             _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
         }
 
+        ~KeyValueDBTransaction()
+        {
+            if (_btreeRoot != null)
+            {
+                Dispose();
+                _keyValueDB.Logger?.ReportTransactionLeak(this);
+            } 
+        }
+
         internal IBTreeRootNode BtreeRoot => _btreeRoot;
 
         public void SetKeyPrefix(ByteBuffer prefix)
@@ -129,6 +138,7 @@ namespace BTDB.KVDBLayer
             _btreeRoot = _keyValueDB.MakeWrittableTransaction(this, oldBTreeRoot);
             _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
             _keyValueDB.FinishedUsingBTreeRoot(oldBTreeRoot);
+            _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
             _writting = true;
             InvalidateCurrentKey();
             _keyValueDB.WriteStartTransaction();
@@ -323,6 +333,7 @@ namespace BTDB.KVDBLayer
             var currentBtreeRoot = _btreeRoot;
             _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
             _btreeRoot = null;
+            GC.SuppressFinalize(this);
             if (_preapprovedWritting)
             {
                 _preapprovedWritting = false;
@@ -346,6 +357,7 @@ namespace BTDB.KVDBLayer
             if (_btreeRoot == null) return;
             _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
             _btreeRoot = null;
+            GC.SuppressFinalize(this);
         }
 
         public long GetTransactionNumber()
@@ -367,6 +379,17 @@ namespace BTDB.KVDBLayer
         public byte[] GetKeyPrefix()
         {
             return _prefix;
+        }
+
+        string _descriptionForLeaks;
+        public string DescriptionForLeaks
+        {
+            get { return _descriptionForLeaks; }
+            set
+            {
+                _descriptionForLeaks = value;
+                if (_preapprovedWritting || _writting) _btreeRoot.DescriptionForLeaks = value;
+            }
         }
     }
 }

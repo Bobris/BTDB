@@ -7,6 +7,11 @@ namespace BTDB.KVDBLayer
     public interface IKeyValueDBTransaction : IDisposable
     {
         /// <summary>
+        /// Set for with some description for this transaction purpose to find reason for Transaction leak
+        /// </summary>
+        string DescriptionForLeaks { get; set; }
+
+        /// <summary>
         /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key
         /// </summary>
         void SetKeyPrefix(ByteBuffer prefix);

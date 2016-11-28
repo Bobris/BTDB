@@ -134,6 +134,7 @@ namespace BTDB.KVDBLayer
 
         public void DeleteAllUnknownFiles()
         {
+            if (_fileInfos.All(fi => fi.Value.FileType != KVFileType.Unknown)) return;
             foreach (var fileId in _fileInfos.Where(fi => fi.Value.FileType == KVFileType.Unknown).Select(fi => fi.Key).ToArray())
             {
                 _fileCollection.GetFile(fileId).Remove();

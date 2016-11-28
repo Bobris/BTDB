@@ -767,9 +767,8 @@ namespace BTDBTest
             }
         }
 
-        // ReSharper disable UnusedMember.Global
+        // ReSharper disable once MemberCanBePrivate.Global
         public static IEnumerable<int[]> EraseRangeSource()
-        // ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
             for (int i = 11; i < 1000; i += i)
@@ -788,7 +787,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void ALotOf5KBTransactionsWorks()
+        public void ALotOf5KbTransactionsWorks()
         {
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = new KeyValueDB(fileCollection))
@@ -1064,7 +1063,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CompactionWaitsForFinishingOldTransactionsBeforeRemovingFiles()
+        public void CompactionDoesNotRemoveStillUsedFiles()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -1083,15 +1082,10 @@ namespace BTDBTest
                         tr.EraseCurrent();
                         tr.Commit();
                     }
-                    Task.Run(() =>
-                    {
-                        db.Compact(new CancellationToken());
-                    });
-                    Thread.Sleep(2000);
-                    Console.WriteLine(db.CalcStats());
-                    Assert.True(4 <= fileCollection.GetCount()); // 2 Logs, 1 Value, 1 KeyIndex, (optinal 1 Unknown (old KeyIndex))
+                    db.Compact(new CancellationToken());
+                    Assert.Equal(3u, fileCollection.GetCount()); // 2 Logs, 1 KeyIndex
                     longTr.Dispose();
-                    Thread.Sleep(1000);
+                    db.Compact(new CancellationToken());
                     Assert.Equal(2u, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
                     using (var tr = db.StartTransaction())
                     {
@@ -1122,15 +1116,13 @@ namespace BTDBTest
                         tr.CreateOrUpdateKeyValue(Key2, new byte[10]);
                         tr.Commit();
                     }
-                    db.Compact();
-                    Thread.Sleep(2000);
+                    db.Compact(new CancellationToken());
                     using (var tr = db.StartWritingTransaction().Result)
                     {
                         tr.EraseRange(0, 0);
                         tr.Commit();
                     }
-                    db.Compact();
-                    Thread.Sleep(2000);
+                    db.Compact(new CancellationToken());
                     using (var db2 = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
                     {
                         using (var tr = db2.StartTransaction())
@@ -1171,10 +1163,82 @@ namespace BTDBTest
             }
         }
 
-        readonly byte[] _key1 = { 1, 2, 3 };
-        readonly byte[] _key2 = { 1, 3, 2 };
-        readonly byte[] _key3 = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+        [Fact]
+        public void AllowsToSetTransactionDescription()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        Assert.Null(tr.DescriptionForLeaks);
+                        tr.DescriptionForLeaks = "Tr1";
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1]);
+                        Assert.Equal("Tr1", tr.DescriptionForLeaks);
+                        tr.Commit();
+                        Assert.Equal("Tr1", tr.DescriptionForLeaks);
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        Assert.Null(tr.DescriptionForLeaks);
+                    }
+                }
+            }
+        }
 
-        public byte[] Key2 => _key2;
+        [Fact]
+        public void ReportTransactionLeak()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
+                {
+                    var logger = new LoggerMock();
+                    db.Logger = logger;
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[1]);
+                        tr.Commit();
+                    }
+                    StartLeakingTransaction(db);
+                    GC.Collect(GC.MaxGeneration);
+                    GC.WaitForPendingFinalizers();
+                    Assert.NotNull(logger.Leaked);
+                    Assert.Equal("Leak", logger.Leaked.DescriptionForLeaks);
+                }
+            }
+        }
+
+        static void StartLeakingTransaction(KeyValueDB db)
+        {
+            db.StartTransaction().DescriptionForLeaks = "Leak";
+        }
+
+        public class LoggerMock : IKeyValueDBLogger
+        {
+            public IKeyValueDBTransaction Leaked;
+            public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
+            {
+                Leaked = transaction;
+            }
+
+            public void CompactionStart(ulong totalWaste)
+            {
+            }
+
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+            {
+            }
+
+            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+            {
+            }
+        }
+
+        readonly byte[] _key1 = { 1, 2, 3 };
+        // ReSharper disable once MemberCanBePrivate.Global
+        public byte[] Key2 { get; } = { 1, 3, 2 };
+        readonly byte[] _key3 = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
     }
 }

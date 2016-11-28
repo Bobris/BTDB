@@ -71,6 +71,8 @@ namespace BTDB.KVDBLayer
             return false;
         }
 
+        public IKeyValueDBLogger Logger { get; set; }
+
         internal IBTreeRootNode MakeWrittableTransaction(InMemoryKeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
         {
             lock (_writeLock)

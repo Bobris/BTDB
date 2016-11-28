@@ -446,6 +446,26 @@ namespace BTDB.KVDBLayer
 
         internal IFileCollectionWithFileInfos FileCollection => _fileCollection;
 
+        internal IBTreeRootNode OldestRoot
+        {
+            get
+            {
+                lock (_usedBTreeRootNodesLock)
+                {
+                    var oldestRoot = _lastCommited;
+                    foreach (var usedTransaction in _usedBTreeRootNodes)
+                    {
+                        if (unchecked (usedTransaction.TransactionId - oldestRoot.TransactionId) < 0)
+                        {
+                            oldestRoot = usedTransaction;
+                        }
+                    }
+                    return oldestRoot;
+                }
+
+            }
+        }
+
         public IKeyValueDBTransaction StartTransaction()
         {
             return new KeyValueDBTransaction(this, LastCommited, false, false);
@@ -490,6 +510,8 @@ namespace BTDB.KVDBLayer
         {
             return new Compactor(this, cancellation).Run();
         }
+
+        public IKeyValueDBLogger Logger { get; set; }
 
         internal IBTreeRootNode MakeWrittableTransaction(KeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
         {
@@ -792,6 +814,7 @@ namespace BTDB.KVDBLayer
 
         uint CreateKeyIndexFile(IBTreeRootNode root, CancellationToken cancellation)
         {
+            var start = DateTime.UtcNow;
             var file = FileCollection.AddFile("kvi");
             var writer = file.GetAppenderWriter();
             var keyCount = root.CalcKeyCount();
@@ -836,6 +859,7 @@ namespace BTDB.KVDBLayer
             file.HardFlush();
             file.Truncate();
             FileCollection.SetInfo(file.Index, keyIndex);
+            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), DateTime.UtcNow-start);
             return file.Index;
         }
 
@@ -849,7 +873,7 @@ namespace BTDB.KVDBLayer
             var info = FileCollection.FileInfoByIdx(fileId);
             if (info == null) return false;
             if (info.Generation >= dontTouchGeneration) return false;
-            return (info.FileType == KVFileType.TransactionLog || info.FileType == KVFileType.PureValues);
+            return info.FileType == KVFileType.TransactionLog || info.FileType == KVFileType.PureValues;
         }
 
         internal AbstractBufferedWriter StartPureValuesFile(out uint fileId)
@@ -920,28 +944,20 @@ namespace BTDB.KVDBLayer
                 if (uses == 0)
                 {
                     _usedBTreeRootNodes.Remove(btreeRoot);
-                    Monitor.PulseAll(_usedBTreeRootNodesLock);
                 }
             }
         }
 
-        internal void WaitForFinishingTransactionsBefore(long transactionId, CancellationToken cancellation)
+        internal bool AreAllTransactionsBeforeFinished(long transactionId)
         {
             lock (_usedBTreeRootNodesLock)
             {
-                while (true)
+                foreach (var usedTransaction in _usedBTreeRootNodes)
                 {
-                    cancellation.ThrowIfCancellationRequested();
-                    var oldStillRuns = false;
-                    foreach (var usedTransaction in _usedBTreeRootNodes)
-                    {
-                        if (usedTransaction.TransactionId - transactionId >= 0) continue;
-                        oldStillRuns = true;
-                        break;
-                    }
-                    if (!oldStillRuns) return;
-                    Monitor.Wait(_usedBTreeRootNodesLock, 100);
+                    if (usedTransaction.TransactionId - transactionId >= 0) continue;
+                    return false;
                 }
+                return true;
             }
         }
 

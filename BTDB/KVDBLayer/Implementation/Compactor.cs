@@ -61,34 +61,47 @@ namespace BTDB.KVDBLayer
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness();
-            var toRemoveFileIds = new List<uint>();
+            MarkTotallyUselessFilesAsUnknown();
+        }
+
+        void MarkTotallyUselessFilesAsUnknown()
+        {
+            List<uint> toRemoveFileIds = null;
             for (var i = 0; i < _fileStats.Length; i++)
             {
-                if (_fileStats[i].Useless()) toRemoveFileIds.Add((uint) i);
+                if (_fileStats[i].Useless())
+                {
+                    if (toRemoveFileIds==null)
+                        toRemoveFileIds = new List<uint>();
+                    toRemoveFileIds.Add((uint)i);
+                }
             }
-            _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+            if (toRemoveFileIds!=null)
+                _keyValueDB.MarkAsUnknown(toRemoveFileIds);
         }
 
         internal bool Run()
         {
             if (_keyValueDB.FileCollection.GetCount() == 0) return false;
-            _root = _keyValueDB.LastCommited;
+            _root = _keyValueDB.OldestRoot;
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness();
+            MarkTotallyUselessFilesAsUnknown();
             var totalWaste = CalcTotalWaste();
-            if (totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4)
+            _keyValueDB.Logger?.CompactionStart(totalWaste);
+            if (IsWasteSmall(totalWaste))
             {
-                if (_keyValueDB.DistanceFromLastKeyIndex(_root) < (ulong)(_keyValueDB.MaxTrLogFileSize / 4)) return false;
-                _keyValueDB.CreateIndexFile(_cancellation);
+                if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
+                    _keyValueDB.CreateIndexFile(_cancellation);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
             }
             _cancellation.ThrowIfCancellationRequested();
             uint valueFileId;
             var writer = _keyValueDB.StartPureValuesFile(out valueFileId);
-            _newPositionMap = new Dictionary<ulong, uint>();
             var toRemoveFileIds = new List<uint>();
+            _newPositionMap = new Dictionary<ulong, uint>();
             while (true)
             {
                 var wastefullFileId = FindMostWastefullFile(_keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
@@ -100,21 +113,29 @@ namespace BTDB.KVDBLayer
             var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
             valueFile.HardFlush();
             valueFile.Truncate();
+            _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize());
             var btreesCorrectInTransactionId = _keyValueDB.AtomicallyChangeBTree(root => root.RemappingIterate((uint oldFileId, uint oldOffset, out uint newFileId, out uint newOffset) =>
-                {
-                    newFileId = valueFileId;
-                    _cancellation.ThrowIfCancellationRequested();
-                    return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
-                }));
+            {
+                newFileId = valueFileId;
+                _cancellation.ThrowIfCancellationRequested();
+                return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
+            }));
             _keyValueDB.CreateIndexFile(_cancellation);
-            _keyValueDB.WaitForFinishingTransactionsBefore(btreesCorrectInTransactionId, _cancellation);
             if (_newPositionMap.Count == 0)
             {
                 toRemoveFileIds.Add(valueFileId);
             }
-            _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+            if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
+            {
+                _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+            }
             _keyValueDB.FileCollection.DeleteAllUnknownFiles();
             return true;
+        }
+
+        bool IsWasteSmall(ulong totalWaste)
+        {
+            return totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4;
         }
 
         void MoveValuesContent(AbstractBufferedWriter writer, uint wastefullFileId)

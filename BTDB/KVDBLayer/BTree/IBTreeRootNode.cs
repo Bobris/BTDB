@@ -6,6 +6,7 @@ namespace BTDB.KVDBLayer.BTree
     interface IBTreeRootNode : IBTreeNode
     {
         long TransactionId { get; }
+        string DescriptionForLeaks { get; set; }
         uint TrLogFileId { get; set; }
         uint TrLogOffset { get; set; }
         int UseCount { get; set; }
