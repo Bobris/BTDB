@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using BTDB.IOC;
+using BTDB.KVDBLayer;
 using Xunit;
 
 namespace BTDBTest
@@ -734,7 +736,7 @@ namespace BTDBTest
         {
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
             {
-                Assert.Equal(1,refinables.Count());
+                Assert.Equal(1, refinables.Count());
             }
         }
 
@@ -788,7 +790,7 @@ namespace BTDBTest
             Assert.NotNull(handler);
         }
 
-        public class EnhancedLogger: ILogger
+        public class EnhancedLogger : ILogger
         {
             readonly ILogger _parent;
 
@@ -810,6 +812,33 @@ namespace BTDBTest
             var handler = container.Resolve<ILogger>();
             Assert.IsType<EnhancedLogger>(handler);
             Assert.IsType<Logger>(((EnhancedLogger)handler).Parent);
+        }
+
+        class GreedyNonPublicClass
+        {
+            public GreedyNonPublicClass(ILogger a, ILogger b, ILogger c, ILogger d, ILogger e, ILogger f)
+            {
+            }
+        }
+
+        [Fact]
+        public void ThrowsExceptionForTooManyArgumentsInNonPublicClass()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterType<GreedyNonPublicClass>().AsImplementedInterfaces();
+            foreach (var name in new[] { "a", "b", "c", "d", "e", "f" })
+                containerBuilder.RegisterType<Logger>().AsImplementedInterfaces().Named<ILogger>(name);
+            var container = containerBuilder.Build();
+            if (Debugger.IsAttached)
+            {
+                var ex = Assert.Throws<BTDBException>(() => container.Resolve<GreedyNonPublicClass>());
+                Assert.Contains("Greedy", ex.Message);
+                Assert.Contains("Unsupported", ex.Message);
+            }
+            else
+            {
+                Assert.NotNull(container.Resolve<GreedyNonPublicClass>());
+            }
         }
     }
 }

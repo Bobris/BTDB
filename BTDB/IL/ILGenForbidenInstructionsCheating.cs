@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using BTDB.KVDBLayer;
 
 namespace BTDB.IL
 {
@@ -38,14 +39,25 @@ namespace BTDB.IL
                 _constructorInfo = constructorInfo;
             }
 
+            Type GetDelegateType(bool isFunction, int numberOfParameters)
+            {
+                var delegates = GenericDelegates[isFunction ? 1 : 0];
+                if (numberOfParameters >= delegates.Length)
+                {
+                    var name = _methodInfo?.Name ?? _constructorInfo.DeclaringType?.Name;
+                    throw new BTDBException($"Unsupported number of parameters for cheating accessibility in {name} {_name}");
+                }
+                return delegates[numberOfParameters];
+            }
+
             public void GenerateStaticParts(TypeBuilder typeBuilder)
             {
-                _name = $"{_opCode}_{(object) _methodInfo ?? _constructorInfo}";
+                _name = $"{_opCode}_{(object)_methodInfo ?? _constructorInfo}";
                 Type[] paramTypesWithoutResult;
                 if (_methodInfo != null)
                 {
                     var isFunction = _methodInfo.ReturnType != typeof(void);
-                    var genDelType = GenericDelegates[isFunction ? 1 : 0][(_methodInfo.IsStatic ? 0 : 1) + _methodInfo.GetParameters().Length];
+                    var genDelType = GetDelegateType(isFunction, (_methodInfo.IsStatic ? 0 : 1) + _methodInfo.GetParameters().Length);
                     var paramTypes = new List<Type>();
                     if (!_methodInfo.IsStatic) paramTypes.Add(_methodInfo.DeclaringType);
                     paramTypes.AddRange(_methodInfo.GetParameters().Select(p => p.ParameterType));
@@ -57,7 +69,7 @@ namespace BTDB.IL
                 }
                 else if (_constructorInfo != null)
                 {
-                    var genDelType = GenericDelegates[1][_constructorInfo.GetParameters().Length];
+                    var genDelType = GetDelegateType(true, _constructorInfo.GetParameters().Length);
                     var paramTypes = new List<Type>();
                     paramTypes.AddRange(_constructorInfo.GetParameters().Select(p => p.ParameterType));
                     paramTypesWithoutResult = paramTypes.ToArray();
