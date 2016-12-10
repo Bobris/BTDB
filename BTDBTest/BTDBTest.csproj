@@ -102,6 +102,7 @@
     <Compile Include="DiskChunkCacheTest.cs" />
     <Compile Include="DtoChannelTest.cs" />
     <Compile Include="EventStore2Test.cs" />
+    <Compile Include="EventStoreMigrationTest.cs" />
     <Compile Include="EventStoreTest.cs" />
     <Compile Include="ILExtensionsTest.cs" />
     <Compile Include="InMemoryKeyValueDBTest.cs" />

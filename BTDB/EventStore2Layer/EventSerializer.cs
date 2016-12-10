@@ -329,14 +329,19 @@ namespace BTDB.EventStore2Layer
             var knowDescriptor = obj as IKnowDescriptor;
             if (knowDescriptor != null)
             {
-                if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
+                var origDesc = knowDescriptor.GetDescriptor();
+                if (!_typeOrDescriptor2Info.TryGetValue(origDesc, out info))
                 {
-                    info = new SerializerTypeInfo
+                    var newDesc = MergeDescriptor(origDesc);
+                    if (!_typeOrDescriptor2Info.TryGetValue(newDesc, out info))
                     {
-                        Id = 0,
-                        Descriptor = knowDescriptor.GetDescriptor()
-                    };
-                    _typeOrDescriptor2InfoNew[knowDescriptor.GetDescriptor()] = info;
+                        info = new SerializerTypeInfo
+                        {
+                            Id = 0,
+                            Descriptor = newDesc
+                        };
+                    }
+                    _typeOrDescriptor2InfoNew[origDesc] = info;
                 }
             }
             else
@@ -352,6 +357,25 @@ namespace BTDB.EventStore2Layer
                 info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : null);
             }
             info.NestedObjGatherer(obj, this);
+        }
+
+        ITypeDescriptor MergeDescriptor(ITypeDescriptor origDesc)
+        {
+            foreach (var existingTypeDescriptor in _typeOrDescriptor2Info)
+            {
+                if (origDesc.Equals(existingTypeDescriptor.Value.Descriptor))
+                {
+                    return existingTypeDescriptor.Value.Descriptor;
+                }
+            }
+            foreach (var existingTypeDescriptor in _typeOrDescriptor2InfoNew)
+            {
+                if (origDesc.Equals(existingTypeDescriptor.Value.Descriptor))
+                {
+                    return existingTypeDescriptor.Value.Descriptor;
+                }
+            }
+            return origDesc;
         }
 
         bool MergeTypesByShapeAndStoreNew()

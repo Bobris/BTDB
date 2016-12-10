@@ -175,7 +175,7 @@ namespace BTDBTest
 
         }
 
-        class StoringEventObserver : IEventStoreObserver
+        internal class StoringEventObserver : IEventStoreObserver
         {
             public readonly List<object> Metadata = new List<object>();
             public readonly List<object[]> Events = new List<object[]>();
