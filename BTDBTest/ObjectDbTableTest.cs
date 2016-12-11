@@ -1,20 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace BTDBTest
 {
     public class ObjectDbTableTest : IDisposable
     {
+        readonly ITestOutputHelper _output;
         readonly IKeyValueDB _lowDb;
         IObjectDB _db;
 
-        public ObjectDbTableTest()
+        public ObjectDbTableTest(ITestOutputHelper output)
         {
+            _output = output;
             _lowDb = new InMemoryKeyValueDB();
             OpenDb();
         }
@@ -1168,5 +1172,33 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void RelationAssembliesCanBeGarbageCollected()
+        {
+#if DEBUG
+            return;
+#else
+            if (Debugger.IsAttached)
+                return; //for debugger are assemlies not created with AssemblyBuilderAccess.RunAndCollect
+#endif
+            var createCount = 10;
+            for (var i = 0; i < createCount; i++)
+            {
+                using (var tr = _db.StartTransaction())
+                {
+                    var tbl = tr.InitRelation<IPersonSimpleListTable>("TestGC" + i)(tr);
+                    tbl.TenantId = 1;
+                    tbl.Insert(new PersonSimple());
+                    tr.Commit();
+                }
+                Assert.True(AppDomain.CurrentDomain.GetAssemblies().Any(a => a.FullName.StartsWith("RelationTestGC")));
+                ReopenDb();
+            }
+            GC.Collect(GC.MaxGeneration);
+            GC.WaitForPendingFinalizers();
+            int count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName.StartsWith("RelationTestGC"));
+            _output.WriteLine($"Released {createCount - count} out of {createCount} relation assemblies");
+            Assert.True(count < createCount);
+        }
     }
 }

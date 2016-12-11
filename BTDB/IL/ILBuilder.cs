@@ -7,9 +7,11 @@ namespace BTDB.IL
     {
         static ILBuilder()
         {
-            Instance = Debugger.IsAttached ? new CachingILBuilder(new ILBuilderDebug()) : new CachingILBuilder(new ILBuilderRelease());
+            NoCachingInstance = Debugger.IsAttached ? (IILBuilder)new ILBuilderDebug() : new ILBuilderRelease();
+            Instance = new CachingILBuilder(NoCachingInstance);
         }
 
         public static IILBuilder Instance { get; private set; }
+        public static IILBuilder NoCachingInstance { get; private set; }
     }
 }
