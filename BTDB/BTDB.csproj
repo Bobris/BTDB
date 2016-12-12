@@ -131,11 +131,15 @@
     <Compile Include="IL\Caching\CachingILBuilder.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethod.cs" />
     <Compile Include="IL\Caching\CachingILDynamicMethodWithThis.cs" />
+    <Compile Include="IL\Caching\CachingILDynamicType.cs" />
     <Compile Include="IL\Caching\CachingILGen.cs" />
     <Compile Include="IL\DynamicILDirectoryPath.cs" />
     <Compile Include="IL\IILDynamicMethodWithThis.cs" />
     <Compile Include="IL\IILEvent.cs" />
+    <Compile Include="IL\IIlField.cs" />
+    <Compile Include="IL\IILFieldPrivate.cs" />
     <Compile Include="IL\IILGenForbidenInstructions.cs" />
+    <Compile Include="IL\IILMethodPrivate.cs" />
     <Compile Include="IL\ILBuilderDebug.cs" />
     <Compile Include="IL\ILConstructorDebugImpl.cs" />
     <Compile Include="IL\ILConstructorImpl.cs" />
@@ -144,6 +148,7 @@
     <Compile Include="IL\ILDynamicTypeImpl.cs" />
     <Compile Include="IL\ILEventDebugImpl.cs" />
     <Compile Include="IL\ILEventImpl.cs" />
+    <Compile Include="IL\ILFieldImpl.cs" />
     <Compile Include="IL\ILGenDebugImpl.cs" />
     <Compile Include="IL\ILDynamicMethodImpl.cs" />
     <Compile Include="IL\IILBuilder.cs" />

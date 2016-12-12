@@ -3,7 +3,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    class ILMethodImpl : IILMethod
+    class ILMethodImpl : IILMethodPrivate
     {
         int _expectedLength;
         IILGen _gen;
@@ -24,7 +24,7 @@ namespace BTDB.IL
 
         public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_method.GetILGenerator(_expectedLength), _forbidenInstructions));
 
-        public MethodInfo MethodInfo => _method;
+        public MethodInfo TrueMethodInfo => _method;
 
         public MethodBuilder MethodBuilder => _method;
     }

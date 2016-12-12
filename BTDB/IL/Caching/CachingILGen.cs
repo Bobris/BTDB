@@ -733,5 +733,40 @@ namespace BTDB.IL.Caching
                 inst.FreeTemps();
             }
         }
+
+        public void Emit(OpCode opCode, IILField ilField)
+        {
+            _instructions.Add(new EmitILField(opCode, ilField));
+        }
+
+        class EmitILField : IReplayILGen
+        {
+            readonly OpCode _opCode;
+            readonly IILField _ilField;
+
+            public EmitILField(OpCode opCode, IILField ilField)
+            {
+                _opCode = opCode;
+                _ilField = ilField;
+            }
+
+            public void ReplayTo(IILGen target)
+            {
+                target.Emit(_opCode, _ilField);
+            }
+
+            public void FreeTemps()
+            {
+                ((IILFieldPrivate) _ilField).FreeTemps();
+            }
+
+            public bool Equals(IReplayILGen other)
+            {
+                var v = other as EmitILField;
+                if (v == null) return false;
+                return _opCode == v._opCode && _ilField.Equals(v._ilField);
+            }
+        }
+
     }
 }

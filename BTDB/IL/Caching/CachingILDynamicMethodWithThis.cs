@@ -67,14 +67,14 @@ namespace BTDB.IL.Caching
 
             public override int GetHashCode()
             {
-                return _name.GetHashCode() * 33 + _delegate.GetHashCode();
+                return _delegate.GetHashCode();
             }
 
             public override bool Equals(object obj)
             {
                 var v = obj as CacheItem;
                 if (v == null) return false;
-                return _name == v._name && _delegate == v._delegate && _thisType == v._thisType && _ilGen.Equals(v._ilGen);
+                return _delegate == v._delegate && _thisType == v._thisType && _ilGen.Equals(v._ilGen);
             }
         }
     }

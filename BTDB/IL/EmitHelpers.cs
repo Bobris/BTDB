@@ -142,7 +142,7 @@ namespace BTDB.IL
             return methodBuilder;
         }
 
-        static IILMethod GenerateAddRemoveEvent(IILDynamicType typeBuilder, FieldBuilder fieldBuilder, bool add)
+        static IILMethod GenerateAddRemoveEvent(IILDynamicType typeBuilder, IILField fieldBuilder, bool add)
         {
             Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
             EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");

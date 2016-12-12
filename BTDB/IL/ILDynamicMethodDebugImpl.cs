@@ -125,6 +125,8 @@ namespace BTDB.IL
             File.Delete(nameInExeDirectory);
             additionalDlls.ForEach(File.Delete);
         }
+
+        public MethodInfo TrueMethodInfo => _finalType.GetMethod("Invoke");
     }
 
     class ILDynamicMethodDebugImpl<TDelegate> : ILDynamicMethodDebugImpl, IILDynamicMethod<TDelegate> where TDelegate : class

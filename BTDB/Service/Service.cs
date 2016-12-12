@@ -525,7 +525,7 @@ namespace BTDB.Service
             var tb = ILBuilder.Instance.NewType(name, typeof(object), isDelegate ? Type.EmptyTypes : new[] { serviceType });
             var ownerField = tb.DefineField("_owner", typeof(IServiceInternalClient), FieldAttributes.Private);
             var bindings = new List<ClientBindInf>();
-            var bindingFields = new List<FieldBuilder>();
+            var bindingFields = new List<IILField>();
             var bindingResultTypes = new List<string>();
             IILGen ilGenerator;
             for (int sourceMethodIndex = 0; sourceMethodIndex < typeInf.MethodInfs.Length; sourceMethodIndex++)

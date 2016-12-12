@@ -25,9 +25,9 @@ namespace BTDB.IL
             return new ILMethodImpl(methodBuilder, _forbidenInstructions);
         }
 
-        public FieldBuilder DefineField(string name, Type type, FieldAttributes fieldAttributes)
+        public IILField DefineField(string name, Type type, FieldAttributes fieldAttributes)
         {
-            return _typeBuilder.DefineField(name, type, fieldAttributes);
+            return new ILFieldImpl(_typeBuilder.DefineField(name, type, fieldAttributes));
         }
 
         public IILEvent DefineEvent(string name, EventAttributes eventAttributes, Type type)
@@ -42,7 +42,7 @@ namespace BTDB.IL
 
         public void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod)
         {
-            _typeBuilder.DefineMethodOverride(((ILMethodImpl)methodBuilder).MethodInfo, baseMethod);
+            _typeBuilder.DefineMethodOverride(((IILMethodPrivate)methodBuilder).TrueMethodInfo, baseMethod);
         }
 
         public Type CreateType()

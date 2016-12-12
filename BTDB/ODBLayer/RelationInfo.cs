@@ -1108,8 +1108,8 @@ namespace BTDB.ODBLayer
 
         internal void GenerateApartFieldsProperties(IILDynamicType classImpl, Type createdType)
         {
-            var apartFields = new Dictionary<string, FieldBuilder>();
-            var initializedFields = new Dictionary<string, FieldBuilder>();
+            var apartFields = new Dictionary<string, IILField>();
+            var initializedFields = new Dictionary<string, IILField>();
             var methods = createdType.GetMethods();
             foreach (var method in methods)
             {
@@ -1117,8 +1117,8 @@ namespace BTDB.ODBLayer
                 if (!name.StartsWith("get_") && !name.StartsWith("set_"))
                     continue;
 
-                FieldBuilder field;
-                FieldBuilder initCheckField = null;
+                IILField field;
+                IILField initCheckField = null;
                 var propName = method.Name.Substring(4);
 
                 if (!ApartFields.ContainsKey(propName))

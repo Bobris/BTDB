@@ -98,7 +98,19 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldfld(this IILGen il, IILField fieldInfo)
+        {
+            il.Emit(OpCodes.Ldfld, fieldInfo);
+            return il;
+        }
+
         public static IILGen Ldflda(this IILGen il, FieldInfo fieldInfo)
+        {
+            il.Emit(OpCodes.Ldflda, fieldInfo);
+            return il;
+        }
+
+        public static IILGen Ldflda(this IILGen il, IILField fieldInfo)
         {
             il.Emit(OpCodes.Ldflda, fieldInfo);
             return il;
@@ -110,13 +122,31 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldsfld(this IILGen il, IILField fieldInfo)
+        {
+            il.Emit(OpCodes.Ldsfld, fieldInfo);
+            return il;
+        }
+
         public static IILGen Stfld(this IILGen il, FieldInfo fieldInfo)
         {
             il.Emit(OpCodes.Stfld, fieldInfo);
             return il;
         }
 
+        public static IILGen Stfld(this IILGen il, IILField fieldInfo)
+        {
+            il.Emit(OpCodes.Stfld, fieldInfo);
+            return il;
+        }
+
         public static IILGen Stsfld(this IILGen il, FieldInfo fieldInfo)
+        {
+            il.Emit(OpCodes.Stsfld, fieldInfo);
+            return il;
+        }
+
+        public static IILGen Stsfld(this IILGen il, IILField fieldInfo)
         {
             il.Emit(OpCodes.Stsfld, fieldInfo);
             return il;

@@ -1175,19 +1175,13 @@ namespace BTDBTest
         [Fact]
         public void RelationAssembliesCanBeGarbageCollected()
         {
-#if DEBUG
-            return;
-#else
-            if (Debugger.IsAttached)
-                return; //for debugger are assemlies not created with AssemblyBuilderAccess.RunAndCollect
-#endif
-            var createCount = 10;
+            var createCount = 3;
             for (var i = 0; i < createCount; i++)
             {
                 using (var tr = _db.StartTransaction())
                 {
-                    var tbl = tr.InitRelation<IPersonSimpleListTable>("TestGC" + i)(tr);
-                    tbl.TenantId = 1;
+                    var tbl = tr.InitRelation<IPersonSimpleListTable>("TestGC")(tr);
+                    tbl.TenantId = (ulong) i;
                     tbl.Insert(new PersonSimple());
                     tr.Commit();
                 }
@@ -1197,7 +1191,7 @@ namespace BTDBTest
             GC.Collect(GC.MaxGeneration);
             GC.WaitForPendingFinalizers();
             int count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName.StartsWith("RelationTestGC"));
-            _output.WriteLine($"Released {createCount - count} out of {createCount} relation assemblies");
+            _output.WriteLine($"Reused {createCount - count} out of {createCount} relation assemblies");
             Assert.True(count < createCount);
         }
     }

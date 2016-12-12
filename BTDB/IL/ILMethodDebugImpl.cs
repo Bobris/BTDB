@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    class ILMethodDebugImpl : IILMethod
+    class ILMethodDebugImpl : IILMethodPrivate
     {
         int _expectedLength;
         IILGen _gen;
@@ -35,7 +35,7 @@ namespace BTDB.IL
 
         public string Name => _name;
 
-        public MethodInfo MethodInfo => _method;
+        public MethodInfo TrueMethodInfo => _method;
 
         public MethodBuilder MethodBuilder => _method;
 

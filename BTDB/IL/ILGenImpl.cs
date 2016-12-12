@@ -123,7 +123,7 @@ namespace BTDB.IL
 
         public IILGen Ldftn(IILMethod method)
         {
-            _ilGenerator.Emit(OpCodes.Ldftn, ((ILMethodImpl)method).MethodInfo);
+            _ilGenerator.Emit(OpCodes.Ldftn, ((IILMethodPrivate)method).TrueMethodInfo);
             return this;
         }
 
@@ -155,6 +155,11 @@ namespace BTDB.IL
         {
             _ilGenerator.EndExceptionBlock();
             return this;
+        }
+
+        public void Emit(OpCode opCode, IILField ilField)
+        {
+            _ilGenerator.Emit(opCode, ((IILFieldPrivate)ilField).TrueField);
         }
     }
 }

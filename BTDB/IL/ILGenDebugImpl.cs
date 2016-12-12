@@ -170,13 +170,14 @@ namespace BTDB.IL
 
         public IILGen Ldftn(IILMethod method)
         {
-            var meth = ((ILMethodDebugImpl)method);
+            var meth = (IILMethodPrivate)method;
+            var mi = meth.TrueMethodInfo;
             _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {2} {1}({3})",
                 OpCodes.Ldftn,
-                meth.Name,
-                meth.ReturnType.ToSimpleName(),
-                string.Join(", ", meth.Parameters.Select(p => p.ToSimpleName()))));
-            _ilGenerator.Emit(OpCodes.Ldftn, meth.MethodInfo);
+                mi.Name,
+                mi.ReturnType.ToSimpleName(),
+                string.Join(", ", mi.GetParameters().Select(p => p.ParameterType.ToSimpleName()))));
+            _ilGenerator.Emit(OpCodes.Ldftn, mi);
             return this;
         }
 
@@ -218,6 +219,13 @@ namespace BTDB.IL
             _sourceCodeWriter.CloseScope();
             _ilGenerator.EndExceptionBlock();
             return this;
+        }
+
+        public void Emit(OpCode opCode, IILField ilField)
+        {
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator,
+                $"{opCode} field {ilField.FieldType.ToSimpleName()} {ilField.Name}");
+            _ilGenerator.Emit(opCode, ((IILFieldPrivate)ilField).TrueField);
         }
     }
 }

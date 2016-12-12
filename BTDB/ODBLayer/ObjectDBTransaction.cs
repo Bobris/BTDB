@@ -1027,7 +1027,7 @@ namespace BTDB.ODBLayer
 
         Func<IObjectDBTransaction, T> BuildRelationCreatorInstance<T>(Type classImplType, string relationName, RelationInfo relationInfo)
         {
-            var methodBuilder = ILBuilder.NoCachingInstance.NewMethod("RelationFactory" + relationName, typeof(Func<IObjectDBTransaction, T>), typeof(RelationInfo));
+            var methodBuilder = ILBuilder.Instance.NewMethod("RelationFactory" + relationName, typeof(Func<IObjectDBTransaction, T>), typeof(RelationInfo));
             var ilGenerator = methodBuilder.Generator;
             ilGenerator
                 .Ldarg(1)

@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BTDB.IL.Caching
 {
-    public class CachingILBuilder : IILBuilder
+    class CachingILBuilder : IILBuilder
     {
         internal readonly IILBuilder Wrapping;
         internal readonly object Lock = new object();
@@ -36,12 +37,44 @@ namespace BTDB.IL.Caching
 
         public IILDynamicType NewType(string name, Type baseType, Type[] interfaces)
         {
-            return Wrapping.NewType(name, baseType, interfaces);
+            return new CachingILDynamicType(this, name, baseType, interfaces);
         }
 
         public Type NewEnum(string name, Type baseType, IEnumerable<KeyValuePair<string, object>> literals)
         {
-            return Wrapping.NewEnum(name, baseType, literals);
+            lock (Lock)
+            {
+                var item = new EnumKey(name, baseType, literals);
+                item = (EnumKey)FindInCache(item);
+                return item.Result ?? (item.Result = Wrapping.NewEnum(name, baseType, item._literals));
+            }
+        }
+
+        class EnumKey
+        {
+            readonly string _name;
+            readonly Type _baseType;
+            internal readonly KeyValuePair<string, object>[] _literals;
+            internal Type Result;
+
+            internal EnumKey(string name, Type baseType, IEnumerable<KeyValuePair<string, object>> literals)
+            {
+                _name = name;
+                _baseType = baseType;
+                _literals = literals.ToArray();
+            }
+
+            public override int GetHashCode()
+            {
+                return _name.GetHashCode() * 33 + _baseType.GetHashCode();
+            }
+
+            public override bool Equals(object obj)
+            {
+                var v = obj as EnumKey;
+                if (v == null) return false;
+                return _name == v._name && _baseType==v._baseType && _literals.SequenceEqual(v._literals);
+            }
         }
 
         public object FindInCache(object item)

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace BTDB.IL
@@ -48,6 +49,8 @@ namespace BTDB.IL
         {
             return _dynamicMethod.CreateDelegate(_delegateType, @this);
         }
+
+        public MethodInfo TrueMethodInfo => _delegateType.GetMethod("Invoke");
     }
 
     class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : class
