@@ -853,12 +853,12 @@ namespace BTDBTest
             var file = new MemoryEventFileStorage();
             var file2 = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            
+
             var ev = new SomethingWithList();
             appender.Store(null, new object[] { ev });
             var ev2 = new SomethingWithNestedIList
             {
-                B = new Dictionary<ulong, IList<string>> {{1, new List<string> {"a1"}}}
+                B = new Dictionary<ulong, IList<string>> { { 1, new List<string> { "a1" } } }
             };
             appender.Store(null, new object[] { ev2 });
             var appender2 = manager.AppendToStore(file);
@@ -870,6 +870,26 @@ namespace BTDBTest
             reader.ReadFromStartToEnd(eventObserver);
             reader = manager.OpenReadOnlyStore(file2);
             reader.ReadFromStartToEnd(eventObserver);
+        }
+
+        public class SimpleWithIndexer
+        {
+            public string OddName { get; set; }
+            public string EvenName { get; set; }
+            public string this[int i] => i % 2 == 0 ? EvenName : OddName;
+        }
+
+        [Fact]
+        public void CanWriteEventWithIndexer()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { new SimpleWithIndexer { EvenName = "e", OddName = "o" } });
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            var ev = eventObserver.Events[0][0] as SimpleWithIndexer;
+            Assert.Equal(ev[11], "o");
         }
 
     }
