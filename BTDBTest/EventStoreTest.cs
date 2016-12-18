@@ -379,14 +379,15 @@ namespace BTDBTest
 
         public class OverloadableTypeMapper : ITypeNameMapper
         {
-            readonly ITypeNameMapper _parent = new FullNameTypeMapper();
+            readonly ITypeNameMapper _parent;
             readonly Type _type;
             readonly string _name;
 
-            public OverloadableTypeMapper(Type type, string name)
+            public OverloadableTypeMapper(Type type, string name, ITypeNameMapper parent = null)
             {
                 _type = type;
                 _name = name;
+                _parent = parent ?? new FullNameTypeMapper();
             }
 
             public string ToName(Type type)

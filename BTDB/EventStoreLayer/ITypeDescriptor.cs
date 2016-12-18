@@ -22,6 +22,7 @@ namespace BTDB.EventStoreLayer
         ITypeNewDescriptorGenerator BuildNewDescriptorGenerator();
         ITypeDescriptor NestedType(int index);
         void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map);
+        ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map);
         bool Sealed { get; }
         bool StoredInline { get; }
         bool LoadNeedsHelpWithConversion { get; }

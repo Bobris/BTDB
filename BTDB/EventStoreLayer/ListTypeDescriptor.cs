@@ -26,10 +26,15 @@ namespace BTDB.EventStoreLayer
         }
 
         public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+            :this(typeSerializers, nestedDescriptorReader(reader))
+        {
+        }
+
+        ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
-            InitFromItemDescriptor(nestedDescriptorReader(reader));
+            InitFromItemDescriptor(itemDesc);
         }
 
         void InitFromItemDescriptor(ITypeDescriptor descriptor)
@@ -318,6 +323,14 @@ namespace BTDB.EventStoreLayer
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);
+        }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+            var itemDesc = map(_itemDescriptor);
+            if (_typeSerializers == typeSerializers && itemDesc == _itemDescriptor)
+                return this;
+            return new ListTypeDescriptor(typeSerializers, itemDesc);
         }
     }
 }

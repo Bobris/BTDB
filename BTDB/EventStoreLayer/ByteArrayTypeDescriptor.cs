@@ -119,5 +119,10 @@ namespace BTDB.EventStoreLayer
         {
             return Name.GetHashCode();
         }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+            return this;
+        }
     }
 }

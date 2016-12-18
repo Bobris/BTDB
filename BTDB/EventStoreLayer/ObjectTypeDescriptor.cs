@@ -38,6 +38,14 @@ namespace BTDB.EventStoreLayer
             }
         }
 
+        ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed, List<KeyValuePair<string, ITypeDescriptor>> nfs)
+        {
+            _typeSerializers = typeSerializers;
+            Sealed = @sealed;
+            _name = name;
+            _fields = nfs;
+        }
+
         public bool Equals(ITypeDescriptor other)
         {
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
@@ -429,6 +437,23 @@ namespace BTDB.EventStoreLayer
                 var methodInfo = _type.GetProperties().First(p => GetPersitentName(p) == pair.Key).GetGetMethod();
                 pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
+        }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+            var tds = new ITypeDescriptor[_fields.Count];
+            for (var i = 0; i < _fields.Count; i++)
+            {
+                tds[i] = map(_fields[i].Value);
+            }
+            if (typeSerializers == _typeSerializers && tds.SequenceEqual(_fields.Select(i => i.Value)))
+                return this;
+            var nfs = new List<KeyValuePair<string, ITypeDescriptor>>(tds.Length);
+            for (var i = 0; i < _fields.Count; i++)
+            {
+                nfs.Add(new KeyValuePair<string, ITypeDescriptor>(_fields[i].Key,tds[i]));
+            }
+            return new ObjectTypeDescriptor(typeSerializers, _name, Sealed, nfs);
         }
     }
 }

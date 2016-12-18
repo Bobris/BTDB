@@ -361,21 +361,66 @@ namespace BTDB.EventStore2Layer
 
         ITypeDescriptor MergeDescriptor(ITypeDescriptor origDesc)
         {
+            var visited = new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+            var hasCycle = false;
+            Func<ITypeDescriptor, ITypeDescriptor> old2New = null;
+            old2New = old =>
+            {
+                if (visited.Contains(old))
+                {
+                    hasCycle = true;
+                    return new PlaceHolderDescriptor(old);
+                }
+                visited.Add(origDesc);
+                SerializerTypeInfo info;
+                if (_typeOrDescriptor2Info.TryGetValue(old, out info))
+                {
+                    return info.Descriptor;
+                }
+                if (old is ObjectTypeDescriptor)
+                {
+                    var type = TypeNameMapper.ToType(old.Name) ?? typeof(object);
+                    if (type != typeof(object))
+                    {
+                        return Create(type);
+                    }
+                }
+                return old.CloneAndMapNestedTypes(this, old2New);
+            };
+            var res = old2New(origDesc);
+            if (hasCycle)
+            {
+                visited.Clear();
+                visited.Add(res);
+                Func<ITypeDescriptor, ITypeDescriptor> deplaceholder = null;
+                deplaceholder = old =>
+                {
+                    if (old is PlaceHolderDescriptor)
+                    {
+                        return ((PlaceHolderDescriptor) old).TypeDesc;
+                    }
+                    if (visited.Contains(old)) return old;
+                    visited.Add(old);
+                    old.MapNestedTypes(deplaceholder);
+                    return old;
+                };
+                res.MapNestedTypes(deplaceholder);
+            }
             foreach (var existingTypeDescriptor in _typeOrDescriptor2Info)
             {
-                if (origDesc.Equals(existingTypeDescriptor.Value.Descriptor))
+                if (res.Equals(existingTypeDescriptor.Value.Descriptor))
                 {
                     return existingTypeDescriptor.Value.Descriptor;
                 }
             }
             foreach (var existingTypeDescriptor in _typeOrDescriptor2InfoNew)
             {
-                if (origDesc.Equals(existingTypeDescriptor.Value.Descriptor))
+                if (res.Equals(existingTypeDescriptor.Value.Descriptor))
                 {
                     return existingTypeDescriptor.Value.Descriptor;
                 }
             }
-            return origDesc;
+            return res;
         }
 
         bool MergeTypesByShapeAndStoreNew()

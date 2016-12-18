@@ -32,10 +32,15 @@ namespace BTDB.EventStoreLayer
         }
 
         public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+            : this(typeSerializers, nestedDescriptorReader(reader), nestedDescriptorReader(reader))
+        {
+        }
+
+        DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor keyDesc, ITypeDescriptor valueDesc)
         {
             _convertorGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
-            InitFromKeyValueDescriptors(nestedDescriptorReader(reader), nestedDescriptorReader(reader));
+            InitFromKeyValueDescriptors(keyDesc, valueDesc);
         }
 
         void InitFromKeyValueDescriptors(ITypeDescriptor keyDescriptor, ITypeDescriptor valueDescriptor)
@@ -432,6 +437,15 @@ namespace BTDB.EventStoreLayer
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);
+        }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+            var keyDesc = map(_keyDescriptor);
+            var valueDesc = map(_valueDescriptor);
+            if (_typeSerializers == typeSerializers && keyDesc == _keyDescriptor && valueDesc == _valueDescriptor)
+                return this;
+            return new DictionaryTypeDescriptor(typeSerializers, keyDesc, valueDesc);
         }
     }
 }

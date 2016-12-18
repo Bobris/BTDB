@@ -203,6 +203,11 @@ namespace BTDB.EventStoreLayer
             {
                 throw new InvalidOperationException();
             }
+
+            public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public object LoadObject(AbstractBufferedReader reader)

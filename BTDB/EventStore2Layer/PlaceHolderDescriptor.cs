@@ -8,11 +8,17 @@ namespace BTDB.EventStore2Layer
 {
     class PlaceHolderDescriptor : ITypeDescriptor
     {
-        internal int TypeId { get; }
+        internal readonly ITypeDescriptor TypeDesc;
+        internal readonly int TypeId;
 
         public PlaceHolderDescriptor(int typeId)
         {
             TypeId = typeId;
+        }
+
+        public PlaceHolderDescriptor(ITypeDescriptor typeDesc)
+        {
+            TypeDesc = typeDesc;
         }
 
         bool IEquatable<ITypeDescriptor>.Equals(ITypeDescriptor other)
@@ -94,6 +100,11 @@ namespace BTDB.EventStore2Layer
         }
 
         public bool ContainsField(string name)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
         {
             throw new InvalidOperationException();
         }

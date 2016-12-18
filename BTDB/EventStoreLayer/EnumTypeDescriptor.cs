@@ -19,6 +19,16 @@ namespace BTDB.EventStoreLayer
         readonly bool _flags;
         readonly List<KeyValuePair<string, ulong>> _pairs;
 
+        EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type, string name, bool signed, bool flags, List<KeyValuePair<string, ulong>> pairs)
+        {
+            _typeSerializers = typeSerializers;
+            _type = type;
+            _name = name;
+            _signed = signed;
+            _flags = flags;
+            _pairs = pairs;
+        }
+
         public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
             _typeSerializers = typeSerializers;
@@ -171,7 +181,7 @@ namespace BTDB.EventStoreLayer
                     return objMe._value == _value;
                 }
                 if (!obj.GetType().IsEnum) return false;
-                var myDescriptor = ((EnumTypeDescriptor)_descriptor);
+                var myDescriptor = (EnumTypeDescriptor)_descriptor;
                 var otherDescriptor = myDescriptor._typeSerializers.DescriptorOf(obj.GetType());
                 if (!myDescriptor.Equals(otherDescriptor)) return false;
                 if (myDescriptor._signed)
@@ -349,6 +359,15 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator.Call(() => default(AbstractBufferedReader).SkipVUInt64());
             }
+        }
+
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        {
+            if (_typeSerializers == typeSerializers)
+            {
+                return this;
+            }
+            return new EnumTypeDescriptor(typeSerializers, _type, _name, _signed, _flags, _pairs.ToList());
         }
     }
 }
