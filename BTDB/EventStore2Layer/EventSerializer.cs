@@ -377,7 +377,7 @@ namespace BTDB.EventStore2Layer
                 {
                     return info.Descriptor;
                 }
-                if (old is ObjectTypeDescriptor)
+                if (old is ObjectTypeDescriptor || old is EnumTypeDescriptor)
                 {
                     var type = TypeNameMapper.ToType(old.Name) ?? typeof(object);
                     if (type != typeof(object))

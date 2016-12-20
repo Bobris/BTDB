@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
 using Xunit;
@@ -11,7 +9,7 @@ namespace BTDBTest
     {
         public class Item
         {
-            public string Field { get; set; }    
+            public string Field { get; set; }
         }
 
         public class EventRoot
@@ -24,7 +22,7 @@ namespace BTDBTest
         {
             var obj = PassThroughEventStorage(new EventRoot
             {
-                Items = new List<Item> { new Item {  Field = "A" } }
+                Items = new List<Item> { new Item { Field = "A" } }
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
             bool hasMetadata;
@@ -39,12 +37,12 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
-        static object PassThroughEventStorage(EventRoot @event, ITypeNameMapper mapper)
+        static object PassThroughEventStorage(object @event, ITypeNameMapper mapper)
         {
             var manager = new EventStoreManager();
             var storage = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(storage);
-            var events = new object[]
+            var events = new[]
                 {
                     @event
                 };
@@ -78,6 +76,77 @@ namespace BTDBTest
             var obj = PassThroughEventStorage(new EventRoot
             {
                 Items = new List<Item> { new Item { Field = "A" } }
+            }, mapper);
+            var serializer = new EventSerializer(mapper);
+            bool hasMetadata;
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer(mapper);
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+        }
+
+        public class EventDictListRoot
+        {
+            public IDictionary<ulong, IList<Item>> Items { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateListInDict()
+        {
+            var obj = PassThroughEventStorage(new EventDictListRoot
+            {
+                Items = new Dictionary<ulong, IList<Item>> { { 1, new List<Item> { new Item { Field = "A" } } } }
+            }, new FullNameTypeMapper());
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+        }
+
+        public enum ItemEn
+        {
+            One = 1
+        }
+
+        public class EventRootEn
+        {
+            public List<ItemEn> Items { get; set; }
+        }
+
+        public enum ItemEn2
+        {
+            One = 1,
+            Two = 2
+        }
+
+        public class EventRootEn2
+        {
+            public List<ItemEn2> Items { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateListWithChangedEnum()
+        {
+            var parentMapper = new FullNameTypeMapper();
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(ItemEn2), parentMapper.ToName(typeof(ItemEn)),
+                new EventStoreTest.OverloadableTypeMapper(typeof(EventRootEn2), parentMapper.ToName(typeof(EventRootEn)),
+                parentMapper
+                ));
+            var obj = PassThroughEventStorage(new EventRootEn
+            {
+                Items = new List<ItemEn> { ItemEn.One }
             }, mapper);
             var serializer = new EventSerializer(mapper);
             bool hasMetadata;
