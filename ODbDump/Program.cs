@@ -9,49 +9,43 @@ using BTDB.ODBLayer;
 
 namespace ODbDump
 {
-    class ToStringFastVisitor : IODBFastVisitor
+    class ToConsoleFastVisitor : IODBFastVisitor
     {
-        protected readonly StringBuilder Builder = new StringBuilder();
-
-        public override string ToString()
-        {
-            return Builder.ToString();
-        }
-
+        private StringBuilder _builder = new StringBuilder();
         public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
         }
 
         void Print(ByteBuffer b)
         {
+            _builder.Clear();
             for (int i = 0; i < b.Length; i++)
             {
-                if (i > 0) Builder.Append(' ');
-                Builder.Append(b[i].ToString("X2"));
+                if (i > 0) _builder.Append(' ');
+                _builder.Append(b[i].ToString("X2"));
             }
+            Console.Write(_builder.ToString());
         }
     }
 
-    class ToStringVisitor : ToStringFastVisitor, IODBVisitor
+    class ToConsoleVisitor : ToConsoleFastVisitor, IODBVisitor
     {
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
-            Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
-            Builder.AppendLine();
+            Console.WriteLine("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
             return true;
         }
 
         public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
-            Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
+            Console.WriteLine("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
                 version);
-            Builder.AppendLine();
             return true;
         }
 
         public bool StartField(string name)
         {
-            Builder.AppendLine($"StartField {name}");
+            Console.WriteLine($"StartField {name}");
             return true;
         }
 
@@ -62,7 +56,7 @@ namespace ODbDump
 
         public void ScalarAsObject(object content)
         {
-            Builder.AppendLine(string.Format(CultureInfo.InvariantCulture, "ScalarObj {0}", content));
+            Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "ScalarObj {0}", content));
         }
 
         public bool NeedScalarAsText()
@@ -72,117 +66,116 @@ namespace ODbDump
 
         public void ScalarAsText(string content)
         {
-            Builder.AppendLine($"ScalarStr {content}");
+            Console.WriteLine($"ScalarStr {content}");
         }
 
         public void OidReference(ulong oid)
         {
-            Builder.AppendLine($"OidReference {oid}");
+            Console.WriteLine($"OidReference {oid}");
         }
 
         public bool StartInlineObject(uint tableId, string tableName, uint version)
         {
-            Builder.AppendLine($"StartInlineObject {tableId}-{tableName}-{version}");
+            Console.WriteLine($"StartInlineObject {tableId}-{tableName}-{version}");
             return true;
         }
 
         public void EndInlineObject()
         {
-            Builder.AppendLine("EndInlineObject");
+            Console.WriteLine("EndInlineObject");
         }
 
         public bool StartList()
         {
-            Builder.AppendLine("StartList");
+            Console.WriteLine("StartList");
             return true;
         }
 
         public bool StartItem()
         {
-            Builder.AppendLine("StartItem");
+            Console.WriteLine("StartItem");
             return true;
         }
 
         public void EndItem()
         {
-            Builder.AppendLine("EndItem");
+            Console.WriteLine("EndItem");
         }
 
         public void EndList()
         {
-            Builder.AppendLine("EndList");
+            Console.WriteLine("EndList");
         }
 
         public bool StartDictionary()
         {
-            Builder.AppendLine("StartDictionary");
+            Console.WriteLine("StartDictionary");
             return true;
         }
 
         public bool StartDictKey()
         {
-            Builder.AppendLine("StartDictKey");
+            Console.WriteLine("StartDictKey");
             return true;
         }
 
         public void EndDictKey()
         {
-            Builder.AppendLine("EndDictKey");
+            Console.WriteLine("EndDictKey");
         }
 
         public bool StartDictValue()
         {
-            Builder.AppendLine("StartDictValue");
+            Console.WriteLine("StartDictValue");
             return true;
         }
 
         public void EndDictValue()
         {
-            Builder.AppendLine("EndDictValue");
+            Console.WriteLine("EndDictValue");
         }
 
         public void EndDictionary()
         {
-            Builder.AppendLine("EndDictionary");
+            Console.WriteLine("EndDictionary");
         }
 
         public void EndField()
         {
-            Builder.AppendLine("EndField");
+            Console.WriteLine("EndField");
         }
 
         public void EndObject()
         {
-            Builder.AppendLine("EndObject");
+            Console.WriteLine("EndObject");
         }
 
         public bool VisitRelation(string relationName)
         {
-            Builder.AppendFormat($"Relation {relationName}");
-            Builder.AppendLine();
+            Console.WriteLine($"Relation {relationName}");
             return true;
         }
 
         public bool StartRelationKey()
         {
-            Builder.AppendLine("BeginKey");
+            Console.WriteLine("BeginKey");
             return true;
         }
 
         public void EndRelationKey()
         {
-            Builder.AppendLine("EndKey");
+            Console.WriteLine("EndKey");
         }
 
         public bool StartRelationValue()
         {
-            Builder.AppendLine("BeginValue");
+            Console.WriteLine("BeginValue");
             return true;
         }
 
         public void EndRelationValue()
         {
-            Builder.AppendLine("EndValue");
+            Console.WriteLine("EndValue");
         }
     }
 
@@ -213,11 +206,9 @@ namespace ODbDump
                             odb.Open(kdb, false);
                             using (var tr = odb.StartTransaction())
                             {
-                                var visitor = new ToStringVisitor();
+                                var visitor = new ToConsoleVisitor();
                                 var iterator = new ODBIterator(tr, visitor);
                                 iterator.Iterate();
-                                var text = visitor.ToString();
-                                Console.WriteLine(text);
                             }
                         }
                         break;
