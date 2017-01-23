@@ -288,6 +288,10 @@ namespace BTDB.EventStore2Layer
                     {
                         desc = new DictionaryTypeDescriptor(this, type);
                     }
+                    else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                    {
+                        return null;
+                    }
                 }
                 else if (type.IsArray)
                 {
@@ -312,7 +316,9 @@ namespace BTDB.EventStore2Layer
             _typeOrDescriptor2InfoNew[type] = result;
             if (!desc.FinishBuildFromType(this))
             {
-                throw new BTDBException("Don't know how to serialize type " + type.ToSimpleName());
+                _typeOrDescriptor2InfoNew.Remove(desc);
+                _typeOrDescriptor2InfoNew.Remove(type);
+                return null;
             }
             return desc;
         }

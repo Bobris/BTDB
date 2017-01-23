@@ -5,6 +5,7 @@ using BTDB.EventStore2Layer;
 using BTDB.StreamLayer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
+using BTDB.FieldHandler;
 
 namespace BTDBTest
 {
@@ -264,5 +265,36 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
         }
+
+
+        public class EventWithIIndirect
+        {
+            public string Name { get; set; }
+            public IIndirect<User> Ind1 { get; set; }
+            public List<IIndirect<User>> Ind2 { get; set; }
+        }
+
+        [Fact]
+        public void SkipsIIndirect()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new EventWithIIndirect
+            {
+                Name = "A",
+                Ind1 = new DBIndirect<User>(),
+                Ind2 = new List<IIndirect<User>>()
+            };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+        }
+
     }
 }
