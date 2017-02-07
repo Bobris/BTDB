@@ -107,10 +107,10 @@ List by ascending/descending order and specified range. Apart fields are taken i
 
 ### Enumerate ###
             IEnumerator<Person> GetEnumerator();
-Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. Enumerated are all always all items, apart fields are not taken into account.  
+Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. Enumerated are always all items, apart fields are not taken into account.  
 
 ### IReadOnlyCollection ###
-All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`. Enumerated are all always all items, apart fields are not taken into account.
+All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`. Enumerated are always all items, apart fields are not taken into account.
 
 ## Primary Key ##
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
