@@ -898,11 +898,11 @@ namespace BTDB.ODBLayer
                         .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
+                    RelationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
                         advEnumParam.GetField("Start"), reqMethod.Generator);
                     reqMethod.Generator
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
+                    RelationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
                         advEnumParam.GetField("End"), reqMethod.Generator);
 
                     if (typeof(IEnumerator<>).MakeGenericType(relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
@@ -958,11 +958,11 @@ namespace BTDB.ODBLayer
                         .LdcI4(prefixParamCount + relationInfo.ApartFields.Count)
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                    RelationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
                                 emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
                     reqMethod.Generator
                         .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
-                    relationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                    RelationInfo.FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
                         emptyBufferLoc, advEnumParam.GetField("End"), reqMethod.Generator);
                     reqMethod.Generator
                         .LdcI4((int)secondaryKeyIndex);

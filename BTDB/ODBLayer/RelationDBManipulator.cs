@@ -233,6 +233,26 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        public int RemoveByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
+        {
+            var removedCount = 0;
+            var keysToDelete = new List<ByteBuffer>();
+
+            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
+            while (enumerator.MoveNext())
+            {
+                keysToDelete.Add(enumerator.GetKeyBytes());
+            }
+            foreach (var key in keysToDelete)
+            {
+                RemoveById(key, true);
+                removedCount++;
+            }
+
+            return removedCount;
+        }
+
+
         public IEnumerator<T> GetEnumerator()
         {
             var keyWriter = new ByteBufferWriter();
@@ -253,6 +273,11 @@ namespace BTDB.ODBLayer
             }
             var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
+        }
+
+        public IEnumerator<T> FindByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
+        {
+            return new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
         }
 
         internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)

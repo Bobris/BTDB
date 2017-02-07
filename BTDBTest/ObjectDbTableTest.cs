@@ -1142,11 +1142,14 @@ namespace BTDBTest
             }
         }
 
-        public interface IPersonSimpleListTable
+        public interface IPersonSimpleListTable : IReadOnlyCollection<PersonSimple>
         {
             ulong TenantId { get; set; }
             void Insert(PersonSimple person);
             IOrderedDictionaryEnumerator<string, PersonSimple> ListById(AdvancedEnumeratorParam<string> param);
+            IEnumerator<PersonSimple> FindById();
+            bool RemoveById(string email);
+            int RemoveById();
         }
 
         [Fact]
@@ -1169,6 +1172,77 @@ namespace BTDBTest
                 Assert.True(enumerator.NextKey(out email));
                 Assert.Equal("b@d.cz", email);
                 tr.Commit();
+            }
+        }
+
+        [Fact]
+        public void WorkWithPKPrefixWithApartField()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonSimpleListTable>("FindByPKPrefixWithApartField");
+                var personTable = creator(tr);
+
+                personTable.TenantId = 13;
+                personTable.Insert(new PersonSimple { Email = "a@d.cz", Name = "A" });
+                personTable.Insert(new PersonSimple { Email = "b@d.cz", Name = "B" });
+
+                var enumerator = personTable.FindById();
+                Assert.True(enumerator.MoveNext());
+                Assert.Equal("a@d.cz", enumerator.Current.Email);
+                Assert.True(enumerator.MoveNext());
+                Assert.False(enumerator.MoveNext());
+
+                personTable.TenantId = 2;
+                enumerator = personTable.FindById();
+                Assert.False(enumerator.MoveNext());
+
+                personTable.TenantId = 13;
+                Assert.True(personTable.RemoveById("a@d.cz"));
+
+                var removedCount = personTable.RemoveById();
+                Assert.Equal(1, removedCount);
+
+                Assert.Equal(0, personTable.Count);
+
+                tr.Commit();
+            }
+        }
+
+        public interface IPersonSimpleFindTable : IReadOnlyCollection<PersonSimple>
+        {
+            void Insert(PersonSimple person);
+            IEnumerator<PersonSimple> FindById(ulong tenantId);
+            bool RemoveById(ulong tenantId, string email);
+            int RemoveById(ulong tenantId);
+        }
+
+        [Fact]
+        public void WorkWithPKPrefixWithoutApartField()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonSimpleFindTable>("FindByPKPrefix");
+                var personTable = creator(tr);
+
+                personTable.Insert(new PersonSimple { TenantId = 13, Email = "a@d.cz", Name = "A" });
+                personTable.Insert(new PersonSimple { TenantId = 13, Email = "b@d.cz", Name = "B" });
+
+                var enumerator = personTable.FindById(13);
+                Assert.True(enumerator.MoveNext());
+                Assert.Equal("a@d.cz", enumerator.Current.Email);
+                Assert.True(enumerator.MoveNext());
+                Assert.False(enumerator.MoveNext());
+
+                enumerator = personTable.FindById(2);
+                Assert.False(enumerator.MoveNext());
+
+                Assert.True(personTable.RemoveById(13, "a@d.cz"));
+
+                var removedCount = personTable.RemoveById(13);
+                Assert.Equal(1, removedCount);
+
+                Assert.Equal(0, personTable.Count);
             }
         }
 

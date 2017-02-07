@@ -11,8 +11,8 @@ namespace BTDB.ODBLayer
 {
     class RelationEnumerator<T> : IEnumerator<T>
     {
-        readonly IInternalObjectDBTransaction _tr;
-        readonly RelationInfo _relationInfo;
+        protected readonly IInternalObjectDBTransaction Transaction;
+        protected readonly RelationInfo RelationInfo;
         readonly IRelationModificationCounter _modificationCounter;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
@@ -27,11 +27,11 @@ namespace BTDB.ODBLayer
         public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes, 
                                   IRelationModificationCounter modificationCounter)
         {
-            _relationInfo = relationInfo;
-            _tr = tr;
+            RelationInfo = relationInfo;
+            Transaction = tr;
 
-            _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
+            _keyValueTr = Transaction.KeyValueDBTransaction;
+            _keyValueTrProtector = Transaction.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
             KeyBytes = keyBytes;
@@ -70,28 +70,39 @@ namespace BTDB.ODBLayer
         {
             get
             {
-                _keyValueTrProtector.Start();
-                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
-                {
-                    _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
-                    _keyValueTr.SetKeyPrefix(KeyBytes);
-                    Seek();
-                }
-                else if (_seekNeeded)
-                {
-                    Seek();
-                    _seekNeeded = false;
-                }
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                SeekCurrent();
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
                 return CreateInstance(keyBytes, valueBytes);
             }
         }
 
+        public virtual ByteBuffer GetKeyBytes()
+        {
+            SeekCurrent();
+            return _keyValueTr.GetKey();
+        }
+
+        void SeekCurrent()
+        {
+            _keyValueTrProtector.Start();
+            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            {
+                _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                _keyValueTr.SetKeyPrefix(KeyBytes);
+                Seek();
+            }
+            else if (_seekNeeded)
+            {
+                Seek();
+                _seekNeeded = false;
+            }
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+        }
+
         protected virtual T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            return (T)_relationInfo.CreateInstance(_tr, keyBytes, valueBytes, false);
+            return (T)RelationInfo.CreateInstance(Transaction, keyBytes, valueBytes, false);
         }
 
         object IEnumerator.Current => Current;
@@ -103,6 +114,37 @@ namespace BTDB.ODBLayer
 
         public void Dispose()
         {
+        }
+    }
+
+    internal class RelationPrimaryKeyEnumerator<T> : RelationEnumerator<T>
+    {
+        readonly RelationDBManipulator<T> _manipulator;
+        readonly int _skipBytes;
+
+        public RelationPrimaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
+                                            RelationDBManipulator<T> manipulator)
+            : base(tr, relationInfo, keyBytes, manipulator)
+        {
+            _manipulator = manipulator;
+            _skipBytes = ObjectDB.AllRelationsPKPrefix.Length + +PackUnpack.LengthVUInt(relationInfo.Id);
+        }
+
+        protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
+        {
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + _skipBytes, KeyBytes.Length - _skipBytes);
+            keyWriter.WriteBlock(keyBytes);
+
+            return (T)RelationInfo.CreateInstance(Transaction, keyWriter.Data, valueBytes, false);
+        }
+
+        public override ByteBuffer GetKeyBytes()
+        {
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + ObjectDB.AllRelationsPKPrefix.Length, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length);
+            keyWriter.WriteBlock(base.GetKeyBytes());
+            return keyWriter.Data;
         }
     }
 

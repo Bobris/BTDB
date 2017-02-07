@@ -60,10 +60,13 @@ will throw if does not exist
 return true if inserted
 
 ### Remove ###
-	(void|bool) RemoveById(primaryKey1 [, primaryKey2, ...]);
-Returns true if removed, void variant throw when does not exists.
+	(void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
+Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for example	`void RemoveById(ulong tenantId, ulong userId);`
 
-All primary keys fields are used as parameters, for example	`void RemoveById(ulong companyId, ulong userId);`
+	int RemoveById(primaryKey1 [, primaryKey2, ...]);
+Returns number of records removed for given primary key prefix (apart fields are automatically used)
+for example	`void RemoveById(ulong tenantId)` removes all users for given tenant
+
 
 ### Find ###
             Person FindById(ulong id);
@@ -72,6 +75,9 @@ It will throw if does not exists, as parameters expects primary key fields (same
             Person FindByIdOrDefault(ulong id);
 Will return null if not exists
             
+            IEnumerator<T> FindById(primaryKey1 [, primaryKey2, ...]);
+Find all items with given primary key prefix (apart fields are automatically used)
+
             Person FindByAgeOrDefault(uint age);
 Find by secondary key, it will throw if it find multiple Persons with that age. Note "Age" in the name is name of secondary key index.
 
@@ -101,10 +107,10 @@ List by ascending/descending order and specified range. Apart fields are taken i
 
 ### Enumerate ###
             IEnumerator<Person> GetEnumerator();
-Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. 
+Enumerates all items sorted by primary key. Current value of apart field in table interface is not taken into account and all items are enumerated. Enumerated are all always all items, apart fields are not taken into account.  
 
 ### IReadOnlyCollection ###
-All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`
+All relations implements `IReadOnlyCollection<T>`. This can be used during debugging immediately, or directly in code - after casting or defining like this: `public interface IRoomTable : IReadOnlyCollection<Room>`. Enumerated are all always all items, apart fields are not taken into account.
 
 ## Primary Key ##
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
