@@ -123,9 +123,20 @@ namespace BTDB.ODBLayer
             var pen = prevPkFields.GetEnumerator();
             while (en.MoveNext() && pen.MoveNext())
             {
-                if (en.Current.Handler.HandledType() != pen.Current.Handler.HandledType())
+                if (!ArePrimaryKeyFieldsCompatible(en.Current.Handler, pen.Current.Handler))
                     throw new BTDBException("Change of primary key in relation is not allowed.");
             }
+        }
+
+        bool ArePrimaryKeyFieldsCompatible(IFieldHandler newHandler, IFieldHandler previousHandler)
+        {
+            var newHandledType = newHandler.HandledType();
+            var previousHandledType = previousHandler.HandledType();
+            if (newHandledType == previousHandledType)
+                return true;
+            if (newHandledType.IsEnum && previousHandledType.IsEnum)
+                return newHandler.IsCompatibleWith(previousHandledType, FieldHandlerOptions.None);
+            return false;
         }
 
         void UpdateSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info, RelationVersionInfo previousInfo)
@@ -1039,7 +1050,7 @@ namespace BTDB.ODBLayer
 
         static bool ReturnsEnumerableOfClientType(Type methodReturnType, Type clientType)
         {
-            return methodReturnType.IsGenericType && 
+            return methodReturnType.IsGenericType &&
                    methodReturnType.GetGenericTypeDefinition() == typeof(IEnumerator<>) &&
                    methodReturnType.GetGenericArguments()[0] == clientType;
         }

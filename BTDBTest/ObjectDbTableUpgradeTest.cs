@@ -202,5 +202,66 @@ namespace BTDBTest
             }
         }
 
+        public enum SimpleEnum
+        {
+            One,
+            Two
+        }
+
+        public enum SimpleEnumV2
+        {
+            One,
+            Two,
+            Three
+        }
+
+        public class ItemWithEnumInKey
+        {
+            [PrimaryKey]
+            public SimpleEnum Key { get; set; }
+            public string Value { get; set; }
+        }
+
+        public class ItemWithEnumInKeyV2
+        {
+            [PrimaryKey]
+            public SimpleEnumV2 Key { get; set; }
+            public string Value { get; set; }
+        }
+
+        public interface ITableWithEnumInKey : IReadOnlyCollection<ItemWithEnumInKey>
+        {
+            void Insert(ItemWithEnumInKey person);
+        }
+
+        public interface ITableWithEnumInKeyV2 : IReadOnlyCollection<ItemWithEnumInKeyV2>
+        {
+            bool Upsert(ItemWithEnumInKeyV2 person);
+        }
+
+        [Fact]
+        public void UpgradePrimaryKeyWithEnumWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKey");
+                var table = creator(tr);
+
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.Two, Value = "B" });
+
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ITableWithEnumInKeyV2>("EnumWithItemInKey");
+                var table = creator(tr);
+                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Two, Value = "B2" }));
+                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Three, Value = "C" }));
+                Assert.Equal(3, table.Count);
+            }
+        }
+
     }
 }
