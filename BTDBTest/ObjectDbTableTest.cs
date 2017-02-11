@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -580,7 +579,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var jobTable = creator(tr);
-                var en = jobTable.ListByPrioritizedName(2, new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
+                var en = jobTable.ListByPrioritizedName(2,
+                    new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
                 var j = GetNext(en);
                 Assert.Equal("Sleep", j.Name);
                 Assert.False(en.MoveNext());
@@ -756,8 +756,8 @@ namespace BTDBTest
                 rooms.Insert(new Room { CompanyId = 2, Id = 30, Name = "First 2" });
 
                 var en = rooms.ListByCompanyId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
-                                               1, KeyProposition.Included,
-                                               1 + 1, KeyProposition.Excluded));
+                    1, KeyProposition.Included,
+                    1 + 1, KeyProposition.Excluded));
 
                 var m = GetNext(en);
                 Assert.Equal("First 1", m.Name);
@@ -901,6 +901,7 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             public ulong UserId { get; set; }
+
             [PrimaryKey(2)]
             [SecondaryKey("NoticeId")]
             public ulong NoticeId { get; set; }
@@ -920,7 +921,8 @@ namespace BTDBTest
                 var creator = tr.InitRelation<IUserNoticeTable>("UserNotice");
                 var table = creator(tr);
                 table.Insert(new UserNotice { UserId = 1, NoticeId = 2 });
-                var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
+                var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                    1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current.NoticeId);
                 tr.Commit();
@@ -1023,27 +1025,57 @@ namespace BTDBTest
 
         public class PermutationOfKeys
         {
-            [PrimaryKey(1)]
             [SecondaryKey("Sec", Order = 1)]
-            public string A { get; set; }
-            [PrimaryKey(2)]
-            [SecondaryKey("Sec", Order = 4)]
-            public string B { get; set; }
-            [PrimaryKey(3)]
-            [SecondaryKey("Sec", Order = 3)]
-            public string C { get; set; }
-            [PrimaryKey(4)]
+            public string A0 { get; set; }
+
+            [PrimaryKey(1)]
             [SecondaryKey("Sec", Order = 2)]
+            public string A { get; set; }
+
+            [SecondaryKey("Sec", Order = 3)]
+            public string A1 { get; set; }
+
+            [SecondaryKey("Sec", Order = 7)]
+            public string B0 { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("Sec", Order = 8)]
+            public string B { get; set; }
+
+            [SecondaryKey("Sec", Order = 9)]
+            public string B1 { get; set; }
+
+            [SecondaryKey("Sec", Order = 6)]
+            public string C0 { get; set; }
+
+            [PrimaryKey(3)]
+            public string C { get; set; }
+
+            [PrimaryKey(4)]
+            [SecondaryKey("Sec", Order = 4)]
             public string D { get; set; }
-            [PrimaryKey(5)]
+
             [SecondaryKey("Sec", Order = 5)]
+            public string D1 { get; set; }
+
+            [SecondaryKey("Sec", Order = 10)]
+            public string E0 { get; set; }
+
+            [PrimaryKey(5)]
+            [SecondaryKey("Sec", Order = 11)]
             public string E { get; set; }
+
+            [SecondaryKey("Sec", Order = 12)]
+            public string E1 { get; set; }
         }
+        //Sec: A0, A, A1, D, D1, C0, B0, B, B1, E0, E, E1
 
         public interface IPermutationOfKeysTable
         {
             void Insert(PermutationOfKeys per);
-            IEnumerator<PermutationOfKeys> ListBySec(AdvancedEnumeratorParam<string> a);
+            IEnumerator<PermutationOfKeys> ListBySec(AdvancedEnumeratorParam<string> a0);
+            IEnumerator<PermutationOfKeys> ListBySec(string a0, AdvancedEnumeratorParam<string> a);
+            IEnumerator<PermutationOfKeys> ListBySec(string a0, string a, string a1, string d, string d1, AdvancedEnumeratorParam<string> c0);
         }
 
         [Fact]
@@ -1053,10 +1085,23 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IPermutationOfKeysTable>("Permutation");
                 var table = creator(tr);
-                table.Insert(new PermutationOfKeys { A = "o", B = "oo", C = "ooo", D = "oooo", E = "ooooo" });
-                var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "", KeyProposition.Excluded, "oo", KeyProposition.Excluded));
+                table.Insert(new PermutationOfKeys {A0 ="a", A = "aa", A1 = "aaa",
+                                                    B0 = "b", B = "bb", B1 = "bbb",
+                                                    C0 = "c", C = "cc",
+                                                    D = "dd", D1 = "ddd",
+                                                    E0 = "e", E = "ee", E1="eee" });
+                var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
-                Assert.Equal("o", en.Current.A);
+                Assert.Equal("aa", en.Current.A);
+                en = table.ListBySec("a", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
+                Assert.True(en.MoveNext());
+                Assert.Equal("bb", en.Current.B);
+                en = table.ListBySec("a", "aa", "aaa", "dd", "ddd", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "c", KeyProposition.Excluded, "d", KeyProposition.Included));
+                Assert.True(en.MoveNext());
+                Assert.Equal("eee", en.Current.E1);
                 tr.Commit();
             }
             ReopenDb();
@@ -1098,7 +1143,8 @@ namespace BTDBTest
             }
 
             roTable.CompanyId = 1;
-            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Excluded, 100, KeyProposition.Excluded));
+            roTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 0, KeyProposition.Excluded,
+                100, KeyProposition.Excluded));
             Assert.True(en.MoveNext());
             Assert.Equal(20ul, en.Current.Id);
             roTr.Dispose();
@@ -1128,7 +1174,8 @@ namespace BTDBTest
                 personTable.Insert(new Person { Id = 6, Name = "B" });
                 personTable.Insert(new Person { Id = 7, Name = "C" });
 
-                var orderedEnumerator = personTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "B", KeyProposition.Included, "C", KeyProposition.Excluded));
+                var orderedEnumerator = personTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "B", KeyProposition.Included, "C", KeyProposition.Excluded));
                 Assert.Equal(3u, orderedEnumerator.Count);
 
                 string name;
@@ -1164,7 +1211,8 @@ namespace BTDBTest
                 personTable.Insert(new PersonSimple { Email = "a@d.cz", Name = "A" });
                 personTable.Insert(new PersonSimple { Email = "b@d.cz", Name = "B" });
 
-                var enumerator = personTable.ListById(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "a", KeyProposition.Included, "c", KeyProposition.Excluded));
+                var enumerator = personTable.ListById(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
+                    "a", KeyProposition.Included, "c", KeyProposition.Excluded));
                 Assert.Equal(2u, enumerator.Count);
                 string email;
                 Assert.True(enumerator.NextKey(out email));
@@ -1255,7 +1303,7 @@ namespace BTDBTest
                 using (var tr = _db.StartTransaction())
                 {
                     var tbl = tr.InitRelation<IPersonSimpleListTable>("TestGC")(tr);
-                    tbl.TenantId = (ulong) i;
+                    tbl.TenantId = (ulong)i;
                     tbl.Insert(new PersonSimple());
                     tr.Commit();
                 }
@@ -1267,6 +1315,43 @@ namespace BTDBTest
             int count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName.StartsWith("RelationTestGC"));
             _output.WriteLine($"Reused {createCount - count} out of {createCount} relation assemblies");
             Assert.True(count < createCount);
+        }
+
+        public class ProductionTrackingDaily
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("ProductionDate")]
+            public DateTime ProductionDate { get; set; }
+
+            public uint ProductionsCount { get; set; }
+        }
+
+        public interface IProductionTrackingDailyTable
+        {
+            void Insert(ProductionTrackingDaily productionTrackingDaily);
+            IEnumerator<ProductionTrackingDaily> FindByProductionDate(DateTime productionDate);
+        }
+
+        [Fact]
+        public void AnotherCombinationOfListAndPkAndSkWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IProductionTrackingDailyTable>("AnotherCombinationOfListAndPkAndSkWorks");
+                var table = creator(tr);
+
+                var currentDay = new DateTime(2017, 2, 9, 1, 1, 1, DateTimeKind.Utc);
+
+                table.Insert(new ProductionTrackingDaily { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
+
+                var companyProduction = table.FindByProductionDate(currentDay);
+                Assert.True(companyProduction.MoveNext());
+                Assert.Equal(1u, companyProduction.Current.ProductionsCount);
+                tr.Commit();
+            }
         }
     }
 }
