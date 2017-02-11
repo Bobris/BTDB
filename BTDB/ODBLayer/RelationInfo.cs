@@ -134,7 +134,12 @@ namespace BTDB.ODBLayer
             if (newHandledType == previousHandledType)
                 return true;
             if (newHandledType.IsEnum && previousHandledType.IsEnum)
-                return newHandler.IsCompatibleWith(previousHandledType, FieldHandlerOptions.None);
+            {
+                var prevEnumCfg = new EnumFieldHandler.EnumConfiguration((previousHandler as EnumFieldHandler).Configuration);
+                var newEnumCfg = new EnumFieldHandler.EnumConfiguration((newHandler as EnumFieldHandler).Configuration);
+
+                return prevEnumCfg.IsBinaryRepresentationSubsetOf(newEnumCfg);
+            }
             return false;
         }
 

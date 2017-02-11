@@ -204,15 +204,23 @@ namespace BTDBTest
 
         public enum SimpleEnum
         {
-            One,
-            Two
+            One = 1,
+            Two = 2
         }
 
         public enum SimpleEnumV2
         {
-            One,
-            Two,
-            Three
+            Eins = 1,
+            Zwei = 2,
+            Drei = 3
+        }
+
+        public enum SimpleEnumV3
+        {
+            Two = 2,
+            Three = 3,
+            Four = 4
+
         }
 
         public class ItemWithEnumInKey
@@ -229,6 +237,13 @@ namespace BTDBTest
             public string Value { get; set; }
         }
 
+        public class ItemWithEnumInKeyV3
+        {
+            [PrimaryKey]
+            public SimpleEnumV3 Key { get; set; }
+            public string Value { get; set; }
+        }
+
         public interface ITableWithEnumInKey : IReadOnlyCollection<ItemWithEnumInKey>
         {
             void Insert(ItemWithEnumInKey person);
@@ -237,6 +252,12 @@ namespace BTDBTest
         public interface ITableWithEnumInKeyV2 : IReadOnlyCollection<ItemWithEnumInKeyV2>
         {
             bool Upsert(ItemWithEnumInKeyV2 person);
+            ItemWithEnumInKeyV2 FindById(SimpleEnumV2 key);
+        }
+
+        public interface ITableWithEnumInKeyV3 : IReadOnlyCollection<ItemWithEnumInKeyV3>
+        {
+            bool Upsert(ItemWithEnumInKeyV3 person);
         }
 
         [Fact]
@@ -257,9 +278,29 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ITableWithEnumInKeyV2>("EnumWithItemInKey");
                 var table = creator(tr);
-                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Two, Value = "B2" }));
-                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Three, Value = "C" }));
+                Assert.Equal("A", table.FindById(SimpleEnumV2.Eins).Value);
+                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Zwei, Value = "B2" }));
+                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Drei, Value = "C" }));
                 Assert.Equal(3, table.Count);
+            }
+        }
+
+        [Fact]
+        public void UpgradePrimaryKeyWithIncompatibleEnumNotWork()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKeyIncompatible");
+                var table = creator(tr);
+
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
+
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.Throws<BTDBException>(() => tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
             }
         }
 

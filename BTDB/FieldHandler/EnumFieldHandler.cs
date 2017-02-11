@@ -163,6 +163,12 @@ namespace BTDB.FieldHandler
                 }
                 return true;
             }
+
+            public bool IsBinaryRepresentationSubsetOf(EnumConfiguration targetCfg)
+            {
+                var targetDict = targetCfg.Values.ToDictionary(v => v, _ => false);
+                return _values.All(v => targetDict.ContainsKey(v));
+            }
         }
 
         public EnumFieldHandler(Type enumType)
