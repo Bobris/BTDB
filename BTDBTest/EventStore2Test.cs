@@ -296,5 +296,30 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
+        public class EventWithUser
+        {
+            public User User { get; set; }
+        }
+
+        [Fact]
+        public void SimpleNestedObjects()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new EventWithUser
+            {
+                User = new User()
+            };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+        }
+
     }
 }
