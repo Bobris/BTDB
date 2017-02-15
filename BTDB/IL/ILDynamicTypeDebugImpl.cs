@@ -13,6 +13,8 @@ namespace BTDB.IL
 {
     class ILDynamicTypeDebugImpl : IILDynamicType
     {
+        const int TypeLevelIndent = 1;
+
         static readonly ConcurrentDictionary<string, int> UniqueNames = new ConcurrentDictionary<string, int>();
 
         readonly string _name;
@@ -21,7 +23,6 @@ namespace BTDB.IL
         readonly ISymbolDocumentWriter _symbolDocumentWriter;
         readonly SourceCodeWriter _sourceCodeWriter;
         readonly TypeBuilder _typeBuilder;
-        bool _inScope;
         readonly IILGenForbidenInstructions _forbidenInstructions;
 
         public ILDynamicTypeDebugImpl(string name, Type baseType, Type[] interfaces)
@@ -140,7 +141,6 @@ namespace BTDB.IL
             {
                 methodBuilder.DefineParameter(i + 1, ParameterAttributes.In, $"arg{i}");
             }
-            _inScope = true;
             return new ILMethodDebugImpl(methodBuilder, _sourceCodeWriter, name, returns, parameters, _forbidenInstructions);
         }
 
@@ -162,16 +162,15 @@ namespace BTDB.IL
         {
             CloseInScope();
             _sourceCodeWriter.StartMethod(_name, null, parameters, MethodAttributes.Public);
-            _inScope = true;
             return new ILConstructorDebugImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbidenInstructions, _sourceCodeWriter);
         }
 
         void CloseInScope()
         {
-            if (!_inScope) return;
+            if (_sourceCodeWriter.Indent <= TypeLevelIndent)
+                return;
             _sourceCodeWriter.CloseScope();
             _sourceCodeWriter.WriteLine("");
-            _inScope = false;
         }
 
         public void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod)
@@ -188,6 +187,11 @@ namespace BTDB.IL
             _forbidenInstructions.FinishType(finalType);
             _assemblyBuilder.Save(_moduleBuilder.ScopeName);
             return finalType;
+        }
+
+        public SourceCodeWriter TryGetSourceCodeWriter()
+        {
+            return _sourceCodeWriter;
         }
     }
 }

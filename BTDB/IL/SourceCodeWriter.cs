@@ -8,12 +8,12 @@ using System.Text;
 
 namespace BTDB.IL
 {
-    class SourceCodeWriter : IDisposable
+    public class SourceCodeWriter : IDisposable
     {
         readonly string _fileName;
         readonly ISymbolDocumentWriter _symbolDocumentWriter;
-        readonly StringBuilder _stringBuilder;
-        readonly TextWriter _sourceWriter;
+        StringBuilder _stringBuilder;
+        TextWriter _sourceWriter;
         int _currentLine;
 
         internal SourceCodeWriter(string fileName, ISymbolDocumentWriter symbolDocumentWriter)
@@ -113,6 +113,59 @@ namespace BTDB.IL
                     break;
             }
             OpenScope();
+        }
+
+        public class StoredState
+        {
+            public StringBuilder StringBuilder;
+            public TextWriter SourceWriter;
+            public int CurrentLine;
+            public int Indent;
+        }
+
+        public class InsertedBlock
+        {
+            public string Content { get; set; }
+            public int IndentDiff { get; set; }
+            public int AddedLinesCount { get; set; }
+        }
+
+        public StoredState ShelveBegin()
+        {
+            var state = new StoredState
+            {
+                SourceWriter = _sourceWriter,
+                StringBuilder = _stringBuilder,
+                CurrentLine = _currentLine,
+                Indent = Indent
+            };
+            _stringBuilder = new StringBuilder();
+            _sourceWriter = new StringWriter(_stringBuilder);
+            return state;
+        }
+
+        public InsertedBlock ShelveEnd(StoredState state)
+        {
+            _sourceWriter.Flush();
+            _sourceWriter.Dispose();
+            var block = new InsertedBlock
+            {
+                Content = _stringBuilder.ToString(),
+                IndentDiff = Indent - state.Indent,
+                AddedLinesCount = _currentLine - state.CurrentLine
+            };
+            _sourceWriter = state.SourceWriter;
+            _stringBuilder = state.StringBuilder;
+            Indent = state.Indent;
+            _currentLine = state.CurrentLine;
+            return block;
+        }
+
+        public void InsertShelvedContent(InsertedBlock block)
+        {
+            _stringBuilder.Append(block.Content);
+            _currentLine += block.AddedLinesCount;
+            Indent += block.IndentDiff;
         }
     }
 }

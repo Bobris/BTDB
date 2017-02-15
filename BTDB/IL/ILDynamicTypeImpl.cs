@@ -51,5 +51,10 @@ namespace BTDB.IL
             _forbidenInstructions.FinishType(finalType);
             return finalType;
         }
+
+        public SourceCodeWriter TryGetSourceCodeWriter()
+        {
+            return null;
+        }
     }
 }

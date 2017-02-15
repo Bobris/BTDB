@@ -40,7 +40,37 @@ namespace BTDB.IL.Caching
             return res;
         }
 
-        class Method : IReplay, IILMethodPrivate
+        class WithSourceShelving
+        {
+            SourceCodeWriter _sourceCodeWriter;
+            SourceCodeWriter.InsertedBlock _block;
+
+            protected SourceCodeWriter.StoredState ShelveSourceDefinitionBegin(IILDynamicType target )
+            {
+                if ((_sourceCodeWriter = target.TryGetSourceCodeWriter()) != null)
+                    return _sourceCodeWriter.ShelveBegin();
+                return null;
+            }
+
+            protected void ShelveSourceDefinitionEnd(SourceCodeWriter.StoredState state)
+            {
+                if (_sourceCodeWriter == null) return;
+                _block = _sourceCodeWriter.ShelveEnd(state);
+            }
+
+            protected void WriteShelvedSourceDefinition()
+            {
+                _sourceCodeWriter?.InsertShelvedContent(_block);
+            }
+
+            protected void CloseSourceScope()
+            {
+                _sourceCodeWriter?.CloseScope();
+                _sourceCodeWriter?.WriteLine("");
+            }
+        }
+
+        class Method : WithSourceShelving, IReplay, IILMethodPrivate
         {
             readonly int _id;
             readonly string _name;
@@ -62,13 +92,17 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILDynamicType target)
             {
+                var state = ShelveSourceDefinitionBegin(target);
                 _trueContent = (IILMethodPrivate) target.DefineMethod(_name, _returns, _parameters, _methodAttributes);
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
+                ShelveSourceDefinitionEnd(state);
             }
 
             public void FinishReplay(IILDynamicType target)
             {
+                WriteShelvedSourceDefinition();
                 _ilGen.ReplayTo(_trueContent.Generator);
+                CloseSourceScope();
             }
 
             public void FreeTemps()
@@ -244,7 +278,7 @@ namespace BTDB.IL.Caching
             return res;
         }
 
-        class Constructor : IReplay, IILMethod
+        class Constructor : WithSourceShelving, IReplay, IILMethod
         {
             readonly int _id;
             readonly Type[] _parameters;
@@ -260,13 +294,17 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILDynamicType target)
             {
+                var state = ShelveSourceDefinitionBegin(target);
                 _trueContent = target.DefineConstructor(_parameters);
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
+                ShelveSourceDefinitionEnd(state);
             }
 
             public void FinishReplay(IILDynamicType target)
             {
+                WriteShelvedSourceDefinition();
                 _ilGen.ReplayTo(_trueContent.Generator);
+                CloseSourceScope();
             }
 
             public void FreeTemps()
@@ -364,6 +402,11 @@ namespace BTDB.IL.Caching
                 }
                 return item.TrueContent;
             }
+        }
+
+        public SourceCodeWriter TryGetSourceCodeWriter()
+        {
+            return null;
         }
 
         public override int GetHashCode()
