@@ -105,25 +105,25 @@ namespace BTDB.ODBLayer
 
                 if (LastPersistedVersion > 0)
                 {
-                    CheckThatPrimaryKeyHasNotChanged(ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
+                    CheckThatPrimaryKeyHasNotChanged(name, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
                     UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
                 }
             }
             _typeConvertorGenerator = tr.Owner.TypeConvertorGenerator;
         }
 
-        void CheckThatPrimaryKeyHasNotChanged(RelationVersionInfo info, RelationVersionInfo previousInfo)
+        void CheckThatPrimaryKeyHasNotChanged(string name, RelationVersionInfo info, RelationVersionInfo previousInfo)
         {
             var pkFields = info.GetPrimaryKeyFields();
             var prevPkFields = previousInfo.GetPrimaryKeyFields();
             if (pkFields.Count != prevPkFields.Count)
-                throw new BTDBException("Change of primary key in relation is not allowed.");
+                throw new BTDBException($"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Count} != {prevPkFields.Count}");
             var en = pkFields.GetEnumerator();
             var pen = prevPkFields.GetEnumerator();
             while (en.MoveNext() && pen.MoveNext())
             {
                 if (!ArePrimaryKeyFieldsCompatible(en.Current.Handler, pen.Current.Handler))
-                    throw new BTDBException("Change of primary key in relation is not allowed.");
+                    throw new BTDBException($"Change of primary key in relation '{name}' is not allowed. Field '{en.Current.Name}' is not compatible.");
             }
         }
 

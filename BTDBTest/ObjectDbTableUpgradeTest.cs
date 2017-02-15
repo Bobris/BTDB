@@ -300,7 +300,8 @@ namespace BTDBTest
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
-                Assert.Throws<BTDBException>(() => tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
+                Assert.Contains("Field 'Key'", ex.Message);
             }
         }
 
