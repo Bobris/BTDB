@@ -141,6 +141,10 @@ namespace BTDB.IL.Caching
             public IILGen Generator => _ilGen;
 
             public MethodInfo TrueMethodInfo => _trueContent.TrueMethodInfo;
+
+            public Type ReturnType => _returns;
+
+            public Type[] Parameters => _parameters;
         }
 
         public IILField DefineField(string name, Type type, FieldAttributes fieldAttributes)

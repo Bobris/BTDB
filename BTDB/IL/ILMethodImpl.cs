@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -27,5 +29,9 @@ namespace BTDB.IL
         public MethodInfo TrueMethodInfo => _method;
 
         public MethodBuilder MethodBuilder => _method;
+
+        public Type ReturnType => TrueMethodInfo.ReturnType;
+
+        public Type[] Parameters => TrueMethodInfo.GetParameters().Select(p => p.ParameterType).ToArray();
     }
 }

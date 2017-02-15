@@ -175,8 +175,8 @@ namespace BTDB.IL
             _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, string.Format("{0} {2} {1}({3})",
                 OpCodes.Ldftn,
                 mi.Name,
-                mi.ReturnType.ToSimpleName(),
-                string.Join(", ", mi.GetParameters().Select(p => p.ParameterType.ToSimpleName()))));
+                meth.ReturnType.ToSimpleName(),
+                string.Join(", ", meth.Parameters.Select(p => p.ToSimpleName()))));
             _ilGenerator.Emit(OpCodes.Ldftn, mi);
             return this;
         }
