@@ -79,10 +79,10 @@ Will return null if not exists
 Find all items with given primary key prefix (apart fields are automatically used)
 
             Person FindByAgeOrDefault(uint age);
-Find by secondary key, it will throw if it find multiple Persons with that age. Note "Age" in the name is name of secondary key index.
+Find by secondary key, it will throw if it find multiple Persons with that age. **Note**: "Age" in the name is name of secondary key index.
 
             IEnumerator<Person> FindByAge(uint age);
-Find all items with given secondary key.
+Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName}, multiple result possibility handles legal case when exists several records for one secondary index key.
 
 ### List ###
 		IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);

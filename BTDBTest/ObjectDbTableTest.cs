@@ -1324,6 +1324,7 @@ namespace BTDBTest
 
             [PrimaryKey(2)]
             [SecondaryKey("ProductionDate")]
+            [SecondaryKey("ProductionDateWithCompanyId", IncludePrimaryKeyOrder = 1)]
             public DateTime ProductionDate { get; set; }
 
             public uint ProductionsCount { get; set; }
@@ -1333,6 +1334,7 @@ namespace BTDBTest
         {
             void Insert(ProductionTrackingDaily productionTrackingDaily);
             IEnumerator<ProductionTrackingDaily> FindByProductionDate(DateTime productionDate);
+            IEnumerator<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId, AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
         [Fact]
@@ -1350,7 +1352,32 @@ namespace BTDBTest
                 var companyProduction = table.FindByProductionDate(currentDay);
                 Assert.True(companyProduction.MoveNext());
                 Assert.Equal(1u, companyProduction.Current.ProductionsCount);
+
+                var nextDay = currentDay.AddDays(1);
+                var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, currentDay, KeyProposition.Included,
+                    nextDay, KeyProposition.Excluded);
+                var en = table.ListByProductionDateWithCompanyId(5, dateParam);
+                Assert.True(en.MoveNext());
+                Assert.Equal(1u, en.Current.ProductionsCount);
+
                 tr.Commit();
+            }
+        }
+
+        public interface IProductionInvalidTable
+        {
+            void Insert(ProductionTrackingDaily productionTrackingDaily);
+            IEnumerator<ProductionTrackingDaily> FindByProductionDateWithCompanyId(ulong companyId, AdvancedEnumeratorParam<DateTime> productionDate);
+        }
+
+        [Fact]
+        public void FindByMetodsChecksParameterTypes()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => 
+                tr.InitRelation<IProductionInvalidTable>("FindByMetodsChecksParameterTypes"));
+                Assert.Contains("expected 'System.DateTime'", ex.Message);
             }
         }
     }

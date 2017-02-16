@@ -117,7 +117,7 @@ namespace BTDB.ODBLayer
             var pkFields = info.GetPrimaryKeyFields();
             var prevPkFields = previousInfo.GetPrimaryKeyFields();
             if (pkFields.Count != prevPkFields.Count)
-                throw new BTDBException($"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Count} != {prevPkFields.Count}");
+                throw new BTDBException($"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Count} != {prevPkFields.Count}.");
             var en = pkFields.GetEnumerator();
             var pen = prevPkFields.GetEnumerator();
             while (en.MoveNext() && pen.MoveNext())
@@ -1137,6 +1137,10 @@ namespace BTDB.ODBLayer
                 if (string.Compare(field.Name, par.Name.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                 {
                     throw new BTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
+                }
+                if (!field.Handler.IsCompatibleWith(par.ParameterType, FieldHandlerOptions.Orderable))
+                {
+                    throw new BTDBException($"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{par.ParameterType.ToSimpleName()}' found).");
                 }
                 SaveKeyFieldFromArgument(ilGenerator, field, idx, writerLoc);
             }
