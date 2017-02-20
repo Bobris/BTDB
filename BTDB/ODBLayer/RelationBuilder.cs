@@ -159,26 +159,51 @@ namespace BTDB.ODBLayer
                         throw new BTDBException("Invalid method " + method.Name);
                     }
                 }
+                else if (method.Name == "Insert")
+                {
+                    var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
+                    bool returningBoolVariant;
+                    var returnType = method.ReturnType;
+                    if (returnType == typeof (void))
+                        returningBoolVariant = false;
+                    else if (returnType == typeof (bool))
+                        returningBoolVariant = true;
+                    else
+                        throw new BTDBException("Method Insert should be defined with void or bool return type.");
+                    var methodParams = method.GetParameters();
+                    CheckParameterCount(method.Name, 1, methodParams.Length);
+                    CheckParameterType(method.Name, 0, methodInfo.GetParameters()[0].ParameterType, methodParams[0].ParameterType);
+                    reqMethod.Generator
+                        .Ldarg(0) //this
+                        .Ldarg(1)
+                        .Callvirt(methodInfo);
+                    if (!returningBoolVariant)
+                    {
+                        var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
+                        reqMethod.Generator
+                            .Brtrue(returnedTrueLabel)
+                            .Ldstr("Trying to insert duplicate key.")
+                            .Newobj(() => new BTDBException(null))
+                            .Throw()
+                            .Mark(returnedTrueLabel);
+                    }
+                }
                 else //call the same method name with the same parameters
                 {
                     var methodParams = method.GetParameters();
                     int paramCount = methodParams.Length;
-                    for (ushort i = 0; i <= paramCount; i++)
-                        reqMethod.Generator.Ldarg(i);
                     var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
                     if (methodInfo == null)
                         throw new BTDBException($"Method {method} is not supported.");
-                    var returnType = method.ReturnType;
-                    if (returnType != methodInfo.ReturnType)
-                        throw new BTDBException($"Method {method} should be defined with {methodInfo.ReturnType.Name} return type.");
+                    CheckReturnType(method.Name, methodInfo.ReturnType, method.ReturnType);
                     var calledMethodParams = methodInfo.GetParameters();
-                    if (methodParams.Length != calledMethodParams.Length)
-                        throw new BTDBException($"Method {method} expects {calledMethodParams.Length} parameters count.");
+                    CheckParameterCount(method.Name, calledMethodParams.Length, methodParams.Length);
                     for (int i = 0; i < methodParams.Length; i++)
                     {
-                        if (methodParams[i].ParameterType != calledMethodParams[i].ParameterType)
-                            throw new BTDBException($"Method {method} expects {i}th parameter of type {calledMethodParams[i].ParameterType.Name}.");
+                        CheckParameterType(method.Name, i, calledMethodParams[i].ParameterType, methodParams[i].ParameterType);
                     }
+                    for (ushort i = 0; i <= paramCount; i++)
+                        reqMethod.Generator.Ldarg(i);
                     reqMethod.Generator.Callvirt(methodInfo);
                 }
                 reqMethod.Generator.Ret();
@@ -187,6 +212,24 @@ namespace BTDB.ODBLayer
             var classImplType = classImpl.CreateType();
 
             return BuildRelationCreatorInstance<T>(classImplType, relationName, _relationInfo);
+        }
+
+        static void CheckParameterType(string name, int parIdx, Type expectedType, Type actualType)
+        {
+            if (expectedType != actualType)
+                throw new BTDBException($"Method {name} expects {parIdx}th parameter of type {expectedType.Name}.");
+        }
+
+        static void CheckParameterCount(string name, int expectedParameterCount, int actualParameterCount)
+        {
+            if (expectedParameterCount != actualParameterCount)
+                throw new BTDBException($"Method {name} expects {expectedParameterCount} parameters count.");
+        }
+
+        static void CheckReturnType(string name, Type expectedReturnType, Type returnType)
+        {
+            if (returnType != expectedReturnType)
+                throw new BTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
         static Func<IObjectDBTransaction, T> BuildRelationCreatorInstance<T>(Type classImplType, string relationName, RelationInfo relationInfo)

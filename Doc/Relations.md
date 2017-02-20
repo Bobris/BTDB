@@ -48,8 +48,10 @@ next time we reuse creator:
 When defined in interface following methods are automatically implemented by BTDB when defined in relation interface
 
 ### Insert ###
-       personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
- will throw if already exists
+       (void|bool) personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
+**void** variant will throw if already exists 
+
+**bool** variant returns true when inserted, false when already exists (without changing value)
 
 ### Update ###
        personTable.Update(new Person { Id = 2, Name = "superadmin", Age = 100 });

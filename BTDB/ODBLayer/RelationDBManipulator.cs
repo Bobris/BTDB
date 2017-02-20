@@ -67,7 +67,7 @@ namespace BTDB.ODBLayer
 
         bool HasSecondaryIndexes => _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
 
-        public void Insert(T obj)
+        public bool Insert(T obj)
         {
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
@@ -75,7 +75,7 @@ namespace BTDB.ODBLayer
             StartWorkingWithPK();
 
             if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
-                throw new BTDBException("Trying to insert duplicate key.");
+                return false;
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (HasSecondaryIndexes)
@@ -90,6 +90,7 @@ namespace BTDB.ODBLayer
                 }
             }
             MarkModification();
+            return true;
         }
 
         public bool Upsert(T obj)

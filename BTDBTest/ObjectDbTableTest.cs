@@ -141,6 +141,26 @@ namespace BTDBTest
             }
         }
 
+        public interface IPersonSimpleTableWithInsert : IReadOnlyCollection<PersonSimple>
+        {
+            bool Insert(PersonSimple person);
+            PersonSimple FindById(ulong tenantId, string email);
+        }
+
+        [Fact]
+        public void TryInsertWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonSimpleTableWithInsert>("TryInsertWorks");
+                var personSimpleTable = creator(tr);
+                Assert.True(personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "A" }));
+                Assert.False(personSimpleTable.Insert(new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "B" }));
+                Assert.Equal("A", personSimpleTable.FindById(1, "nospam@nospam.cz").Name);
+                tr.Commit();
+            }
+        }
+
         public interface ISimplePersonTable
         {
             void Insert(PersonSimple person);
