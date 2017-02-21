@@ -1400,5 +1400,26 @@ namespace BTDBTest
                 Assert.Contains("expected 'System.DateTime'", ex.Message);
             }
         }
+
+        public interface IProductionTableWithContains
+        {
+            void Insert(ProductionTrackingDaily productionTrackingDaily);
+            bool Contains(ulong companyId, DateTime productionDate);
+        }
+
+        [Fact]
+        public void ContainMethodWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IProductionTableWithContains>("ContainMethodWorks");
+                var table = creator(tr);
+
+                var currentDay = new DateTime(2017, 2, 9, 1, 1, 1, DateTimeKind.Utc);
+                Assert.False(table.Contains(5, currentDay));
+                table.Insert(new ProductionTrackingDaily { CompanyId = 5, ProductionDate = currentDay, ProductionsCount = 1 });
+                Assert.True(table.Contains(5, currentDay));
+            }
+        }
     }
 }

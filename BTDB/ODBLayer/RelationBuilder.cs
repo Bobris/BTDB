@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
                     continue;
                 var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
-                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy"))
+                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy") || method.Name == "Contains")
                 {
                     SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
                         method.GetParameters(), method.ReturnType, _relationInfo.ApartFields);
@@ -271,6 +271,10 @@ namespace BTDB.ODBLayer
             {
                 CreateMethodListById(ilGenerator, relationDBManipulatorType, methodName, methodParameters, apartFields, pushWriter, writerLoc);
             }
+            else if (methodName == "Contains")
+            {
+                CreateMethodContains(ilGenerator, relationDBManipulatorType, methodParameters, apartFields, pushWriter, writerLoc);
+            }
             else
             {
                 throw new NotSupportedException();
@@ -418,6 +422,29 @@ namespace BTDB.ODBLayer
             ilGenerator.LdcI4(paramsCount + apartFields.Count);
             ilGenerator.Callvirt(relationDBManipulatorType.GetMethod(methodName));
         }
+
+        void CreateMethodContains(IILGen ilGenerator, Type relationDBManipulatorType,
+            ParameterInfo[] methodParameters, IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter,
+            IILLocal writerLoc)
+        {
+            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+
+            var count = SaveMethodParameters(ilGenerator, "Contains", methodParameters, methodParameters.Length,
+                apartFields, primaryKeyFields, writerLoc);
+            if (count != primaryKeyFields.Count)
+                throw new BTDBException($"Number of parameters in Contains does not match primary key count {primaryKeyFields.Count}.");
+
+            //call manipulator.Contains
+            ilGenerator
+                .Ldarg(0); //manipulator
+            //call byteBuffer.data
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+            ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("Contains"));
+        }
+
 
         static ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
                                            ParameterInfo[] methodParameters, int paramCount,

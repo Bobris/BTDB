@@ -155,6 +155,12 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
         }
 
+        public bool Contains(ByteBuffer keyBytes)
+        {
+            StartWorkingWithPK();
+            return _transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact;
+        }
+
         void CompareAndRelease(List<ulong> oldItems, List<ulong> newItems, Action<IInternalObjectDBTransaction, ulong> freeAction)
         {
             if (newItems.Count == 0)

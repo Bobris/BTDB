@@ -67,8 +67,11 @@ Returns true if removed, void variant throw when does not exists. All primary ke
 
 	int RemoveById(primaryKey1 [, primaryKey2, ...]);
 Returns number of records removed for given primary key prefix (apart fields are automatically used)
-for example	`void RemoveById(ulong tenantId)` removes all users for given tenant
+for example	`int RemoveById(ulong tenantId)` removes all users for given tenant
 
+### Contains ###
+	bool Contains(primaryKey1, ..., primaryKeyN);
+Returns true if exist item with given primary key. All primary keys fields are used as parameters, for example	`bool Contains(ulong tenantId, ulong userId);`
 
 ### Find ###
             Person FindById(ulong id);
