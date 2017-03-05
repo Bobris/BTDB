@@ -3,11 +3,18 @@ using BTDB.IL.Caching;
 
 namespace BTDB.IL
 {
+    public static class ILBuilderConfig
+    {
+        public static bool PreventDebugOutput { get; set; }
+    }
+
     public static class ILBuilder
     {
         static ILBuilder()
         {
-            NoCachingInstance = Debugger.IsAttached ? (IILBuilder)new ILBuilderDebug() : new ILBuilderRelease();
+            NoCachingInstance = Debugger.IsAttached && !ILBuilderConfig.PreventDebugOutput
+                ? (IILBuilder)new ILBuilderDebug()
+                : new ILBuilderRelease();
             Instance = new CachingILBuilder(NoCachingInstance);
         }
 
