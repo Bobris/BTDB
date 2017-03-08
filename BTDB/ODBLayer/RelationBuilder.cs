@@ -376,10 +376,10 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
                 apartFields, secondaryKeyFields, writerLoc);
 
-            //call public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, ByteBuffer secKeyBytes, bool throwWhenNotFound)
+            //call public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, uint prefixParametersCount, ByteBuffer secKeyBytes, bool throwWhenNotFound)
             ilGenerator.Ldarg(0); //manipulator
             ilGenerator.LdcI4((int)skIndex);
-            ilGenerator.LdcI4(methodParameters.Length);
+            ilGenerator.LdcI4(methodParameters.Length + apartFields.Count);
             //call byteBuffer.data
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
             ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);

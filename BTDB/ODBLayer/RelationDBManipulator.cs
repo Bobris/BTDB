@@ -306,7 +306,7 @@ namespace BTDB.ODBLayer
         }
 
         //secKeyBytes contains already AllRelationsSKPrefix
-        public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, uint parametersCount, ByteBuffer secKeyBytes,
+        public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, uint prefixParametersCount, ByteBuffer secKeyBytes,
                                              bool throwWhenNotFound)
         {
             _transaction.KeyValueDBTransaction.SetKeyPrefix(secKeyBytes);
@@ -321,7 +321,7 @@ namespace BTDB.ODBLayer
             if (_transaction.KeyValueDBTransaction.FindNextKey())
                 throw new BTDBException("Ambiguous result.");
 
-            return CreateInstanceFromSK(secondaryKeyIndex, parametersCount, secKeyBytes, keyBytes);
+            return CreateInstanceFromSK(secondaryKeyIndex, prefixParametersCount, secKeyBytes, keyBytes);
         }
 
         //SK manipulations

@@ -1421,5 +1421,53 @@ namespace BTDBTest
                 Assert.True(table.Contains(5, currentDay));
             }
         }
+
+        public class IdentityUser
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong ApplicationId { get; set; }
+            [PrimaryKey(3)]
+            public string IdentityUserId { get; set; }
+
+            [SecondaryKey("NormalizedUserName", IncludePrimaryKeyOrder = 2)]
+            public string NormalizedUserName { get; set; }
+        }
+
+        public interface IIdentityUserTable
+        {
+            ulong CompanyId { get; set; }
+            ulong ApplicationId { get; set; }
+            void Insert(IdentityUser user);
+            bool RemoveById(string identityUserId);
+            IdentityUser FindByNormalizedUserNameOrDefault(string normalizedUserName);
+        }
+
+        [Fact]
+        public void SecondaryKeyWithApartFieldsWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IIdentityUserTable>("SpecificIdentityUserWorks");
+                var table = creator(tr);
+                var normalizedUserName = "n5";
+
+                table.ApplicationId = 5;
+                table.CompanyId = 7;
+
+                table.Insert(new IdentityUser
+                {
+                    IdentityUserId = "i",
+                    NormalizedUserName = normalizedUserName
+                });
+
+                var user = table.FindByNormalizedUserNameOrDefault(normalizedUserName);
+                Assert.NotNull(user);
+                Assert.Equal(normalizedUserName, user.NormalizedUserName);
+                Assert.True(table.RemoveById("i"));
+            }
+        }
+
     }
 }
