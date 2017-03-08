@@ -513,6 +513,66 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public interface INodes
+        {
+        }
+
+        public class NodesA : INodes
+        {
+            public string F { get; set; }
+            public IDictionary<ulong, ulong> A { get; set; }
+        }
+
+        public class NodesB : INodes
+        {
+            public IDictionary<ulong, ulong> B { get; set; }
+            public string E { get; set; }
+        }
+
+        public class Graph
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public INodes Nodes { get; set; }
+        }
+
+        public interface IGraph
+        {
+            void Insert(Graph license);
+            Graph FindById(ulong id);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void FreeWorksAlsoForDifferentSubObjects()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IGraph>("Graph");
+                var settings = creator(tr);
+                var graph = new Graph
+                {
+                    Id = 1,
+                    Nodes = new NodesA { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
+                };
+                settings.Insert(graph);
+                graph = new Graph
+                {
+                    Id = 2,
+                    Nodes = new NodesB { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
+                };
+                settings.Insert(graph);
+
+                Assert.True(settings.FindById(1).Nodes is NodesA);
+                Assert.True(settings.FindById(2).Nodes is NodesB);
+
+                settings.RemoveById(1);
+                settings.RemoveById(2);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         void AssertNoLeaksInDb()
         {
             var leaks = FindLeaks();
