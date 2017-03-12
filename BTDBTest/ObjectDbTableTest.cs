@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -1105,11 +1106,22 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IPermutationOfKeysTable>("Permutation");
                 var table = creator(tr);
-                table.Insert(new PermutationOfKeys {A0 ="a", A = "aa", A1 = "aaa",
-                                                    B0 = "b", B = "bb", B1 = "bbb",
-                                                    C0 = "c", C = "cc",
-                                                    D = "dd", D1 = "ddd",
-                                                    E0 = "e", E = "ee", E1="eee" });
+                table.Insert(new PermutationOfKeys
+                {
+                    A0 = "a",
+                    A = "aa",
+                    A1 = "aaa",
+                    B0 = "b",
+                    B = "bb",
+                    B1 = "bbb",
+                    C0 = "c",
+                    C = "cc",
+                    D = "dd",
+                    D1 = "ddd",
+                    E0 = "e",
+                    E = "ee",
+                    E1 = "eee"
+                });
                 var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
                     "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
@@ -1395,7 +1407,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                var ex = Assert.Throws<BTDBException>(() => 
+                var ex = Assert.Throws<BTDBException>(() =>
                 tr.InitRelation<IProductionInvalidTable>("FindByMetodsChecksParameterTypes"));
                 Assert.Contains("expected 'System.DateTime'", ex.Message);
             }
@@ -1467,6 +1479,61 @@ namespace BTDBTest
                 Assert.Equal(normalizedUserName, user.NormalizedUserName);
                 Assert.True(table.RemoveById("i"));
             }
+        }
+
+        public class EducatedPerson : PersonSimple
+        {
+            public string Degree { get; set; }
+        }
+
+        class TraceListenerCountingFails : TraceListener
+        {
+            public int FailCount { get; set; }
+
+            public override void Fail(string message, string detailMessage)
+            {
+                FailCount++;
+            }
+
+            public override void Write(string message)
+            {
+            }
+
+            public override void WriteLine(string message)
+            {
+            }
+        }
+
+
+        [RunnableInDebugOnly("Testing debug assertions only in debug")]
+        public void ProgrammerIsWarnedWhenWorkingWithDerivedType()
+        {
+            var failCountingListener = new TraceListenerCountingFails();
+            var listenersBackup = new TraceListener[Trace.Listeners.Count];
+            for (int i = 0; i < Trace.Listeners.Count; i++)
+                listenersBackup[i] = Trace.Listeners[i];
+            Trace.Listeners.Clear();
+            Trace.Listeners.Insert(0, failCountingListener);
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimplePersonTable>("PersonSimple");
+                var table = creator(tr);
+                table.Insert(new PersonSimple { Name = "Lubos", Email = "a@b.cz" });
+                Assert.Equal(0, failCountingListener.FailCount);
+                var educatedPerson = new EducatedPerson { Degree = "Dr.", Name = "Vostep", Email = "dr@les.cz" };
+                table.Insert(educatedPerson);
+                Assert.Equal(1, failCountingListener.FailCount);
+                table.Upsert(educatedPerson);
+                Assert.Equal(2, failCountingListener.FailCount);
+                educatedPerson.Email = "a@b.cz";
+                table.Update(educatedPerson);
+                Assert.Equal(3, failCountingListener.FailCount);
+                tr.Commit();
+            }
+
+            Trace.Listeners.Clear();
+            Trace.Listeners.AddRange(listenersBackup);
         }
 
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -23,6 +24,8 @@ namespace BTDB.ODBLayer
         public RelationInfo RelationInfo => _relationInfo;
 
         int _modificationCounter;
+        const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
+
 
         public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
@@ -69,6 +72,8 @@ namespace BTDB.ODBLayer
 
         public bool Insert(T obj)
         {
+            Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
+
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 
@@ -95,6 +100,8 @@ namespace BTDB.ODBLayer
 
         public bool Upsert(T obj)
         {
+            Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
+
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 
@@ -128,6 +135,8 @@ namespace BTDB.ODBLayer
 
         public void Update(T obj)
         {
+            Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
+
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 

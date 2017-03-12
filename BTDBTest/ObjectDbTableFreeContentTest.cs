@@ -549,25 +549,25 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IGraph>("Graph");
-                var settings = creator(tr);
+                var table = creator(tr);
                 var graph = new Graph
                 {
                     Id = 1,
                     Nodes = new NodesA { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
                 };
-                settings.Insert(graph);
+                table.Insert(graph);
                 graph = new Graph
                 {
                     Id = 2,
                     Nodes = new NodesB { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
                 };
-                settings.Insert(graph);
+                table.Insert(graph);
 
-                Assert.True(settings.FindById(1).Nodes is NodesA);
-                Assert.True(settings.FindById(2).Nodes is NodesB);
+                Assert.True(table.FindById(1).Nodes is NodesA);
+                Assert.True(table.FindById(2).Nodes is NodesB);
 
-                settings.RemoveById(1);
-                settings.RemoveById(2);
+                table.RemoveById(1);
+                table.RemoveById(2);
                 tr.Commit();
             }
             AssertNoLeaksInDb();
