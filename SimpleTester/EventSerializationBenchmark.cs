@@ -35,9 +35,18 @@ namespace SimpleTester
             return _parent.IsAvailable(summary);
         }
 
+        public bool IsDefault(Summary summary, Benchmark benchmark)
+        {
+            return _parent.IsDefault(summary, benchmark);
+        }
+
         public string ColumnName => _parent.ColumnName;
         public bool AlwaysShow => _parent.AlwaysShow;
         public ColumnCategory Category => ColumnCategory.Job;
+        
+        public string Id => _parent.Id;
+
+        public int PriorityInCategory => _parent.PriorityInCategory;
     }
 
     public class ByteSizeColumn : IColumn
@@ -49,7 +58,7 @@ namespace SimpleTester
             var param = benchmark.Parameters[0];
             target.Type.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
             target.SetupMethod.Invoke(instance, new object[0]);
-            var propName = target.MethodTitle.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
+            var propName = target.MethodDisplayInfo.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
             return target.Type.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
         }
 
@@ -58,9 +67,18 @@ namespace SimpleTester
             return true;
         }
 
+        public bool IsDefault(Summary summary, Benchmark benchmark)
+        {
+            return true;
+        }
+
         public string ColumnName => "Byte Size";
         public bool AlwaysShow => true;
         public ColumnCategory Category => ColumnCategory.Job;
+
+        public string Id => "ByteSize";
+
+        public int PriorityInCategory => 0;
     }
 
     [Config(typeof(Config))]
@@ -91,7 +109,6 @@ namespace SimpleTester
 
         IEventSerializer _eventSerializer;
         IEventDeserializer _eventDeserializer;
-        ByteBufferWriter _writer;
         Event _ev;
         ByteBuffer _btdbSerializedData;
         MemoryStream _memStream;

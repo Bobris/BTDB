@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>BenchmarkDotNet.Diagnostics.Windows</name>
+    </assembly>
+    <members>
+        <member name="M:BenchmarkDotNet.Diagnostics.Windows.EtwDiagnoser`1.WaitForDelayedEvents">
+            <summary>
+            ETW real-time sessions receive events with a slight delay. Typically it
+            shouldn't be more than a few seconds. This increases the likelihood that
+            all relevant events are processed by the collection thread by the time we
+            are done with the benchmark.
+            </summary>
+        </member>
+    </members>
+</doc>
