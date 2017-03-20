@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Configuration;
 using BTDB.EventStore2Layer;
-using BTDB.StreamLayer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
 using BTDB.FieldHandler;
+using BTDB.ODBLayer;
 
 namespace BTDBTest
 {
@@ -321,5 +321,52 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
+        public class DtoWithNotStored
+        {
+            public string Name { get; set; }
+            [NotStored]
+            public int Skip { get; set; }
+        }
+
+        [Fact]
+        public void SerializingSkipsNotStoredProperties()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new DtoWithNotStored { Name = "Boris", Skip = 1 };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(0, ((DtoWithNotStored)obj2).Skip);
+        }
+
+        public class DtoWithObject
+        {
+            public object Something { get; set; }
+        }
+
+        [Fact]
+        public void SerializingBoxedDoubleDoesNotCrash()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new DtoWithObject { Something = 1.2 };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(1.2, ((DtoWithObject)obj2).Something);
+        }
     }
 }

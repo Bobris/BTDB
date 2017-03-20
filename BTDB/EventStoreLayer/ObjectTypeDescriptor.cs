@@ -59,6 +59,7 @@ namespace BTDB.EventStoreLayer
             foreach (var propertyInfo in props)
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
+                if (propertyInfo.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                 var descriptor = factory.Create(propertyInfo.PropertyType);
                 if (descriptor != null)
                 {

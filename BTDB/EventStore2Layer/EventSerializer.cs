@@ -59,7 +59,7 @@ namespace BTDB.EventStore2Layer
                 var type = descriptor.GetPreferedType();
                 if (type != typeof(object))
                 {
-                    ilgen.Castclass(type);
+                    ilgen.UnboxAny(type);
                 }
             }, descriptor.GetPreferedType());
             il.Ret();
