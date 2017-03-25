@@ -24,6 +24,7 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
         readonly ConcurrentDictionary<uint, Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>> _freeContent = new ConcurrentDictionary<uint, Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>>();
+        readonly Dictionary<uint, bool> _freeContentNeedDetectionInProgress = new Dictionary<uint, bool>();
         long _singletonOid;
         long _cachedSingletonTrNum;
         byte[] _cachedSingletonContent;
@@ -364,6 +365,19 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             return method.Create();
+        }
+
+        internal bool IsFreeContentNeeded(uint version)
+        {
+            Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> freeContent;
+            if (_freeContent.TryGetValue(version, out freeContent))
+                return freeContent.Item1;
+            if (_freeContentNeedDetectionInProgress.ContainsKey(version))
+                return false; //when needed then is reported by the other detection in progress
+            _freeContentNeedDetectionInProgress[version] = true;
+            var result = GetFreeContent(version).Item1;
+            _freeContentNeedDetectionInProgress.Remove(version);
+            return result;
         }
 
         internal Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> GetFreeContent(uint version)

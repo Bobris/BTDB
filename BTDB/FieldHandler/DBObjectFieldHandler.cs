@@ -152,7 +152,7 @@ namespace BTDB.FieldHandler
         {
             var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(HandledType());
             //decides upon current version  (null for object types never stored in DB)
-            var needsContent = tableInfo == null || tableInfo.GetFreeContent(tableInfo.ClientTypeVersion).Item1;
+            var needsContent = tableInfo == null || tableInfo.IsFreeContentNeeded(tableInfo.ClientTypeVersion);
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());

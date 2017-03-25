@@ -573,6 +573,49 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public class Component
+        {
+            public IList<Component> Children { get; set; }
+            public IDictionary<string, string>  Props { get; set; }
+        }
+
+        public class View
+        {
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+            public Component Component { get; set; }
+        }
+
+        public interface IViewTable
+        {
+            void Insert(View license);
+            void RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void FreeWorksInRecursiveStructures()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IViewTable>("View");
+                var table = creator(tr);
+                table.Insert(new View
+                {
+                    Id = 1,
+                    Component = new Component
+                    {
+                        Children = new List<Component>
+                        {
+                            new Component { Props = new Dictionary<string, string> { ["a"] = "A" } },
+                            new Component { Props = new Dictionary<string, string> { ["b"] = "B" } }
+                        }
+                    }
+                });
+                table.RemoveById(1);
+                AssertNoLeaksInDb();
+            }
+        }
+
         void AssertNoLeaksInDb()
         {
             var leaks = FindLeaks();
