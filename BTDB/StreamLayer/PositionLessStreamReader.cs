@@ -18,7 +18,7 @@ namespace BTDB.StreamLayer
             FillBuffer();
         }
 
-        protected override sealed void FillBuffer()
+        protected sealed override void FillBuffer()
         {
             if (_ofs == _valueSize)
             {
@@ -43,15 +43,21 @@ namespace BTDB.StreamLayer
             offset += l;
             length -= l;
             Pos += l;
-            var read = _stream.Read(data, offset, length, _ofs);
-            if (read != length)
+
+            while (length > 0)
             {
-                _ofs = _valueSize;
-                Pos = -1;
-                End = -1;
-                throw new EndOfStreamException();
+                var readed = _stream.Read(data, offset, length, _ofs);
+                if (readed <= 0)
+                {
+                    _ofs = _valueSize;
+                    Pos = -1;
+                    End = -1;
+                    throw new EndOfStreamException();
+                }
+                _ofs += (ulong)readed;
+                offset += readed;
+                length -= readed;
             }
-            _ofs += (ulong)read;
         }
 
         public override void SkipBlock(int length)
