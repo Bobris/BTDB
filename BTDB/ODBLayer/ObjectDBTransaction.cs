@@ -595,7 +595,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException($"Type {tableInfo.Name} is not registered");
+                    throw new BTDBException($"Type {tableInfo.Name} is not registered.");
                 }
             }
         }
@@ -625,7 +625,15 @@ namespace BTDB.ODBLayer
                 {
                     throw new InvalidOperationException("Cannot store " + type.ToSimpleName() + " type to DB directly.");
                 }
-                var name = _owner.Type2NameRegistry.FindNameByType(type) ?? _owner.RegisterType(type);
+                var name = _owner.Type2NameRegistry.FindNameByType(type);
+                if (name == null)
+                {
+                    if (!_owner.AutoRegisterTypes)
+                    {
+                        throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
+                    }
+                    name = _owner.RegisterType(type);
+                }
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
             return ti;

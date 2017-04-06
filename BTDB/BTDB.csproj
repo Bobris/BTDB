@@ -282,6 +282,7 @@
     <Compile Include="KVDBLayer\Implementation\KVFileType.cs" />
     <Compile Include="KVDBLayer\Implementation\OnDiskFileCollection.cs" />
     <Compile Include="KVDBLayer\Implementation\UnknownFile.cs" />
+    <Compile Include="ODBLayer\DBOptions.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />
     <Compile Include="ODBLayer\IInstanceRegistry.cs" />
@@ -291,6 +292,7 @@
     <Compile Include="ODBLayer\IOrderedDictionary.cs" />
     <Compile Include="ODBLayer\IQuerySizeDictionary.cs" />
     <Compile Include="ODBLayer\IRelationInfoResolver.cs" />
+    <Compile Include="ODBLayer\IType2NameRegistry.cs" />
     <Compile Include="ODBLayer\NotStoredAttribute.cs" />
     <Compile Include="ODBLayer\ODBDictionary.cs" />
     <Compile Include="ODBLayer\ODBDictionaryConfiguration.cs" />

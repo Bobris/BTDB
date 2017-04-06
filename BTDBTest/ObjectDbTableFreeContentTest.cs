@@ -22,7 +22,7 @@ namespace BTDBTest
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false);
+            _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
         }
 
         void ReopenDb()
@@ -456,7 +456,7 @@ namespace BTDBTest
                     Data = new DBIndirect<RawData>(new RawData
                     {
                         Data = new byte[] { 1, 2, 3 },
-                        Edges = new Dictionary<ulong, ulong> { [10] = 20 } 
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
                     })
                 };
                 files.Insert(file);
@@ -546,6 +546,9 @@ namespace BTDBTest
         [Fact]
         public void FreeWorksAlsoForDifferentSubObjects()
         {
+            _db.RegisterType(typeof(NodesA));
+            _db.RegisterType(typeof(NodesB));
+
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IGraph>("Graph");
@@ -576,7 +579,7 @@ namespace BTDBTest
         public class Component
         {
             public IList<Component> Children { get; set; }
-            public IDictionary<string, string>  Props { get; set; }
+            public IDictionary<string, string> Props { get; set; }
         }
 
         public class View

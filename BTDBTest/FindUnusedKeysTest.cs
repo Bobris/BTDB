@@ -5,7 +5,6 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Xunit;
 
@@ -15,17 +14,19 @@ namespace BTDBTest
     {
         IKeyValueDB _lowDb;
         IObjectDB _db;
+        Type2NameRegistry _registry;
 
         public FindUnusedKeysTest()
         {
             _lowDb = new InMemoryKeyValueDB();
+            _registry = new Type2NameRegistry();
             OpenDb();
         }
 
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false);
+            _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration().WithCustomType2NameRegistry(_registry));
         }
 
         void ReopenDb()
@@ -62,6 +63,8 @@ namespace BTDBTest
         [Fact]
         public void DoesNotReportFalsePositive()
         {
+            _db.RegisterType(typeof (JobMap));
+
             StoreJob(1, "Not create leak");
             AssertNoLeaksInDb();
         }
@@ -99,6 +102,8 @@ namespace BTDBTest
         [InlineData(false)]
         public void HandlesCorrectlyIIndirect(bool deleteCorrectly)
         {
+            _db.RegisterType(typeof(IndirectDuty));
+
             using (var tr = _db.StartTransaction())
             {
                 var duty = tr.Singleton<IndirectDuty>();
@@ -129,6 +134,8 @@ namespace BTDBTest
         [UseReporter(typeof(DiffReporter))]
         public void FindAndRemovesUnusedKeys()
         {
+            _db.RegisterType(typeof(Directory));
+
             StoreJobInDictionary("programming", "code");
             StoreJobInDictionary("chess", "mate");
             using (var tr = _db.StartTransaction())
@@ -155,6 +162,7 @@ namespace BTDBTest
                 }
             }
             ReopenDb();
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartReadOnlyTransaction())
             {
@@ -177,6 +185,8 @@ namespace BTDBTest
         [Fact]
         public void TablesWithNoInstancesAreNotReported()
         {
+            _db.RegisterType(typeof(JobMap));
+
             StoreJob(1, "Sleep");
             using (var tr = _db.StartTransaction())
             {

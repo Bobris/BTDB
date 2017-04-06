@@ -9,6 +9,8 @@ namespace BTDB.ODBLayer
     {
         void Open(IKeyValueDB keyValueDB, bool dispose);
 
+        void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options);
+
         IObjectDBTransaction StartTransaction();
 
         IObjectDBTransaction StartReadOnlyTransaction();

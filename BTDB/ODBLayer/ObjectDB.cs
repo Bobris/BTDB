@@ -12,7 +12,8 @@ namespace BTDB.ODBLayer
     public class ObjectDB : IObjectDB, IInstanceRegistry
     {
         IKeyValueDB _keyValueDB;
-        readonly Type2NameRegistry _type2Name = new Type2NameRegistry();
+        IType2NameRegistry _type2Name;
+        bool _autoRegisterTypes;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
         bool _dispose;
@@ -40,7 +41,9 @@ namespace BTDB.ODBLayer
 
         internal ulong LastDictId => _lastDictId;
 
-        internal Type2NameRegistry Type2NameRegistry => _type2Name;
+        internal IType2NameRegistry Type2NameRegistry => _type2Name;
+
+        internal bool AutoRegisterTypes => _autoRegisterTypes;
 
         internal TablesInfo TablesInfo => _tablesInfo;
 
@@ -48,14 +51,23 @@ namespace BTDB.ODBLayer
 
         public void Open(IKeyValueDB keyValueDB, bool dispose)
         {
+            Open(keyValueDB, dispose, new DBOptions());
+        }
+
+        public void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options)
+        {
             if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
             _keyValueDB = keyValueDB;
             _dispose = dispose;
+            _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
+            _autoRegisterTypes = options.AutoRegisterType;
+
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
             _relationsInfoResolver = new RelationInfoResolver(this);
             _relationsInfo = new RelationsInfo(_relationsInfoResolver);
             _lastObjId = 0;
+
             using (var tr = _keyValueDB.StartTransaction())
             {
                 tr.SetKeyPrefix(AllObjectsPrefix);

@@ -38,7 +38,7 @@ namespace BTDBTest
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false);
+            _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
         }
 
         public class PersonSimple : IEquatable<PersonSimple>

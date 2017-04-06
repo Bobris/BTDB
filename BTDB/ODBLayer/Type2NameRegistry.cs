@@ -5,13 +5,13 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
-    class Type2NameRegistry
+    public class Type2NameRegistry : IType2NameRegistry
     {
         readonly ConcurrentDictionary<string, Type> _name2Type = new ConcurrentDictionary<string, Type>(ReferenceEqualityComparer<string>.Instance);
         readonly ConcurrentDictionary<Type, string> _type2Name = new ConcurrentDictionary<Type, string>(ReferenceEqualityComparer<Type>.Instance);
         readonly object _lock = new object();
 
-        internal string RegisterType(Type type, string asName)
+        public string RegisterType(Type type, string asName)
         {
             asName = string.Intern(asName);
             lock (_lock)
@@ -28,7 +28,7 @@ namespace BTDB.ODBLayer
             return asName;
         }
 
-        internal Type FindTypeByName(string name)
+        public Type FindTypeByName(string name)
         {
             Debug.Assert(string.IsInterned(name)!=null);
             Type result;
@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
             return null;
         }
 
-        internal string FindNameByType(Type type)
+        public string FindNameByType(Type type)
         {
             string result;
             if (_type2Name.TryGetValue(type, out result)) return result;
