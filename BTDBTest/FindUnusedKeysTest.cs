@@ -12,9 +12,9 @@ namespace BTDBTest
 {
     public class FindUnusedKeysTest : IDisposable
     {
-        IKeyValueDB _lowDb;
+        readonly IKeyValueDB _lowDb;
         IObjectDB _db;
-        Type2NameRegistry _registry;
+        readonly Type2NameRegistry _registry;
 
         public FindUnusedKeysTest()
         {
@@ -63,8 +63,6 @@ namespace BTDBTest
         [Fact]
         public void DoesNotReportFalsePositive()
         {
-            _db.RegisterType(typeof (JobMap));
-
             StoreJob(1, "Not create leak");
             AssertNoLeaksInDb();
         }
@@ -102,8 +100,6 @@ namespace BTDBTest
         [InlineData(false)]
         public void HandlesCorrectlyIIndirect(bool deleteCorrectly)
         {
-            _db.RegisterType(typeof(IndirectDuty));
-
             using (var tr = _db.StartTransaction())
             {
                 var duty = tr.Singleton<IndirectDuty>();
@@ -134,8 +130,6 @@ namespace BTDBTest
         [UseReporter(typeof(DiffReporter))]
         public void FindAndRemovesUnusedKeys()
         {
-            _db.RegisterType(typeof(Directory));
-
             StoreJobInDictionary("programming", "code");
             StoreJobInDictionary("chess", "mate");
             using (var tr = _db.StartTransaction())
@@ -185,8 +179,6 @@ namespace BTDBTest
         [Fact]
         public void TablesWithNoInstancesAreNotReported()
         {
-            _db.RegisterType(typeof(JobMap));
-
             StoreJob(1, "Sleep");
             using (var tr = _db.StartTransaction())
             {

@@ -360,7 +360,7 @@ namespace BTDB.ODBLayer
 
         public object Singleton(Type type)
         {
-            var tableInfo = AutoRegisterType(type);
+            var tableInfo = AutoRegisterType(type, true);
             tableInfo.EnsureClientTypeVersion();
             var oid = (ulong)tableInfo.SingletonOid;
             var obj = GetObjFromObjCacheByOid(oid);
@@ -616,7 +616,7 @@ namespace BTDB.ODBLayer
             return key;
         }
 
-        TableInfo AutoRegisterType(Type type)
+        TableInfo AutoRegisterType(Type type, bool forceAutoRegistration = false)
         {
             var ti = _owner.TablesInfo.FindByType(type);
             if (ti == null)
@@ -628,7 +628,7 @@ namespace BTDB.ODBLayer
                 var name = _owner.Type2NameRegistry.FindNameByType(type);
                 if (name == null)
                 {
-                    if (!_owner.AutoRegisterTypes)
+                    if (!_owner.AutoRegisterTypes && !forceAutoRegistration)
                     {
                         throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
                     }
