@@ -209,7 +209,7 @@ namespace BTDB.EventStoreLayer
                     pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                                             il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
                                             prop.PropertyType, _typeSerializers.ConvertorGenerator);
-                    ilGenerator.Callvirt(prop.GetSetMethod());
+                    ilGenerator.Callvirt(prop.GetSetMethod(true));
                 }
                 ilGenerator.Ldloc(resultLoc);
             }
@@ -435,7 +435,7 @@ namespace BTDB.EventStoreLayer
             foreach (var pairi in _fields)
             {
                 var pair = pairi;
-                var methodInfo = _type.GetProperties().First(p => GetPersitentName(p) == pair.Key).GetGetMethod();
+                var methodInfo = _type.GetProperties().First(p => GetPersitentName(p) == pair.Key).GetGetMethod(true);
                 pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }

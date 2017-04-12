@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using BTDB.EventStore2Layer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
@@ -296,6 +295,26 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
+        [Fact]
+        public void SupportStrangeVisibilities()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new StrangeVisibilities {A = "a", C = "c", D = "d"};
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            var ev = obj2 as StrangeVisibilities;
+            Assert.Equal(ev.A, "a");
+            Assert.Equal(ev.B, null);
+            Assert.Equal(ev.C, "c");
+        }
         public class EventWithUser
         {
             public User User { get; set; }

@@ -893,5 +893,27 @@ namespace BTDBTest
             Assert.Equal(ev[11], "o");
         }
 
+        public class StrangeVisibilities
+        {
+            public string A { get; internal set; }
+            public string B { get; private set; }
+            public string C { internal get; set; }
+            public string D { private get; set; }
+        }
+
+        [Fact]
+        public void SupportStrangeVisibilities()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { new StrangeVisibilities { A = "a", C = "c", D = "d" } });
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            var ev = eventObserver.Events[0][0] as StrangeVisibilities;
+            Assert.Equal(ev.A, "a");
+            Assert.Equal(ev.B, null);
+            Assert.Equal(ev.C, "c");
+        }
     }
 }
