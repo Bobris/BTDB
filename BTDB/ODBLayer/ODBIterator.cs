@@ -132,17 +132,18 @@ namespace BTDB.ODBLayer
                 version))
                 return;
             var tvi = GetTableVersionInfo(tableId, version);
+            var knownInlineId = new HashSet<int>();
             for (var i = 0; i < tvi.FieldCount; i++)
             {
                 var fi = tvi[i];
                 if (_visitor == null || _visitor.StartField(fi.Name))
                 {
-                    IterateHandler(reader, fi.Handler, false, null);
+                    IterateHandler(reader, fi.Handler, false, knownInlineId);
                     _visitor?.EndField();
                 }
                 else
                 {
-                    IterateHandler(reader, fi.Handler, true, null);
+                    IterateHandler(reader, fi.Handler, true, knownInlineId);
                 }
             }
             _visitor?.EndObject();
