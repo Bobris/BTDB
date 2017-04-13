@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("BTDB")]
-[assembly: AssemblyCopyright("Copyright � Boris Letocha 2016")]
+[assembly: AssemblyCopyright("Copyright � Boris Letocha 2017")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -28,7 +28,7 @@ using System.Runtime.InteropServices;
 //      Minor Version 
 //      Build Number
 //      Revision
-[assembly: AssemblyVersion("10.1.1.0")]
-[assembly: AssemblyFileVersion("10.1.1.0")]
+[assembly: AssemblyVersion("10.1.2.0")]
+[assembly: AssemblyFileVersion("10.1.2.0")]
 
 [assembly: InternalsVisibleTo("BTDBTest")]

@@ -235,6 +235,16 @@ namespace BTDBTest
             {
                 Builder.AppendLine("EndValue");
             }
+
+            public void InlineBackRef(int iid)
+            {
+                Builder.AppendLine($"Inline back ref {iid}");
+            }
+
+            public void InlineRef(int iid)
+            {
+                Builder.AppendLine($"Inline ref {iid}");
+            }
         }
 
         [Fact]
@@ -446,6 +456,38 @@ namespace BTDBTest
                 var wfd = tr.Singleton<ObjectWfd2>();
                 wfd.C.Type = 2;
                 tr.Store(wfd);
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
+        public class DuoRefs
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public Rule1 R1 { get; set; }
+            public Rule1 R2 { get; set; }
+        }
+
+        public interface IDuoRefsRelation
+        {
+            void Insert(DuoRefs value);
+        }
+
+        [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void DoubleRefsRelation()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDuoRefsRelation>("DoubleRefsRelation");
+                var duoRefsRelation = creator(tr);
+                var value = new DuoRefs { Id = 1, R1 = new Rule1() };
+                value.R2 = value.R1;
+                duoRefsRelation.Insert(value);
+                value.Id = 2;
+                value.R2 = new Rule1();
+                duoRefsRelation.Insert(value);
                 tr.Commit();
             }
             IterateWithApprove();

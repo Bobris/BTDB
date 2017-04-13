@@ -37,5 +37,7 @@ namespace BTDB.ODBLayer
         void EndRelationKey();
         bool StartRelationValue();
         void EndRelationValue();
+        void InlineBackRef(int iid);
+        void InlineRef(int iid);
     }
 }

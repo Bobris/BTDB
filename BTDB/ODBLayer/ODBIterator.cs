@@ -137,12 +137,12 @@ namespace BTDB.ODBLayer
                 var fi = tvi[i];
                 if (_visitor == null || _visitor.StartField(fi.Name))
                 {
-                    IterateHandler(reader, fi.Handler, false);
+                    IterateHandler(reader, fi.Handler, false, null);
                     _visitor?.EndField();
                 }
                 else
                 {
-                    IterateHandler(reader, fi.Handler, true);
+                    IterateHandler(reader, fi.Handler, true, null);
                 }
             }
             _visitor?.EndObject();
@@ -189,7 +189,7 @@ namespace BTDB.ODBLayer
                 {
                     var keyReader = new KeyValueDBKeyReader(_trkv);
                     var relationInfo = relationVersions[lastPersistedVersion];
-                    IterateFields(keyReader, relationInfo.GetPrimaryKeyFields());
+                    IterateFields(keyReader, relationInfo.GetPrimaryKeyFields(), null);
                     _visitor?.EndRelationKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
@@ -202,25 +202,25 @@ namespace BTDB.ODBLayer
                     var valueReader = new KeyValueDBValueReader(_trkv);
                     var version = valueReader.ReadVUInt32();
                     var relationInfo = relationVersions[version];
-                    IterateFields(valueReader, relationInfo.GetValueFields());
+                    IterateFields(valueReader, relationInfo.GetValueFields(), new HashSet<int>());
                     _visitor?.EndRelationValue();
                 }
                 pos++;
             }
         }
 
-        void IterateFields(ByteBufferReader reader, IEnumerable<TableFieldInfo> fields)
+        void IterateFields(ByteBufferReader reader, IEnumerable<TableFieldInfo> fields, HashSet<int> knownInlineRefs)
         {
             foreach (var fi in fields)
             {
                 if (_visitor == null || _visitor.StartField(fi.Name))
                 {
-                    IterateHandler(reader, fi.Handler, false);
+                    IterateHandler(reader, fi.Handler, false, knownInlineRefs);
                     _visitor?.EndField();
                 }
                 else
                 {
-                    IterateHandler(reader, fi.Handler, true);
+                    IterateHandler(reader, fi.Handler, true, knownInlineRefs);
                 }
             }
         }
@@ -289,7 +289,7 @@ namespace BTDB.ODBLayer
                 if (_visitor == null || _visitor.StartDictKey())
                 {
                     var keyReader = new KeyValueDBKeyReader(_trkv);
-                    IterateHandler(keyReader, keyHandler, false);
+                    IterateHandler(keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
@@ -300,7 +300,7 @@ namespace BTDB.ODBLayer
                 if (_visitor == null || _visitor.StartDictValue())
                 {
                     var valueReader = new KeyValueDBValueReader(_trkv);
-                    IterateHandler(valueReader, valueHandler, false);
+                    IterateHandler(valueReader, valueHandler, false, null);
                     _visitor?.EndDictValue();
                 }
                 pos++;
@@ -308,7 +308,7 @@ namespace BTDB.ODBLayer
             _visitor?.EndDictionary();
         }
 
-        void IterateHandler(AbstractBufferedReader reader, IFieldHandler handler, bool skipping)
+        void IterateHandler(AbstractBufferedReader reader, IFieldHandler handler, bool skipping, HashSet<int> knownInlineRefs)
         {
             if (handler is ODBDictionaryFieldHandler)
             {
@@ -336,6 +336,16 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
+                    if (knownInlineRefs != null)
+                    {
+                        if (knownInlineRefs.Contains((int) oid))
+                        {
+                            if (!skipping) _visitor?.InlineBackRef((int)oid);
+                            return;
+                        }
+                        if (!skipping) _visitor?.InlineRef((int)oid);
+                        knownInlineRefs.Add((int) oid);
+                    }
                     var tableId = reader.ReadVUInt32();
                     var version = reader.ReadVUInt32();
                     if (!skipping) MarkTableIdVersionFieldInfo(tableId, version);
@@ -348,7 +358,7 @@ namespace BTDB.ODBLayer
                     {
                         var fi = tvi[i];
                         var skipField = skip || _visitor != null && !_visitor.StartField(fi.Name);
-                        IterateHandler(reader, fi.Handler, skipField);
+                        IterateHandler(reader, fi.Handler, skipField, knownInlineRefs);
                         if (!skipField) _visitor?.EndField();
                     }
                     if (!skip) _visitor?.EndInlineObject();
@@ -452,10 +462,10 @@ namespace BTDB.ODBLayer
             while (count-- > 0)
             {
                 var skipKey = skip || _visitor != null && !_visitor.StartDictKey();
-                IterateHandler(reader, keyHandler, skipKey);
+                IterateHandler(reader, keyHandler, skipKey, null);
                 if (!skipKey) _visitor?.EndDictKey();
                 var skipValue = skip || _visitor != null && !_visitor.StartDictValue();
-                IterateHandler(reader, valueHandler, skipValue);
+                IterateHandler(reader, valueHandler, skipValue, null);
                 if (!skipValue) _visitor?.EndDictValue();
             }
             if (!skip) _visitor?.EndDictionary();
@@ -468,7 +478,7 @@ namespace BTDB.ODBLayer
             while (count-- > 0)
             {
                 var skipItem = skip || _visitor != null && !_visitor.StartItem();
-                IterateHandler(reader, itemHandler, skipItem);
+                IterateHandler(reader, itemHandler, skipItem, null);
                 if (!skipItem) _visitor?.EndItem();
             }
             if (!skip) _visitor?.EndList();
