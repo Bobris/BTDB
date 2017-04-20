@@ -387,5 +387,29 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(1.2, ((DtoWithObject)obj2).Something);
         }
+
+        public class PureArray
+        {
+            public string[] A { get; set; }
+        }
+
+        [Fact]
+        public void SupportPureArray()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new PureArray { A = new[] { "A", "B" } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            var ev = obj2 as PureArray;
+            Assert.Equal(ev.A, new[] { "A", "B" });
+        }
     }
 }

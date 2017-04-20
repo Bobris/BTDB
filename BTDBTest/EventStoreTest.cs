@@ -915,5 +915,23 @@ namespace BTDBTest
             Assert.Equal(ev.B, null);
             Assert.Equal(ev.C, "c");
         }
+
+        public class PureArray
+        {
+            public string[] A { get; set; }
+        }
+
+        [Fact]
+        public void SupportPureArray()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { new PureArray { A = new[] { "A", "B" } } });
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            var ev = eventObserver.Events[0][0] as PureArray;
+            Assert.Equal(ev.A, new[] { "A", "B" });
+        }
     }
 }
