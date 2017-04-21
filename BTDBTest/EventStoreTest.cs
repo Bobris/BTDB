@@ -919,6 +919,7 @@ namespace BTDBTest
         public class PureArray
         {
             public string[] A { get; set; }
+            public int[] B { get; set; }
         }
 
         [Fact]
@@ -926,12 +927,13 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { new PureArray { A = new[] { "A", "B" } } });
+            appender.Store(null, new object[] { new PureArray { A = new[] { "A", "B" }, B = new[] { 42, 7 } } });
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
             Assert.Equal(new object[] { null }, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as PureArray;
             Assert.Equal(ev.A, new[] { "A", "B" });
+            Assert.Equal(ev.B, new[] { 42, 7 });
         }
     }
 }

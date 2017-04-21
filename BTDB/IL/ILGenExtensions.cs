@@ -455,6 +455,54 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldelem(this IILGen il, Type itemType)
+        {
+            if (itemType == typeof(int))
+                il.Emit(OpCodes.Ldelem_I4);
+            else if (itemType == typeof(short))
+                il.Emit(OpCodes.Ldelem_I2);
+            else if (itemType == typeof(sbyte))
+                il.Emit(OpCodes.Ldelem_I1);
+            else if (itemType == typeof(long))
+                il.Emit(OpCodes.Ldelem_I8);
+            else if (itemType == typeof(ushort))
+                il.Emit(OpCodes.Ldelem_U2);
+            else if (itemType == typeof(byte))
+                il.Emit(OpCodes.Ldelem_U1);
+            else if (itemType == typeof(uint))
+                il.Emit(OpCodes.Ldelem_U4);
+            else if (itemType == typeof(float))
+                il.Emit(OpCodes.Ldelem_R4);
+            else if (itemType == typeof(double))
+                il.Emit(OpCodes.Ldelem_R8);
+            else if (!itemType.IsValueType)
+                il.Emit(OpCodes.Ldelem_Ref);
+            else
+                il.Emit(OpCodes.Ldelem, itemType);
+            return il;
+        }
+
+        public static IILGen Stelem(this IILGen il, Type itemType)
+        {
+            if (itemType == typeof(int))
+                il.Emit(OpCodes.Stelem_I4);
+            else if (itemType == typeof(short))
+                il.Emit(OpCodes.Stelem_I2);
+            else if (itemType == typeof(sbyte))
+                il.Emit(OpCodes.Stelem_I1);
+            else if (itemType == typeof(long))
+                il.Emit(OpCodes.Stelem_I8);
+            else if (itemType == typeof(float))
+                il.Emit(OpCodes.Stelem_R4);
+            else if (itemType == typeof(double))
+                il.Emit(OpCodes.Stelem_R8);
+            else if (!itemType.IsValueType)
+                il.Emit(OpCodes.Stelem_Ref);
+            else
+                il.Emit(OpCodes.Stelem, itemType);
+            return il;
+        }
+
         public static IILGen Add(this IILGen il)
         {
             il.Emit(OpCodes.Add);

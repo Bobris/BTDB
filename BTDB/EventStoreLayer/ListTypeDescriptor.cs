@@ -153,7 +153,7 @@ namespace BTDB.EventStoreLayer
                     .Ldloc(localIndex);
                 _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
                 ilGenerator
-                    .StelemRef()
+                    .Stelem(itemType)
                     .Ldloc(localIndex)
                     .LdcI4(1)
                     .Add()

@@ -60,7 +60,7 @@ namespace BTDBTest
             GC.Collect(2);
             GC.WaitForPendingFinalizers();
             GC.Collect(2);
-            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory+400);
+            Assert.InRange(GC.GetTotalMemory(false), 0, baselineMemory + 400);
         }
 
         [Fact]
@@ -106,7 +106,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var obj = new ObjectWithEnum { State = StateEnum.Alive};
+            var obj = new ObjectWithEnum { State = StateEnum.Alive };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -183,7 +183,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var obj = new ObjectWithList { Items = new List<int> {1} };
+            var obj = new ObjectWithList { Items = new List<int> { 1 } };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -252,7 +252,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>(){ {1, "Ahoj"} } };
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>() { { 1, "Ahoj" } } };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -300,7 +300,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var obj = new StrangeVisibilities {A = "a", C = "c", D = "d"};
+            var obj = new StrangeVisibilities { A = "a", C = "c", D = "d" };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -391,6 +391,7 @@ namespace BTDBTest
         public class PureArray
         {
             public string[] A { get; set; }
+            public int[] B { get; set; }
         }
 
         [Fact]
@@ -398,7 +399,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var obj = new PureArray { A = new[] { "A", "B" } };
+            var obj = new PureArray { A = new[] { "A", "B" }, B = new[] { 42, 7 } };
             var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -410,6 +411,7 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
             var ev = obj2 as PureArray;
             Assert.Equal(ev.A, new[] { "A", "B" });
+            Assert.Equal(ev.B, new[] { 42, 7 });
         }
     }
 }
