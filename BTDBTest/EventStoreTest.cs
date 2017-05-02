@@ -935,5 +935,34 @@ namespace BTDBTest
             Assert.Equal(ev.A, new[] { "A", "B" });
             Assert.Equal(ev.B, new[] { 42, 7 });
         }
+
+        public struct Structure
+        {
+            
+        }
+
+        class EventWithStruct
+        {
+            public ulong EventId { get; set; }
+            public Structure Structure { get; set; }
+        }
+
+        [Fact]
+        public void SupportStructInEvent()
+        {
+            var testEvent = new EventWithStruct
+            {
+                EventId = 1,
+                Structure = new Structure()
+            };
+
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { testEvent });
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            var ev = eventObserver.Events[0][0] as EventWithStruct;
+        }
     }
 }
