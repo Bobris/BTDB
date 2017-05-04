@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -128,6 +129,10 @@ namespace BTDB.EventStoreLayer
                     else if (type.IsEnum)
                     {
                         result = new EnumTypeDescriptor(_typeSerializers, type);
+                    }
+                    else if (type.IsValueType)
+                    {
+                        throw new BTDBException($"Unsupported value type {type.Name}.");
                     }
                     else
                     {

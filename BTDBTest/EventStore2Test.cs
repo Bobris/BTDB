@@ -4,6 +4,7 @@ using BTDB.EventStore2Layer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
 using BTDB.FieldHandler;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 
 namespace BTDBTest
@@ -412,6 +413,26 @@ namespace BTDBTest
             var ev = obj2 as PureArray;
             Assert.Equal(ev.A, new[] { "A", "B" });
             Assert.Equal(ev.B, new[] { 42, 7 });
+        }
+
+        public struct Structure
+        {
+        }
+
+        public class EventWithStruct
+        {
+            public Structure Structure { get; set; }
+        }
+
+        [Fact]
+        public void CannotStoreStruct()
+        {
+            var testEvent = new EventWithStruct();
+
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var e = Assert.Throws<BTDBException>(()=> serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
+            Assert.True(e.Message.Contains("Unsupported"));
         }
     }
 }

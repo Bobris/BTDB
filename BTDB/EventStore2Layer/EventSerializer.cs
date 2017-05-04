@@ -301,6 +301,10 @@ namespace BTDB.EventStore2Layer
                 {
                     desc = new EnumTypeDescriptor(this, type);
                 }
+                else if (type.IsValueType)
+                {
+                    throw new BTDBException($"Unsupported value type {type.Name}.");
+                }
                 else
                 {
                     desc = new ObjectTypeDescriptor(this, type);

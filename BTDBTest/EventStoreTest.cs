@@ -5,8 +5,9 @@ using System.Linq;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
-using BTDB.ODBLayer;
+using BTDB.KVDBLayer;
 using Xunit;
+using NoCompressionStrategy = BTDB.EventStoreLayer.NoCompressionStrategy;
 
 namespace BTDBTest
 {
@@ -938,17 +939,16 @@ namespace BTDBTest
 
         public struct Structure
         {
-            
         }
 
-        class EventWithStruct
+        public class EventWithStruct
         {
             public ulong EventId { get; set; }
             public Structure Structure { get; set; }
         }
 
         [Fact]
-        public void SupportStructInEvent()
+        public void CannotStoreStruct()
         {
             var testEvent = new EventWithStruct
             {
@@ -958,11 +958,9 @@ namespace BTDBTest
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { testEvent });
-            var eventObserver = new StoringEventObserver();
-            appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            var ev = eventObserver.Events[0][0] as EventWithStruct;
+
+            var e = Assert.Throws<BTDBException>(() => appender.Store(null, new object[] { testEvent }));
+            Assert.True(e.Message.Contains("Unsupported"));
         }
     }
 }
