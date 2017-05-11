@@ -28,6 +28,13 @@ namespace BTDB.ODBLayer
         Descending
     }
 
+    internal enum SeekState
+    {
+        Undefined, // position in enumerator is not defined
+        SeekNeeded, // position is defined, but seek was not done yet
+        Ready,
+    }
+
     public class AdvancedEnumeratorParam<TKey>
     {
         public AdvancedEnumeratorParam()

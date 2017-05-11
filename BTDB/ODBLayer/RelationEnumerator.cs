@@ -85,17 +85,13 @@ namespace BTDB.ODBLayer
 
         void SeekCurrent()
         {
+            if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
             _keyValueTrProtector.Start();
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
                 _keyValueTr.SetKeyPrefix(KeyBytes);
                 Seek();
-            }
-            else if (_seekNeeded)
-            {
-                Seek();
-                _seekNeeded = false;
             }
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
         }
@@ -119,14 +115,12 @@ namespace BTDB.ODBLayer
 
     internal class RelationPrimaryKeyEnumerator<T> : RelationEnumerator<T>
     {
-        readonly RelationDBManipulator<T> _manipulator;
         readonly int _skipBytes;
 
         public RelationPrimaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
                                             RelationDBManipulator<T> manipulator)
             : base(tr, relationInfo, keyBytes, manipulator)
         {
-            _manipulator = manipulator;
             _skipBytes = ObjectDB.AllRelationsPKPrefix.Length + +PackUnpack.LengthVUInt(relationInfo.Id);
         }
 
@@ -316,17 +310,13 @@ namespace BTDB.ODBLayer
             get
             {
                 if (_pos >= _count) throw new IndexOutOfRangeException();
+                if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
                     _manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
                     _keyValueTr.SetKeyPrefix(_keyBytes);
                     Seek();
-                }
-                else if (_seekNeeded)
-                {
-                    Seek();
-                    _seekNeeded = false;
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
@@ -399,7 +389,7 @@ namespace BTDB.ODBLayer
         readonly uint _startPos;
         readonly uint _count;
         uint _pos;
-        bool _seekNeeded;
+        SeekState _seekState;
         readonly bool _ascending;
         protected readonly ByteBuffer _keyBytes;
         protected Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
@@ -485,7 +475,7 @@ namespace BTDB.ODBLayer
             _count = (uint)Math.Max(0, endIndex - startIndex + 1);
             _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
-            _seekNeeded = true;
+            _seekState = SeekState.Undefined;
 
             if (initKeyReader)
             {
@@ -517,16 +507,16 @@ namespace BTDB.ODBLayer
             get
             {
                 if (_pos >= _count) throw new IndexOutOfRangeException();
+                if (_seekState == SeekState.Undefined) throw new BTDBException("Invalid access to uninitialized CurrentValue.");
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
                     _keyValueTr.SetKeyPrefix(_keyBytes);
                     Seek();
                 }
-                else if (_seekNeeded)
+                else if (_seekState != SeekState.Ready)
                 {
                     Seek();
-                    _seekNeeded = false;
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
@@ -544,7 +534,7 @@ namespace BTDB.ODBLayer
                 _keyValueTr.SetKeyIndex(_startPos + _pos);
             else
                 _keyValueTr.SetKeyIndex(_startPos - _pos);
-            _seekNeeded = false;
+            _seekState = SeekState.Ready;
         }
 
         public uint Position
@@ -554,13 +544,13 @@ namespace BTDB.ODBLayer
             set
             {
                 _pos = value > _count ? _count : value;
-                _seekNeeded = true;
+                _seekState = SeekState.SeekNeeded;
             }
         }
 
         public bool NextKey(out TKey key)
         {
-            if (!_seekNeeded)
+            if (_seekState == SeekState.Ready)
                 _pos++;
             if (_pos >= _count)
             {
@@ -573,7 +563,7 @@ namespace BTDB.ODBLayer
                 _keyValueTr.SetKeyPrefix(_keyBytes);
                 Seek();
             }
-            else if (_seekNeeded)
+            else if (_seekState != SeekState.Ready)
             {
                 Seek();
             }

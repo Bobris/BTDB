@@ -1454,6 +1454,8 @@ namespace BTDBTest
             void Insert(IdentityUser user);
             bool RemoveById(string identityUserId);
             IdentityUser FindByNormalizedUserNameOrDefault(string normalizedUserName);
+            IEnumerator<IdentityUser> FindById();
+            IOrderedDictionaryEnumerator<string, IdentityUser> ListByNormalizedUserName(AdvancedEnumeratorParam<string> param);
         }
 
         [Fact]
@@ -1478,6 +1480,42 @@ namespace BTDBTest
                 Assert.NotNull(user);
                 Assert.Equal(normalizedUserName, user.NormalizedUserName);
                 Assert.True(table.RemoveById("i"));
+            }
+        }
+
+        [Fact]
+        public void AccidentalAccessToUninitializedCurrentDoesNotMoveIterator()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IIdentityUserTable>("Enumerating");
+                var table = creator(tr);
+
+                table.ApplicationId = 5;
+                table.CompanyId = 7;
+
+                table.Insert(new IdentityUser { IdentityUserId = "i", NormalizedUserName = "a"});
+                table.Insert(new IdentityUser { IdentityUserId = "ii", NormalizedUserName = "b"});
+
+                var userRoleTableEnumerator = table.FindById();
+                Assert.Throws<BTDBException>(() =>  userRoleTableEnumerator.Current);
+                var counter = 0;
+                while (userRoleTableEnumerator.MoveNext())
+                    counter++;
+                Assert.Equal(2, counter);
+
+                var advancedEnumerator = table.ListByNormalizedUserName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
+                Assert.Throws<BTDBException>(() => advancedEnumerator.CurrentValue);
+                string key;
+                Assert.True(advancedEnumerator.NextKey(out key));
+                Assert.True(advancedEnumerator.NextKey(out key));
+                Assert.Equal("b", key);
+                Assert.False(advancedEnumerator.NextKey(out key));
+
+                advancedEnumerator.Position = 1;
+                Assert.Equal("ii", advancedEnumerator.CurrentValue.IdentityUserId);
+                advancedEnumerator.Position = 0;
+                Assert.Equal("i", advancedEnumerator.CurrentValue.IdentityUserId);
             }
         }
 
