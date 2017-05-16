@@ -1574,5 +1574,60 @@ namespace BTDBTest
             Trace.Listeners.AddRange(listenersBackup);
         }
 
+
+        public class Application
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(0)]
+            public ulong ApplicationId { get; set; }
+            public string Name { get; set; }
+        }
+
+        public interface IApplicationOutOfOrder
+        {
+            ulong CompanyId { get; set; }
+            void Insert(Application user);
+            IEnumerator<Application> FindById(); //ambiguous whether prefix contains apart field CompanyId
+        }
+
+        public interface IApplicationOutOfOrderWorking
+        {
+            ulong CompanyId { get; set; }
+            void Insert(Application user);
+            IEnumerator<Application> FindById(ulong applicationId);
+        }
+
+        [Fact]
+        public void RefuseOutOfOrderPrefixSearch()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IApplicationOutOfOrder>("OutOfOrderPk"));
+                Assert.Contains("part of prefix", ex.Message);
+                Assert.Contains("FindById", ex.Message);
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IApplicationOutOfOrderWorking>("OutOfOrderPkWorking");
+                var table = creator(tr);
+                table.CompanyId = 1;
+                table.Insert(new Application { Name = "A1", ApplicationId = 10 });
+                table.CompanyId = 2;
+                table.Insert(new Application { Name = "A2", ApplicationId = 10 });
+
+                var en = table.FindById(10);
+                Assert.True(en.MoveNext());
+                Assert.Equal("A2", en.Current.Name);
+                Assert.False(en.MoveNext());
+
+                table.CompanyId = 1;
+                en = table.FindById(10);
+                Assert.True(en.MoveNext());
+                Assert.Equal("A1", en.Current.Name);
+                Assert.False(en.MoveNext());
+            }
+        }
     }
 }
