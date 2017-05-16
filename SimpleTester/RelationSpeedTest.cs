@@ -112,6 +112,7 @@ namespace SimpleTester
                         var p = personTable.FindById(id);
                         p.Email += "a";
                         personTable.Update(p);
+                        tr.Commit();
                     }
                 }
             }
@@ -124,6 +125,7 @@ namespace SimpleTester
                     {
                         var personTable = _creator(tr);
                         personTable.RemoveById(id);
+                        tr.Commit();
                     }
                 }
             }
@@ -199,7 +201,7 @@ namespace SimpleTester
                         emails.Items.Remove(p.Email);
                         p.Email += "a";
                         emails.Items[p.Email] = id;
-
+                        tr.Commit();
                     }
                 }
             }
@@ -216,6 +218,7 @@ namespace SimpleTester
                         var p = persons.Items[id];
                         emails.Items.Remove(p.Email);
                         persons.Items.Remove(id);
+                        tr.Commit();
                     }
                 }
             }
