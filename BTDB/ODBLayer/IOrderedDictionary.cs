@@ -65,6 +65,26 @@ namespace BTDB.ODBLayer
         public readonly TKey Start;
         public readonly KeyProposition EndProposition;
         public readonly TKey End;
+
+        static volatile AdvancedEnumeratorParam<TKey> _instance;
+        static object _syncRoot = new object();
+
+        public static AdvancedEnumeratorParam<TKey> Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_syncRoot)
+                    {
+                        if (_instance == null)
+                            _instance = new AdvancedEnumeratorParam<TKey>();
+                    }
+                }
+
+                return _instance;
+            }
+        }
     }
 
     public interface IOrderedDictionary<TKey, TValue> : IDictionary<TKey,TValue>
