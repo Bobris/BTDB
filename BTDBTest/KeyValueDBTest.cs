@@ -1130,7 +1130,7 @@ namespace BTDBTest
                     Assert.Equal(4u, fileCollection.GetCount()); // 2 Logs, 1 values, 1 KeyIndex
                     longTr.Dispose();
                     db.Compact(new CancellationToken());
-                    Assert.Equal(2u, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
+                    Assert.Equal(3u, fileCollection.GetCount()); // 1 Log, 1 values, 1 KeyIndex
                 }
             }
 
