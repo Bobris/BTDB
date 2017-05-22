@@ -477,6 +477,10 @@ namespace BTDB.ODBLayer
                 }
                 SaveKeyFieldFromArgument(ilGenerator, field, idx, writerLoc);
             }
+            if (usedApartFieldsCount != apartFields.Count)
+            {
+                throw new BTDBException($"Apart fields must be part of prefix in {methodName}.");
+            }
             return (ushort)(idx + usedApartFieldsCount);
         }
 

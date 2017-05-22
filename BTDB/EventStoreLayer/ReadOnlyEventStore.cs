@@ -23,6 +23,7 @@ namespace BTDB.EventStoreLayer
         protected readonly uint MaxBlockSize;
         bool _knownAsCorrupted;
         internal bool KnownAsFinished;
+        protected WeakReference<byte[]> ReadBufferWeakReference = new WeakReference<byte[]>(null);
 
         public ReadOnlyEventStore(IEventFileStorage file, ITypeSerializersMapping mapping, ICompressionStrategy compressionStrategy)
         {
@@ -40,10 +41,21 @@ namespace BTDB.EventStoreLayer
             ReadToEnd(observer);
         }
 
+        internal byte[] GetReadBuffer()
+        {
+            byte[] res;
+            if (ReadBufferWeakReference.TryGetTarget(out res))
+                return res;
+
+            res = new byte[FirstReadAhead + MaxBlockSize];
+            ReadBufferWeakReference.SetTarget(res);
+            return res;
+        }
+
         public void ReadToEnd(IEventStoreObserver observer)
         {
             var overflowWriter = default(ByteBufferWriter);
-            var bufferBlock = new byte[FirstReadAhead + MaxBlockSize];
+            var bufferBlock = GetReadBuffer();
             var bufferStartPosition = NextReadPosition & SectorMask;
             var bufferFullLength = 0;
             var bufferReadOffset = (int)(NextReadPosition - bufferStartPosition);
