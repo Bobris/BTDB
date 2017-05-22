@@ -500,7 +500,7 @@ namespace BTDBTest
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             var readApplicationInfo = (ApplicationInfoPropertyEnumTypeChanged)eventObserver.Events[0][0];
-            Assert.Equal(readApplicationInfo.Type, ApplicationsRenamedType.First);
+            Assert.Equal(ApplicationsRenamedType.First, readApplicationInfo.Type);
         }
 
         public class UserEventList : IEquatable<UserEventList>
@@ -771,11 +771,11 @@ namespace BTDBTest
 
                 var observer = new StoringEventObserver();
                 appender.ReadFromStartToEnd(observer);
-                Assert.Equal(observer.Events.Count, 1);
-                Assert.Equal(observer.Events[0].Length, 1);
+                Assert.Equal(1, observer.Events.Count);
+                Assert.Equal(1, observer.Events[0].Length);
                 var e = observer.Events[0][0] as Ev1;
-                Assert.Equal(e.Credit.A, 1u);
-                Assert.Equal(e.Credit.B, 2u);
+                Assert.Equal(1u, e.Credit.A);
+                Assert.Equal(2u, e.Credit.B);
 
             }
         }
@@ -891,7 +891,7 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver);
             Assert.Equal(new object[] { null }, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as SimpleWithIndexer;
-            Assert.Equal(ev[11], "o");
+            Assert.Equal("o", ev[11]);
         }
 
         public class StrangeVisibilities
@@ -912,9 +912,9 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver);
             Assert.Equal(new object[] { null }, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as StrangeVisibilities;
-            Assert.Equal(ev.A, "a");
-            Assert.Equal(ev.B, null);
-            Assert.Equal(ev.C, "c");
+            Assert.Equal("a", ev.A);
+            Assert.Null(ev.B);
+            Assert.Equal("c", ev.C);
         }
 
         public class PureArray
