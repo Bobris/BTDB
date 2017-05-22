@@ -18,23 +18,29 @@ namespace BTDB.KVDBLayer
         struct FileStat
         {
             uint _valueLength;
+            uint _valueLengthUptodate;
             readonly uint _totalLength;
 
             internal FileStat(uint size)
             {
                 _totalLength = size;
                 _valueLength = 0;
+                _valueLengthUptodate = 0;
             }
 
-            internal void AddLength(uint length)
+            internal void AddLength(uint length, bool uptodate)
             {
-                _valueLength += length;
+                if (uptodate)
+                    _valueLengthUptodate += length;
+                else
+                    _valueLength += length;
             }
 
-            internal uint CalcWaste()
+            internal uint CalcWasteUptodate()
             {
                 if (_totalLength == 0) return 0;
-                return _totalLength - _valueLength;
+                if (_valueLength > 0 && _valueLengthUptodate == 0) return 0; // It was already compacted by previous compaction run
+                return _totalLength - _valueLengthUptodate;
             }
 
             internal bool Useless()
@@ -42,9 +48,9 @@ namespace BTDB.KVDBLayer
                 return _totalLength != 0 && _valueLength == 0;
             }
 
-            internal uint CalcUsed()
+            internal uint CalcUsedUptodate()
             {
-                return _valueLength;
+                return _valueLengthUptodate;
             }
         }
 
@@ -60,7 +66,7 @@ namespace BTDB.KVDBLayer
             _root = _keyValueDB.LastCommited;
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);
-            CalculateFileUsefullness();
+            CalculateFileUsefullness(_root, false); // useless files are calculated from "old" values, but they are uptodate
             MarkTotallyUselessFilesAsUnknown();
         }
 
@@ -86,7 +92,8 @@ namespace BTDB.KVDBLayer
             _root = _keyValueDB.OldestRoot;
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
             InitFileStats(dontTouchGeneration);
-            CalculateFileUsefullness();
+            CalculateFileUsefullness(_root, false); // Oldest root is not uptodate
+            CalculateFileUsefullness(_keyValueDB.LastCommited, true); // Last commited is uptodate
             MarkTotallyUselessFilesAsUnknown();
             var totalWaste = CalcTotalWaste();
             _keyValueDB.Logger?.CompactionStart(totalWaste);
@@ -180,7 +187,7 @@ namespace BTDB.KVDBLayer
             var total = 0ul;
             foreach (var fileStat in _fileStats)
             {
-                var waste = fileStat.CalcWaste();
+                var waste = fileStat.CalcWasteUptodate();
                 if (waste > 1024) total += waste;
             }
             return total;
@@ -193,8 +200,8 @@ namespace BTDB.KVDBLayer
             var bestFile = 0u;
             for (var index = 0u; index < _fileStats.Length; index++)
             {
-                var waste = _fileStats[index].CalcWaste();
-                if (waste <= bestWaste || space < _fileStats[index].CalcUsed()) continue;
+                var waste = _fileStats[index].CalcWasteUptodate();
+                if (waste <= bestWaste || space < _fileStats[index].CalcUsedUptodate()) continue;
                 bestWaste = waste;
                 bestFile = index;
             }
@@ -213,14 +220,14 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void CalculateFileUsefullness()
+        void CalculateFileUsefullness(IBTreeRootNode root, bool uptodate)
         {
-            _root.Iterate((valueFileId, valueOfs, valueSize) =>
+            root.Iterate((valueFileId, valueOfs, valueSize) =>
                 {
                     var id = valueFileId;
                     var fileStats = _fileStats;
                     _cancellation.ThrowIfCancellationRequested();
-                    if (id < fileStats.Length) fileStats[id].AddLength((uint)Math.Abs(valueSize));
+                    if (id < fileStats.Length) fileStats[id].AddLength((uint)Math.Abs(valueSize), uptodate);
                 });
         }
     }
