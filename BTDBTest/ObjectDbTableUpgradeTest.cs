@@ -305,5 +305,46 @@ namespace BTDBTest
             }
         }
 
+        public class JobV21
+        {
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+
+            [SecondaryKey("Name", Order = 2)]
+            public string Name { get; set; }
+
+            [SecondaryKey("Name", Order = 1)]
+            [SecondaryKey("Cost", IncludePrimaryKeyOrder = 1)]
+            public uint Cost { get; set; }
+        }
+
+        public interface IJobTable21
+        {
+            void Insert(JobV21 job);
+            JobV21 FindByNameOrDefault(uint cost, string name);
+        }
+
+        [Fact]
+        public void ModifiedIndexesAreRecalculated()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable2>("Job");
+                var jobTable = creator(tr);
+                var job = new JobV2 { Id = 11, Name = "Code", Cost = 1000 };
+                jobTable.Insert(job);
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable21>("Job");
+                var jobTable = creator(tr);
+                var j = jobTable.FindByNameOrDefault(1000, "Code");
+                Assert.NotNull(j);
+                Assert.Equal("Code", j.Name);
+                tr.Commit();
+            }
+        }
     }
 }

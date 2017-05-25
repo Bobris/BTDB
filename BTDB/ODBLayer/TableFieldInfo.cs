@@ -6,12 +6,62 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
+    public class UnresolvedTableFieldInfo : TableFieldInfo
+    {
+        readonly string _handlerName;
+        readonly byte[] _configuration;
+        readonly string _tableName;
+        readonly FieldHandlerOptions _handlerOptions;
+
+        UnresolvedTableFieldInfo(string name, string handlerName, byte[] configuration,
+                                 string tableName, FieldHandlerOptions handlerOptions)
+            : base(name, null)
+        {
+            _handlerName = handlerName;
+            _configuration = configuration;
+            _tableName = tableName;
+            _handlerOptions = handlerOptions;
+        }
+
+        internal static UnresolvedTableFieldInfo Load(AbstractBufferedReader reader,
+            string tableName, FieldHandlerOptions handlerOptions)
+        {
+            var name = reader.ReadString();
+            var handlerName = reader.ReadString();
+            var configuration = reader.ReadByteArray();
+            return new UnresolvedTableFieldInfo(name, handlerName, configuration, tableName, handlerOptions);
+        }
+
+        internal TableFieldInfo Resolve(IFieldHandlerFactory fieldHandlerFactory)
+        {
+            var fieldHandler = fieldHandlerFactory.CreateFromName(_handlerName, _configuration, _handlerOptions);
+            if (fieldHandler == null) throw new BTDBException(
+                $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{_name}");
+            return Create(_name, fieldHandler);
+        }
+
+        internal static bool Equal(TableFieldInfo a, UnresolvedTableFieldInfo b)
+        {
+            if (a.Name != b.Name) return false;
+            var ha = a.Handler;
+            if (ha.Name != b._handlerName) return false;
+            var ca = ha.Configuration;
+            var cb = b._configuration;
+            if (ca == cb) return true;
+            if (ca == null || cb == null) return false;
+            if (ca.Length != cb.Length) return false;
+            if (BitArrayManipulation.CompareByteArray(ca, ca.Length, cb, cb.Length) != 0) return false;
+            return true;
+        }
+
+    }
+
     public class TableFieldInfo
     {
-        readonly string _name;
+        protected readonly string _name;
         readonly IFieldHandler _handler;
 
-        TableFieldInfo(string name, IFieldHandler handler)
+        protected TableFieldInfo(string name, IFieldHandler handler)
         {
             _name = name;
             _handler = handler;
@@ -31,6 +81,11 @@ namespace BTDB.ODBLayer
             if (fieldHandler == null) throw new BTDBException(
                 $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
             return new TableFieldInfo(name, fieldHandler);
+        }
+
+        internal static TableFieldInfo Create(string name, IFieldHandler handler)
+        {
+            return new TableFieldInfo(name, handler);
         }
 
         public static TableFieldInfo Build(string tableName, PropertyInfo pi, IFieldHandlerFactory fieldHandlerFactory,
@@ -65,4 +120,6 @@ namespace BTDB.ODBLayer
             return true;
         }
     }
+
+
 }

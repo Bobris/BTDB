@@ -82,8 +82,9 @@ namespace BTDB.ODBLayer
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
             _clientType = clientType;
+            LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
-            LoadVersionInfos(tr.KeyValueDBTransaction);
+            ResolveVersionInfos();
             ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
@@ -209,7 +210,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void LoadVersionInfos(IKeyValueDBTransaction tr)
+        void LoadUnresolvedVersionInfos(IKeyValueDBTransaction tr)
         {
             LastPersistedVersion = 0;
             var writer = new ByteBufferWriter();
@@ -224,10 +225,19 @@ namespace BTDB.ODBLayer
                 keyReader.Restart();
                 valueReader.Restart();
                 LastPersistedVersion = keyReader.ReadVUInt32();
-                var relationVersionInfo = RelationVersionInfo.Load(valueReader,
-                    _relationInfoResolver.FieldHandlerFactory, _name);
+                var relationVersionInfo = RelationVersionInfo.LoadUnresolved(valueReader, _name);
                 _relationVersions[LastPersistedVersion] = relationVersionInfo;
             } while (tr.FindNextKey());
+        }
+
+        void ResolveVersionInfos()
+        {
+            foreach (var version in _relationVersions)
+            {
+                if (version.Key == ClientTypeVersion)
+                    continue;
+                version.Value.ResolveFieldHandlers(_relationInfoResolver.FieldHandlerFactory);
+            }
         }
 
         internal uint Id => _id;

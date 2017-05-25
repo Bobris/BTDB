@@ -229,27 +229,28 @@ namespace BTDB.ODBLayer
         uint ReadRelationVersions(uint relationIndex, string name, Dictionary<uint, RelationVersionInfo> relationVersions)
         {
             uint lastPersistedVersion = 0;
+            var relationInfoResolver = new RelationInfoResolver((ObjectDB)_tr.Owner);
+
+            var writer = new ByteBufferWriter();
+            writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
+            writer.WriteVUInt32(relationIndex);
+            _trkv.SetKeyPrefix(writer.Data);
+            if (!_trkv.FindFirstKey())
             {
-                var relationInfoResolver = new RelationInfoResolver((ObjectDB)_tr.Owner);
-                var writer = new ByteBufferWriter();
-                writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
-                writer.WriteVUInt32(relationIndex);
-                _trkv.SetKeyPrefix(writer.Data);
-                if (!_trkv.FindFirstKey())
-                {
-                    return lastPersistedVersion;
-                }
-                var keyReader = new KeyValueDBKeyReader(_trkv);
-                var valueReader = new KeyValueDBValueReader(_trkv);
-                do
-                {
-                    keyReader.Restart();
-                    valueReader.Restart();
-                    lastPersistedVersion = keyReader.ReadVUInt32();
-                    relationVersions[lastPersistedVersion] = RelationVersionInfo.Load(valueReader,
-                        relationInfoResolver.FieldHandlerFactory, name);
-                } while (_trkv.FindNextKey());
+                return lastPersistedVersion;
             }
+            var keyReader = new KeyValueDBKeyReader(_trkv);
+            var valueReader = new KeyValueDBValueReader(_trkv);
+            do
+            {
+                keyReader.Restart();
+                valueReader.Restart();
+                lastPersistedVersion = keyReader.ReadVUInt32();
+                var relationVersionInfo = RelationVersionInfo.LoadUnresolved(valueReader, name);
+                relationVersionInfo.ResolveFieldHandlers(relationInfoResolver.FieldHandlerFactory);
+                relationVersions[lastPersistedVersion] = relationVersionInfo;
+            } while (_trkv.FindNextKey());
+
             return lastPersistedVersion;
         }
 
