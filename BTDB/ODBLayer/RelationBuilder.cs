@@ -232,17 +232,17 @@ namespace BTDB.ODBLayer
                 throw new BTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
-        static Func<IObjectDBTransaction, T> BuildRelationCreatorInstance<T>(Type classImplType, string relationName, RelationInfo relationInfo)
+        static Func<IObjectDBTransaction, T1> BuildRelationCreatorInstance<T1>(Type classImplType, string relationName, RelationInfo relationInfo)
         {
-            var methodBuilder = ILBuilder.Instance.NewMethod("RelationFactory" + relationName, typeof(Func<IObjectDBTransaction, T>), typeof(RelationInfo));
+            var methodBuilder = ILBuilder.Instance.NewMethod("RelationFactory" + relationName, typeof(Func<IObjectDBTransaction, T1>), typeof(RelationInfo));
             var ilGenerator = methodBuilder.Generator;
             ilGenerator
                 .Ldarg(1)
                 .Ldarg(0)
                 .Newobj(classImplType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
-                .Castclass(typeof(T))
+                .Castclass(typeof(T1))
                 .Ret();
-            return (Func<IObjectDBTransaction, T>)methodBuilder.Create(relationInfo);
+            return (Func<IObjectDBTransaction, T1>)methodBuilder.Create(relationInfo);
         }
 
          void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,

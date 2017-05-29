@@ -673,7 +673,7 @@ namespace BTDBTest
                 AdvancedEraseRangeWorks(range[0], range[1], range[2]);
         }
 
-        public void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
+        void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {

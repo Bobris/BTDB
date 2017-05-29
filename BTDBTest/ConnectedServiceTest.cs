@@ -104,7 +104,7 @@ namespace BTDBTest
             var i1 = _second.QueryRemoteService<IIface1>();
             Assert.Equal(2, i1.Meth1("Hi"));
             Assert.Equal("Hello World", i1.Meth2());
-            Assert.Equal(true, i1.Meth3(true, true));
+            Assert.True(i1.Meth3(true, true));
             i1.Meth4();
             Assert.True(service.Meth4Called);
         }
@@ -134,7 +134,7 @@ namespace BTDBTest
         {
             Assert.Equal(2, i1.Meth1("Hi").Result);
             Assert.Equal("Hello World", i1.Meth2().Result);
-            Assert.Equal(true, i1.Meth3(true, true).Result);
+            Assert.True(i1.Meth3(true, true).Result);
             i1.Meth4().Wait();
         }
 

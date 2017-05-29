@@ -323,7 +323,7 @@ namespace BTDBTest
                 foundPerson = personSimpleTable.FindByIdOrDefault(person.TenantId, person.Email);
                 Assert.True(person.Equals(foundPerson));
                 foundPerson = personSimpleTable.FindByIdOrDefault(0, "no@no.cz");
-                Assert.Equal(null, foundPerson);
+                Assert.Null(foundPerson);
             }
         }
 
@@ -610,7 +610,7 @@ namespace BTDBTest
             {
                 var jobTable = creator(tr);
                 var job = jobTable.FindByNameOrDefault("Dude");
-                Assert.Equal(null, job);
+                Assert.Null(job);
                 job = jobTable.FindByNameOrDefault("Code");
                 Assert.Equal(11u, job.Id);
                 Assert.True(jobTable.RemoveById(11));
