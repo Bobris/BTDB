@@ -360,7 +360,7 @@ namespace BTDB.ODBLayer
                     {
                         var fi = tvi[i];
                         var skipField = skip || _visitor != null && !_visitor.StartField(fi.Name);
-                        IterateHandler(reader, fi.Handler, skipField, knownInlineRefs);
+                        IterateHandler(reader, fi.Handler, skipField, new HashSet<int>());
                         if (!skipField) _visitor?.EndField();
                     }
                     if (!skip) _visitor?.EndInlineObject();

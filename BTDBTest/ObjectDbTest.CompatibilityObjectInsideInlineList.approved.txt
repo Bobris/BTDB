@@ -471,6 +471,7 @@ ScalarObj Neopost
 ScalarStr Neopost
 EndField
 StartField BarcodeSetting
+Inline ref -1
 Used key: 00 00|09 Value len:15
 Used key: 00 01|09 01 Value len:259
 StartInlineObject 9-BarcodeSetting-1
@@ -483,6 +484,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 Used key: 00 00|0A Value len:10
 Used key: 00 01|0A 01 Value len:51
 StartInlineObject 10-QuietZone-1
@@ -501,6 +503,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 Used key: 00 00|0B Value len:11
 Used key: 00 01|0B 01 Value len:65
 StartInlineObject 11-OmrSetting-1
@@ -519,6 +522,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 Used key: 00 00|0C Value len:14
 Used key: 00 01|0C 01 Value len:59
 StartInlineObject 12-Code39Setting-1
@@ -537,6 +541,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 Used key: 00 00|0D Value len:18
 Used key: 00 01|0D 01 Value len:69
 StartInlineObject 13-DataMatrixSetting-1
@@ -2482,6 +2487,7 @@ ScalarObj SequenceCheck
 ScalarStr SequenceCheck
 EndField
 StartField Encoding
+Inline ref -1
 Used key: 00 00|0F Value len:9
 Used key: 00 01|0F 01 Value len:479
 StartInlineObject 15-Encoding-1
@@ -3806,6 +3812,7 @@ ScalarObj NTL
 ScalarStr NTL
 EndField
 StartField BarcodeSetting
+Inline ref -1
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -3816,6 +3823,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -3832,6 +3840,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -3848,6 +3857,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -3864,6 +3874,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -6007,6 +6018,7 @@ ScalarObj SequenceCheck
 ScalarStr SequenceCheck
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Binary
@@ -8375,6 +8387,7 @@ ScalarObj Neopost
 ScalarStr Neopost
 EndField
 StartField BarcodeSetting
+Inline ref -1
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -8385,6 +8398,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -8401,6 +8415,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -8417,6 +8432,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -8433,6 +8449,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -8455,6 +8472,7 @@ ScalarObj PageNofM
 ScalarStr PageNofM
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -8864,6 +8882,7 @@ ScalarObj Insert
 ScalarStr Insert
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9022,6 +9041,7 @@ ScalarObj Accumulate
 ScalarStr Accumulate
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9180,6 +9200,7 @@ ScalarObj Divert1
 ScalarStr Divert1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9338,6 +9359,7 @@ ScalarObj Divert2
 ScalarStr Divert2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9496,6 +9518,7 @@ ScalarObj SelectiveFeed1
 ScalarStr SelectiveFeed1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9654,6 +9677,7 @@ ScalarObj SelectiveFeed2
 ScalarStr SelectiveFeed2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9812,6 +9836,7 @@ ScalarObj SelectiveFeed3
 ScalarStr SelectiveFeed3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -9970,6 +9995,7 @@ ScalarObj SelectiveFeed4
 ScalarStr SelectiveFeed4
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10128,6 +10154,7 @@ ScalarObj SelectiveFeed5
 ScalarStr SelectiveFeed5
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10286,6 +10313,7 @@ ScalarObj SelectiveFeed6
 ScalarStr SelectiveFeed6
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10444,6 +10472,7 @@ ScalarObj SelectiveFeed7
 ScalarStr SelectiveFeed7
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10602,6 +10631,7 @@ ScalarObj SelectiveFeed8
 ScalarStr SelectiveFeed8
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10760,6 +10790,7 @@ ScalarObj SealingControl
 ScalarStr SealingControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -10918,6 +10949,7 @@ ScalarObj Envelope1
 ScalarStr Envelope1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11076,6 +11108,7 @@ ScalarObj Envelope2
 ScalarStr Envelope2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11234,6 +11267,7 @@ ScalarObj Envelope3
 ScalarStr Envelope3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11392,6 +11426,7 @@ ScalarObj Exit1
 ScalarStr Exit1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11550,6 +11585,7 @@ ScalarObj Exit2
 ScalarStr Exit2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11708,6 +11744,7 @@ ScalarObj Exit3
 ScalarStr Exit3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -11866,6 +11903,7 @@ ScalarObj Stop
 ScalarStr Stop
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -12024,6 +12062,7 @@ ScalarObj CustomerId
 ScalarStr CustomerId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -12700,6 +12739,7 @@ ScalarObj NTL "Alpha" Barcode
 ScalarStr NTL "Alpha" Barcode
 EndField
 StartField BarcodeSetting
+Inline ref -1
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -12710,6 +12750,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -12726,6 +12767,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -12742,6 +12784,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -12758,6 +12801,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -12780,6 +12824,7 @@ ScalarObj JobId
 ScalarStr JobId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -12938,6 +12983,7 @@ ScalarObj MailpieceId
 ScalarStr MailpieceId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -13096,6 +13142,7 @@ ScalarObj EndOfGroup
 ScalarStr EndOfGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -13254,6 +13301,7 @@ ScalarObj FirstOfGroup
 ScalarStr FirstOfGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -13439,6 +13487,7 @@ ScalarObj Last
 ScalarStr Last
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -13519,6 +13568,7 @@ ScalarObj EndOfJob
 ScalarStr EndOfJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -13674,6 +13724,7 @@ ScalarObj ForcedFold
 ScalarStr ForcedFold
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -13832,6 +13883,7 @@ ScalarObj PrintOnlyOnFirstPage
 ScalarStr PrintOnlyOnFirstPage
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsNumberOfSheets
@@ -14037,6 +14089,7 @@ ScalarObj SelectiveFeed1
 ScalarStr SelectiveFeed1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14195,6 +14248,7 @@ ScalarObj SelectiveFeed2
 ScalarStr SelectiveFeed2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14353,6 +14407,7 @@ ScalarObj SelectiveFeed3
 ScalarStr SelectiveFeed3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14511,6 +14566,7 @@ ScalarObj SelectiveFeed4
 ScalarStr SelectiveFeed4
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14669,6 +14725,7 @@ ScalarObj SelectiveFeed5
 ScalarStr SelectiveFeed5
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14827,6 +14884,7 @@ ScalarObj SelectiveFeed6
 ScalarStr SelectiveFeed6
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -14985,6 +15043,7 @@ ScalarObj SelectiveFeed7
 ScalarStr SelectiveFeed7
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15143,6 +15202,7 @@ ScalarObj SelectiveFeed8
 ScalarStr SelectiveFeed8
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15301,6 +15361,7 @@ ScalarObj SelectiveFeed9
 ScalarStr SelectiveFeed9
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15459,6 +15520,7 @@ ScalarObj SelectiveFeed10
 ScalarStr SelectiveFeed10
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15617,6 +15679,7 @@ ScalarObj SelectiveFeed11
 ScalarStr SelectiveFeed11
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15775,6 +15838,7 @@ ScalarObj SelectiveFeed12
 ScalarStr SelectiveFeed12
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -15933,6 +15997,7 @@ ScalarObj SelectiveFeed13
 ScalarStr SelectiveFeed13
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -16091,6 +16156,7 @@ ScalarObj SelectiveFeed14
 ScalarStr SelectiveFeed14
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -16249,6 +16315,7 @@ ScalarObj SelectiveFeed15
 ScalarStr SelectiveFeed15
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -16407,6 +16474,7 @@ ScalarObj Divert1
 ScalarStr Divert1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -16565,6 +16633,7 @@ ScalarObj Divert2
 ScalarStr Divert2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -16723,6 +16792,7 @@ ScalarObj Divert3
 ScalarStr Divert3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -16881,6 +16951,7 @@ ScalarObj InkMark1
 ScalarStr InkMark1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17039,6 +17110,7 @@ ScalarObj InkMark2
 ScalarStr InkMark2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17197,6 +17269,7 @@ ScalarObj Envelope1
 ScalarStr Envelope1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17355,6 +17428,7 @@ ScalarObj Envelope2
 ScalarStr Envelope2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17513,6 +17587,7 @@ ScalarObj Envelope3
 ScalarStr Envelope3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17671,6 +17746,7 @@ ScalarObj JogControl
 ScalarStr JogControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17829,6 +17905,7 @@ ScalarObj SealingControl
 ScalarStr SealingControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -17987,6 +18064,7 @@ ScalarObj FormIndexInJob
 ScalarStr FormIndexInJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -18145,6 +18223,7 @@ ScalarObj FormIndexInGroup
 ScalarStr FormIndexInGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -18303,6 +18382,7 @@ ScalarObj Matching
 ScalarStr Matching
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -18461,6 +18541,7 @@ ScalarObj GroupIndexInJob
 ScalarStr GroupIndexInJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -18619,6 +18700,7 @@ ScalarObj FormCountInGroup
 ScalarStr FormCountInGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharactersResetOnOverflow
@@ -18777,6 +18859,7 @@ ScalarObj Franker1
 ScalarStr Franker1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -18935,6 +19018,7 @@ ScalarObj Franker2
 ScalarStr Franker2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -19093,6 +19177,7 @@ ScalarObj CustomerId
 ScalarStr CustomerId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -20594,6 +20679,7 @@ ScalarObj Neopost
 ScalarStr Neopost
 EndField
 StartField BarcodeSetting
+Inline ref -1
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -20604,6 +20690,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -20620,6 +20707,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -20636,6 +20724,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -20652,6 +20741,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -20674,6 +20764,7 @@ ScalarObj PageNofM
 ScalarStr PageNofM
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -21081,6 +21172,7 @@ ScalarObj Insert
 ScalarStr Insert
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -21239,6 +21331,7 @@ ScalarObj Accumulate
 ScalarStr Accumulate
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -21397,6 +21490,7 @@ ScalarObj Divert1
 ScalarStr Divert1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -21555,6 +21649,7 @@ ScalarObj Divert2
 ScalarStr Divert2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -21713,6 +21808,7 @@ ScalarObj SelectiveFeed1
 ScalarStr SelectiveFeed1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -21871,6 +21967,7 @@ ScalarObj SelectiveFeed2
 ScalarStr SelectiveFeed2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22029,6 +22126,7 @@ ScalarObj SelectiveFeed3
 ScalarStr SelectiveFeed3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22187,6 +22285,7 @@ ScalarObj SelectiveFeed4
 ScalarStr SelectiveFeed4
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22345,6 +22444,7 @@ ScalarObj SelectiveFeed5
 ScalarStr SelectiveFeed5
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22503,6 +22603,7 @@ ScalarObj SelectiveFeed6
 ScalarStr SelectiveFeed6
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22661,6 +22762,7 @@ ScalarObj SelectiveFeed7
 ScalarStr SelectiveFeed7
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22819,6 +22921,7 @@ ScalarObj SelectiveFeed8
 ScalarStr SelectiveFeed8
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -22977,6 +23080,7 @@ ScalarObj SealingControl
 ScalarStr SealingControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23135,6 +23239,7 @@ ScalarObj Envelope1
 ScalarStr Envelope1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23293,6 +23398,7 @@ ScalarObj Envelope2
 ScalarStr Envelope2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23451,6 +23557,7 @@ ScalarObj Envelope3
 ScalarStr Envelope3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23609,6 +23716,7 @@ ScalarObj Exit1
 ScalarStr Exit1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23767,6 +23875,7 @@ ScalarObj Exit2
 ScalarStr Exit2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -23925,6 +24034,7 @@ ScalarObj Exit3
 ScalarStr Exit3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -24083,6 +24193,7 @@ ScalarObj Stop
 ScalarStr Stop
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj Hexadecimal
@@ -24241,6 +24352,7 @@ ScalarObj CustomerId
 ScalarStr CustomerId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -24917,6 +25029,7 @@ ScalarObj NTL "Alpha" DataMatrix
 ScalarStr NTL "Alpha" DataMatrix
 EndField
 StartField BarcodeSetting
+Inline ref -1
 StartInlineObject 9-BarcodeSetting-1
 StartField TopPosition
 ScalarObj 0.015
@@ -24927,6 +25040,7 @@ ScalarObj 0.007
 ScalarStr 0.007
 EndField
 StartField QuietZone
+Inline ref -1
 StartInlineObject 10-QuietZone-1
 StartField VerticalPadding
 ScalarObj 0.0085
@@ -24943,6 +25057,7 @@ ScalarObj Vertical
 ScalarStr Vertical
 EndField
 StartField OmrSetting
+Inline ref -2
 StartInlineObject 11-OmrSetting-1
 StartField WidthOfMark
 ScalarObj 0.009
@@ -24959,6 +25074,7 @@ EndField
 EndInlineObject
 EndField
 StartField Code39Setting
+Inline ref -3
 StartInlineObject 12-Code39Setting-1
 StartField Height
 ScalarObj 0.009
@@ -24975,6 +25091,7 @@ EndField
 EndInlineObject
 EndField
 StartField DataMatrixSetting
+Inline ref -4
 StartInlineObject 13-DataMatrixSetting-1
 StartField CellSize
 ScalarObj 0.000381
@@ -24997,6 +25114,7 @@ ScalarObj JobId
 ScalarStr JobId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -25155,6 +25273,7 @@ ScalarObj MailpieceId
 ScalarStr MailpieceId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None
@@ -25313,6 +25432,7 @@ ScalarObj EndOfGroup
 ScalarStr EndOfGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -25471,6 +25591,7 @@ ScalarObj FirstOfGroup
 ScalarStr FirstOfGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -25656,6 +25777,7 @@ ScalarObj Last
 ScalarStr Last
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -25736,6 +25858,7 @@ ScalarObj EndOfJob
 ScalarStr EndOfJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -25891,6 +26014,7 @@ ScalarObj ForcedFold
 ScalarStr ForcedFold
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsFeederControl
@@ -26049,6 +26173,7 @@ ScalarObj PrintOnlyOnFirstPage
 ScalarStr PrintOnlyOnFirstPage
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsNumberOfSheets
@@ -26254,6 +26379,7 @@ ScalarObj SelectiveFeed1
 ScalarStr SelectiveFeed1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -26412,6 +26538,7 @@ ScalarObj SelectiveFeed2
 ScalarStr SelectiveFeed2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -26570,6 +26697,7 @@ ScalarObj SelectiveFeed3
 ScalarStr SelectiveFeed3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -26728,6 +26856,7 @@ ScalarObj SelectiveFeed4
 ScalarStr SelectiveFeed4
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -26886,6 +27015,7 @@ ScalarObj SelectiveFeed5
 ScalarStr SelectiveFeed5
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27044,6 +27174,7 @@ ScalarObj SelectiveFeed6
 ScalarStr SelectiveFeed6
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27202,6 +27333,7 @@ ScalarObj SelectiveFeed7
 ScalarStr SelectiveFeed7
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27360,6 +27492,7 @@ ScalarObj SelectiveFeed8
 ScalarStr SelectiveFeed8
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27518,6 +27651,7 @@ ScalarObj SelectiveFeed9
 ScalarStr SelectiveFeed9
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27676,6 +27810,7 @@ ScalarObj SelectiveFeed10
 ScalarStr SelectiveFeed10
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27834,6 +27969,7 @@ ScalarObj SelectiveFeed11
 ScalarStr SelectiveFeed11
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -27992,6 +28128,7 @@ ScalarObj SelectiveFeed12
 ScalarStr SelectiveFeed12
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -28150,6 +28287,7 @@ ScalarObj SelectiveFeed13
 ScalarStr SelectiveFeed13
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -28308,6 +28446,7 @@ ScalarObj SelectiveFeed14
 ScalarStr SelectiveFeed14
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -28466,6 +28605,7 @@ ScalarObj SelectiveFeed15
 ScalarStr SelectiveFeed15
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -28624,6 +28764,7 @@ ScalarObj Divert1
 ScalarStr Divert1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -28782,6 +28923,7 @@ ScalarObj Divert2
 ScalarStr Divert2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -28940,6 +29082,7 @@ ScalarObj Divert3
 ScalarStr Divert3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29098,6 +29241,7 @@ ScalarObj InkMark1
 ScalarStr InkMark1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29256,6 +29400,7 @@ ScalarObj InkMark2
 ScalarStr InkMark2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29414,6 +29559,7 @@ ScalarObj Envelope1
 ScalarStr Envelope1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29572,6 +29718,7 @@ ScalarObj Envelope2
 ScalarStr Envelope2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29730,6 +29877,7 @@ ScalarObj Envelope3
 ScalarStr Envelope3
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -29888,6 +30036,7 @@ ScalarObj JogControl
 ScalarStr JogControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -30046,6 +30195,7 @@ ScalarObj SealingControl
 ScalarStr SealingControl
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsDivertUnits
@@ -30204,6 +30354,7 @@ ScalarObj FormIndexInJob
 ScalarStr FormIndexInJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -30362,6 +30513,7 @@ ScalarObj FormIndexInGroup
 ScalarStr FormIndexInGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -30520,6 +30672,7 @@ ScalarObj Matching
 ScalarStr Matching
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -30678,6 +30831,7 @@ ScalarObj GroupIndexInJob
 ScalarStr GroupIndexInJob
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -30836,6 +30990,7 @@ ScalarObj FormCountInGroup
 ScalarStr FormCountInGroup
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharactersResetOnOverflow
@@ -30994,6 +31149,7 @@ ScalarObj Franker1
 ScalarStr Franker1
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -31152,6 +31308,7 @@ ScalarObj Franker2
 ScalarStr Franker2
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj BcsCharacters
@@ -31310,6 +31467,7 @@ ScalarObj CustomerId
 ScalarStr CustomerId
 EndField
 StartField Encoding
+Inline ref -1
 StartInlineObject 15-Encoding-1
 StartField Type
 ScalarObj None

@@ -17,6 +17,7 @@ Used key: 00 00|02 Value len:4
 Used key: 00 01|02 01 Value len:19
 StartInlineObject 2-Job-1
 StartField Duty
+Inline ref -1
 Used key: 00 00|03 Value len:5
 Used key: 00 01|03 01 Value len:14
 StartInlineObject 3-Duty-1
