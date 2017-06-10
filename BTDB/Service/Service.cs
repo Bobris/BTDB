@@ -250,7 +250,8 @@ namespace BTDB.Service
             TypeInf typeInf;
             _serverTypeInfs.TryGetValue(typeId, out typeInf);
             var methodInf = typeInf.MethodInfs[binding.MethodId];
-            var returnType = methodInf.MethodInfo.ReturnType.UnwrapTask();
+            var originalReturnType = methodInf.MethodInfo.ReturnType;
+            var returnType = originalReturnType.UnwrapTask();
             IFieldHandler resultFieldHandler = null;
             if (methodInf.ResultFieldHandler != null)
                 resultFieldHandler = methodInf.ResultFieldHandler.SpecializeSaveForType(returnType);
@@ -318,7 +319,7 @@ namespace BTDB.Service
                 .Callvirt(methodInf.MethodInfo);
             if (binding.OneWay)
             {
-                if (returnType != typeof(void)) ilGenerator.Pop();
+                if (originalReturnType != typeof(void)) ilGenerator.Pop();
             }
             else
             {
