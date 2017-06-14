@@ -181,17 +181,17 @@ It is always possible to insert duplicate items for secondary key (it would caus
 ### List (by secondary index)###
     IEnumerator<Person> ListByAge(AdvancedEnumeratorParam<uint> param);
 
-List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](..\BTDBTest\\ObjectDbTableTest.cs)
+List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 ``ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)``
 
 
 ### Upgrade ###
 When secondary definition is changed (for example new index is defined) then it is automatically added/recalculated/removed in `InitRelation` call. You can see examples in 
-[ObjectDbTableUpgradeTest](..\BTDBTest\ObjectDbTableUpgradeTest.cs)
+[ObjectDbTableUpgradeTest](../BTDBTest/ObjectDbTableUpgradeTest.cs)
 
 ## Free content ##
 During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks. You can see examples in
-[ObjectDbTableFreeContentTest](..\BTDBTest\ObjectDbTableFreeContentTest.cs)
+[ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
 ### StoredInline ###
 All data except IDictionaries are by default stored inline - it is not necessary to mark objects as `[StoredInline]`
