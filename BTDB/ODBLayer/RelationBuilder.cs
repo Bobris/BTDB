@@ -287,9 +287,10 @@ namespace BTDB.ODBLayer
         {
             var isPrefixBased = ReturnsEnumerableOfClientType(methodReturnType, _relationInfo.ClientType);
             if (isPrefixBased)
-                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
-            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
+                WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
+            else
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
             var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
@@ -323,9 +324,10 @@ namespace BTDB.ODBLayer
         {
             var isPrefixBased = methodReturnType == typeof(int); //returns number of removed items
             if (isPrefixBased)
-                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
-            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
+                WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
+            else
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
             var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
@@ -404,10 +406,8 @@ namespace BTDB.ODBLayer
         void CreateMethodListById(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
             ParameterInfo[] methodParameters, IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter, IILLocal writerLoc)
         {
-            WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
+            WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
 
-            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
             var paramsCount = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
@@ -552,10 +552,7 @@ namespace BTDB.ODBLayer
                 .Stloc(writerLoc);
 
             Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
-
-            WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
-            //ByteBuffered.WriteVUInt32(RelationInfo.Id);
-            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
+            WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
 
             var keyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
             var paramCount = methodParameters.Length - 1; //last param is key proposition
@@ -637,10 +634,10 @@ namespace BTDB.ODBLayer
 
         static void WriteIdIl(IILGen ilGenerator, Action<IILGen> pushWriter, int id)
         {
-            ilGenerator
-                .Do(pushWriter)
-                .LdcI4(id)
-                .Call(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+            var bytes = new byte[PackUnpack.LengthVUInt((uint)id)];
+            int o = 0;
+            PackUnpack.PackVUInt(bytes, ref o, (uint)id);
+            WriteShortPrefixIl(ilGenerator, pushWriter, bytes);
         }
 
         static void WriteShortPrefixIl(IILGen ilGenerator, Action<IILGen> pushWriter, byte[] prefix)

@@ -271,11 +271,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
-
-            return new RelationEnumerator<T>(_transaction, _relationInfo, keyWriter.Data.ToAsyncSafe(), this);
+            return new RelationEnumerator<T>(_transaction, _relationInfo, ByteBuffer.NewSync(_relationInfo.Prefix), this);
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
@@ -417,11 +413,7 @@ namespace BTDB.ODBLayer
             get
             {
                 _transaction.TransactionProtector.Start();
-                var o = ObjectDB.AllRelationsPKPrefix.Length;
-                var prefix = new byte[o + PackUnpack.LengthVUInt(_relationInfo.Id)];
-                Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
-                PackUnpack.PackVUInt(prefix, ref o, _relationInfo.Id);
-                _transaction.KeyValueDBTransaction.SetKeyPrefix(prefix);
+                _transaction.KeyValueDBTransaction.SetKeyPrefix(_relationInfo.Prefix);
                 return (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();
             } 
         }
