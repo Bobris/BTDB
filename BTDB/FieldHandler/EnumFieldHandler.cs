@@ -272,11 +272,17 @@ namespace BTDB.FieldHandler
         {
             if (typeHandler == this) return this;
             var enumTypeHandler = typeHandler as EnumFieldHandler;
-            if (enumTypeHandler != null)
+            if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
             {
-                if (_signed == enumTypeHandler._signed && new EnumConfiguration(Configuration).IsSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
+                if (type.GetCustomAttributes(typeof (BinaryCompatibilityOnlyAttribute), false).Length != 0)
                 {
-                    return typeHandler;
+                    if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
+                        return typeHandler;
+                }
+                else
+                {
+                    if (new EnumConfiguration(Configuration).IsSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
+                        return typeHandler;
                 }
             }
             if (_enumType == null && type.IsEnum)

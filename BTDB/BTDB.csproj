@@ -116,6 +116,7 @@
     <Compile Include="EventStoreLayer\TypeSerializers.cs" />
     <Compile Include="EventStoreLayer\TypeSerializersMapping.cs" />
     <Compile Include="FieldHandler\BasicSerializersFactory.cs" />
+    <Compile Include="FieldHandler\BinaryCompatibilityOnlyAttribute.cs" />
     <Compile Include="FieldHandler\ByteArrayFieldHandler.cs" />
     <Compile Include="FieldHandler\ByteArrayLastFieldHandler.cs" />
     <Compile Include="FieldHandler\DBIndirect.cs" />

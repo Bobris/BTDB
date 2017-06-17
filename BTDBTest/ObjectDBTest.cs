@@ -2282,7 +2282,51 @@ namespace BTDBTest
                 Assert.Equal("ModifiedRoot", root.Content);
                 Assert.Equal("ModifiedLeft", root.Left.Content);
             }
-
         }
+
+        public enum StateV1
+        {
+            A = 1,
+            B = 2,
+        }
+
+        public class WithState1
+        {
+            public StateV1 State { get; set; }
+            public IDictionary<StateV1, string> S { get; set; }
+        }
+
+        [BinaryCompatibilityOnly]
+        public enum StateV2
+        {
+            A2 = 1,
+            B2 = 2,
+        }
+
+        public class WithState2
+        {
+            public StateV2 State { get; set; }
+            public IDictionary<StateV2, string> S { get; set; }
+        }
+
+        [Fact]
+        public void BinaryCompatibleEnums()
+        {
+            var typeName = _db.RegisterType(typeof(WithState1));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new WithState1 { State = StateV1.A, S = new Dictionary<StateV1, string> { { StateV1.B, "b" } } });
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(WithState2), typeName);
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var v = tr.Enumerate<WithState2>().First();
+                Assert.Equal(StateV2.A2, v.State);
+                Assert.Equal("b", v.S[StateV2.B2]);
+            }
+        }
+
     }
 }
