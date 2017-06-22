@@ -124,6 +124,8 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
+            if (targetType == typeof(object))
+                targetType = GetPreferedType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
             var targetIDictionary = targetType.GetInterface("IDictionary`2") ?? targetType;
             var targetTypeArguments = targetIDictionary.GetGenericArguments();

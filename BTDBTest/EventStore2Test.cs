@@ -203,6 +203,24 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void DeserializesAsObjectClassWithList()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithList { Items = new List<int> { 1 } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
+            dynamic obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(1, obj2.Items[0]);
+        }
+
+        [Fact]
         public void DeserializesClassWithIList()
         {
             var serializer = new EventSerializer();
@@ -273,6 +291,23 @@ namespace BTDBTest
             Assert.Equal(obj, obj2);
         }
 
+        [Fact]
+        public void DeserializesAsObjectClassWithDictionaryOfSimpleTypes()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>() { { 1, "Ahoj" } } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
+            dynamic obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal("Ahoj", obj2.Items[1].ToString());
+        }
 
         public class EventWithIIndirect
         {
