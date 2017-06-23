@@ -493,6 +493,46 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
+        public class DuoRule1
+        {
+            public Rule1 R1 { get; set; }
+            public Rule1 R2 { get; set; }
+        }
+
+        public class DuoDuoRefs
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public DuoRule1 R1 { get; set; }
+            public DuoRule1 R2 { get; set; }
+        }
+
+        public interface IDuoDuoRefsRelation
+        {
+            void Insert(DuoDuoRefs value);
+            DuoDuoRefs FindById(ulong Id);
+        }
+
+        [Fact]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public void DoubleDoubleRefsRelation()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDuoDuoRefsRelation>("DoubleDoubleRefsRelation");
+                var duoRefsRelation = creator(tr);
+                var value = new DuoDuoRefs { Id = 1, R1 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() }, R2=new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() } };
+                duoRefsRelation.Insert(value);
+                value.Id = 2;
+                value.R1.R2 = value.R2.R1;
+                duoRefsRelation.Insert(value);
+                value = duoRefsRelation.FindById(2);
+                Assert.NotSame(value.R1.R2, value.R2.R1); // Reference equality in multiple levels does not work and cannot work due to backward compatibility
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
         public void Dispose()
         {
             _db.Dispose();

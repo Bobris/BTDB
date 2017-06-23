@@ -94,7 +94,7 @@ namespace SimpleTester
                 using (var tr = _db.StartTransaction())
                 {
                     var personTable = _creator(tr);
-                    var en = personTable.ListByEmail(new AdvancedEnumeratorParam<Person>());
+                    var en = personTable.ListByEmail(AdvancedEnumeratorParam<Person>.Instance);
                     while (en.MoveNext())
                     {
                         sum += en.Current.Id;

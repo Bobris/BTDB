@@ -105,7 +105,7 @@ namespace BTDBTest
                 PackVIntIsOrderableForNegative(l);
         }
 
-        public void PackVIntIsOrderableForNegative(long t)
+        void PackVIntIsOrderableForNegative(long t)
         {
             var buf1 = new byte[9];
             var o1 = 0;

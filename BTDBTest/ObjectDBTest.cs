@@ -86,7 +86,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                Assert.Equal(tr.Enumerate<Person>().Count(), 0);
+                Assert.Equal(0, tr.Enumerate<Person>().Count());
             }
         }
 
@@ -204,7 +204,7 @@ namespace BTDBTest
                 var p = tr.Enumerate<PersonNew>().First();
                 Assert.Equal("Bobris", p.Name);
                 Assert.Equal(35u, p.Age);
-                Assert.Equal(null, p.Comment);
+                Assert.Null(p.Comment);
             }
         }
 
@@ -503,7 +503,7 @@ namespace BTDBTest
                 Assert.Equal(new TimeSpan(), o.TimeSpanField);
                 Assert.Equal(new Guid(), o.GuidField);
                 Assert.Equal(TestEnum.Item1, o.EnumField);
-                Assert.Equal(null, o.ByteArrayField);
+                Assert.Null(o.ByteArrayField);
                 Assert.Equal(ByteBuffer.NewEmpty().ToByteArray(), o.ByteBufferField.ToByteArray());
 
                 o.StringField = "Text";
@@ -622,9 +622,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                Assert.Equal(null, root.IntList);
-                Assert.Equal(null, root.StringList);
-                Assert.Equal(null, root.ByteList);
+                Assert.Null(root.IntList);
+                Assert.Null(root.StringList);
+                Assert.Null(root.ByteList);
                 root.IntList = new List<int>();
                 root.StringList = new List<string>();
                 root.ByteList = new List<byte>();
@@ -678,7 +678,7 @@ namespace BTDBTest
                 var root = tr.Singleton<InlineDictionary>();
                 Assert.Equal(2, root.Int2String.Count);
                 Assert.Equal("one", root.Int2String[1]);
-                Assert.Equal(null, root.Int2String[0]);
+                Assert.Null(root.Int2String[0]);
                 root.Int2String.Clear();
                 tr.Store(root);
                 tr.Commit();
@@ -791,7 +791,7 @@ namespace BTDBTest
                 var root = tr.Singleton<SimpleDictionary>();
                 Assert.Equal(2, root.Int2String.Count);
                 Assert.Equal("one", root.Int2String[1]);
-                Assert.Equal(null, root.Int2String[0]);
+                Assert.Null(root.Int2String[0]);
                 root.Int2String.Clear();
                 tr.Commit();
             }
@@ -895,7 +895,7 @@ namespace BTDBTest
                 Assert.NotNull(p);
                 Assert.Equal("Boris", p.Name);
                 Assert.Equal(35u, root.String2Person["Boris"].Age);
-                Assert.Equal(null, root.String2Person["null"]);
+                Assert.Null(root.String2Person["null"]);
                 Assert.Equal(new[] { "Boris", "null" }, root.String2Person.Keys.ToList());
                 Assert.Equal(p, root.String2Person.Values.First());
                 root.String2Person.Clear();
@@ -1717,7 +1717,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var sd = tr.Singleton<SimpleDictionary>().Int2String;
-                Assert.Equal(sd.Count, 3);
+                Assert.Equal(3, sd.Count);
 
                 Assert.Throws<InvalidOperationException>(() =>
                 {
@@ -1837,7 +1837,7 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<GuidMap>().Items;
                 string value;
-                Assert.Equal(true, items.TryGetValue(guid, out value));
+                Assert.True(items.TryGetValue(guid, out value));
 
                 Assert.Equal("a", value);
             }
@@ -1858,7 +1858,7 @@ namespace BTDBTest
             {
                 var items = tr.Singleton<UlongGuidMap>().Items;
                 string value;
-                Assert.Equal(true, items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
+                Assert.True(items.TryGetValue(new UlongGuidKey { Ulong = 1, Guid = guid }, out value));
 
                 Assert.Equal("a", value);
             }
@@ -2193,7 +2193,7 @@ namespace BTDBTest
                 Assert.Equal(1, att.Count);
                 var key = new UserKey() { CompanyId = 1, Email = "nekdo@nekde.net" };
                 Assert.True(att.ContainsKey(key));
-                Assert.Equal(att[key], 101UL);
+                Assert.Equal(101UL, att[key]);
                 tr.Commit();
             }
         }
@@ -2282,7 +2282,51 @@ namespace BTDBTest
                 Assert.Equal("ModifiedRoot", root.Content);
                 Assert.Equal("ModifiedLeft", root.Left.Content);
             }
-
         }
+
+        public enum StateV1
+        {
+            A = 1,
+            B = 2,
+        }
+
+        public class WithState1
+        {
+            public StateV1 State { get; set; }
+            public IDictionary<StateV1, string> S { get; set; }
+        }
+
+        [BinaryCompatibilityOnly]
+        public enum StateV2
+        {
+            A2 = 1,
+            B2 = 2,
+        }
+
+        public class WithState2
+        {
+            public StateV2 State { get; set; }
+            public IDictionary<StateV2, string> S { get; set; }
+        }
+
+        [Fact]
+        public void BinaryCompatibleEnums()
+        {
+            var typeName = _db.RegisterType(typeof(WithState1));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new WithState1 { State = StateV1.A, S = new Dictionary<StateV1, string> { { StateV1.B, "b" } } });
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(WithState2), typeName);
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var v = tr.Enumerate<WithState2>().First();
+                Assert.Equal(StateV2.A2, v.State);
+                Assert.Equal("b", v.S[StateV2.B2]);
+            }
+        }
+
     }
 }

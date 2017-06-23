@@ -162,7 +162,7 @@ namespace BTDBTest
             {
                 //check that db has is not broken after removing unused keys
                 var sports = tr.Singleton<Directory>();
-                Assert.Equal(sports.Dir["chess"].Jobs[0].Duty.Name, "mate");
+                Assert.Equal("mate", sports.Dir["chess"].Jobs[0].Duty.Name);
             }
         }
 

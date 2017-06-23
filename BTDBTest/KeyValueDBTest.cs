@@ -1104,6 +1104,39 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void CompactionStabilizedEvenWithOldTransactions()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 10240, null))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key1, new byte[4000]);
+                        tr.CreateOrUpdateKeyValue(Key2, new byte[4000]);
+                        tr.Commit();
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        tr.CreateOrUpdateKeyValue(_key3, new byte[4000]); // creates new Log
+                        tr.FindExactKey(_key1);
+                        tr.EraseCurrent();
+                        tr.Commit();
+                    }
+                    var longTr = db.StartTransaction();
+                    db.Compact(new CancellationToken());
+                    Assert.Equal(4u, fileCollection.GetCount()); // 2 Logs, 1 values, 1 KeyIndex
+                    db.Compact(new CancellationToken());
+                    Assert.Equal(4u, fileCollection.GetCount()); // 2 Logs, 1 values, 1 KeyIndex
+                    longTr.Dispose();
+                    db.Compact(new CancellationToken());
+                    Assert.Equal(3u, fileCollection.GetCount()); // 1 Log, 1 values, 1 KeyIndex
+                }
+            }
+
+        }
+
+        [Fact]
         public void PreapprovedCommitAndCompaction()
         {
             using (var fileCollection = new InMemoryFileCollection())

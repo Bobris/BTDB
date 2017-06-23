@@ -73,6 +73,7 @@ namespace BTDB.ODBLayer
         internal List<ulong> FreeContentNewDict { get; } = new List<ulong>();
         internal List<ulong> FreeContentOldOid { get; } = new List<ulong>();
         internal List<ulong> FreeContentNewOid { get; } = new List<ulong>();
+        internal byte[] Prefix { get; private set; }
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
                             Type clientType, IInternalObjectDBTransaction tr)
@@ -82,8 +83,10 @@ namespace BTDB.ODBLayer
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
             _clientType = clientType;
+            CalculatePrefix();
+            LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
-            LoadVersionInfos(tr.KeyValueDBTransaction);
+            ResolveVersionInfos();
             ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
@@ -177,8 +180,7 @@ namespace BTDB.ODBLayer
             var keyWriter = new ByteBufferWriter();
 
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-            keyWriter.WriteByteArrayRaw(ObjectDB.AllRelationsPKPrefix);
-            keyWriter.WriteVUInt32(Id);
+            keyWriter.WriteByteArrayRaw(Prefix);
             var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this, keyWriter.GetDataAndRewind().ToAsyncSafe(), new SimpleModificationCounter());
 
             var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
@@ -209,7 +211,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void LoadVersionInfos(IKeyValueDBTransaction tr)
+        void LoadUnresolvedVersionInfos(IKeyValueDBTransaction tr)
         {
             LastPersistedVersion = 0;
             var writer = new ByteBufferWriter();
@@ -224,10 +226,19 @@ namespace BTDB.ODBLayer
                 keyReader.Restart();
                 valueReader.Restart();
                 LastPersistedVersion = keyReader.ReadVUInt32();
-                var relationVersionInfo = RelationVersionInfo.Load(valueReader,
-                    _relationInfoResolver.FieldHandlerFactory, _name);
+                var relationVersionInfo = RelationVersionInfo.LoadUnresolved(valueReader, _name);
                 _relationVersions[LastPersistedVersion] = relationVersionInfo;
             } while (tr.FindNextKey());
+        }
+
+        void ResolveVersionInfos()
+        {
+            foreach (var version in _relationVersions)
+            {
+                if (version.Key == ClientTypeVersion)
+                    continue;
+                version.Value.ResolveFieldHandlers(_relationInfoResolver.FieldHandlerFactory);
+            }
         }
 
         internal uint Id => _id;
@@ -906,6 +917,15 @@ namespace BTDB.ODBLayer
             }
             ilGenerator.Ret();
             return method.Create();
+        }
+
+        void CalculatePrefix()
+        {
+            var o = ObjectDB.AllRelationsPKPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(Id)];
+            Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, Id);
+            Prefix = prefix;
         }
     }
 

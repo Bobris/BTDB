@@ -121,7 +121,7 @@ namespace BTDB.ODBLayer
                                             RelationDBManipulator<T> manipulator)
             : base(tr, relationInfo, keyBytes, manipulator)
         {
-            _skipBytes = ObjectDB.AllRelationsPKPrefix.Length + +PackUnpack.LengthVUInt(relationInfo.Id);
+            _skipBytes = relationInfo.Prefix.Length;
         }
 
         protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
@@ -265,7 +265,7 @@ namespace BTDB.ODBLayer
             _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
             _seekNeeded = true;
-            _lengthOfNonDataPrefix = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(manipulator.RelationInfo.Id);
+            _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
         }
 
         public bool MoveNext()
@@ -486,7 +486,7 @@ namespace BTDB.ODBLayer
                 _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>)manipulator.RelationInfo
                     .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
 
-                _lengthOfNonDataPrefix = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(manipulator.RelationInfo.Id);
+                _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
             }
             
         }

@@ -100,6 +100,7 @@ namespace BTDBTest
             {
                 return Equals(obj as ObjectWithEnum);
             }
+            public override int GetHashCode() => (int)State;
         }
 
         [Fact]
@@ -147,6 +148,8 @@ namespace BTDBTest
             {
                 return Equals(obj as ObjectWithList);
             }
+
+            public override int GetHashCode() => Items?.GetHashCode() ?? 0;
         }
 
         public class ObjectWithIList : IEquatable<ObjectWithIList>
@@ -177,6 +180,8 @@ namespace BTDBTest
             {
                 return Equals(obj as ObjectWithIList);
             }
+
+            public override int GetHashCode() => Items?.GetHashCode() ?? 0;
         }
 
         [Fact]
@@ -195,6 +200,24 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DeserializesAsObjectClassWithList()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithList { Items = new List<int> { 1 } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
+            dynamic obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(1, obj2.Items[0]);
         }
 
         [Fact]
@@ -246,6 +269,8 @@ namespace BTDBTest
             {
                 return Equals(obj as ObjectWithDictionaryOfSimpleType);
             }
+
+            public override int GetHashCode() => Items?.GetHashCode() ?? 0;
         }
 
         [Fact]
@@ -266,6 +291,23 @@ namespace BTDBTest
             Assert.Equal(obj, obj2);
         }
 
+        [Fact]
+        public void DeserializesAsObjectClassWithDictionaryOfSimpleTypes()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>() { { 1, "Ahoj" } } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
+            dynamic obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal("Ahoj", obj2.Items[1].ToString());
+        }
 
         public class EventWithIIndirect
         {
@@ -312,9 +354,9 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             var ev = obj2 as StrangeVisibilities;
-            Assert.Equal(ev.A, "a");
-            Assert.Equal(ev.B, null);
-            Assert.Equal(ev.C, "c");
+            Assert.Equal("a", ev.A);
+            Assert.Null(ev.B);
+            Assert.Equal("c", ev.C);
         }
         public class EventWithUser
         {

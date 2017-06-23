@@ -128,6 +128,17 @@ namespace BTDB.IL.Caching
                 return Equals(obj as IReplay);
             }
 
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = _id;
+                    hashCode = (hashCode * 397) ^ _name.GetHashCode();
+                    hashCode = (hashCode * 397) ^ _returns.GetHashCode();
+                    return hashCode;
+                }
+            }
+
             public object TrueContent()
             {
                 return _trueContent;
@@ -192,6 +203,17 @@ namespace BTDB.IL.Caching
                 return Equals(obj as IReplay);
             }
 
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = _id;
+                    hashCode = (hashCode * 397) ^ _name.GetHashCode();
+                    hashCode = (hashCode * 397) ^ _type.GetHashCode();
+                    return hashCode;
+                }
+            }
+
             public object TrueContent()
             {
                 return _trueContent;
@@ -251,6 +273,17 @@ namespace BTDB.IL.Caching
             public override bool Equals(object obj)
             {
                 return Equals(obj as IReplay);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = _id;
+                    hashCode = (hashCode * 397) ^ _name.GetHashCode();
+                    hashCode = (hashCode * 397) ^ _type.GetHashCode();
+                    return hashCode;
+                }
             }
 
             public object TrueContent()
@@ -329,6 +362,11 @@ namespace BTDB.IL.Caching
                 return Equals(obj as IReplay);
             }
 
+            public override int GetHashCode()
+            {
+                return _id;
+            }
+
             public object TrueContent()
             {
                 return _trueContent;
@@ -383,6 +421,11 @@ namespace BTDB.IL.Caching
             public override bool Equals(object obj)
             {
                 return Equals(obj as IReplay);
+            }
+
+            public override int GetHashCode()
+            {
+                return _id;
             }
 
             public object TrueContent()
