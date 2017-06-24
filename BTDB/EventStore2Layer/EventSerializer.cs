@@ -18,7 +18,7 @@ namespace BTDB.EventStore2Layer
         readonly List<SerializerTypeInfo> _id2Info = new List<SerializerTypeInfo>();
         readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
-        readonly List<object> _visited = new List<object>();
+        readonly Dictionary<object, int> _visited = new Dictionary<object, int>(ReferenceEqualityComparer<object>.Instance);
         readonly ByteBufferWriter _writer = new ByteBufferWriter();
         readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
         bool _newTypeFound;
@@ -330,11 +330,8 @@ namespace BTDB.EventStore2Layer
         public void StoreNewDescriptors(object obj)
         {
             if (obj == null) return;
-            for (var i = 0; i < _visited.Count; i++)
-            {
-                if (_visited[i] == obj) return;
-            }
-            _visited.Add(obj);
+            if (_visited.ContainsKey(obj)) return;
+            _visited.Add(obj, _visited.Count);
             SerializerTypeInfo info;
             var knowDescriptor = obj as IKnowDescriptor;
             if (knowDescriptor != null)
@@ -407,7 +404,7 @@ namespace BTDB.EventStore2Layer
                 {
                     if (old is PlaceHolderDescriptor)
                     {
-                        return ((PlaceHolderDescriptor) old).TypeDesc;
+                        return ((PlaceHolderDescriptor)old).TypeDesc;
                     }
                     if (visited.Contains(old)) return old;
                     visited.Add(old);
@@ -519,14 +516,14 @@ namespace BTDB.EventStore2Layer
                 return;
             }
             var visited = _visited;
-            for (int i = 0; i < visited.Count; i++)
+            int index;
+            if (visited.TryGetValue(obj, out index))
             {
-                if (visited[i] != obj) continue;
                 _writer.WriteUInt8(1); // backreference
-                _writer.WriteVUInt32((uint)i);
+                _writer.WriteVUInt32((uint)index);
                 return;
             }
-            visited.Add(obj);
+            visited.Add(obj, visited.Count);
             SerializerTypeInfo info;
             if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
             {
