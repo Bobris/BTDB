@@ -9,50 +9,8 @@ using BTDB.ODBLayer;
 
 namespace BTDBTest
 {
-    
-
     public class EventStore2Test
     {
-        public class TransactionKey
-        {
-        }
-
-        public class TransactionMigration
-        {
-            public TransactionKey TransactionKey;
-        }
-        public class ComplexObject
-        {
-            public IDictionary<ulong, IList<TransactionMigration>> MigrationRecords { get; set; }
-        }
-
-        [Fact]
-        public void DeserializeComplexObject()
-        {
-            var serializer = new EventSerializer();
-            bool hasMetadata;
-            var obj = new ComplexObject
-            {
-                MigrationRecords = new Dictionary<ulong, IList<TransactionMigration>>()
-                {
-                    { 1, new List<TransactionMigration> {new TransactionMigration()
-                    {
-                        TransactionKey = new TransactionKey()
-                    }}}
-                }
-            };
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
-            serializer.ProcessMetadataLog(meta);
-            var data = serializer.Serialize(out hasMetadata, obj);
-
-            var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
-            deserializer.ProcessMetadataLog(meta);
-            Assert.True(deserializer.Deserialize(out obj2, data));
-            Assert.Equal(obj, obj2);
-        }
-
         [Fact]
         public void SerializingNewObjectsWritesNewMetadata()
         {
