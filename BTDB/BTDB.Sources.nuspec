@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
     <id>BTDB.Sources</id>
-    <version>10.5.0.0</version>
+    <version>10.6.0.0</version>
     <authors>Boris Letocha</authors>
     <owners>Boris Letocha</owners>
     <copyright>Boris Letocha</copyright>
