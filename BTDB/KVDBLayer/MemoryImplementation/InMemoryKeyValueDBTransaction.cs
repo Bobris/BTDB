@@ -251,7 +251,11 @@ namespace BTDB.KVDBLayer
         public void EraseCurrent()
         {
             EnsureValidKey();
-            EraseRange(GetKeyIndex(), GetKeyIndex());
+            var keyIndex = _keyIndex;
+            MakeWrittable();
+            InvalidateCurrentKey();
+            _prefixKeyCount--;
+            BtreeRoot.EraseRange(keyIndex, keyIndex);
         }
 
         public void EraseAll()

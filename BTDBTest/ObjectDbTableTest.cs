@@ -567,6 +567,10 @@ namespace BTDBTest
             [SecondaryKey("PrioritizedName", Order = 2)]
             public string Name { get; set; }
 
+            [SecondaryKey("Look")]
+            public Dictionary<int, int> Lookup { get; set; }
+            public IDictionary<int, int> UnusedDictionary { get; set; }  //test skiping with ctx
+
             [SecondaryKey("PrioritizedName")]
             public short Priority { get; set; }
         }
@@ -592,7 +596,8 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
-                jobTable.Insert(new Job { Id = 11, Name = "Code", Priority = 1 });
+                jobTable.Insert(new Job { Id = 11, Name = "Code", Priority = 1,
+                                          Lookup = new Dictionary<int, int> { { 1, 2 } } });
                 jobTable.Insert(new Job { Id = 22, Name = "Sleep", Priority = 2 });
                 jobTable.Insert(new Job { Id = 33, Name = "Bicycle", Priority = 1 });
                 tr.Commit();
@@ -614,6 +619,7 @@ namespace BTDBTest
                 job = jobTable.FindByNameOrDefault("Code");
                 Assert.Equal(11u, job.Id);
                 Assert.True(jobTable.RemoveById(11));
+                Assert.Null(jobTable.FindByNameOrDefault("Code"));
                 tr.Commit();
             }
         }
@@ -1494,11 +1500,11 @@ namespace BTDBTest
                 table.ApplicationId = 5;
                 table.CompanyId = 7;
 
-                table.Insert(new IdentityUser { IdentityUserId = "i", NormalizedUserName = "a"});
-                table.Insert(new IdentityUser { IdentityUserId = "ii", NormalizedUserName = "b"});
+                table.Insert(new IdentityUser { IdentityUserId = "i", NormalizedUserName = "a" });
+                table.Insert(new IdentityUser { IdentityUserId = "ii", NormalizedUserName = "b" });
 
                 var userRoleTableEnumerator = table.FindById();
-                Assert.Throws<BTDBException>(() =>  userRoleTableEnumerator.Current);
+                Assert.Throws<BTDBException>(() => userRoleTableEnumerator.Current);
                 var counter = 0;
                 while (userRoleTableEnumerator.MoveNext())
                     counter++;
