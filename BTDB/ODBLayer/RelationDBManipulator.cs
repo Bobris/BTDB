@@ -303,17 +303,17 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
         }
 
-        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, string name, T obj)
+        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
         {
             var keyWriter = new ByteBufferWriter();
-            var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex, name);
+            var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
             keyWriter.WriteVUInt32(_relationInfo.Id);
             keyWriter.WriteVUInt32(secondaryKeyIndex); //secondary key index
             keySaver(_transaction, keyWriter, obj, this); //secondary key
             return keyWriter.Data;
         }
 
-        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, string name, ByteBuffer keyBytes, ByteBuffer valueBytes)
+        ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             var keyWriter = new ByteBufferWriter();
             keyWriter.WriteVUInt32(_relationInfo.Id);
@@ -322,7 +322,7 @@ namespace BTDB.ODBLayer
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
 
-            var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex, name);
+            var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
             keySaver(_transaction, keyWriter, keyBytes.ToByteArray(), valueBytes.ToByteArray());
             return keyWriter.Data;
         }
@@ -333,7 +333,7 @@ namespace BTDB.ODBLayer
 
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(sk.Key, sk.Value.Name, obj);
+                var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
                 _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, EmptyBuffer);
             }
         }
@@ -357,8 +357,8 @@ namespace BTDB.ODBLayer
             var secKeys = _relationInfo.ClientRelationVersionInfo.SecondaryKeys;
             foreach (var sk in secKeys)
             {
-                var newKeyBytes = WriteSecondaryKeyKey(sk.Key, sk.Value.Name, newValue);
-                var oldKeyBytes = WriteSecondaryKeyKey(sk.Key, sk.Value.Name, oldKey, oldValue);
+                var newKeyBytes = WriteSecondaryKeyKey(sk.Key, newValue);
+                var oldKeyBytes = WriteSecondaryKeyKey(sk.Key, oldKey, oldValue);
                 if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
                     continue;
                 //remove old index
@@ -376,7 +376,7 @@ namespace BTDB.ODBLayer
 
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(sk.Key, sk.Value.Name, oldKey, oldValue);
+                var keyBytes = WriteSecondaryKeyKey(sk.Key, oldKey, oldValue);
                 if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
                     throw new BTDBException("Error in removing secondary indexes, previous index entry not found.");
                 _transaction.KeyValueDBTransaction.EraseCurrent();

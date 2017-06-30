@@ -41,9 +41,6 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]>>
             _secondaryKeysConvertSavers = new ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]>>();
 
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk value saver
-            _secondaryKeysValueSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
-
         readonly ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>();
 
@@ -443,7 +440,7 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        static void CopyToOutput(IILGen ilGenerator, IFieldHandler valueHandler, IILLocal writerCtxLocal, Action<IILGen> pushWriter, 
+        static void CopyToOutput(IILGen ilGenerator, IFieldHandler valueHandler, IILLocal writerCtxLocal, Action<IILGen> pushWriter,
                                  IFieldHandler skHandler, BufferInfo buffer)
 
         {
@@ -621,36 +618,31 @@ namespace BTDB.ODBLayer
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
         {
-            return _valueLoaders.GetOrAdd(version, ver => CreateLoader(ver, _relationVersions[version].GetValueFields(), $"RelationValueLoader_{Name}_{ver}"));
+            return _valueLoaders.GetOrAdd(version, (ver, relationInfo) => CreateLoader(ver,
+                relationInfo._relationVersions[ver].GetValueFields(), $"RelationValueLoader_{relationInfo.Name}_{ver}"), this);
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>> GetIDictFinder(uint version)
         {
-            return _valueIDictFinders.GetOrAdd(version, ver => CreateIDictFinder(version));
+            return _valueIDictFinders.GetOrAdd(version, CreateIDictFinder);
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> GetSecondaryKeysKeySaver
-            (uint secondaryKeyIndex, string name)
+            (uint secondaryKeyIndex)
         {
             return _secondaryKeysSavers.GetOrAdd(secondaryKeyIndex,
-                idx => CreateSaverWithApartFields(ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex),
-                    $"Relation_{Name}_SK_{name}_KeySaver"));
+                (secKeyIndex, relationInfo) => CreateSaverWithApartFields(relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secKeyIndex),
+                    $"Relation_{relationInfo.Name}_SK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_KeySaver"), this);
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]> GetPKValToSKMerger
-            (uint version, uint secondaryKeyIndex, string name)
+            (uint version, uint secondaryKeyIndex)
         {
             var h = secondaryKeyIndex + version * 100000ul;
             return _secondaryKeysConvertSavers.GetOrAdd(h,
-                idx => CreateBytesToSKSaver(version, secondaryKeyIndex, $"Relation_{Name}_PkVal_to_SK_{name}"));
-        }
-
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> GetSecondaryKeysValueSaver
-            (uint secondaryKeyIndex, string name)
-        {
-            return _secondaryKeysValueSavers.GetOrAdd(secondaryKeyIndex,
-                idx => CreateSaverWithApartFields(ClientRelationVersionInfo.GetSecondaryKeyValueKeys(secondaryKeyIndex),
-                    $"Relation_{Name}_SK_{name}_ValueSaver"));
+                (_, ver, secKeyIndex, relationInfo) => CreateBytesToSKSaver(ver, secKeyIndex, 
+                    $"Relation_{relationInfo.Name}_PkVal_to_SK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_v{ver}"),
+                version, secondaryKeyIndex, this);
         }
 
         //takes secondaryKey key & value bytes and restores primary key bytes
@@ -659,8 +651,9 @@ namespace BTDB.ODBLayer
         {
             var h = 10000ul * secondaryKeyIndex + paramFieldCountInFirstBuffer;
             return _secondaryKeyValuetoPKLoader.GetOrAdd(h,
-                idx => CreatePrimaryKeyFromSKDataMerger(secondaryKeyIndex, (int)paramFieldCountInFirstBuffer,
-                        $"Relation_SK_to_PK_{ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Name}_p{paramFieldCountInFirstBuffer}"));
+                (_, secKeyIndex, relationInfo, paramFieldCount) => relationInfo.CreatePrimaryKeyFromSKDataMerger(secKeyIndex, paramFieldCount,
+                        $"Relation_SK_to_PK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_p{paramFieldCount}"),
+                secondaryKeyIndex, this, (int)paramFieldCountInFirstBuffer);
         }
 
         struct MemorizedPositionWithLength
@@ -1151,8 +1144,6 @@ namespace BTDB.ODBLayer
     class SimpleModificationCounter : IRelationModificationCounter
     {
         public int ModificationCounter => 0;
-
-        public void MarkModification() { }
 
         public void CheckModifiedDuringEnum(int prevModification)
         {

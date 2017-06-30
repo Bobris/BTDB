@@ -283,6 +283,7 @@
     <Compile Include="KVDBLayer\Implementation\KVFileType.cs" />
     <Compile Include="KVDBLayer\Implementation\OnDiskFileCollection.cs" />
     <Compile Include="KVDBLayer\Implementation\UnknownFile.cs" />
+    <Compile Include="ODBLayer\ConcurrentDictionaryExtensions.cs" />
     <Compile Include="ODBLayer\DBOptions.cs" />
     <Compile Include="ODBLayer\IDBReaderCtx.cs" />
     <Compile Include="ODBLayer\IDBWriterCtx.cs" />

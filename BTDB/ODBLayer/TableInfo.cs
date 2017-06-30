@@ -261,7 +261,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var last = _tableVersions.GetOrAdd(LastPersistedVersion, v => _tableInfoResolver.LoadTableVersionInfo(_id, v, Name));
+                var last = _tableVersions.GetOrAdd(LastPersistedVersion, (ver, tableInfo) => tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo._id, ver, tableInfo.Name), this);
                 if (TableVersionInfo.Equal(last, tvi))
                 {
                     _tableVersions[LastPersistedVersion] = tvi; // tvi was build from real types and not loaded so it is more exact
@@ -297,7 +297,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(3)
                 .Castclass(ClientType)
                 .Stloc(0);
-            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, (ver, tableInfo) => tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo._id, ver, tableInfo.Name), this);
             var clientTableVersionInfo = ClientTableVersionInfo;
             var anyNeedsCtx = tableVersionInfo.NeedsCtx() || clientTableVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
@@ -391,7 +391,7 @@ namespace BTDB.ODBLayer
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, 
                 AbstractBufferedReader, IList<ulong>, IList<ulong>>>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
-            var tableVersionInfo = _tableVersions.GetOrAdd(version, version1 => _tableInfoResolver.LoadTableVersionInfo(_id, version1, Name));
+            var tableVersionInfo = _tableVersions.GetOrAdd(version, (ver, tableInfo) => tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo._id, ver, tableInfo.Name), this);
             var needsFreeContent = false;
             var anyNeedsCtx = tableVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
