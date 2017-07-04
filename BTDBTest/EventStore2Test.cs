@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using BTDB.Buffer;
 using BTDB.EventStore2Layer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
@@ -11,6 +14,10 @@ namespace BTDBTest
 {
     public class EventStore2Test
     {
+        const string GivenEventsMetadataFilePath = "..\\..\\TestData\\meta.txt";
+        const string GivenEventsDataFilePath = "..\\..\\TestData\\events.txt";
+        const char DataFileSeparator = ' ';
+
         [Fact]
         public void SerializingNewObjectsWritesNewMetadata()
         {
@@ -80,6 +87,60 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DeserializeGivenEventDataWithGivenMetadata()
+        {
+            var deserializer = new EventDeserializer();
+            ProcessWholeMetadataLog(deserializer, GivenEventsMetadataFilePath, DataFileSeparator);
+
+            var eventsData = GetEventsData(GivenEventsDataFilePath, DataFileSeparator);
+
+            foreach (var eventData in eventsData)
+            {
+                object obj;
+                Assert.True(deserializer.Deserialize(out obj, eventData));
+
+                Assert.NotNull(obj);
+            }
+        }
+
+        List<ByteBuffer> GetEventsData(string testEventFilePath, char separator)
+        {
+            var testEventDataReader = File.OpenText(testEventFilePath);
+            var buffers = new List<ByteBuffer>();
+
+            var line = testEventDataReader.ReadLine();
+            while (!string.IsNullOrEmpty(line))
+            {
+                buffers.Add(ByteBuffer.NewSync(GetItemBytes(line, separator)));
+                line = testEventDataReader.ReadLine();
+            }
+
+            return buffers;
+        }
+
+        void ProcessWholeMetadataLog(EventDeserializer deserializer, string testMetadataFilePath, char metadataFileSeparator)
+        {
+            var testMetadataStreamReader = File.OpenText(testMetadataFilePath);
+
+            var line = testMetadataStreamReader.ReadLine();
+            while (!string.IsNullOrEmpty(line))
+            {
+                deserializer.ProcessMetadataLog(ByteBuffer.NewSync(GetItemBytes(line, metadataFileSeparator)));
+
+                line = testMetadataStreamReader.ReadLine();
+            }
+        }
+
+        byte[] GetItemBytes(string metaDataLine, char metadataFileSeparator)
+        {
+            return metaDataLine
+                .Split(metadataFileSeparator)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Select(byte.Parse)
+                .ToArray();
         }
 
         public enum StateEnum
