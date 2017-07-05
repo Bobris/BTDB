@@ -25,7 +25,7 @@ namespace BTDB.IL
         public static Type UnwrapTask(this Type type)
         {
             if (type == null) return null;
-            if (type == typeof(Task)) return typeof (void);
+            if (type == typeof(Task)) return typeof(void);
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
                 return type.GetGenericArguments()[0];
             return type;
@@ -81,6 +81,36 @@ namespace BTDB.IL
             return parent;
         }
 
+        public static Type SpecializationOf(this Type impl, Type generic)
+        {
+            var currentImpl = impl;
+
+            while (currentImpl != typeof(object))
+            {
+                if (currentImpl.IsGenericType && currentImpl.GetGenericTypeDefinition() == generic)
+                    return currentImpl;
+                var specific = SpecificInterfaces(generic, currentImpl);
+                if (specific != null)
+                    return specific;
+                currentImpl = currentImpl.BaseType;
+                if (currentImpl == null)
+                    return null;
+            }
+            return null;
+        }
+
+        static Type SpecificInterfaces(Type generic, Type impl)
+        {
+            foreach (var childInterface in impl.GetInterfaces())
+            {
+                if (childInterface.IsGenericType && childInterface.GetGenericTypeDefinition() == generic)
+                {
+                    return childInterface;
+                }
+            }
+            return null;
+        }
+
         public static string ToSimpleName(this Type type)
         {
             if (type == null) return "";
@@ -92,8 +122,8 @@ namespace BTDB.IL
                 var backTickPos = simpleName.IndexOf('`');
                 if (backTickPos > 0) simpleName = simpleName.Substring(0, backTickPos);
                 return String.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
-                    type.Namespace, 
-                    simpleName, 
+                    type.Namespace,
+                    simpleName,
                     String.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
             }
             if (type == typeof(byte)) return "byte";
@@ -147,7 +177,7 @@ namespace BTDB.IL
             Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
             EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");
             var methodBuilder = typeBuilder.DefineMethod((add ? "add" : "remove") + "_PropertyChanged",
-                                                         typeof(void), new[] { typePropertyChangedEventHandler }, 
+                                                         typeof(void), new[] { typePropertyChangedEventHandler },
                                                          MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
                                                          MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final);
             var ilGenerator = methodBuilder.Generator;
@@ -202,8 +232,8 @@ namespace BTDB.IL
                 var genType = type.GetGenericTypeDefinition();
                 if (genType == typeof(Nullable<>))
                 {
-                    var localLeft = ilGenerator.DeclareLocal(type,"left");
-                    var localRight = ilGenerator.DeclareLocal(type,"right");
+                    var localLeft = ilGenerator.DeclareLocal(type, "left");
+                    var localRight = ilGenerator.DeclareLocal(type, "right");
                     var hasValueMethod = type.GetMethod("get_HasValue");
                     var getValueMethod = type.GetMethod("GetValueOrDefault", Type.EmptyTypes);
                     var labelLeftHasValue = ilGenerator.DefineLabel("leftHasValue");

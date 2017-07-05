@@ -1,8 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using BTDB.Buffer;
 using BTDB.EventStore2Layer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
@@ -87,60 +84,6 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
-        }
-
-        [Fact]
-        public void DeserializeGivenEventDataWithGivenMetadata()
-        {
-            var deserializer = new EventDeserializer();
-            ProcessWholeMetadataLog(deserializer, GivenEventsMetadataFilePath, DataFileSeparator);
-
-            var eventsData = GetEventsData(GivenEventsDataFilePath, DataFileSeparator);
-
-            foreach (var eventData in eventsData)
-            {
-                object obj;
-                Assert.True(deserializer.Deserialize(out obj, eventData));
-
-                Assert.NotNull(obj);
-            }
-        }
-
-        List<ByteBuffer> GetEventsData(string testEventFilePath, char separator)
-        {
-            var testEventDataReader = File.OpenText(testEventFilePath);
-            var buffers = new List<ByteBuffer>();
-
-            var line = testEventDataReader.ReadLine();
-            while (!string.IsNullOrEmpty(line))
-            {
-                buffers.Add(ByteBuffer.NewSync(GetItemBytes(line, separator)));
-                line = testEventDataReader.ReadLine();
-            }
-
-            return buffers;
-        }
-
-        void ProcessWholeMetadataLog(EventDeserializer deserializer, string testMetadataFilePath, char metadataFileSeparator)
-        {
-            var testMetadataStreamReader = File.OpenText(testMetadataFilePath);
-
-            var line = testMetadataStreamReader.ReadLine();
-            while (!string.IsNullOrEmpty(line))
-            {
-                deserializer.ProcessMetadataLog(ByteBuffer.NewSync(GetItemBytes(line, metadataFileSeparator)));
-
-                line = testMetadataStreamReader.ReadLine();
-            }
-        }
-
-        byte[] GetItemBytes(string metaDataLine, char metadataFileSeparator)
-        {
-            return metaDataLine
-                .Split(metadataFileSeparator)
-                .Where(s => !string.IsNullOrEmpty(s))
-                .Select(byte.Parse)
-                .ToArray();
         }
 
         public enum StateEnum
@@ -245,6 +188,38 @@ namespace BTDBTest
             public override int GetHashCode() => Items?.GetHashCode() ?? 0;
         }
 
+        public class ObjectWithIList2 : IEquatable<ObjectWithIList2>
+        {
+            public IList<ObjectDbTest.Person> Items { get; set; }
+
+            public bool Equals(ObjectWithIList2 other)
+            {
+                if (other == null)
+                    return false;
+
+                if (Items == null && other.Items == null)
+                    return true;
+                if (Items == null && other.Items != null)
+                    return false;
+                if (Items != null && other.Items == null)
+                    return false;
+
+                for (int i = 0; i < Items.Count; i++)
+                {
+                    if (!Items[i].Equals(other.Items[i]))
+                        return false;
+                }
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ObjectWithIList2);
+            }
+
+            public override int GetHashCode() => Items?.GetHashCode() ?? 0;
+        }
+
         [Fact]
         public void DeserializesClassWithList()
         {
@@ -294,6 +269,35 @@ namespace BTDBTest
             var deserializer = new EventDeserializer();
             object obj2;
             Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+
+            deserializer = new EventDeserializer();
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DeserializesClassWithIList2()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithIList2 { Items = new List<ObjectDbTest.Person> { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            Assert.Equal(99, meta.Length);
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+
+            deserializer = new EventDeserializer();
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -534,7 +538,7 @@ namespace BTDBTest
 
             var serializer = new EventSerializer();
             bool hasMetadata;
-            var e = Assert.Throws<BTDBException>(()=> serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
+            var e = Assert.Throws<BTDBException>(() => serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
             Assert.True(e.Message.Contains("Unsupported"));
         }
     }

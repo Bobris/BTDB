@@ -7,6 +7,7 @@ using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using System.Diagnostics;
 
 namespace BTDB.EventStore2Layer
 {
@@ -276,26 +277,46 @@ namespace BTDB.EventStore2Layer
             if (_typeOrDescriptor2Info.TryGetValue(type, out result)) return result.Descriptor;
             if (_typeOrDescriptor2InfoNew.TryGetValue(type, out result)) return result.Descriptor;
             ITypeDescriptor desc = null;
+            Type typeAlternative = null;
             if (!type.IsSubclassOf(typeof(Delegate)))
             {
                 if (type.IsGenericType)
                 {
-                    if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IList<>)))
+                    typeAlternative = type.SpecializationOf(typeof(IList<>));
+                    if (typeAlternative != null)
                     {
-                        desc = new ListTypeDescriptor(this, type);
+                        if (type != typeAlternative)
+                        {
+                            if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
+                            if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                        }
+                        desc = new ListTypeDescriptor(this, typeAlternative);
                     }
-                    else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IDictionary<,>)))
+                    else
                     {
-                        desc = new DictionaryTypeDescriptor(this, type);
-                    }
-                    else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
-                    {
-                        return null;
+                        typeAlternative = type.SpecializationOf(typeof(IDictionary<,>));
+                        if (typeAlternative != null)
+                        {
+                            if (type != typeAlternative)
+                            {
+                                if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
+                                if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                            }
+                            desc = new DictionaryTypeDescriptor(this, typeAlternative);
+                        }
+                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                        {
+                            return null;
+                        }
                     }
                 }
                 else if (type.IsArray)
                 {
-                    desc = new ListTypeDescriptor(this, type);
+                    typeAlternative = type.SpecializationOf(typeof(IList<>));
+                    Debug.Assert(typeAlternative != null && type != typeAlternative);
+                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
+                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                    desc = new ListTypeDescriptor(this, typeAlternative);
                 }
                 else if (type.IsEnum)
                 {
@@ -318,10 +339,12 @@ namespace BTDB.EventStore2Layer
             };
             _typeOrDescriptor2InfoNew[desc] = result;
             _typeOrDescriptor2InfoNew[type] = result;
+            if (typeAlternative != null) _typeOrDescriptor2InfoNew[typeAlternative] = result;
             if (!desc.FinishBuildFromType(this))
             {
                 _typeOrDescriptor2InfoNew.Remove(desc);
                 _typeOrDescriptor2InfoNew.Remove(type);
+                if (typeAlternative != null) _typeOrDescriptor2InfoNew.Remove(typeAlternative);
                 return null;
             }
             return desc;

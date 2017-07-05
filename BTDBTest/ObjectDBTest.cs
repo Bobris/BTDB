@@ -30,6 +30,16 @@ namespace BTDBTest
             {
                 return Name == other.Name && Age == other.Age;
             }
+
+            public override bool Equals(object other) => Equals(other as Person);
+
+            public override int GetHashCode()
+            {
+                var hashCode = -1360180430;
+                hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Name);
+                hashCode = hashCode * -1521134295 + Age.GetHashCode();
+                return hashCode;
+            }
         }
 
         public class PersonWithNonStoredProperty
