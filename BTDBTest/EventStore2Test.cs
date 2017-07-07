@@ -15,7 +15,8 @@ namespace BTDBTest
     public class EventStore2Test
     {
         const string GivenEventsMetadataFilePath = "..\\..\\TestData\\meta.txt";
-        const string GivenEventsDataFilePath = "..\\..\\TestData\\events.txt";
+//      const string GivenEventsDataFilePath = "..\\..\\TestData\\events_first-ok_second-fails.txt";
+        const string GivenEventsDataFilePath = "..\\..\\TestData\\events_all-starting-with61-following-other-than-4.txt";
         const char DataFileSeparator = ' ';
 
         [Fact]
