@@ -1022,31 +1022,58 @@ namespace BTDBTest
         {
             ulong CompanyId { get; set; }
             void Insert(Room room);
+            bool Upsert(Room room);
+            void Update(Room room);
             IEnumerator<Room> ListById(AdvancedEnumeratorParam<ulong> param);
             void RemoveById(ulong id);
             IEnumerator<Room> GetEnumerator();
         }
 
         [Fact]
-        public void EnumerateAndDeleteTest()
+        public void CheckModificationDuringEnumerate()
         {
+            Func<IObjectDBTransaction, IRoomTable2> creator;
             using (var tr = _db.StartTransaction())
             {
-                var creator = tr.InitRelation<IRoomTable2>("Room");
+                creator = tr.InitRelation<IRoomTable2>("Room");
 
                 var rooms = creator(tr);
                 rooms.CompanyId = 1;
-                rooms.Insert(new Room { Id = 10, Name = "First 1" });
-                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
+                rooms.Insert(new Room {Id = 10, Name = "First 1"});
+                rooms.Insert(new Room {Id = 20, Name = "Second 1"});
 
+                tr.Commit();
+            }
+
+            ModifyDuringEnumerate(creator, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
+            ModifyDuringEnumerate(creator, table => table.RemoveById(20), true);
+            ModifyDuringEnumerate(creator, table => table.Update(new Room {Id = 10, Name = "First"}), false);
+            ModifyDuringEnumerate(creator, table => table.Upsert(new Room {Id = 40, Name = "insert new value"}), true);
+            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 10, Name = "update existing" }), false);
+        }
+
+        void ModifyDuringEnumerate(Func<IObjectDBTransaction, IRoomTable2> creator, Action<IRoomTable2> modifyAction, bool shouldThrow)
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var rooms = creator(tr);
+                rooms.CompanyId = 1;
                 var en = rooms.GetEnumerator();
                 var oen = rooms.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
                 Assert.True(oen.MoveNext());
-                rooms.RemoveById(oen.Current.Id);
-                var ex = Assert.Throws<InvalidOperationException>(() => oen.MoveNext());
-                Assert.True(ex.Message.Contains("modified"));
-                var ex2 = Assert.Throws<InvalidOperationException>(() => en.MoveNext());
-                Assert.True(ex2.Message.Contains("modified"));
+                modifyAction(rooms);
+                if (shouldThrow)
+                {
+                    var ex = Assert.Throws<InvalidOperationException>(() => oen.MoveNext());
+                    Assert.True(ex.Message.Contains("modified"));
+                    var ex2 = Assert.Throws<InvalidOperationException>(() => en.MoveNext());
+                    Assert.True(ex2.Message.Contains("modified"));
+                }
+                else
+                {
+                    Assert.True(en.MoveNext());
+                    Assert.True(oen.MoveNext());
+                }
             }
         }
 

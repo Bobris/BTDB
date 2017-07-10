@@ -5,6 +5,7 @@ Relations provides easy way how to store "table" like data in object db.
 
 Let's first define data entity we want to store (note that it is not ne defined as [StoredInline] but it is still inlined)
 
+
     public class Person
     {
         [PrimaryKey(1)]
@@ -20,7 +21,8 @@ Let's first define data entity we want to store (note that it is not ne defined 
         bool RemoveById(ulong id);
         Person FindById(ulong id);
     }
-    
+ 
+   
 How do we get `IPersonTable` interface to actually insert persons? First we need [obtain transaction](ODBDictionary.md)
 
 From transaction we get creator of relation which we should keep and use for creating relation interface for transaction every time we need it.
@@ -120,14 +122,14 @@ All relations implements `IReadOnlyCollection<T>`. This can be used during debug
 ## Primary Key ##
 One or more fields can be selected as primary key. Primary key must be unique in the relation. Order of fields in primary key is marked as parameter of `PrimaryKey(i)` attribute. Methods expecting primary key as an argument are supposed to contain all fields in the same order as defined, for example in this case:
 
-	public class Person
-	{
-	    [PrimaryKey(1)]
-	     public ulong TenantId { get; set; }
-	     [PrimaryKey(2)]
-	     public ulong Id { get; set; }
-	     ...
-	}
+    public class Person
+    {
+        [PrimaryKey(1)]
+        public ulong TenantId { get; set; }
+        [PrimaryKey(2)]
+        public ulong Id { get; set; }
+        ...
+    }
 
 
 will methods look like:
@@ -193,5 +195,6 @@ When secondary definition is changed (for example new index is defined) then it 
 During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks. You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
-### StoredInline ###
-All data except IDictionaries are by default stored inline - it is not necessary to mark objects as `[StoredInline]`
+## Modification check during enumeration ##
+
+When you Insert, RemoveById or insert item using Upsert during enumerating relation an exception will be thrown. It is still possible to modify by Update (or Upsert for existing items) see `CheckModificationDuringEnumerate` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs) for details. Modification of secondary indexes during enumerating by secondary indexes are not detected in this moment.

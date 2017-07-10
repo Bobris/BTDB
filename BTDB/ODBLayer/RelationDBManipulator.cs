@@ -109,7 +109,6 @@ namespace BTDB.ODBLayer
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
 
                 FreeContentInUpdate(oldValueBytes, valueBytes);
-                MarkModification();
                 return false;
             }
 
