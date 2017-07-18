@@ -30,7 +30,7 @@ namespace BTDB.FieldHandler
             {
                 if (_transaction != null)
                 {
-                    _value = (T)_transaction.Get(_oid);
+                    _value = _transaction.Get(_oid) as T;
                     _transaction = null;
                 }
                 return _value;

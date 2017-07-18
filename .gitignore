@@ -18,3 +18,4 @@ TestResults
 *.crunchsolution.cache
 *.DotSettings
 /BTDB.sln.ide
+/.vs/BTDB/v15/sqlite3
