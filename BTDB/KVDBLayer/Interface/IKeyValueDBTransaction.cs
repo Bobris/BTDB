@@ -131,6 +131,19 @@ namespace BTDB.KVDBLayer
         void SetCommitUlong(ulong value);
 
         /// <summary>
+        /// Each KeyValueDB has additional special ulong values which could be modified - it is much faster than regular key
+        /// </summary>
+        /// <param name="idx">Index of ulong. These ulongs are lazily allocated</param>
+        /// <returns>its value</returns>
+        ulong GetUlong(uint idx);
+
+        /// <summary>
+        /// Each KeyValueDB has additional special ulong values which could be modified - it is much faster than regular key
+        /// Optimized for small grow per transaction. Use mostly small indexes, unused idx waste memory.
+        /// </summary>
+        void SetUlong(uint idx, ulong value);
+
+        /// <summary>
         /// This creates safe checkpoint for next open in transaction log
         /// </summary>
         void NextCommitTemporaryCloseTransactionLog();

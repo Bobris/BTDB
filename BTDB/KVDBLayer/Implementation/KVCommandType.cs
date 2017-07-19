@@ -15,6 +15,7 @@ namespace BTDB.KVDBLayer
         CreateOrUpdate,
         TemporaryEndOfFile,
         CommitWithDeltaUlong,
+        DeltaUlongs,
         CommandMask = 31,
         FirstParamCompressed = 32,
         SecondParamCompressed = 64

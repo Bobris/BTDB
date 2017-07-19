@@ -42,7 +42,7 @@ namespace BTDB.KVDBLayer
 
         public KeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression,
             uint fileSplitSize = int.MaxValue)
-            : this(fileCollection,compression,fileSplitSize,CompactorScheduler.Instance)
+            : this(fileCollection, compression, fileSplitSize, CompactorScheduler.Instance)
         {
         }
 
@@ -315,6 +315,15 @@ namespace BTDB.KVDBLayer
                                 _nextRoot.EraseRange(keyIndex1, keyIndex2);
                             }
                             break;
+                        case KVCommandType.DeltaUlongs:
+                            {
+                                if (_nextRoot == null) return false;
+                                var idx = reader.ReadVUInt32();
+                                var delta = reader.ReadVUInt64();
+                                // overflow is expected in case Ulong is decreasing but that should be rare
+                                _nextRoot.SetUlong(idx, unchecked(_nextRoot.GetUlong(idx) + delta));
+                            }
+                            break;
                         case KVCommandType.TransactionStart:
                             if (!reader.CheckMagic(MagicStartOfTransaction))
                                 return false;
@@ -455,7 +464,7 @@ namespace BTDB.KVDBLayer
                     var oldestRoot = _lastCommited;
                     foreach (var usedTransaction in _usedBTreeRootNodes)
                     {
-                        if (unchecked (usedTransaction.TransactionId - oldestRoot.TransactionId) < 0)
+                        if (unchecked(usedTransaction.TransactionId - oldestRoot.TransactionId) < 0)
                         {
                             oldestRoot = usedTransaction;
                         }
@@ -526,6 +535,7 @@ namespace BTDB.KVDBLayer
 
         internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
         {
+            WriteUlongsDiff(btreeRoot.UlongsArray, _lastCommited.UlongsArray);
             var deltaUlong = unchecked(btreeRoot.CommitUlong - _lastCommited.CommitUlong);
             if (deltaUlong != 0)
             {
@@ -554,6 +564,25 @@ namespace BTDB.KVDBLayer
                 _writingTransaction = null;
                 _lastCommited = btreeRoot;
                 TryDequeWaiterForWrittingTransaction();
+            }
+        }
+
+        void WriteUlongsDiff(ulong[] newArray, ulong[] oldArray)
+        {
+            var newCount = newArray != null ? newArray.Length : 0;
+            var oldCount = oldArray != null ? oldArray.Length : 0;
+            var maxCount = Math.Max(newCount, oldCount);
+            for (var i = 0; i < maxCount; i++)
+            {
+                var oldValue = i < oldCount ? oldArray[i] : 0;
+                var newValue = i < newCount ? newArray[i] : 0;
+                var deltaUlong = unchecked(newValue - oldValue);
+                if (deltaUlong != 0)
+                {
+                    _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.DeltaUlongs);
+                    _writerWithTransactionLog.WriteVUInt32((uint)i);
+                    _writerWithTransactionLog.WriteVUInt64(deltaUlong);
+                }
             }
         }
 
@@ -820,7 +849,7 @@ namespace BTDB.KVDBLayer
             var keyCount = root.CalcKeyCount();
             if (root.TrLogFileId != 0)
                 FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
-            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong, KeyIndexCompression.None);
+            var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId, root.TrLogOffset, keyCount, root.CommitUlong, KeyIndexCompression.None, root.UlongsArray);
             keyIndex.WriteHeader(writer);
             if (keyCount > 0)
             {
@@ -859,7 +888,7 @@ namespace BTDB.KVDBLayer
             file.HardFlush();
             file.Truncate();
             FileCollection.SetInfo(file.Index, keyIndex);
-            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), DateTime.UtcNow-start);
+            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), DateTime.UtcNow - start);
             return file.Index;
         }
 

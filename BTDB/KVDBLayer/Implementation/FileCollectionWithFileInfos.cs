@@ -80,13 +80,16 @@ namespace BTDB.KVDBLayer
                             fileInfo = new FileTransactionLog(reader, guid);
                             break;
                         case KVFileType.KeyIndex:
-                            fileInfo = new FileKeyIndex(reader, guid, false, false);
+                            fileInfo = new FileKeyIndex(reader, guid, false, false, false);
                             break;
                         case KVFileType.KeyIndexWithCommitUlong:
-                            fileInfo = new FileKeyIndex(reader, guid, true, false);
+                            fileInfo = new FileKeyIndex(reader, guid, true, false, false);
                             break;
                         case KVFileType.ModernKeyIndex:
-                            fileInfo = new FileKeyIndex(reader, guid, true, true);
+                            fileInfo = new FileKeyIndex(reader, guid, true, true, false);
+                            break;
+                        case KVFileType.ModernKeyIndexWithUlongs:
+                            fileInfo = new FileKeyIndex(reader, guid, true, true, true);
                             break;
                         case KVFileType.PureValues:
                             fileInfo = new FilePureValues(reader, guid);

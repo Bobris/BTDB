@@ -155,7 +155,13 @@ namespace BTDB.KVDBLayer.BTreeMem
 
         public IBTreeRootNode NewTransactionRoot()
         {
-            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, CommitUlong = CommitUlong };
+            ulong[] newulongs = null;
+            if (_ulongs != null)
+            {
+                newulongs = new ulong[_ulongs.Length];
+                Array.Copy(_ulongs, newulongs, newulongs.Length);
+            }
+            return new BTreeRoot(_transactionId + 1) { _keyValueCount = _keyValueCount, _rootNode = _rootNode, CommitUlong = CommitUlong, _ulongs = newulongs };
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
@@ -259,6 +265,22 @@ namespace BTDB.KVDBLayer.BTreeMem
                 done = reach;
                 return new BTreeBranch(_transactionId, todo, generator);
             });
+        }
+
+        ulong[] _ulongs;
+
+        public ulong GetUlong(uint idx)
+        {
+            if (_ulongs == null) return 0;
+            if (idx >= _ulongs.Length) return 0;
+            return _ulongs[idx];
+        }
+
+        public void SetUlong(uint idx, ulong value)
+        {
+            if (_ulongs == null || idx >= _ulongs.Length)
+                Array.Resize(ref _ulongs, (int)(idx + 1));
+            _ulongs[idx] = value;
         }
 
         public string DescriptionForLeaks { get; set; }

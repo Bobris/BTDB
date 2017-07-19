@@ -387,6 +387,20 @@ namespace BTDB.KVDBLayer
             return _prefix;
         }
 
+        public ulong GetUlong(uint idx)
+        {
+            return BtreeRoot.GetUlong(idx);
+        }
+
+        public void SetUlong(uint idx, ulong value)
+        {
+            if (BtreeRoot.GetUlong(idx) != value)
+            {
+                MakeWrittable();
+                BtreeRoot.SetUlong(idx, value);
+            }
+        }
+
         string _descriptionForLeaks;
         public string DescriptionForLeaks
         {

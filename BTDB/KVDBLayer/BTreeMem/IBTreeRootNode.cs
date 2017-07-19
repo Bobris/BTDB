@@ -8,6 +8,8 @@ namespace BTDB.KVDBLayer.BTreeMem
         long TransactionId { get; }
         string DescriptionForLeaks { get; set; }
         ulong CommitUlong { get; set; }
+        ulong GetUlong(uint idx);
+        void SetUlong(uint idx, ulong value);
         IBTreeRootNode NewTransactionRoot();
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
         bool FindNextKey(List<NodeIdxPair> stack);

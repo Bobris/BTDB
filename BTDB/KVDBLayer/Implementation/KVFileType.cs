@@ -9,6 +9,7 @@ namespace BTDB.KVDBLayer
         HashKeyIndex,
         KeyIndexWithCommitUlong,
         ModernKeyIndex,
+        ModernKeyIndexWithUlongs,
         Unknown,
     }
 }
