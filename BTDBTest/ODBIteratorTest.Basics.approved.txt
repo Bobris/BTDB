@@ -1,5 +1,4 @@
-﻿Used key: |00 03 Value len:1
-Singleton 1-JobMap oid:1
+﻿Singleton 1-JobMap oid:1
 Used key: 00 00|01 Value len:7
 Used key: 00 02|01 Value len:1
 Used key: 01|01 Value len:3

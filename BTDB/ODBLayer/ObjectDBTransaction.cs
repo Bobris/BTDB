@@ -780,7 +780,7 @@ namespace BTDB.ODBLayer
                         StoreObject(o.Value);
                     }
                 }
-                _owner.CommitLastDictId((ulong)_lastDictId, _keyValueTr);
+                _owner.CommitLastObjIdAndDictId((ulong)_lastDictId, _keyValueTr);
                 _keyValueTr.Commit();
                 if (_updatedTables != null)
                     foreach (var updatedTable in _updatedTables)

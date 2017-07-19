@@ -20,7 +20,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
         internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
         internal static readonly byte[] TableSingletonsPrefix = { 0, 2 }; // Index Table => singleton oid
-        internal static readonly byte[] LastDictIdKey = { 0, 3 }; //  => Last Dictionary Index
+        internal static readonly byte[] LastDictIdKey = { 0, 3 }; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
         internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
         internal static readonly byte[] RelationVersionsPrefix = { 0, 5 }; // Index Relation, version number => metadata
         internal static readonly byte[] AllObjectsPrefix = { 1 }; // oid => Index Table, version number, Value
@@ -56,8 +56,7 @@ namespace BTDB.ODBLayer
 
         public void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options)
         {
-            if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
-            _keyValueDB = keyValueDB;
+            _keyValueDB = keyValueDB ?? throw new ArgumentNullException(nameof(keyValueDB));
             _dispose = dispose;
             _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
             _autoRegisterTypes = options.AutoRegisterType;
@@ -66,33 +65,38 @@ namespace BTDB.ODBLayer
             _tablesInfo = new TablesInfo(_tableInfoResolver);
             _relationsInfoResolver = new RelationInfoResolver(this);
             _relationsInfo = new RelationsInfo(_relationsInfoResolver);
-            _lastObjId = 0;
 
             using (var tr = _keyValueDB.StartTransaction())
             {
-                tr.SetKeyPrefix(AllObjectsPrefix);
-                if (tr.FindLastKey())
+                _lastObjId = (long)tr.GetUlong(0);
+                _lastDictId = tr.GetUlong(1);
+                if (_lastObjId == 0)
                 {
-                    _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
+                    tr.SetKeyPrefix(AllObjectsPrefix);
+                    if (tr.FindLastKey())
+                    {
+                        _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
+                    }
                 }
                 _tablesInfo.LoadTables(LoadTablesEnum(tr));
                 _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
-                tr.SetKeyPrefix(null);
-                if (tr.FindExactKey(LastDictIdKey))
+                if (_lastDictId == 0)
                 {
-                    _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
+                    tr.SetKeyPrefix(null);
+                    if (tr.FindExactKey(LastDictIdKey))
+                    {
+                        _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
+                    }
                 }
             }
         }
 
-        internal void CommitLastDictId(ulong newLastDictId, IKeyValueDBTransaction tr)
+        internal void CommitLastObjIdAndDictId(ulong newLastDictId, IKeyValueDBTransaction tr)
         {
+            tr.SetUlong(0, (ulong)_lastObjId);
             if (_lastDictId != newLastDictId)
             {
-                tr.SetKeyPrefix(null);
-                var w = new ByteBufferWriter();
-                w.WriteVUInt64(newLastDictId);
-                tr.CreateOrUpdateKeyValue(LastDictIdKey, w.Data.ToByteArray());
+                tr.SetUlong(1, newLastDictId);
                 _lastDictId = newLastDictId;
             }
         }
@@ -217,7 +221,7 @@ namespace BTDB.ODBLayer
                     PackUnpack.PackVUInt(key, ref ofs, id);
                     if (tr.FindExactKey(key))
                     {
-                        return (long) new KeyValueDBValueReader(tr).ReadVUInt64();
+                        return (long)new KeyValueDBValueReader(tr).ReadVUInt64();
                     }
                     return 0;
                 }

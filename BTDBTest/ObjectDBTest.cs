@@ -1209,6 +1209,37 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void ObjIdsAreNotReused()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                t.Left.Value = new IndirectTree();
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                tr.Delete(t.Left.Value);
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                t.Right.Value = new IndirectTree();
+                tr.Store(t);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var t = tr.Singleton<IndirectTree>();
+                Assert.NotNull(t.Right.Value);
+                Assert.Null(t.Left.Value);
+            }
+        }
+
         public class TwoComplexDictionary
         {
             public IDictionary<string, Person> String2Person { get; set; }

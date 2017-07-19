@@ -40,7 +40,7 @@ namespace BTDBTest
             Assert.InRange(data.Length, 1, 10);
         }
 
-        [Fact]
+        [Fact(Skip = "Waiting for allocated bytes method to be precise")]
         public void SerializationRunsAndDoesNotLeak1Byte()
         {
             var serializer = new EventSerializer();
