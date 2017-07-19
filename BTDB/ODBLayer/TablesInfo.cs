@@ -62,11 +62,8 @@ namespace BTDB.ODBLayer
                     t = FindByName(name) ?? PrivateCreateTable(name);
                 }
             }
-            if (_clientType2Table.TryAdd(type, t))
-            {
-                t.ClientType = type;
-            }
-            else
+            t.ClientType = type;
+            if (!_clientType2Table.TryAdd(type, t))
             {
                 if (FindByType(type).Name != name)
                 {

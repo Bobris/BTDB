@@ -8,6 +8,8 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Linq;
+using System.Diagnostics;
+using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -47,8 +49,11 @@ namespace BTDB.ODBLayer
             get { return _clientType; }
             set
             {
+                if (_clientType != null && _clientType != value)
+                {
+                    throw new BTDBException("ClientType could be changed only once " + _clientType.ToSimpleName() + " vs " + value.ToSimpleName());
+                }
                 _clientType = value;
-                ClientTypeVersion = 0;
             }
         }
 
@@ -388,7 +393,7 @@ namespace BTDB.ODBLayer
         Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> CreateFreeContent(uint version)
         {
             EnsureClientTypeVersion();
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, 
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata,
                 AbstractBufferedReader, IList<ulong>, IList<ulong>>>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
             var tableVersionInfo = _tableVersions.GetOrAdd(version, (ver, tableInfo) => tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo._id, ver, tableInfo.Name), this);
