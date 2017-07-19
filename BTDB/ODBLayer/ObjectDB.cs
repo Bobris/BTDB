@@ -56,7 +56,8 @@ namespace BTDB.ODBLayer
 
         public void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options)
         {
-            _keyValueDB = keyValueDB ?? throw new ArgumentNullException(nameof(keyValueDB));
+            if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
+            _keyValueDB = keyValueDB;
             _dispose = dispose;
             _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
             _autoRegisterTypes = options.AutoRegisterType;
