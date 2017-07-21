@@ -136,6 +136,7 @@ namespace BTDB.KVDBLayer
                 _nextRoot.TrLogFileId = info.TrLogFileId;
                 _nextRoot.TrLogOffset = info.TrLogOffset;
                 _nextRoot.CommitUlong = info.CommitUlong;
+                _nextRoot.UlongsArray = info.Ulongs;
                 if (info.Compression == KeyIndexCompression.Old)
                 {
                     _nextRoot.BuildTree(keyCount, () =>

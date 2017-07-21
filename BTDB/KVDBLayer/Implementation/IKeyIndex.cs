@@ -7,5 +7,6 @@ namespace BTDB.KVDBLayer
         long KeyValueCount { get; }
         ulong CommitUlong { get; }
         KeyIndexCompression Compression { get; }
+        ulong[] Ulongs { get; }
     }
 }

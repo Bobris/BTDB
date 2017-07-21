@@ -171,6 +171,41 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void UlongsAreRembered()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr1 = db.StartTransaction())
+                    {
+                        Assert.Equal(0ul, tr1.GetUlong(0));
+                        tr1.SetUlong(0, 42);
+                        tr1.Commit();
+                    }
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.Equal(42ul, tr2.GetUlong(0));
+                    }
+                }
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.Equal(42ul, tr2.GetUlong(0));
+                    }
+                }
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.Equal(42ul, tr2.GetUlong(0));
+                    }
+                }
+            }
+        }
+
+        [Fact]
         public void RollbackWorks()
         {
             using (var fileCollection = new InMemoryFileCollection())
