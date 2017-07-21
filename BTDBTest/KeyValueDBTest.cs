@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using Xunit;
+using System.IO;
 
 namespace BTDBTest
 {
@@ -173,6 +174,7 @@ namespace BTDBTest
         [Fact]
         public void UlongsAreRembered()
         {
+            var snapshot = new MemoryStream();
             using (var fileCollection = new InMemoryFileCollection())
             {
                 using (IKeyValueDB db = new KeyValueDB(fileCollection))
@@ -199,6 +201,20 @@ namespace BTDBTest
                 {
                     using (var tr2 = db.StartTransaction())
                     {
+                        Assert.Equal(42ul, tr2.GetUlong(0));
+                        KeyValueDBExportImporter.Export(tr2, snapshot);
+                    }
+                }
+            }
+            snapshot.Position = 0;
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                {
+                    using (var tr2 = db.StartTransaction())
+                    {
+                        Assert.Equal(0ul, tr2.GetUlong(0));
+                        KeyValueDBExportImporter.Import(tr2, snapshot);
                         Assert.Equal(42ul, tr2.GetUlong(0));
                     }
                 }

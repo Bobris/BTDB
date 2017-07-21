@@ -133,6 +133,12 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Each KeyValueDB has additional special ulong values which could be modified - it is much faster than regular key
         /// </summary>
+        /// <returns>number of used ulongs</returns>
+        uint GetUlongCount();
+
+        /// <summary>
+        /// Each KeyValueDB has additional special ulong values which could be modified - it is much faster than regular key
+        /// </summary>
         /// <param name="idx">Index of ulong. These ulongs are lazily allocated</param>
         /// <returns>its value</returns>
         ulong GetUlong(uint idx);

@@ -346,8 +346,12 @@ namespace ODbDump
                         using (var odb = new ObjectDB())
                         {
                             odb.Open(kdb, false);
+                            using (var trkv = kdb.StartReadOnlyTransaction())
                             using (var tr = odb.StartTransaction())
                             {
+                                Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                                Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                                Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
                                 var visitor = new ToConsoleVisitor();
                                 var iterator = new ODBIterator(tr, visitor);
                                 iterator.Iterate();

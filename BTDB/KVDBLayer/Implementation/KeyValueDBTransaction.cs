@@ -401,6 +401,11 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        public uint GetUlongCount()
+        {
+            return (uint)BtreeRoot.UlongsArray.Length;
+        }
+
         string _descriptionForLeaks;
         public string DescriptionForLeaks
         {
