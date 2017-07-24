@@ -285,7 +285,7 @@ namespace BTDB.KVDBLayer.BTreeMem
 
         public uint GetUlongCount()
         {
-            return (uint)_ulongs.Length;
+            return _ulongs == null ? 0U : (uint)_ulongs.Length;
         }
 
         public string DescriptionForLeaks { get; set; }
