@@ -303,6 +303,47 @@ namespace BTDBTest
             Assert.Equal(obj, obj2);
         }
 
+        [Fact]
+        public void DeserializesClassWithIListArray()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithIList2 { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            Assert.Equal(99, meta.Length);
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            serializer = new EventSerializer();
+            serializer.ProcessMetadataLog(meta);
+            var data2 = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+
+            deserializer = new EventDeserializer();
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DeserializesClassWithIListArrayFirstEmpty()
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var objE = new ObjectWithIList2 { Items = null };
+            var obj = new ObjectWithIList2 { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Manager { Name = "A", Age = 1 } } };
+            var meta = serializer.Serialize(out hasMetadata, objE).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, objE);
+            var data2 = serializer.Serialize(out hasMetadata, obj);
+        }
+
         public class ObjectWithDictionaryOfSimpleType : IEquatable<ObjectWithDictionaryOfSimpleType>
         {
             public IDictionary<int, string> Items { get; set; }

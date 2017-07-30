@@ -379,7 +379,15 @@ namespace BTDB.EventStore2Layer
                 if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
                 {
                     var desc = Create(obj.GetType());
-                    info = _typeOrDescriptor2InfoNew[desc];
+                    if (!_typeOrDescriptor2InfoNew.TryGetValue(desc, out info))
+                    {
+                        // It could be already existing descriptor just unknown type
+                        if (!_typeOrDescriptor2Info.TryGetValue(desc, out info))
+                        {
+                            // If it is not in old nor new, than fail with clearer description
+                            throw new BTDBException("EventSerializer.StoreNewDescriptors bug " + obj.GetType().ToSimpleName());
+                        }
+                    }
                 }
             }
             if (info.NestedObjGatherer == null)
