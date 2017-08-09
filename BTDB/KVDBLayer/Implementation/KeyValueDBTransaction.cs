@@ -403,7 +403,7 @@ namespace BTDB.KVDBLayer
 
         public uint GetUlongCount()
         {
-            return (uint)BtreeRoot.UlongsArray.Length;
+            return BtreeRoot.UlongsArray == null ? 0U : (uint)BtreeRoot.UlongsArray.Length;
         }
 
         string _descriptionForLeaks;
