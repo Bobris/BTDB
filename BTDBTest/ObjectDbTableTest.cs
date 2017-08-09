@@ -1662,5 +1662,27 @@ namespace BTDBTest
                 Assert.False(en.MoveNext());
             }
         }
+
+
+        public interface IWithInsert<T>
+        {
+            void Insert(T user);
+        }
+
+        public interface IPersonInherited : IWithInsert<PersonSimple>, IReadOnlyCollection<PersonSimple>
+        {
+        }
+
+        [Fact]
+        public void SupportInheritedMethods()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IPersonInherited>("IPersonInherited");
+                var table = creator(tr);
+                table.Insert(new PersonSimple { Email = "anonymous" });
+                Assert.Equal(1, table.Count);
+            }
+        }
     }
 }

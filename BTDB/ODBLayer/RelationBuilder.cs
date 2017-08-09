@@ -29,7 +29,7 @@ namespace BTDB.ODBLayer
             il.Ldarg(0).Ldarg(1).Ldarg(2).Call(relationDBManipulatorType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) }))
                 .Ret();
             GenerateApartFieldsProperties(classImpl, interfaceType);
-            var methods = interfaceType.GetMethods();
+            var methods = RelationInfo.GetMethods(interfaceType);
             foreach (var method in methods)
             {
                 if (method.Name.StartsWith("get_") || method.Name.StartsWith("set_"))

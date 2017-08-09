@@ -74,18 +74,20 @@ namespace BTDB.ODBLayer
         internal byte[] Prefix { get; private set; }
 
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
-                            Type clientType, IInternalObjectDBTransaction tr)
+                            IInternalObjectDBTransaction tr)
         {
             _id = id;
             _name = name;
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
-            _clientType = clientType;
+            var methods = GetMethods(interfaceType).ToArray();
+            _clientType = FindClientType(interfaceType.Name, methods);
+
             CalculatePrefix();
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ResolveVersionInfos();
-            ApartFields = FindApartFields(interfaceType, ClientRelationVersionInfo);
+            ApartFields = FindApartFields(methods, ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
@@ -111,6 +113,20 @@ namespace BTDB.ODBLayer
                 }
             }
             _typeConvertorGenerator = tr.Owner.TypeConvertorGenerator;
+        }
+
+        static Type FindClientType(string name, MethodInfo[] methods)
+        {
+            foreach (var method in methods)
+            {
+                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert")
+                    continue;
+                var @params = method.GetParameters();
+                if (@params.Length != 1)
+                    continue;
+                return @params[0].ParameterType;
+            }
+            throw new BTDBException($"Cannot deduce client type from interface {name}");
         }
 
         static void CheckThatPrimaryKeyHasNotChanged(string name, RelationVersionInfo info, RelationVersionInfo previousInfo)
@@ -594,15 +610,13 @@ namespace BTDB.ODBLayer
             return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray(), prevVersion);
         }
 
-        static IDictionary<string, MethodInfo> FindApartFields(Type interfaceType, RelationVersionInfo versionInfo)
+        static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, RelationVersionInfo versionInfo)
 
         {
             var result = new Dictionary<string, MethodInfo>();
             var pks = versionInfo.GetPrimaryKeyFields().ToDictionary(tfi => tfi.Name, tfi => tfi);
-            var methods = interfaceType.GetMethods();
-            for (var i = 0; i < methods.Length; i++)
+            foreach (var method in methods)
             {
-                var method = methods[i];
                 if (!method.Name.StartsWith("get_"))
                     continue;
                 var name = method.Name.Substring(4);
@@ -614,6 +628,28 @@ namespace BTDB.ODBLayer
                 result.Add(name, method);
             }
             return result;
+        }
+
+        public static IEnumerable<MethodInfo> GetMethods(Type interfaceType)
+        {
+            var methods = interfaceType.GetMethods();
+            foreach (var method in methods)
+                yield return method;
+            foreach (var iface in interfaceType.GetInterfaces())
+            {
+                if (iface.IsGenericType)
+                {
+                    if (iface.GetGenericTypeDefinition() == typeof(IEnumerable<>)) continue;
+                    if (iface.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)) continue;
+                }
+                else
+                {
+                    if (iface == typeof(IEnumerable)) continue;
+                }
+                var inheritedMethods = iface.GetMethods();
+                foreach (var method in inheritedMethods)
+                    yield return method;
+            }
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)

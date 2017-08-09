@@ -54,8 +54,7 @@ namespace BTDB.ODBLayer
             {
                 throw new BTDBException($"Relation with name '{name}' was already initialized");
             }
-            var clientType = FindClientType(interfaceType);
-            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, clientType, tr);
+            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, tr);
             _id2Relation[id] = relation;
             return relation;
         }
@@ -67,21 +66,6 @@ namespace BTDB.ODBLayer
                 _name2Id[string.Intern(name.Value)] = name.Key;
                 if (name.Key >= _freeId) _freeId = name.Key + 1;
             }
-        }
-
-        static Type FindClientType(Type interfaceType)
-        {
-            var methods = interfaceType.GetMethods();
-            foreach (var method in methods)
-            {
-                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert")
-                    continue;
-                var @params = method.GetParameters();
-                if (@params.Length != 1)
-                    continue;
-                return @params[0].ParameterType;
-            }
-            throw new BTDBException($"Cannot deduce client type from interface {interfaceType.Name}");
         }
     }
 }
