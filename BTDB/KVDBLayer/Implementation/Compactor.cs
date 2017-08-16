@@ -77,12 +77,12 @@ namespace BTDB.KVDBLayer
             {
                 if (_fileStats[i].Useless())
                 {
-                    if (toRemoveFileIds==null)
+                    if (toRemoveFileIds == null)
                         toRemoveFileIds = new List<uint>();
                     toRemoveFileIds.Add((uint)i);
                 }
             }
-            if (toRemoveFileIds!=null)
+            if (toRemoveFileIds != null)
                 _keyValueDB.MarkAsUnknown(toRemoveFileIds);
         }
 
@@ -91,6 +91,19 @@ namespace BTDB.KVDBLayer
             if (_keyValueDB.FileCollection.GetCount() == 0) return false;
             _root = _keyValueDB.OldestRoot;
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
+            var preserveKeyIndexKey = _keyValueDB.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(_keyValueDB.BuildKeyIndexInfos());
+            var preserveKeyIndexGeneration = _keyValueDB.CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
+            if (preserveKeyIndexKey < uint.MaxValue)
+            {
+                var dontTouchGenerationDueToPreserve = -1L;
+                var fileInfo = _keyValueDB.FileCollection.FileInfoByIdx(preserveKeyIndexKey) as IKeyIndex;
+                if (fileInfo != null)
+                {
+                    dontTouchGenerationDueToPreserve = fileInfo.Generation;
+                    dontTouchGenerationDueToPreserve = Math.Min(dontTouchGenerationDueToPreserve, _keyValueDB.GetGeneration(fileInfo.TrLogFileId));
+                }
+                dontTouchGeneration = Math.Min(dontTouchGeneration, dontTouchGenerationDueToPreserve);
+            }
             InitFileStats(dontTouchGeneration);
             CalculateFileUsefullness(_root, false); // Oldest root is not uptodate
             CalculateFileUsefullness(_keyValueDB.LastCommited, true); // Last commited is uptodate
@@ -100,7 +113,7 @@ namespace BTDB.KVDBLayer
             if (IsWasteSmall(totalWaste))
             {
                 if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
-                    _keyValueDB.CreateIndexFile(_cancellation);
+                    _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
             }
@@ -127,7 +140,7 @@ namespace BTDB.KVDBLayer
                 _cancellation.ThrowIfCancellationRequested();
                 return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
             }));
-            _keyValueDB.CreateIndexFile(_cancellation);
+            _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
             if (_newPositionMap.Count == 0)
             {
                 toRemoveFileIds.Add(valueFileId);

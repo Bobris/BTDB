@@ -73,6 +73,11 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBLogger Logger { get; set; }
 
+        public ulong? PreserveHistoryUpToCommitUlong {
+            get { return null; }
+            set { /* ignore */ }
+        }
+
         internal IBTreeRootNode MakeWrittableTransaction(InMemoryKeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
         {
             lock (_writeLock)

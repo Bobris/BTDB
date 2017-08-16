@@ -1,0 +1,6 @@
+C:\BTDB\.vs\BTDB\lut\0\b\ODbDump\bin\Debug\ODbDump.exe.config
+C:\BTDB\.vs\BTDB\lut\0\b\ODbDump\bin\Debug\ODbDump.exe
+C:\BTDB\.vs\BTDB\lut\0\b\ODbDump\bin\Debug\ODbDump.pdb
+C:\BTDB\.vs\BTDB\lut\0\i\ODbDump\Debug\ODbDump.csproj.CoreCompileInputs.cache
+C:\BTDB\.vs\BTDB\lut\0\i\ODbDump\Debug\ODbDump.exe
+C:\BTDB\.vs\BTDB\lut\0\i\ODbDump\Debug\ODbDump.pdb

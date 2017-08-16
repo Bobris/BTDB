@@ -12,11 +12,22 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
+    public class KeyValueDBOptions
+    {
+        public IFileCollection FileCollection;
+        public ICompressionStrategy Compression = new SnappyCompressionStrategy();
+        public uint FileSplitSize = int.MaxValue;
+        public ICompactorScheduler CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
+        public ulong? OpenUpToCommitUlong;
+        public ulong? PreserveHistoryUpToCommitUlong;
+    }
+
     public class KeyValueDB : IKeyValueDB, IHaveSubDB
     {
         const int MaxValueSizeInlineInMemory = 7;
         const int EndOfIndexFileMarker = 0x1234DEAD;
         IBTreeRootNode _lastCommited;
+        ulong? _preserveHistoryUpToCommitUlong;
         IBTreeRootNode _nextRoot;
         KeyValueDBTransaction _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
@@ -47,51 +58,84 @@ namespace BTDB.KVDBLayer
         }
 
         public KeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
+            : this(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize, CompactorScheduler = compactorScheduler })
         {
-            if (fileCollection == null) throw new ArgumentNullException(nameof(fileCollection));
-            if (compression == null) throw new ArgumentNullException(nameof(compression));
-            if (fileSplitSize < 1024 || fileSplitSize > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(fileSplitSize), "Allowed range 1024 - 2G");
-            _compactorScheduler = compactorScheduler;
-            MaxTrLogFileSize = fileSplitSize;
-            _compression = compression;
+        }
+
+        public KeyValueDB(KeyValueDBOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.FileCollection == null) throw new ArgumentNullException(nameof(options.FileCollection));
+            if (options.Compression == null) throw new ArgumentNullException(nameof(options.Compression));
+            if (options.FileSplitSize < 1024 || options.FileSplitSize > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(options.FileSplitSize), "Allowed range 1024 - 2G");
+            _compactorScheduler = options.CompactorScheduler;
+            MaxTrLogFileSize = options.FileSplitSize;
+            _compression = options.Compression;
             DurableTransactions = false;
-            _fileCollection = new FileCollectionWithFileInfos(fileCollection);
+            _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             _lastCommited = new BTreeRoot(0);
-            LoadInfoAboutFiles();
+            _preserveHistoryUpToCommitUlong = options.PreserveHistoryUpToCommitUlong;
+            LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning();
         }
 
-        void LoadInfoAboutFiles()
+        internal struct KeyIndexInfo
+        {
+            public uint Key;
+            public long Generation;
+            public ulong CommitUlong;
+        }
+
+        internal List<KeyIndexInfo> BuildKeyIndexInfos()
+        {
+            var keyIndexes = new List<KeyIndexInfo>();
+            foreach (var fileInfo in _fileCollection.FileInfos)
+            {
+                var keyIndex = fileInfo.Value as IKeyIndex;
+                if (keyIndex == null) continue;
+                keyIndexes.Add(new KeyIndexInfo { Key = fileInfo.Key, Generation = keyIndex.Generation, CommitUlong = keyIndex.CommitUlong });
+            }
+            if (keyIndexes.Count > 1)
+                keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Generation, r.Generation));
+            return keyIndexes;
+        }
+
+        void LoadInfoAboutFiles(ulong? openUpToCommitUlong)
         {
             long latestGeneration = -1;
             uint lastestTrLogFileId = 0;
-            var keyIndexes = new List<KeyValuePair<uint, long>>();
             foreach (var fileInfo in _fileCollection.FileInfos)
             {
                 var trLog = fileInfo.Value as IFileTransactionLog;
-                if (trLog != null)
+                if (trLog == null) continue;
+                if (trLog.Generation > latestGeneration)
                 {
-                    if (trLog.Generation > latestGeneration)
-                    {
-                        latestGeneration = trLog.Generation;
-                        lastestTrLogFileId = fileInfo.Key;
-                    }
-                    continue;
+                    latestGeneration = trLog.Generation;
+                    lastestTrLogFileId = fileInfo.Key;
                 }
-                var keyIndex = fileInfo.Value as IKeyIndex;
-                if (keyIndex == null) continue;
-                keyIndexes.Add(new KeyValuePair<uint, long>(fileInfo.Key, keyIndex.Generation));
             }
-            if (keyIndexes.Count > 1)
-                keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Value, r.Value));
+            var keyIndexes = BuildKeyIndexInfos();
+            var preserveKeyIndexKey = CalculatePreserveKeyIndexKeyFromKeyIndexInfos(keyIndexes);
+            var preserveKeyIndexGeneration = CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
             var firstTrLogId = LinkTransactionLogFileIds(lastestTrLogFileId);
             var firstTrLogOffset = 0u;
             var hasKeyIndex = false;
             while (keyIndexes.Count > 0)
             {
-                var keyIndex = keyIndexes[keyIndexes.Count - 1];
-                keyIndexes.RemoveAt(keyIndexes.Count - 1);
+                var nearKeyIndex = keyIndexes.Count - 1;
+                if (openUpToCommitUlong.HasValue)
+                {
+                    while (nearKeyIndex >= 0)
+                    {
+                        if (keyIndexes[nearKeyIndex].CommitUlong <= openUpToCommitUlong.Value)
+                            break;
+                        nearKeyIndex--;
+                    }
+                    break;
+                }
+                var keyIndex = keyIndexes[nearKeyIndex];
+                keyIndexes.RemoveAt(nearKeyIndex);
                 var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
                 _nextRoot = LastCommited.NewTransactionRoot();
                 if (LoadKeyIndex(keyIndex.Key, info))
@@ -103,27 +147,65 @@ namespace BTDB.KVDBLayer
                     hasKeyIndex = true;
                     break;
                 }
+                // Corrupted kvi - could be removed
                 _fileCollection.MakeIdxUnknown(keyIndex.Key);
             }
             while (keyIndexes.Count > 0)
             {
                 var keyIndex = keyIndexes[keyIndexes.Count - 1];
                 keyIndexes.RemoveAt(keyIndexes.Count - 1);
-                _fileCollection.MakeIdxUnknown(keyIndex.Key);
+                if (keyIndex.Key > preserveKeyIndexKey)
+                    _fileCollection.MakeIdxUnknown(keyIndex.Key);
             }
-            LoadTransactionLogs(firstTrLogId, firstTrLogOffset);
-            if (lastestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
+            LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
+            if (openUpToCommitUlong.HasValue || lastestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
             {
-                CreateIndexFile(CancellationToken.None);
+                CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
             }
             new Compactor(this, CancellationToken.None).FastStartCleanUp();
             _fileCollection.DeleteAllUnknownFiles();
         }
 
-        internal void CreateIndexFile(CancellationToken cancellation)
+        internal long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey)
+        {
+            if (preserveKeyIndexKey <= 0) return -1;
+            if (preserveKeyIndexKey < uint.MaxValue)
+            {
+                return GetGeneration(preserveKeyIndexKey);
+            }
+            else
+            {
+                return long.MaxValue;
+            }
+        }
+
+        internal uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
+        {
+            var preserveKeyIndexKey = uint.MaxValue;
+            if (_preserveHistoryUpToCommitUlong.HasValue)
+            {
+
+                var nearKeyIndex = keyIndexes.Count - 1;
+                while (nearKeyIndex >= 0)
+                {
+                    if (keyIndexes[nearKeyIndex].CommitUlong <= _preserveHistoryUpToCommitUlong.Value)
+                    {
+                        preserveKeyIndexKey = keyIndexes[nearKeyIndex].Key;
+                        break;
+                    }
+                    nearKeyIndex--;
+                }
+                if (nearKeyIndex < 0)
+                    preserveKeyIndexKey = 0;
+            }
+
+            return preserveKeyIndexKey;
+        }
+
+        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
         {
             var idxFileId = CreateKeyIndexFile(LastCommited, cancellation);
-            MarkAsUnknown(_fileCollection.FileInfos.Where(p => p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId).Select(p => p.Key));
+            MarkAsUnknown(_fileCollection.FileInfos.Where(p => p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId && p.Value.Generation < preserveKeyIndexGeneration).Select(p => p.Key));
         }
 
         bool LoadKeyIndex(uint fileId, IKeyIndex info)
@@ -189,12 +271,12 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void LoadTransactionLogs(uint firstTrLogId, uint firstTrLogOffset)
+        void LoadTransactionLogs(uint firstTrLogId, uint firstTrLogOffset, ulong? openUpToCommitUlong)
         {
             while (firstTrLogId != 0 && firstTrLogId != uint.MaxValue)
             {
                 _fileIdWithTransactionLog = 0;
-                if (LoadTransactionLog(firstTrLogId, firstTrLogOffset))
+                if (LoadTransactionLog(firstTrLogId, firstTrLogOffset, openUpToCommitUlong))
                 {
                     _fileIdWithTransactionLog = firstTrLogId;
                 }
@@ -208,8 +290,12 @@ namespace BTDB.KVDBLayer
         }
 
         // Return true if it is suitable for continuing writing new transactions
-        bool LoadTransactionLog(uint fileId, uint logOffset)
+        bool LoadTransactionLog(uint fileId, uint logOffset, ulong? openUpToCommitUlong)
         {
+            if (openUpToCommitUlong.HasValue && LastCommited.CommitUlong >= openUpToCommitUlong)
+            {
+                return false;
+            }
             var inlineValueBuf = new byte[MaxValueSizeInlineInMemory];
             var stack = new List<NodeIdxPair>();
             var collectionFile = FileCollection.GetFile(fileId);
@@ -341,6 +427,10 @@ namespace BTDB.KVDBLayer
                             _nextRoot.TrLogOffset = (uint)reader.GetCurrentPosition();
                             _lastCommited = _nextRoot;
                             _nextRoot = null;
+                            if (openUpToCommitUlong.HasValue && _nextRoot.CommitUlong >= openUpToCommitUlong)
+                            {
+                                return false;
+                            }
                             break;
                         case KVCommandType.Rollback:
                             _nextRoot = null;
@@ -522,6 +612,11 @@ namespace BTDB.KVDBLayer
         }
 
         public IKeyValueDBLogger Logger { get; set; }
+
+        public ulong? PreserveHistoryUpToCommitUlong {
+            get { return _preserveHistoryUpToCommitUlong; }
+            set { _preserveHistoryUpToCommitUlong = value; }
+        }
 
         internal IBTreeRootNode MakeWrittableTransaction(KeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
         {
