@@ -249,7 +249,7 @@ namespace BTDB.ODBLayer
             ParameterInfo[] methodParameters, Type methodReturnType,
             IDictionary<string, MethodInfo> apartFields)
         {
-            var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
             ilGenerator.Newobj(() => new ByteBufferWriter());
             ilGenerator.Stloc(writerLoc);
             Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
@@ -304,7 +304,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+            ilGenerator.Ldloc(writerLoc).Call(dataGetter);
             if (isPrefixBased)
             {
                 ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindByPrimaryKeyPrefix"));
@@ -475,7 +475,7 @@ namespace BTDB.ODBLayer
                 {
                     throw new BTDBException($"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{par.ParameterType.ToSimpleName()}' found).");
                 }
-                SaveKeyFieldFromArgument(ilGenerator, field, idx, writerLoc);
+                SaveKeyFieldFromArgument(ilGenerator, field, idx, par.ParameterType, writerLoc);
             }
             if (usedApartFieldsCount != apartFields.Count)
             {
@@ -618,16 +618,16 @@ namespace BTDB.ODBLayer
             }
         }
 
-        static void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, ushort parameterId, IILLocal writerLoc)
+        static void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, ushort parameterId, Type parameterType, IILLocal writerLoc)
         {
-            field.Handler.Save(ilGenerator,
+            field.Handler.SpecializeSaveForType(parameterType).Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
                 il => il.Ldarg(parameterId));
         }
 
         static void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, MethodInfo fieldGetter, IILLocal writerLoc)
         {
-            field.Handler.Save(ilGenerator,
+            field.Handler.SpecializeSaveForType(fieldGetter.ReturnType).Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
                 il => il.Ldarg(0).Callvirt(fieldGetter));
         }
