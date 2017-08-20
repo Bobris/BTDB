@@ -132,13 +132,20 @@ namespace BTDB.KVDBLayer
                             break;
                         nearKeyIndex--;
                     }
-                    break;
+                    if (nearKeyIndex < 0)
+                    {
+                        // If we have all trl files we can replay from start
+                        if (GetGeneration(firstTrLogId) == 1)
+                            break;
+                        // Or we have to start with oldest kvi
+                        nearKeyIndex = 0;
+                    }
                 }
                 var keyIndex = keyIndexes[nearKeyIndex];
                 keyIndexes.RemoveAt(nearKeyIndex);
                 var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
                 _nextRoot = LastCommited.NewTransactionRoot();
-                if (LoadKeyIndex(keyIndex.Key, info))
+                if (LoadKeyIndex(keyIndex.Key, info) && firstTrLogId<=info.TrLogFileId)
                 {
                     _lastCommited = _nextRoot;
                     _nextRoot = null;
@@ -154,7 +161,7 @@ namespace BTDB.KVDBLayer
             {
                 var keyIndex = keyIndexes[keyIndexes.Count - 1];
                 keyIndexes.RemoveAt(keyIndexes.Count - 1);
-                if (keyIndex.Key > preserveKeyIndexKey)
+                if (keyIndex.Key != preserveKeyIndexKey)
                     _fileCollection.MakeIdxUnknown(keyIndex.Key);
             }
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
@@ -205,7 +212,7 @@ namespace BTDB.KVDBLayer
         internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
         {
             var idxFileId = CreateKeyIndexFile(LastCommited, cancellation);
-            MarkAsUnknown(_fileCollection.FileInfos.Where(p => p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId && p.Value.Generation < preserveKeyIndexGeneration).Select(p => p.Key));
+            MarkAsUnknown(_fileCollection.FileInfos.Where(p => p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId && p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
         }
 
         bool LoadKeyIndex(uint fileId, IKeyIndex info)
@@ -427,7 +434,7 @@ namespace BTDB.KVDBLayer
                             _nextRoot.TrLogOffset = (uint)reader.GetCurrentPosition();
                             _lastCommited = _nextRoot;
                             _nextRoot = null;
-                            if (openUpToCommitUlong.HasValue && _nextRoot.CommitUlong >= openUpToCommitUlong)
+                            if (openUpToCommitUlong.HasValue && _lastCommited.CommitUlong >= openUpToCommitUlong)
                             {
                                 return false;
                             }
@@ -613,7 +620,8 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBLogger Logger { get; set; }
 
-        public ulong? PreserveHistoryUpToCommitUlong {
+        public ulong? PreserveHistoryUpToCommitUlong
+        {
             get { return _preserveHistoryUpToCommitUlong; }
             set { _preserveHistoryUpToCommitUlong = value; }
         }
