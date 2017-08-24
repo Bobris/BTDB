@@ -32,11 +32,13 @@ namespace BTDB.ODBLayer
         void EndField();
         void EndObject();
 
-        bool VisitRelation(string relationName);
+        bool StartRelation(string relationName);
         bool StartRelationKey();
         void EndRelationKey();
         bool StartRelationValue();
         void EndRelationValue();
+        void EndRelation();
+
         void InlineBackRef(int iid);
         void InlineRef(int iid);
     }

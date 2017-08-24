@@ -6,14 +6,22 @@ using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using System.Collections.Generic;
 
 namespace ODbDump
 {
     class ToConsoleFastVisitor : IODBFastVisitor
     {
-        private StringBuilder _builder = new StringBuilder();
+        internal int _indent = 0;
+
+        StringBuilder _builder = new StringBuilder();
         public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
+        }
+
+        public void Print(string s)
+        {
+            Console.WriteLine(new String(' ', _indent * 2) + s);
         }
 
         void Print(ByteBuffer b)
@@ -25,6 +33,195 @@ namespace ODbDump
                 _builder.Append(b[i].ToString("X2"));
             }
             Console.Write(_builder.ToString());
+        }
+    }
+
+    class ToConsoleVisitorNice : ToConsoleFastVisitor, IODBVisitor
+    {
+        string _currentFieldName;
+        Stack<int> _listItemIndexStack = new Stack<int>();
+        int _itemIndex;
+        int _iid;
+
+        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        {
+            Print($"Singleton {tableId}-{tableName ?? "?Unknown?"} oid:{oid}");
+            return true;
+        }
+
+        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        {
+            _indent++;
+            Print($"Object oid:{oid} {tableId}-{tableName ?? "?Unknown?"} version:{version}");
+            return true;
+        }
+
+        public bool StartField(string name)
+        {
+            _currentFieldName = name;
+            return true;
+        }
+
+        public bool NeedScalarAsObject()
+        {
+            return false;
+        }
+
+        public void ScalarAsObject(object content)
+        {
+        }
+
+        public bool NeedScalarAsText()
+        {
+            return true;
+        }
+
+        public void ScalarAsText(string content)
+        {
+            Print($"{_currentFieldName}: {content}");
+        }
+
+        public void OidReference(ulong oid)
+        {
+            Print($"{_currentFieldName}: Oid#{oid}");
+        }
+
+        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        {
+            Print($"{_currentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
+            _indent++;
+            return true;
+        }
+
+        public void EndInlineObject()
+        {
+            _indent--;
+        }
+
+        public bool StartList()
+        {
+            Console.WriteLine($"{_currentFieldName}: Array");
+            _listItemIndexStack.Push(_itemIndex);
+            _itemIndex = 0;
+            _indent++;
+            return true;
+        }
+
+        public bool StartItem()
+        {
+            Print($"[{_itemIndex}]:");
+            _indent++;
+            return true;
+        }
+
+        public void EndItem()
+        {
+            _indent--;
+            _itemIndex++;
+        }
+
+        public void EndList()
+        {
+            _itemIndex = _listItemIndexStack.Pop();
+            _indent--;
+        }
+
+        public bool StartDictionary()
+        {
+            Print($"{_currentFieldName}: Dictionary");
+            _listItemIndexStack.Push(_itemIndex);
+            _itemIndex = 0;
+            _indent++;
+            return true;
+        }
+
+        public bool StartDictKey()
+        {
+            Print($"Key[{_itemIndex}]");
+            _indent++;
+            return true;
+        }
+
+        public void EndDictKey()
+        {
+            _indent--;
+        }
+
+        public bool StartDictValue()
+        {
+            Print($"Value[{_itemIndex}]");
+            _indent++;
+            return true;
+        }
+
+        public void EndDictValue()
+        {
+            _itemIndex++;
+            _indent--;
+        }
+
+        public void EndDictionary()
+        {
+            _itemIndex = _listItemIndexStack.Pop();
+            _indent--;
+        }
+
+        public void EndField()
+        {
+        }
+
+        public void EndObject()
+        {
+            _indent--;
+        }
+
+        public bool StartRelation(string relationName)
+        {
+            Print($"Relation {relationName}");
+            _listItemIndexStack.Push(_itemIndex);
+            _itemIndex = 0;
+            _indent++;
+            return true;
+        }
+
+        public bool StartRelationKey()
+        {
+            Print($"Key[{_itemIndex}]");
+            _indent++;
+            return true;
+        }
+
+        public void EndRelationKey()
+        {
+            _indent--;
+        }
+
+        public bool StartRelationValue()
+        {
+            Print($"Value[{_itemIndex}]");
+            _indent++;
+            return true;
+        }
+
+        public void EndRelationValue()
+        {
+            _itemIndex++;
+            _indent--;
+        }
+        public void EndRelation()
+        {
+            _itemIndex = _listItemIndexStack.Pop();
+            _indent--;
+        }
+
+        public void InlineBackRef(int iid)
+        {
+            Print($"{_currentFieldName}: Inline back ref#{iid}");
+        }
+
+        public void InlineRef(int iid)
+        {
+            _iid = iid;
         }
     }
 
@@ -150,7 +347,7 @@ namespace ODbDump
             Console.WriteLine("EndObject");
         }
 
-        public bool VisitRelation(string relationName)
+        public bool StartRelation(string relationName)
         {
             Console.WriteLine($"Relation {relationName}");
             return true;
@@ -186,6 +383,10 @@ namespace ODbDump
         public void InlineRef(int iid)
         {
             Console.WriteLine($"Inline ref {iid}");
+        }
+
+        public void EndRelation()
+        {
         }
     }
 
@@ -290,7 +491,7 @@ namespace ODbDump
         {
         }
 
-        public bool VisitRelation(string relationName)
+        public bool StartRelation(string relationName)
         {
             return true;
         }
@@ -312,6 +513,9 @@ namespace ODbDump
         public void EndRelationValue()
         {
         }
+        public void EndRelation()
+        {
+        }
 
         public void InlineBackRef(int iid)
         {
@@ -331,7 +535,7 @@ namespace ODbDump
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 return;
             }
-            var action = "dump";
+            var action = "nicedump";
             if (args.Length > 1)
             {
                 action = args[1].ToLowerInvariant();
@@ -339,6 +543,26 @@ namespace ODbDump
 
             switch (action)
             {
+                case "nicedump":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        using (var odb = new ObjectDB())
+                        {
+                            odb.Open(kdb, false);
+                            using (var trkv = kdb.StartReadOnlyTransaction())
+                            using (var tr = odb.StartTransaction())
+                            {
+                                Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                                Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                                Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                                var visitor = new ToConsoleVisitorNice();
+                                var iterator = new ODBIterator(tr, visitor);
+                                iterator.Iterate();
+                            }
+                        }
+                        break;
+                    }
                 case "dump":
                     {
                         using (var dfc = new OnDiskFileCollection(args[0]))

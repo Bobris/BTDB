@@ -1,6 +1,0 @@
-C:\BTDB\.vs\BTDB\lut\0\b\BTDB\bin\Debug\BTDB.dll
-C:\BTDB\.vs\BTDB\lut\0\b\BTDB\bin\Debug\BTDB.pdb
-C:\BTDB\.vs\BTDB\lut\0\i\BTDB\Debug\BTDB.csprojResolveAssemblyReference.cache
-C:\BTDB\.vs\BTDB\lut\0\i\BTDB\Debug\BTDB.csproj.CoreCompileInputs.cache
-C:\BTDB\.vs\BTDB\lut\0\i\BTDB\Debug\BTDB.dll
-C:\BTDB\.vs\BTDB\lut\0\i\BTDB\Debug\BTDB.pdb

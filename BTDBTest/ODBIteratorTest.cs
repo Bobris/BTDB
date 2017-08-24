@@ -207,10 +207,9 @@ namespace BTDBTest
                 Builder.AppendLine("EndObject");
             }
 
-            public bool VisitRelation(string relationName)
+            public bool StartRelation(string relationName)
             {
-                Builder.AppendFormat($"Relation {relationName}");
-                Builder.AppendLine();
+                Builder.AppendLine($"Relation {relationName}");
                 return true;
             }
 
@@ -234,6 +233,11 @@ namespace BTDBTest
             public void EndRelationValue()
             {
                 Builder.AppendLine("EndValue");
+            }
+
+            public void EndRelation()
+            {
+                Builder.AppendLine("EndRelation");
             }
 
             public void InlineBackRef(int iid)

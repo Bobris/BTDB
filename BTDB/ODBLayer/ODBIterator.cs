@@ -107,10 +107,11 @@ namespace BTDB.ODBLayer
             }
             foreach (var relation in _relationId2Name)
             {
-                if (_visitor != null && !_visitor.VisitRelation(relation.Value))
+                if (_visitor != null && !_visitor.StartRelation(relation.Value))
                     continue;
                 MarkRelationName(relation.Key);
                 IterateRelation(relation.Key, relation.Value);
+                if (_visitor != null) _visitor.EndRelation();
             }
         }
 

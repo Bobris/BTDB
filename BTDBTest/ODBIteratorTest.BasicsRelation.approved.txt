@@ -12,3 +12,4 @@ ScalarObj HardCore Code
 ScalarStr HardCore Code
 EndField
 EndValue
+EndRelation
