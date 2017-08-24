@@ -9,12 +9,19 @@ namespace BTDB.StreamLayer
         readonly ulong _valueSize;
         ulong _ofs;
 
-        public PositionLessStreamReader(IPositionLessStream stream)
+        public PositionLessStreamReader(IPositionLessStream stream): this(stream, 8192)
         {
+        }
+
+        public PositionLessStreamReader(IPositionLessStream stream, int bufferSize)
+        {
+            if(bufferSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bufferSize));
+
             _stream = stream;
             _valueSize = _stream.GetSize();
             _ofs = 0;
-            Buf = new byte[8192];
+            Buf = new byte[bufferSize];
             FillBuffer();
         }
 
