@@ -100,7 +100,7 @@ namespace ODbDump
 
         public bool StartList()
         {
-            Console.WriteLine($"{_currentFieldName}: Array");
+            Print($"{_currentFieldName}: Array");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
