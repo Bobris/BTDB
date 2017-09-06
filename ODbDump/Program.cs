@@ -109,14 +109,12 @@ namespace ODbDump
 
         public bool StartItem()
         {
-            Print($"[{_itemIndex}]:");
-            _indent++;
+            _currentFieldName = $"[{_itemIndex}]";
             return true;
         }
 
         public void EndItem()
         {
-            _indent--;
             _itemIndex++;
         }
 
@@ -137,27 +135,23 @@ namespace ODbDump
 
         public bool StartDictKey()
         {
-            Print($"Key[{_itemIndex}]");
-            _indent++;
+            _currentFieldName = $"Key[{_itemIndex}]";
             return true;
         }
 
         public void EndDictKey()
         {
-            _indent--;
         }
 
         public bool StartDictValue()
         {
-            Print($"Value[{_itemIndex}]");
-            _indent++;
+            _currentFieldName = $"Value[{_itemIndex}]";
             return true;
         }
 
         public void EndDictValue()
         {
             _itemIndex++;
-            _indent--;
         }
 
         public void EndDictionary()

@@ -27,7 +27,7 @@ namespace BTDB.KVDBLayer
         const int MaxValueSizeInlineInMemory = 7;
         const int EndOfIndexFileMarker = 0x1234DEAD;
         IBTreeRootNode _lastCommited;
-        ulong? _preserveHistoryUpToCommitUlong;
+        long _preserveHistoryUpToCommitUlong; // it is long only because Interlock.Read is just long cappable, MaxValue means no preserving history
         IBTreeRootNode _nextRoot;
         KeyValueDBTransaction _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
@@ -74,7 +74,7 @@ namespace BTDB.KVDBLayer
             DurableTransactions = false;
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             _lastCommited = new BTreeRoot(0);
-            _preserveHistoryUpToCommitUlong = options.PreserveHistoryUpToCommitUlong;
+            _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning();
@@ -145,7 +145,7 @@ namespace BTDB.KVDBLayer
                 keyIndexes.RemoveAt(nearKeyIndex);
                 var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
                 _nextRoot = LastCommited.NewTransactionRoot();
-                if (LoadKeyIndex(keyIndex.Key, info) && firstTrLogId<=info.TrLogFileId)
+                if (LoadKeyIndex(keyIndex.Key, info) && firstTrLogId <= info.TrLogFileId)
                 {
                     _lastCommited = _nextRoot;
                     _nextRoot = null;
@@ -189,13 +189,14 @@ namespace BTDB.KVDBLayer
         internal uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
         {
             var preserveKeyIndexKey = uint.MaxValue;
-            if (_preserveHistoryUpToCommitUlong.HasValue)
+            var preserveHistoryUpToCommitUlong = (ulong)Interlocked.Read(ref _preserveHistoryUpToCommitUlong);
+            if (preserveHistoryUpToCommitUlong != ulong.MaxValue)
             {
 
                 var nearKeyIndex = keyIndexes.Count - 1;
                 while (nearKeyIndex >= 0)
                 {
-                    if (keyIndexes[nearKeyIndex].CommitUlong <= _preserveHistoryUpToCommitUlong.Value)
+                    if (keyIndexes[nearKeyIndex].CommitUlong <= preserveHistoryUpToCommitUlong)
                     {
                         preserveKeyIndexKey = keyIndexes[nearKeyIndex].Key;
                         break;
@@ -622,8 +623,12 @@ namespace BTDB.KVDBLayer
 
         public ulong? PreserveHistoryUpToCommitUlong
         {
-            get { return _preserveHistoryUpToCommitUlong; }
-            set { _preserveHistoryUpToCommitUlong = value; }
+            get
+            {
+                var preserveHistoryUpToCommitUlong = (ulong)Interlocked.Read(ref _preserveHistoryUpToCommitUlong);
+                return preserveHistoryUpToCommitUlong == ulong.MaxValue ? null : (ulong?)preserveHistoryUpToCommitUlong;
+            }
+            set { Interlocked.Exchange(ref _preserveHistoryUpToCommitUlong, (long)(value ?? ulong.MaxValue)); }
         }
 
         internal IBTreeRootNode MakeWrittableTransaction(KeyValueDBTransaction keyValueDBTransaction, IBTreeRootNode btreeRoot)
