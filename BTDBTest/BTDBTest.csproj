@@ -185,6 +185,7 @@
     <Compile Include="KeyValueDBTest.cs" />
     <Compile Include="NumberAllocatorTest.cs" />
     <Compile Include="ObjectDbTableFreeContentTest.cs" />
+    <Compile Include="ObjectDbTableRemoveOptimalizeTest.cs" />
     <Compile Include="ObjectDbTableTest.cs" />
     <Compile Include="ObjectDbTableUpgradeTest.cs" />
     <Compile Include="ObjectDBTest.cs" />

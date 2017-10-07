@@ -73,6 +73,8 @@ namespace BTDB.ODBLayer
         internal List<ulong> FreeContentNewOid { get; } = new List<ulong>();
         internal byte[] Prefix { get; private set; }
 
+        bool? _needImplementFreeContent;
+
         public RelationInfo(uint id, string name, IRelationInfoResolver relationInfoResolver, Type interfaceType,
                             IInternalObjectDBTransaction tr)
         {
@@ -156,6 +158,26 @@ namespace BTDB.ODBLayer
                 var newEnumCfg = new EnumFieldHandler.EnumConfiguration((newHandler as EnumFieldHandler).Configuration);
 
                 return prevEnumCfg.IsBinaryRepresentationSubsetOf(newEnumCfg);
+            }
+            return false;
+        }
+
+        public bool NeedImplementFreeContent()
+        {
+            if (!_needImplementFreeContent.HasValue)
+            {
+                _needImplementFreeContent = CalcNeedImplementFreeContent();
+            }
+            return _needImplementFreeContent.Value;
+        }
+
+        bool CalcNeedImplementFreeContent()
+        {
+            foreach (var versionInfo in _relationVersions)
+            {
+                var finder = GetIDictFinder(versionInfo.Key);
+                if (finder != null)
+                    return true;
             }
             return false;
         }
@@ -676,7 +698,7 @@ namespace BTDB.ODBLayer
         {
             var h = secondaryKeyIndex + version * 100000ul;
             return _secondaryKeysConvertSavers.GetOrAdd(h,
-                (_, ver, secKeyIndex, relationInfo) => CreateBytesToSKSaver(ver, secKeyIndex, 
+                (_, ver, secKeyIndex, relationInfo) => CreateBytesToSKSaver(ver, secKeyIndex,
                     $"Relation_{relationInfo.Name}_PkVal_to_SK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_v{ver}"),
                 version, secondaryKeyIndex, this);
         }
@@ -1057,8 +1079,7 @@ namespace BTDB.ODBLayer
         {
             var valueReader = new ByteArrayReader(valueBytes.ToByteArray());
             var version = valueReader.ReadVUInt32();
-
-            GetIDictFinder(version)(tr, valueReader, dictionaries, oids);
+            GetIDictFinder(version)?.Invoke(tr, valueReader, dictionaries, oids);
         }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>, IList<ulong>> CreateIDictFinder(uint version)
@@ -1081,8 +1102,7 @@ namespace BTDB.ODBLayer
             }
             if (needGenerateFreeFor == 0)
             {
-                ilGenerator.Ret();
-                return method.Create();
+                return null;
             }
             var anyNeedsCtx = relationVersionInfo.GetValueFields().Any(f => f.Handler.NeedsCtx());
             if (anyNeedsCtx)

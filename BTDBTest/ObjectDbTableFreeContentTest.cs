@@ -373,6 +373,8 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong UserId { get; set; }
             public IDictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>> ConcurrentFeautureItemsSessions { get; set; }
         }
 
@@ -384,7 +386,8 @@ namespace BTDBTest
         public interface ILicenses
         {
             void Insert(License license);
-            bool RemoveById(ulong companyId);
+            bool RemoveById(ulong companyId, ulong userId);
+            int RemoveById(ulong companyId);
         }
 
         [Fact]
@@ -399,6 +402,7 @@ namespace BTDBTest
                 var license = new License
                 {
                     CompanyId = 1,
+                    UserId = 1,
                     ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                     {
                         [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
@@ -413,8 +417,8 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILicenses>("LicenseRel");
                 var lics = creator(tr);
-                lics.RemoveById(0);
-                lics.RemoveById(1);
+                lics.RemoveById(0, 1);
+                lics.RemoveById(1, 1);
                 tr.Commit();
             }
             AssertNoLeaksInDb();
@@ -617,6 +621,39 @@ namespace BTDBTest
                 table.RemoveById(1);
                 AssertNoLeaksInDb();
             }
+        }
+
+        [Fact]
+        public void FreeWorksTogetherWithRemoveByPrefix()
+        {
+            Func<IObjectDBTransaction, ILicenses> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILicenses>("LicenseRel2");
+                var lics = creator(tr);
+                lics.Insert(new License());
+                var license = new License
+                {
+                    CompanyId = 1,
+                    UserId = 1,
+                    ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                    {
+                        [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
+                    }
+                };
+                lics.Insert(license);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ILicenses>("LicenseRel2");
+                var lics = creator(tr);
+                Assert.Equal(1, lics.RemoveById(1));
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
         }
 
         void AssertNoLeaksInDb()

@@ -217,20 +217,40 @@ namespace BTDB.ODBLayer
 
         public int RemoveByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
         {
-            var removedCount = 0;
-            var keysToDelete = new List<ByteBuffer>();
-
-            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
-            while (enumerator.MoveNext())
+            if (HasSecondaryIndexes || _relationInfo.NeedImplementFreeContent())
             {
-                keysToDelete.Add(enumerator.GetKeyBytes());
-            }
-            foreach (var key in keysToDelete)
-            {
-                RemoveById(key, true);
-                removedCount++;
+                var keysToDelete = new List<ByteBuffer>();
+                var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
+                while (enumerator.MoveNext())
+                {
+                    keysToDelete.Add(enumerator.GetKeyBytes());
+                }
+
+                foreach (var key in keysToDelete)
+                {
+                    StartWorkingWithPK();
+                    if (_transaction.KeyValueDBTransaction.Find(key) != FindResult.Exact)
+                        throw new BTDBException("Not found record to delete.");
+
+                    var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+
+                    if (HasSecondaryIndexes)
+                        RemoveSecondaryIndexes(key, valueBytes);
+                    
+                    if (_relationInfo.NeedImplementFreeContent())
+                        _relationInfo.FreeContent(_transaction, valueBytes);
+                }
             }
 
+            _transaction.TransactionProtector.Start();
+            _transaction.KeyValueDBTransaction.SetKeyPrefix(keyBytesPrefix);
+            int removedCount = (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();
+
+            if (removedCount > 0)
+            {
+                _transaction.KeyValueDBTransaction.EraseAll();
+                MarkModification();
+            }
             return removedCount;
         }
 
