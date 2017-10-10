@@ -40,6 +40,11 @@ namespace SimpleTester
             return _parent.IsDefault(summary, benchmark);
         }
 
+        public string GetValue(Summary summary, Benchmark benchmark, ISummaryStyle style)
+        {
+            return _parent.GetValue(summary, benchmark, style);
+        }
+
         public string ColumnName => _parent.ColumnName;
         public bool AlwaysShow => _parent.AlwaysShow;
         public ColumnCategory Category => ColumnCategory.Job;
@@ -47,6 +52,12 @@ namespace SimpleTester
         public string Id => _parent.Id;
 
         public int PriorityInCategory => _parent.PriorityInCategory;
+
+        public bool IsNumeric => _parent.IsNumeric;
+
+        public UnitType UnitType => _parent.UnitType;
+
+        public string Legend => _parent.Legend;
     }
 
     public class ByteSizeColumn : IColumn
@@ -57,7 +68,7 @@ namespace SimpleTester
             var instance = Activator.CreateInstance(target.Type);
             var param = benchmark.Parameters[0];
             target.Type.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
-            target.SetupMethod.Invoke(instance, new object[0]);
+            target.IterationSetupMethod.Invoke(instance, new object[0]);
             var propName = target.MethodDisplayInfo.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
             return target.Type.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
         }
@@ -72,6 +83,11 @@ namespace SimpleTester
             return true;
         }
 
+        public string GetValue(Summary summary, Benchmark benchmark, ISummaryStyle style)
+        {
+            return GetValue(summary, benchmark);
+        }
+
         public string ColumnName => "Byte Size";
         public bool AlwaysShow => true;
         public ColumnCategory Category => ColumnCategory.Job;
@@ -79,6 +95,12 @@ namespace SimpleTester
         public string Id => "ByteSize";
 
         public int PriorityInCategory => 0;
+
+        public bool IsNumeric => true;
+
+        public UnitType UnitType => UnitType.Size;
+
+        public string Legend => "";
     }
 
     [Config(typeof(Config))]

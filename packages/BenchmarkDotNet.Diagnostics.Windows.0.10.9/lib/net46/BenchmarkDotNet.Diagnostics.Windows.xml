@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>BenchmarkDotNet.Diagnostics.Windows</name>
+    </assembly>
+    <members>
+        <member name="M:BenchmarkDotNet.Diagnostics.Windows.Configs.InliningDiagnoserAttribute.#ctor(System.Boolean,System.Boolean)">
+            <param name="logFailuresOnly">only the methods that failed to get inlined. True by default.</param>
+            <param name="filterByNamespace">only the methods from declaring type's namespace. Set to false if you want to see all Jit inlining events. True by default.</param>
+        </member>
+        <member name="M:BenchmarkDotNet.Diagnostics.Windows.EtwDiagnoser`1.WaitForDelayedEvents">
+            <summary>
+            ETW real-time sessions receive events with a slight delay. Typically it
+            shouldn't be more than a few seconds. This increases the likelihood that
+            all relevant events are processed by the collection thread by the time we
+            are done with the benchmark.
+            </summary>
+        </member>
+        <member name="M:BenchmarkDotNet.Diagnostics.Windows.InliningDiagnoser.#ctor(System.Boolean,System.Boolean)">
+            <summary>
+            creates new InliningDiagnoser
+            </summary>
+            <param name="logFailuresOnly">only the methods that failed to get inlined. True by default.</param>
+            <param name="filterByNamespace">only the methods from declaring type's namespace. Set to false if you want to see all Jit inlining events. True by default.</param>
+        </member>
+    </members>
+</doc>

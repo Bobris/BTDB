@@ -670,10 +670,10 @@ namespace BTDBTest
         public void AdvancedEraseRangeWorks()
         {
             foreach(var range in EraseRangeSource())
-                AdvancedEraseRangeWorks(range[0], range[1], range[2]);
+                AdvancedEraseRangeWorksCore(range[0], range[1], range[2]);
         }
 
-        void AdvancedEraseRangeWorks(int createKeys, int removeStart, int removeCount)
+        void AdvancedEraseRangeWorksCore(int createKeys, int removeStart, int removeCount)
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {

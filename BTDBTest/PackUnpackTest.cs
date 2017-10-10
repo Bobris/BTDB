@@ -11,10 +11,10 @@ namespace BTDBTest
         public void PackVUIntIsOrderable()
         {
             foreach(var ul in GenerateULongs())
-                PackVUIntIsOrderable(ul);
+                PackVUIntIsOrderableCore(ul);
         }
 
-        void PackVUIntIsOrderable(ulong t)
+        void PackVUIntIsOrderableCore(ulong t)
         {
             var buf1 = new byte[9];
             var o1 = 0;
@@ -56,10 +56,10 @@ namespace BTDBTest
         public void PackVIntIsOrderableForPositive()
         {
             foreach (var l in GeneratePositiveLongs())
-                PackVIntIsOrderableForPositive(l);
+                PackVIntIsOrderableForPositiveCore(l);
         }
 
-        void PackVIntIsOrderableForPositive(long t)
+        void PackVIntIsOrderableForPositiveCore(long t)
         {
             var buf1 = new byte[9];
             var o1 = 0;
@@ -102,10 +102,10 @@ namespace BTDBTest
         public void PackVIntIsOrderableForNegative()
         {
             foreach (var l in GenerateNegativeLongs())
-                PackVIntIsOrderableForNegative(l);
+                PackVIntIsOrderableForNegativeCore(l);
         }
 
-        void PackVIntIsOrderableForNegative(long t)
+        void PackVIntIsOrderableForNegativeCore(long t)
         {
             var buf1 = new byte[9];
             var o1 = 0;
