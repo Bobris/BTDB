@@ -96,17 +96,109 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 Assert.Equal(100, table.RemoveById(1));
-                AssertCounts(tr, eraseAll: 1, eraseCurrent: 0, eraseRange: 0);
+                AssertCounts(tr, eraseAll: 1, eraseCurrent: 0);
                 Assert.Equal(100, table.Count);
             }
         }
 
-        void AssertCounts(IObjectDBTransaction tr, int eraseAll = -1, int eraseCurrent = -1, int eraseRange = -1)
+        public class DataDifferentPrefix
+        {
+            [PrimaryKey(1)]
+            public int A { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("S")]
+            public int B { get; set; }
+
+            public int C { get; set; }
+        }
+
+        public interface ITableDataDifferentPrefix : IReadOnlyCollection<DataDifferentPrefix>
+        {
+            void Insert(DataDifferentPrefix data);
+            int RemoveById(int a);
+        }
+
+        [Fact]
+        public void SecIndexesCannotBeRemovedAtOnce()
+        {
+            Func<IObjectDBTransaction, ITableDataDifferentPrefix> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ITableDataDifferentPrefix>("SecIndexesCannotBeRemovedAtOnce");
+                var table = creator(tr);
+                for (var i = 0; i < 10; i++)
+                {
+                    table.Insert(new DataDifferentPrefix { A = i % 2, B = i });
+                }
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(5, table.RemoveById(0));
+                AssertCounts(tr, eraseAll: 1, eraseCurrent: 5);
+                Assert.Equal(5, table.Count);
+            }
+        }
+
+        public class DataSamePrefix
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("S", Order = 1)]
+            public int A { get; set; }
+
+            [PrimaryKey(2)]
+            public int B { get; set; }
+
+            [PrimaryKey(3)]
+            [SecondaryKey("S", Order = 2)]
+            public int C { get; set; }
+        }
+
+        public interface ITableDataSamePrefix : IReadOnlyCollection<DataSamePrefix>
+        {
+            void Insert(DataSamePrefix data);
+            int RemoveById(int a); //same prefix PK [A], SK("S") [A]
+            int RemoveById(int a, int b); //PK [A,B], SK("S") [A C]
+        }
+
+        [Fact]
+        public void SecIndexesCanBeRemovedAtOnce()
+        {
+            Func<IObjectDBTransaction, ITableDataSamePrefix> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ITableDataSamePrefix>("SecIndexesCannotBeRemovedAtOnce");
+                var table = creator(tr);
+                for (var i = 0; i < 10; i++)
+                {
+                    table.Insert(new DataSamePrefix { A = i % 2, B = i % 2, C = i });
+                }
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(5, table.RemoveById(0));
+                AssertCounts(tr, eraseAll: 2, eraseCurrent: 0);
+                Assert.Equal(5, table.Count);
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(5, table.RemoveById(0, 0));
+                AssertCounts(tr, eraseAll: 1, eraseCurrent: 5);
+                Assert.Equal(5, table.Count);
+            }
+        }
+
+        void AssertCounts(IObjectDBTransaction tr, int eraseAll = -1, int eraseCurrent = -1)
         {
             var ctr = GetCountingTransaction(tr);
             Assert.Equal(eraseAll, ctr.EraseAllCount);
             Assert.Equal(eraseCurrent, ctr.EraseCurrentCount);
-            Assert.Equal(eraseRange, ctr.EraseRangeCount);
+       
         }
 
         class InMemoryKeyValueDBWithCount : IKeyValueDB

@@ -217,31 +217,56 @@ namespace BTDB.ODBLayer
 
         public int RemoveByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
         {
-            if (HasSecondaryIndexes || _relationInfo.NeedImplementFreeContent())
+            var keysToDelete = new List<ByteBuffer>();
+            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
+            while (enumerator.MoveNext())
             {
-                var keysToDelete = new List<ByteBuffer>();
-                var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
-                while (enumerator.MoveNext())
-                {
-                    keysToDelete.Add(enumerator.GetKeyBytes());
-                }
+                keysToDelete.Add(enumerator.GetKeyBytes());
+            }
 
-                foreach (var key in keysToDelete)
-                {
-                    StartWorkingWithPK();
-                    if (_transaction.KeyValueDBTransaction.Find(key) != FindResult.Exact)
-                        throw new BTDBException("Not found record to delete.");
+            foreach (var key in keysToDelete)
+            {
+                StartWorkingWithPK();
+                if (_transaction.KeyValueDBTransaction.Find(key) != FindResult.Exact)
+                    throw new BTDBException("Not found record to delete.");
 
-                    var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+                var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
 
-                    if (HasSecondaryIndexes)
-                        RemoveSecondaryIndexes(key, valueBytes);
+                if (HasSecondaryIndexes)
+                    RemoveSecondaryIndexes(key, valueBytes);
                     
-                    if (_relationInfo.NeedImplementFreeContent())
-                        _relationInfo.FreeContent(_transaction, valueBytes);
+                if (_relationInfo.NeedImplementFreeContent())
+                    _relationInfo.FreeContent(_transaction, valueBytes);
+            }
+
+            return RemovePrimaryKeysByPrefix(keyBytesPrefix);
+        }
+
+        public int RemoveByKeyPrefixWithoutIterate(ByteBuffer keyBytesPrefix)
+        {
+            if (HasSecondaryIndexes)
+            {
+                //keyBytePrefix contains [Index Relation, Primary key prefix] we need
+                //                       [Index Relation, Secondary Key Index, Primary key prefix]
+                int idBytesLength = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(_relationInfo.Id);
+                var writer = new ByteBufferWriter();
+                foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+                {
+                    writer.WriteBlock(ObjectDB.AllRelationsSKPrefix);
+                    writer.WriteVUInt32(_relationInfo.Id);
+                    writer.WriteVUInt32(secKey.Key);
+                    writer.WriteBlock(keyBytesPrefix.Buffer, idBytesLength, keyBytesPrefix.Length - idBytesLength);
+                    _transaction.KeyValueDBTransaction.SetKeyPrefix(writer.Data);
+                    _transaction.KeyValueDBTransaction.EraseAll();
+                    writer.Reset();
                 }
             }
 
+            return RemovePrimaryKeysByPrefix(keyBytesPrefix);
+        }
+
+        int RemovePrimaryKeysByPrefix(ByteBuffer keyBytesPrefix)
+        {
             _transaction.TransactionProtector.Start();
             _transaction.KeyValueDBTransaction.SetKeyPrefix(keyBytesPrefix);
             int removedCount = (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();

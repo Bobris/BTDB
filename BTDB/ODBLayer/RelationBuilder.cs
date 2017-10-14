@@ -36,175 +36,33 @@ namespace BTDB.ODBLayer
                     continue;
                 var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
-                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("FindBy") || method.Name == "Contains")
+                if (method.Name.StartsWith("RemoveBy"))
                 {
-                    SaveKeyBytesAndCallMethod(reqMethod.Generator, relationDBManipulatorType, method.Name,
-                        method.GetParameters(), method.ReturnType, _relationInfo.ApartFields);
+                    BuildRemoveByMethod(method, reqMethod, relationDBManipulatorType);
+                }
+                else if (method.Name.StartsWith("FindBy"))
+                {
+                    BuildFindByMethod(method, reqMethod, relationDBManipulatorType);
+                }
+                else if (method.Name == "Contains")
+                {
+                    BuildContainsMethod(method, reqMethod, relationDBManipulatorType);
                 }
                 else if (method.Name == "ListById") //list by primary key
                 {
-                    var parameters = method.GetParameters();
-                    var advEnumParamOrder = (ushort)parameters.Length;
-                    var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
-                    var advEnumParamType = advEnumParam.GenericTypeArguments[0];
-
-                    var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
-                    var prefixParamCount = method.GetParameters().Length - 1;
-
-                    var field = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields()
-                        .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
-
-                    reqMethod.Generator
-                        .Ldarg(0);
-                    SavePKListPrefixBytes(reqMethod.Generator, method.Name,
-                        method.GetParameters(), _relationInfo.ApartFields);
-                    reqMethod.Generator
-                        .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
-                    FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                        advEnumParam.GetField("Start"), reqMethod.Generator);
-                    reqMethod.Generator
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
-                    FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                        advEnumParam.GetField("End"), reqMethod.Generator);
-
-                    if (typeof(IEnumerator<>).MakeGenericType(_relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
-                    {
-                        //return new RelationAdvancedEnumerator<T>(relationManipulator,
-                        //    prefixBytes, prefixFieldCount,
-                        //    order,
-                        //    startKeyProposition, startKeyBytes,
-                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
-                        var enumType = typeof(RelationAdvancedEnumerator<>).MakeGenericType(_relationInfo.ClientType);
-                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
-                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
-                    }
-                    else if (typeof(IOrderedDictionaryEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType)
-                        .IsAssignableFrom(method.ReturnType))
-                    {
-                        reqMethod.Generator
-                            .LdcI4(1); //init key reader
-
-                        //return new RelationAdvancedOrderedEnumerator<T>(relationManipulator,
-                        //    prefixBytes, prefixFieldCount,
-                        //    order,
-                        //    startKeyProposition, startKeyBytes,
-                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex, initKeyReader);
-                        var enumType = typeof(RelationAdvancedOrderedEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType);
-                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
-                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
-                    }
-                    else
-                    {
-                        throw new BTDBException("Invalid method " + method.Name);
-                    }
+                    BuildListByIdMethod(method, reqMethod);
                 }
                 else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal)) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
-                    var parameters = method.GetParameters();
-                    var advEnumParamOrder = (ushort)parameters.Length;
-                    var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
-                    var advEnumParamType = advEnumParam.GenericTypeArguments[0];
-
-                    var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
-                    var secondaryKeyIndex = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
-                    var prefixParamCount = method.GetParameters().Length - 1;
-
-                    var field = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex)
-                        .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
-
-                    reqMethod.Generator
-                        .Ldarg(0);
-                    SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                        method.GetParameters(), _relationInfo.ApartFields);
-                    reqMethod.Generator
-                        .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
-                    FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                        emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
-                    reqMethod.Generator
-                        .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
-                    FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                        emptyBufferLoc, advEnumParam.GetField("End"), reqMethod.Generator);
-                    reqMethod.Generator
-                        .LdcI4((int)secondaryKeyIndex);
-
-                    if (typeof(IEnumerator<>).MakeGenericType(_relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
-                    {
-                        //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
-                        //    prefixBytes, prefixFieldCount,
-                        //    order,
-                        //    startKeyProposition, startKeyBytes,
-                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
-                        var enumType = typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(_relationInfo.ClientType);
-                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
-                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
-                    }
-                    else if (typeof(IOrderedDictionaryEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType)
-                        .IsAssignableFrom(method.ReturnType))
-                    {
-                        //return new RelationAdvancedOrderedSecondaryKeyEnumerator<T>(relationManipulator,
-                        //    prefixBytes, prefixFieldCount,
-                        //    order,
-                        //    startKeyProposition, startKeyBytes,
-                        //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
-                        var enumType = typeof(RelationAdvancedOrderedSecondaryKeyEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType);
-                        var advancedEnumeratorCtor = enumType.GetConstructors()[0];
-                        reqMethod.Generator.Newobj(advancedEnumeratorCtor);
-                    }
-                    else
-                    {
-                        throw new BTDBException("Invalid method " + method.Name);
-                    }
+                    BuildListByMethod(method, reqMethod);
                 }
                 else if (method.Name == "Insert")
                 {
-                    var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
-                    bool returningBoolVariant;
-                    var returnType = method.ReturnType;
-                    if (returnType == typeof (void))
-                        returningBoolVariant = false;
-                    else if (returnType == typeof (bool))
-                        returningBoolVariant = true;
-                    else
-                        throw new BTDBException("Method Insert should be defined with void or bool return type.");
-                    var methodParams = method.GetParameters();
-                    CheckParameterCount(method.Name, 1, methodParams.Length);
-                    CheckParameterType(method.Name, 0, methodInfo.GetParameters()[0].ParameterType, methodParams[0].ParameterType);
-                    reqMethod.Generator
-                        .Ldarg(0) //this
-                        .Ldarg(1)
-                        .Callvirt(methodInfo);
-                    if (!returningBoolVariant)
-                    {
-                        var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
-                        reqMethod.Generator
-                            .Brtrue(returnedTrueLabel)
-                            .Ldstr("Trying to insert duplicate key.")
-                            .Newobj(() => new BTDBException(null))
-                            .Throw()
-                            .Mark(returnedTrueLabel);
-                    }
+                    BuildInsertMethod(method, reqMethod, relationDBManipulatorType);
                 }
-                else //call the same method name with the same parameters
+                else
                 {
-                    var methodParams = method.GetParameters();
-                    int paramCount = methodParams.Length;
-                    var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
-                    if (methodInfo == null)
-                        throw new BTDBException($"Method {method} is not supported.");
-                    CheckReturnType(method.Name, methodInfo.ReturnType, method.ReturnType);
-                    var calledMethodParams = methodInfo.GetParameters();
-                    CheckParameterCount(method.Name, calledMethodParams.Length, methodParams.Length);
-                    for (int i = 0; i < methodParams.Length; i++)
-                    {
-                        CheckParameterType(method.Name, i, calledMethodParams[i].ParameterType, methodParams[i].ParameterType);
-                    }
-                    for (ushort i = 0; i <= paramCount; i++)
-                        reqMethod.Generator.Ldarg(i);
-                    reqMethod.Generator.Callvirt(methodInfo);
+                    BuildManipulatorCallWithSameParameters(method, reqMethod, relationDBManipulatorType);
                 }
                 reqMethod.Generator.Ret();
                 classImpl.DefineMethodOverride(reqMethod, method);
@@ -212,6 +70,284 @@ namespace BTDB.ODBLayer
             var classImplType = classImpl.CreateType();
 
             return BuildRelationCreatorInstance<T>(classImplType, relationName, _relationInfo);
+        }
+
+        void BuildContainsMethod(MethodInfo method, IILMethod reqMethod, Type relationDBManipulatorType)
+        {
+            var writerLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBufferWriter));
+            reqMethod.Generator.Newobj(() => new ByteBufferWriter());
+            reqMethod.Generator.Stloc(writerLoc);
+
+            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+            WriteIdIl(reqMethod.Generator, il => il.Ldloc(writerLoc), (int)_relationInfo.Id);
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+
+            var count = SaveMethodParameters(reqMethod.Generator, "Contains", method.GetParameters(),
+                method.GetParameters().Length,
+                _relationInfo.ApartFields, primaryKeyFields, writerLoc);
+            if (count != primaryKeyFields.Count)
+                throw new BTDBException($"Number of parameters in Contains does not match primary key count {primaryKeyFields.Count}.");
+
+            //call manipulator.Contains
+            reqMethod.Generator
+                .Ldarg(0); //manipulator
+            //call byteBuffer.data
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter);
+            reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod("Contains"));
+        }
+
+        void BuildFindByMethod(MethodInfo method, IILMethod reqMethod, Type relationDBManipulatorType)
+        {
+            var writerLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBufferWriter));
+            reqMethod.Generator.Newobj(() => new ByteBufferWriter());
+            reqMethod.Generator.Stloc(writerLoc);
+            Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
+
+            if (method.Name.StartsWith("FindById"))
+            {
+                CreateMethodFindById(reqMethod.Generator, relationDBManipulatorType, method.Name,
+                    method.GetParameters(), method.ReturnType, _relationInfo.ApartFields, pushWriter, writerLoc);
+            }
+            else
+            {
+                CreateMethodFindBy(reqMethod.Generator, relationDBManipulatorType, method.Name, method.GetParameters(),
+                    method.ReturnType, _relationInfo.ApartFields, pushWriter, writerLoc);
+            }
+        }
+
+        void BuildRemoveByMethod(MethodInfo method, IILMethod reqMethod, Type relationDBManipulatorType)
+        {
+            var writerLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBufferWriter));
+            reqMethod.Generator.Newobj(() => new ByteBufferWriter());
+            reqMethod.Generator.Stloc(writerLoc);
+            Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
+
+            var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
+            if (isPrefixBased)
+                WriteShortPrefixIl(reqMethod.Generator, pushWriter, _relationInfo.Prefix);
+            else
+                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
+                WriteIdIl(reqMethod.Generator, pushWriter, (int)_relationInfo.Id);
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+
+            var count = SaveMethodParameters(reqMethod.Generator, method.Name, method.GetParameters(), method.GetParameters().Length,
+                _relationInfo.ApartFields, primaryKeyFields, writerLoc);
+            if (!isPrefixBased && count != primaryKeyFields.Count)
+                throw new BTDBException($"Number of parameters in {method.Name} does not match primary key count {primaryKeyFields.Count}.");
+
+            //call manipulator.RemoveBy_
+            reqMethod.Generator
+                .Ldarg(0); //manipulator
+            //call byteBuffer.data
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter);
+            if (isPrefixBased)
+            {
+                if (AllKeyPrefixesAreSame(_relationInfo.ClientRelationVersionInfo, count) && !_relationInfo.NeedImplementFreeContent())
+                    reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod("RemoveByKeyPrefixWithoutIterate"));
+                else
+                    reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod("RemoveByPrimaryKeyPrefix"));
+            }
+            else
+            {
+                reqMethod.Generator.LdcI4(ShouldThrowWhenKeyNotFound(method.Name, method.ReturnType) ? 1 : 0);
+                reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+                if (method.ReturnType == typeof(void))
+                    reqMethod.Generator.Pop();
+            }
+        }
+
+        static bool AllKeyPrefixesAreSame(RelationVersionInfo relationInfo, ushort count)
+        {
+            foreach (var sk in relationInfo.SecondaryKeys)
+            {
+                var skFields = sk.Value;
+                var idx = 0;
+                foreach (var field in skFields.Fields)
+                {
+                    if (!field.IsFromPrimaryKey)
+                        return false;
+                    if (field.Index != idx)
+                        return false;
+                    if (++idx == count)
+                        break;
+                }
+            }
+            return true;
+        }
+
+        void BuildListByIdMethod(MethodInfo method, IILMethod reqMethod)
+        {
+            var parameters = method.GetParameters();
+            var advEnumParamOrder = (ushort)parameters.Length;
+            var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
+            var advEnumParamType = advEnumParam.GenericTypeArguments[0];
+
+            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
+            var prefixParamCount = method.GetParameters().Length - 1;
+
+            var field = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields()
+                .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+
+            reqMethod.Generator
+                .Ldarg(0);
+            SavePKListPrefixBytes(reqMethod.Generator, method.Name,
+                method.GetParameters(), _relationInfo.ApartFields);
+            reqMethod.Generator
+                .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
+                advEnumParam.GetField("Start"), reqMethod.Generator);
+            reqMethod.Generator
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
+                advEnumParam.GetField("End"), reqMethod.Generator);
+
+            if (typeof(IEnumerator<>).MakeGenericType(_relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
+            {
+                //return new RelationAdvancedEnumerator<T>(relationManipulator,
+                //    prefixBytes, prefixFieldCount,
+                //    order,
+                //    startKeyProposition, startKeyBytes,
+                //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
+                var enumType = typeof(RelationAdvancedEnumerator<>).MakeGenericType(_relationInfo.ClientType);
+                var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+            }
+            else if (typeof(IOrderedDictionaryEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType)
+                .IsAssignableFrom(method.ReturnType))
+            {
+                reqMethod.Generator
+                    .LdcI4(1); //init key reader
+
+                //return new RelationAdvancedOrderedEnumerator<T>(relationManipulator,
+                //    prefixBytes, prefixFieldCount,
+                //    order,
+                //    startKeyProposition, startKeyBytes,
+                //    endKeyProposition, endKeyBytes, secondaryKeyIndex, initKeyReader);
+                var enumType =
+                    typeof(RelationAdvancedOrderedEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType);
+                var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+            }
+            else
+            {
+                throw new BTDBException("Invalid method " + method.Name);
+            }
+        }
+
+        void BuildListByMethod(MethodInfo method, IILMethod reqMethod)
+        {
+            var parameters = method.GetParameters();
+            var advEnumParamOrder = (ushort)parameters.Length;
+            var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
+            var advEnumParamType = advEnumParam.GenericTypeArguments[0];
+
+            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
+            var secondaryKeyIndex = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
+            var prefixParamCount = method.GetParameters().Length - 1;
+
+            var field = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex)
+                .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+
+            reqMethod.Generator
+                .Ldarg(0);
+            SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
+                method.GetParameters(), _relationInfo.ApartFields);
+            reqMethod.Generator
+                .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
+            reqMethod.Generator
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                emptyBufferLoc, advEnumParam.GetField("End"), reqMethod.Generator);
+            reqMethod.Generator
+                .LdcI4((int)secondaryKeyIndex);
+
+            if (typeof(IEnumerator<>).MakeGenericType(_relationInfo.ClientType).IsAssignableFrom(method.ReturnType))
+            {
+                //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
+                //    prefixBytes, prefixFieldCount,
+                //    order,
+                //    startKeyProposition, startKeyBytes,
+                //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
+                var enumType = typeof(RelationAdvancedSecondaryKeyEnumerator<>).MakeGenericType(_relationInfo.ClientType);
+                var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+            }
+            else if (typeof(IOrderedDictionaryEnumerator<,>).MakeGenericType(advEnumParamType, _relationInfo.ClientType)
+                .IsAssignableFrom(method.ReturnType))
+            {
+                //return new RelationAdvancedOrderedSecondaryKeyEnumerator<T>(relationManipulator,
+                //    prefixBytes, prefixFieldCount,
+                //    order,
+                //    startKeyProposition, startKeyBytes,
+                //    endKeyProposition, endKeyBytes, secondaryKeyIndex);
+                var enumType =
+                    typeof(RelationAdvancedOrderedSecondaryKeyEnumerator<,>).MakeGenericType(advEnumParamType,
+                        _relationInfo.ClientType);
+                var advancedEnumeratorCtor = enumType.GetConstructors()[0];
+                reqMethod.Generator.Newobj(advancedEnumeratorCtor);
+            }
+            else
+            {
+                throw new BTDBException("Invalid method " + method.Name);
+            }
+        }
+
+        static void BuildInsertMethod(MethodInfo method, IILMethod reqMethod, Type relationDBManipulatorType)
+        {
+            var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
+            bool returningBoolVariant;
+            var returnType = method.ReturnType;
+            if (returnType == typeof(void))
+                returningBoolVariant = false;
+            else if (returnType == typeof(bool))
+                returningBoolVariant = true;
+            else
+                throw new BTDBException("Method Insert should be defined with void or bool return type.");
+            var methodParams = method.GetParameters();
+            CheckParameterCount(method.Name, 1, methodParams.Length);
+            CheckParameterType(method.Name, 0, methodInfo.GetParameters()[0].ParameterType, methodParams[0].ParameterType);
+            reqMethod.Generator
+                .Ldarg(0) //this
+                .Ldarg(1)
+                .Callvirt(methodInfo);
+            if (!returningBoolVariant)
+            {
+                var returnedTrueLabel = reqMethod.Generator.DefineLabel("returnedTrueLabel");
+                reqMethod.Generator
+                    .Brtrue(returnedTrueLabel)
+                    .Ldstr("Trying to insert duplicate key.")
+                    .Newobj(() => new BTDBException(null))
+                    .Throw()
+                    .Mark(returnedTrueLabel);
+            }
+        }
+
+        static void BuildManipulatorCallWithSameParameters(MethodInfo method, IILMethod reqMethod,
+            Type relationDBManipulatorType)
+        {
+            var methodParams = method.GetParameters();
+            int paramCount = methodParams.Length;
+            var methodInfo = relationDBManipulatorType.GetMethod(method.Name);
+            if (methodInfo == null)
+                throw new BTDBException($"Method {method} is not supported.");
+            CheckReturnType(method.Name, methodInfo.ReturnType, method.ReturnType);
+            var calledMethodParams = methodInfo.GetParameters();
+            CheckParameterCount(method.Name, calledMethodParams.Length, methodParams.Length);
+            for (int i = 0; i < methodParams.Length; i++)
+            {
+                CheckParameterType(method.Name, i, calledMethodParams[i].ParameterType, methodParams[i].ParameterType);
+            }
+            for (ushort i = 0; i <= paramCount; i++)
+                reqMethod.Generator.Ldarg(i);
+            reqMethod.Generator.Callvirt(methodInfo);
         }
 
         static void CheckParameterType(string name, int parIdx, Type expectedType, Type actualType)
@@ -243,42 +379,6 @@ namespace BTDB.ODBLayer
                 .Castclass(typeof(T1))
                 .Ret();
             return (Func<IObjectDBTransaction, T1>)methodBuilder.Create(relationInfo);
-        }
-
-         void SaveKeyBytesAndCallMethod(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
-            ParameterInfo[] methodParameters, Type methodReturnType,
-            IDictionary<string, MethodInfo> apartFields)
-        {
-            var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
-            ilGenerator.Newobj(() => new ByteBufferWriter());
-            ilGenerator.Stloc(writerLoc);
-            Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
-
-            //arg0 = this = manipulator
-            if (methodName.StartsWith("RemoveById"))
-            {
-                CreateMethodRemoveById(ilGenerator, relationDBManipulatorType, methodName, methodParameters, methodReturnType, apartFields, pushWriter, writerLoc);
-            }
-            else if (methodName.StartsWith("FindById"))
-            {
-                CreateMethodFindById(ilGenerator, relationDBManipulatorType, methodName, methodParameters, methodReturnType, apartFields, pushWriter, writerLoc);
-            }
-            else if (methodName.StartsWith("FindBy"))
-            {
-                CreateMethodFindBy(ilGenerator, relationDBManipulatorType, methodName, methodParameters, methodReturnType, apartFields, pushWriter, writerLoc);
-            }
-            else if (methodName == "ListById")
-            {
-                CreateMethodListById(ilGenerator, relationDBManipulatorType, methodName, methodParameters, apartFields, pushWriter, writerLoc);
-            }
-            else if (methodName == "Contains")
-            {
-                CreateMethodContains(ilGenerator, relationDBManipulatorType, methodParameters, apartFields, pushWriter, writerLoc);
-            }
-            else
-            {
-                throw new NotSupportedException();
-            }
         }
 
         void CreateMethodFindById(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
@@ -313,43 +413,6 @@ namespace BTDB.ODBLayer
             {
                 ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
                 ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("FindByIdOrDefault"));
-                if (methodReturnType == typeof(void))
-                    ilGenerator.Pop();
-            }
-        }
-
-        void CreateMethodRemoveById(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
-            ParameterInfo[] methodParameters, Type methodReturnType, IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter,
-            IILLocal writerLoc)
-        {
-            var isPrefixBased = methodReturnType == typeof(int); //returns number of removed items
-            if (isPrefixBased)
-                WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
-            else
-                //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
-            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-
-            var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
-                apartFields, primaryKeyFields, writerLoc);
-            if (!isPrefixBased && count != primaryKeyFields.Count)
-                throw new BTDBException(
-                    $"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Count}.");
-
-            //call manipulator.RemoveBy_
-            ilGenerator
-                .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-            if (isPrefixBased)
-            {
-                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveByPrimaryKeyPrefix"));
-            }
-            else
-            {
-                ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
-                ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
                 if (methodReturnType == typeof(void))
                     ilGenerator.Pop();
             }
@@ -402,49 +465,6 @@ namespace BTDB.ODBLayer
                    methodReturnType.GetGenericTypeDefinition() == typeof(IEnumerator<>) &&
                    methodReturnType.GetGenericArguments()[0] == clientType;
         }
-
-        void CreateMethodListById(IILGen ilGenerator, Type relationDBManipulatorType, string methodName,
-            ParameterInfo[] methodParameters, IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter, IILLocal writerLoc)
-        {
-            WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
-
-            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-
-            var paramsCount = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,
-                apartFields, primaryKeyFields, writerLoc);
-
-            //call manipulator.GetEnumerator(tr, byteBuffer)
-            ilGenerator
-                .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-            ilGenerator.LdcI4(paramsCount + apartFields.Count);
-            ilGenerator.Callvirt(relationDBManipulatorType.GetMethod(methodName));
-        }
-
-        void CreateMethodContains(IILGen ilGenerator, Type relationDBManipulatorType,
-            ParameterInfo[] methodParameters, IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter,
-            IILLocal writerLoc)
-        {
-            //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-            WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
-            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-
-            var count = SaveMethodParameters(ilGenerator, "Contains", methodParameters, methodParameters.Length,
-                apartFields, primaryKeyFields, writerLoc);
-            if (count != primaryKeyFields.Count)
-                throw new BTDBException($"Number of parameters in Contains does not match primary key count {primaryKeyFields.Count}.");
-
-            //call manipulator.Contains
-            ilGenerator
-                .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
-            ilGenerator.Callvirt(relationDBManipulatorType.GetMethod("Contains"));
-        }
-
 
         static ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
                                            ParameterInfo[] methodParameters, int paramCount,
