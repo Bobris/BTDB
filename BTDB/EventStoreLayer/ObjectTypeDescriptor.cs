@@ -14,7 +14,6 @@ namespace BTDB.EventStoreLayer
     public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         Type _type;
-        readonly string _name;
         readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
         readonly ITypeDescriptorCallbacks _typeSerializers;
 
@@ -23,14 +22,14 @@ namespace BTDB.EventStoreLayer
             _typeSerializers = typeSerializers;
             _type = type;
             Sealed = _type.IsSealed;
-            _name = typeSerializers.TypeNameMapper.ToName(type);
+            Name = typeSerializers.TypeNameMapper.ToName(type);
         }
 
         public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _typeSerializers = typeSerializers;
             Sealed = false;
-            _name = reader.ReadString();
+            Name = reader.ReadString();
             var fieldCount = reader.ReadVUInt32();
             while (fieldCount-- > 0)
             {
@@ -42,7 +41,7 @@ namespace BTDB.EventStoreLayer
         {
             _typeSerializers = typeSerializers;
             Sealed = @sealed;
-            _name = name;
+            Name = name;
             _fields = nfs;
         }
 
@@ -51,15 +50,42 @@ namespace BTDB.EventStoreLayer
             return Equals(other, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance));
         }
 
-        public string Name => _name;
+        public string Name { get; }
+
+        public void CheckObjectTypeIsGoodDTO(Type type)
+        {
+            foreach (var propertyInfo in _type.GetProperties())
+            {
+                if (propertyInfo.GetIndexParameters().Length != 0) continue;
+                if (ShouldNotBeStored(propertyInfo)) continue;
+                if (propertyInfo.GetGetMethod(true) == null)
+                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
+                if (propertyInfo.GetSetMethod(true) == null)
+                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
+            }
+            foreach (var fieldInfo in _type.GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (fieldInfo.IsPrivate) continue;
+                if (ShouldNotBeStored(fieldInfo)) continue;
+                throw new InvalidOperationException("Serialize type " + type.ToSimpleName() + " with nonprivate field " + fieldInfo.Name + " is forbidden without marking it with [NotStored] attribute");
+            }
+        }
+
+        static bool ShouldNotBeStored(System.Reflection.MemberInfo propertyInfo)
+        {
+            return propertyInfo.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0;
+        }
 
         public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
             var props = _type.GetProperties();
+#if DEBUG
+            CheckObjectTypeIsGoodDTO(_type);
+#endif
             foreach (var propertyInfo in props)
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
-                if (propertyInfo.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                if (ShouldNotBeStored(propertyInfo)) continue;
                 var descriptor = factory.Create(propertyInfo.PropertyType);
                 if (descriptor != null)
                 {
@@ -132,7 +158,7 @@ namespace BTDB.EventStoreLayer
         public Type GetPreferedType()
         {
             if (_type == null)
-                _type = _typeSerializers.TypeNameMapper.ToType(_name);
+                _type = _typeSerializers.TypeNameMapper.ToType(Name);
             return _type;
         }
 
@@ -452,9 +478,9 @@ namespace BTDB.EventStoreLayer
             var nfs = new List<KeyValuePair<string, ITypeDescriptor>>(tds.Length);
             for (var i = 0; i < _fields.Count; i++)
             {
-                nfs.Add(new KeyValuePair<string, ITypeDescriptor>(_fields[i].Key,tds[i]));
+                nfs.Add(new KeyValuePair<string, ITypeDescriptor>(_fields[i].Key, tds[i]));
             }
-            return new ObjectTypeDescriptor(typeSerializers, _name, Sealed, nfs);
+            return new ObjectTypeDescriptor(typeSerializers, Name, Sealed, nfs);
         }
     }
 }

@@ -8,4 +8,5 @@
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Language Usage Opportunities", "RECS0011:Convert 'if' to '?:'", Justification = "It would be harder to read", Scope = "module")]
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Potential Code Quality Issues", "RECS0021:Warns about calls to virtual member functions occuring in the constructor", Justification = "Not problem", Scope = "member", Target = "~M:BTDB.StreamLayer.PositionLessStreamReader.#ctor(BTDB.StreamLayer.IPositionLessStream)")]
 [assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Language Usage Opportunities", "RECS0091:Use 'var' keyword when possible", Justification = "Bug in analyzer", Scope = "member", Target = "~M:BTDB.IOC.SingleFactoryRegistration.Register(BTDB.IOC.ContanerRegistrationContext)")]
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("Readability", "RCS1018:Add default access modifier.", Justification = "It would be harder to read")]
 

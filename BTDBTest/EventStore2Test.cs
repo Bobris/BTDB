@@ -580,7 +580,79 @@ namespace BTDBTest
             var serializer = new EventSerializer();
             bool hasMetadata;
             var e = Assert.Throws<BTDBException>(() => serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
-            Assert.True(e.Message.Contains("Unsupported"));
+            Assert.Contains("Unsupported", e.Message);
         }
+
+        public class EventWithPropertyWithoutSetter
+        {
+            public int NoSetter { get; }
+        }
+
+        [Fact]
+        public void ThrowsWithPropertyWithoutSetter()
+        {
+#if DEBUG
+            var testEvent = new EventWithPropertyWithoutSetter();
+
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var e = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
+            Assert.Contains("NoSetter", e.Message);
+#endif
+        }
+
+        public class EventWithPropertyWithoutGetter
+        {
+            private int _x;
+            public int NoGetter { set => _x = value; }
+        }
+
+        [Fact]
+        public void ThrowsWithPropertyWithoutGetter()
+        {
+#if DEBUG
+            var testEvent = new EventWithPropertyWithoutGetter();
+
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var e = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
+            Assert.Contains("NoGetter", e.Message);
+#endif
+        }
+
+        public class EventWithPublicField
+        {
+            public int PublicField;
+        }
+
+        [Fact]
+        public void ThrowsWithPublicField()
+        {
+#if DEBUG
+            var testEvent = new EventWithPublicField();
+
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var e = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(out hasMetadata, testEvent).ToAsyncSafe());
+            Assert.Contains("PublicField", e.Message);
+#endif
+        }
+
+        public class EventWithNotStoredPublicField
+        {
+            [NotStored]
+            public int PublicField;
+        }
+
+        [Fact]
+        public void SerializesWithNotStoredPublicField()
+        {
+            var testEvent = new EventWithNotStoredPublicField();
+
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            serializer.Serialize(out hasMetadata, testEvent);
+        }
+
     }
 }
