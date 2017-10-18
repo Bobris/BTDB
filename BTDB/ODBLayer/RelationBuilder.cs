@@ -104,7 +104,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator.Stloc(writerLoc);
             Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
 
-            if (method.Name.StartsWith("FindById"))
+            if (method.Name == "FindById" || method.Name == "FindByIdOrDefault")
             {
                 CreateMethodFindById(reqMethod.Generator, relationDBManipulatorType, method.Name,
                     method.GetParameters(), method.ReturnType, _relationInfo.ApartFields, pushWriter, writerLoc);
@@ -508,7 +508,7 @@ namespace BTDB.ODBLayer
         {
             if (methodName.StartsWith("RemoveBy"))
                 return methodReturnType == typeof(void);
-            if (methodName.StartsWith("FindByIdOrDefault"))
+            if (methodName == "FindByIdOrDefault")
                 return false;
             return true;
         }
