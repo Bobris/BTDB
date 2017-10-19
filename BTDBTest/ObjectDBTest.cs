@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using ApprovalTests;
 using ApprovalTests.Reporters;
-using ApprovalTests.Wpf;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -2368,6 +2367,5 @@ namespace BTDBTest
                 Assert.Equal("b", v.S[StateV2.B2]);
             }
         }
-
     }
 }

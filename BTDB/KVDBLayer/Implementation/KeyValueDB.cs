@@ -167,6 +167,12 @@ namespace BTDB.KVDBLayer
             LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
             if (openUpToCommitUlong.HasValue || lastestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
             {
+                // Need to create new trl if cannot append to last one so it is then written to kvi
+                if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
+                {
+                    WriteStartOfNewTransactionLogFile();
+                    UpdateTransactionLogInBTreeRoot(LastCommited);
+                }
                 CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
             }
             new Compactor(this, CancellationToken.None).FastStartCleanUp();
@@ -320,6 +326,7 @@ namespace BTDB.KVDBLayer
                 }
                 if (reader.Eof) return true;
                 var afterTemporaryEnd = false;
+                var finishReading = false;
                 while (!reader.Eof)
                 {
                     var command = (KVCommandType)reader.ReadUInt8();
@@ -327,6 +334,10 @@ namespace BTDB.KVDBLayer
                     {
                         collectionFile.SetSize(reader.GetCurrentPosition() - 1);
                         return true;
+                    }
+                    if (finishReading)
+                    {
+                        return false;
                     }
                     afterTemporaryEnd = false;
                     switch (command & KVCommandType.CommandMask)
@@ -437,7 +448,7 @@ namespace BTDB.KVDBLayer
                             _nextRoot = null;
                             if (openUpToCommitUlong.HasValue && _lastCommited.CommitUlong >= openUpToCommitUlong)
                             {
-                                return false;
+                                finishReading = true;
                             }
                             break;
                         case KVCommandType.Rollback:
