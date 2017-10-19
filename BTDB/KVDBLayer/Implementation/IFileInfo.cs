@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.KVDBLayer
 {
-    interface IFileInfo
+    public interface IFileInfo
     {
         KVFileType FileType { get; }
         Guid? Guid { get; }

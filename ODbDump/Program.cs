@@ -603,6 +603,29 @@ namespace ODbDump
                         }
                         break;
                     }
+                case "fileheaders":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        {
+                            var fcfi = new FileCollectionWithFileInfos(dfc);
+                            foreach (var fi in fcfi.FileInfos)
+                            {
+                                var details = "";
+                                var keyindex = fi.Value as IKeyIndex;
+                                if (keyindex != null)
+                                {
+                                    details = string.Format("KVCount:{0} CommitUlong:{1} TrLogFileId:{2} TrLogOffset:{3}", keyindex.KeyValueCount, keyindex.CommitUlong, keyindex.TrLogFileId, keyindex.TrLogOffset);
+                                }
+                                var trlog = fi.Value as IFileTransactionLog;
+                                if (trlog != null)
+                                {
+                                    details = string.Format("Previous File Id: {0}", trlog.PreviousFileId);
+                                }
+                                Console.WriteLine("File {0} Guid:{3} Gen:{2} Type:{1} {4}", fi.Key, fi.Value.FileType.ToString(), fi.Value.Generation, fi.Value.Guid, details);
+                            }
+                        }
+                        break;
+                    }
                 case "compact":
                     {
                         using (var dfc = new OnDiskFileCollection(args[0]))

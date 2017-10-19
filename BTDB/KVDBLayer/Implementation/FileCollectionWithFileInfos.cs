@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
+    public class FileCollectionWithFileInfos : IFileCollectionWithFileInfos
     {
         readonly IFileCollection _fileCollection;
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();

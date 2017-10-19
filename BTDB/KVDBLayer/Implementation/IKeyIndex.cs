@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer
 {
-    interface IKeyIndex : IFileInfo
+    public interface IKeyIndex : IFileInfo
     {
         uint TrLogFileId { get; }
         uint TrLogOffset { get; }

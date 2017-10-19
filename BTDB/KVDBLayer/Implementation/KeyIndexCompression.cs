@@ -1,6 +1,6 @@
 namespace BTDB.KVDBLayer
 {
-    enum KeyIndexCompression: byte
+    public enum KeyIndexCompression: byte
     {
         Old,
         None
