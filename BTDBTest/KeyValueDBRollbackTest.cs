@@ -317,5 +317,115 @@ namespace BTDBTest
                 }
             }
         }
+
+        [Fact]
+        public void ComplexTrlRollbackWhenKviLost()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                var options = new KeyValueDBOptions
+                {
+                    Compression = new SnappyCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    FileSplitSize = 100 * 1024 * 1024,
+                    OpenUpToCommitUlong = null,
+                    PreserveHistoryUpToCommitUlong = null,
+                    CompactorScheduler = CompactorScheduler.Instance,
+                };
+
+                using (var kvDb = new KeyValueDB(options))
+                using (var objDb = new ObjectDB())
+                {
+                    objDb.Open(kvDb, false);
+
+                    for (ulong i = 0; i < 100; i += 3)
+                    {
+                        using (var tr = objDb.StartWritingTransaction().Result)
+                        {
+                            var person = tr.Singleton<Person>();
+                            person.Age = (uint)i;
+                            tr.Store(person);
+                            tr.SetCommitUlong(i);
+                            tr.Commit();
+                        }
+                    }
+                }
+
+                options = new KeyValueDBOptions
+                {
+                    Compression = new SnappyCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    FileSplitSize = 100 * 1024 * 1024,
+                    OpenUpToCommitUlong = 9UL,
+                    PreserveHistoryUpToCommitUlong = 9UL,
+                    CompactorScheduler = CompactorScheduler.Instance,
+                };
+                using (var kvDb = new KeyValueDB(options))
+                using (var objDb = new ObjectDB())
+                {
+                    objDb.Open(kvDb, false);
+
+                    using (var tr = objDb.StartReadOnlyTransaction())
+                    {
+                        Assert.Equal(9UL, tr.GetCommitUlong());
+                    }
+                }
+
+                // Delete KVI file
+                fileCollection.GetFile(3).Remove();
+
+                options = new KeyValueDBOptions
+                {
+                    Compression = new SnappyCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    OpenUpToCommitUlong = 9UL,
+                    PreserveHistoryUpToCommitUlong = 9UL,
+                    FileSplitSize = 100 * 1024 * 1024,
+                    CompactorScheduler = CompactorScheduler.Instance,
+                };
+                using (var kvDb = new KeyValueDB(options))
+                using (var objDb = new ObjectDB())
+                {
+                    objDb.Open(kvDb, false);
+
+                    using (var tr = objDb.StartReadOnlyTransaction())
+                    {
+                        Assert.Equal(9UL, tr.GetCommitUlong());
+                    }
+                    for (ulong i = 10; i < 200; i += 5)
+                    {
+                        using (var tr = objDb.StartWritingTransaction().Result)
+                        {
+                            var person = tr.Singleton<Person>();
+                            person.Age = (uint)i;
+                            tr.Store(person);
+                            tr.SetCommitUlong(i);
+                            tr.Commit();
+                        }
+                    }
+                }
+
+                options = new KeyValueDBOptions
+                {
+                    Compression = new SnappyCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    FileSplitSize = 100 * 1024 * 1024,
+                    OpenUpToCommitUlong = 50UL,
+                    PreserveHistoryUpToCommitUlong = 50UL,
+                    CompactorScheduler = CompactorScheduler.Instance,
+                };
+                using (var kvDb = new KeyValueDB(options))
+                using (var objDb = new ObjectDB())
+                {
+                    objDb.Open(kvDb, false);
+
+                    using (var tr = objDb.StartReadOnlyTransaction())
+                    {
+                        Assert.Equal(50UL, tr.GetCommitUlong());
+                    }
+                }
+            }
+        }
+
     }
 }

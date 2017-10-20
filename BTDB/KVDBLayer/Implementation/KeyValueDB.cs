@@ -171,6 +171,7 @@ namespace BTDB.KVDBLayer
                 if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
                 {
                     WriteStartOfNewTransactionLogFile();
+                    FlushCurrentTrl();
                     UpdateTransactionLogInBTreeRoot(LastCommited);
                 }
                 CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
@@ -788,9 +789,7 @@ namespace BTDB.KVDBLayer
             if (_writerWithTransactionLog != null)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
-                _writerWithTransactionLog.FlushBuffer();
-                _fileWithTransactionLog.HardFlush();
-                _fileWithTransactionLog.Truncate();
+                FlushCurrentTrl();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
             }
             _fileWithTransactionLog = FileCollection.AddFile("trl");
@@ -799,6 +798,13 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
             transactionLog.WriteHeader(_writerWithTransactionLog);
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
+        }
+
+        void FlushCurrentTrl()
+        {
+            _writerWithTransactionLog.FlushBuffer();
+            _fileWithTransactionLog.HardFlush();
+            _fileWithTransactionLog.Truncate();
         }
 
         public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out uint valueFileId, out uint valueOfs, out int valueSize)
