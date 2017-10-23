@@ -54,13 +54,14 @@ namespace BTDB.EventStoreLayer
 
         public void CheckObjectTypeIsGoodDTO(Type type)
         {
+            var isInterface = _type.IsInterface;
             foreach (var propertyInfo in _type.GetProperties())
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
                 if (ShouldNotBeStored(propertyInfo)) continue;
                 if (propertyInfo.GetGetMethod(true) == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
-                if (propertyInfo.GetSetMethod(true) == null)
+                if (!isInterface && propertyInfo.GetSetMethod(true) == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
             }
             foreach (var fieldInfo in _type.GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
