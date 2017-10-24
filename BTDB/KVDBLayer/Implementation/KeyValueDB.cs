@@ -914,6 +914,8 @@ namespace BTDB.KVDBLayer
             }
             var result = ByteBuffer.NewAsync(new byte[valueSize]);
             var file = FileCollection.GetFile(valueFileId);
+            if (file == null)
+                throw new BTDBException($"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
             file.RandomRead(result.Buffer, 0, valueSize, valueOfs, false);
             if (compressed)
                 _compression.DecompressValue(ref result);

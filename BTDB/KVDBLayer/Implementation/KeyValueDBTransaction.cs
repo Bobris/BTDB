@@ -38,7 +38,7 @@ namespace BTDB.KVDBLayer
             {
                 Dispose();
                 _keyValueDB.Logger?.ReportTransactionLeak(this);
-            } 
+            }
         }
 
         internal IBTreeRootNode BtreeRoot => _btreeRoot;
@@ -106,14 +106,14 @@ namespace BTDB.KVDBLayer
             int valueSize;
             _keyValueDB.WriteCreateOrUpdateCommand(_prefix, key, value, out valueFileId, out valueOfs, out valueSize);
             var ctx = new CreateOrUpdateCtx
-                {
-                    KeyPrefix = _prefix,
-                    Key = key,
-                    ValueFileId = valueFileId,
-                    ValueOfs = valueOfs,
-                    ValueSize = valueSize,
-                    Stack = _stack
-                };
+            {
+                KeyPrefix = _prefix,
+                Key = key,
+                ValueFileId = valueFileId,
+                ValueOfs = valueOfs,
+                ValueSize = valueSize,
+                Stack = _stack
+            };
             BtreeRoot.CreateOrUpdate(ctx);
             _keyIndex = ctx.KeyIndex;
             if (ctx.Created && _prefixKeyCount >= 0) _prefixKeyCount++;
@@ -238,7 +238,14 @@ namespace BTDB.KVDBLayer
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
             var nodeIdxPair = _stack[_stack.Count - 1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
-            return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+            try
+            {
+                return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+            }
+            catch (BTDBException ex)
+            {
+                throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{_keyValueDB.LastCommited.TransactionId},ComUlong:{_keyValueDB.LastCommited.CommitUlong} OldestTrId:{_keyValueDB.OldestRoot.TransactionId},TRL:{_keyValueDB.OldestRoot.TrLogFileId},ComUlong:{_keyValueDB.OldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+            }
         }
 
         void EnsureValidKey()
@@ -272,7 +279,7 @@ namespace BTDB.KVDBLayer
             var keyIndex = _keyIndex;
             MakeWrittable();
             InvalidateCurrentKey();
-            _prefixKeyCount --;
+            _prefixKeyCount--;
             BtreeRoot.FillStackByIndex(_stack, keyIndex);
             _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             BtreeRoot.EraseRange(keyIndex, keyIndex);
@@ -378,7 +385,7 @@ namespace BTDB.KVDBLayer
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
 
             return new KeyValuePair<uint, uint>(
-                (uint) ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length, 
+                (uint)((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length,
                 _keyValueDB.CalcValueSize(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize));
         }
 

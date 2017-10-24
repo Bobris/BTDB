@@ -10,8 +10,13 @@ namespace BTDB.KVDBLayer
             : base(message)
         {
         }
- 
-        BTDBException(SerializationInfo info, StreamingContext context) 
+
+        public BTDBException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+
+        BTDBException(SerializationInfo info, StreamingContext context)
             : base(info, context)
         {
         }
