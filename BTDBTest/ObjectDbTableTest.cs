@@ -1684,5 +1684,52 @@ namespace BTDBTest
                 Assert.Equal(1, table.Count);
             }
         }
+
+        public class SimpleObject
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+
+            [SecondaryKey("Name")]
+            public string Name { get; set; }
+        }
+
+        public interface ISimpleRelation
+        {
+            void Insert(SimpleObject obj);
+
+            bool RemoveById(ulong id);
+
+            IEnumerator<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
+        }
+
+        [Fact]
+        public void RemoveFromRelationWhileEnumerating_()
+        {
+            var exc = Assert.Throws<InvalidOperationException>(() =>
+            {
+                using (var tr = _db.StartTransaction())
+                {
+                    var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+                    var personSimpleTable = creator(tr);
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var duty = new SimpleObject() {Id = (ulong) i, Name = "HardCore Code" + i % 5};
+                        personSimpleTable.Insert(duty);
+                    }
+
+                    var enumerator =
+                        personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>());
+                    while (enumerator.MoveNext())
+                    {
+                        creator(tr).RemoveById(enumerator.Current.Id);
+                    }
+
+                    tr.Commit();
+                }
+            });
+
+            Assert.Equal("Relation modified during iteration.", exc.Message);
+        }
     }
 }
