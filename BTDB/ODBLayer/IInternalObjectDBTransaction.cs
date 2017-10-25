@@ -8,6 +8,7 @@ namespace BTDB.ODBLayer
         IObjectDB Owner { get; }
         IKeyValueDBTransaction KeyValueDBTransaction { get; }
         KeyValueDBTransactionProtector TransactionProtector { get; }
+        IRelationModificationCounter GetRelationModificationCounter(uint relationId);
         ulong AllocateDictionaryId();
         object ReadInlineObject(IReaderCtx readerCtx);
         void WriteInlineObject(object @object, IWriterCtx writerCtx);

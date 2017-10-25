@@ -867,5 +867,16 @@ namespace BTDB.ODBLayer
             return builder.Build(relationName, relationDBManipulatorType);
         }
 
+        Dictionary<uint, IRelationModificationCounter> _modificationCounters;
+        public IRelationModificationCounter GetRelationModificationCounter(uint relationId)
+        {
+            if (_modificationCounters == null)
+                _modificationCounters = new Dictionary<uint, IRelationModificationCounter>();
+            if (_modificationCounters.TryGetValue(relationId, out var result))
+                return result;
+            result = new UnforgivingRelationModificationCounter();
+            _modificationCounters.Add(relationId, result);
+            return result;
+        }
     }
 }

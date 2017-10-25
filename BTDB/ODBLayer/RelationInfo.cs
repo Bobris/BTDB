@@ -1204,5 +1204,9 @@ namespace BTDB.ODBLayer
         public void CheckModifiedDuringEnum(int prevModification)
         {
         }
+
+        public void MarkModification()
+        {
+        }
     }
 }

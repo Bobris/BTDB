@@ -118,8 +118,8 @@ namespace BTDB.ODBLayer
         readonly int _skipBytes;
 
         public RelationPrimaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
-                                            RelationDBManipulator<T> manipulator)
-            : base(tr, relationInfo, keyBytes, manipulator)
+                                            IRelationModificationCounter modificationCounter)
+            : base(tr, relationInfo, keyBytes, modificationCounter)
         {
             _skipBytes = relationInfo.Prefix.Length;
         }
@@ -150,7 +150,7 @@ namespace BTDB.ODBLayer
 
         public RelationSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
             uint secondaryKeyIndex, uint fieldCountInKey, RelationDBManipulator<T> manipulator)
-            : base(tr, relationInfo, keyBytes, manipulator)
+            : base(tr, relationInfo, keyBytes, manipulator.ModificationCounter)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
             _fieldCountInKey = fieldCountInKey;
@@ -201,7 +201,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
-            _prevModificationCounter = manipulator.ModificationCounter;
+            _prevModificationCounter = manipulator.ModificationCounter.ModificationCounter;
 
             long startIndex;
             long endIndex;
@@ -277,7 +277,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
             {
-                _manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
+                _manipulator.ModificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
                 _keyValueTr.SetKeyPrefix(_keyBytes);
                 Seek();
             }
@@ -314,7 +314,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
-                    _manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
+                    _manipulator.ModificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
                     _keyValueTr.SetKeyPrefix(_keyBytes);
                     Seek();
                 }

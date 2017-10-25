@@ -11,10 +11,29 @@ namespace BTDB.ODBLayer
     public interface IRelationModificationCounter
     {
         int ModificationCounter { get; }
+        void MarkModification();
         void CheckModifiedDuringEnum(int prevModification);
     }
 
-    public class RelationDBManipulator<T> : IRelationModificationCounter, IReadOnlyCollection<T>
+    public class UnforgivingRelationModificationCounter : IRelationModificationCounter
+    {
+        int _modificationCounter;
+
+        public int ModificationCounter => _modificationCounter;
+
+        public void CheckModifiedDuringEnum(int prevModification)
+        {
+            if (prevModification != _modificationCounter)
+                throw new InvalidOperationException("Relation modified during iteration.");
+        }
+
+        public void MarkModification()
+        {
+            _modificationCounter++;
+        }
+    }
+
+    public class RelationDBManipulator<T> : IReadOnlyCollection<T>
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly RelationInfo _relationInfo;
@@ -22,30 +41,20 @@ namespace BTDB.ODBLayer
         public IInternalObjectDBTransaction Transaction => _transaction;
         public RelationInfo RelationInfo => _relationInfo;
 
-        int _modificationCounter;
         const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
 
         static ByteBuffer EmptyBuffer = ByteBuffer.NewEmpty();
 
+        IRelationModificationCounter _modificationCounter;
 
         public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
         {
             _transaction = (IInternalObjectDBTransaction)transation;
             _relationInfo = relationInfo;
+            _modificationCounter = _transaction.GetRelationModificationCounter(relationInfo.Id);
         }
 
-        public int ModificationCounter => _modificationCounter;
-
-        public void MarkModification()
-        {
-            _modificationCounter++;
-        }
-
-        public void CheckModifiedDuringEnum(int prevModification)
-        {
-            if (prevModification != _modificationCounter)
-                throw new InvalidOperationException("Relation modified during iteration.");
-        }
+        public IRelationModificationCounter ModificationCounter => _modificationCounter;
 
         ByteBuffer ValueBytes(T obj)
         {
@@ -87,7 +96,7 @@ namespace BTDB.ODBLayer
             if (HasSecondaryIndexes)
                 AddIntoSecondaryIndexes(obj);
 
-            MarkModification();
+            _modificationCounter.MarkModification();
             return true;
         }
 
@@ -115,7 +124,7 @@ namespace BTDB.ODBLayer
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             if (HasSecondaryIndexes)
                 AddIntoSecondaryIndexes(obj);
-            MarkModification();
+            _modificationCounter.MarkModification();
             return true;
         }
 
@@ -211,14 +220,14 @@ namespace BTDB.ODBLayer
 
             _relationInfo.FreeContent(_transaction, valueBytes);
 
-            MarkModification();
+            _modificationCounter.MarkModification();
             return true;
         }
 
         public int RemoveByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
         {
             var keysToDelete = new List<ByteBuffer>();
-            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
+            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
             while (enumerator.MoveNext())
             {
                 keysToDelete.Add(enumerator.GetKeyBytes());
@@ -274,7 +283,7 @@ namespace BTDB.ODBLayer
             if (removedCount > 0)
             {
                 _transaction.KeyValueDBTransaction.EraseAll();
-                MarkModification();
+                _modificationCounter.MarkModification();
             }
             return removedCount;
         }
@@ -282,7 +291,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            return new RelationEnumerator<T>(_transaction, _relationInfo, ByteBuffer.NewSync(_relationInfo.Prefix), this);
+            return new RelationEnumerator<T>(_transaction, _relationInfo, ByteBuffer.NewSync(_relationInfo.Prefix), _modificationCounter);
         }
 
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
@@ -300,7 +309,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> FindByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
         {
-            return new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, this);
+            return new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
         }
 
         internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
