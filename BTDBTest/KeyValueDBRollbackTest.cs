@@ -1,4 +1,5 @@
-﻿using BTDB.KVDBLayer;
+﻿using System;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
 using static BTDBTest.ObjectDbTest;
@@ -427,5 +428,78 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void ReopenAndReopenWithRoolbackDoesNotCorruptDB()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (var kv = new KeyValueDB(new KeyValueDBOptions
+                {
+                    FileCollection = fileCollection,
+                    FileSplitSize = 4096,
+                    Compression = new NoCompressionStrategy()
+                }))
+                {
+                    for (var i = 1; i < 60; i++)
+                    {
+                        using (var tr = kv.StartTransaction())
+                        {
+                            var key = new byte[4];
+                            BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                            tr.CreateOrUpdateKeyValueUnsafe(key, new byte[2000]);
+                            tr.SetCommitUlong((ulong)i);
+                            tr.Commit();
+                        }
+                        if (i % 2 == 0)
+                        {
+                            using (var tr = kv.StartTransaction())
+                            {
+                                var key = new byte[4];
+                                BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i - 1);
+                                tr.FindExactKey(key);
+                                tr.EraseCurrent();
+                                tr.Commit();
+                            }
+                        }
+                        if (i % 5 == 0)
+                            kv.Compact(new System.Threading.CancellationToken());
+                        if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
+                    }
+                }
+                using (var kv = new KeyValueDB(new KeyValueDBOptions
+                {
+                    FileCollection = fileCollection,
+                    FileSplitSize = 4096,
+                    PreserveHistoryUpToCommitUlong = 50,
+                    Compression = new NoCompressionStrategy()
+                }))
+                {
+                    kv.Compact(new System.Threading.CancellationToken());
+                    ReadAllValues(kv);
+                }
+                using (var kv = new KeyValueDB(new KeyValueDBOptions
+                {
+                    FileCollection = fileCollection,
+                    FileSplitSize = 4096,
+                    PreserveHistoryUpToCommitUlong = 50,
+                    OpenUpToCommitUlong = 50,
+                    Compression = new NoCompressionStrategy()
+                }))
+                {
+                    ReadAllValues(kv);
+                }
+            }
+        }
+
+        void ReadAllValues(IKeyValueDB kv)
+        {
+            using (var tr = kv.StartTransaction())
+            {
+                if (tr.FindFirstKey()) do
+                    {
+                        tr.GetValueAsByteArray();
+                    } while (tr.FindNextKey());
+            }
+        }
     }
 }

@@ -35,6 +35,8 @@ namespace BTDB.KVDBLayer
 
         public KeyIndexCompression Compression => _compressionType;
 
+        public long[] UsedFilesInOlderGenerations { get; set; }
+
         public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
         {
             _guid = guid;

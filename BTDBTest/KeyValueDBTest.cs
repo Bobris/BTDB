@@ -1220,34 +1220,6 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FastCleanUpOnStartRemovesUselessFiles()
-        {
-            using (var fileCollection = new InMemoryFileCollection())
-            {
-                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
-                {
-                    using (var tr = db.StartTransaction())
-                    {
-                        tr.CreateOrUpdateKeyValue(_key1, new byte[1024]);
-                        tr.CreateOrUpdateKeyValue(Key2, new byte[1024]);
-                        tr.Commit();
-                    }
-                    using (var tr = db.StartTransaction())
-                    {
-                        tr.EraseAll();
-                        tr.Commit();
-                    }
-                    Assert.Equal(3u, fileCollection.GetCount()); // 3 Logs
-                }
-                using (var db = new KeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
-                {
-                    Console.WriteLine(db.CalcStats());
-                    Assert.Equal(2u, fileCollection.GetCount()); // 1 Log, 1 KeyIndex
-                }
-            }
-        }
-
-        [Fact]
         public void AllowsToSetTransactionDescription()
         {
             using (var fileCollection = new InMemoryFileCollection())

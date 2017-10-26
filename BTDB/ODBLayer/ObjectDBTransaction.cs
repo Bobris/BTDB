@@ -872,7 +872,8 @@ namespace BTDB.ODBLayer
         {
             if (_modificationCounters == null)
                 _modificationCounters = new Dictionary<uint, IRelationModificationCounter>();
-            if (_modificationCounters.TryGetValue(relationId, out var result))
+            IRelationModificationCounter result;
+            if (_modificationCounters.TryGetValue(relationId, out result))
                 return result;
             result = new UnforgivingRelationModificationCounter();
             _modificationCounters.Add(relationId, result);
