@@ -126,7 +126,7 @@ namespace BTDB.ODBLayer
 
         uint SelectSecondaryKeyIndex(SecondaryKeyInfo info, RelationVersionInfo prevVersion)
         {
-            uint index = 1;
+            uint index = 0;
             if (prevVersion != null)
             {
                 if (prevVersion._secondaryKeysNames.TryGetValue(info.Name, out index))
@@ -134,14 +134,16 @@ namespace BTDB.ODBLayer
                     var prevFields = prevVersion.GetSecondaryKeyFields(index);
                     var currFields = GetSecondaryKeyFields(info);
                     if (SecondaryIndexHasSameDefinition(currFields, prevFields))
-                        return index;
+                        return index; //existing
                 }
-                index = 0;
-                while (prevVersion._secondaryKeys.ContainsKey(index))
+                while (prevVersion._secondaryKeys.ContainsKey(index) || _secondaryKeys.ContainsKey(index))
                     index++;
             }
-            while (_secondaryKeys.ContainsKey(index))
-                index++;
+            else
+            {
+                while (_secondaryKeys.ContainsKey(index))
+                    index++;
+            }
             return index; //use fresh one
         }
 
