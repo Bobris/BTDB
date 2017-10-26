@@ -63,20 +63,10 @@ namespace BTDB.KVDBLayer
         void LoadFiles()
         {
             var hashKeyIndexFiles = new List<KeyValuePair<uint, long>>();
-            var fileIdOfLastPureValues = 0u;
-            var generationOfLastPureValues = 0L;
             foreach (var pair in _fileCollection.FileInfos)
             {
                 if (pair.Value.SubDBId != _subDBId) continue;
-                if (pair.Value.FileType == KVFileType.PureValuesWithId)
-                {
-                    if (generationOfLastPureValues < pair.Value.Generation)
-                    {
-                        generationOfLastPureValues = pair.Value.Generation;
-                        fileIdOfLastPureValues = pair.Key;
-                    }
-                }
-                else if (pair.Value.FileType == KVFileType.HashKeyIndex)
+                if (pair.Value.FileType == KVFileType.HashKeyIndex)
                 {
                     hashKeyIndexFiles.Add(new KeyValuePair<uint, long>(pair.Key, pair.Value.Generation));
                 }
