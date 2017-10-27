@@ -1731,5 +1731,38 @@ namespace BTDBTest
 
             Assert.Equal("Relation modified during iteration.", exc.Message);
         }
+
+        [Fact]
+        public void NotCompleteSecondaryKeyIsRecalculatedDuringInit()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+                var personSimpleTable = creator(tr);
+                for (int i = 0; i < 100; i++)
+                {
+                    var duty = new SimpleObject { Id = (ulong)i, Name = "HardCore Code" + i % 5 };
+                    personSimpleTable.Insert(duty);
+                }
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {   //be bad, delete secondary indexes
+                var kvTr = ((IInternalObjectDBTransaction) tr).KeyValueDBTransaction;
+                kvTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+                kvTr.EraseAll();
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+                var personSimpleTable = creator(tr);
+                var enumerator = personSimpleTable.ListByName("HardCore Code" + 0, new AdvancedEnumeratorParam<ulong>());
+                var cnt = 0;
+                while (enumerator.MoveNext()) cnt++;
+                Assert.Equal(20, cnt);
+            }
+        }
     }
 }

@@ -96,6 +96,7 @@ namespace BTDB.ODBLayer
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
                 ClientTypeVersion = LastPersistedVersion;
+                CheckSecondaryKeys(tr, ClientRelationVersionInfo);
             }
             else
             {
@@ -184,8 +185,33 @@ namespace BTDB.ODBLayer
             return false;
         }
 
+        void CheckSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info)
+        {
+            var count = GetRelationCount(tr);
+            List<KeyValuePair<uint, SecondaryKeyInfo>> secKeysToAdd = null;
+            foreach (var sk in info.SecondaryKeys)
+            {
+                if (WrongCountInSecondaryKey(tr.KeyValueDBTransaction, count, sk.Key))
+                {
+                    DeleteSecondaryKey(tr.KeyValueDBTransaction, sk.Key);
+                    if (secKeysToAdd == null)
+                        secKeysToAdd = new List<KeyValuePair<uint, SecondaryKeyInfo>>();
+                    secKeysToAdd.Add(sk);
+                }
+            }
+            if (secKeysToAdd?.Count > 0)
+                CalculateSecondaryKey(tr, secKeysToAdd);
+        }
+
+        long GetRelationCount(IInternalObjectDBTransaction tr)
+        {
+            tr.KeyValueDBTransaction.SetKeyPrefix(Prefix);
+            return tr.KeyValueDBTransaction.GetKeyValueCount();
+        }
+
         void UpdateSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info, RelationVersionInfo previousInfo)
         {
+            var count = GetRelationCount(tr);
             foreach (var prevIdx in previousInfo.SecondaryKeys.Keys)
             {
                 if (!info.SecondaryKeys.ContainsKey(prevIdx))
@@ -195,22 +221,39 @@ namespace BTDB.ODBLayer
             foreach (var sk in info.SecondaryKeys)
             {
                 if (!previousInfo.SecondaryKeys.ContainsKey(sk.Key))
+                {
                     secKeysToAdd.Add(sk);
+                }
+                else if (WrongCountInSecondaryKey(tr.KeyValueDBTransaction, count, sk.Key))
+                {
+                    DeleteSecondaryKey(tr.KeyValueDBTransaction, sk.Key);
+                    secKeysToAdd.Add(sk);
+                }
             }
             if (secKeysToAdd.Count > 0)
                 CalculateSecondaryKey(tr, secKeysToAdd);
         }
 
-        void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint prevIdx)
+        bool WrongCountInSecondaryKey(IKeyValueDBTransaction tr, long count, uint index)
+        {
+            SetPrefixToSecondaryKey(tr, index);
+            return count != tr.GetKeyValueCount();
+        }
+
+        void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
+        {
+            SetPrefixToSecondaryKey(keyValueTr, index);
+            keyValueTr.EraseAll();
+        }
+
+        void SetPrefixToSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
         {
             var writer = new ByteBufferWriter();
             writer.WriteBlock(ObjectDB.AllRelationsSKPrefix);
             writer.WriteVUInt32(Id);
-            writer.WriteVUInt32(prevIdx);
+            writer.WriteVUInt32(index);
 
             keyValueTr.SetKeyPrefix(writer.Data);
-
-            keyValueTr.EraseAll();
         }
 
         void CalculateSecondaryKey(IInternalObjectDBTransaction tr, IList<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
@@ -489,7 +532,7 @@ namespace BTDB.ODBLayer
 
                         }
                         var loc = defaultObjectLoc;
-                        CreateSaverIl(ilGenerator, new []{ ClientRelationVersionInfo.GetSecondaryKeyField(skFieldIdx) },
+                        CreateSaverIl(ilGenerator, new[] { ClientRelationVersionInfo.GetSecondaryKeyField(skFieldIdx) },
                             il => il.Ldloc(loc), null, pushWriter, il => il.Ldarg(0));
                     }
                 }
