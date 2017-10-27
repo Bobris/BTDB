@@ -376,7 +376,7 @@ namespace BTDB.ODBLayer
             var version = valueReader.ReadVUInt32();
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, keyBytes.ToByteArray(), valueBytes.ToByteArray());
+            keySaver(_transaction, keyWriter, keyBytes.ToByteArray(), valueBytes.ToByteArray(), _relationInfo.DefaultClientObject);
             return keyWriter.Data;
         }
 

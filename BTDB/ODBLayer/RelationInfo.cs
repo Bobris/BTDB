@@ -20,6 +20,7 @@ namespace BTDB.ODBLayer
         readonly IRelationInfoResolver _relationInfoResolver;
         readonly Type _interfaceType;
         readonly Type _clientType;
+        readonly object _defaultClientObject;
         readonly ITypeConvertorGenerator _typeConvertorGenerator;
 
         readonly IDictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
@@ -38,8 +39,8 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk key saver
             _secondaryKeysSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
 
-        readonly ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]>>
-            _secondaryKeysConvertSavers = new ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]>>();
+        readonly ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[], object>>
+            _secondaryKeysConvertSavers = new ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[], object>>();
 
         readonly ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>
             _secondaryKeyValuetoPKLoader = new ConcurrentDictionary<ulong, Action<byte[], byte[], AbstractBufferedWriter>>();
@@ -84,6 +85,7 @@ namespace BTDB.ODBLayer
             _interfaceType = interfaceType;
             var methods = GetMethods(interfaceType).ToArray();
             _clientType = FindClientType(interfaceType.Name, methods);
+            _defaultClientObject = Activator.CreateInstance(_clientType);
 
             CalculatePrefix();
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
@@ -283,6 +285,8 @@ namespace BTDB.ODBLayer
 
         internal Type ClientType => _clientType;
 
+        internal object DefaultClientObject => _defaultClientObject;
+
         internal RelationVersionInfo ClientRelationVersionInfo { get; }
 
         internal uint LastPersistedVersion { get; set; }
@@ -414,12 +418,12 @@ namespace BTDB.ODBLayer
             public IFieldHandler Handler;
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]> CreateBytesToSKSaver(
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[], object> CreateBytesToSKSaver(
             uint version, uint secondaryKeyIndex, string saverName)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]>>(saverName);
+            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[], object>>(saverName);
             var ilGenerator = method.Generator;
-
+            IILLocal defaultObjectLoc = null;
             Action<IILGen> pushWriter = il => il.Ldarg(1);
 
             var firstBuffer = new BufferInfo();  //pk's
@@ -460,17 +464,34 @@ namespace BTDB.ODBLayer
                     InitializeBuffer(3, ref secondBuffer, ilGenerator, valueFields);
 
                     var valueFieldIdx = valueFields.FindIndex(tfi => tfi.Name == skFields[skFieldIdx].Name);
-                    for (var valueIdx = secondBuffer.ActualFieldIdx; valueIdx < valueFieldIdx; valueIdx++)
+                    if (valueFieldIdx >= 0)
                     {
-                        var valueField = valueFields[valueIdx];
-                        var storeForSkIndex = skFields.FindIndex(skFieldIdx, fi => fi.Name == valueField.Name);
-                        if (storeForSkIndex == -1)
-                            valueField.Handler.Skip(ilGenerator, valueField.Handler.NeedsCtx() ? secondBuffer.PushCtx : secondBuffer.PushReader);
-                        else
-                            StoreIntoLocal(ilGenerator, valueField.Handler, secondBuffer, outOfOrderSkParts, storeForSkIndex, skFields[storeForSkIndex].Handler);
+                        for (var valueIdx = secondBuffer.ActualFieldIdx; valueIdx < valueFieldIdx; valueIdx++)
+                        {
+                            var valueField = valueFields[valueIdx];
+                            var storeForSkIndex = skFields.FindIndex(skFieldIdx, fi => fi.Name == valueField.Name);
+                            if (storeForSkIndex == -1)
+                                valueField.Handler.Skip(ilGenerator, valueField.Handler.NeedsCtx() ? secondBuffer.PushCtx : secondBuffer.PushReader);
+                            else
+                                StoreIntoLocal(ilGenerator, valueField.Handler, secondBuffer, outOfOrderSkParts, storeForSkIndex, skFields[storeForSkIndex].Handler);
+                        }
+                        CopyToOutput(ilGenerator, valueFields[valueFieldIdx].Handler, writerCtxLocal, pushWriter, skFields[skFieldIdx].Handler, secondBuffer);
+                        secondBuffer.ActualFieldIdx = valueFieldIdx + 1;
                     }
-                    CopyToOutput(ilGenerator, valueFields[valueFieldIdx].Handler, writerCtxLocal, pushWriter, skFields[skFieldIdx].Handler, secondBuffer);
-                    secondBuffer.ActualFieldIdx = valueFieldIdx + 1;
+                    else
+                    { //older version of value does not contain sk field - store field from default value (can be initialized in constructor)
+                        if (defaultObjectLoc == null)
+                        {
+                            defaultObjectLoc = ilGenerator.DeclareLocal(ClientType);
+                            ilGenerator.Ldarg(4)
+                                .Castclass(ClientType)
+                                .Stloc(defaultObjectLoc);
+
+                        }
+                        var loc = defaultObjectLoc;
+                        CreateSaverIl(ilGenerator, new []{ ClientRelationVersionInfo.GetSecondaryKeyField(skFieldIdx) },
+                            il => il.Ldloc(loc), null, pushWriter, il => il.Ldarg(0));
+                    }
                 }
             }
 
@@ -693,7 +714,7 @@ namespace BTDB.ODBLayer
                     $"Relation_{relationInfo.Name}_SK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_KeySaver"), this);
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[]> GetPKValToSKMerger
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, byte[], byte[], object> GetPKValToSKMerger
             (uint version, uint secondaryKeyIndex)
         {
             var h = secondaryKeyIndex + version * 100000ul;

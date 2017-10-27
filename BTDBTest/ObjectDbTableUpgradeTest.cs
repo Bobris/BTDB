@@ -68,15 +68,6 @@ namespace BTDBTest
             IEnumerator<JobV2> ListByCost(AdvancedEnumeratorParam<uint> param);
         }
 
-        public class JobV3
-        {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
-
-            [SecondaryKey("Cost")]
-            public double Cost { get; set; }
-        }
-
         public class JobIncompatible
         {
             [PrimaryKey(1)]
@@ -346,5 +337,47 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        public class JobV3
+        {
+            public JobV3()
+            {
+                Status = 100;
+            }
+
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+
+            [SecondaryKey("Status")]
+            public int Status { get; set; }
+        }
+
+        public interface IJobTable3 : IReadOnlyCollection<JobV3>
+        {
+            void Insert(JobV3 job);
+            void RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void AddedFieldIsInsertedFromDefaultObject()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable2>("Job");
+                var jobTable = creator(tr);
+                var job = new JobV2 { Id = 11, Name = "Code" };
+                jobTable.Insert(job);
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable3>("Job");
+                var jobTable = creator(tr);
+                jobTable.RemoveById(11);
+                Assert.Equal(0, jobTable.Count);
+            }
+        }
+
     }
 }
