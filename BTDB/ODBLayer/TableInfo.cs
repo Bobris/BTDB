@@ -392,7 +392,6 @@ namespace BTDB.ODBLayer
 
         Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> CreateFreeContent(uint version)
         {
-            EnsureClientTypeVersion();
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata,
                 AbstractBufferedReader, IList<ulong>, IList<ulong>>>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
