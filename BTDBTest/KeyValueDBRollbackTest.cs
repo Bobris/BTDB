@@ -501,5 +501,72 @@ namespace BTDBTest
                     } while (tr.FindNextKey());
             }
         }
+
+        [Fact]
+        public void CompatorShouldNotBePesimist()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                var options = new KeyValueDBOptions
+                {
+                    Compression = new NoCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    FileSplitSize = 8096,
+                    OpenUpToCommitUlong = null,
+                    PreserveHistoryUpToCommitUlong = null,
+                    CompactorScheduler = CompactorScheduler.Instance,
+                };
+
+                using (var kvDb = new KeyValueDB(options))
+                {
+                    for (var i = 0; i < 100; i++)
+                    {
+                        using (var tr = kvDb.StartWritingTransaction().Result)
+                        {
+                            var key = new byte[4];
+                            BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                            tr.CreateOrUpdateKeyValueUnsafe(key, new byte[2000]);
+                            tr.SetCommitUlong((ulong)i);
+                            tr.Commit();
+                        }
+                    }
+                    kvDb.PreserveHistoryUpToCommitUlong = 100;
+                    kvDb.Compact(new System.Threading.CancellationToken());
+                    var fileCountAfterFirstCompaction = fileCollection.GetCount();
+                    for (var i = 0; i < 50; i++)
+                    {
+                        using (var tr = kvDb.StartWritingTransaction().Result)
+                        {
+                            var key = new byte[4];
+                            BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                            tr.FindExactKey(key);
+                            tr.EraseCurrent();
+                            tr.SetCommitUlong(100+(ulong)i);
+                            tr.Commit();
+                        }
+                    }
+                    kvDb.PreserveHistoryUpToCommitUlong = 150;
+                    kvDb.Compact(new System.Threading.CancellationToken());
+                    Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction + 1, fileCountAfterFirstCompaction + 3);
+                    for (var i = 50; i < 100; i++)
+                    {
+                        using (var tr = kvDb.StartWritingTransaction().Result)
+                        {
+                            var key = new byte[4];
+                            BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                            tr.FindExactKey(key);
+                            tr.EraseCurrent();
+                            tr.SetCommitUlong(100 + (ulong)i);
+                            tr.Commit();
+                        }
+                    }
+                    kvDb.Compact(new System.Threading.CancellationToken());
+                    Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction/3, 2*fileCountAfterFirstCompaction/3);
+                    kvDb.PreserveHistoryUpToCommitUlong = 200;
+                    kvDb.Compact(new System.Threading.CancellationToken());
+                    Assert.InRange<uint>(fileCollection.GetCount(), 1, 4);
+                }
+            }
+        }
     }
 }

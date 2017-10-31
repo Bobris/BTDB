@@ -60,13 +60,15 @@ namespace BTDB.KVDBLayer
             _cancellation = cancellation;
         }
 
-        void MarkTotallyUselessFilesAsUnknown()
+        void MarkTotallyUselessFilesAsUnknown(long dontTouchGeneration, long[] usedFilesFromOldGenerations)
         {
             List<uint> toRemoveFileIds = null;
             for (var i = 0; i < _fileStats.Length; i++)
             {
                 if (_fileStats[i].Useless())
                 {
+                    if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration((uint)i, dontTouchGeneration)) continue;
+                    if (usedFilesFromOldGenerations != null && Array.BinarySearch(usedFilesFromOldGenerations, _keyValueDB.GetGeneration((uint)i)) >= 0) continue;
                     if (toRemoveFileIds == null)
                         toRemoveFileIds = new List<uint>();
                     toRemoveFileIds.Add((uint)i);
@@ -83,6 +85,7 @@ namespace BTDB.KVDBLayer
             var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
             var preserveKeyIndexKey = _keyValueDB.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(_keyValueDB.BuildKeyIndexInfos());
             var preserveKeyIndexGeneration = _keyValueDB.CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
+            InitFileStats(dontTouchGeneration);
             long[] usedFilesFromOldGenerations = null;
             if (preserveKeyIndexKey < uint.MaxValue)
             {
@@ -98,11 +101,10 @@ namespace BTDB.KVDBLayer
                 }
                 dontTouchGeneration = Math.Min(dontTouchGeneration, dontTouchGenerationDueToPreserve);
             }
-            InitFileStats(dontTouchGeneration, usedFilesFromOldGenerations);
             var lastCommited = _keyValueDB.LastCommited;
             if (_root != lastCommited) RemoveUsedFilesFromStats(_root);
             CalculateFileUsefullness(lastCommited);
-            MarkTotallyUselessFilesAsUnknown();
+            MarkTotallyUselessFilesAsUnknown(dontTouchGeneration, usedFilesFromOldGenerations);
             var totalWaste = CalcTotalWaste();
             _keyValueDB.Logger?.CompactionStart(totalWaste);
             if (IsWasteSmall(totalWaste))
@@ -123,6 +125,8 @@ namespace BTDB.KVDBLayer
                 if (wastefullFileId == 0) break;
                 MoveValuesContent(writer, wastefullFileId);
                 _fileStats[wastefullFileId] = new FileStat(0);
+                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(wastefullFileId, dontTouchGeneration)) continue;
+                if (usedFilesFromOldGenerations != null && Array.BinarySearch(usedFilesFromOldGenerations, _keyValueDB.GetGeneration(wastefullFileId)) >= 0) continue;
                 toRemoveFileIds.Add(wastefullFileId);
             }
             var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
@@ -227,7 +231,7 @@ namespace BTDB.KVDBLayer
             return bestFile;
         }
 
-        void InitFileStats(long dontTouchGeneration, long[] usedFilesFromOldGenerations)
+        void InitFileStats(long dontTouchGeneration)
         {
             _fileStats = new FileStat[_keyValueDB.FileCollection.FileInfos.Max(f => f.Key) + 1];
             foreach (var file in _keyValueDB.FileCollection.FileInfos)
@@ -235,7 +239,6 @@ namespace BTDB.KVDBLayer
                 if (file.Key >= _fileStats.Length) continue;
                 if (file.Value.SubDBId != 0) continue;
                 if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(file.Key, dontTouchGeneration)) continue;
-                if (usedFilesFromOldGenerations != null && Array.BinarySearch(usedFilesFromOldGenerations, file.Value.Generation) >= 0) continue;
                 _fileStats[file.Key] = new FileStat((uint)_keyValueDB.FileCollection.GetSize(file.Key));
             }
         }
