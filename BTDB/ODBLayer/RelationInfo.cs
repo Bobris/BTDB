@@ -1207,6 +1207,7 @@ namespace BTDB.ODBLayer
     {
         readonly IList<ulong> _freeDictionaries;
         readonly IList<ulong> _freeOids;
+        List<bool> _seenObjects;
 
         public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader,
                                        IList<ulong> freeDictionaries, IList<ulong> freeOids)
@@ -1231,16 +1232,16 @@ namespace BTDB.ODBLayer
 
         public override void FreeContentInNativeObject()
         {
-            var oid = _reader.ReadVInt64();
-            if (oid == 0)
+            var id = _reader.ReadVInt64();
+            if (id == 0)
             {
             }
-            else if (oid <= int.MinValue || oid > 0)
+            else if (id <= int.MinValue || id > 0)
             {
-                RegisterOid((ulong)oid);
+                RegisterOid((ulong)id);
                 _transaction.TransactionProtector.Start();
                 _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                if (!_transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong)oid)))
+                if (!_transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong)id)))
                     return;
                 var reader = new ByteArrayReader(_transaction.KeyValueDBTransaction.GetValueAsByteArray());
                 var tableId = reader.ReadVUInt32();
@@ -1256,8 +1257,19 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                _transaction.FreeContentInNativeObject(this);
+                var ido = (int)(-id) - 1;
+                if (!AlreadyProcessedInstance(ido))
+                    _transaction.FreeContentInNativeObject(this);
             }
+        }
+
+        bool AlreadyProcessedInstance(int ido)
+        {
+            if (_seenObjects == null) _seenObjects = new List<bool>();
+            while (_seenObjects.Count <= ido) _seenObjects.Add(false);
+            var res = _seenObjects[ido];
+            _seenObjects[ido] = true;
+            return res;
         }
     }
 

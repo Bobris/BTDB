@@ -656,6 +656,62 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public abstract class UploadDataBase
+        {
+            public BlobLocation Location { get; set; }
+            public string FileName { get; set; }
+        }
+
+        public class SharedImageFile : UploadDataBase
+        {
+            [PrimaryKey(1)]
+            [SecondaryKey("CompanyId")]
+            public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)]
+            public ulong Id { get; set; }
+
+            public new BlobLocation Location
+            {
+                get => base.Location;
+                set => base.Location = value;
+            }
+
+            public BlobLocation TempLocation { get; set; }
+
+            public int Width { get; set; }
+            public int Height { get; set; }
+
+            public IDictionary<int, bool> Dict { get; set; }
+        }
+
+        public interface IFileTable
+        {
+            void Insert(SharedImageFile license);
+            void RemoveById(ulong companyId, ulong id);
+        }
+
+        [Fact]
+        public void IterateWellObjectsWithSharedInstance()
+        {
+            Func<IObjectDBTransaction, IFileTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IFileTable>("IFileTable");
+                var files = creator(tr);
+                var loc = new BlobLocation();
+                files.Insert(new SharedImageFile
+                {
+                    Location = loc,
+                    TempLocation = loc,
+                    Dict = new Dictionary<int, bool> { [1] = true }
+                });
+                files.RemoveById(0, 0);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         void AssertNoLeaksInDb()
         {
             var leaks = FindLeaks();
