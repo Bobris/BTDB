@@ -78,7 +78,6 @@ namespace BTDB.ODBLayer
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
-            EnsureClientTypeNotNull(tableInfo);
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
             freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds, readerWithFree.Oids);
