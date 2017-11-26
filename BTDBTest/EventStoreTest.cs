@@ -962,5 +962,33 @@ namespace BTDBTest
             var e = Assert.Throws<BTDBException>(() => appender.Store(null, new object[] { testEvent }));
             Assert.True(e.Message.Contains("Unsupported"));
         }
+
+        public class EventWithNullable
+        {
+            public ulong EventId { get; set; }
+            public int? NullableInt { get; set; }
+            public int? NullableEmpty { get; set; }
+        }
+
+        [Fact]
+        public void CanStoreNullable()
+        {
+            var testEvent = new EventWithNullable
+            {
+                EventId = 1,
+                NullableInt = 42
+            };
+
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null, new object[] { testEvent });
+
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            var ev = eventObserver.Events[0][0] as EventWithNullable;
+            Assert.Equal(42,  ev.NullableInt.Value);
+            Assert.False(ev.NullableEmpty.HasValue);
+        }
     }
 }

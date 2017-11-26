@@ -2367,5 +2367,50 @@ namespace BTDBTest
                 Assert.Equal("b", v.S[StateV2.B2]);
             }
         }
+
+        public class WithNullable
+        {
+            public int? FieldInt { get; set; }
+            public int? FieldIntEmpty { get; set; }
+        }
+
+        [Fact]
+        public void NullableWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new WithNullable {FieldInt = 10});
+                tr.Commit();
+            }
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var v = tr.Enumerate<WithNullable>().First();
+                Assert.True(v.FieldInt.HasValue);
+                Assert.Equal(10, v.FieldInt.Value);
+                Assert.False(v.FieldIntEmpty.HasValue);
+            }
+        }
+
+        public class WithNullableUpgraded
+        {
+        }
+
+        [Fact]
+        public void NullableSkippingWorks()
+        {
+            var typeName = _db.RegisterType(typeof(WithNullable));
+            using (var tr = _db.StartTransaction())
+            {
+                tr.Store(new WithNullable { FieldInt = 10 });
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(WithNullableUpgraded), typeName);
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var v = tr.Enumerate<WithNullableUpgraded>().First();
+                Assert.NotNull(v);
+            }
+        }
     }
 }

@@ -121,6 +121,10 @@ namespace BTDB.EventStoreLayer
                         {
                             return null;
                         }
+                        else if (Nullable.GetUnderlyingType(type) != null)
+                        {
+                            result = new NullableTypeDescriptor(_typeSerializers, type);
+                        }
                     }
                     else if (type.IsArray)
                     {
@@ -416,6 +420,10 @@ namespace BTDB.EventStoreLayer
             else if (descriptor is EnumTypeDescriptor)
             {
                 writer.WriteUInt8((byte)TypeCategory.Enum);
+            }
+            else if (descriptor is NullableTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Nullable);
             }
             else
             {

@@ -316,6 +316,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen InitObj(this IILGen il, Type type)
+        {
+            il.Emit(OpCodes.Initobj, type);
+            return il;
+        }
+
         public static IILGen Callvirt(this IILGen il, MethodInfo methodInfo)
         {
             if (methodInfo.IsStatic) throw new ArgumentException("Method in Callvirt cannot be static");

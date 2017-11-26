@@ -175,6 +175,9 @@ namespace BTDB.EventStore2Layer
                     case TypeCategory.Enum:
                         descriptor = new EnumTypeDescriptor(this, reader);
                         break;
+                    case TypeCategory.Nullable:
+                        descriptor = new NullableTypeDescriptor(this, reader, NestedDescriptorReader);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -523,6 +526,10 @@ namespace BTDB.EventStore2Layer
             else if (descriptor is EnumTypeDescriptor)
             {
                 writer.WriteUInt8((byte)TypeCategory.Enum);
+            }
+            else if (descriptor is NullableTypeDescriptor)
+            {
+                writer.WriteUInt8((byte)TypeCategory.Nullable);
             }
             else
             {

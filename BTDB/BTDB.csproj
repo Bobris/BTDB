@@ -95,6 +95,7 @@
     <Compile Include="EventStoreLayer\ListTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ListWithDescriptor.cs" />
     <Compile Include="EventStoreLayer\NoCompressionStrategy.cs" />
+    <Compile Include="EventStoreLayer\NullableTypeDescriptor.cs" />
     <Compile Include="EventStoreLayer\ReadOnlyListArrayWrapper.cs" />
     <Compile Include="EventStoreLayer\SkippingEventObserver.cs" />
     <Compile Include="EventStoreLayer\SnappyCompressionStrategy.cs" />
@@ -126,6 +127,7 @@
     <Compile Include="FieldHandler\IFieldHandlerWithInit.cs" />
     <Compile Include="FieldHandler\IFieldHandlerWithNestedFieldHandlers.cs" />
     <Compile Include="FieldHandler\IIndirect.cs" />
+    <Compile Include="FieldHandler\NullableFieldHandler.cs" />
     <Compile Include="FieldHandler\PersistedNameAttribute.cs" />
     <Compile Include="FieldHandler\SimpleFieldHandlerJustOrderableBase.cs" />
     <Compile Include="GlobalSuppressions.cs" />
