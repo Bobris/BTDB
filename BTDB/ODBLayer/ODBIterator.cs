@@ -409,6 +409,15 @@ namespace BTDB.ODBLayer
                     IterateInlineDict(reader, kvHandlers[0], kvHandlers[1], skipping);
                 }
             }
+            else if (handler is NullableFieldHandler)
+            {
+                var hasValue = reader.ReadBool();
+                if (hasValue)
+                {
+                    var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                    IterateHandler(reader, itemHandler, skipping, null);
+                }
+            }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
             {
                 throw new BTDBException("Don't know how to iterate " + handler.Name);

@@ -542,5 +542,31 @@ namespace BTDBTest
             _db.Dispose();
             _lowDb.Dispose();
         }
+
+        public class WithNullable
+        {
+            [PrimaryKey(1)]
+            public int Id { get; set; }
+            public int? FieldInt { get; set; }
+            public int? FieldIntEmpty { get; set; }
+        }
+
+        public interface IRelationWithNullable
+        {
+            void Insert(WithNullable value);
+        }
+
+        [Fact]
+        public void IterateNullableValues()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithNullable>("IterateNullableValues");
+                var table = creator(tr);
+                table.Insert(new WithNullable { FieldInt = 10 });
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
     }
 }
