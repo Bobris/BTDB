@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using BTDB.Buffer;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler
@@ -137,6 +138,16 @@ namespace BTDB.FieldHandler
         public static bool Convert2Bool(int value)
         {
             return value != 0;
+        }
+
+        public static byte[] Convert2Bytes(ByteBuffer buffer)
+        {
+            return buffer.ToByteArray();
+        }
+
+        public static ByteBuffer Convert2ByteBuffer(byte[] bytes)
+        {
+            return ByteBuffer.NewAsync(bytes);
         }
 
     }

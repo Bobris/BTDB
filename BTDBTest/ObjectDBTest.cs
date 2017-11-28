@@ -603,6 +603,8 @@ namespace BTDBTest
             public IList<int> IntList { get; set; }
             public IList<string> StringList { get; set; }
             public IList<byte> ByteList { get; set; }
+
+            public IList<ByteBuffer> ByteBufferList { get; set; }
         }
 
         [Fact]
@@ -614,6 +616,7 @@ namespace BTDBTest
                 root.IntList = new List<int> { 5, 10, 2000 };
                 root.StringList = new List<string> { "A", null, "AB!" };
                 root.ByteList = new List<byte> { 0, 255 };
+                root.ByteBufferList = new List<ByteBuffer> { ByteBuffer.NewAsync(new byte[] { 1, 2 }) };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -622,6 +625,8 @@ namespace BTDBTest
                 Assert.Equal(new List<int> { 5, 10, 2000 }, root.IntList);
                 Assert.Equal(new List<string> { "A", null, "AB!" }, root.StringList);
                 Assert.Equal(new List<byte> { 0, 255 }, root.ByteList);
+                Assert.Equal(1, root.ByteBufferList.Count);
+                Assert.Equal(new byte[] { 1, 2 }, root.ByteBufferList[0].ToByteArray());
                 root.IntList = null;
                 root.StringList = null;
                 root.ByteList = null;
@@ -2379,7 +2384,7 @@ namespace BTDBTest
         {
             using (var tr = _db.StartTransaction())
             {
-                tr.Store(new WithNullable {FieldInt = 10});
+                tr.Store(new WithNullable { FieldInt = 10 });
                 tr.Commit();
             }
             using (var tr = _db.StartReadOnlyTransaction())

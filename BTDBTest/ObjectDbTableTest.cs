@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -1764,5 +1765,114 @@ namespace BTDBTest
                 Assert.Equal(20, cnt);
             }
         }
+
+        public class WithNullableInKey
+        {
+            [PrimaryKey]
+            public ulong? Key { get; set; }
+            public ulong? Value { get; set; }
+        }
+
+        public interface IRelationWithNullableInKey
+        {
+            void Insert(WithNullableInKey obj);
+        }
+
+        [Fact]
+        public void NullableIsNotAllowedInPrimaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IRelationWithNullableInKey>("WithNullableInKey"));
+                Assert.Contains("Unsupported key", ex.Message);
+            }
+        }
+
+        public enum TestEnum
+        {
+            Item1,
+            Item2
+        }
+
+        public class WithNullables
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public sbyte? SByteField { get; set; }
+            public byte? ByteField { get; set; }
+            public short? ShortField { get; set; }
+            public ushort? UShortField { get; set; }
+            public int? IntField { get; set; }
+            public uint? UIntField { get; set; }
+            public long? LongField { get; set; }
+            public ulong? ULongField { get; set; }
+            public bool? BoolField { get; set; }
+            public double? DoubleField { get; set; }
+            public float? FloatField { get; set; }
+            public decimal? DecimalField { get; set; }
+            public Guid? GuidField { get; set; }
+            public DateTime? DateTimeField { get; set; }
+            public TimeSpan? TimeSpanField { get; set; }
+            public TestEnum? EnumField { get; set; }
+            public ByteBuffer? ByteBufferField { get; set; }
+        }
+
+        public interface IRelationWithNullables
+        {
+            void Insert(WithNullables obj);
+            WithNullables FindById(ulong id);
+        }
+
+        [Fact]
+        public void VariousNullableFieldsWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithNullables>("WithNullables");
+                var table = creator(tr);
+                table.Insert(new WithNullables
+                {
+                    Id = 11,
+                    SByteField = -10,
+                    ByteField = 10,
+                    ShortField = -1000,
+                    UShortField = 1000,
+                    IntField = -100000,
+                    UIntField = 100000,
+                    LongField = -1000000000000,
+                    ULongField = 1000000000000,
+                    BoolField = true,
+                    DoubleField = 12.34,
+                    FloatField = -12.34f,
+                    DecimalField = 123456.789m,
+                    DateTimeField = new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local),
+                    TimeSpanField = new TimeSpan(1, 2, 3, 4),
+                    GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"),
+                    EnumField = TestEnum.Item2,
+                    ByteBufferField = ByteBuffer.NewAsync(new byte[] {0, 1, 2}, 1, 1)
+                });
+
+                var o = table.FindById(11);
+
+                Assert.Equal(-10, o.SByteField.Value);
+                Assert.Equal(10, o.ByteField.Value);
+                Assert.Equal(-1000, o.ShortField.Value);
+                Assert.Equal(1000, o.UShortField.Value);
+                Assert.Equal(-100000, o.IntField.Value);
+                Assert.Equal(100000u, o.UIntField.Value);
+                Assert.Equal(-1000000000000, o.LongField.Value);
+                Assert.Equal(1000000000000u, o.ULongField.Value);
+                Assert.True(o.BoolField.Value);
+                Assert.InRange(12.34 - o.DoubleField.Value, -1e-10, 1e10);
+                Assert.InRange(-12.34 - o.FloatField.Value, -1e-6, 1e6);
+                Assert.Equal(123456.789m, o.DecimalField.Value);
+                Assert.Equal(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local), o.DateTimeField.Value);
+                Assert.Equal(new TimeSpan(1, 2, 3, 4), o.TimeSpanField.Value);
+                Assert.Equal(new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"), o.GuidField.Value);
+                Assert.Equal(TestEnum.Item2, o.EnumField.Value);
+                Assert.Equal(new byte[] { 1 }, o.ByteBufferField.Value.ToByteArray());
+            }
+        }
+
     }
 }
