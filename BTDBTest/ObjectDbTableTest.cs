@@ -1776,15 +1776,56 @@ namespace BTDBTest
         public interface IRelationWithNullableInKey
         {
             void Insert(WithNullableInKey obj);
+            WithNullableInKey FindById(ulong? key);
         }
 
         [Fact]
-        public void NullableIsNotAllowedInPrimaryKey()
+        public void NullableWorksInPrimaryKeys()
         {
             using (var tr = _db.StartTransaction())
             {
-                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IRelationWithNullableInKey>("WithNullableInKey"));
-                Assert.Contains("Unsupported key", ex.Message);
+                var creator = tr.InitRelation<IRelationWithNullableInKey>("WithNullableInKey");
+                var table = creator(tr);
+                table.Insert(new WithNullableInKey { Value = 41u });
+                table.Insert(new WithNullableInKey { Key = 1u, Value = 42u });
+                var n = table.FindById(new ulong?());
+                Assert.Equal(41u, n.Value.Value);
+                n = table.FindById(1u);
+                Assert.Equal(42u, n.Value.Value);
+            }
+        }
+
+        public class WithNullableInSecondaryKey
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            [SecondaryKey("SK")]
+            public ulong? Zip { get; set; }
+            public ulong? Value { get; set; }
+        }
+
+        public interface IRelationWithNullableInSecondaryKey
+        {
+            void Insert(WithNullableInSecondaryKey obj);
+            WithNullableInSecondaryKey FindBySK(ulong? zip);
+        }
+
+        [Fact]
+        public void NullableWorksInSecondaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithNullableInSecondaryKey>("WithNullableInSecondaryKey");
+                var table = creator(tr);
+                table.Insert(new WithNullableInSecondaryKey
+                {
+                    Zip = 50346,
+                    Value = 42
+                });
+                var v = table.FindBySK(50346);
+                Assert.NotNull(v);
+                Assert.True(v.Value.HasValue);
+                Assert.Equal(42u, v.Value.Value);
             }
         }
 

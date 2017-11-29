@@ -66,7 +66,7 @@ namespace BTDB.FieldHandler
 
         public bool NeedsCtx()
         {
-            return true;
+            return _itemHandler.NeedsCtx();
         }
 
         public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
@@ -77,10 +77,12 @@ namespace BTDB.FieldHandler
             var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
 
             ilGenerator
-                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Do(pushReaderOrCtx)
                 .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(finish)
-                .GenerateLoad(_itemHandler, itemType, pushReaderOrCtx, _typeConvertorGenerator)
+                .Brfalse(finish);
+            _itemHandler.Load(ilGenerator, pushReaderOrCtx);
+            _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)(ilGenerator);
+            ilGenerator
                 .Newobj(nullableType.GetConstructor(new[] { itemType }))
                 .Stloc(localResult)
                 .Mark(finish)
@@ -91,10 +93,11 @@ namespace BTDB.FieldHandler
         {
             var finish = ilGenerator.DefineLabel();
             ilGenerator
-                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Do(pushReaderOrCtx)
                 .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(finish)
-                .GenerateSkip(_itemHandler, pushReaderOrCtx)
+                .Brfalse(finish);
+            _itemHandler.Skip(ilGenerator, pushReaderOrCtx);
+            ilGenerator
                 .Mark(finish);
         }
 
@@ -107,7 +110,7 @@ namespace BTDB.FieldHandler
             ilGenerator
                 .Do(pushValue)
                 .Stloc(localValue)
-                .Do(Extensions.PushWriterFromCtx(pushWriterOrCtx))
+                .Do(pushWriterOrCtx)
                 .Ldloca(localValue) //Ldloca for struct!
                 .Call(nullableType.GetMethod("get_HasValue"))
                 .Dup()
@@ -115,7 +118,7 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(AbstractBufferedWriter).WriteBool(false))
                 .Ldloc(localHasValue)
                 .Brfalse(finish);
-            _itemHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _itemHandler.NeedsCtx()),
+            _itemHandler.Save(ilGenerator, pushWriterOrCtx,
                 il => il
                     .Ldloca(localValue).Call(_type.GetMethod("get_Value"))
                     .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemHandler.HandledType())));
