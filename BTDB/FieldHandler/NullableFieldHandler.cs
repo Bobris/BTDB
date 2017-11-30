@@ -20,6 +20,8 @@ namespace BTDB.FieldHandler
             _typeConvertorGenerator = typeConvertorGenerator;
             _type = type;
             _itemHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
+            if (_itemHandler.NeedsCtx())
+                throw new NotSupportedException("Nullable complex types are not supported.");
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_itemHandler);
             _configuration = writer.Data.ToByteArray();
