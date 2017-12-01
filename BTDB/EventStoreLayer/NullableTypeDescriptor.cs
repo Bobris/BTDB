@@ -119,6 +119,7 @@ namespace BTDB.EventStoreLayer
         {
             var localResult = ilGenerator.DeclareLocal(targetType);
             var finish = ilGenerator.DefineLabel();
+            var noValue = ilGenerator.DefineLabel();
             var itemType = targetType.GetGenericArguments()[0];
             var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
 
@@ -127,11 +128,15 @@ namespace BTDB.EventStoreLayer
             ilGenerator
                 .Do(pushReader)
                 .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(finish);
+                .Brfalse(noValue);
             _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
             ilGenerator
                 .Newobj(nullableType.GetConstructor(new[] { itemType }))
                 .Stloc(localResult)
+                .BrS(finish)
+                .Mark(noValue)
+                .Ldloca(localResult)
+                .InitObj(nullableType)
                 .Mark(finish)
                 .Ldloc(localResult);
         }

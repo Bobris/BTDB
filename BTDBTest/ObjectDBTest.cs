@@ -603,8 +603,8 @@ namespace BTDBTest
             public IList<int> IntList { get; set; }
             public IList<string> StringList { get; set; }
             public IList<byte> ByteList { get; set; }
-
             public IList<ByteBuffer> ByteBufferList { get; set; }
+            public IList<int?> NullableIntList { get; set; }
         }
 
         [Fact]
@@ -617,6 +617,7 @@ namespace BTDBTest
                 root.StringList = new List<string> { "A", null, "AB!" };
                 root.ByteList = new List<byte> { 0, 255 };
                 root.ByteBufferList = new List<ByteBuffer> { ByteBuffer.NewAsync(new byte[] { 1, 2 }) };
+                root.NullableIntList = new List<int?> { 1, 2 };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -627,6 +628,7 @@ namespace BTDBTest
                 Assert.Equal(new List<byte> { 0, 255 }, root.ByteList);
                 Assert.Equal(1, root.ByteBufferList.Count);
                 Assert.Equal(new byte[] { 1, 2 }, root.ByteBufferList[0].ToByteArray());
+                Assert.Equal(new List<int?> { 1, 2 }, root.NullableIntList);
                 root.IntList = null;
                 root.StringList = null;
                 root.ByteList = null;
@@ -642,6 +644,8 @@ namespace BTDBTest
                 root.IntList = new List<int>();
                 root.StringList = new List<string>();
                 root.ByteList = new List<byte>();
+                root.ByteBufferList = new List<ByteBuffer>();
+                root.NullableIntList = new List<int?>();
                 tr.Store(root);
                 tr.Commit();
             }
@@ -651,6 +655,8 @@ namespace BTDBTest
                 Assert.Equal(new List<int>(), root.IntList);
                 Assert.Equal(new List<string>(), root.StringList);
                 Assert.Equal(new List<byte>(), root.ByteList);
+                Assert.Equal(new List<ByteBuffer>(), root.ByteBufferList);
+                Assert.Equal(new List<int?>(), root.NullableIntList);
             }
         }
 
@@ -663,6 +669,8 @@ namespace BTDBTest
                 root.IntList = new List<int> { 5, 10, 2000 };
                 root.StringList = new List<string>();
                 root.ByteList = null;
+                root.ByteBufferList = new List<ByteBuffer> { ByteBuffer.NewAsync(new byte[] { 1, 2 }) };
+                root.NullableIntList = new List<int?> { 1, 2 };
                 tr.Commit();
             }
             ReopenDb();
@@ -676,6 +684,7 @@ namespace BTDBTest
         public class InlineDictionary
         {
             public Dictionary<int, string> Int2String { get; set; }
+            public Dictionary<int?, bool?> NullableInt2Bool { get; set; }
         }
 
         [Fact]
@@ -685,6 +694,7 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<InlineDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -693,6 +703,9 @@ namespace BTDBTest
                 Assert.Equal(2, root.Int2String.Count);
                 Assert.Equal("one", root.Int2String[1]);
                 Assert.Null(root.Int2String[0]);
+                Assert.Equal(2, root.Int2String.Count);
+                Assert.True(root.NullableInt2Bool[1]);
+                Assert.False(root.NullableInt2Bool[2].HasValue);
                 root.Int2String.Clear();
                 tr.Store(root);
                 tr.Commit();
@@ -719,6 +732,7 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<InlineDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
                 tr.Commit();
             }
             ReopenDb();
@@ -732,6 +746,7 @@ namespace BTDBTest
         public class InlineList
         {
             public List<int> IntList { get; set; }
+            public List<int?> NullableIntList { get; set; }
         }
 
         [Fact]
@@ -741,6 +756,7 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<InlineList>();
                 root.IntList = new List<int> { 1, 2, 3 };
+                root.NullableIntList = new List<int?> { 4, new int?() };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -750,6 +766,9 @@ namespace BTDBTest
                 Assert.Equal(1, root.IntList[0]);
                 Assert.Equal(2, root.IntList[1]);
                 Assert.Equal(3, root.IntList[2]);
+                Assert.Equal(2, root.NullableIntList.Count);
+                Assert.Equal(4, root.NullableIntList[0]);
+                Assert.False(root.NullableIntList[1].HasValue);
                 root.IntList.Clear();
                 tr.Store(root);
                 tr.Commit();
@@ -789,6 +808,7 @@ namespace BTDBTest
         public class SimpleDictionary
         {
             public IDictionary<int, string> Int2String { get; set; }
+            public IDictionary<int?, bool?> NullableInt2Bool { get; set; }
         }
 
         [Fact]
@@ -798,6 +818,7 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<SimpleDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -807,12 +828,17 @@ namespace BTDBTest
                 Assert.Equal("one", root.Int2String[1]);
                 Assert.Null(root.Int2String[0]);
                 root.Int2String.Clear();
+                Assert.Equal(2, root.NullableInt2Bool.Count);
+                Assert.True(root.NullableInt2Bool[1]);
+                Assert.False(root.NullableInt2Bool[2].HasValue);
+                root.NullableInt2Bool.Clear();
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<SimpleDictionary>();
                 Assert.Equal(0, root.Int2String.Count);
+                Assert.Equal(0, root.NullableInt2Bool.Count);
             }
         }
 
@@ -823,6 +849,7 @@ namespace BTDBTest
             {
                 var root = tr.Singleton<SimpleDictionary>();
                 root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
+                root.NullableInt2Bool = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } };
                 tr.Commit();
             }
             ReopenDb();

@@ -968,6 +968,9 @@ namespace BTDBTest
             public ulong EventId { get; set; }
             public int? NullableInt { get; set; }
             public int? NullableEmpty { get; set; }
+
+            public List<int?> ListWithNullables { get; set; }
+            public IDictionary<int?, bool?> DictionaryWithNullables { get; set; }
         }
 
         [Fact]
@@ -976,8 +979,10 @@ namespace BTDBTest
             var testEvent = new EventWithNullable
             {
                 EventId = 1,
-                NullableInt = 42
-            };
+                NullableInt = 42,
+                ListWithNullables = new List<int?> { 4, new int?() },
+                DictionaryWithNullables = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } }
+        };
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
@@ -989,6 +994,12 @@ namespace BTDBTest
             var ev = eventObserver.Events[0][0] as EventWithNullable;
             Assert.Equal(42,  ev.NullableInt.Value);
             Assert.False(ev.NullableEmpty.HasValue);
+            Assert.Equal(2, ev.ListWithNullables.Count);
+            Assert.Equal(4, ev.ListWithNullables[0].Value);
+            Assert.False(ev.ListWithNullables[1].HasValue);
+            Assert.Equal(2, ev.DictionaryWithNullables.Count);
+            Assert.True(ev.DictionaryWithNullables[1]);
+            Assert.False(ev.DictionaryWithNullables[2].HasValue);
         }
     }
 }

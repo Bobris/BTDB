@@ -75,18 +75,23 @@ namespace BTDB.FieldHandler
         {
             var localResult = ilGenerator.DeclareLocal(HandledType());
             var finish = ilGenerator.DefineLabel();
+            var noValue = ilGenerator.DefineLabel();
             var itemType = _type.GetGenericArguments()[0];
             var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
 
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(finish);
+                .Brfalse(noValue);
             _itemHandler.Load(ilGenerator, pushReaderOrCtx);
             _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)(ilGenerator);
             ilGenerator
                 .Newobj(nullableType.GetConstructor(new[] { itemType }))
                 .Stloc(localResult)
+                .BrS(finish)
+                .Mark(noValue)
+                .Ldloca(localResult)
+                .InitObj(nullableType)
                 .Mark(finish)
                 .Ldloc(localResult);
         }
