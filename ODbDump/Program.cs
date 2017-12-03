@@ -615,6 +615,11 @@ namespace ODbDump
                                 if (keyindex != null)
                                 {
                                     details = string.Format("KVCount:{0} CommitUlong:{1} TrLogFileId:{2} TrLogOffset:{3}", keyindex.KeyValueCount, keyindex.CommitUlong, keyindex.TrLogFileId, keyindex.TrLogOffset);
+                                    var usedFiles = keyindex.UsedFilesInOlderGenerations;
+                                    if (usedFiles != null)
+                                    {
+                                        details += " UsedFiles:" + string.Join(",", usedFiles);
+                                    }
                                 }
                                 var trlog = fi.Value as IFileTransactionLog;
                                 if (trlog != null)
