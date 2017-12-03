@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [unreleased]
+
+## 12.0.0.0
 
 ### Added
-- Nullable support in both ODb and EventStore
+
+* Changelog
+* Nullable support in both ODb and EventStore
