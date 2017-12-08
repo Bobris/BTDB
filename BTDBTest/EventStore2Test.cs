@@ -658,8 +658,8 @@ namespace BTDBTest
 
         public enum WorkStatus
         {
-            Unemployed = 1,
-            Employed = 0
+            Unemployed = 0,
+            Employed = 1
         }
 
         public class EventWithEnum
