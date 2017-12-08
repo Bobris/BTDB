@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using BTDB.EventStore2Layer;
+using BTDB.EventStoreLayer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
 using BTDB.FieldHandler;
+using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 
@@ -652,6 +654,70 @@ namespace BTDBTest
             var serializer = new EventSerializer();
             bool hasMetadata;
             serializer.Serialize(out hasMetadata, testEvent);
+        }
+
+        public enum WorkStatus
+        {
+            Unemployed = 1,
+            Employed = 0
+        }
+
+        public class EventWithEnum
+        {
+            public WorkStatus Status { get; set; }
+        }
+
+        public class EventWithInt
+        {
+            public int Status { get; set; }
+        }
+
+        [Fact]
+        public void ConverterForEnumToIntCanBeWritten()
+        {
+            var fullNameMapper = new FullNameTypeMapper();
+            var overridedMapper = new OverloadableTypeMapper(typeof(EventWithInt),
+                fullNameMapper.ToName(typeof(EventWithEnum)),
+                fullNameMapper);
+
+            var serializer = new EventSerializer(fullNameMapper);
+            var original = new EventWithEnum {Status = WorkStatus.Employed};
+            bool hasMetadata;
+            var metadata = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            Assert.True(hasMetadata);
+
+            serializer.ProcessMetadataLog(metadata);
+
+            var data = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            Assert.False(hasMetadata);
+
+
+            // deserializing with EnumToInTypeConverterGenerator and switched Enum to int
+            var deserializer = new EventDeserializer(overridedMapper, new EnumToInTypeConverterGenerator());
+            deserializer.ProcessMetadataLog(metadata);
+            object readed;
+            Assert.True(deserializer.Deserialize(out readed,data));
+
+
+            var readedEvem = readed as EventWithInt;
+            Assert.Equal(readedEvem.Status, (int)original.Status);
+
+        }
+
+        public class EnumToInTypeConverterGenerator : DefaultTypeConvertorGenerator
+        {
+            public override Action<IILGen> GenerateConversion(Type @from, Type to)
+            {
+                if (@from.IsEnum && to == typeof(long))
+                {
+                    return i => i.ConvI8();
+                }
+                if (@from.IsEnum && to == typeof(int))
+                {
+                    return i => i.ConvI4();
+                }
+                return base.GenerateConversion(@from, to);
+            }
         }
 
     }
