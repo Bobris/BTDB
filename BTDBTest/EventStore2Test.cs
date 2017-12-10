@@ -673,7 +673,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void ConverterForEnumToIntCanBeWritten()
+        public void EnumToIntIsAutomaticConversionOnLoad()
         {
             var fullNameMapper = new FullNameTypeMapper();
             var overridedMapper = new OverloadableTypeMapper(typeof(EventWithInt),
@@ -681,7 +681,7 @@ namespace BTDBTest
                 fullNameMapper);
 
             var serializer = new EventSerializer(fullNameMapper);
-            var original = new EventWithEnum {Status = WorkStatus.Employed};
+            var original = new EventWithEnum { Status = WorkStatus.Employed };
             bool hasMetadata;
             var metadata = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
             Assert.True(hasMetadata);
@@ -691,34 +691,13 @@ namespace BTDBTest
             var data = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
             Assert.False(hasMetadata);
 
-
-            // deserializing with EnumToInTypeConverterGenerator and switched Enum to int
-            var deserializer = new EventDeserializer(overridedMapper, new EnumToInTypeConverterGenerator());
+            var deserializer = new EventDeserializer(overridedMapper);
             deserializer.ProcessMetadataLog(metadata);
             object readed;
-            Assert.True(deserializer.Deserialize(out readed,data));
-
+            Assert.True(deserializer.Deserialize(out readed, data));
 
             var readedEvem = readed as EventWithInt;
             Assert.Equal(readedEvem.Status, (int)original.Status);
-
         }
-
-        public class EnumToInTypeConverterGenerator : DefaultTypeConvertorGenerator
-        {
-            public override Action<IILGen> GenerateConversion(Type @from, Type to)
-            {
-                if (@from.IsEnum && to == typeof(long))
-                {
-                    return i => i.ConvI8();
-                }
-                if (@from.IsEnum && to == typeof(int))
-                {
-                    return i => i.ConvI4();
-                }
-                return base.GenerateConversion(@from, to);
-            }
-        }
-
     }
 }

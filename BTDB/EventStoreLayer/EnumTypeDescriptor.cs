@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -285,7 +286,12 @@ namespace BTDB.EventStoreLayer
                 ilGenerator.Castclass(typeof(object));
                 return;
             }
-            new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, targetType.GetEnumUnderlyingType())(ilGenerator);
+            var trueTargetType = targetType.IsEnum ? targetType.GetEnumUnderlyingType() : targetType;
+            var conv = _typeSerializers.ConvertorGenerator.GenerateConversion(typeRead, trueTargetType);
+            if (conv == null)
+                throw new BTDBException("Don't know how to convert from " +
+                                         typeRead.ToSimpleName() + " to " + targetType.ToSimpleName());
+            conv(ilGenerator);
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
