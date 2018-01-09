@@ -878,5 +878,20 @@ namespace BTDB.ODBLayer
             _modificationCounters.Add(relationId, result);
             return result;
         }
+
+        public void DeleteAllData()
+        {
+            _lastDictId = 0;
+            // Resetting last oid is risky due to singletons. So better to waste something.
+            _keyValueTrProtector.Start();
+            _keyValueTr.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+            _keyValueTr.EraseAll();
+            _keyValueTr.SetKeyPrefix(ObjectDB.AllDictionariesPrefix);
+            _keyValueTr.EraseAll();
+            _keyValueTr.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
+            _keyValueTr.EraseAll();
+            _keyValueTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+            _keyValueTr.EraseAll();
+        }
     }
 }

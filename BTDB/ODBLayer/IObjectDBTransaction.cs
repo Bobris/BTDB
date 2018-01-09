@@ -28,6 +28,11 @@ namespace BTDB.ODBLayer
         void DeleteAll<T>() where T : class;
         void DeleteAll(Type type);
 
+        /// <summary>
+        /// It remove all data, metadata are not deleted. It means you still cannot do incompatible Relation primary key change.
+        /// </summary>
+        void DeleteAllData();
+
         ulong GetCommitUlong();
         void SetCommitUlong(ulong value);
 

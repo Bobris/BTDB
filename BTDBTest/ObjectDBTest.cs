@@ -914,6 +914,7 @@ namespace BTDBTest
         public class ComplexDictionary
         {
             public IDictionary<string, Person> String2Person { get; set; }
+            public string String { get; set; }
         }
 
         [Fact]
@@ -2141,7 +2142,8 @@ namespace BTDBTest
                 if (from.IsEnum && to == typeof(string))
                 {
                     var fromcfg = new EnumFieldHandler.EnumConfiguration(from);
-                    if (fromcfg.Flags) return null; // Flags are hard :-)
+                    if (fromcfg.Flags)
+                        return null; // Flags are hard :-)
                     var cfgIdx = 0;
                     while (true)
                     {
@@ -2150,7 +2152,8 @@ namespace BTDBTest
                         Array.Resize(ref newEnumCfgs, oldEnumCfgs?.Length + 1 ?? 1);
                         cfgIdx = newEnumCfgs.Length - 1;
                         newEnumCfgs[cfgIdx] = fromcfg;
-                        if (Interlocked.CompareExchange(ref _enumCfgs, newEnumCfgs, oldEnumCfgs) == oldEnumCfgs) break;
+                        if (Interlocked.CompareExchange(ref _enumCfgs, newEnumCfgs, oldEnumCfgs) == oldEnumCfgs)
+                            break;
                     }
                     return il =>
                     {
@@ -2442,6 +2445,30 @@ namespace BTDBTest
             {
                 var v = tr.Enumerate<WithNullableUpgraded>().First();
                 Assert.NotNull(v);
+            }
+        }
+
+        [Fact]
+        public void DeleteAllWorks()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<ComplexDictionary>();
+                root.String = "A";
+                var sl1 = new Person { Name = "Poor Slave", Age = 18 };
+                var sl2 = new Person { Name = "Poor Poor Slave", Age = 17 };
+                root.String2Person.Add("slave", sl1);
+                root.String2Person.Add("slave2", sl2);
+                root.String2Person.Add("master", new Manager { Name = "Chief", Age = 19, Managing = new List<Person> { sl1, sl2 } });
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                tr.DeleteAllData();
+                var root = tr.Singleton<ComplexDictionary>();
+                Assert.Null(root.String);
+                Assert.Equal(0, root.String2Person.Count);
+                tr.Commit();
             }
         }
     }

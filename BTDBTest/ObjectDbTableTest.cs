@@ -328,6 +328,27 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void DeleteAllWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Lubos" };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("PersonSimple");
+                var personSimpleTable = creator(tr);
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                tr.DeleteAllData();
+                var personSimpleTable = creator(tr);
+                Assert.Throws<BTDBException>(() => personSimpleTable.FindById(person.TenantId, person.Email));
+                tr.Commit();
+            }
+        }
+
         public interface ISimplePersonTableWithVoidRemove
         {
             void Insert(PersonSimple person);
