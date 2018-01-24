@@ -1,8 +1,8 @@
+using BTDB.IL;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using BTDB.IL;
 
 namespace BTDB.IOC
 {
@@ -67,14 +67,15 @@ namespace BTDB.IOC
             foreach (var parameter in constructor.GetParameters())
             {
                 yield return new Need
-                    {
-                        Kind = NeedKind.ConstructorParameter,
-                        ParentType = constructor.ReflectedType,
-                        ClrType = parameter.ParameterType,
-                        Optional = false,
-                        ForcedKey = false,
-                        Key = parameter.Name
-                    };
+                {
+                    Kind = NeedKind.ConstructorParameter,
+                    ParentType = constructor.ReflectedType,
+                    ClrType = parameter.ParameterType,
+                    Optional = parameter.IsOptional,
+                    OptionalValue = parameter.RawDefaultValue,
+                    ForcedKey = false,
+                    Key = parameter.Name
+                };
             }
         }
 
@@ -218,7 +219,7 @@ namespace BTDB.IOC
             }
         }
 
-        internal void GatherNeeds(ICRegILGen regILGen, HashSet<Tuple<IBuildContext,ICRegILGen>> processed)
+        internal void GatherNeeds(ICRegILGen regILGen, HashSet<Tuple<IBuildContext, ICRegILGen>> processed)
         {
             var processingContext = new Tuple<IBuildContext, ICRegILGen>(_buildContext, regILGen);
             if (processed.Contains(processingContext)) return;
@@ -248,6 +249,8 @@ namespace BTDB.IOC
                     var reg = ResolveNeedBy(need.ClrType, need.Key);
                     if (reg == null && !need.ForcedKey)
                         reg = ResolveNeedBy(need.ClrType, null);
+                    if (reg == null && need.Optional)
+                        reg = new OptionalImpl(need.OptionalValue);
                     if (reg == null)
                     {
                         throw new ArgumentException($"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
@@ -255,6 +258,41 @@ namespace BTDB.IOC
                     _resolvers.Add(new Tuple<IBuildContext, INeed>(_buildContext, need), reg);
                     GatherNeeds(reg, processed);
                 }
+            }
+        }
+
+        class OptionalImpl : ICRegILGen
+        {
+            readonly object value;
+            public OptionalImpl(object value) => this.value = value;
+            public string GenFuncName(IGenerationContext context)
+            {
+                throw new InvalidOperationException();
+            }
+
+            public void GenInitialization(IGenerationContext context)
+            {
+            }
+
+            public bool IsCorruptingILStack(IGenerationContext context)
+            {
+                return false;
+            }
+
+            public IILLocal GenMain(IGenerationContext context)
+            {
+                context.IL.Ld(value);
+                return null;
+            }
+
+            public IEnumerable<INeed> GetNeeds(IGenerationContext context)
+            {
+                yield break;
+            }
+
+            public INeed PreResolveNeed(IGenerationContext context, INeed need)
+            {
+                return need;
             }
         }
 
@@ -271,7 +309,7 @@ namespace BTDB.IOC
                 }
             }
             _constants.Add(tuple);
-        found:
+            found:
             return new ConstantImpl(tuple);
         }
 

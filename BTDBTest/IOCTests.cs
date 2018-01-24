@@ -1,10 +1,11 @@
+using BTDB.IOC;
+using BTDB.KVDBLayer;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using BTDB.IOC;
-using BTDB.KVDBLayer;
+using System.Reflection;
 using Xunit;
 
 namespace BTDBTest
@@ -840,5 +841,81 @@ namespace BTDBTest
                 Assert.NotNull(container.Resolve<GreedyNonPublicClass>());
             }
         }
+
+        #region Optional parameter in ctor feature
+
+        class ClassDependency { }
+
+        struct StructDependency { }
+        enum EnumDependency { Foo, Bar, FooBar = Foo | Bar }
+
+        abstract class OptionalClass<T>
+        {
+            public T Value { get; }
+
+            public OptionalClass(T t) => Value = t;
+
+            public override bool Equals(object obj)
+            {
+                var @class = obj as OptionalClass<T>;
+                return @class != null &&
+                       EqualityComparer<T>.Default.Equals(Value, @class.Value);
+            }
+
+            public override int GetHashCode()
+            {
+                return -1937169414 + EqualityComparer<T>.Default.GetHashCode(Value);
+            }
+
+            public override string ToString() => $"{Value}";
+        }
+        class ClassWithTrueBool : OptionalClass<bool> { public ClassWithTrueBool(bool foo = true) : base(foo) { } }
+        class ClassWithFalseBool : OptionalClass<bool> { public ClassWithFalseBool(bool foo = false) : base(foo) { } }
+        class ClassWithInt16 : OptionalClass<Int16> { public ClassWithInt16(Int16 foo = 11111) : base(foo) { } }
+        class ClassWithInt32 : OptionalClass<Int32> { public ClassWithInt32(Int32 foo = Int32.MaxValue) : base(foo) { } }
+        class ClassWithInt64 : OptionalClass<Int64> { public ClassWithInt64(Int64 foo = Int64.MaxValue) : base(foo) { } }
+        class ClassWithFloat : OptionalClass<float> { public ClassWithFloat(float foo = 1.1f) : base(foo) { } }
+        class ClassWithDouble : OptionalClass<double> { public ClassWithDouble(double foo = 2.2d) : base(foo) { } }
+        class ClassWithDecimal : OptionalClass<decimal> { public ClassWithDecimal(decimal foo = 3.3m) : base(foo) { } }
+        class ClassWithString : OptionalClass<string> { public ClassWithString(string foo = "str") : base(foo) { } }
+        class ClassWithClass : OptionalClass<ClassDependency> { public ClassWithClass(ClassDependency foo = default) : base(foo) { } }
+        class ClassWithStruct : OptionalClass<StructDependency> { public ClassWithStruct(StructDependency foo = default) : base(foo) { } }
+        class ClassWithEnum : OptionalClass<EnumDependency> { public ClassWithEnum(EnumDependency foo = EnumDependency.Foo) : base(foo) { } }
+        class ClassWithEnum2 : OptionalClass<EnumDependency> { public ClassWithEnum2(EnumDependency foo = EnumDependency.FooBar) : base(foo) { } }
+        class ClassWithNullable : OptionalClass<int?> { public ClassWithNullable(int? foo = default) : base(foo) { } }
+        class ClassWithNullable2 : OptionalClass<int?> { public ClassWithNullable2(int? foo = 10) : base(foo) { } }
+
+        [Theory]
+        [InlineData(typeof(ClassWithTrueBool))]
+        [InlineData(typeof(ClassWithFalseBool))]
+        [InlineData(typeof(ClassWithInt16))]
+        [InlineData(typeof(ClassWithInt32))]
+        [InlineData(typeof(ClassWithInt64), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithFloat), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithDouble), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithDecimal), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithString))]
+        [InlineData(typeof(ClassWithClass))]
+        [InlineData(typeof(ClassWithStruct), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithEnum))]
+        [InlineData(typeof(ClassWithEnum2))]
+        [InlineData(typeof(ClassWithNullable), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithNullable2), Skip = "Not supported yet")]
+        public void ResolveWithOptionalParameterWithoutRegister(Type type)
+        {
+            object Create(Type t) => Activator.CreateInstance(t, BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance | BindingFlags.OptionalParamBinding, null, new object[] { Type.Missing }, CultureInfo.CurrentCulture);
+
+            var expected = Create(type);
+
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterType(type);
+            var container = containerBuilder.Build();
+
+            var actual = container.Resolve(type);
+
+            Assert.Equal(expected, actual);
+        }
+
+        #endregion
     }
 }
