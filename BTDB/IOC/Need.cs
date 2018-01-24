@@ -10,20 +10,21 @@ namespace BTDB.IOC
         public bool ForcedKey { get; set; }
         public object Key { get; set; }
         public Type ParentType { get; set; }
+        public object OptionalValue { get; set; }
 
         public static readonly INeed ContainerNeed;
 
         static Need()
         {
             ContainerNeed = new Need
-                {
-                    ClrType = typeof (IContainer),
-                    Optional = false,
-                    Kind = NeedKind.Internal,
-                    ParentType = null,
-                    ForcedKey = false,
-                    Key = null
-                };
+            {
+                ClrType = typeof(IContainer),
+                Optional = false,
+                Kind = NeedKind.Internal,
+                ParentType = null,
+                ForcedKey = false,
+                Key = null
+            };
         }
 
     }

@@ -544,7 +544,7 @@ namespace BTDB.IL
             il.Emit(OpCodes.Ldtoken, type);
             return il;
         }
-        
+
         public static IILGen Callvirt(this IILGen il, Expression<Action> expression)
         {
             var methodInfo = (expression.Body as MethodCallExpression).Method;
@@ -628,6 +628,34 @@ namespace BTDB.IL
         public static IILGen Break(this IILGen il)
         {
             il.Emit(OpCodes.Break);
+            return il;
+        }
+
+        public static IILGen Ld(this IILGen il, object value)
+        {
+            switch (value)
+            {
+                case null:
+                    il.Ldnull();
+                    break;
+                case bool b when !b:
+                    il.LdcI4(0);
+                    break;
+                case bool b when b:
+                    il.LdcI4(1);
+                    break;
+                case Int16 i16:
+                    il.LdcI4(i16); // there is no instruction for 16b int
+                    break;
+                case Int32 i32:
+                    il.LdcI4(i32);
+                    break;
+                case String s:
+                    il.Ldstr(s);
+                    break;
+                default:
+                    throw new ArgumentException($"{value} is not supported.", nameof(value));
+            }
             return il;
         }
     }
