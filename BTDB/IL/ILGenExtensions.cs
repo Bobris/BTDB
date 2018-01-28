@@ -57,6 +57,24 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen LdcI8(this IILGen il, long value)
+        {
+            il.Emit(OpCodes.Ldc_I8, value);
+            return il;
+        }
+
+        public static IILGen LdcR4(this IILGen il, float value)
+        {
+            il.Emit(OpCodes.Ldc_R4, value);
+            return il;
+        }
+
+        public static IILGen LdcR8(this IILGen il, double value)
+        {
+            il.Emit(OpCodes.Ldc_R8, value);
+            return il;
+        }
+
         public static IILGen Ldarg(this IILGen il, ushort parameterIndex)
         {
             switch (parameterIndex)
@@ -649,6 +667,15 @@ namespace BTDB.IL
                     break;
                 case Int32 i32:
                     il.LdcI4(i32);
+                    break;
+                case Int64 i64:
+                    il.LdcI8(i64);
+                    break;
+                case Single f:
+                    il.LdcR4(f);
+                    break;
+                case Double d:
+                    il.LdcR8(d);
                     break;
                 case String s:
                     il.Ldstr(s);

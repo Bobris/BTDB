@@ -768,5 +768,103 @@ namespace BTDB.IL.Caching
             }
         }
 
+        public void Emit(OpCode opCode, long value)
+        {
+            _instructions.Add(new EmitLongInst(opCode, value));
+        }
+
+        class EmitLongInst : IReplayILGen
+        {
+            readonly OpCode _opCode;
+            readonly long _param;
+
+            public EmitLongInst(OpCode opCode, long param)
+            {
+                _opCode = opCode;
+                _param = param;
+            }
+
+            public void ReplayTo(IILGen target)
+            {
+                target.Emit(_opCode, _param);
+            }
+
+            public void FreeTemps()
+            {
+            }
+
+            public bool Equals(IReplayILGen other)
+            {
+                var v = other as EmitLongInst;
+                if (v == null) return false;
+                return _opCode == v._opCode && _param == v._param;
+            }
+        }
+
+        public void Emit(OpCode opCode, float value)
+        {
+            _instructions.Add(new EmitFloatInst(opCode, value));
+        }
+
+        class EmitFloatInst : IReplayILGen
+        {
+            readonly OpCode _opCode;
+            readonly float _param;
+
+            public EmitFloatInst(OpCode opCode, float param)
+            {
+                _opCode = opCode;
+                _param = param;
+            }
+
+            public void ReplayTo(IILGen target)
+            {
+                target.Emit(_opCode, _param);
+            }
+
+            public void FreeTemps()
+            {
+            }
+
+            public bool Equals(IReplayILGen other)
+            {
+                var v = other as EmitFloatInst;
+                if (v == null) return false;
+                return _opCode == v._opCode && _param == v._param;
+            }
+        }
+
+        public void Emit(OpCode opCode, double value)
+        {
+            _instructions.Add(new EmitDoubleInst(opCode, value));
+        }
+
+        class EmitDoubleInst : IReplayILGen
+        {
+            readonly OpCode _opCode;
+            readonly double _param;
+
+            public EmitDoubleInst(OpCode opCode, double param)
+            {
+                _opCode = opCode;
+                _param = param;
+            }
+
+            public void ReplayTo(IILGen target)
+            {
+                target.Emit(_opCode, _param);
+            }
+
+            public void FreeTemps()
+            {
+            }
+
+            public bool Equals(IReplayILGen other)
+            {
+                var v = other as EmitDoubleInst;
+                if (v == null) return false;
+                return _opCode == v._opCode && _param == v._param;
+            }
+        }
     }
 }

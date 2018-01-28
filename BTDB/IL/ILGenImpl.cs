@@ -161,5 +161,20 @@ namespace BTDB.IL
         {
             _ilGenerator.Emit(opCode, ((IILFieldPrivate)ilField).TrueField);
         }
+
+        public void Emit(OpCode opCode, long value)
+        {
+            _ilGenerator.Emit(opCode, value);
+        }
+
+        public void Emit(OpCode opCode, float value)
+        {
+            _ilGenerator.Emit(opCode, value);
+        }
+
+        public void Emit(OpCode opCode, double value)
+        {
+            _ilGenerator.Emit(opCode, value);
+        }
     }
 }
