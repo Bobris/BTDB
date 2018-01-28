@@ -30,5 +30,8 @@ namespace BTDB.IL
         void Emit(OpCode opCode, IILLocal ilLocal);
         void Emit(OpCode opCode, IILLabel ilLabel);
         void Emit(OpCode opCode, IILField ilField);
+        void Emit(OpCode opCode, long value);
+        void Emit(OpCode opCode, float value);
+        void Emit(OpCode opCode, double value);
     }
 }

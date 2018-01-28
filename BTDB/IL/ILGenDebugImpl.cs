@@ -227,5 +227,23 @@ namespace BTDB.IL
                 $"{opCode} field {ilField.FieldType.ToSimpleName()} {ilField.Name}");
             _ilGenerator.Emit(opCode, ((IILFieldPrivate)ilField).TrueField);
         }
+
+        public void Emit(OpCode opCode, long value)
+        {
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {value}");
+            _ilGenerator.Emit(opCode, value);
+        }
+
+        public void Emit(OpCode opCode, float value)
+        {
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {value}");
+            _ilGenerator.Emit(opCode, value);
+        }
+
+        public void Emit(OpCode opCode, double value)
+        {
+            _sourceCodeWriter.MarkAndWriteLine(_ilGenerator, $"{opCode} {value}");
+            _ilGenerator.Emit(opCode, value);
+        }
     }
 }
