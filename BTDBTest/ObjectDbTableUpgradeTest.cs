@@ -379,5 +379,65 @@ namespace BTDBTest
             }
         }
 
+        public class JobV31
+        {
+            public JobV31()
+            {
+                Status = 100;
+            }
+
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+
+            [SecondaryKey("Status")]
+            [SecondaryKey("ExpiredStatus", Order =  2)]
+            public int Status { get; set; }
+
+            [SecondaryKey("ExpiredStatus", Order =  1)]
+            public bool IsExpired { get; set; }
+        }
+
+        public interface IJobTable31 : IReadOnlyCollection<JobV31>
+        {
+            void Insert(JobV31 job);
+            void RemoveById(ulong id);
+            JobV31 FindByExpiredStatusOrDefault(bool isExpired, int status);
+        }
+
+        [Fact]
+        public void NewIndexesOnNewFieldAreDeletedWhenItemWasDeleted()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable3>("Job");
+                var jobTable = creator(tr);
+                var job1 = new JobV3 { Id = 11, Status = 300 };
+                jobTable.Insert(job1);
+
+                var job2 = new JobV3 { Id = 12, Status = 200 };
+                jobTable.Insert(job2);
+
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable31>("Job");
+                var jobTable = creator(tr);
+                jobTable.RemoveById(11);
+
+                Assert.Equal(1, jobTable.Count);
+
+                Assert.Null(jobTable.FindByExpiredStatusOrDefault(false, 300));
+
+                var item = jobTable.FindByExpiredStatusOrDefault(false, 200);
+                Assert.Equal(12ul, item.Id);
+
+                tr.Commit();
+            }
+        }
+
     }
 }

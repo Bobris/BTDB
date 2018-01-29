@@ -532,7 +532,7 @@ namespace BTDB.ODBLayer
 
                         }
                         var loc = defaultObjectLoc;
-                        CreateSaverIl(ilGenerator, new[] { ClientRelationVersionInfo.GetSecondaryKeyField(skFieldIdx) },
+                        CreateSaverIl(ilGenerator, new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
                             il => il.Ldloc(loc), null, pushWriter, il => il.Ldarg(0));
                     }
                 }
