@@ -845,10 +845,8 @@ namespace BTDBTest
         #region Optional parameter in ctor feature
 
         class ClassDependency { }
-
         struct StructDependency { }
         enum EnumDependency { Foo, Bar, FooBar = Foo | Bar }
-
         abstract class OptionalClass<T>
         {
             public T Value { get; }
@@ -876,6 +874,7 @@ namespace BTDBTest
         class ClassWithInt64 : OptionalClass<Int64> { public ClassWithInt64(Int64 foo = Int64.MaxValue) : base(foo) { } }
         class ClassWithFloat : OptionalClass<float> { public ClassWithFloat(float foo = 1.1f) : base(foo) { } }
         class ClassWithDouble : OptionalClass<double> { public ClassWithDouble(double foo = 2.2d) : base(foo) { } }
+        class ClassWithDoubleCastedFromFloat : OptionalClass<double> { public ClassWithDoubleCastedFromFloat(double foo = 2.2f) : base(foo) { } }
         class ClassWithDecimal : OptionalClass<decimal> { public ClassWithDecimal(decimal foo = 3.3m) : base(foo) { } }
         class ClassWithString : OptionalClass<string> { public ClassWithString(string foo = "str") : base(foo) { } }
         class ClassWithClass : OptionalClass<ClassDependency> { public ClassWithClass(ClassDependency foo = default) : base(foo) { } }
@@ -884,6 +883,7 @@ namespace BTDBTest
         class ClassWithEnum2 : OptionalClass<EnumDependency> { public ClassWithEnum2(EnumDependency foo = EnumDependency.FooBar) : base(foo) { } }
         class ClassWithNullable : OptionalClass<int?> { public ClassWithNullable(int? foo = default) : base(foo) { } }
         class ClassWithNullable2 : OptionalClass<int?> { public ClassWithNullable2(int? foo = 10) : base(foo) { } }
+        class ClassWithNullableStruct : OptionalClass<StructDependency?> { public ClassWithNullableStruct(StructDependency? foo = default) : base(foo) { } }
 
         [Theory]
         [InlineData(typeof(ClassWithTrueBool))]
@@ -893,14 +893,16 @@ namespace BTDBTest
         [InlineData(typeof(ClassWithInt64))]
         [InlineData(typeof(ClassWithFloat))]
         [InlineData(typeof(ClassWithDouble))]
+        [InlineData(typeof(ClassWithDoubleCastedFromFloat))]
         [InlineData(typeof(ClassWithDecimal), Skip = "Not supported yet")]
         [InlineData(typeof(ClassWithString))]
         [InlineData(typeof(ClassWithClass))]
-        [InlineData(typeof(ClassWithStruct), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithStruct))]
         [InlineData(typeof(ClassWithEnum))]
         [InlineData(typeof(ClassWithEnum2))]
-        [InlineData(typeof(ClassWithNullable), Skip = "Not supported yet")]
-        [InlineData(typeof(ClassWithNullable2), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithNullable))]
+        [InlineData(typeof(ClassWithNullable2))]
+        [InlineData(typeof(ClassWithNullableStruct))]
         public void ResolveWithOptionalParameterWithoutRegister(Type type)
         {
             object Create(Type t) => Activator.CreateInstance(t, BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance | BindingFlags.OptionalParamBinding, null, new object[] { Type.Missing }, CultureInfo.CurrentCulture);
@@ -912,6 +914,26 @@ namespace BTDBTest
             var container = containerBuilder.Build();
 
             var actual = container.Resolve(type);
+
+            Assert.Equal(expected, actual);
+        }
+
+        class ClassWithRegisteredOptionalParam : OptionalClass<ClassWithInt32>
+        {
+            public ClassWithRegisteredOptionalParam(ClassWithInt32 t = null) : base(t) { }
+        }
+
+        [Fact]
+        public void ResolveWithOptionalParameterWithRegister()
+        {
+            var expected = new ClassWithRegisteredOptionalParam(new ClassWithInt32(42));
+
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterType<ClassWithRegisteredOptionalParam>();
+            containerBuilder.RegisterInstance(expected.Value);
+            var container = containerBuilder.Build();
+
+            var actual = container.Resolve<ClassWithRegisteredOptionalParam>();
 
             Assert.Equal(expected, actual);
         }
