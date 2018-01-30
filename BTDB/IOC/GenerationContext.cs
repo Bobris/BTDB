@@ -250,7 +250,7 @@ namespace BTDB.IOC
                     if (reg == null && !need.ForcedKey)
                         reg = ResolveNeedBy(need.ClrType, null);
                     if (reg == null && need.Optional)
-                        reg = new OptionalImpl(need.OptionalValue);
+                        reg = new OptionalImpl(need.OptionalValue, need.ClrType);
                     if (reg == null)
                     {
                         throw new ArgumentException($"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
@@ -264,7 +264,14 @@ namespace BTDB.IOC
         class OptionalImpl : ICRegILGen
         {
             readonly object value;
-            public OptionalImpl(object value) => this.value = value;
+            readonly Type type;
+
+            public OptionalImpl(object value, Type type)
+            {
+                this.type = type;
+                this.value = value;
+            }
+
             public string GenFuncName(IGenerationContext context)
             {
                 throw new InvalidOperationException();
@@ -281,7 +288,26 @@ namespace BTDB.IOC
 
             public IILLocal GenMain(IGenerationContext context)
             {
-                context.IL.Ld(value);
+                // For some reason struct's RawDefaultValue is null
+                // Partial explanation is that structs are not really compile time constants
+                // so they are nullable during compilation and then assigned at runtime
+                if (type.IsValueType && value == null)
+                {
+                    var local = context.IL.DeclareLocal(type);
+                    context.IL
+                        .Ldloca(local)
+                        .InitObj(type)
+                        .Ldloc(local);
+                }
+                else if (type.IsValueType && value != null && !type.IsPrimitive && !type.IsEnum)
+                {
+                    var ctor = type.GetConstructors()[0];
+                    context.IL
+                        .Ld(value)
+                        .Newobj(ctor);
+                }
+                else
+                    context.IL.Ld(value);
                 return null;
             }
 
