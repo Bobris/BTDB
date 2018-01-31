@@ -91,7 +91,7 @@ namespace BTDB.ODBLayer
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ResolveVersionInfos();
-            ApartFields = FindApartFields(methods, ClientRelationVersionInfo);
+            ApartFields = FindApartFields(methods, interfaceType.GetProperties(), ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 && RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
@@ -696,7 +696,7 @@ namespace BTDB.ODBLayer
             return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray(), prevVersion);
         }
 
-        static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, RelationVersionInfo versionInfo)
+        static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, PropertyInfo[] properties, RelationVersionInfo versionInfo)
 
         {
             var result = new Dictionary<string, MethodInfo>();
@@ -705,9 +705,8 @@ namespace BTDB.ODBLayer
             {
                 if (!method.Name.StartsWith("get_"))
                     continue;
-                var name = method.Name.Substring(4);
-                TableFieldInfo tfi;
-                if (!pks.TryGetValue(name, out tfi))
+                var name = GetPersistentName(method.Name.Substring(4), properties);
+                if (!pks.TryGetValue(name, out var tfi))
                     throw new BTDBException($"Property {name} is not part of primary key.");
                 if (method.ReturnType != tfi.Handler.HandledType())
                     throw new BTDBException($"Property {name} has different return type then member of primary key with the same name.");
@@ -1083,6 +1082,16 @@ namespace BTDB.ODBLayer
         {
             var a = p.GetCustomAttribute<PersistedNameAttribute>();
             return a != null ? a.Name : p.Name;
+        }
+
+        internal static string GetPersistentName(string name, PropertyInfo[] properties)
+        {
+            foreach (var prop in properties)
+            {
+                if (prop.Name == name)
+                    return GetPersistentName(prop);
+            }
+            return name;
         }
 
         public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes,

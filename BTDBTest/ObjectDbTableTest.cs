@@ -1935,6 +1935,36 @@ namespace BTDBTest
                 Assert.Equal(new byte[] { 1 }, o.ByteBufferField.Value.ToByteArray());
             }
         }
+        
+        public class CompanyName
+        {
+            [PrimaryKey(1)]
+            [PersistedName("BusinessId")]
+            public ulong CompanyId { get; set; }
+            public string Name { get; set; }
+        }
 
+
+        public interface ICompanyName : IReadOnlyCollection<CompanyName>
+        {
+            [PersistedName("BusinessId")]
+            ulong CompanyId { get; set; }
+            void Insert(CompanyName room);
+        }
+
+        [Fact]
+        public void ApartFieldCanBeRenamed()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ICompanyName>("ICompanyName");
+                var table = creator(tr);
+                table.CompanyId = 10;
+                table.Insert(new CompanyName { Name = "Q" });
+                Assert.Single(table);
+                foreach(var c in table)
+                   Assert.Equal(10u, table.CompanyId);
+            }
+        }
     }
 }

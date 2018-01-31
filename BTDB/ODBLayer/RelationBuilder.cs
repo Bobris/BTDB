@@ -588,6 +588,7 @@ namespace BTDB.ODBLayer
             var apartFields = new Dictionary<string, IILField>();
             var initializedFields = new Dictionary<string, IILField>();
             var methods = createdType.GetMethods();
+            var properties = createdType.GetProperties();
             foreach (var method in methods)
             {
                 var name = method.Name;
@@ -596,7 +597,7 @@ namespace BTDB.ODBLayer
 
                 IILField field;
                 IILField initCheckField;
-                var propName = method.Name.Substring(4);
+                var propName = RelationInfo.GetPersistentName(method.Name.Substring(4), properties);
 
                 if (!_relationInfo.ApartFields.ContainsKey(propName))
                     throw new BTDBException($"Invalid property name {propName}.");
