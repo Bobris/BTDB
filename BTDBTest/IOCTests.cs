@@ -884,6 +884,8 @@ namespace BTDBTest
         class ClassWithNullable : OptionalClass<int?> { public ClassWithNullable(int? foo = default) : base(foo) { } }
         class ClassWithNullable2 : OptionalClass<int?> { public ClassWithNullable2(int? foo = 10) : base(foo) { } }
         class ClassWithNullableStruct : OptionalClass<StructDependency?> { public ClassWithNullableStruct(StructDependency? foo = default) : base(foo) { } }
+        class ClassWithDateTime : OptionalClass<DateTime> { public ClassWithDateTime(DateTime foo = default) : base(foo) { } }
+        class ClassWithNullableDateTime : OptionalClass<DateTime?> { public ClassWithNullableDateTime(DateTime? foo = default) : base(foo) { } }
 
         [Theory]
         [InlineData(typeof(ClassWithTrueBool))]
@@ -903,6 +905,8 @@ namespace BTDBTest
         [InlineData(typeof(ClassWithNullable))]
         [InlineData(typeof(ClassWithNullable2))]
         [InlineData(typeof(ClassWithNullableStruct))]
+        [InlineData(typeof(ClassWithDateTime), Skip = "Not supported yet")]
+        [InlineData(typeof(ClassWithNullableDateTime))]
         public void ResolveWithOptionalParameterWithoutRegister(Type type)
         {
             object Create(Type t) => Activator.CreateInstance(t, BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance | BindingFlags.OptionalParamBinding, null, new object[] { Type.Missing }, CultureInfo.CurrentCulture);
@@ -938,6 +942,20 @@ namespace BTDBTest
             Assert.Equal(expected, actual);
         }
 
+        [Fact]
+        public void CannotObtainRawDefaultValueOfDateTime()
+        {
+            // Once this test fails (it really returns DateTime's default value) 
+            // you might remove the exception in the GenerationContext.NeedsForConstructor method
+            // Related issues:
+            // https://github.com/dotnet/corefx/issues/26164
+            // https://github.com/dotnet/csharplang/issues/1236
+
+            var ctor = typeof(ClassWithDateTime).GetConstructors()[0];
+            var dateTimeParameter = ctor.GetParameters()[0];
+            Assert.Throws<FormatException>(() => dateTimeParameter.HasDefaultValue);
+            Assert.Throws<FormatException>(() => dateTimeParameter.RawDefaultValue);
+        }
         #endregion
     }
 }
