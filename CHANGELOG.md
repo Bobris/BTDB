@@ -2,14 +2,20 @@
 
 ## [unreleased]
 
+## 12.4.0.0
+
+### Added
+
 * PersistedNameAttribute is supported on Apart Fields in relation interfaces
 
 ## 12.3.0.0
 
 ### Added
+
 * IOC now resolves optional parameters that are not registered with its provided value
 
 ### Fixed
+
 * Fixed problem with calculating index from older version value in specific case
 
 ## 12.2.0.0
