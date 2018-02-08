@@ -196,7 +196,14 @@ namespace BTDB.EventStore2Layer
             var loadAsType = LoadAsType(descriptor);
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
-            descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(2), loadAsType);
+            try
+            {
+                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(2), loadAsType);
+            }
+            catch (BTDBException ex)
+            {
+                throw new BTDBException("Deserialization of type " + loadAsType.FullName, ex);
+            }
             if (loadAsType.IsValueType)
             {
                 il.Box(loadAsType);

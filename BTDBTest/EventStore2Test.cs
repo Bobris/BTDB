@@ -699,5 +699,37 @@ namespace BTDBTest
             var readedEvem = readed as EventWithInt;
             Assert.Equal(readedEvem.Status, (int)original.Status);
         }
+
+        public class EventWithString
+        {
+            public string Status { get; set; }
+        }
+
+        [Fact]
+        public void StringToIntThrowErrorWithFullNameOfTypeInConversionOnLoad()
+        {
+            var fullNameMapper = new FullNameTypeMapper();
+            var overridedMapper = new OverloadableTypeMapper(typeof(EventWithInt),
+                fullNameMapper.ToName(typeof(EventWithString)),
+                fullNameMapper);
+
+            var serializer = new EventSerializer(fullNameMapper);
+            var original = new EventWithString { Status = "Test string" };
+            bool hasMetadata;
+            var metadata = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            Assert.True(hasMetadata);
+
+            serializer.ProcessMetadataLog(metadata);
+
+            var data = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            Assert.False(hasMetadata);
+
+            var deserializer = new EventDeserializer(overridedMapper);
+            deserializer.ProcessMetadataLog(metadata);
+            object readed;
+            //Assert.True(deserializer.Deserialize(out readed, data));
+            var e = Assert.Throws<BTDBException>(() => deserializer.Deserialize(out readed, data));
+            Assert.Contains("Deserialization of type " + typeof(EventWithInt).FullName, e.Message);
+        }
     }
 }
