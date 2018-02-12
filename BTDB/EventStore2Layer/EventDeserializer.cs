@@ -21,6 +21,7 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly List<object> _visited = new List<object>();
         readonly ByteBufferReader _reader = new ByteBufferReader(ByteBuffer.NewEmpty());
+        readonly object _lock = new object();
 
         public EventDeserializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
         {
@@ -112,83 +113,86 @@ namespace BTDB.EventStore2Layer
 
         public void ProcessMetadataLog(ByteBuffer buffer)
         {
-            var reader = new ByteBufferReader(buffer);
-            var typeId = reader.ReadVInt32();
-            while (typeId != 0)
+            lock(_lock)
             {
-                var typeCategory = (TypeCategory)reader.ReadUInt8();
-                ITypeDescriptor descriptor;
-                switch (typeCategory)
+                var reader = new ByteBufferReader(buffer);
+                var typeId = reader.ReadVInt32();
+                while (typeId != 0)
                 {
-                    case TypeCategory.BuildIn:
-                        throw new ArgumentOutOfRangeException();
-                    case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(this, reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.List:
-                        descriptor = new ListTypeDescriptor(this, reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.Dictionary:
-                        descriptor = new DictionaryTypeDescriptor(this, reader, NestedDescriptorReader);
-                        break;
-                    case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(this, reader);
-                        break;
-                    case TypeCategory.Nullable:
-                        descriptor = new NullableTypeDescriptor(this, reader, NestedDescriptorReader);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-                while (-typeId - 1 >= _id2InfoNew.Count)
-                    _id2InfoNew.Add(null);
-                if (_id2InfoNew[-typeId - 1] == null)
-                    _id2InfoNew[-typeId - 1] = new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
-                typeId = reader.ReadVInt32();
-            }
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
-                {
-                    var placeHolderDescriptor = d as PlaceHolderDescriptor;
-                    return placeHolderDescriptor != null ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor : d;
-                });
-            }
-            // This additional cycle is needed to fill names of recursive structures
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d => d);
-            }
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                var infoForType = _id2InfoNew[i];
-                for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
-                {
-                    if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
+                    var typeCategory = (TypeCategory)reader.ReadUInt8();
+                    ITypeDescriptor descriptor;
+                    switch (typeCategory)
                     {
-                        _remapToOld[infoForType.Descriptor] = _id2Info[j].Descriptor;
-                        _id2InfoNew[i] = _id2Info[j];
-                        infoForType = _id2InfoNew[i];
-                        break;
+                        case TypeCategory.BuildIn:
+                            throw new ArgumentOutOfRangeException();
+                        case TypeCategory.Class:
+                            descriptor = new ObjectTypeDescriptor(this, reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.List:
+                            descriptor = new ListTypeDescriptor(this, reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.Dictionary:
+                            descriptor = new DictionaryTypeDescriptor(this, reader, NestedDescriptorReader);
+                            break;
+                        case TypeCategory.Enum:
+                            descriptor = new EnumTypeDescriptor(this, reader);
+                            break;
+                        case TypeCategory.Nullable:
+                            descriptor = new NullableTypeDescriptor(this, reader, NestedDescriptorReader);
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                    while (-typeId - 1 >= _id2InfoNew.Count)
+                        _id2InfoNew.Add(null);
+                    if (_id2InfoNew[-typeId - 1] == null)
+                        _id2InfoNew[-typeId - 1] = new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                    typeId = reader.ReadVInt32();
+                }
+                for (var i = 0; i < _id2InfoNew.Count; i++)
+                {
+                    _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                    {
+                        var placeHolderDescriptor = d as PlaceHolderDescriptor;
+                        return placeHolderDescriptor != null ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor : d;
+                    });
+                }
+                // This additional cycle is needed to fill names of recursive structures
+                for (var i = 0; i < _id2InfoNew.Count; i++)
+                {
+                    _id2InfoNew[i].Descriptor.MapNestedTypes(d => d);
+                }
+                for (var i = 0; i < _id2InfoNew.Count; i++)
+                {
+                    var infoForType = _id2InfoNew[i];
+                    for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
+                    {
+                        if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
+                        {
+                            _remapToOld[infoForType.Descriptor] = _id2Info[j].Descriptor;
+                            _id2InfoNew[i] = _id2Info[j];
+                            infoForType = _id2InfoNew[i];
+                            break;
+                        }
+                    }
+                    if (infoForType.Id < 0)
+                    {
+                        infoForType.Id = _id2Info.Count;
+                        _id2Info.Add(infoForType);
+                        _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
                     }
                 }
-                if (infoForType.Id < 0)
+                for (var i = 0; i < _id2InfoNew.Count; i++)
                 {
-                    infoForType.Id = _id2Info.Count;
-                    _id2Info.Add(infoForType);
-                    _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
+                    _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                    {
+                        ITypeDescriptor res;
+                        return _remapToOld.TryGetValue(d, out res) ? res : d;
+                    });
                 }
+                _id2InfoNew.Clear();
+                _remapToOld.Clear();
             }
-            for (var i = 0; i < _id2InfoNew.Count; i++)
-            {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
-                {
-                    ITypeDescriptor res;
-                    return _remapToOld.TryGetValue(d, out res) ? res : d;
-                });
-            }
-            _id2InfoNew.Clear();
-            _remapToOld.Clear();
         }
 
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
@@ -218,19 +222,22 @@ namespace BTDB.EventStore2Layer
 
         public bool Deserialize(out object @object, ByteBuffer buffer)
         {
-            _reader.Restart(buffer);
-            @object = null;
-            try
+            lock(_lock)
             {
-                @object = LoadObject();
+                _reader.Restart(buffer);
+                @object = null;
+                try
+                {
+                    @object = LoadObject();
+                }
+                catch (BtdbMissingMetadataException)
+                {
+                    return false;
+                }
+                _visited.Clear();
+                _reader.Restart(ByteBuffer.NewEmpty());
+                return true;
             }
-            catch (BtdbMissingMetadataException)
-            {
-                return false;
-            }
-            _visited.Clear();
-            _reader.Restart(ByteBuffer.NewEmpty());
-            return true;
         }
 
         class BtdbMissingMetadataException : Exception

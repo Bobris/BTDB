@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 12.5.0.0
+
+### Added
+
+* Synchronization lock in EventLayer2 Deserialization to be on safe side.
+
 ## 12.4.0.0
 
 ### Added
