@@ -696,6 +696,8 @@ namespace BTDB.StreamLayer
                         var scopeid = (long)ReadVUInt64();
                         return new IPAddress(ip6Bytes, scopeid);
                     }
+                case 3:
+                    return null;
                 default: throw new InvalidDataException("Unknown type of IPAddress");
             }
         }
@@ -713,6 +715,8 @@ namespace BTDB.StreamLayer
                 case 2:
                     SkipBlock(16);
                     SkipVUInt64();
+                    return;
+                case 3:
                     return;
                 default: throw new InvalidDataException("Unknown type of IPAddress");
             }

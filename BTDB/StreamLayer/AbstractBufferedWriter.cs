@@ -405,6 +405,11 @@ namespace BTDB.StreamLayer
 
         public void WriteIPAddress(IPAddress value)
         {
+            if (value == null)
+            {
+                WriteUInt8(3);
+                return;
+            }
             if (value.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 if (value.ScopeId != 0)

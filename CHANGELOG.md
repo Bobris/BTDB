@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 12.5.1.0
+
+### Fixed
+
+IPAddress can now serialize and deserialize null value.
+
 ## 12.5.0.0
 
 ### Added
