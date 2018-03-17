@@ -8,7 +8,7 @@ namespace BTDBTest
     public class KeyValueDBCompactorSchedulerTest
     {
         [Fact]
-        public void ItWillNotStartImidietly()
+        public void ItWillNotStartImmediately()
         {
             var run = false;
             using (var sch = new CompactorScheduler())
@@ -86,6 +86,25 @@ namespace BTDBTest
                 Assert.True(e.WaitOne(1000));
             }
             Assert.True(e.WaitOne(1000));
+        }
+
+        [Fact]
+        public void AdvideRunningProlongsWaitTimeOnlyOnce()
+        {
+            var e = new AutoResetEvent(false);
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
+                {
+                    e.Set();
+                    return false;
+                });
+                s.WaitTime = TimeSpan.FromMilliseconds(200);
+                s.AdviceRunning();
+                Assert.False(e.WaitOne(100));
+                s.AdviceRunning();
+                Assert.True(e.WaitOne(50));
+            }
         }
     }
 }

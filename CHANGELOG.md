@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Uninterupted influx of data after db opening can prevent compactor from running.
+
 ## 12.5.1.0
 
 ### Fixed

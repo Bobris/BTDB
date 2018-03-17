@@ -88,6 +88,7 @@ namespace BTDB.KVDBLayer
                 if (_firstTime)
                 {
                     _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
+                    _firstTime = false;
                 }
                 else
                 {
@@ -106,7 +107,6 @@ namespace BTDB.KVDBLayer
             try
             {
                 var needed = false;
-                _firstTime = false;
                 do
                 {
                     _advicedRunning = false;

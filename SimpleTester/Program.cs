@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 using BenchmarkDotNet.Running;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
@@ -34,8 +35,9 @@ namespace SimpleTester
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
-            new RelationSpeedTest().Run();
+            //new RelationSpeedTest().Run();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
+            //new TestCompactor().Run(new CancellationToken());
         }
     }
 }
