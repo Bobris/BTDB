@@ -34,7 +34,7 @@ namespace BTDBTest
                     return false;
                 });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
-                s.AdviceRunning();
+                s.AdviceRunning(true);
                 Assert.True(e.WaitOne(1000));
             }
         }
@@ -57,7 +57,7 @@ namespace BTDBTest
                     return false;
                 });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
-                s.AdviceRunning();
+                s.AdviceRunning(true);
                 Assert.True(e.WaitOne(1000));
                 Assert.False(first);
             }
@@ -82,14 +82,14 @@ namespace BTDBTest
                     }
                 });
                 s.WaitTime = TimeSpan.FromMilliseconds(1);
-                s.AdviceRunning();
+                s.AdviceRunning(true);
                 Assert.True(e.WaitOne(1000));
             }
             Assert.True(e.WaitOne(1000));
         }
 
         [Fact]
-        public void AdvideRunningProlongsWaitTimeOnlyOnce()
+        public void AdvideRunningWorksWellForSharedInstance()
         {
             var e = new AutoResetEvent(false);
             using (var s = new CompactorScheduler())
@@ -99,11 +99,52 @@ namespace BTDBTest
                     e.Set();
                     return false;
                 });
-                s.WaitTime = TimeSpan.FromMilliseconds(200);
-                s.AdviceRunning();
+                s.WaitTime = TimeSpan.FromMilliseconds(150);
+                s.AdviceRunning(true);
+                s.AdviceRunning(true);
+                s.AdviceRunning(false);
                 Assert.False(e.WaitOne(100));
-                s.AdviceRunning();
+                Assert.True(e.WaitOne(100));
+                s.AdviceRunning(true);
+                Assert.False(e.WaitOne(50));
+                s.AdviceRunning(false);
                 Assert.True(e.WaitOne(50));
+            }
+        }
+
+        [Fact]
+        public void DbOpenedAfterFirstCompactingIsCorrectlyPlanned()
+        {
+            var e = new AutoResetEvent(false);
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
+                {
+                    e.Set();
+                    return false;
+                });
+                s.WaitTime = TimeSpan.FromMilliseconds(50);
+                s.AdviceRunning(true);
+                Assert.True(e.WaitOne(100));
+                s.AdviceRunning(true);
+                Assert.True(e.WaitOne(100));
+            }
+        }
+
+        [Fact]
+        public void MissingOpeningAdviceDoesNotBlockScheduling()
+        {
+            var e = new AutoResetEvent(false);
+            using (var s = new CompactorScheduler())
+            {
+                s.AddCompactAction(token =>
+                {
+                    e.Set();
+                    return false;
+                });
+                s.WaitTime = TimeSpan.FromMilliseconds(50);
+                s.AdviceRunning(false);
+                Assert.True(e.WaitOne(100));
             }
         }
     }

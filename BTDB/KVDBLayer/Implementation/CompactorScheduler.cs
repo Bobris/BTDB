@@ -9,9 +9,10 @@ namespace BTDB.KVDBLayer
         readonly Timer _timer;
         CancellationTokenSource _cancellationSource = new CancellationTokenSource();
         readonly object _lock = new object();
-        bool _running;
-        bool _advicedRunning;
-        bool _firstTime;
+        bool _running;  //compacting in progress
+        bool _advicedRunning;  //was advised again during compacting
+        bool _firstTime;  //in time period before first compact (try save resource during app startup)
+        bool _timerStarted; //timer is planned
         bool _disposed;
         internal TimeSpan WaitTime { get; set; }
 
@@ -76,7 +77,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public void AdviceRunning()
+        public void AdviceRunning(bool openingDb)
         {
             lock (_lock)
             {
@@ -85,14 +86,17 @@ namespace BTDB.KVDBLayer
                     _advicedRunning = true;
                     return;
                 }
-                if (_firstTime)
+                if (openingDb)
                 {
+                    if (_timerStarted)
+                        return;
                     _timer.Change(WaitTime, TimeSpan.FromMilliseconds(-1));
-                    _firstTime = false;
+                    _timerStarted = true;
                 }
-                else
+                else if (!_firstTime || !_timerStarted) //!_timerStared only when not AdviceRunning(true) was called
                 {
                     _timer.Change(1, -1);
+                    _timerStarted = true;
                 }
             }
         }
@@ -101,8 +105,11 @@ namespace BTDB.KVDBLayer
         {
             lock (_lock)
             {
+                _firstTime = false;
+                _timerStarted = false;
                 if (_running) return;
                 _running = true;
+                
             }
             try
             {

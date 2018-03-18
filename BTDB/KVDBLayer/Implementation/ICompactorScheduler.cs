@@ -7,6 +7,6 @@ namespace BTDB.KVDBLayer
     {
         Func<CancellationToken, bool> AddCompactAction(Func<CancellationToken, bool> compactAction);
         void RemoveCompactAction(Func<CancellationToken, bool> compactAction);
-        void AdviceRunning();
+        void AdviceRunning(bool openingDb);
     }
 }

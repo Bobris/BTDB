@@ -77,7 +77,7 @@ namespace BTDB.KVDBLayer
             _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
-            _compactorScheduler?.AdviceRunning();
+            _compactorScheduler?.AdviceRunning(true);
         }
 
         internal struct KeyIndexInfo
@@ -781,7 +781,7 @@ namespace BTDB.KVDBLayer
         {
             if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog && btreeRoot.TrLogFileId != 0)
             {
-                _compactorScheduler?.AdviceRunning();
+                _compactorScheduler?.AdviceRunning(false);
             }
             btreeRoot.TrLogFileId = _fileIdWithTransactionLog;
             if (_writerWithTransactionLog != null)
@@ -1095,11 +1095,6 @@ namespace BTDB.KVDBLayer
             FileCollection.SetInfo(file.Index, keyIndex);
             Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), DateTime.UtcNow - start);
             return file.Index;
-        }
-
-        internal void Compact()
-        {
-            _compactorScheduler?.AdviceRunning();
         }
 
         internal bool ContainsValuesAndDoesNotTouchGeneration(uint fileId, long dontTouchGeneration)
