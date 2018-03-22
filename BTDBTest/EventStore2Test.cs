@@ -731,5 +731,45 @@ namespace BTDBTest
             var e = Assert.Throws<BTDBException>(() => deserializer.Deserialize(out readed, data));
             Assert.Contains("Deserialization of type " + typeof(EventWithInt).FullName, e.Message);
         }
+
+        public class EventWithNullable
+        {
+            public ulong EventId { get; set; }
+            public int? NullableInt { get; set; }
+            public int? NullableEmpty { get; set; }
+
+            public List<int?> ListWithNullables { get; set; }
+            public IDictionary<int?, bool?> DictionaryWithNullables { get; set; }
+        }
+
+        [Fact]
+        public void SerializeDeserializeWithNullable()
+        {
+            var serializer = new EventSerializer();
+            var obj = new EventWithNullable
+            {
+                EventId = 1,
+                NullableInt = 42,
+                ListWithNullables = new List<int?> { 4, new int?() },
+                DictionaryWithNullables = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } }
+            };
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, obj);
+
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out var obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            var ev = (EventWithNullable) obj2;
+            Assert.Equal(42, ev.NullableInt.Value);
+            Assert.False(ev.NullableEmpty.HasValue);
+            Assert.Equal(2, ev.ListWithNullables.Count);
+            Assert.Equal(4, ev.ListWithNullables[0].Value);
+            Assert.False(ev.ListWithNullables[1].HasValue);
+            Assert.Equal(2, ev.DictionaryWithNullables.Count);
+            Assert.True(ev.DictionaryWithNullables[1]);
+            Assert.False(ev.DictionaryWithNullables[2].HasValue);
+        }
     }
 }

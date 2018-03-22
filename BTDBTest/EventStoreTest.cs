@@ -982,7 +982,7 @@ namespace BTDBTest
                 NullableInt = 42,
                 ListWithNullables = new List<int?> { 4, new int?() },
                 DictionaryWithNullables = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } }
-        };
+            };
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
@@ -992,7 +992,7 @@ namespace BTDBTest
             appender.ReadFromStartToEnd(eventObserver);
             Assert.Equal(new object[] { null }, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as EventWithNullable;
-            Assert.Equal(42,  ev.NullableInt.Value);
+            Assert.Equal(42, ev.NullableInt.Value);
             Assert.False(ev.NullableEmpty.HasValue);
             Assert.Equal(2, ev.ListWithNullables.Count);
             Assert.Equal(4, ev.ListWithNullables[0].Value);

@@ -311,6 +311,19 @@ namespace BTDB.EventStore2Layer
                         {
                             return null;
                         }
+                        else if (type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                        {
+                            typeAlternative = type.SpecializationOf(typeof(Nullable<>));
+                            if (typeAlternative != null)
+                            {
+                                if (type != typeAlternative)
+                                {
+                                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
+                                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                                }
+                                desc = new NullableTypeDescriptor(this, typeAlternative); 
+                            }
+                        }
                     }
                 }
                 else if (type.IsArray)
