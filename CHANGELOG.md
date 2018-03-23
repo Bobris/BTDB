@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 12.6.1.0
+
 ### Fixed
 
 Fixed Nullable support in EventStore2Layer.
