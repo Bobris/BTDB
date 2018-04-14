@@ -1130,6 +1130,34 @@ namespace BTDB.KVDBLayer
             }
         }
 
+
+        internal long ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId, Dictionary<ulong, uint> newPositionMap)
+        {
+            var ctx = new ReplaceValuesCtx
+            {
+                _cancellation = cancellation,
+                _valueFileId = valueFileId,
+                _newPositionMap = newPositionMap
+            };
+            while (true)
+            {
+                ctx._iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(10);
+                ctx._interrupt = false;
+                using (var tr = StartWritingTransaction().Result)
+                {
+                    var newRoot = (tr as KeyValueDBTransaction).BtreeRoot;
+                    newRoot.ReplaceValues(ctx);
+                    lock (_writeLock)
+                    {
+                        _lastCommited = newRoot;
+                    }
+                    if (!ctx._interrupt)
+                        return newRoot.TransactionId;
+                }
+                Thread.Sleep(10);
+            }
+        }
+
         internal void MarkAsUnknown(IEnumerable<uint> fileIds)
         {
             foreach (var fileId in fileIds)

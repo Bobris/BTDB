@@ -284,7 +284,6 @@ namespace BTDB.KVDBLayer.BTree
 
         public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
         {
-
             int firstRemoved = -1;
             int lastRemoved = -1;
             IBTreeNode firstPartialNode = null;
@@ -393,6 +392,49 @@ namespace BTDB.KVDBLayer.BTree
                     children = newChildren;
                 }
                 children[i] = newChild;
+            }
+            return result;
+        }
+
+        public IBTreeNode ReplaceValues(ReplaceValuesCtx ctx)
+        {
+            ctx._cancellation.ThrowIfCancellationRequested();
+            var result = this;
+            var children = _children;
+            var i = 0;
+            if (ctx._restartKey != null)
+            {
+                for (; i < _keys.Length; i++)
+                {
+                    var compRes = BitArrayManipulation.CompareByteArray(_keys[i], 0, _keys[i].Length, ctx._restartKey, 0, ctx._restartKey.Length);
+                    if (compRes < 0) break;
+                }
+            }
+            for (; i < children.Length; i++)
+            {
+                var child = children[i];
+                var newChild = child.ReplaceValues(ctx);
+                if (newChild == child) continue;
+                if (result.TransactionId != ctx._transactionId)
+                {
+                    var newKeys = new byte[_keys.Length][];
+                    Array.Copy(_keys, newKeys, newKeys.Length);
+                    var newChildren = new IBTreeNode[_children.Length];
+                    Array.Copy(_children, newChildren, newChildren.Length);
+                    var newPairCounts = new long[_pairCounts.Length];
+                    Array.Copy(_pairCounts, newPairCounts, newPairCounts.Length);
+                    result = new BTreeBranch(ctx._transactionId, newKeys, newChildren, newPairCounts);
+                    children = newChildren;
+                }
+                children[i] = newChild;
+                if (ctx._interrupt)
+                    break;
+                ctx._restartKey = null;
+                if (DateTime.UtcNow > ctx._iterationTimeOut)
+                {
+                    ctx._interrupt = true;
+                    ctx._restartKey = _keys[i];
+                }
             }
             return result;
         }

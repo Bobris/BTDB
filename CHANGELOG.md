@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Compactor Inducing Latency for writting transaction is now capped.
+
 ## 12.6.1.0
 
 ### Fixed

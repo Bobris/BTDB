@@ -248,6 +248,7 @@
     <Compile Include="KVDBLayer\BTreeMem\IBTreeNode.cs" />
     <Compile Include="KVDBLayer\BTreeMem\IBTreeRootNode.cs" />
     <Compile Include="KVDBLayer\BTreeMem\NodeIdxPair.cs" />
+    <Compile Include="KVDBLayer\BTree\ReplaceValuesCtx.cs" />
     <Compile Include="KVDBLayer\Implementation\ChunkStorageInKV.cs" />
     <Compile Include="KVDBLayer\Implementation\Compactor.cs" />
     <Compile Include="KVDBLayer\Implementation\CompactorScheduler.cs" />

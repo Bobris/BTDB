@@ -140,7 +140,7 @@ namespace SimpleTester
         [Params("Simple", "Complex")]
         public string Complexity { get; set; }
 
-        [Setup]
+        [GlobalSetup]
         public void Setup()
         {
             if (Complexity == "Simple")

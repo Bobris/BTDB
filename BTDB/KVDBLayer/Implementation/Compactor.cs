@@ -148,12 +148,13 @@ namespace BTDB.KVDBLayer
             valueFile.HardFlush();
             valueFile.Truncate();
             _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize());
-            var btreesCorrectInTransactionId = _keyValueDB.AtomicallyChangeBTree(root => root.RemappingIterate((uint oldFileId, uint oldOffset, out uint newFileId, out uint newOffset) =>
-            {
-                newFileId = valueFileId;
-                _cancellation.ThrowIfCancellationRequested();
-                return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
-            }));
+            var btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, valueFileId, _newPositionMap);
+            //var btreesCorrectInTransactionId = _keyValueDB.AtomicallyChangeBTree(root => root.RemappingIterate((uint oldFileId, uint oldOffset, out uint newFileId, out uint newOffset) =>
+            //{
+            //    newFileId = valueFileId;
+            //    _cancellation.ThrowIfCancellationRequested();
+            //    return _newPositionMap.TryGetValue(((ulong)oldFileId << 32) | oldOffset, out newOffset);
+            //}));
             _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
             if (_newPositionMap.Count == 0)
             {

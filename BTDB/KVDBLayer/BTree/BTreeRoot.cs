@@ -276,6 +276,18 @@ namespace BTDB.KVDBLayer.BTree
             _rootNode = _rootNode.RemappingIterate(TransactionId, action);
         }
 
+        IBTreeNode IBTreeNode.ReplaceValues(ReplaceValuesCtx ctx)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public void ReplaceValues(ReplaceValuesCtx ctx)
+        {
+            if (_rootNode == null) return;
+            ctx._transactionId = TransactionId;
+            _rootNode = _rootNode.ReplaceValues(ctx);
+        }
+
         IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
         {
             var leafs = (keyCount + BTreeLeafComp.MaxMembers - 1) / BTreeLeafComp.MaxMembers;

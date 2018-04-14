@@ -226,6 +226,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ChannelSpeedTest.cs" />
+    <Compile Include="CompactorLatencyMeasurement.cs" />
     <Compile Include="ComplexServiceTest.cs" />
     <Compile Include="EventSerializationBenchmark.cs" />
     <Compile Include="EventStorageSpeedTestAwaitable.cs" />

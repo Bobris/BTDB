@@ -22,5 +22,6 @@ namespace BTDB.KVDBLayer.BTree
         IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
         void Iterate(BTreeIterateAction action);
         IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action);
+        IBTreeNode ReplaceValues(ReplaceValuesCtx ctx);
     }
 }

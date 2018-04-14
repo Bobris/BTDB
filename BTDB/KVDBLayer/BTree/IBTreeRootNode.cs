@@ -21,5 +21,6 @@ namespace BTDB.KVDBLayer.BTree
         bool FindPreviousKey(List<NodeIdxPair> stack);
         void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator);
         void RemappingIterate(BTreeRemappingIterateAction action);
+        new void ReplaceValues(ReplaceValuesCtx ctx);
     }
 }

@@ -288,6 +288,30 @@ namespace BTDB.KVDBLayer.BTree
             return result;
         }
 
+        public IBTreeNode ReplaceValues(ReplaceValuesCtx ctx)
+        {
+            var result = this;
+            var keyvalues = _keyvalues;
+            var map = ctx._newPositionMap;
+            for (var i = 0; i < keyvalues.Length; i++)
+            {
+                ref var ii = ref keyvalues[i];
+                if (map.TryGetValue(((ulong)ii.ValueFileId << 32) | ii.ValueOfs, out var newOffset))
+                {
+                    if (result.TransactionId != ctx._transactionId)
+                    {
+                        var newKeyValues = new BTreeLeafMember[keyvalues.Length];
+                        Array.Copy(keyvalues, newKeyValues, newKeyValues.Length);
+                        result = new BTreeLeaf(ctx._transactionId, newKeyValues);
+                        keyvalues = newKeyValues;
+                    }
+                    keyvalues[i].ValueFileId = ctx._valueFileId;
+                    keyvalues[i].ValueOfs = newOffset;
+                }
+            }
+            return result;
+        }
+
         public ByteBuffer GetKey(int idx)
         {
             return ByteBuffer.NewAsync(_keyvalues[idx].Key);
