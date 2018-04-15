@@ -1141,18 +1141,21 @@ namespace BTDB.KVDBLayer
             };
             while (true)
             {
-                ctx._iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(10);
+                ctx._iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
                 ctx._interrupt = false;
                 using (var tr = StartWritingTransaction().Result)
                 {
                     var newRoot = (tr as KeyValueDBTransaction).BtreeRoot;
                     newRoot.ReplaceValues(ctx);
+                    cancellation.ThrowIfCancellationRequested();
                     lock (_writeLock)
                     {
                         _lastCommited = newRoot;
                     }
                     if (!ctx._interrupt)
+                    {
                         return newRoot.TransactionId;
+                    }
                 }
                 Thread.Sleep(10);
             }
