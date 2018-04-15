@@ -1116,21 +1116,6 @@ namespace BTDB.KVDBLayer
             return writer;
         }
 
-        internal long AtomicallyChangeBTree(Action<IBTreeRootNode> action)
-        {
-            using (var tr = StartWritingTransaction().Result)
-            {
-                var newRoot = (tr as KeyValueDBTransaction).BtreeRoot;
-                action(newRoot);
-                lock (_writeLock)
-                {
-                    _lastCommited = newRoot;
-                }
-                return newRoot.TransactionId;
-            }
-        }
-
-
         internal long ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId, Dictionary<ulong, uint> newPositionMap)
         {
             var ctx = new ReplaceValuesCtx

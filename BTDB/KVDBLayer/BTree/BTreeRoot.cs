@@ -158,11 +158,6 @@ namespace BTDB.KVDBLayer.BTree
             _rootNode.Iterate(action);
         }
 
-        public IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action)
-        {
-            throw new ArgumentException();
-        }
-
         public long TransactionId => _transactionId;
 
         public string DescriptionForLeaks { get; set; }
@@ -268,12 +263,6 @@ namespace BTDB.KVDBLayer.BTree
                 return;
             }
             _rootNode = BuildTreeNode(keyCount, memberGenerator);
-        }
-
-        public void RemappingIterate(BTreeRemappingIterateAction action)
-        {
-            if (_rootNode == null) return;
-            _rootNode = _rootNode.RemappingIterate(TransactionId, action);
         }
 
         IBTreeNode IBTreeNode.ReplaceValues(ReplaceValuesCtx ctx)

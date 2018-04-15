@@ -371,31 +371,6 @@ namespace BTDB.KVDBLayer.BTree
             }
         }
 
-        public IBTreeNode RemappingIterate(long transactionId, BTreeRemappingIterateAction action)
-        {
-            var result = this;
-            var children = _children;
-            for (var i = 0; i < children.Length; i++)
-            {
-                var child = children[i];
-                var newChild = child.RemappingIterate(transactionId, action);
-                if (newChild == child) continue;
-                if (result.TransactionId != transactionId)
-                {
-                    var newKeys = new byte[_keys.Length][];
-                    Array.Copy(_keys, newKeys, newKeys.Length);
-                    var newChildren = new IBTreeNode[_children.Length];
-                    Array.Copy(_children, newChildren, newChildren.Length);
-                    var newPairCounts = new long[_pairCounts.Length];
-                    Array.Copy(_pairCounts, newPairCounts, newPairCounts.Length);
-                    result = new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
-                    children = newChildren;
-                }
-                children[i] = newChild;
-            }
-            return result;
-        }
-
         public IBTreeNode ReplaceValues(ReplaceValuesCtx ctx)
         {
             var result = this;
