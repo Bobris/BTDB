@@ -12,9 +12,7 @@ namespace BTDB.IL
     {
         static ILBuilder()
         {
-            NoCachingInstance = Debugger.IsAttached && !ILBuilderConfig.PreventDebugOutput
-                ? (IILBuilder)new ILBuilderDebug()
-                : new ILBuilderRelease();
+            NoCachingInstance = new ILBuilderRelease();
             Instance = new CachingILBuilder(NoCachingInstance);
         }
 

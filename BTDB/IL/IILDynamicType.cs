@@ -11,6 +11,5 @@ namespace BTDB.IL
         IILMethod DefineConstructor(Type[] parameters);
         void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod);
         Type CreateType();
-        SourceCodeWriter TryGetSourceCodeWriter();
     }
 }

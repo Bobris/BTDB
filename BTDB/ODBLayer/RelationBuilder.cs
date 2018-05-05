@@ -526,11 +526,11 @@ namespace BTDB.ODBLayer
                 .BeqS(ignoreLabel)
                 .Newobj(() => new ByteBufferWriter())
                 .Stloc(writerLoc);
-            field.Handler.Save(ilGenerator,
+            field.Handler.SpecializeSaveForType(instField.FieldType).Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
                 il => il.Ldarg(advEnumParamOrder).Ldfld(instField));
             var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
+            ilGenerator.Ldloc(writerLoc).Castclass(typeof(ByteBufferWriter)).Callvirt(dataGetter);
             ilGenerator
                 .Br(doneLabel)
                 .Mark(ignoreLabel)

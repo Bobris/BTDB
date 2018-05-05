@@ -116,7 +116,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IDisposable>("PersonSimple"));
-                Assert.True(ex.Message.Contains("Cannot deduce"));
+                Assert.Contains("Cannot deduce", ex.Message);
             }
         }
 
@@ -138,7 +138,7 @@ namespace BTDBTest
                                 Email = "nospam@nospam.cz",
                                 Name = "Boris"
                             }));
-                Assert.True(ex.Message.Contains("duplicate"));
+                Assert.Contains("duplicate", ex.Message);
                 tr.Commit();
             }
         }
@@ -442,7 +442,7 @@ namespace BTDBTest
         void ThrowsUninitialized(Action action)
         {
             var ex = Assert.Throws<BTDBException>(action);
-            Assert.True(ex.Message.Contains("uninitialized"));
+            Assert.Contains("uninitialized", ex.Message);
         }
 
         public class Person
@@ -566,7 +566,7 @@ namespace BTDBTest
             {
                 var personTable = creator(tr);
                 var ex = Assert.Throws<BTDBException>(() => personTable.FindByAgeOrDefault(1, 28));
-                Assert.True(ex.Message.Contains("Ambiguous"));
+                Assert.Contains("Ambiguous", ex.Message);
                 var p = personTable.FindByNameOrDefault(1, "Lubos");
                 Assert.Equal(28u, p.Age);
 
@@ -657,7 +657,7 @@ namespace BTDBTest
                 jobTable.Insert(new Job { Id = 11, Name = "Code" });
                 jobTable.Insert(new Job { Id = 12, Name = "Code" });
                 var ex = Assert.Throws<BTDBException>(() => jobTable.FindByNameOrDefault("Code"));
-                Assert.True(ex.Message.Contains("Ambiguous"));
+                Assert.Contains("Ambiguous", ex.Message);
             }
         }
 
@@ -890,8 +890,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedUnknownMethod>("No"));
-                Assert.True(ex.Message.Contains("Delete"));
-                Assert.True(ex.Message.Contains("not supported"));
+                Assert.Contains("Delete", ex.Message);
+                Assert.Contains("not supported", ex.Message);
             }
         }
 
@@ -907,8 +907,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongReturnType>("No"));
-                Assert.True(ex.Message.Contains("Upsert"));
-                Assert.True(ex.Message.Contains("return type"));
+                Assert.Contains("Upsert", ex.Message);
+                Assert.Contains("return type", ex.Message);
             }
         }
 
@@ -924,8 +924,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamCount>("No"));
-                Assert.True(ex.Message.Contains("Upsert"));
-                Assert.True(ex.Message.Contains("parameters count"));
+                Assert.Contains("Upsert", ex.Message);
+                Assert.Contains("parameters count", ex.Message);
             }
         }
 
@@ -941,8 +941,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IWronglyDefinedWrongParamType>("No"));
-                Assert.True(ex.Message.Contains("Upsert"));
-                Assert.True(ex.Message.Contains("Person"));
+                Assert.Contains("Upsert", ex.Message);
+                Assert.Contains("Person", ex.Message);
             }
         }
 
@@ -1087,9 +1087,9 @@ namespace BTDBTest
                 if (shouldThrow)
                 {
                     var ex = Assert.Throws<InvalidOperationException>(() => oen.MoveNext());
-                    Assert.True(ex.Message.Contains("modified"));
+                    Assert.Contains("modified", ex.Message);
                     var ex2 = Assert.Throws<InvalidOperationException>(() => en.MoveNext());
-                    Assert.True(ex2.Message.Contains("modified"));
+                    Assert.Contains("modified", ex2.Message);
                 }
                 else
                 {
@@ -1394,7 +1394,7 @@ namespace BTDBTest
                     tbl.Insert(new PersonSimple());
                     tr.Commit();
                 }
-                Assert.True(AppDomain.CurrentDomain.GetAssemblies().Any(a => a.FullName.StartsWith("RelationTestGC")));
+                Assert.Contains(AppDomain.CurrentDomain.GetAssemblies(), a => a.FullName.StartsWith("RelationTestGC"));
                 ReopenDb();
             }
             GC.Collect(GC.MaxGeneration);

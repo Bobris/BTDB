@@ -1,5 +1,4 @@
-﻿using ApprovalTests;
-using ApprovalTests.Reporters;
+﻿using Assent;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -127,7 +126,6 @@ namespace BTDBTest
         }
 
         [Fact]
-        [UseReporter(typeof(DiffReporter))]
         public void FindAndRemovesUnusedKeys()
         {
             StoreJobInDictionary("programming", "code");
@@ -147,7 +145,7 @@ namespace BTDBTest
                     visitor.Iterate(tr);
                 }
                 var report = DumpUnseenKeys(visitor, "\r\n");
-                Approvals.Verify(report);
+                this.Assent(report);
 
                 using (var tr = _db.StartTransaction())
                 {

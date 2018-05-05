@@ -3,8 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
-using ApprovalTests;
-using ApprovalTests.Reporters;
+using Assent;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -13,7 +12,6 @@ using Xunit;
 
 namespace BTDBTest
 {
-    [UseReporter(typeof(DiffReporter))]
     public class ODBIteratorTest : IDisposable
     {
         readonly IKeyValueDB _lowDb;
@@ -355,7 +353,7 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
-        void IterateWithApprove()
+        void IterateWithApprove([CallerMemberName] string testName = null)
         {
             using (var tr = _db.StartTransaction())
             {
@@ -366,7 +364,7 @@ namespace BTDBTest
                 iterator = new ODBIterator(tr, visitor);
                 iterator.Iterate();
                 var text = visitor.ToString();
-                Approvals.Verify(text);
+                this.Assent(text, null, testName);
                 Assert.Equal(fastVisitor.Keys.ToByteArray(), visitor.Keys.ToByteArray());
             }
         }
@@ -379,7 +377,6 @@ namespace BTDBTest
         }
 
         [Fact]
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public void ListOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -399,7 +396,6 @@ namespace BTDBTest
         }
 
         [Fact]
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public void InlineDictionariesOfSimpleValues()
         {
             using (var tr = _db.StartTransaction())
@@ -525,7 +521,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IDuoDuoRefsRelation>("DoubleDoubleRefsRelation");
                 var duoRefsRelation = creator(tr);
-                var value = new DuoDuoRefs { Id = 1, R1 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() }, R2=new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() } };
+                var value = new DuoDuoRefs { Id = 1, R1 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() }, R2 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() } };
                 duoRefsRelation.Insert(value);
                 value.Id = 2;
                 value.R1.R2 = value.R2.R1;

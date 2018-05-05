@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using ApprovalTests;
-using ApprovalTests.Reporters;
+using Assent;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
@@ -12,7 +11,6 @@ using Xunit;
 
 namespace BTDBTest
 {
-    [UseReporter(typeof(DiffReporter))]
     public class TypeSerializersTest
     {
         ITypeSerializers _ts;
@@ -219,14 +217,14 @@ namespace BTDBTest
                     ByteBuffer.NewEmpty(),
                     false
                 }.Select(o => ts.DescriptorOf(o).Describe());
-            Approvals.VerifyAll(res, "BasicTypes");
+            this.Assent(string.Join("\n", res));
         }
 
         [Fact]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void CheckCompatibilityOfRegistrationOfBasicTypeDescriptors()
         {
-            Approvals.VerifyAll(BasicSerializersFactory.TypeDescriptors.Select(o => o.Name), "BasicTypes");
+            this.Assent(string.Join("\n", BasicSerializersFactory.TypeDescriptors.Select(o => o.Name)));
         }
 
         public class SelfPointing1
@@ -265,7 +263,7 @@ namespace BTDBTest
                     new SelfPointing2(),
                     new TestEnum()
                 }.Select(o => ts.DescriptorOf(o).Describe());
-            Approvals.VerifyAll(res, "ComplexTypes");
+            this.Assent(string.Join("\n", res));
         }
 
         [Fact]

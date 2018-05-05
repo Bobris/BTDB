@@ -37,7 +37,7 @@ namespace BTDBTest
                 var reader = manager.OpenReadOnlyStore(storage);
                 reader.ReadToEnd(eventObserver);
 
-                Assert.Equal(1, eventObserver.Events.Count);
+                Assert.Single(eventObserver.Events);
                 eventObserver.Events.Clear();
                 eventObserver.Metadata.Clear();
 
@@ -771,8 +771,8 @@ namespace BTDBTest
 
                 var observer = new StoringEventObserver();
                 appender.ReadFromStartToEnd(observer);
-                Assert.Equal(1, observer.Events.Count);
-                Assert.Equal(1, observer.Events[0].Length);
+                Assert.Single(observer.Events);
+                Assert.Single(observer.Events[0]);
                 var e = observer.Events[0][0] as Ev1;
                 Assert.Equal(1u, e.Credit.A);
                 Assert.Equal(2u, e.Credit.B);
@@ -960,7 +960,7 @@ namespace BTDBTest
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
 
             var e = Assert.Throws<BTDBException>(() => appender.Store(null, new object[] { testEvent }));
-            Assert.True(e.Message.Contains("Unsupported"));
+            Assert.Contains("Unsupported", e.Message);
         }
 
         public class EventWithNullable

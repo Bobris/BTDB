@@ -159,7 +159,7 @@ namespace SimpleTester
             BtdbByteSize = _btdbSerializedData.Length;
             object obj;
             _eventDeserializer.Deserialize(out obj, _btdbSerializedData);
-            obj.ShouldBeEquivalentTo(_ev);
+            obj.Should().BeEquivalentTo(_ev);
 
             // ProtoBuf Setup
             Serializer = ModelFactory.CreateModel();
@@ -168,7 +168,7 @@ namespace SimpleTester
             Serializer.Serialize(_memStream, _ev);
             ProtoBufByteSize = (int)_memStream.Length;
             _memStream.Position = 0;
-            Serializer.Deserialize(_memStream, null, _eventType).ShouldBeEquivalentTo(_ev);
+            Serializer.Deserialize(_memStream, null, _eventType).Should().BeEquivalentTo(_ev);
 
             BtdbSerialization();
             BtdbDeserialization();

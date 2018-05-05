@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 13.0.0.0
+
+### Ported to .NetCore 2.0
+
+## 12.7.0.0
+
 ### Fixed
 
 Compactor Inducing Latency for writting transaction is now capped.

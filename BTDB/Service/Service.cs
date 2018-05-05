@@ -668,7 +668,7 @@ namespace BTDB.Service
                     .Castclass(resultAsTcs);
                 if (targetMethodInf.ResultFieldHandler == null && returnType == typeof(void))
                 {
-                    ilGenerator.Ldnull();
+                    ilGenerator.LdcI4(0);
                 }
                 else
                 {

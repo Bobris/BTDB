@@ -1,19 +1,19 @@
-﻿ComplexTypes[0] = List<VInt32>
-ComplexTypes[1] = List<String>
-ComplexTypes[2] = BTDBTest.TypeSerializersTest+SimpleDto
+﻿List<VInt32>
+List<String>
+BTDBTest.TypeSerializersTest+SimpleDto
 {
     StringField : String
     IntField : VInt32
 }
-ComplexTypes[3] = BTDBTest.TypeSerializersTest+ClassWithList
+BTDBTest.TypeSerializersTest+ClassWithList
 {
     List : List<VInt32>
 }
-ComplexTypes[4] = BTDBTest.TypeSerializersTest+ClassWithDict
+BTDBTest.TypeSerializersTest+ClassWithDict
 {
     Dict : List<VInt32>
 }
-ComplexTypes[5] = BTDBTest.TypeSerializersTest+SelfPointing1
+BTDBTest.TypeSerializersTest+SelfPointing1
 {
     Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
     Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
@@ -24,7 +24,7 @@ ComplexTypes[5] = BTDBTest.TypeSerializersTest+SelfPointing1
     }
     Other1 : VInt32
 }
-ComplexTypes[6] = BTDBTest.TypeSerializersTest+SelfPointing2
+BTDBTest.TypeSerializersTest+SelfPointing2
 {
     Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
     {
@@ -35,7 +35,7 @@ ComplexTypes[6] = BTDBTest.TypeSerializersTest+SelfPointing2
     Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
     Other2 : String
 }
-ComplexTypes[7] = BTDBTest.TypeSerializersTest+TestEnum
+BTDBTest.TypeSerializersTest+TestEnum
 enum {
     Item1 = 0
     Item2 = 1

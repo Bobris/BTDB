@@ -10,11 +10,14 @@ namespace BTDB.IL
         readonly ModuleBuilder _moduleBuilder;
         readonly TypeBuilder _typeBuilder;
         readonly IILGenForbidenInstructions _forbidenInstructions;
+        readonly string _name;
+        static int counter;
 
         public ILDynamicTypeImpl(string name, Type baseType, Type[] interfaces)
         {
-            _assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndCollect);
-            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(name + ".dll", true);
+            _name = name + (counter++) + ".dll";
+            _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndCollect);
+            _moduleBuilder = _assemblyBuilder.DefineDynamicModule(_name);
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, baseType, interfaces);
             _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
         }
@@ -49,12 +52,8 @@ namespace BTDB.IL
         {
             var finalType = _typeBuilder.CreateType();
             _forbidenInstructions.FinishType(finalType);
+            //_assemblyBuilder.Save(_name);
             return finalType;
-        }
-
-        public SourceCodeWriter TryGetSourceCodeWriter()
-        {
-            return null;
         }
     }
 }

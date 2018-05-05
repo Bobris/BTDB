@@ -737,7 +737,7 @@ namespace BTDBTest
         {
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
             {
-                Assert.Equal(1, refinables.Count());
+                Assert.Single(refinables);
             }
         }
 

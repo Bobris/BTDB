@@ -69,7 +69,7 @@ namespace BTDB.KVDBLayer
             void MapContent()
             {
                 if (_accessor != null) return;
-                _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, 0, MemoryMappedFileAccess.ReadWrite, null, HandleInheritability.None, true);
+                _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, 0, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true);
                 _accessor = _memoryMappedFile.CreateViewAccessor();
                 _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
             }

@@ -1,17 +1,17 @@
-﻿BasicTypes[0] = String
-BasicTypes[1] = VInt32
-BasicTypes[2] = VUInt32
-BasicTypes[3] = UInt8
-BasicTypes[4] = Int8
-BasicTypes[5] = VInt16
-BasicTypes[6] = VUInt16
-BasicTypes[7] = VInt64
-BasicTypes[8] = VUInt64
-BasicTypes[9] = Double
-BasicTypes[10] = Decimal
-BasicTypes[11] = DateTime
-BasicTypes[12] = TimeSpan
-BasicTypes[13] = Guid
-BasicTypes[14] = Byte[]
-BasicTypes[15] = Byte[]
-BasicTypes[16] = Bool
+﻿String
+VInt32
+VUInt32
+UInt8
+Int8
+VInt16
+VUInt16
+VInt64
+VUInt64
+Double
+Decimal
+DateTime
+TimeSpan
+Guid
+Byte[]
+Byte[]
+Bool

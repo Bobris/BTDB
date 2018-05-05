@@ -76,7 +76,7 @@ namespace BTDBTest
         [Fact]
         public void ILNewestWayDebug()
         {
-            var method = new ILBuilderDebug().NewMethod<Func<Nested>>("SampleCall");
+            var method = new ILBuilderRelease().NewMethod<Func<Nested>>("SampleCall");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -95,7 +95,7 @@ namespace BTDBTest
         [Fact]
         public void CanAccessPrivateProperties()
         {
-            var method = new ILBuilderDebug().NewMethod<Func<int>>("PrivateAccess");
+            var method = new ILBuilderRelease().NewMethod<Func<int>>("PrivateAccess");
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             var propertyInfos = typeof(Nested).GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
@@ -135,7 +135,7 @@ namespace BTDBTest
         [Fact]
         public void CanFixFirstParameterDebug()
         {
-            var method = new ILBuilderDebug().NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
+            var method = ILBuilder.Instance.NewMethod("SampleCall", typeof(Func<Nested>), typeof(string));
             var il = method.Generator;
             var local = il.DeclareLocal(typeof(Nested), "n");
             il
@@ -166,7 +166,7 @@ namespace BTDBTest
         [Fact]
         public void CanCallPrivateConstructor()
         {
-            var method = new ILBuilderDebug().NewMethod<Func<PrivateConstructor>>("PrivateConstructorCall");
+            var method = new ILBuilderRelease().NewMethod<Func<PrivateConstructor>>("PrivateConstructorCall");
             var il = method.Generator;
             il
                 .LdcI4(42)
@@ -186,7 +186,7 @@ namespace BTDBTest
         [Fact]
         public void FactorialWorks()
         {
-            var method = new ILBuilderDebug().NewMethod<Func<int, int>>("FactorialIL");
+            var method = new ILBuilderRelease().NewMethod<Func<int, int>>("FactorialIL");
             var il = method.Generator;
             var finish = il.DefineLabel();
             var next = il.DefineLabel();
@@ -217,7 +217,7 @@ namespace BTDBTest
         [Fact]
         public void AllocationLessDictionaryIteration()
         {
-            var method = new ILBuilderDebug().NewMethod<Func<Dictionary<int, int>, int>>("PrintDict");
+            var method = new ILBuilderRelease().NewMethod<Func<Dictionary<int, int>, int>>("PrintDict");
             var il = method.Generator;
             var sumLocal = il.DeclareLocal(typeof(int), "sum");
             var dictType = typeof(Dictionary<int, int>);
@@ -265,29 +265,6 @@ namespace BTDBTest
                 .Ldloc(sumLocal)
                 .Ret();
             Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));
-        }
-
-        [Theory]
-        [InlineData("abc", 10, "abc")]
-        [InlineData("abc", 2, null)]
-        [InlineData("p_a.b.c_d.e.f_s", 7, "p_c_f_s")]
-        [InlineData("p_a.b.c_d.e.f_s", 9, "p_b.c_f_s")]
-        [InlineData("p_a.b.c_d.e.f_s", 11, "p_a.b.c_f_s")]
-        [InlineData("p_a.b.c_d.e.f_s", 12, "p_a.b.c_f_s")]
-        [InlineData("p_a.b.c_d.e.f_s", 14, "p_a.b.c_e.f_s")]
-        [InlineData("AlwaysNew_Gmc.Cloud.Infrastructure.Database.Relation_Gmc.Cloud.Infrastructure.ActionProcessing.IActionInputTable_Gmc.Cloud.MobileBackend.Actions.HandleExpiredPublicDcState.Data.ExpiredPublicDcStateInput__.dll", 80,
-                    "AlwaysNew_Database.Relation_IActionInputTable_ExpiredPublicDcStateInput__.dll")]
-        public void CanShortenDebugPathWhenNeeded(string path, int length, string expectedResult)
-        {
-            if (expectedResult == null)
-            {
-                var ex = Assert.Throws<BTDBException>(() => ILDynamicTypeDebugImpl.ShortenIfNeeded(path, length));
-                Assert.True(ex.Message.Contains(path));
-            }
-            else
-            {
-                Assert.Equal(expectedResult, ILDynamicTypeDebugImpl.ShortenIfNeeded(path, length));
-            }
         }
     }
 }
