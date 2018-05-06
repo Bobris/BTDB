@@ -2,9 +2,13 @@
 
 ## [unreleased]
 
-## 13.0.0.0
+### Added
 
-### Ported to .NetCore 2.0
+Ported to .NetCore 2.0.
+
+Simplified Nuget. Now it embed pdb and with SourceLink. GitHub releases contains zipped BTDB sources.
+
+New releaser project to automate releasing.
 
 ## 12.7.0.0
 

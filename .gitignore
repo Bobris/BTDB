@@ -19,3 +19,4 @@ TestResults
 *.DotSettings
 /BTDB.sln.ide
 /.vs
+/Releaser/.vs
