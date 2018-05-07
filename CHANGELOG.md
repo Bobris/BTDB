@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 13.0.0
+
 ### Added
 
 Ported to .NetCore 2.0.
