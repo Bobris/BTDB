@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -1597,10 +1598,16 @@ namespace BTDBTest
             }
         }
 
+        public static bool IsNetCore => RuntimeInformation.FrameworkDescription.StartsWith(".NET Core", StringComparison.OrdinalIgnoreCase);
 
         [RunnableInDebugOnly("Testing debug assertions only in debug")]
         public void ProgrammerIsWarnedWhenWorkingWithDerivedType()
         {
+            if (IsNetCore)
+            {
+                //Debug assertions crashes dotnet process, 
+                return;
+            }
             var failCountingListener = new TraceListenerCountingFails();
             var listenersBackup = new TraceListener[Trace.Listeners.Count];
             for (int i = 0; i < Trace.Listeners.Count; i++)
