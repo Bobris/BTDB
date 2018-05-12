@@ -41,14 +41,14 @@ namespace BTDB.Service
                 _acceptClientsTask.Wait();
         }
 
-        void AcceptNewClients()
+        async void AcceptNewClients()
         {
             while (_listening)
             {
                 Socket socket;
                 try
                 {
-                    socket = _listener.AcceptSocket();
+                    socket = await _listener.AcceptSocketAsync();
                 }
                 catch (SocketException)
                 {
