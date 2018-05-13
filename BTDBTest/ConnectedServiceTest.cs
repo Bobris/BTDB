@@ -194,7 +194,7 @@ namespace BTDBTest
             Assert.Same(i1, _second.QueryRemoteService<IIface1>());
         }
 
-        [Fact(Skip = "Does not work in .NetCore???")]
+        [SkipWhenAll(SkipWhenAttribute.Is.Debug, SkipWhenAttribute.Is.NetCore, "in .netcore keep references for debugging?")]
         public void ClientServiceDeallocedWhenNotneeded()
         {
             _first.RegisterLocalService(new Adder());

@@ -1598,16 +1598,9 @@ namespace BTDBTest
             }
         }
 
-        public static bool IsNetCore => RuntimeInformation.FrameworkDescription.StartsWith(".NET Core", StringComparison.OrdinalIgnoreCase);
-
-        [RunnableInDebugOnly("Testing debug assertions only in debug")]
+        [SkipWhenAny(SkipWhenAttribute.Is.Release, SkipWhenAttribute.Is.NetCore)]
         public void ProgrammerIsWarnedWhenWorkingWithDerivedType()
         {
-            if (IsNetCore)
-            {
-                //Debug assertions crashes dotnet process, 
-                return;
-            }
             var failCountingListener = new TraceListenerCountingFails();
             var listenersBackup = new TraceListener[Trace.Listeners.Count];
             for (int i = 0; i < Trace.Listeners.Count; i++)
