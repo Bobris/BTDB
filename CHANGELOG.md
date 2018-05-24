@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Possibility to interrupt remove (by PK prefix) in relations by signaling passed cancellation token
+
 ## 13.0.0
 
 ### Added

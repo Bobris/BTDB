@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -243,12 +244,42 @@ namespace BTDB.ODBLayer
 
                 if (HasSecondaryIndexes)
                     RemoveSecondaryIndexes(key, valueBytes);
-                    
+
                 if (_relationInfo.NeedImplementFreeContent())
                     _relationInfo.FreeContent(_transaction, valueBytes);
             }
 
             return RemovePrimaryKeysByPrefix(keyBytesPrefix);
+        }
+
+        public int RemoveByPrimaryKeyPrefixCancellable(ByteBuffer keyBytesPrefix, CancellationToken token)
+        {
+            if (!token.CanBeCanceled) 
+                return RemoveByPrimaryKeyPrefix(keyBytesPrefix); //faster way for default tokens
+            var removedCount = 0;
+            const int workChunkSize = 1000;
+            var keysToDelete = new List<ByteBuffer>();
+            while (true)
+            {
+                var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
+                while (enumerator.MoveNext())
+                {
+                    keysToDelete.Add(enumerator.GetKeyBytes());
+                    if (keysToDelete.Count >= workChunkSize)
+                        break;
+                }
+                if (keysToDelete.Count == 0) return removedCount;
+                foreach (var key in keysToDelete)
+                {
+                    RemoveById(key, true);
+                    removedCount++;
+                    if (token.IsCancellationRequested)
+                        return removedCount;  //don't throw here, let the caller decide
+                }
+                if (keysToDelete.Count < workChunkSize)
+                    return removedCount;
+                keysToDelete.Clear();
+            }
         }
 
         public int RemoveByKeyPrefixWithoutIterate(ByteBuffer keyBytesPrefix)

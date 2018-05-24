@@ -71,6 +71,11 @@ Returns true if removed, void variant throw when does not exists. All primary ke
 Returns number of records removed for given primary key prefix (apart fields are automatically used)
 for example    `int RemoveById(ulong tenantId)` removes all users for given tenant
 
+    int RemoveById(primaryKey1 [, primaryKey2, ...] [, cancellationToken);
+additionally can be interrupted by cancellation token - in case when token is signaled interrupt removing and return count of deleted items	
+`int RemoveById(ulong tenantId, CancellationToken token)` removes all users as long as token is not signaled
+
+
 ### Contains ###
     bool Contains(primaryKey1, ..., primaryKeyN);
 Returns true if exist item with given primary key. All primary keys fields are used as parameters, for example    `bool Contains(ulong tenantId, ulong userId);`

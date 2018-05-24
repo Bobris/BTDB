@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -118,12 +119,19 @@ namespace BTDB.ODBLayer
 
         void BuildRemoveByMethod(MethodInfo method, IILMethod reqMethod, Type relationDBManipulatorType)
         {
+            var methodParameters = method.GetParameters();
+            var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
+            if (isPrefixBased && methodParameters.Length > 0 && methodParameters[methodParameters.Length-1].ParameterType == typeof(CancellationToken))
+            {
+                BuildCancellableRemoveByMethod(method, methodParameters, reqMethod, relationDBManipulatorType);
+                return;
+            }
+
             var writerLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBufferWriter));
             reqMethod.Generator.Newobj(() => new ByteBufferWriter());
             reqMethod.Generator.Stloc(writerLoc);
             Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
 
-            var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
             if (isPrefixBased)
                 WriteShortPrefixIl(reqMethod.Generator, pushWriter, _relationInfo.Prefix);
             else
@@ -131,7 +139,8 @@ namespace BTDB.ODBLayer
                 WriteIdIl(reqMethod.Generator, pushWriter, (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
-            var count = SaveMethodParameters(reqMethod.Generator, method.Name, method.GetParameters(), method.GetParameters().Length,
+            
+            var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters, methodParameters.Length,
                 _relationInfo.ApartFields, primaryKeyFields, writerLoc);
             if (!isPrefixBased && count != primaryKeyFields.Count)
                 throw new BTDBException($"Number of parameters in {method.Name} does not match primary key count {primaryKeyFields.Count}.");
@@ -156,6 +165,29 @@ namespace BTDB.ODBLayer
                 if (method.ReturnType == typeof(void))
                     reqMethod.Generator.Pop();
             }
+        }
+
+        void BuildCancellableRemoveByMethod(MethodInfo method, ParameterInfo[] methodParameters, IILMethod reqMethod,
+            Type relationDbManipulatorType)
+        {
+            var il = reqMethod.Generator;
+            var writerLoc = il.DeclareLocal(typeof(ByteBufferWriter));
+            il
+                .Newobj(() => new ByteBufferWriter())
+                .Stloc(writerLoc);
+
+            WriteShortPrefixIl(il, ilg => ilg.Ldloc(writerLoc), _relationInfo.Prefix);
+
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+            SaveMethodParameters(il, method.Name, methodParameters, methodParameters.Length - 1,
+                _relationInfo.ApartFields, primaryKeyFields, writerLoc);
+
+            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data").GetGetMethod(true);
+            il
+                .Ldarg(0) //manipulator
+                .Ldloc(writerLoc).Callvirt(dataGetter)        //call byteBuffer.Data
+                .Ldarg((ushort) methodParameters.Length)
+                .Callvirt(relationDbManipulatorType.GetMethod("RemoveByPrimaryKeyPrefixCancellable"));
         }
 
         static bool AllKeyPrefixesAreSame(RelationVersionInfo relationInfo, ushort count)

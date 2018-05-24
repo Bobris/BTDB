@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -1004,7 +1005,7 @@ namespace BTDBTest
         public interface IHddRelation
         {
             void Insert(File file);
-            void RemoveById(ulong id);
+            int RemoveById(CancellationToken token);
             File FindById(ulong id);
         }
 
@@ -1040,6 +1041,38 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        [Fact]
+        public void RemoveCanBeTimeLimited()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IHddRelation>("HddRelationCancell");
+                var files = creator(tr);
+                var file = new File
+                {
+                    Data = new DBIndirect<RawData>(new RawData
+                    {
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+                    })
+                };
+                var itemCount = 100000;
+                for (var i = 0; i < itemCount; i++)
+                {
+                    file.Id = (ulong) i;
+                    files.Insert(file);
+                }
+
+                using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+                {
+                    var cnt = files.RemoveById(cts.Token);
+                    Assert.True(cnt > 0);
+                    Assert.True(cnt < itemCount);
+                }
+            }
+        }
+
 
         public interface IRoomTable2
         {
