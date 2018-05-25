@@ -4,7 +4,7 @@
 
 ### Added
 
-Possibility to interrupt remove (by PK prefix) in relations by signaling passed cancellation token
+Possibility to limit number of removed items at once in prefix based remove in relations.
 
 ## 13.0.0
 

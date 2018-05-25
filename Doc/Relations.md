@@ -71,9 +71,9 @@ Returns true if removed, void variant throw when does not exists. All primary ke
 Returns number of records removed for given primary key prefix (apart fields are automatically used)
 for example    `int RemoveById(ulong tenantId)` removes all users for given tenant
 
-    int RemoveById(primaryKey1 [, primaryKey2, ...] [, cancellationToken);
-additionally can be interrupted by cancellation token - in case when token is signaled interrupt removing and return count of deleted items	
-`int RemoveById(ulong tenantId, CancellationToken token)` removes all users as long as token is not signaled
+    int RemoveByIdPartial(primaryKey1 [, primaryKey2, ...] , maxCount);
+additionally can be limited number of deleted items at once	
+`int RemoveByIdPartial(ulong tenantId, int maxCount)`
 
 
 ### Contains ###

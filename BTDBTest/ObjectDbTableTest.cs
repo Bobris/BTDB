@@ -1002,10 +1002,10 @@ namespace BTDBTest
             public IDictionary<ulong, ulong> Edges { get; set; }
         }
 
-        public interface IHddRelation
+        public interface IHddRelation : IReadOnlyCollection<File>
         {
             void Insert(File file);
-            int RemoveById(CancellationToken token);
+            int RemoveByIdPartial(int maxCount);
             File FindById(ulong id);
         }
 
@@ -1043,36 +1043,29 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void RemoveCanBeTimeLimited()
+        public void PartialRemove()
         {
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IHddRelation>("HddRelationCancell");
                 var files = creator(tr);
-                var file = new File
-                {
-                    Data = new DBIndirect<RawData>(new RawData
-                    {
-                        Data = new byte[] { 1, 2, 3 },
-                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
-                    })
-                };
-                var itemCount = 100000;
+                var file = new File();
+                var itemCount = 100;
                 for (var i = 0; i < itemCount; i++)
                 {
                     file.Id = (ulong) i;
                     files.Insert(file);
                 }
 
-                using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
-                {
-                    var cnt = files.RemoveById(cts.Token);
-                    Assert.True(cnt > 0);
-                    Assert.True(cnt < itemCount);
-                }
+                var cnt = files.RemoveByIdPartial(50);
+                Assert.Equal(50, files.Count);
+                Assert.Equal(50, cnt);
+
+                cnt = files.RemoveByIdPartial(100);
+                Assert.Equal(0, files.Count);
+                Assert.Equal(50, cnt);
             }
         }
-
 
         public interface IRoomTable2
         {

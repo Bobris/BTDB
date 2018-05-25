@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -39,7 +38,10 @@ namespace BTDB.ODBLayer
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
                 if (method.Name.StartsWith("RemoveBy"))
                 {
-                    BuildRemoveByMethod(method, reqMethod, relationDBManipulatorType);
+                    if (method.Name == "RemoveByIdPartial")
+                        BuildRemoveByIdPartialMethod(method, reqMethod, relationDBManipulatorType);
+                    else
+                        BuildRemoveByMethod(method, reqMethod, relationDBManipulatorType);
                 }
                 else if (method.Name.StartsWith("FindBy"))
                 {
@@ -121,11 +123,6 @@ namespace BTDB.ODBLayer
         {
             var methodParameters = method.GetParameters();
             var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
-            if (isPrefixBased && methodParameters.Length > 0 && methodParameters[methodParameters.Length-1].ParameterType == typeof(CancellationToken))
-            {
-                BuildCancellableRemoveByMethod(method, methodParameters, reqMethod, relationDBManipulatorType);
-                return;
-            }
 
             var writerLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBufferWriter));
             reqMethod.Generator.Newobj(() => new ByteBufferWriter());
@@ -139,7 +136,7 @@ namespace BTDB.ODBLayer
                 WriteIdIl(reqMethod.Generator, pushWriter, (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
-            
+
             var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters, methodParameters.Length,
                 _relationInfo.ApartFields, primaryKeyFields, writerLoc);
             if (!isPrefixBased && count != primaryKeyFields.Count)
@@ -167,9 +164,18 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void BuildCancellableRemoveByMethod(MethodInfo method, ParameterInfo[] methodParameters, IILMethod reqMethod,
-            Type relationDbManipulatorType)
+        void BuildRemoveByIdPartialMethod(MethodInfo method, IILMethod reqMethod, Type relationDbManipulatorType)
         {
+            var methodParameters = method.GetParameters();
+            var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
+
+            if (!isPrefixBased || methodParameters.Length == 0 ||
+                methodParameters[methodParameters.Length - 1].ParameterType != typeof(int) ||
+                methodParameters[methodParameters.Length - 1].Name.IndexOf("max", StringComparison.InvariantCultureIgnoreCase) == -1)
+            {
+                throw new BTDBException("Invalid shape of RemoveByIdPartial.");
+            }
+
             var il = reqMethod.Generator;
             var writerLoc = il.DeclareLocal(typeof(ByteBufferWriter));
             il
@@ -186,8 +192,8 @@ namespace BTDB.ODBLayer
             il
                 .Ldarg(0) //manipulator
                 .Ldloc(writerLoc).Callvirt(dataGetter)        //call byteBuffer.Data
-                .Ldarg((ushort) methodParameters.Length)
-                .Callvirt(relationDbManipulatorType.GetMethod("RemoveByPrimaryKeyPrefixCancellable"));
+                .Ldarg((ushort)methodParameters.Length)
+                .Callvirt(relationDbManipulatorType.GetMethod("RemoveByPrimaryKeyPrefixPartial"));
         }
 
         static bool AllKeyPrefixesAreSame(RelationVersionInfo relationInfo, ushort count)

@@ -252,34 +252,21 @@ namespace BTDB.ODBLayer
             return RemovePrimaryKeysByPrefix(keyBytesPrefix);
         }
 
-        public int RemoveByPrimaryKeyPrefixCancellable(ByteBuffer keyBytesPrefix, CancellationToken token)
+        public int RemoveByPrimaryKeyPrefixPartial(ByteBuffer keyBytesPrefix, int maxCount)
         {
-            if (!token.CanBeCanceled) 
-                return RemoveByPrimaryKeyPrefix(keyBytesPrefix); //faster way for default tokens
-            var removedCount = 0;
-            const int workChunkSize = 1000;
+            var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
             var keysToDelete = new List<ByteBuffer>();
-            while (true)
+            while (enumerator.MoveNext())
             {
-                var enumerator = new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
-                while (enumerator.MoveNext())
-                {
-                    keysToDelete.Add(enumerator.GetKeyBytes());
-                    if (keysToDelete.Count >= workChunkSize)
-                        break;
-                }
-                if (keysToDelete.Count == 0) return removedCount;
-                foreach (var key in keysToDelete)
-                {
-                    RemoveById(key, true);
-                    removedCount++;
-                    if (token.IsCancellationRequested)
-                        return removedCount;  //don't throw here, let the caller decide
-                }
-                if (keysToDelete.Count < workChunkSize)
-                    return removedCount;
-                keysToDelete.Clear();
+                keysToDelete.Add(enumerator.GetKeyBytes());
+                if (keysToDelete.Count == maxCount)
+                    break;
             }
+            foreach (var key in keysToDelete)
+            {
+                RemoveById(key, true);
+            }
+            return keysToDelete.Count;
         }
 
         public int RemoveByKeyPrefixWithoutIterate(ByteBuffer keyBytesPrefix)
