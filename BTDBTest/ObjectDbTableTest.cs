@@ -1992,5 +1992,83 @@ namespace BTDBTest
                    Assert.Equal(10u, table.CompanyId);
             }
         }
+
+        [DebuggerDisplay("{DebuggerDisplay,nq}")]
+        public class InheritedRelation_CompanyItem
+        {
+            [PrimaryKey]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(1)]
+            public ulong UserId { get; set; }
+            [PrimaryKey(3)]
+            public int Value { get; set; }
+
+            [NotStored]
+            string DebuggerDisplay => $"CompanyId={CompanyId}, UserId={UserId}, Value={Value}";
+
+            public override bool Equals(object obj) =>
+                obj is InheritedRelation_CompanyItem item &&
+                CompanyId == item.CompanyId &&
+                UserId == item.UserId;
+        }
+        public interface IInheritedRelationCompany : IReadOnlyCollection<InheritedRelation_CompanyItem>
+        {
+            ulong CompanyId { get; set; }
+            int RemoveById();
+        }
+        public interface IInheritedRelationUser : IInheritedRelationCompany
+        {
+            ulong UserId { get; set; }
+        }
+        public interface IInheritedRelationFinal : IInheritedRelationUser
+        {
+            void Insert(InheritedRelation_CompanyItem input);
+        }
+
+        [Fact]
+        public void InheritanceSupport()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IInheritedRelationFinal>(nameof(IInheritedRelationFinal));
+                var table = creator(tr);
+
+                // Insert and and read
+                {
+                    table.CompanyId = 1;
+                    table.UserId = 10;
+                    table.Insert(new InheritedRelation_CompanyItem { Value = 100 });
+                    table.Insert(new InheritedRelation_CompanyItem { Value = 101 });
+                    table.UserId = 11;
+                    table.Insert(new InheritedRelation_CompanyItem { Value = 102 });
+                    table.Insert(new InheritedRelation_CompanyItem { Value = 103 });
+                    var expected = new[] {
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 10, Value = 100 },
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 10, Value = 101 },
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 11, Value = 102 },
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 11, Value = 103 },
+                    };
+
+                    var actual = table.ToArray();
+
+                    Assert.Equal(expected, actual);
+                }
+                // Remove and read
+                {
+                    table.CompanyId = 1;
+                    table.UserId = 10;
+                    var expected = new[] {
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 11, Value = 102 },
+                        new InheritedRelation_CompanyItem { CompanyId = 1, UserId = 11, Value = 103 },
+                    };
+
+                    int removed = table.RemoveById();
+                    var actual = table.ToArray();
+
+                    Assert.Equal(2, removed);
+                    Assert.Equal(expected, actual);
+                }
+            }
+        }
     }
 }

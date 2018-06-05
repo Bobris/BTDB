@@ -621,12 +621,12 @@ namespace BTDB.ODBLayer
             ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter);
         }
 
-        void GenerateApartFieldsProperties(IILDynamicType classImpl, Type createdType)
+        void GenerateApartFieldsProperties(IILDynamicType classImpl, Type interfaceType)
         {
             var apartFields = new Dictionary<string, IILField>();
             var initializedFields = new Dictionary<string, IILField>();
-            var methods = createdType.GetMethods();
-            var properties = createdType.GetProperties();
+            var methods = RelationInfo.GetMethods(interfaceType);
+            var properties = RelationInfo.GetProperties(interfaceType).ToArray();
             foreach (var method in methods)
             {
                 var name = method.Name;
