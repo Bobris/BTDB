@@ -715,28 +715,52 @@ namespace BTDB.ODBLayer
             return result;
         }
 
+        static bool IsIgnoredType(Type type)
+        {
+            if (type.IsGenericType)
+            {
+                var genericTypeDefinition = type.GetGenericTypeDefinition();
+                if (genericTypeDefinition == typeof(IEnumerable<>) ||
+                    genericTypeDefinition == typeof(IReadOnlyCollection<>))
+                    return true;
+            }
+            else
+            {
+                if (type == typeof(IEnumerable))
+                    return true;
+            }
+            return false;
+        }
+
         public static IEnumerable<MethodInfo> GetMethods(Type interfaceType)
         {
+            if (IsIgnoredType(interfaceType)) yield break;
             var methods = interfaceType.GetMethods();
             foreach (var method in methods)
                 yield return method;
             foreach (var iface in interfaceType.GetInterfaces())
             {
-                if (iface.IsGenericType)
-                {
-                    if (iface.GetGenericTypeDefinition() == typeof(IEnumerable<>)) continue;
-                    if (iface.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)) continue;
-                }
-                else
-                {
-                    if (iface == typeof(IEnumerable)) continue;
-                }
+                if (IsIgnoredType(iface)) continue;
                 var inheritedMethods = iface.GetMethods();
                 foreach (var method in inheritedMethods)
                     yield return method;
             }
         }
 
+        public static IEnumerable<PropertyInfo> GetProperties(Type interfaceType)
+        {
+            if (IsIgnoredType(interfaceType)) yield break;
+            var properties = interfaceType.GetProperties();
+            foreach (var property in properties)
+                yield return property;
+            foreach (var iface in interfaceType.GetInterfaces())
+            {
+                if (IsIgnoredType(iface)) continue;
+                var inheritedProperties = iface.GetProperties();
+                foreach (var property in inheritedProperties)
+                    yield return property;
+            }
+        }
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
         {
             return _valueLoaders.GetOrAdd(version, (ver, relationInfo) => CreateLoader(ver,
