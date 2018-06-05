@@ -686,9 +686,9 @@ namespace BTDBTest
         public void UsingConstructorWorks()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterInstance((object)7).Named<int>("i");
-            builder.RegisterInstance((object)3).Named<int>("j");
-            builder.RegisterInstance((object)"A").Named<string>("s");
+            builder.RegisterInstance(7).Named<int>("i");
+            builder.RegisterInstance(3).Named<int>("j");
+            builder.RegisterInstance("A").Named<string>("s");
             builder.RegisterType<MultipleConstructors>().Keyed<MultipleConstructors>(1);
             builder.RegisterType<MultipleConstructors>().UsingConstructor().Keyed<MultipleConstructors>(2);
             builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int)).Keyed<MultipleConstructors>(3);
@@ -842,7 +842,14 @@ namespace BTDBTest
             }
         }
 
-        #region Optional parameter in ctor feature
+        [Fact]
+        public void RegisterInstanceUsesGenericParameterForRegistration()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance<ILogger>(new Logger());
+            var container = containerBuilder.Build();
+            Assert.NotNull(container.Resolve<ILogger>());
+        }
 
         class ClassDependency { }
         struct StructDependency { }
@@ -956,6 +963,5 @@ namespace BTDBTest
             Assert.Throws<FormatException>(() => dateTimeParameter.HasDefaultValue);
             Assert.Throws<FormatException>(() => dateTimeParameter.RawDefaultValue);
         }
-        #endregion
     }
 }

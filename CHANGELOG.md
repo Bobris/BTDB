@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+IOC RegisterInstance<T>(T value) now allows also value types as T, and value is not registered as value.GetType() but as typeof(T), which is same behavior as AutoFac.
+
 ## 13.1.0
 
 ### Added
