@@ -376,5 +376,7 @@ namespace BTDB.KVDBLayer
                 if (_preapprovedWritting || _writting) _btreeRoot.DescriptionForLeaks = value;
             }
         }
+
+        public bool RollbackAdvised { get; set; }
     }
 }

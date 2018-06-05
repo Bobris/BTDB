@@ -51,6 +51,8 @@ namespace BTDB.ODBLayer
 
         public KeyValueDBTransactionProtector TransactionProtector => _keyValueTrProtector;
 
+        public bool RollbackAdvised { get => _keyValueTr.RollbackAdvised; set => _keyValueTr.RollbackAdvised = value; }
+
         public ulong AllocateDictionaryId()
         {
             return (ulong)(Interlocked.Increment(ref _lastDictId) - 1);

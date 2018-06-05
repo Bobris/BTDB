@@ -278,6 +278,7 @@ namespace BTDBTest
             public int EraseAllCount { get; set; }
             public int EraseRangeCount { get; set; }
             public int EraseCurrentCount { get; set; }
+            public bool RollbackAdvised { get => _keyValueDBTransaction.RollbackAdvised; set => _keyValueDBTransaction.RollbackAdvised = value; }
 
             public void SetKeyPrefix(ByteBuffer prefix)
             {

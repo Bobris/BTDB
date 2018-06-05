@@ -2,7 +2,11 @@
 
 ## [unreleased]
 
-### Changed
+### Added
+
+RollbackAdvised property on KV and Object transactions interfaces to simplify notification of some infrastructure code to rollback transaction instead of committing it.
+
+### Breaking change
 
 IOC RegisterInstance<T>(T value) now allows also value types as T, and value is not registered as value.GetType() but as typeof(T), which is same behavior as AutoFac.
 

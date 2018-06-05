@@ -2469,5 +2469,18 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        [Fact]
+        public void RollbackAdvisedRemembersItsValue()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                Assert.False(tr.RollbackAdvised);
+                tr.RollbackAdvised = true;
+                Assert.True(tr.RollbackAdvised);
+                tr.RollbackAdvised = false;
+                Assert.False(tr.RollbackAdvised);
+            }
+        }
     }
 }

@@ -43,6 +43,11 @@ namespace BTDB.ODBLayer
 
         void Commit();
 
+        /// <summary>
+        /// This is just storage for boolean, add could store here that it does not want to commit transaction, it is up to infrastructure code around if it will listen this advice.
+        /// </summary>
+        bool RollbackAdvised { get; set; }
+
         Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
     }
 }
