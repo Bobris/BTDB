@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.1.0
+
 ### Added
 
 IOC RegisterInstance(object value) overload.
