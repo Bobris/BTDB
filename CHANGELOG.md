@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.2.0
+
 ### Changed
 
 IOC RegisterInstance<T>(object value) now must be explicitly used so new RegisterInstance(object value) could be used.
