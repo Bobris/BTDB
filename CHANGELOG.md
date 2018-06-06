@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+IOC RegisterInstance(object value) overload.
+
 ## 14.0.0
 
 ### Added

@@ -851,6 +851,15 @@ namespace BTDBTest
             Assert.NotNull(container.Resolve<ILogger>());
         }
 
+        [Fact]
+        public void RegisterInstanceWithObjectParamUsesRealObjectType()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance((object)new Logger());
+            var container = containerBuilder.Build();
+            Assert.NotNull(container.Resolve<Logger>());
+        }
+
         class ClassDependency { }
         struct StructDependency { }
         enum EnumDependency { Foo, Bar, FooBar = Foo | Bar }

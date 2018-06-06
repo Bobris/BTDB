@@ -15,6 +15,14 @@ namespace BTDB.IOC
             return registration;
         }
 
+        public IRegistration<IAsTrait> RegisterInstance(object instance)
+        {
+            var instanceType = instance.GetType();
+            var registration = new SingleInstanceRegistration(instance, instanceType);
+            _registrations.Add(registration);
+            return registration;
+        }
+
         public IRegistration<IAsTrait> RegisterInstance<T>(T instance)
         {
             var instanceType = typeof(T);
