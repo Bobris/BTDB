@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+IOC RegisterInstance<T>(object value) now must be explicitly used so new RegisterInstance(object value) could be used.
+
 ## 14.1.0
 
 ### Added
