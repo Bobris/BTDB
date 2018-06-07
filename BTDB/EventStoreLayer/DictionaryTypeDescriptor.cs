@@ -186,11 +186,16 @@ namespace BTDB.EventStoreLayer
             {
                 var finish = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
-                var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor);
-                var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor);
+
+                if (type == typeof(object))
+                    type = _owner.GetPreferedType();
+                var targetIDictionary = type.GetInterface("IDictionary`2") ?? type;
+                var targetTypeArguments = targetIDictionary.GetGenericArguments();
+                var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor, targetTypeArguments[0]);
+                var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor, targetTypeArguments[1]);
                 if (_owner._type == null) _owner._type = type;
-                var isDict = _owner._type != null && _owner._type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
-                var typeAsIDictionary = isDict ? _owner._type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
+                var isDict = type != null && type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+                var typeAsIDictionary = isDict ? type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = isDict
                     ? typeAsIDictionary.GetMethods()
                         .Single(

@@ -159,7 +159,7 @@ namespace BTDB.EventStoreLayer
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
                 var finish = ilGenerator.DefineLabel();
-                var itemType = _nullableTypeDescriptor._typeSerializers.LoadAsType(_nullableTypeDescriptor._itemDescriptor);
+                var itemType = _nullableTypeDescriptor.GetPreferedType(type).GetGenericArguments()[0];
                 var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
                 var localValue = ilGenerator.DeclareLocal(nullableType);
 

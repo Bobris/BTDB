@@ -70,7 +70,7 @@ namespace BTDB.EventStore2Layer
         Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)
         {
             Action<object, IDescriptorSerializerLiteContext> res;
-            if (type != null)
+            if (type != null && type != typeof(object))
             {
                 if (_gathererCache.TryGetValue(type, out res))
                     return res;
@@ -321,7 +321,7 @@ namespace BTDB.EventStore2Layer
                                     if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
                                     if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
                                 }
-                                desc = new NullableTypeDescriptor(this, typeAlternative); 
+                                desc = new NullableTypeDescriptor(this, typeAlternative);
                             }
                         }
                     }
@@ -408,7 +408,7 @@ namespace BTDB.EventStore2Layer
             }
             if (info.NestedObjGatherer == null)
             {
-                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : null);
+                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : typeof(object));
             }
             info.NestedObjGatherer(obj, this);
         }

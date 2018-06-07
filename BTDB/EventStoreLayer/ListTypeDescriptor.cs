@@ -225,7 +225,13 @@ namespace BTDB.EventStoreLayer
             {
                 var finish = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
-                var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor);
+
+                if (type == typeof(object))
+                    type = _listTypeDescriptor.GetPreferedType();
+                var targetIList = type.GetInterface("IList`1") ?? type;
+                var targetTypeArguments = targetIList.GetGenericArguments();
+                var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor, targetTypeArguments[0]);
+
                 var localList = ilGenerator.DeclareLocal(typeof(IList<>).MakeGenericType(itemType));
                 var localIndex = ilGenerator.DeclareLocal(typeof(int));
                 var localCount = ilGenerator.DeclareLocal(typeof(int));

@@ -8,6 +8,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using System.Linq;
 
 namespace BTDBTest
 {
@@ -771,5 +772,48 @@ namespace BTDBTest
             Assert.True(ev.DictionaryWithNullables[1]);
             Assert.False(ev.DictionaryWithNullables[2].HasValue);
         }
+
+        public class ComplexObject
+        {
+            public ComplexObject Obj { get; set; }
+        }
+
+        public class ComplexObjectEx : ComplexObject
+        {
+            public int Int { get; set; }
+        }
+
+        public class EventWithDeepDictWithComplexObject
+        {
+            public ulong EventId { get; set; }
+            public Dictionary<ulong, Dictionary<string, ComplexObject>> Prop { get; set; }
+            public List<List<ComplexObject>> PropList { get; set; }
+        }
+
+        [Fact]
+        public void SerializeDeserializeDeepDictWithComplexObject()
+        {
+            var serializer = new EventSerializer();
+            var obj = new EventWithDeepDictWithComplexObject
+            {
+                EventId = 1,
+                Prop = new Dictionary<ulong, Dictionary<string, ComplexObject>>
+                {
+                    {1, new Dictionary<string, ComplexObject> { { "a", new ComplexObjectEx { Obj = new ComplexObject() } } } }
+                },
+                PropList = new List<List<ComplexObject>> { new List<ComplexObject> { new ComplexObjectEx() } }
+            };
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, obj);
+
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out var obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            var ev = (EventWithDeepDictWithComplexObject)obj2;
+            Assert.Equal(1ul, ev.Prop.First().Key);
+        }
+
     }
 }
