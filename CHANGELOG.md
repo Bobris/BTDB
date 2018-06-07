@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.2.1
+
 ### Fixed
 
 EventLayer2 serialization of `Dictionary<int, Dictionary<int, ComplexObject>>` property.
