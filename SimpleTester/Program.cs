@@ -38,7 +38,9 @@ namespace SimpleTester
             //new RelationSpeedTest().Run();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
             //new TestCompactor().Run(new CancellationToken());
-            new CompactorLatencyMeasurement().Run();
+            //new CompactorLatencyMeasurement().Run();
+            //new ClassGenerator().Run();
+            new EventLayer2TestWithALotOfClasses().Run();
         }
     }
 }
