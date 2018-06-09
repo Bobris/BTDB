@@ -1,4 +1,5 @@
-﻿using BTDB.EventStore2Layer;
+﻿using BTDB.Buffer;
+using BTDB.EventStore2Layer;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,24 +9,80 @@ namespace SimpleTester
 {
     public class EventLayer2TestWithALotOfClasses
     {
+        public class MetadataStream
+        {
+            public void Push(ByteBuffer buffer)
+            {
+                Queue.Add(buffer.ToAsyncSafe());
+            }
+
+            public List<ByteBuffer> Queue { get; } = new List<ByteBuffer>();
+        }
+
+        public class SerializerTester
+        {
+            public SerializerTester(MetadataStream metadataStream, Random random)
+            {
+                _metadata = metadataStream;
+                _rand = random;
+            }
+
+            MetadataStream _metadata;
+            EventSerializer _serializer = new EventSerializer();
+            Random _rand;
+            object[] _instances = InstantiateALotOfClasses.Gen().ToArray();
+            int _metaIndex;
+            int _saving;
+            bool _metaSaved;
+
+            internal void DoSomething()
+            {
+                switch(_rand.Next(3))
+                {
+                    case 0:
+                        if (_metaIndex<_metadata.Queue.Count)
+                        {
+                            _serializer.ProcessMetadataLog(_metadata.Queue[_metaIndex++]);
+                        }
+                        break;
+                    case 1:
+                        if (_metaSaved && _rand.Next(20) < 15) break;
+                        var buf = _serializer.Serialize(out var hasMetaData, _instances[_saving]);
+                        if (hasMetaData)
+                        {
+                            if (!_metaSaved)
+                            {
+                                _metadata.Push(buf);
+                                _metaSaved = true;
+                            }
+                        }
+                        else
+                        {
+                            _saving = _rand.Next(_instances.Length);
+                            _metaSaved = false;
+                        }
+                        break;
+                    case 2:
+                        // wait
+                        break;
+                }
+            }
+        }
+
         public void Run()
         {
-            var instances = InstantiateALotOfClasses.Gen().ToArray();
-            var serializer = new EventSerializer();
-            for (var i = 0; i < instances.Length; i++)
+            var rand = new Random(100);
+            var m = new MetadataStream();
+            var s1 = new SerializerTester(m, rand);
+            var s2 = new SerializerTester(m, rand);
+            var s3 = new SerializerTester(m, rand);
+            for (int i = 0; i < 100000; i++)
             {
-                var buf = serializer.Serialize(out bool hasMetadata, instances[i]).ToAsyncSafe();
-                if (!hasMetadata)
-                    throw new Exception("It should not have known this type");
-                serializer.ProcessMetadataLog(buf);
-                buf = serializer.Serialize(out hasMetadata, instances[i]).ToAsyncSafe();
-                if (hasMetadata)
-                    throw new Exception("It should have known this type");
-                for (var j = 0; j < i; j++)
+                switch(rand.Next(3))
                 {
-                    buf = serializer.Serialize(out hasMetadata, instances[j]).ToAsyncSafe();
-                    if (hasMetadata)
-                        throw new Exception("It should have known this type");
+                    case 0: s1.DoSomething(); break;
+                    case 1: s2.DoSomething(); break;
+                    case 2: s3.DoSomething(); break;
                 }
             }
         }

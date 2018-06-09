@@ -43,16 +43,20 @@ namespace SimpleTester
     {{");
             _sbInst.Append($@"
         yield return new TestKlass{i} {{");
-            var fieldsCount = _rand.Next(1, 5);
+            var fieldsCount = _rand.Next(2, 5);
             for (var j = 0; j < fieldsCount; j++)
             {
                 switch (_rand.Next(4))
                 {
                     case 0:
-                        _sb.Append($@"
-        public int Prop{i}_{j} {{ get; set; }}");
-                        _sbInst.Append($@"
-            Prop{i}_{j} = 1,");
+                        if (i>0)
+                        {
+                            var k = _rand.Next(i);
+                            _sb.Append($@"
+        public TestKlass{k} Prop{i}_{j} {{ get; set; }}");
+                            _sbInst.Append($@"
+            Prop{i}_{j} = new TestKlass{k}(),");
+                        }
                         break;
                     case 1:
                         _sb.Append($@"
