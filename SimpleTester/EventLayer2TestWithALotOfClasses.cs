@@ -11,9 +11,10 @@ namespace SimpleTester
     {
         public class MetadataStream
         {
-            public void Push(ByteBuffer buffer)
+            public int Push(ByteBuffer buffer)
             {
                 Queue.Add(buffer.ToAsyncSafe());
+                return Queue.Count - 1;
             }
 
             public List<ByteBuffer> Queue { get; } = new List<ByteBuffer>();
@@ -34,26 +35,31 @@ namespace SimpleTester
             int _metaIndex;
             int _saving;
             bool _metaSaved;
+            int _metaSavedIndex;
 
             internal void DoSomething()
             {
-                switch(_rand.Next(3))
+                switch (_rand.Next(3))
                 {
                     case 0:
-                        if (_metaIndex<_metadata.Queue.Count)
+                        while (_metaIndex < _metadata.Queue.Count)
                         {
                             _serializer.ProcessMetadataLog(_metadata.Queue[_metaIndex++]);
                         }
                         break;
                     case 1:
-                        if (_metaSaved && _rand.Next(20) < 15) break;
+                        if (_metaSaved && _metaIndex <= _metaSavedIndex) break;
                         var buf = _serializer.Serialize(out var hasMetaData, _instances[_saving]);
                         if (hasMetaData)
                         {
                             if (!_metaSaved)
                             {
-                                _metadata.Push(buf);
+                                _metaSavedIndex = _metadata.Push(buf);
                                 _metaSaved = true;
+                            }
+                            else
+                            {
+                                throw new Exception("Should not need to save another metadata");
                             }
                         }
                         else
@@ -78,7 +84,7 @@ namespace SimpleTester
             var s3 = new SerializerTester(m, rand);
             for (int i = 0; i < 100000; i++)
             {
-                switch(rand.Next(3))
+                switch (rand.Next(3))
                 {
                     case 0: s1.DoSomething(); break;
                     case 1: s2.DoSomething(); break;
