@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+ListBy... methods in relations now correct type of AdvancedEnumeratorParam<T>
+
 ## 14.3.0
 
 ### Fixed
