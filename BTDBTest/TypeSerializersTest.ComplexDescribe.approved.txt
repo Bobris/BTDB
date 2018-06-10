@@ -2,8 +2,8 @@
 List<String>
 BTDBTest.TypeSerializersTest+SimpleDto
 {
-    StringField : String
     IntField : VInt32
+    StringField : String
 }
 BTDBTest.TypeSerializersTest+ClassWithList
 {
@@ -15,25 +15,25 @@ BTDBTest.TypeSerializersTest+ClassWithDict
 }
 BTDBTest.TypeSerializersTest+SelfPointing1
 {
+    Other1 : VInt32
     Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
     Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
     {
+        Other2 : String
         Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
         Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
-        Other2 : String
     }
-    Other1 : VInt32
 }
 BTDBTest.TypeSerializersTest+SelfPointing2
 {
+    Other2 : String
     Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
     {
+        Other1 : VInt32
         Self1 : BTDBTest.TypeSerializersTest+SelfPointing1
         Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
-        Other1 : VInt32
     }
     Self2 : BTDBTest.TypeSerializersTest+SelfPointing2
-    Other2 : String
 }
 BTDBTest.TypeSerializersTest+TestEnum
 enum {

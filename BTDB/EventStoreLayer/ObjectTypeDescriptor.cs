@@ -93,6 +93,7 @@ namespace BTDB.EventStoreLayer
                     _fields.Add(new KeyValuePair<string, ITypeDescriptor>(GetPersitentName(propertyInfo), descriptor));
                 }
             }
+            _fields.Sort((l, r) => string.Compare(l.Key, r.Key));
             return true;
         }
 

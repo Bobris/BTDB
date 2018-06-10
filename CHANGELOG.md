@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Made order of properties in EventSerializers stable by sorting them by name.
+
 ## 14.2.1
 
 ### Fixed
