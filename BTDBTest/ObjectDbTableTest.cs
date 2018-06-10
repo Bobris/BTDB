@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -620,8 +618,13 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<IJobTable>("Job");
                 var jobTable = creator(tr);
-                jobTable.Insert(new Job { Id = 11, Name = "Code", Priority = 1,
-                                          Lookup = new Dictionary<int, int> { { 1, 2 } } });
+                jobTable.Insert(new Job
+                {
+                    Id = 11,
+                    Name = "Code",
+                    Priority = 1,
+                    Lookup = new Dictionary<int, int> { { 1, 2 } }
+                });
                 jobTable.Insert(new Job { Id = 22, Name = "Sleep", Priority = 2 });
                 jobTable.Insert(new Job { Id = 33, Name = "Bicycle", Priority = 1 });
                 tr.Commit();
@@ -1053,7 +1056,7 @@ namespace BTDBTest
                 var itemCount = 100;
                 for (var i = 0; i < itemCount; i++)
                 {
-                    file.Id = (ulong) i;
+                    file.Id = (ulong)i;
                     files.Insert(file);
                 }
 
@@ -1088,16 +1091,16 @@ namespace BTDBTest
 
                 var rooms = creator(tr);
                 rooms.CompanyId = 1;
-                rooms.Insert(new Room {Id = 10, Name = "First 1"});
-                rooms.Insert(new Room {Id = 20, Name = "Second 1"});
+                rooms.Insert(new Room { Id = 10, Name = "First 1" });
+                rooms.Insert(new Room { Id = 20, Name = "Second 1" });
 
                 tr.Commit();
             }
 
             ModifyDuringEnumerate(creator, table => table.Insert(new Room { Id = 30, Name = "third" }), true);
             ModifyDuringEnumerate(creator, table => table.RemoveById(20), true);
-            ModifyDuringEnumerate(creator, table => table.Update(new Room {Id = 10, Name = "First"}), false);
-            ModifyDuringEnumerate(creator, table => table.Upsert(new Room {Id = 40, Name = "insert new value"}), true);
+            ModifyDuringEnumerate(creator, table => table.Update(new Room { Id = 10, Name = "First" }), false);
+            ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 40, Name = "insert new value" }), true);
             ModifyDuringEnumerate(creator, table => table.Upsert(new Room { Id = 10, Name = "update existing" }), false);
         }
 
@@ -1762,7 +1765,7 @@ namespace BTDBTest
                     var personSimpleTable = creator(tr);
                     for (int i = 0; i < 100; i++)
                     {
-                        var duty = new SimpleObject() {Id = (ulong) i, Name = "HardCore Code" + i % 5};
+                        var duty = new SimpleObject() { Id = (ulong)i, Name = "HardCore Code" + i % 5 };
                         personSimpleTable.Insert(duty);
                     }
 
@@ -1796,7 +1799,7 @@ namespace BTDBTest
             }
             using (var tr = _db.StartTransaction())
             {   //be bad, delete secondary indexes
-                var kvTr = ((IInternalObjectDBTransaction) tr).KeyValueDBTransaction;
+                var kvTr = ((IInternalObjectDBTransaction)tr).KeyValueDBTransaction;
                 kvTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
                 kvTr.EraseAll();
                 tr.Commit();
@@ -1937,7 +1940,7 @@ namespace BTDBTest
                     TimeSpanField = new TimeSpan(1, 2, 3, 4),
                     GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a"),
                     EnumField = TestEnum.Item2,
-                    ByteBufferField = ByteBuffer.NewAsync(new byte[] {0, 1, 2}, 1, 1)
+                    ByteBufferField = ByteBuffer.NewAsync(new byte[] { 0, 1, 2 }, 1, 1)
                 });
 
                 var o = table.FindById(11);
@@ -1961,7 +1964,7 @@ namespace BTDBTest
                 Assert.Equal(new byte[] { 1 }, o.ByteBufferField.Value.ToByteArray());
             }
         }
-        
+
         public class CompanyName
         {
             [PrimaryKey(1)]
@@ -1988,8 +1991,8 @@ namespace BTDBTest
                 table.CompanyId = 10;
                 table.Insert(new CompanyName { Name = "Q" });
                 Assert.Single(table);
-                foreach(var c in table)
-                   Assert.Equal(10u, table.CompanyId);
+                foreach (var c in table)
+                    Assert.Equal(10u, table.CompanyId);
             }
         }
 
@@ -2010,6 +2013,17 @@ namespace BTDBTest
                 obj is InheritedRelation_CompanyItem item &&
                 CompanyId == item.CompanyId &&
                 UserId == item.UserId;
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = CompanyId.GetHashCode();
+                    hashCode = (hashCode * 397) ^ UserId.GetHashCode();
+                    hashCode = (hashCode * 397) ^ Value;
+                    return hashCode;
+                }
+            }
         }
         public interface IInheritedRelationCompany : IReadOnlyCollection<InheritedRelation_CompanyItem>
         {
@@ -2070,5 +2084,38 @@ namespace BTDBTest
                 }
             }
         }
+
+        public interface IPersonTableSuperfluousParameter
+        {
+            void Insert(Person person);
+            IEnumerator<Person> ListByName(ulong tenantId, string name, AdvancedEnumeratorParam<int> param);
+        }
+
+        [Fact]
+        public void ReportErrorForSuperfluousMethodParameter()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IPersonTableSuperfluousParameter>("Superfluous"));
+                Assert.Contains("mismatch", ex.Message);
+            }
+        }
+
+        public interface IPersonTableWrongTypeParameter
+        {
+            void Insert(Person person);
+            IEnumerator<Person> ListByName(ulong tenantId, AdvancedEnumeratorParam<int> param);
+        }
+
+        [Fact]
+        public void ReportErrorForInvalidMethodParameter()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<IPersonTableWrongTypeParameter>("Invalid"));
+                Assert.Contains("mismatch", ex.Message);
+            }
+        }
+
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using BTDB.Buffer;
@@ -223,15 +224,16 @@ namespace BTDB.ODBLayer
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
             var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
-            var prefixParamCount = method.GetParameters().Length - 1;
+            var prefixParamCount = parameters.Length - 1;
 
-            var field = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields()
-                .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+            var field = primaryKeyFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             reqMethod.Generator
                 .Ldarg(0);
             SavePKListPrefixBytes(reqMethod.Generator, method.Name,
-                method.GetParameters(), _relationInfo.ApartFields);
+                parameters, _relationInfo.ApartFields);
             reqMethod.Generator
                 .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
                 .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
@@ -285,15 +287,16 @@ namespace BTDB.ODBLayer
 
             var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
             var secondaryKeyIndex = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(6));
-            var prefixParamCount = method.GetParameters().Length - 1;
+            var prefixParamCount = parameters.Length - 1;
 
-            var field = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex)
-                .Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            var skFields = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
+            var field = skFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             reqMethod.Generator
                 .Ldarg(0);
             SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                method.GetParameters(), _relationInfo.ApartFields);
+                parameters, _relationInfo.ApartFields);
             reqMethod.Generator
                 .LdcI4(prefixParamCount + _relationInfo.ApartFields.Count)
                 .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order"))
@@ -335,6 +338,14 @@ namespace BTDB.ODBLayer
             else
             {
                 throw new BTDBException("Invalid method " + method.Name);
+            }
+        }
+
+        void ValidateAdvancedEnumParameter(TableFieldInfo field, Type advEnumParamType, string methodName)
+        {
+            if (!field.Handler.IsCompatibleWith(advEnumParamType, FieldHandlerOptions.Orderable))
+            {
+                throw new BTDBException($"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{advEnumParamType.ToSimpleName()}' found).");
             }
         }
 
