@@ -1477,6 +1477,10 @@ namespace BTDBTest
                 Assert.True(en.MoveNext());
                 Assert.Equal(1u, en.Current.ProductionsCount);
 
+                en = table.ListByProductionDateWithCompanyId(5, new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, DateTime.MinValue, KeyProposition.Included, DateTime.MaxValue, KeyProposition.Excluded));
+                Assert.True(en.MoveNext());
+                Assert.Equal(1u, en.Current.ProductionsCount);
+
                 tr.Commit();
             }
         }

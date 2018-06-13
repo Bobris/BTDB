@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Allow to use DateTime.MinValue and DateTime.MaxValue in ordered context - they will be automatically converted to UTC.
+
 ## 14.4.0
 
 ### Fixed

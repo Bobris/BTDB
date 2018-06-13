@@ -181,7 +181,14 @@ namespace BTDB.StreamLayer
         public void WriteDateTimeForbidUnspecifiedKind(DateTime value)
         {
             if (value.Kind == DateTimeKind.Unspecified)
-                throw new ArgumentOutOfRangeException(nameof(value), "DateTime.Kind cannot be stored as Unspecified");
+            {
+                if (value == DateTime.MinValue)
+                    value = DateTime.MinValue.ToUniversalTime();
+                else if (value == DateTime.MaxValue)
+                    value = DateTime.MaxValue.ToUniversalTime();
+                else
+                    throw new ArgumentOutOfRangeException(nameof(value), "DateTime.Kind cannot be stored as Unspecified");
+            }
             WriteDateTime(value);
         }
 
