@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Shut up Coverity. DiskChunkCache findings are false positives.
+
 ## 14.5.0
 
 ### Added

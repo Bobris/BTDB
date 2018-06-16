@@ -182,7 +182,9 @@ namespace BTDB.KVDBLayer
 
                 public override void FlushBuffer()
                 {
-                    if (Pos != 0) lock (_file._lock)
+                    if (Pos != 0)
+                    {
+                        lock (_file._lock)
                         {
                             ExpandIfNeeded((long)Ofs + Pos);
                             fixed (byte* src = Buf)
@@ -191,8 +193,9 @@ namespace BTDB.KVDBLayer
                             }
                             Ofs += (ulong)Pos;
                             _file._trueLength = (long)Ofs;
-                            Pos = 0;
                         }
+                        Pos = 0;
+                    }
                 }
 
                 void ExpandIfNeeded(long size)

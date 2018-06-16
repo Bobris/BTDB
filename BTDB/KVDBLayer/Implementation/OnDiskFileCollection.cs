@@ -143,13 +143,16 @@ namespace BTDB.KVDBLayer
 
                 public override void FlushBuffer()
                 {
-                    if (Pos != 0) lock (_file._lock)
+                    if (Pos != 0)
+                    {
+                        lock (_file._lock)
                         {
                             _file._stream.Position = (long)Ofs;
                             _file._stream.Write(Buf, 0, Pos);
-                            Ofs += (ulong)Pos;
-                            Pos = 0;
                         }
+                        Ofs += (ulong)Pos;
+                        Pos = 0;
+                    }
                 }
 
                 public override void WriteBlock(byte[] data, int offset, int length)
