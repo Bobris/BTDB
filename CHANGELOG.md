@@ -5,6 +5,7 @@
 ### Fixed
 
 Shut up Coverity. DiskChunkCache findings are false positives.
+Iterator fix for back reference in inlined lists and dictionaries. 
 
 ## 14.5.0
 

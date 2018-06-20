@@ -564,5 +564,58 @@ namespace BTDBTest
             }
             IterateWithApprove();
         }
+
+        public class Blob
+        {
+            public string Name { get; set; }
+
+            protected bool Equals(Blob other)
+            {
+                return string.Equals(Name, other.Name);
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((Blob)obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return (Name != null ? Name.GetHashCode() : 0);
+            }
+        }
+
+        public class WithReusedObjects
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public IList<Blob> Blobs { get; set; }
+            public IDictionary<Blob, Blob> BlobsIDict { get; set; }
+            public Dictionary<Blob, Blob> BlobsDict { get; set; }
+        }
+
+        public interface IRelationWithReusedObjects
+        {
+            void Insert(WithReusedObjects value);
+        }
+
+        [Fact]
+        public void IterateRelationWithReusedObjects()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithReusedObjects>("IRelationWithReusedObjects");
+                var table = creator(tr);
+                table.Insert(new WithReusedObjects { Id = 1, Blobs = new List<Blob> { new Blob(), new Blob() } });
+                table.Insert(new WithReusedObjects { Id = 2, BlobsIDict = new Dictionary<Blob, Blob> { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() } });
+                table.Insert(new WithReusedObjects { Id = 3, BlobsDict = new Dictionary<Blob, Blob> { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() } });
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
+
     }
 }

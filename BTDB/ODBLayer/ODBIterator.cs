@@ -471,13 +471,14 @@ namespace BTDB.ODBLayer
         {
             var skip = skipping || _visitor != null && !_visitor.StartDictionary();
             var count = reader.ReadVUInt32();
+            var knownInlineId = new HashSet<int>();
             while (count-- > 0)
             {
                 var skipKey = skip || _visitor != null && !_visitor.StartDictKey();
-                IterateHandler(reader, keyHandler, skipKey, null);
+                IterateHandler(reader, keyHandler, skipKey, knownInlineId);
                 if (!skipKey) _visitor?.EndDictKey();
                 var skipValue = skip || _visitor != null && !_visitor.StartDictValue();
-                IterateHandler(reader, valueHandler, skipValue, null);
+                IterateHandler(reader, valueHandler, skipValue, knownInlineId);
                 if (!skipValue) _visitor?.EndDictValue();
             }
             if (!skip) _visitor?.EndDictionary();
@@ -487,10 +488,11 @@ namespace BTDB.ODBLayer
         {
             var skip = skipping || _visitor != null && !_visitor.StartList();
             var count = reader.ReadVUInt32();
+            var knownInlineId = new HashSet<int>();
             while (count-- > 0)
             {
                 var skipItem = skip || _visitor != null && !_visitor.StartItem();
-                IterateHandler(reader, itemHandler, skipItem, null);
+                IterateHandler(reader, itemHandler, skipItem, knownInlineId);
                 if (!skipItem) _visitor?.EndItem();
             }
             if (!skip) _visitor?.EndList();
