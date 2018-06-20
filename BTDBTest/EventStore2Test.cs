@@ -671,6 +671,24 @@ namespace BTDBTest
         public class EventWithInt
         {
             public int Status { get; set; }
+
+            protected bool Equals(EventWithInt other)
+            {
+                return Status == other.Status;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((EventWithInt) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return Status;
+            }
         }
 
         [Fact]
@@ -771,6 +789,75 @@ namespace BTDBTest
             Assert.Equal(2, ev.DictionaryWithNullables.Count);
             Assert.True(ev.DictionaryWithNullables[1]);
             Assert.False(ev.DictionaryWithNullables[2].HasValue);
+        }
+
+        [Fact]
+        public void
+            GivenObjectWithMultipleReferencesToSingleInstance_WhenDeserializationFailsDeepDownBecauseOfMissingMetadata_ThenNextReferenceShouldBeResolvedCorrectlyAfterApplicationOfTheMetadata()
+        {
+            // Familiarize the serializer with top-level type
+            var serializer = new EventSerializer();
+            var input1 = new ObjectWithMultipleReferences();
+            var meta1 = serializer.Serialize(out var metadataProduced, input1).ToAsyncSafe();
+            Assert.True(metadataProduced);
+            serializer.ProcessMetadataLog(meta1);
+            var data1 = serializer.Serialize(out metadataProduced, input1).ToAsyncSafe();
+            Assert.False(metadataProduced);
+
+            // Serialize the top-level type containing properties with a not-yet-encountered object type
+            var reusableObj = new EventWithInt { Status = 42 };
+            var input2 = new ObjectWithMultipleReferences
+            {
+                Reference1 = reusableObj,
+                Reference2 = reusableObj
+            };
+            var meta2 = serializer.Serialize(out metadataProduced, input2).ToAsyncSafe();
+            Assert.True(metadataProduced);
+            serializer.ProcessMetadataLog(meta2);
+            var data2 = serializer.Serialize(out metadataProduced, input2).ToAsyncSafe();
+            Assert.False(metadataProduced);
+
+            // Familiarize the deserializer with the top-level type
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out _, data1));
+            deserializer.ProcessMetadataLog(meta1);
+            Assert.True(deserializer.Deserialize(out var obj1, data1));
+            Assert.Equal(input1, obj1);
+
+            // Deserialize the top-level type with properties containing instances of a not-yet-encountered object type
+            Assert.False(deserializer.Deserialize(out _, data2));
+            deserializer.ProcessMetadataLog(meta2);
+            Assert.True(deserializer.Deserialize(out var obj2, data2));
+            Assert.Equal(input2, obj2);
+        }
+
+        public class ObjectWithMultipleReferences
+        {
+            public object Reference1 { get; set; }
+            public object Reference2 { get; set; }
+
+            protected bool Equals(ObjectWithMultipleReferences other)
+            {
+                return Equals(Reference1, other.Reference1) && Equals(Reference2, other.Reference2);
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((ObjectWithMultipleReferences) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = (Reference1 != null ? Reference1.GetHashCode() : 0);
+                    hashCode = (hashCode * 397) ^ (Reference2 != null ? Reference2.GetHashCode() : 0);
+                    return hashCode;
+                }
+            }
         }
 
         public class ComplexObject
