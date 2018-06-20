@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.5.1
+
 ### Fixed
 
 Shut up Coverity. DiskChunkCache findings are false positives.
