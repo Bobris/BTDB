@@ -5,7 +5,8 @@
 ### Fixed
 
 Shut up Coverity. DiskChunkCache findings are false positives.
-Iterator fix for back reference in inlined lists and dictionaries. 
+Iterator fix for back reference in inlined lists and dictionaries.
+EventStore2Layer Deserializer bug in specific case.
 
 ## 14.5.0
 
