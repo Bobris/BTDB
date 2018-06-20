@@ -234,7 +234,10 @@ namespace BTDB.EventStore2Layer
                 {
                     return false;
                 }
-                _visited.Clear();
+                finally
+                {
+                    _visited.Clear();
+                }
                 _reader.Restart(ByteBuffer.NewEmpty());
                 return true;
             }
