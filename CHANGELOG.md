@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Iterator fix for back reference in inlined lists and dictionaries. Now really works ;-)
+
 ## 14.5.1
 
 ### Fixed

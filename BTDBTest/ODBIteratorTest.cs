@@ -617,5 +617,24 @@ namespace BTDBTest
             IterateWithApprove();
         }
 
+        [Fact]
+        public void IterateRelationWithReallyReusedObjects()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithReusedObjects>("IRelationWithReusedObjects");
+                var table = creator(tr);
+                var blob = new Blob();
+                table.Insert(new WithReusedObjects
+                {
+                    Id = 1,
+                    Blobs = new List<Blob> { blob, blob },
+                    BlobsIDict = new Dictionary<Blob, Blob> { [blob] = blob, [new Blob { Name = "A" }] = blob },
+                    BlobsDict = new Dictionary<Blob, Blob> { [blob] = blob, [new Blob { Name = "A" }] = blob }
+                });
+                tr.Commit();
+            }
+            IterateWithApprove();
+        }
     }
 }

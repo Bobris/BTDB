@@ -407,7 +407,7 @@ namespace BTDB.ODBLayer
                 else
                 {
                     var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
-                    IterateInlineDict(reader, kvHandlers[0], kvHandlers[1], skipping);
+                    IterateInlineDict(reader, kvHandlers[0], kvHandlers[1], skipping, knownInlineRefs);
                 }
             }
             else if (handler is NullableFieldHandler)
@@ -468,18 +468,17 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void IterateInlineDict(AbstractBufferedReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping)
+        void IterateInlineDict(AbstractBufferedReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping, HashSet<int> knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartDictionary();
             var count = reader.ReadVUInt32();
-            var knownInlineId = new HashSet<int>();
             while (count-- > 0)
             {
                 var skipKey = skip || _visitor != null && !_visitor.StartDictKey();
-                IterateHandler(reader, keyHandler, skipKey, knownInlineId);
+                IterateHandler(reader, keyHandler, skipKey, knownInlineRefs);
                 if (!skipKey) _visitor?.EndDictKey();
                 var skipValue = skip || _visitor != null && !_visitor.StartDictValue();
-                IterateHandler(reader, valueHandler, skipValue, knownInlineId);
+                IterateHandler(reader, valueHandler, skipValue, knownInlineRefs);
                 if (!skipValue) _visitor?.EndDictValue();
             }
             if (!skip) _visitor?.EndDictionary();
