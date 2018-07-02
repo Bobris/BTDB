@@ -357,11 +357,12 @@ namespace BTDB.ODBLayer
                         _visitor != null && !_visitor.StartInlineObject(tableId,
                             _tableId2Name.TryGetValue(tableId, out tableName) ? tableName : null, version);
                     var tvi = GetTableVersionInfo(tableId, version);
+                    var knownInlineRefsNested = new HashSet<int>();
                     for (var i = 0; i < tvi.FieldCount; i++)
                     {
                         var fi = tvi[i];
                         var skipField = skip || _visitor != null && !_visitor.StartField(fi.Name);
-                        IterateHandler(reader, fi.Handler, skipField, new HashSet<int>());
+                        IterateHandler(reader, fi.Handler, skipField, knownInlineRefsNested);
                         if (!skipField) _visitor?.EndField();
                     }
                     if (!skip) _visitor?.EndInlineObject();
@@ -385,7 +386,7 @@ namespace BTDB.ODBLayer
                 else
                 {
                     var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
-                    IterateInlineList(reader, itemHandler, skipping);
+                    IterateInlineList(reader, itemHandler, skipping, knownInlineRefs);
                 }
             }
             else if (handler is DictionaryFieldHandler)
@@ -484,15 +485,14 @@ namespace BTDB.ODBLayer
             if (!skip) _visitor?.EndDictionary();
         }
 
-        void IterateInlineList(AbstractBufferedReader reader, IFieldHandler itemHandler, bool skipping)
+        void IterateInlineList(AbstractBufferedReader reader, IFieldHandler itemHandler, bool skipping, HashSet<int> knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartList();
             var count = reader.ReadVUInt32();
-            var knownInlineId = new HashSet<int>();
             while (count-- > 0)
             {
                 var skipItem = skip || _visitor != null && !_visitor.StartItem();
-                IterateHandler(reader, itemHandler, skipItem, knownInlineId);
+                IterateHandler(reader, itemHandler, skipItem, knownInlineRefs);
                 if (!skipItem) _visitor?.EndItem();
             }
             if (!skip) _visitor?.EndList();
