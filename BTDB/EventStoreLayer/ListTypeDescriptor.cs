@@ -42,7 +42,6 @@ namespace BTDB.EventStoreLayer
             if (descriptor == _itemDescriptor && _name != null) return;
             _itemDescriptor = descriptor;
             if ((descriptor.Name?.Length ?? 0) == 0) return;
-            _itemType = _itemDescriptor.GetPreferedType();
             Sealed = _itemDescriptor.Sealed;
             Name = $"List<{_itemDescriptor.Name}>";
         }

@@ -49,8 +49,6 @@ namespace BTDB.EventStoreLayer
             _keyDescriptor = keyDescriptor;
             _valueDescriptor = valueDescriptor;
             if ((_keyDescriptor.Name?.Length ?? 0) == 0 || (_valueDescriptor.Name?.Length ?? 0) == 0) return;
-            _keyType = _keyDescriptor.GetPreferedType();
-            _valueType = _valueDescriptor.GetPreferedType();
             Sealed = _keyDescriptor.Sealed && _valueDescriptor.Sealed;
             Name = $"Dictionary<{_keyDescriptor.Name}, {_valueDescriptor.Name}>";
         }

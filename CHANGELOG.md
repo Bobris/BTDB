@@ -4,6 +4,7 @@
 
 ### Fixed
 
+Event Deserialization does not eagerly require Types exists in List and Dictionary.
 Iterator fix for back reference in inlined lists and dictionaries. Now really works ;-)
 
 ## 14.5.1
