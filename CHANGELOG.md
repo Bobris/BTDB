@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.5.2
+
 ### Fixed
 
 Event Deserialization does not eagerly require Types exists in List and Dictionary.
