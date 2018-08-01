@@ -328,6 +328,8 @@ namespace BTDB.ODBLayer
 
         internal Type ClientType => _clientType;
 
+        internal Type InterfaceType => _interfaceType;
+
         internal object DefaultClientObject => _defaultClientObject;
 
         internal RelationVersionInfo ClientRelationVersionInfo { get; }
