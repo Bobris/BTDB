@@ -359,6 +359,20 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public IEnumerable<Type> EnumerateRelationTypes()
+        {
+            foreach (var relationInfo in _owner.RelationsInfo.EnumerateRelationInfos().ToArray())
+            {
+                var oid = relationInfo.Id;
+                if (oid == 0) continue;
+
+                var type = relationInfo.InterfaceType;
+
+                if (type != null)
+                    yield return type;
+            }
+        }
+
         public object Singleton(Type type)
         {
             var tableInfo = AutoRegisterType(type, true);

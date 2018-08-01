@@ -67,5 +67,13 @@ namespace BTDB.ODBLayer
                 if (name.Key >= _freeId) _freeId = name.Key + 1;
             }
         }
+
+        public IEnumerable<RelationInfo> EnumerateRelationInfos()
+        {
+            foreach (var relationInfo in  _id2Relation.Values)
+            {
+                yield return relationInfo;
+            }
+        }
     }
 }

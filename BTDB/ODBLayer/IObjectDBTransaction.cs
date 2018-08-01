@@ -49,5 +49,7 @@ namespace BTDB.ODBLayer
         bool RollbackAdvised { get; set; }
 
         Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
+
+        IEnumerable<Type> EnumerateRelationTypes();
     }
 }

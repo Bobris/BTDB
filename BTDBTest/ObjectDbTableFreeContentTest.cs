@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -744,6 +745,45 @@ namespace BTDBTest
                 builder.Append(unseenKey.ValueSize);
             }
             return builder.ToString();
+        }
+
+        [Fact]
+        public void PossibleToEnumerateRelations()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                tr.InitRelation<ILinks>("LinksRelation")(tr);
+                tr.InitRelation<ISetings>("SetingsRelation")(tr);
+                tr.InitRelation<IFileTable>("FileRelation")(tr);
+                CheckRelationTypes(tr.EnumerateRelationTypes());
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                CheckRelationTypes(tr.EnumerateRelationTypes());
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                tr.InitRelation<ILinks>("LinksRelation")(tr);
+                tr.InitRelation<ISetings>("SetingsRelation")(tr);
+                tr.InitRelation<IFileTable>("FileRelation")(tr);
+                CheckRelationTypes(tr.EnumerateRelationTypes());
+            }
+        }
+
+        void CheckRelationTypes(IEnumerable<Type> types)
+        {
+            var a = types.ToArray();
+            
+            Assert.Equal(3, a.Length);
+
+            Assert.Equal(typeof(ILinks), a[0]);
+            Assert.Equal(typeof(ISetings), a[1]);
+            Assert.Equal(typeof(IFileTable), a[2]);
         }
 
         public void Dispose()
