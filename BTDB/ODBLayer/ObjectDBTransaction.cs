@@ -361,7 +361,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<Type> EnumerateRelationTypes()
         {
-            foreach (var relationInfo in _owner.RelationsInfo.EnumerateRelationInfos().ToArray())
+            foreach (var relationInfo in _owner.RelationsInfo.EnumerateRelationInfos())
             {
                 var oid = relationInfo.Id;
                 if (oid == 0) continue;

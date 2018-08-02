@@ -2125,11 +2125,27 @@ namespace BTDBTest
         [Fact]
         public void PossibleToEnumerateRelations()
         {
+            void CheckRelationTypes(IEnumerable<Type> types)
+            {
+                var a = types.ToArray();
+
+                Assert.Equal(3, a.Length);
+
+                Assert.Equal(typeof(IPersonTable), a[0]);
+                Assert.Equal(typeof(IJobTable), a[1]);
+                Assert.Equal(typeof(ILicTable), a[2]);
+            }
+
+            void InitRelations(IObjectDBTransaction transaction)
+            {
+                transaction.InitRelation<IPersonTable>("PersonRelation")(transaction);
+                transaction.InitRelation<IJobTable>("JobRelation")(transaction);
+                transaction.InitRelation<ILicTable>("LicRelation")(transaction);
+            }
+
             using (var tr = _db.StartTransaction())
             {
-                tr.InitRelation<IPersonTable>("PersonRelation")(tr);
-                tr.InitRelation<IJobTable>("JobRelation")(tr);
-                tr.InitRelation<ILicTable>("LicRelation")(tr);
+                InitRelations(tr);
                 CheckRelationTypes(tr.EnumerateRelationTypes());
                 tr.Commit();
             }
@@ -2143,23 +2159,12 @@ namespace BTDBTest
 
             using (var tr = _db.StartTransaction())
             {
-                tr.InitRelation<IPersonTable>("LinksRelation")(tr);
-                tr.InitRelation<IJobTable>("SetingsRelation")(tr);
-                tr.InitRelation<ILicTable>("FileRelation")(tr);
+                InitRelations(tr);
                 CheckRelationTypes(tr.EnumerateRelationTypes());
             }
         }
 
-        void CheckRelationTypes(IEnumerable<Type> types)
-        {
-            var a = types.ToArray();
-
-            Assert.Equal(3, a.Length);
-
-            Assert.Equal(typeof(IPersonTable), a[0]);
-            Assert.Equal(typeof(IJobTable), a[1]);
-            Assert.Equal(typeof(ILicTable), a[2]);
-        }
+      
 
     }
 }
