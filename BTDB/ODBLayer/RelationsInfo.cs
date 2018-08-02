@@ -70,10 +70,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<RelationInfo> EnumerateRelationInfos()
         {
-            foreach (var relationInfo in  _id2Relation.Values)
-            {
-                yield return relationInfo;
-            }
+            return _id2Relation.Values;
         }
     }
 }
