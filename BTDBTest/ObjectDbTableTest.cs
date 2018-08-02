@@ -2125,16 +2125,12 @@ namespace BTDBTest
         [Fact]
         public void PossibleToEnumerateRelations()
         {
-            void CheckRelationTypes(IEnumerable<Type> types)
+            var expected = new List<Type>
             {
-                var a = types.ToArray();
-
-                Assert.Equal(3, a.Length);
-
-                Assert.Equal(typeof(IPersonTable), a[0]);
-                Assert.Equal(typeof(IJobTable), a[1]);
-                Assert.Equal(typeof(ILicTable), a[2]);
-            }
+                typeof(IPersonTable),
+                typeof(IJobTable),
+                typeof(ILicTable)
+            };
 
             void InitRelations(IObjectDBTransaction transaction)
             {
@@ -2146,13 +2142,13 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 InitRelations(tr);
-                CheckRelationTypes(tr.EnumerateRelationTypes());
+                Assert.Equal(expected, tr.EnumerateRelationTypes());
                 tr.Commit();
             }
 
             using (var tr = _db.StartTransaction())
             {
-                CheckRelationTypes(tr.EnumerateRelationTypes());
+                Assert.Equal(expected, tr.EnumerateRelationTypes());
             }
 
             ReopenDb();
@@ -2160,7 +2156,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 InitRelations(tr);
-                CheckRelationTypes(tr.EnumerateRelationTypes());
+                Assert.Equal(expected, tr.EnumerateRelationTypes());
             }
         }
 
