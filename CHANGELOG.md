@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Relations could be now iterated.
+
 ## 14.5.2
 
 ### Fixed
