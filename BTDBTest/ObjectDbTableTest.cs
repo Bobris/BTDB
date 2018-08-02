@@ -2159,8 +2159,5 @@ namespace BTDBTest
                 Assert.Equal(expected, tr.EnumerateRelationTypes());
             }
         }
-
-      
-
     }
 }
