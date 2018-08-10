@@ -168,7 +168,8 @@ namespace BTDB.EventStoreLayer
             {
                 var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
 
-                if (!targetType.IsAssignableFrom(listType)) throw new NotSupportedException();
+                if (!targetType.IsAssignableFrom(listType))
+                    throw new NotSupportedException($"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");
                 var localList = ilGenerator.DeclareLocal(listType);
                 var loadFinished = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
