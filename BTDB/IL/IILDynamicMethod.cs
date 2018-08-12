@@ -1,3 +1,5 @@
+using System;
+
 namespace BTDB.IL
 {
     public interface IILDynamicMethod : IILMethod
@@ -5,7 +7,7 @@ namespace BTDB.IL
         object Create();
     }
 
-    public interface IILDynamicMethod<out T> : IILMethod where T : class
+    public interface IILDynamicMethod<out T> : IILMethod where T : Delegate
     {
         T Create();
     }
