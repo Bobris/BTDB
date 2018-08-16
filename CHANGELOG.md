@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+Delegate constrains are now supported in C# 7.3, so it now makes compile time errors instead of runtime where possible.
+
+### Fixed
+
+Rare failure in IOC when running in parallel.
+Better exception message when types of fields in Deserialization are different.
+
 ## 14.6.0
 
 ### Added
