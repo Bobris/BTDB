@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.7.0
+
 ### Added
 
 Delegate constrains are now supported in C# 7.3, so it now makes compile time errors instead of runtime where possible.
