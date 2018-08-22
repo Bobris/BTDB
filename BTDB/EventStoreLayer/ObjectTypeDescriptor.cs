@@ -359,7 +359,7 @@ namespace BTDB.EventStoreLayer
                 foreach (var item in _ownerDescriptor._fields)
                 {
                     if (idx > 0) sb.Append(", ");
-                    sb.Append(item.Key).Append(": ").AppendJsonLike(_fieldValues[idx]);
+                    sb.Append($"\"{item.Key}\"").Append(": ").AppendJsonLike(_fieldValues[idx]);
                     idx++;
                 }
                 sb.Append(" }");
