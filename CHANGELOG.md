@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.8.0
+
 ### Changed
 
 Dumping JsonLike output from TypeDescriptor is now more JSON compliant.
