@@ -243,14 +243,13 @@ namespace BTDB.ODBLayer
             yield return _valuesHandler;
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
             var fakeGenerator = fakeMethod.Generator;
-            if (_keysHandler.FreeContent(fakeGenerator, _ => { }))
-                throw new BTDBException("Not supported IDictionary in IDictionary key");
-            var containsNestedIDictionaries = _valuesHandler.FreeContent(fakeGenerator, _ => { });
-            if (!containsNestedIDictionaries)
+            if (_keysHandler.FreeContent(fakeGenerator, _ => { }) == NeedsFreeContent.Yes)
+                throw new BTDBException("Not supported 'free content' in IDictionary key");
+            if (_valuesHandler.FreeContent(fakeGenerator, _ => { }) == NeedsFreeContent.No)
             {
                 ilGenerator
                     .Do(pushReaderOrCtx)
@@ -279,7 +278,7 @@ namespace BTDB.ODBLayer
                     //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
                     .Call(instanceType.GetMethod("DoFreeContent"));
             }
-            return true;
+            return NeedsFreeContent.Yes;
         }
     }
 }

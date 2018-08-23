@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Rare exception during checking possibility of usage of optimized version of prefix based remove when so far unseen objects was used as key in IDictionary
+
 ## 14.8.0
 
 ### Changed

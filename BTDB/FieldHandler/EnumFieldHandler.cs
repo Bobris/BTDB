@@ -305,10 +305,10 @@ namespace BTDB.FieldHandler
             return IsCompatibleWith(type);
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             Skip(ilGenerator, pushReaderOrCtx);
-            return false;
+            return NeedsFreeContent.No;
         }
     }
 }

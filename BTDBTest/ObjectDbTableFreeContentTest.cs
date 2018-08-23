@@ -713,6 +713,51 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
+        public class ImportData
+        {
+            [PrimaryKey]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(Order = 1)]
+            public ulong Id { get; set; }
+
+            public IDictionary<ObjectId, ObjectNode> Items { get; set; }
+        }
+
+        public interface IImportDataTable
+        {
+            bool Insert(ImportData item);
+            void Update(ImportData item);
+            int RemoveById(ulong companyId);
+        }
+
+        public class ObjectNode
+        {
+            public string Sample { get; set; }
+        }
+
+        public class ObjectId
+        {
+            public ulong Id { get; set; }
+        }
+
+        [Fact]
+        public void DoNotPanicWhenUnknownStatusInIDictionaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IImportDataTable>("ImportData");
+                var table = creator(tr);
+                table.Insert(new ImportData
+                {
+                    Items = new Dictionary<ObjectId, ObjectNode>
+                    {
+                        [new ObjectId()] = new ObjectNode()
+                    }
+                });
+                tr.Commit();
+            }
+        }
+
         void AssertNoLeaksInDb()
         {
             var leaks = FindLeaks();
