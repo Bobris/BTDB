@@ -84,14 +84,15 @@ namespace BTDB.EventStoreLayer
             {
                 return sb.Append("null");
             }
-            var str = obj as string;
-            if (str != null)
-            {
-                return sb.Append('"').Append(str).Append('"');
-            }
-            // ReSharper disable RedundantToStringCall it is speed optimization
+
+            if (obj is string objString)
+                return sb.Append('"').Append(objString.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n")).Append('"');
+
+            if (obj.GetType().IsEnum || obj is EnumTypeDescriptor.DynamicEnum || obj is bool ||
+                obj is DateTime || obj is Guid)
+                return sb.Append('"').Append(obj.ToString()).Append('"');
+
             return sb.Append(obj.ToString());
-            // ReSharper restore RedundantToStringCall
         }
     }
 }

@@ -61,10 +61,10 @@ namespace BTDB.FieldHandler
             return this;
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             Skip(ilGenerator, pushReaderOrCtx);
-            return false;
+            return NeedsFreeContent.No;
         }
 
         class ByteBufferHandler : IFieldHandler
@@ -120,10 +120,10 @@ namespace BTDB.FieldHandler
                 throw new InvalidOperationException();
             }
 
-            public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
             {
                 _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
-                return false;
+                return NeedsFreeContent.No;
             }
         }
 

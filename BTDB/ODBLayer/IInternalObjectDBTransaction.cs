@@ -13,6 +13,6 @@ namespace BTDB.ODBLayer
         object ReadInlineObject(IReaderCtx readerCtx);
         void WriteInlineObject(object @object, IWriterCtx writerCtx);
         ulong StoreIfNotInlined(object @object, bool autoRegister, bool forceInline);
-        bool FreeContentInNativeObject(IReaderCtx readerCtx);
+        void FreeContentInNativeObject(IReaderCtx readerCtx);
     }
 }

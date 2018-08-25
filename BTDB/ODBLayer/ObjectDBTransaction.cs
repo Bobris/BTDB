@@ -73,7 +73,7 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
-        public bool FreeContentInNativeObject(IReaderCtx readerCtx)
+        public void FreeContentInNativeObject(IReaderCtx readerCtx)
         {
             var reader = readerCtx.Reader();
             var tableId = reader.ReadVUInt32();
@@ -83,7 +83,6 @@ namespace BTDB.ODBLayer
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
             freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds, readerWithFree.Oids);
-            return freeContentTuple.Item1;
         }
 
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)

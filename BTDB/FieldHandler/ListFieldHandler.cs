@@ -236,12 +236,12 @@ namespace BTDB.FieldHandler
             yield return _itemsHandler;
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
-            var needsFreeContent = false;
+            var needsFreeContent = NeedsFreeContent.No;
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).SkipObject())

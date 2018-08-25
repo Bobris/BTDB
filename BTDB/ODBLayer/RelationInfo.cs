@@ -1196,7 +1196,7 @@ namespace BTDB.ODBLayer
             for (int i = 0; i < valueFields.Length; i++)
             {
                 var needsFreeContent = valueFields[i].Handler.FreeContent(fakeGenerator, _ => { });
-                if (needsFreeContent)
+                if (needsFreeContent != NeedsFreeContent.No)
                     needGenerateFreeFor = i + 1;
             }
             if (needGenerateFreeFor == 0)
@@ -1285,7 +1285,7 @@ namespace BTDB.ODBLayer
                     return;
                 var tableVersion = reader.ReadVUInt32();
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-                if (freeContentTuple.Item1)
+                if (freeContentTuple.Item1 != NeedsFreeContent.No)
                 {
                     freeContentTuple.Item2(_transaction, null, reader, _freeDictionaries, _freeOids);
                 }

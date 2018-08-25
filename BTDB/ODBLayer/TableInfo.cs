@@ -25,7 +25,7 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object> _initializer;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> _saver;
         readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>();
-        readonly ConcurrentDictionary<uint, Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>> _freeContent = new ConcurrentDictionary<uint, Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>>();
+        readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>> _freeContent = new ConcurrentDictionary<uint, Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>>>();
         readonly Dictionary<uint, bool> _freeContentNeedDetectionInProgress = new Dictionary<uint, bool>();
         long _singletonOid;
         long _cachedSingletonTrNum;
@@ -372,31 +372,31 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        internal bool IsFreeContentNeeded(uint version)
+        internal NeedsFreeContent IsFreeContentNeeded(uint version)
         {
-            Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> freeContent;
+            Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> freeContent;
             if (_freeContent.TryGetValue(version, out freeContent))
                 return freeContent.Item1;
             if (_freeContentNeedDetectionInProgress.ContainsKey(version))
-                return false; //when needed then is reported by the other detection in progress
+                return NeedsFreeContent.No; //when needed then is reported by the other detection in progress
             _freeContentNeedDetectionInProgress[version] = true;
             var result = GetFreeContent(version).Item1;
             _freeContentNeedDetectionInProgress.Remove(version);
             return result;
         }
 
-        internal Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> GetFreeContent(uint version)
+        internal Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> GetFreeContent(uint version)
         {
             return _freeContent.GetOrAdd(version, CreateFreeContent);
         }
 
-        Tuple<bool, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> CreateFreeContent(uint version)
+        Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>, IList<ulong>>> CreateFreeContent(uint version)
         {
             var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata,
                 AbstractBufferedReader, IList<ulong>, IList<ulong>>>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
             var tableVersionInfo = _tableVersions.GetOrAdd(version, (ver, tableInfo) => tableInfo._tableInfoResolver.LoadTableVersionInfo(tableInfo._id, ver, tableInfo.Name), this);
-            var needsFreeContent = false;
+            var needsFreeContent = NeedsFreeContent.No;
             var anyNeedsCtx = tableVersionInfo.NeedsCtx();
             if (anyNeedsCtx)
             {
@@ -417,8 +417,7 @@ namespace BTDB.ODBLayer
                     readerOrCtx = il => il.Ldloc(0);
                 else
                     readerOrCtx = il => il.Ldarg(2);
-                var needsFree = srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx);
-                needsFreeContent |= needsFree;
+                Extensions.UpdateNeedsFreeContent(srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx), ref needsFreeContent);
             }
             ilGenerator.Ret();
             return Tuple.Create(needsFreeContent, method.Create());

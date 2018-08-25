@@ -21,10 +21,8 @@ namespace BTDB.IL.Caching
             return new CachingILDynamicMethod(this, name, @delegate);
         }
 
-        public IILDynamicMethod<TDelegate> NewMethod<TDelegate>(string name) where TDelegate : class
+        public IILDynamicMethod<TDelegate> NewMethod<TDelegate>(string name) where TDelegate : Delegate
         {
-            var t = typeof(TDelegate);
-            if (!t.IsDelegate()) throw new ArgumentException("Generic paramater T must be Delegate");
             return new CachingILDynamicMethod<TDelegate>(this, name);
         }
 

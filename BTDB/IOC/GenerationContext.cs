@@ -77,7 +77,7 @@ namespace BTDB.IOC
                     Optional = parameter.IsOptional,
                     OptionalValue = parameter.RawDefaultValue,
                     ForcedKey = false,
-                    Key = parameter.Name
+                    Key = string.Intern(parameter.Name)
                 };
             }
         }
