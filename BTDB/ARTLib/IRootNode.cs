@@ -4,6 +4,9 @@ namespace BTDB.ARTLib
 {
     public interface IRootNode: IDisposable
     {
+        void Reference();
+        bool Dereference();
+
         ulong CommitUlong { get; set; }
         long TransactionId { get; set; }
         string DescriptionForLeaks { get; set; }

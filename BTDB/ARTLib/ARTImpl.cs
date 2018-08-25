@@ -978,8 +978,8 @@ namespace BTDB.ARTLib
                         return true;
                     }
                     index--;
-                    keyOffset++;
                 }
+                keyOffset++;
                 switch (header._nodeType & NodeType.NodeSizeMask)
                 {
                     case NodeType.Node4:
@@ -1232,6 +1232,10 @@ namespace BTDB.ARTLib
                     ptr = NodeUtils.AlignPtrUpInt32(ptr);
                     ptr += 12;
                 }
+            }
+            else
+            {
+                ptr += (int)prefixSize;
             }
             var size = (IntPtr)(ptr.ToInt64() - nodePtr.ToInt64());
             var newNode = _allocator.Allocate(size);
@@ -1624,7 +1628,7 @@ namespace BTDB.ARTLib
             {
                 CheckContent12(content);
                 MakeUnique(rootNode, stack.AsSpan());
-                var stackItem = stack[stack.Count - 1];
+                ref var stackItem = ref stack[stack.Count - 1];
                 if (stackItem._posInNode == -1)
                 {
                     var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
@@ -1712,7 +1716,7 @@ namespace BTDB.ARTLib
         {
             for (int i = 0; i < stack.Length; i++)
             {
-                var stackItem = stack[i];
+                ref var stackItem = ref stack[i];
                 ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
                 if (header._referenceCount == 1)
                     continue;
@@ -1906,6 +1910,7 @@ namespace BTDB.ARTLib
                     if (keyOffset + diffPos >= keyPrefix.Length)
                     {
                         PushLeftMost(top, keyOffset, ref stack);
+                        if (diffPos >= keyRest) return FindResult.Next;
                         return Marshal.ReadByte(keyPrefixPtr, diffPos) < GetByteFromKeyPair(keyPrefix, key, keyOffset + diffPos) ? FindResult.Previous : FindResult.Next;
                     }
                     stack.Clear();
@@ -2441,6 +2446,7 @@ namespace BTDB.ARTLib
                             new Span<byte>(topValuePtr.ToPointer(), (int)topValueSize).CopyTo(new Span<byte>(valuePtr.ToPointer(), (int)valueSize));
                         }
                         keyOffset += newKeyPrefixSize + 1;
+                        Marshal.WriteByte(newNode, 16, b);
                         stack.Add().Set(newNode, (uint)keyOffset, 0, b);
                         top = IntPtr.Zero;
                         OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);

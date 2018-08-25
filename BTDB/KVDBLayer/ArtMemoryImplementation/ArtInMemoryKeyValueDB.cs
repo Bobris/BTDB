@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ namespace BTDB.KVDBLayer
         ArtInMemoryKeyValueDBTransaction _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
         readonly object _writeLock = new object();
+        readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>(); 
         
         public ArtInMemoryKeyValueDB(IOffHeapAllocator allocator)
         {
@@ -27,6 +29,8 @@ namespace BTDB.KVDBLayer
                 {
                     _writeWaitingQueue.Dequeue().TrySetCanceled();
                 }
+                DereferenceRoot(_lastCommited);
+                FreeWaitingToDispose();
             }
         }
 
@@ -36,12 +40,16 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBTransaction StartTransaction()
         {
-            return new ArtInMemoryKeyValueDBTransaction(this, LastCommited, false, false);
+            var node = LastCommited;
+            node.Reference();
+            return new ArtInMemoryKeyValueDBTransaction(this, node, false, false);
         }
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
-            return new ArtInMemoryKeyValueDBTransaction(this, LastCommited, false, true);
+            var node = LastCommited;
+            node.Reference();
+            return new ArtInMemoryKeyValueDBTransaction(this, node, false, true);
         }
 
         public Task<IKeyValueDBTransaction> StartWritingTransaction()
@@ -87,6 +95,7 @@ namespace BTDB.KVDBLayer
                 _writingTransaction = keyValueDBTransaction;
                 var result = _lastCommited;
                 _lastCommited = result.Snapshot();
+                artRoot.Dereference();
                 return result;
             }
         }
@@ -96,6 +105,10 @@ namespace BTDB.KVDBLayer
             lock (_writeLock)
             {
                 _writingTransaction = null;
+                if (_lastCommited.Dereference())
+                {
+                    _lastCommited.Dispose();
+                }
                 _lastCommited = artRoot;
                 TryDequeWaiterForWrittingTransaction();
             }
@@ -103,6 +116,7 @@ namespace BTDB.KVDBLayer
 
         void TryDequeWaiterForWrittingTransaction()
         {
+            FreeWaitingToDispose();
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
             NewWrittingTransactionUnsafe(tcs);
@@ -110,18 +124,41 @@ namespace BTDB.KVDBLayer
 
         void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
         {
+            FreeWaitingToDispose();
             var newTransactionRoot = LastCommited;
             _lastCommited = newTransactionRoot.Snapshot();
             _writingTransaction = new ArtInMemoryKeyValueDBTransaction(this, newTransactionRoot, true, false);
             tcs.TrySetResult(_writingTransaction);
         }
 
-        internal void RevertWrittingTransaction()
+        void FreeWaitingToDispose()
+        {
+            while (_waitingToDispose.TryTake(out var node))
+            {
+                node.Dispose();
+            }
+        }
+
+        internal void RevertWrittingTransaction(IRootNode currentArtRoot)
         {
             lock (_writeLock)
             {
+                currentArtRoot.RevertTo(_lastCommited);
+                if (_lastCommited.Dereference())
+                {
+                    _lastCommited.Dispose();
+                }
+                _lastCommited = currentArtRoot;
                 _writingTransaction = null;
                 TryDequeWaiterForWrittingTransaction();
+            }
+        }
+
+        internal void DereferenceRoot(IRootNode currentArtRoot)
+        {
+            if (currentArtRoot.Dereference())
+            {
+                _waitingToDispose.Add(currentArtRoot);
             }
         }
     }

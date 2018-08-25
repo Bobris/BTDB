@@ -145,7 +145,8 @@ namespace BTDB.ARTLib
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(stackItem._node);
                     unsafe
                     {
-                        if (!new Span<byte>(keyPrefixPtr.ToPointer(), Math.Min((int)keyPrefixSize, prefix.Length - offset)).SequenceEqual(prefix.Slice(offset)))
+                        var commonLength = Math.Min((int)keyPrefixSize, prefix.Length - offset);
+                        if (!new Span<byte>(keyPrefixPtr.ToPointer(), commonLength).SequenceEqual(prefix.Slice(offset, commonLength)))
                             return false;
                     }
                     offset += (int)keyPrefixSize;

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace BTDB.ARTLib
 {
@@ -9,8 +10,10 @@ namespace BTDB.ARTLib
             _impl = impl;
             _root = IntPtr.Zero;
             _writtable = true;
+            _referenceCount = 1;
         }
 
+        int _referenceCount;
         internal IntPtr _root;
         internal ARTImpl _impl;
         internal bool _writtable;
@@ -31,9 +34,9 @@ namespace BTDB.ARTLib
             snapshot._root = _root;
             snapshot.CommitUlong = CommitUlong;
             snapshot.TransactionId = TransactionId;
-            snapshot.DescriptionForLeaks = DescriptionForLeaks;
-            DescriptionForLeaks = "";
-            TransactionId++;
+            snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
+            if (_writtable)
+                TransactionId++;
             NodeUtils.Reference(_root);
             return snapshot;
         }
@@ -56,6 +59,9 @@ namespace BTDB.ARTLib
                 throw new InvalidOperationException("Only writtable root node could be reverted");
             var oldRoot = _root;
             _root = ((RootNode)snapshot)._root;
+            _ulongs = ((RootNode)snapshot)._ulongs == null ? null : (ulong[])((RootNode)snapshot)._ulongs.Clone();
+            CommitUlong = ((RootNode)snapshot).CommitUlong;
+            TransactionId = ((RootNode)snapshot).TransactionId;
             if (oldRoot != _root)
             {
                 NodeUtils.Reference(_root);
@@ -82,6 +88,16 @@ namespace BTDB.ARTLib
         public uint GetUlongCount()
         {
             return _ulongs == null ? 0U : (uint)_ulongs.Length;
+        }
+
+        public void Reference()
+        {
+            Interlocked.Increment(ref _referenceCount);
+        }
+
+        public bool Dereference()
+        {
+            return Interlocked.Decrement(ref _referenceCount) == 0;
         }
     }
 }
