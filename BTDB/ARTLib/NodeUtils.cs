@@ -100,6 +100,7 @@ namespace BTDB.ARTLib
             return (size, ptr);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint GetPrefixSize(IntPtr nodePtr)
         {
             ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
@@ -159,7 +160,7 @@ namespace BTDB.ARTLib
             var nodeType = Ptr2NodeHeader(node)._nodeType;
             switch (nodeType & NodeType.NodeSizePtrMask)
             {
-                case NodeType.NodeLeaf: 
+                case NodeType.NodeLeaf:
                 case NodeType.NodeLeaf | NodeType.Has12BPtrs:
                     return node + 16;
                 case NodeType.Node4: return node + 16 + 4 + posInNode * 8;
@@ -173,7 +174,7 @@ namespace BTDB.ARTLib
                 default: throw new InvalidOperationException();
             }
         }
-        
+
         internal static int MaxChildren(NodeType nodeType)
         {
             switch (nodeType & NodeType.NodeSizeMask)
