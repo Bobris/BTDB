@@ -253,6 +253,11 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        {
+            return GetValue().AsSyncReadOnlySpan();
+        }
+
         void EnsureValidKey()
         {
             if (_keyIndex < 0)

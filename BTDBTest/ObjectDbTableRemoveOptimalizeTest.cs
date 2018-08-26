@@ -354,6 +354,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetValue();
             }
 
+            public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+            {
+                return _keyValueDBTransaction.GetValueAsReadOnlySpan();
+            }
+
             public void SetValue(ByteBuffer value)
             {
                 _keyValueDBTransaction.SetValue(value);

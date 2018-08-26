@@ -96,6 +96,11 @@ namespace BTDB.KVDBLayer
         ByteBuffer GetValue();
 
         /// <summary>
+        /// Return current value.
+        /// </summary>
+        ReadOnlySpan<byte> GetValueAsReadOnlySpan();
+
+        /// <summary>
         /// Overwrite current value with new content.
         /// </summary>
         void SetValue(ByteBuffer value);

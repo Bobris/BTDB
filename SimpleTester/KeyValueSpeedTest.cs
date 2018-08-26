@@ -73,7 +73,7 @@ namespace SimpleTester
                     {
                         for (int j = 0; j < 200; j++)
                         {
-                            tr.CreateOrUpdateKeyValue(ByteBuffer.NewAsync(new[] { (byte)j, (byte)i }), ByteBuffer.NewAsync(new byte[1 + i * j]));
+                            tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
                             pureDataLength += 2 + 1 + i * j;
                         }
                         if (alsoDoReads) using (var trCheck = db.StartTransaction())
@@ -81,7 +81,7 @@ namespace SimpleTester
                                 long pureDataLengthCheck = 0;
                                 while (trCheck.FindNextKey())
                                 {
-                                    pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
+                                    pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValueAsReadOnlySpan().Length;
                                 }
                                 if (pureDataLengthCheck != pureDataLengthPrevTr)
                                 {

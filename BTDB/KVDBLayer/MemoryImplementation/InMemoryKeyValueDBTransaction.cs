@@ -231,6 +231,11 @@ namespace BTDB.KVDBLayer
             return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
         }
 
+        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        {
+            return GetValue().AsSyncReadOnlySpan();
+        }
+
         void EnsureValidKey()
         {
             if (_keyIndex < 0)

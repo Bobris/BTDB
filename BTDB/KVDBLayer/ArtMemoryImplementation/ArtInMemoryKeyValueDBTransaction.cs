@@ -257,6 +257,12 @@ namespace BTDB.KVDBLayer
             return ByteBuffer.NewAsync(_cursor.GetValue());
         }
 
+        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        {
+            if (!IsValidKey()) return new ReadOnlySpan<byte>();
+            return _cursor.GetValue();
+        }
+
         void EnsureValidKey()
         {
             if (!_cursor.IsValid())
