@@ -99,6 +99,19 @@ namespace BTDB.ARTLib
             return (size, ptr);
         }
 
+        internal static uint GetPrefixSize(IntPtr nodePtr)
+        {
+            ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
+            var size = (uint)header._keyPrefixLength;
+            if (size == 0xffff)
+            {
+                var baseSize = BaseSize(header._nodeType);
+                var ptr = nodePtr + baseSize;
+                size = (uint)Marshal.ReadInt32(ptr);
+            }
+            return size;
+        }
+
         internal static (uint Size, IntPtr Ptr) GetValueSizeAndPtr(IntPtr nodePtr)
         {
             ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);

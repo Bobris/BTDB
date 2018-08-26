@@ -969,7 +969,7 @@ namespace BTDB.ARTLib
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 if (index >= (long)header._recursiveChildCount)
                     return false;
-                keyOffset += NodeUtils.GetPrefixSizeAndPtr(top).Size;
+                keyOffset += NodeUtils.GetPrefixSize(top);
                 if (header._nodeType.HasFlag(NodeType.IsLeaf))
                 {
                     if (index == 0)
@@ -2184,7 +2184,7 @@ namespace BTDB.ARTLib
             while (true)
             {
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                keyOffset += (int)NodeUtils.GetPrefixSizeAndPtr(top).Size;
+                keyOffset += (int)NodeUtils.GetPrefixSize(top);
                 if (header._nodeType.HasFlag(NodeType.IsLeaf))
                 {
                     stack.Add().Set(top, (uint)keyOffset, -1, 0);
@@ -2254,7 +2254,7 @@ namespace BTDB.ARTLib
             while (true)
             {
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                keyOffset += (int)NodeUtils.GetPrefixSizeAndPtr(top).Size;
+                keyOffset += (int)NodeUtils.GetPrefixSize(top);
                 if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
                 {
                     stack.Add().Set(top, (uint)keyOffset, -1, 0);
