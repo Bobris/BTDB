@@ -20,6 +20,14 @@ namespace BTDB.ARTLib
             _stack = new StructList<CursorItem>(from._stack);
         }
 
+        public void SetNewRoot(IRootNode artRoot)
+        {
+            var newRoot = (RootNode)artRoot;
+            if (newRoot._root != _rootNode._root)
+                throw new ArgumentException("SetNewRoot allows only upgrades to writtable identical root");
+            _rootNode = (RootNode)artRoot;
+        }
+
         public long CalcDistance(ICursor to)
         {
             if (_rootNode != ((Cursor)to)._rootNode)

@@ -5,6 +5,7 @@ namespace BTDB.ARTLib
 {
     public interface ICursor
     {
+        void SetNewRoot(IRootNode artRoot);
         void Invalidate();
         ICursor Clone();
         bool FindExact(ReadOnlySpan<byte> key);

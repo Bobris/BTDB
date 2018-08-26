@@ -63,12 +63,13 @@ namespace BTDB.KVDBLayer
 
         public bool FindPreviousKey()
         {
-            if (_keyIndex < 0) return FindLastKey();
+            if (!_cursor.IsValid()) return FindLastKey();
             if (_cursor.MovePrevious())
             {
                 if (_cursor.KeyHasPrefix(_prefix))
                 {
-                    _keyIndex--;
+                    if (_keyIndex >= 0)
+                        _keyIndex--;
                     return true;
                 }
             }
@@ -78,12 +79,13 @@ namespace BTDB.KVDBLayer
 
         public bool FindNextKey()
         {
-            if (_keyIndex < 0) return FindFirstKey();
+            if (!_cursor.IsValid()) return FindFirstKey();
             if (_cursor.MoveNext())
             {
                 if (_cursor.KeyHasPrefix(_prefix))
                 {
-                    _keyIndex++;
+                    if (_keyIndex >= 0)
+                        _keyIndex++;
                     return true;
                 }
             }
@@ -94,7 +96,7 @@ namespace BTDB.KVDBLayer
         public FindResult Find(ByteBuffer key)
         {
             var result = _cursor.Find(_prefix, key.AsSyncReadOnlySpan());
-            _keyIndex = _cursor.CalcIndex();
+            _keyIndex = -1;
             return result;
         }
 
@@ -118,7 +120,7 @@ namespace BTDB.KVDBLayer
                 key.CopyTo(temp.Slice(_prefix.Length));
                 result = _cursor.Upsert(_prefix, value);
             }
-            _keyIndex = _cursor.CalcIndex();
+            _keyIndex = -1;
             if (result && _prefixKeyCount >= 0) _prefixKeyCount++;
             return result;
         }
@@ -143,11 +145,11 @@ namespace BTDB.KVDBLayer
             }
             var oldArtRoot = ArtRoot;
             ArtRoot = _keyValueDB.MakeWrittableTransaction(this, oldArtRoot);
-            _cursor = ArtRoot.CreateCursor();
-            _cursor2 = null;
+            _cursor.SetNewRoot(ArtRoot);
+            if (_cursor2 != null)
+                _cursor2.SetNewRoot(ArtRoot);
             ArtRoot.DescriptionForLeaks = _descriptionForLeaks;
             _writting = true;
-            InvalidateCurrentKey();
         }
 
         public long GetKeyValueCount()
@@ -175,7 +177,12 @@ namespace BTDB.KVDBLayer
 
         public long GetKeyIndex()
         {
-            if (_keyIndex < 0) return -1;
+            if (_keyIndex < 0)
+            {
+                if (!_cursor.IsValid())
+                    return -1;
+                _keyIndex = _cursor.CalcIndex();
+            }
             CalcPrefixKeyStart();
             return _keyIndex - _prefixKeyStart;
         }
@@ -234,7 +241,7 @@ namespace BTDB.KVDBLayer
 
         public bool IsValidKey()
         {
-            return _keyIndex >= 0;
+            return _cursor.IsValid();
         }
 
         public ByteBuffer GetKey()
@@ -252,7 +259,7 @@ namespace BTDB.KVDBLayer
 
         void EnsureValidKey()
         {
-            if (_keyIndex < 0)
+            if (!_cursor.IsValid())
             {
                 throw new InvalidOperationException("Current key is not valid");
             }
@@ -261,22 +268,14 @@ namespace BTDB.KVDBLayer
         public void SetValue(ByteBuffer value)
         {
             EnsureValidKey();
-            var keyIndexBackup = _keyIndex;
             MakeWrittable();
-            if (_keyIndex != keyIndexBackup)
-            {
-                _keyIndex = keyIndexBackup;
-                _cursor.SeekIndex(_keyIndex);
-            }
             _cursor.WriteValue(value.AsSyncReadOnlySpan());
         }
 
         public void EraseCurrent()
         {
             EnsureValidKey();
-            var keyIndex = _keyIndex;
             MakeWrittable();
-            _cursor.SeekIndex(keyIndex);
             _cursor.Erase();
             InvalidateCurrentKey();
             if (_prefixKeyCount >= 0) _prefixKeyCount--;
