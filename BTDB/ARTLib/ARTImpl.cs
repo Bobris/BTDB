@@ -2087,7 +2087,8 @@ namespace BTDB.ARTLib
                 }
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
-                var newKeyPrefixSize = FindFirstDifference(keyPrefix.Slice(keyOffset), keyPrefixPtr, Math.Min(keyRest, (int)keyPrefixSize));
+                var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
+                var newKeyPrefixSize = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(keyPrefix.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);
                 if (newKeyPrefixSize < keyPrefixSize && newKeyPrefixSize < keyRest)
                 {
                     stack.Clear();
@@ -2144,7 +2145,8 @@ namespace BTDB.ARTLib
                 }
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
-                var newKeyPrefixSize = FindFirstDifference(keyPrefix.Slice(keyOffset), keyPrefixPtr, Math.Min(keyRest, (int)keyPrefixSize));
+                var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
+                var newKeyPrefixSize = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(keyPrefix.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);
                 if (newKeyPrefixSize < keyPrefixSize && newKeyPrefixSize < keyRest)
                 {
                     stack.Clear();
