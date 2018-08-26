@@ -52,6 +52,12 @@ namespace BTDB.KVDBLayer
         bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value);
 
         /// <summary>
+        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
+        /// </summary>
+        /// <returns>true for Create, false for Update</returns>
+        bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+
+        /// <summary>
         /// In current prefix will calculate number of key value pairs
         /// </summary>
         /// <returns>count</returns>

@@ -98,29 +98,34 @@ namespace BTDB.KVDBLayer
             return result;
         }
 
-        public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
+        public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             MakeWrittable();
             bool result;
             var keyLen = _prefix.Length + key.Length;
             if (_prefix.Length == 0)
             {
-                result = _cursor.Upsert(key.AsSyncReadOnlySpan(), value.AsSyncReadOnlySpan());
+                result = _cursor.Upsert(key, value);
             }
             else if (key.Length == 0)
             {
-                result = _cursor.Upsert(_prefix, value.AsSyncReadOnlySpan());
+                result = _cursor.Upsert(_prefix, value);
             }
             else
             {
                 Span<byte> temp = keyLen < 256 ? stackalloc byte[keyLen] : new byte[keyLen];
                 _prefix.CopyTo(temp);
-                key.AsSyncReadOnlySpan().CopyTo(temp.Slice(_prefix.Length));
-                result = _cursor.Upsert(_prefix, value.AsSyncReadOnlySpan());
+                key.CopyTo(temp.Slice(_prefix.Length));
+                result = _cursor.Upsert(_prefix, value);
             }
             _keyIndex = _cursor.CalcIndex();
             if (result && _prefixKeyCount >= 0) _prefixKeyCount++;
             return result;
+        }
+
+        public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
+        {
+            return CreateOrUpdateKeyValue(key.AsSyncReadOnlySpan(), value.AsSyncReadOnlySpan());
         }
 
         void MakeWrittable()

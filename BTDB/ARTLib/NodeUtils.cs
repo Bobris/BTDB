@@ -84,8 +84,9 @@ namespace BTDB.ARTLib
         internal static (uint Size, IntPtr Ptr) GetPrefixSizeAndPtr(IntPtr nodePtr)
         {
             ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
-            var baseSize = BaseSize(header._nodeType);
             var size = (uint)header._keyPrefixLength;
+            if (size == 0) return (0, IntPtr.Zero);
+            var baseSize = BaseSize(header._nodeType);
             var ptr = nodePtr + baseSize;
             if (size == 0xffff)
             {

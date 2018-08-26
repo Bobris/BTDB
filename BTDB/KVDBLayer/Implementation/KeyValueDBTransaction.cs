@@ -98,6 +98,11 @@ namespace BTDB.KVDBLayer
             return BtreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
         }
 
+        public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            return CreateOrUpdateKeyValue(ByteBuffer.NewAsync(key), ByteBuffer.NewAsync(value));
+        }
+
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWrittable();

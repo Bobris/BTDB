@@ -32,7 +32,7 @@ namespace SimpleTester
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
             new KeyValueSpeedTest(true).Run();
-            //new KeyValueSpeedTest(false).Run();
+            new KeyValueSpeedTest(false).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();

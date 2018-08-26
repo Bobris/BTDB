@@ -1,8 +1,8 @@
-﻿using System;
+﻿using BTDB.KVDBLayer;
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using BTDB.KVDBLayer;
 
 namespace BTDB.ARTLib
 {
@@ -1846,7 +1846,8 @@ namespace BTDB.ARTLib
                 }
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
-                var newKeyPrefixSize = FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, Math.Min(keyRest, (int)keyPrefixSize));
+                var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
+                var newKeyPrefixSize = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);
                 if (newKeyPrefixSize < keyPrefixSize)
                 {
                     stack.Clear();
@@ -1904,7 +1905,8 @@ namespace BTDB.ARTLib
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
 
-                var diffPos = FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, Math.Min(keyRest, (int)keyPrefixSize));
+                var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
+                var diffPos = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);
                 if (diffPos < keyPrefixSize)
                 {
                     if (keyOffset + diffPos >= keyPrefix.Length)
@@ -2351,7 +2353,8 @@ namespace BTDB.ARTLib
                 }
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
-                var newKeyPrefixSize = FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, Math.Min(keyRest, (int)keyPrefixSize));
+                var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
+                var newKeyPrefixSize = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);
                 if (newKeyPrefixSize < keyPrefixSize)
                 {
                     MakeUnique(rootNode, stack.AsSpan());

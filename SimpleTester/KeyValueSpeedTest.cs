@@ -338,6 +338,8 @@ namespace SimpleTester
         {
             var sw = Stopwatch.StartNew();
             var rnd = new Random(1234);
+            var key = new byte[50];
+            var value = new byte[500];
             using (var fileCollection = CreateTestFileCollection())
             {
                 using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
@@ -347,11 +349,11 @@ namespace SimpleTester
                     {
                         for (int i = 0; i < keys; i++)
                         {
-                            var key = new byte[rnd.Next(10, 50)];
-                            rnd.NextBytes(key);
-                            var value = new byte[rnd.Next(50, 500)];
-                            rnd.NextBytes(value);
-                            tr.CreateOrUpdateKeyValueUnsafe(key, value);
+                            var keyLen = rnd.Next(10, 50);
+                            rnd.NextBytes(key.AsSpan(0, keyLen));
+                            var valueLen = rnd.Next(50, 500);
+                            rnd.NextBytes(value.AsSpan(0, valueLen));
+                            tr.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
                         }
                         tr.Commit();
                     }

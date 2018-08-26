@@ -263,7 +263,6 @@ namespace BTDBTest
         {
             IKeyValueDBTransaction _keyValueDBTransaction;
 
-
             public KeyValueDBTransactionWithCount(IKeyValueDBTransaction keyValueDBTransaction)
             {
                 _keyValueDBTransaction = keyValueDBTransaction;
@@ -308,6 +307,11 @@ namespace BTDBTest
             public FindResult Find(ByteBuffer key)
             {
                 return _keyValueDBTransaction.Find(key);
+            }
+
+            public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+            {
+                return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
             }
 
             public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
@@ -433,7 +437,5 @@ namespace BTDBTest
                 _keyValueDBTransaction.Dispose();
             }
         }
-
-
     }
 }
