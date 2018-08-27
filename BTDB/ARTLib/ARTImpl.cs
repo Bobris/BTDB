@@ -907,7 +907,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16 + 4;
                             var limit = ptrInNode + stackItem._posInNode * 8;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 8)
+                            for (; ptrInNode != limit; ptrInNode += 8)
                             {
                                 var child = NodeUtils.ReadPtr(ptrInNode);
                                 if (NodeUtils.IsPtrPtr(child))
@@ -925,7 +925,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16 + 4;
                             var limit = ptrInNode + stackItem._posInNode * 12;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 12)
+                            for (; ptrInNode != limit; ptrInNode += 12)
                             {
                                 if (NodeUtils.IsPtr12Ptr(ptrInNode))
                                 {
@@ -942,7 +942,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16 + 16;
                             var limit = ptrInNode + stackItem._posInNode * 8;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 8)
+                            for (; ptrInNode != limit; ptrInNode += 8)
                             {
                                 var child = NodeUtils.ReadPtr(ptrInNode);
                                 if (NodeUtils.IsPtrPtr(child))
@@ -960,7 +960,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16 + 16;
                             var limit = ptrInNode + stackItem._posInNode * 12;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 12)
+                            for (; ptrInNode != limit; ptrInNode += 12)
                             {
                                 if (NodeUtils.IsPtr12Ptr(ptrInNode))
                                 {
@@ -1018,7 +1018,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16;
                             var limit = ptrInNode + stackItem._posInNode * 8;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 8)
+                            for (; ptrInNode != limit; ptrInNode += 8)
                             {
                                 var child = NodeUtils.ReadPtr(ptrInNode);
                                 if (child == IntPtr.Zero)
@@ -1038,7 +1038,7 @@ namespace BTDB.ARTLib
                         {
                             var ptrInNode = stackItem._node + 16;
                             var limit = ptrInNode + stackItem._posInNode * 12;
-                            for (; ptrInNode.ToInt64() < limit.ToInt64(); ptrInNode += 12)
+                            for (; ptrInNode != limit; ptrInNode += 12)
                             {
                                 if (NodeUtils.IsPtr12Ptr(ptrInNode))
                                 {
@@ -1216,10 +1216,14 @@ namespace BTDB.ARTLib
                                 {
                                     continue;
                                 }
+                                stackItem._posInNode = (short)j;
+                                stackItem._byte = (byte)j;
+                                PushLeftMost(ptr2, (int)stackItem._keyOffset, ref stack);
+                                return true;
                             }
                             stackItem._posInNode = (short)j;
                             stackItem._byte = (byte)j;
-                            goto down;
+                            return true;
                         }
                         goto up;
                 }
@@ -1496,7 +1500,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node4:
                     {
                         var p = node + 16 + 4;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
+                        var limit = p + nodeHeader._childCount * 8;
+                        for (; p != limit; p += 8)
                         {
                             var child = NodeUtils.ReadPtr(p);
                             if (NodeUtils.IsPtrPtr(child))
@@ -1509,7 +1514,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node4 | NodeType.Has12BPtrs:
                     {
                         var p = node + 16 + 4;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
+                        var limit = p + nodeHeader._childCount * 12;
+                        for (; p != limit; p += 12)
                         {
                             if (NodeUtils.IsPtr12Ptr(p))
                             {
@@ -1521,7 +1527,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node16:
                     {
                         var p = node + 16 + 16;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
+                        var limit = p + nodeHeader._childCount * 8;
+                        for (; p != limit; p += 8)
                         {
                             var child = NodeUtils.ReadPtr(p);
                             if (NodeUtils.IsPtrPtr(child))
@@ -1534,7 +1541,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node16 | NodeType.Has12BPtrs:
                     {
                         var p = node + 16 + 16;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
+                        var limit = p + nodeHeader._childCount * 12;
+                        for (; p != limit; p += 12)
                         {
                             if (NodeUtils.IsPtr12Ptr(p))
                             {
@@ -1546,7 +1554,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node48:
                     {
                         var p = node + 16 + 256;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
+                        var limit = p + nodeHeader._childCount * 8;
+                        for (; p != limit; p += 8)
                         {
                             var child = NodeUtils.ReadPtr(p);
                             if (NodeUtils.IsPtrPtr(child))
@@ -1559,7 +1568,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node48 | NodeType.Has12BPtrs:
                     {
                         var p = node + 16 + 256;
-                        for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
+                        var limit = p + nodeHeader._childCount * 12;
+                        for (; p != limit; p += 12)
                         {
                             if (NodeUtils.IsPtr12Ptr(p))
                             {
@@ -1571,7 +1581,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node256:
                     {
                         var p = node + 16;
-                        for (var i = 0; i < 256; i++, p += 8)
+                        var limit = p + 256 * 8;
+                        for (; p != limit; p += 8)
                         {
                             var child = NodeUtils.ReadPtr(p);
                             if (NodeUtils.IsPtrPtr(child))
@@ -1584,7 +1595,8 @@ namespace BTDB.ARTLib
                 case NodeType.Node256 | NodeType.Has12BPtrs:
                     {
                         var p = node + 16;
-                        for (var i = 0; i < 256; i++, p += 12)
+                        var limit = p + 256 * 12;
+                        for (; p != limit; p += 12)
                         {
                             if (NodeUtils.IsPtr12Ptr(p))
                             {
