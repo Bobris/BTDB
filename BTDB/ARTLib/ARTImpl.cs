@@ -2296,15 +2296,57 @@ namespace BTDB.ARTLib
                     return;
                 }
                 keyOffset++;
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType.NodeSizePtrMask)
                 {
                     case NodeType.Node4:
+                        {
+                            stack.Add().Set(top, (uint)keyOffset, 0, Marshal.ReadByte(top, 16));
+                            var child = NodeUtils.ReadPtr(top + 16 + 4);
+                            if (NodeUtils.IsPtrPtr(child))
+                            {
+                                top = child;
+                                break;
+                            }
+                            else
+                            {
+                                return;
+                            }
+                        }
+                    case NodeType.Node4 | NodeType.Has12BPtrs:
+                        {
+                            stack.Add().Set(top, (uint)keyOffset, 0, Marshal.ReadByte(top, 16));
+                            var ptr = top + 16 + 4;
+                            if (NodeUtils.IsPtr12Ptr(ptr))
+                            {
+                                top = NodeUtils.Read12Ptr(ptr);
+                                break;
+                            }
+                            else
+                            {
+                                return;
+                            }
+                        }
                     case NodeType.Node16:
                         {
                             stack.Add().Set(top, (uint)keyOffset, 0, Marshal.ReadByte(top, 16));
-                            if (IsPtr(NodeUtils.PtrInNode(top, 0), out var ptr))
+                            var child = NodeUtils.ReadPtr(top + 16 + 16);
+                            if (NodeUtils.IsPtrPtr(child))
                             {
-                                top = ptr;
+                                top = child;
+                                break;
+                            }
+                            else
+                            {
+                                return;
+                            }
+                        }
+                    case NodeType.Node16 | NodeType.Has12BPtrs:
+                        {
+                            stack.Add().Set(top, (uint)keyOffset, 0, Marshal.ReadByte(top, 16));
+                            var ptr = top + 16 + 16;
+                            if (NodeUtils.IsPtr12Ptr(ptr))
+                            {
+                                top = NodeUtils.Read12Ptr(ptr);
                                 break;
                             }
                             else
@@ -2318,12 +2360,34 @@ namespace BTDB.ARTLib
                             var span = new Span<byte>((top + 16).ToPointer(), 256);
                             for (int j = 0; true; j++)
                             {
-                                if (span[j] == 255)
+                                var pos = span[j];
+                                if (pos == 255)
                                     continue;
-                                stack.Add().Set(top, (uint)keyOffset, span[j], (byte)j);
-                                if (IsPtr(NodeUtils.PtrInNode(top, span[j]), out var ptr))
+                                stack.Add().Set(top, (uint)keyOffset, pos, (byte)j);
+                                var child = NodeUtils.ReadPtr(top + 16 + 256 + pos * 8);
+                                if (NodeUtils.IsPtrPtr(child))
                                 {
-                                    top = ptr;
+                                    top = child;
+                                    break;
+                                }
+                                return;
+                            }
+                            break;
+                        }
+                    case NodeType.Node48 | NodeType.Has12BPtrs:
+                        unsafe
+                        {
+                            var span = new Span<byte>((top + 16).ToPointer(), 256);
+                            for (int j = 0; true; j++)
+                            {
+                                var pos = span[j];
+                                if (pos == 255)
+                                    continue;
+                                stack.Add().Set(top, (uint)keyOffset, pos, (byte)j);
+                                var ptr = top + 16 + 256 + pos * 12;
+                                if (NodeUtils.IsPtr12Ptr(ptr))
+                                {
+                                    top = NodeUtils.Read12Ptr(ptr);
                                     break;
                                 }
                                 return;
@@ -2331,22 +2395,50 @@ namespace BTDB.ARTLib
                             break;
                         }
                     case NodeType.Node256:
-                        for (int j = 0; true; j++)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(top, j), out var ptr))
+                            var p = top + 16;
+                            for (var j = 0; true; j++, p += 8)
                             {
-                                if (ptr != IntPtr.Zero)
+                                var child = NodeUtils.ReadPtr(p);
+                                if (NodeUtils.IsPtrPtr(child))
+                                {
+                                    if (child != IntPtr.Zero)
+                                    {
+                                        stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                        top = child;
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                else
                                 {
                                     stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
-                                    top = ptr;
-                                    break;
+                                    return;
                                 }
-                                continue;
                             }
-                            else
+                        }
+                        break;
+                    case NodeType.Node256 | NodeType.Has12BPtrs:
+                        {
+                            var p = top + 16;
+                            for (var j = 0; true; j++, p += 12)
                             {
-                                stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
-                                return;
+                                if (NodeUtils.IsPtr12Ptr(p))
+                                {
+                                    var child = NodeUtils.Read12Ptr(p);
+                                    if (child != IntPtr.Zero)
+                                    {
+                                        stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                        top = child;
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                else
+                                {
+                                    stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                    return;
+                                }
                             }
                         }
                         break;

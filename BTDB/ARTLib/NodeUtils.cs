@@ -73,6 +73,7 @@ namespace BTDB.ARTLib
             return ptr + (((~ptr) + 1) & 3);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void Reference(IntPtr node)
         {
             if (node == IntPtr.Zero)

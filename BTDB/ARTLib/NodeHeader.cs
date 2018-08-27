@@ -17,11 +17,13 @@ namespace BTDB.ARTLib
         [FieldOffset(8)]
         internal ulong _recursiveChildCount;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Reference()
         {
             _referenceCount++;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal bool Dereference()
         {
             return --_referenceCount == 0;
@@ -30,11 +32,18 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal bool IsNode256() => (_nodeType & NodeType.NodeSizeMask) == NodeType.Node256;
 
-        internal int ChildCount {
+        internal int ChildCount
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => (_childCount == 0 && IsNode256()) ? 256 : _childCount;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => _childCount = (byte)value;
         }
 
-        public bool IsFull { get => !IsNode256() && _childCount == NodeUtils.MaxChildren(_nodeType); }
+        public bool IsFull
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !IsNode256() && _childCount == NodeUtils.MaxChildren(_nodeType);
+        }
     }
 }
