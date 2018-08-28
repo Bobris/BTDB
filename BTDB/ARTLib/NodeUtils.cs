@@ -26,9 +26,51 @@ namespace BTDB.ARTLib
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe byte ReadByte(IntPtr ptr)
+        {
+            return *(byte*)ptr;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void WriteByte(IntPtr ptr, byte value)
+        {
+            *(byte*)ptr = value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void WriteByte(IntPtr ptr, int offset, byte value)
+        {
+            *(byte*)(ptr + offset) = value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void WriteInt32Alligned(IntPtr ptr, int value)
+        {
+            *(int*)ptr = value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe int ReadInt32Alligned(IntPtr ptr)
+        {
+            return *(int*)ptr;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe IntPtr ReadIntPtrUnalligned(IntPtr ptr)
+        {
+            return *(IntPtr*)ptr;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void WriteIntPtrUnalligned(IntPtr ptr, IntPtr value)
+        {
+            *(IntPtr*)ptr = value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr Read12Ptr(IntPtr childPtr)
         {
-            return Marshal.ReadIntPtr(childPtr + sizeof(uint));
+            return ReadIntPtrUnalligned(childPtr + sizeof(uint));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -49,16 +91,13 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr ReadPtr(IntPtr ptr)
         {
-            return Marshal.ReadIntPtr(ptr);
+            return ReadIntPtrUnalligned(ptr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ref NodeHeader Ptr2NodeHeader(IntPtr pointerInt)
+        internal static unsafe ref NodeHeader Ptr2NodeHeader(IntPtr pointerInt)
         {
-            unsafe
-            {
-                return ref *(NodeHeader*)pointerInt;
-            };
+            return ref *(NodeHeader*)pointerInt;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -91,7 +130,7 @@ namespace BTDB.ARTLib
             var ptr = nodePtr + baseSize;
             if (size == 0xffff)
             {
-                size = (uint)Marshal.ReadInt32(ptr);
+                size = (uint)ReadInt32Alligned(ptr);
                 ptr += sizeof(uint);
             }
             if ((header._nodeType & (NodeType.IsLeaf | NodeType.Has12BPtrs)) == NodeType.IsLeaf)
@@ -110,7 +149,7 @@ namespace BTDB.ARTLib
             {
                 var baseSize = BaseSize(header._nodeType);
                 var ptr = nodePtr + baseSize;
-                size = (uint)Marshal.ReadInt32(ptr);
+                size = (uint)ReadInt32Alligned(ptr);
             }
             return size;
         }

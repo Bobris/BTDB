@@ -1,5 +1,7 @@
-﻿using System;
-using BTDB.KVDBLayer;
+﻿using BTDB.KVDBLayer;
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace BTDB.ARTLib
 {
@@ -51,10 +53,18 @@ namespace BTDB.ARTLib
             EraseTo(this);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void AssertWrittable()
         {
             if (!_rootNode._writtable)
-                throw new InvalidOperationException("Cursor not writtable");
+            {
+                ThrowCursorNotWrittable();
+            }
+        }
+
+        static void ThrowCursorNotWrittable()
+        {
+            throw new InvalidOperationException("Cursor not writtable");
         }
 
         public long EraseTo(ICursor to)
@@ -100,12 +110,18 @@ namespace BTDB.ARTLib
             return _stack.Count != 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void AssertValid()
         {
             if (_stack.Count == 0)
             {
-                throw new InvalidOperationException("Cursor must be valid for this operation");
+                ThrowCursorHaveToBeValid();
             }
+        }
+
+        static void ThrowCursorHaveToBeValid()
+        {
+            throw new InvalidOperationException("Cursor must be valid for this operation");
         }
 
         public Span<byte> FillByKey(Span<byte> buffer)
@@ -116,20 +132,19 @@ namespace BTDB.ARTLib
             if (buffer.Length < keyLength || keyLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(buffer), "Key has " + keyLength + " bytes, but provided buffer has only " + buffer.Length);
             var offset = 0;
-            var i = 0;
+            var i = 0u;
             while (offset < keyLength)
             {
-                ref var stackItem = ref stack[(uint)i++];
+                ref var stackItem = ref stack[i++];
                 if (offset < stackItem._keyOffset - (stackItem._posInNode == -1 ? 0 : 1))
                 {
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(stackItem._node);
-                    unsafe { new Span<byte>(keyPrefixPtr.ToPointer(), (int)keyPrefixSize).CopyTo(buffer.Slice(offset)); }
+                    unsafe { Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(buffer.Slice(offset)), ref Unsafe.AsRef<byte>(keyPrefixPtr.ToPointer()), keyPrefixSize); }
                     offset += (int)keyPrefixSize;
                 }
                 if (stackItem._posInNode != -1)
                 {
-                    buffer[offset] = stackItem._byte;
-                    offset++;
+                    buffer[offset++] = stackItem._byte;
                 }
             }
             return buffer.Slice(0, keyLength);
