@@ -1346,21 +1346,7 @@ namespace BTDB.ARTLib
             var newNode = _allocator.Allocate(size);
             unsafe
             {
-                if (size.ToInt64() < uint.MaxValue)
-                    Unsafe.CopyBlock(newNode.ToPointer(), nodePtr.ToPointer(), (uint)size);
-                else
-                {
-                    byte* dst = (byte*)newNode.ToPointer();
-                    byte* src = (byte*)nodePtr.ToPointer();
-                    while (size.ToInt64() > 0x8000_0000u)
-                    {
-                        Unsafe.CopyBlock(dst, src, 0x8000_0000u);
-                        dst += 0x8000_0000u;
-                        src += 0x8000_0000u;
-                        size = (IntPtr)(size.ToInt64() - 0x8000_0000u);
-                    }
-                    Unsafe.CopyBlock(dst, src, (uint)size.ToInt64());
-                }
+                System.Buffer.MemoryCopy(nodePtr.ToPointer(), newNode.ToPointer(), size.ToInt64(), size.ToInt64());
             }
             ref NodeHeader newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
             newHeader._referenceCount = 1;
