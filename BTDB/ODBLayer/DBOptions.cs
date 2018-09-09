@@ -19,7 +19,14 @@
             return this;
         }
 
+        public DBOptions WithSelfHealing()
+        {
+            SelfHealing = true;
+            return this;
+        }
+
         public bool AutoRegisterType { get; private set; }
         public IType2NameRegistry CustomType2NameRegistry { get; private set; }
+        public bool SelfHealing { get; private set; }
     }
 }

@@ -13,7 +13,6 @@ namespace BTDB.ODBLayer
     {
         IKeyValueDB _keyValueDB;
         IType2NameRegistry _type2Name;
-        bool _autoRegisterTypes;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
         bool _dispose;
@@ -43,7 +42,9 @@ namespace BTDB.ODBLayer
 
         internal IType2NameRegistry Type2NameRegistry => _type2Name;
 
-        internal bool AutoRegisterTypes => _autoRegisterTypes;
+        internal bool AutoRegisterTypes { get; private set; }
+
+        public DBOptions ActualOptions { get; private set; }
 
         internal TablesInfo TablesInfo => _tablesInfo;
 
@@ -60,7 +61,8 @@ namespace BTDB.ODBLayer
             _keyValueDB = keyValueDB;
             _dispose = dispose;
             _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
-            _autoRegisterTypes = options.AutoRegisterType;
+            AutoRegisterTypes = options.AutoRegisterType;
+            ActualOptions = options;
 
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
@@ -163,6 +165,8 @@ namespace BTDB.ODBLayer
         {
             return Type2NameRegistry.FindTypeByName(name);
         }
+
+        public IObjectDBLogger Logger { get; set; }
 
         public void Dispose()
         {

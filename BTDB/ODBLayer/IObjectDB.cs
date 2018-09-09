@@ -26,5 +26,9 @@ namespace BTDB.ODBLayer
         new ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
 
         new IFieldHandlerFactory FieldHandlerFactory { get; set; }
+
+        DBOptions ActualOptions { get; }
+
+        IObjectDBLogger Logger { get; set; }
     }
 }

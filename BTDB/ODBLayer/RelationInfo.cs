@@ -113,7 +113,7 @@ namespace BTDB.ODBLayer
 
                 if (LastPersistedVersion > 0)
                 {
-                    CheckThatPrimaryKeyHasNotChanged(name, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
+                    CheckThatPrimaryKeyHasNotChanged(tr, name, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
                     UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
                 }
             }
@@ -134,7 +134,8 @@ namespace BTDB.ODBLayer
             throw new BTDBException($"Cannot deduce client type from interface {name}");
         }
 
-        static void CheckThatPrimaryKeyHasNotChanged(string name, RelationVersionInfo info, RelationVersionInfo previousInfo)
+        void CheckThatPrimaryKeyHasNotChanged(IInternalObjectDBTransaction tr, string name,
+            RelationVersionInfo info, RelationVersionInfo previousInfo)
         {
             var pkFields = info.GetPrimaryKeyFields();
             var prevPkFields = previousInfo.GetPrimaryKeyFields();
@@ -144,8 +145,17 @@ namespace BTDB.ODBLayer
             var pen = prevPkFields.GetEnumerator();
             while (en.MoveNext() && pen.MoveNext())
             {
-                if (!ArePrimaryKeyFieldsCompatible(en.Current.Handler, pen.Current.Handler))
+                if (ArePrimaryKeyFieldsCompatible(en.Current.Handler, pen.Current.Handler)) continue;
+                var db = tr.Owner;
+                db.Logger?.ReportIncompatiblePrimaryKey(name, en.Current.Name);
+                if (db.ActualOptions.SelfHealing)
+                {
+                    ClearRelationData(tr, previousInfo);
+                }
+                else
+                {
                     throw new BTDBException($"Change of primary key in relation '{name}' is not allowed. Field '{en.Current.Name}' is not compatible.");
+                }
             }
         }
 
@@ -238,6 +248,20 @@ namespace BTDB.ODBLayer
         {
             SetPrefixToSecondaryKey(tr, index);
             return count != tr.GetKeyValueCount();
+        }
+
+        void ClearRelationData(IInternalObjectDBTransaction tr, RelationVersionInfo info)
+        {
+            foreach (var prevIdx in info.SecondaryKeys.Keys)
+            {
+                DeleteSecondaryKey(tr.KeyValueDBTransaction, prevIdx);
+            }
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(ObjectDB.AllRelationsPKPrefix);
+            writer.WriteVUInt32(Id);
+
+            tr.KeyValueDBTransaction.SetKeyPrefix(writer.Data);
+            tr.KeyValueDBTransaction.EraseAll();
         }
 
         void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)

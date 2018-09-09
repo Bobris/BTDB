@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+DBOptions.WithSelfHealing switches db to try self heal rather then fail fast mode
+IObjectDBLogger for ObjectDB, actually for reporting deletion of incompatible data in self heal mode.
+
 ## 14.9.0
 
 ### Fixed
