@@ -1,12 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using Assent;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace BTDBTest
@@ -422,5 +422,21 @@ namespace BTDBTest
             });
         }
 
+        class GenericClass<T>
+        {
+            public T Value { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                return obj is GenericClass<T> wrapper &&
+                       EqualityComparer<T>.Default.Equals(Value, wrapper.Value);
+            }
+        }
+
+        [Fact]
+        public void CanSerializeGenericType()
+        {
+            TestSerialization(new GenericClass<int> { Value = 42 });
+        }
     }
 }

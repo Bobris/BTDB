@@ -125,6 +125,10 @@ namespace BTDB.EventStoreLayer
                         {
                             result = new NullableTypeDescriptor(_typeSerializers, type);
                         }
+                        else
+                        {
+                            result = new ObjectTypeDescriptor(_typeSerializers, type);
+                        }
                     }
                     else if (type.IsArray)
                     {
