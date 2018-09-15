@@ -4,6 +4,8 @@
 
 ### Added
 
+ArtInMemoryKeyValueDB - less memory hungry KVDB - use it only in .NetCore 2.1 target
+Generics classes now supported in EventLayer serializers
 DBOptions.WithSelfHealing switches db to try self heal rather then fail fast mode
 IObjectDBLogger for ObjectDB, actually for reporting deletion of incompatible data in self heal mode.
 

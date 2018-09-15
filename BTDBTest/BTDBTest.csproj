@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netcoreapp2.1</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">$(TargetFrameworks);net471</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <NoWarn>1701;1702;1720</NoWarn>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks> 
