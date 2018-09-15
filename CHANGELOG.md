@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.10.0
+
 ### Added
 
 ArtInMemoryKeyValueDB - less memory hungry KVDB - use it only in .NetCore 2.1 target

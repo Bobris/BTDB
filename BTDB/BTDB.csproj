@@ -5,7 +5,7 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <PackageId>BTDB</PackageId>
-    <Version>14.9.0</Version>
+    <Version>14.10.0</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
     <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
     <PackageLicenseUrl>http://www.opensource.org/licenses/mit-license.php</PackageLicenseUrl>
