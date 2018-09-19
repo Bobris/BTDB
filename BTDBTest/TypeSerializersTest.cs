@@ -2,6 +2,7 @@ using Assent;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using System;
 using System.Collections.Generic;
@@ -437,6 +438,56 @@ namespace BTDBTest
         public void CanSerializeGenericType()
         {
             TestSerialization(new GenericClass<int> { Value = 42 });
+        }
+
+        class ClassWithIOrderedDictionary : IEquatable<ClassWithIOrderedDictionary>
+        {
+            public IOrderedDictionary<int, int> IOrderedDictionary { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ClassWithIOrderedDictionary);
+            }
+
+            public bool Equals(ClassWithIOrderedDictionary other)
+            {
+                if (other == null)
+                    return false;
+                if (IOrderedDictionary == other.IOrderedDictionary) return true;
+                if (IOrderedDictionary == null || other.IOrderedDictionary == null) return false;
+                if (IOrderedDictionary.Count != other.IOrderedDictionary.Count) return false;
+                foreach (var pair in IOrderedDictionary)
+                {
+                    if (!other.IOrderedDictionary.ContainsKey(pair.Key))
+                        return false;
+
+                    if (other.IOrderedDictionary[pair.Key] != pair.Value)
+                        return false;
+                }
+                return true;
+            }
+        }
+
+        class DummyOrderedDictionary<TKey, TValue> : Dictionary<TKey, TValue>, IOrderedDictionary<TKey, TValue>
+        {
+            public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator() => throw new NotImplementedException();
+            public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd) => throw new NotImplementedException();
+        }
+
+        [Fact]
+        public void CanSerializeIOrderedDictionaryType()
+        {
+            TestSerialization(new ClassWithIOrderedDictionary
+            {
+                IOrderedDictionary = new DummyOrderedDictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3,
+                }
+            });
         }
     }
 }
