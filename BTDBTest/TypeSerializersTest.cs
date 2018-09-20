@@ -5,6 +5,7 @@ using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -486,6 +487,84 @@ namespace BTDBTest
                 {
                     [1] = 2,
                     [2] = 3,
+                }
+            });
+        }
+
+        public class ClassWithBoxedIEnumerable
+        {
+            public object Value { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is ClassWithBoxedIEnumerable o)
+                {
+                    var enumA = ((IEnumerable)Value).GetEnumerator();
+                    var enumB = ((IEnumerable)o.Value).GetEnumerator();
+                    enumA.Reset();
+                    enumB.Reset();
+
+                    while (enumA.MoveNext() | enumB.MoveNext())
+                    {
+                        if (!enumA.Current.Equals(enumB.Current))
+                            return false;
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        [Fact]
+        public void CanSerializeBoxedList()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new List<int>
+                {
+                    1,2,3
+                }
+            });
+        }
+
+        [Fact]
+        public void CanSerializeBoxedDictionary()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new Dictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3
+                }
+            });
+        }
+
+        class MyList<T> : List<T>
+        {
+        }
+
+        [Fact(Skip = "By design - not supported yet")]
+        public void CanSerializeBoxedCustomList()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new MyList<int>
+                {
+                    1,2,3
+                }
+            });
+        }
+
+        [Fact(Skip = "By design - not supported yet")]
+        public void CanSerializeBoxedIOrderedDictionary()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new DummyOrderedDictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3
                 }
             });
         }

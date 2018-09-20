@@ -20,7 +20,6 @@ namespace BTDB.EventStoreLayer
         ITypeDescriptor _valueDescriptor;
         string _name;
         readonly ITypeConvertorGenerator _convertorGenerator;
-        readonly bool _isOrderedDictionary;
 
         public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
@@ -30,7 +29,6 @@ namespace BTDB.EventStoreLayer
             var genericArguments = type.GetGenericArguments();
             _keyType = genericArguments[0];
             _valueType = genericArguments[1];
-            _isOrderedDictionary = type.InheritsOrImplements(typeof(IOrderedDictionary<,>));
         }
 
         public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
@@ -45,8 +43,6 @@ namespace BTDB.EventStoreLayer
             InitFromKeyValueDescriptors(keyDesc, valueDesc);
         }
 
-        string InterfaceName => _isOrderedDictionary ? "IOrderedDictionary`2" : "IDictionary`2";
-
         void InitFromKeyValueDescriptors(ITypeDescriptor keyDescriptor, ITypeDescriptor valueDescriptor)
         {
             if (_keyDescriptor == keyDescriptor && _valueDescriptor == valueDescriptor && _name != null) return;
@@ -54,7 +50,7 @@ namespace BTDB.EventStoreLayer
             _valueDescriptor = valueDescriptor;
             if ((_keyDescriptor.Name?.Length ?? 0) == 0 || (_valueDescriptor.Name?.Length ?? 0) == 0) return;
             Sealed = _keyDescriptor.Sealed && _valueDescriptor.Sealed;
-            Name = $"{(_isOrderedDictionary ? "Ordered" : "")}Dictionary<{_keyDescriptor.Name}, {_valueDescriptor.Name}>";
+            Name = $"Dictionary<{_keyDescriptor.Name}, {_valueDescriptor.Name}>";
         }
 
         public bool Equals(ITypeDescriptor other)
@@ -84,7 +80,7 @@ namespace BTDB.EventStoreLayer
 
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
-            text.Append($"{(_isOrderedDictionary ? "Ordered" : "")}Dictionary<");
+            text.Append("Dictionary<");
             _keyDescriptor.BuildHumanReadableFullName(text, stack, indent);
             text.Append(", ");
             _valueDescriptor.BuildHumanReadableFullName(text, stack, indent);
@@ -109,10 +105,12 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        Type GetInterface(Type type) => type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
+
         public Type GetPreferedType(Type targetType)
         {
             if (_type == targetType) return _type;
-            var targetIDictionary = targetType.GetInterface(InterfaceName) ?? targetType;
+            var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
             var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
             var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
@@ -131,11 +129,11 @@ namespace BTDB.EventStoreLayer
             if (targetType == typeof(object))
                 targetType = GetPreferedType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var targetIDictionary = targetType.GetInterface(InterfaceName) ?? targetType;
+            var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
             var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
             var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
-            var dictionaryTypeGenericDefinition = _isOrderedDictionary ? typeof(OrderedDictionaryWithDescriptor<,>) : typeof(DictionaryWithDescriptor<,>);
+            var dictionaryTypeGenericDefinition = targetType.InheritsOrImplements(typeof(IOrderedDictionary<,>)) ? typeof(OrderedDictionaryWithDescriptor<,>) : typeof(DictionaryWithDescriptor<,>);
             var dictionaryType = dictionaryTypeGenericDefinition.MakeGenericType(keyType, valueType);
             if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
             var localDict = ilGenerator.DeclareLocal(dictionaryType);
@@ -194,7 +192,7 @@ namespace BTDB.EventStoreLayer
 
                 if (type == typeof(object))
                     type = _owner.GetPreferedType();
-                var targetIDictionary = type.GetInterface(_owner.InterfaceName) ?? type;
+                var targetIDictionary = _owner.GetInterface(type);
                 var targetTypeArguments = targetIDictionary.GetGenericArguments();
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor, targetTypeArguments[0]);
                 var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor, targetTypeArguments[1]);
