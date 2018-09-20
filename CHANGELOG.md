@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+EventLayer serializers support IOrderedDictionary<K,V> type
+
 ## 14.10.0
 
 ### Added
