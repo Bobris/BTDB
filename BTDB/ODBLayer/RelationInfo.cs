@@ -1144,15 +1144,15 @@ namespace BTDB.ODBLayer
             return name;
         }
 
-        public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes,
+        public object  CreateInstance(IInternalObjectDBTransaction tr, byte[] keyBytes, byte[] valueBytes,
                                      bool keyContainsRelationIndex = true)
         {
             var obj = Creator(tr);
-            var keyReader = new ByteBufferReader(keyBytes);
+            var keyReader = new ByteArrayReader(keyBytes);
             if (keyContainsRelationIndex)
                 keyReader.SkipVUInt32(); //index Relation
             GetPrimaryKeysLoader()(tr, keyReader, obj);
-            var valueReader = new ByteBufferReader(valueBytes);
+            var valueReader = new ByteArrayReader(valueBytes);
             var version = valueReader.ReadVUInt32();
             GetValueLoader(version)(tr, valueReader, obj);
             return obj;

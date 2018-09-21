@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Skipping removed field (inline object) when deserializing older version in relations
+
 ## 14.11.0
 
 ### Added

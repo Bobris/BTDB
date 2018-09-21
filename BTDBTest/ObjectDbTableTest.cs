@@ -2159,5 +2159,82 @@ namespace BTDBTest
                 Assert.Equal(expected, tr.EnumerateRelationTypes());
             }
         }
+
+        public class DeliveryRuleV2
+        {
+            public DeliveryRuleV2()
+            {
+                Status = 100;
+            }
+
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+            public int Status { get; set; }
+        }
+
+        public interface IDeliveryRuleV2Table : IReadOnlyCollection<DeliveryRuleV2>
+        {
+            void Insert(DeliveryRuleV2 job);
+            void RemoveById(ulong id);
+            DeliveryRuleV2 FindById(ulong id);
+        }
+
+
+        public class DeliveryRuleV1
+        {
+            public DeliveryRuleV1()
+            {
+                Status = 100;
+            }
+            public IList<Activity> Activities { get; set; }
+
+            [PrimaryKey(1)]
+            public ulong Id { get; set; }
+
+            public int Status { get; set; }
+        }
+
+        public interface IDeliveryRuleTable : IReadOnlyCollection<DeliveryRuleV1>
+        {
+            void Insert(DeliveryRuleV1 job);
+        }
+
+        public class Activity
+        {
+            public ulong Id { get; set; }
+        }
+
+        [Fact]
+        public void CanSkipNativeObjectField()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDeliveryRuleTable>("DeliveryRule");
+                var ruleTable = creator(tr);
+                var rule1 = new DeliveryRuleV1 { Id = 11, Status = 300 };
+                ruleTable.Insert(rule1);
+
+                var rule2 = new DeliveryRuleV1 { Id = 12, Status = 200, Activities = new[] { new Activity() } };
+                ruleTable.Insert(rule2);
+
+                tr.Commit();
+            }
+
+            ReopenDb();
+            _db.RegisterType(typeof(Activity));
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IDeliveryRuleV2Table>("DeliveryRule");
+                var ruleV2Table = creator(tr);
+                ruleV2Table.RemoveById(11);
+
+                Assert.Equal(1, ruleV2Table.Count);
+
+                var j = ruleV2Table.FindById(12);
+                Assert.Equal(200, j.Status);
+
+                tr.Commit();
+            }
+        }
     }
 }

@@ -433,6 +433,11 @@ namespace BTDBTest
                 return obj is GenericClass<T> wrapper &&
                        EqualityComparer<T>.Default.Equals(Value, wrapper.Value);
             }
+
+            public override int GetHashCode()
+            {
+                return Value?.GetHashCode() ?? 0;
+            }
         }
 
         [Fact]
@@ -466,6 +471,11 @@ namespace BTDBTest
                         return false;
                 }
                 return true;
+            }
+
+            public override int GetHashCode()
+            {
+                return IOrderedDictionary?.GetHashCode() ?? 0;
             }
         }
 
@@ -512,6 +522,11 @@ namespace BTDBTest
                     return true;
                 }
                 return false;
+            }
+
+            public override int GetHashCode()
+            {
+                return Value?.GetHashCode() ?? 0;
             }
         }
 
