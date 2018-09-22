@@ -9,7 +9,7 @@ namespace BTDB.StreamLayer
             End = data.Length;
         }
 
-        protected override sealed void FillBuffer()
+        protected sealed override void FillBuffer()
         {
             Pos = -1;
             End = -1;

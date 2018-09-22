@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -320,8 +321,8 @@ namespace BTDB.ODBLayer
                     throw new BTDBException("Not found.");
                 return default(T);
             }
-            var valueBytes = _transaction.KeyValueDBTransaction.GetValueAsByteArray();
-            return (T)_relationInfo.CreateInstance(_transaction, keyBytes.ToByteArray(), valueBytes);
+            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+            return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
         public IEnumerator<T> FindByPrimaryKeyPrefix(ByteBuffer keyBytesPrefix)
@@ -329,12 +330,12 @@ namespace BTDB.ODBLayer
             return new RelationPrimaryKeyEnumerator<T>(_transaction, _relationInfo, keyBytesPrefix, _modificationCounter);
         }
 
-        internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, byte[] firstPart, byte[] secondPart)
+        internal T CreateInstanceFromSK(uint secondaryKeyIndex, uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
         {
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                                                 (firstPart, secondPart, pkWriter);
+                                                 (firstPart.ToByteArray(), secondPart.ToByteArray(), pkWriter);
             return FindByIdOrDefault(pkWriter.Data, true);
         }
 
@@ -358,12 +359,12 @@ namespace BTDB.ODBLayer
                     throw new BTDBException("Not found.");
                 return default(T);
             }
-            var keyBytes = _transaction.KeyValueDBTransaction.GetKeyAsByteArray();
+            var keyBytes = _transaction.KeyValueDBTransaction.GetKey();
 
             if (_transaction.KeyValueDBTransaction.FindNextKey())
                 throw new BTDBException("Ambiguous result.");
 
-            return CreateInstanceFromSK(secondaryKeyIndex, prefixParametersCount, secKeyBytes.ToByteArray(), keyBytes);
+            return CreateInstanceFromSK(secondaryKeyIndex, prefixParametersCount, secKeyBytes, keyBytes);
         }
 
         //SK manipulations

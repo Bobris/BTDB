@@ -21,10 +21,10 @@ namespace BTDB.ODBLayer
         uint _pos;
         bool _seekNeeded;
 
-        protected byte[] KeyBytes;
+        protected ByteBuffer KeyBytes;
         int _prevModificationCounter;
 
-        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes, 
                                   IRelationModificationCounter modificationCounter)
         {
             RelationInfo = relationInfo;
@@ -34,7 +34,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector = Transaction.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            KeyBytes = keyBytes.ToByteArray();
+            KeyBytes = keyBytes;
             _modificationCounter = modificationCounter;
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(KeyBytes);
@@ -71,8 +71,8 @@ namespace BTDB.ODBLayer
             get
             {
                 SeekCurrent();
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
-                var valueBytes = _keyValueTr.GetValueAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 return CreateInstance(keyBytes, valueBytes);
             }
         }
@@ -96,7 +96,7 @@ namespace BTDB.ODBLayer
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
         }
 
-        protected virtual T CreateInstance(byte[] keyBytes, byte[] valueBytes)
+        protected virtual T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             return (T)RelationInfo.CreateInstance(Transaction, keyBytes, valueBytes, false);
         }
@@ -124,19 +124,19 @@ namespace BTDB.ODBLayer
             _skipBytes = relationInfo.Prefix.Length;
         }
 
-        protected override T CreateInstance(byte[] keyBytes, byte[] valueBytes)
+        protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            var keyData = new byte[KeyBytes.Length - _skipBytes + keyBytes.Length];
-            Array.Copy(KeyBytes, _skipBytes, keyData, 0, KeyBytes.Length - _skipBytes);
-            Array.Copy(keyBytes, 0, keyData, KeyBytes.Length - _skipBytes, keyBytes.Length);
+            var keyWriter = new ByteBufferWriter();
+            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + _skipBytes, KeyBytes.Length - _skipBytes);
+            keyWriter.WriteBlock(keyBytes);
 
-            return (T)RelationInfo.CreateInstance(Transaction, keyData, valueBytes, false);
+            return (T)RelationInfo.CreateInstance(Transaction, keyWriter.Data, valueBytes, false);
         }
 
         public override ByteBuffer GetKeyBytes()
         {
             var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteBlock(KeyBytes, ObjectDB.AllRelationsPKPrefix.Length, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length);
+            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + ObjectDB.AllRelationsPKPrefix.Length, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length);
             keyWriter.WriteBlock(base.GetKeyBytes());
             return keyWriter.Data;
         }
@@ -157,7 +157,7 @@ namespace BTDB.ODBLayer
             _manipulator = manipulator;
         }
 
-        protected override T CreateInstance(byte[] keyBytes, byte[] valueBytes)
+        protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, _fieldCountInKey, KeyBytes, keyBytes);
         }
@@ -176,7 +176,7 @@ namespace BTDB.ODBLayer
         uint _pos;
         bool _seekNeeded;
         readonly bool _ascending;
-        protected readonly byte[] _keyBytes;
+        protected readonly ByteBuffer _keyBytes;
         readonly int _lengthOfNonDataPrefix;
         readonly int _prevModificationCounter;
 
@@ -189,7 +189,7 @@ namespace BTDB.ODBLayer
         {
             _prefixFieldCount = prefixFieldCount;
             _manipulator = manipulator;
-
+            
             _ascending = order == EnumerationOrder.Ascending;
 
             _tr = manipulator.Transaction;
@@ -197,7 +197,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            _keyBytes = prefixBytes.ToByteArray();
+            _keyBytes = prefixBytes;
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
@@ -319,7 +319,7 @@ namespace BTDB.ODBLayer
                     Seek();
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 return CreateInstance(keyBytes);
             }
 
@@ -329,13 +329,13 @@ namespace BTDB.ODBLayer
             }
         }
 
-        protected virtual T CreateInstance(byte[] keyBytes)
+        protected virtual T CreateInstance(ByteBuffer keyBytes)
         {
-            var keyData = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
-            Array.Copy(_keyBytes, _lengthOfNonDataPrefix, keyData, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
-            Array.Copy(keyBytes, 0, keyData, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
+            writer.WriteBlock(keyBytes);
 
-            return (T)_manipulator.RelationInfo.CreateInstance(_tr, keyData, _keyValueTr.GetValueAsByteArray(), false);
+            return (T)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
         }
 
         void Seek()
@@ -372,7 +372,7 @@ namespace BTDB.ODBLayer
             _secondaryKeyIndex = secondaryKeyIndex;
         }
 
-        protected override T CreateInstance(byte[] keyBytes)
+        protected override T CreateInstance(ByteBuffer keyBytes)
         {
             return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, _prefixFieldCount, _keyBytes, keyBytes);
         }
@@ -391,7 +391,7 @@ namespace BTDB.ODBLayer
         uint _pos;
         SeekState _seekState;
         readonly bool _ascending;
-        protected readonly byte[] _keyBytes;
+        protected readonly ByteBuffer _keyBytes;
         protected Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
         readonly int _lengthOfNonDataPrefix;
 
@@ -410,7 +410,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector = _tr.TransactionProtector;
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
-            _keyBytes = prefixBytes.ToByteArray();
+            _keyBytes = prefixBytes;
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
@@ -488,18 +488,18 @@ namespace BTDB.ODBLayer
 
                 _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
             }
-
+            
         }
 
         public uint Count => _count;
 
-        protected virtual TValue CreateInstance(byte[] _, byte[] keyBytes)
+        protected virtual TValue CreateInstance(ByteBuffer prefixKeyBytes, ByteBuffer keyBytes)
         {
-            var keyData = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
-            Array.Copy(_keyBytes, _lengthOfNonDataPrefix, keyData, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
-            Array.Copy(keyBytes, 0, keyData, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
+            var writer = new ByteBufferWriter();
+            writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
+            writer.WriteBlock(keyBytes);
 
-            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, keyData, _keyValueTr.GetValueAsByteArray(), false);
+            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
         }
 
         public TValue CurrentValue
@@ -519,7 +519,7 @@ namespace BTDB.ODBLayer
                     Seek();
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 return CreateInstance(_keyBytes, keyBytes);
             }
             set
@@ -609,7 +609,7 @@ namespace BTDB.ODBLayer
                 .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
         }
 
-        protected override TValue CreateInstance(byte[] prefixKeyBytes, byte[] keyBytes)
+        protected override TValue CreateInstance(ByteBuffer prefixKeyBytes, ByteBuffer keyBytes)
         {
             return _manipulator.CreateInstanceFromSK(_secondaryKeyIndex, _prefixFieldCount, _keyBytes, keyBytes);
         }
