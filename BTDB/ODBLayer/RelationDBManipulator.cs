@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -335,7 +334,7 @@ namespace BTDB.ODBLayer
             var pkWriter = new ByteBufferWriter();
             pkWriter.WriteVUInt32(_relationInfo.Id);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                                                 (firstPart.ToByteArray(), secondPart.ToByteArray(), pkWriter);
+                                                 (new ByteBufferReader(firstPart), new ByteBufferReader(secondPart), pkWriter);
             return FindByIdOrDefault(pkWriter.Data, true);
         }
 
@@ -394,7 +393,7 @@ namespace BTDB.ODBLayer
             var version = valueReader.ReadVUInt32();
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, keyBytes.ToByteArray(), valueBytes.ToByteArray(), _relationInfo.DefaultClientObject);
+            keySaver(_transaction, keyWriter, new ByteBufferReader(keyBytes), new ByteBufferReader(valueBytes), _relationInfo.DefaultClientObject);
             return keyWriter.Data;
         }
 
