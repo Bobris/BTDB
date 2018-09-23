@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.12.0
+
 ### Fixed
 
 Skipping removed field (inline object) when deserializing older version in relations
