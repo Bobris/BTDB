@@ -1,6 +1,7 @@
 ﻿using BTDB.ARTLib;
 using System;
 using System.Collections.Generic;
+using BTDBTest;
 using Xunit;
 
 namespace ARTLibTest
@@ -39,7 +40,7 @@ namespace ARTLibTest
             }
         }
 
-        [Fact]
+        [SkipWhen(SkipWhenAttribute.Is.NetFramework, "ArtLib is supported only in .netcore")]
         public void InvalidCursorBehaviour()
         {
             Assert.Equal(-1, _cursor.CalcIndex());
@@ -1005,6 +1006,7 @@ namespace ARTLibTest
         [InlineData(40, -1, 40, 255, 257)]
         public void BigErase256Works(byte l0, int l1, byte r0, byte r1, int erased)
         {
+            if (!SkipWhenAttribute.IsNetCore()) return;
             var key = new byte[2];
             for (int i = 0; i <= 255; i++)
             {
@@ -1048,6 +1050,7 @@ namespace ARTLibTest
         [InlineData(20, -1, 22, 40, 96)]
         public void BigErase48Works(byte l0, int l1, byte r0, byte r1, int erased)
         {
+            if (!SkipWhenAttribute.IsNetCore()) return;
             var key = new byte[2];
             for (int i = 10; i <= 40; i++)
             {
