@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BTDB.KVDBLayer.BTree
 {
-    interface IBTreeRootNode : IBTreeNode
+    interface IBTreeRootNode : IBTreeNode, IRootNodeInternal
     {
         long TransactionId { get; }
         string DescriptionForLeaks { get; set; }

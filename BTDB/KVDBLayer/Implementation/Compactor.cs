@@ -9,8 +9,8 @@ namespace BTDB.KVDBLayer
 {
     class Compactor
     {
-        readonly KeyValueDB _keyValueDB;
-        IBTreeRootNode _root;
+        readonly IKeyValueDBInternal _keyValueDB;
+        IRootNodeInternal _root;
         FileStat[] _fileStats;
         Dictionary<ulong, uint> _newPositionMap;
         readonly CancellationToken _cancellation;
@@ -61,7 +61,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal Compactor(KeyValueDB keyValueDB, CancellationToken cancellation)
+        internal Compactor(IKeyValueDBInternal keyValueDB, CancellationToken cancellation)
         {
             _keyValueDB = keyValueDB;
             _cancellation = cancellation;
@@ -97,7 +97,7 @@ namespace BTDB.KVDBLayer
         {
             if (_keyValueDB.FileCollection.GetCount() == 0) return false;
             _root = _keyValueDB.OldestRoot;
-            var dontTouchGeneration = _keyValueDB.GetGeneration(_root.TrLogFileId);
+            var dontTouchGeneration = _keyValueDB.GetGeneration(_keyValueDB.GetTrLogFileId(_root));
             var preserveKeyIndexKey = _keyValueDB.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(_keyValueDB.BuildKeyIndexInfos());
             var preserveKeyIndexGeneration = _keyValueDB.CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
             InitFileStats(dontTouchGeneration);
@@ -162,9 +162,9 @@ namespace BTDB.KVDBLayer
             return true;
         }
 
-        private void ForbidDeleteOfFilesUsedByStillRunningOldTransaction(IBTreeRootNode root)
+        void ForbidDeleteOfFilesUsedByStillRunningOldTransaction(IRootNodeInternal root)
         {
-            root.Iterate((valueFileId, valueOfs, valueSize) =>
+            _keyValueDB.IterateRoot(root, (valueFileId, valueOfs, valueSize) =>
             {
                 var id = valueFileId;
                 var fileStats = _fileStats;
@@ -192,10 +192,10 @@ namespace BTDB.KVDBLayer
                 wasteInMemory[i] = new byte[blockSize];
                 var readSize = totalSize - pos;
                 if (readSize > blockSize) readSize = blockSize;
-                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos, true);
+                wasteFullStream.RandomRead(wasteInMemory[i].AsSpan(0, (int)readSize), pos, true);
                 pos += readSize;
             }
-            _root.Iterate((valueFileId, valueOfs, valueSize) =>
+            _keyValueDB.IterateRoot(_root, (valueFileId, valueOfs, valueSize) =>
                 {
                     if (valueFileId != wastefullFileId) return;
                     var size = (uint)Math.Abs(valueSize);
@@ -253,9 +253,9 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void CalculateFileUsefullness(IBTreeRootNode root)
+        void CalculateFileUsefullness(IRootNodeInternal root)
         {
-            root.Iterate((valueFileId, valueOfs, valueSize) =>
+            _keyValueDB.IterateRoot(root, (valueFileId, valueOfs, valueSize) =>
                 {
                     var id = valueFileId;
                     var fileStats = _fileStats;

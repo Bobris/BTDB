@@ -1,57 +1,64 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using BTDB.KVDBLayer;
 
 namespace BTDB.StreamLayer
 {
     public class MemoryPositionLessStream : IPositionLessStream
     {
-        ulong _size;
+        long _size;
         readonly List<byte[]> _data = new List<byte[]>();
-        readonly object _lock = new object();
-        const int OneBufSize = 128 * 1024;
+        readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        const uint OneBufSize = 128 * 1024;
 
         public void Dispose()
         {
         }
 
-        public int Read(byte[] data, int offset, int size, ulong position)
+        public int Read(Span<byte> data, ulong position)
         {
-            lock (_lock)
+            using (_lock.ReadLock())
             {
                 int read = 0;
-                while (size > 0 && position < _size)
+                while (data.Length > 0 && position < (ulong) _size)
                 {
-                    var buf = _data[(int)(position / OneBufSize)];
-                    var startOfs = (int)(position % OneBufSize);
+                    var buf = _data[(int) (position / OneBufSize)];
+                    var startOfs = (int) (position % OneBufSize);
                     var rest = buf.Length - startOfs;
-                    if (_size - position < (ulong)rest) rest = (int) (_size - position);
-                    if (size < rest) rest = size;
-                    Array.Copy(buf, startOfs, data, offset, rest);
-                    position += (ulong)rest;
+                    if ((ulong) _size - position < (ulong) rest) rest = (int) ((ulong) _size - position);
+                    if (data.Length < rest) rest = data.Length;
+                    buf.AsSpan(startOfs, rest).CopyTo(data);
+                    position += (ulong) rest;
                     read += rest;
-                    offset += rest;
-                    size -= rest;
+                    data = data.Slice(rest);
                 }
+
                 return read;
             }
         }
 
-        public void Write(byte[] data, int offset, int size, ulong position)
+        public void Write(ReadOnlySpan<byte> data, ulong position)
         {
-            lock (_lock)
+            if (data.Length == 0) return;
+            using (_lock.WriteLock())
             {
-                if (position + (ulong)size > _size) SetSizeInternal(position + (ulong)size);
-                while (size > 0)
+                if (position + (ulong) data.Length > (ulong) _size) SetSizeInternal(position + (ulong) data.Length);
+            }
+
+            while (data.Length > 0)
+            {
+                byte[] buf;
+                using (_lock.ReadLock())
                 {
-                    var buf = _data[(int)(position / OneBufSize)];
-                    var startOfs = (int)(position % OneBufSize);
-                    var rest = buf.Length - startOfs;
-                    if (size < rest) rest = size;
-                    Array.Copy(data, offset, buf, startOfs, rest);
-                    position += (ulong)rest;
-                    offset += rest;
-                    size -= rest;
+                    buf = _data[(int) (position / OneBufSize)];
                 }
+                var startOfs = (int) (position % OneBufSize);
+                var rest = buf.Length - startOfs;
+                if (data.Length < rest) rest = data.Length;
+                data.Slice(0, rest).CopyTo(buf.AsSpan(startOfs, rest));
+                position += (ulong) rest;
+                data = data.Slice(rest);
             }
         }
 
@@ -65,15 +72,12 @@ namespace BTDB.StreamLayer
 
         public ulong GetSize()
         {
-            lock (_lock)
-            {
-                return _size;
-            }
+            return (ulong) Interlocked.Read(ref _size);
         }
 
         public void SetSize(ulong newSize)
         {
-            lock (_lock)
+            using (_lock.WriteLock())
             {
                 SetSizeInternal(newSize);
             }
@@ -81,11 +85,12 @@ namespace BTDB.StreamLayer
 
         void SetSizeInternal(ulong newSize)
         {
-            while (_data.Count < (int)((newSize + OneBufSize - 1) / OneBufSize))
+            while (_data.Count < (int) ((newSize + OneBufSize - 1) / OneBufSize))
             {
                 _data.Add(new byte[OneBufSize]);
             }
-            _size = newSize;
+
+            Interlocked.Exchange(ref _size, (long) newSize);
         }
     }
 }

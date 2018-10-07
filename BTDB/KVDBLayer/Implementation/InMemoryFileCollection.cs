@@ -76,21 +76,20 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
-            public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
+            public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
             {
-                while (size > 0)
+                while (data.Length > 0)
                 {
                     byte[] buf;
                     lock (_lock)
                     {
-                        if (position + (ulong)size > (ulong)_writer.GetCurrentPosition()) throw new EndOfStreamException();
+                        if (position + (ulong)data.Length > (ulong)_writer.GetCurrentPosition()) throw new EndOfStreamException();
                         buf = _data[(int)(position / OneBufSize)];
                     }
                     var bufofs = (int)(position % OneBufSize);
-                    var copy = Math.Min(size, OneBufSize - bufofs);
-                    Array.Copy(buf, bufofs, data, offset, copy);
-                    offset += copy;
-                    size -= copy;
+                    var copy = Math.Min(data.Length, OneBufSize - bufofs);
+                    buf.AsSpan(bufofs,copy).CopyTo(data);
+                    data = data.Slice(copy);
                     position += (ulong)copy;
                 }
             }

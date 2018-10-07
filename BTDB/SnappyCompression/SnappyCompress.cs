@@ -7,7 +7,7 @@ namespace BTDB.SnappyCompression
     {
         const int MaxOffset = 1 << 15;
 
-        static bool Equal4(byte[] buf, int o1, int o2)
+        static bool Equal4(in ReadOnlySpan<byte> buf, int o1, int o2)
         {
             return buf[o1] == buf[o2] &&
                    buf[o1 + 1] == buf[o2 + 1] &&
@@ -15,7 +15,7 @@ namespace BTDB.SnappyCompression
                    buf[o1 + 3] == buf[o2 + 3];
         }
 
-        static bool EmitLiteral(byte[] dst, ref int d, ref int dL, byte[] src, int s, int sL)
+        static bool EmitLiteral(Span<byte> dst, ref int d, ref int dL, ReadOnlySpan<byte> src, int s, int sL)
         {
             if (sL < 61)
             {
@@ -62,13 +62,13 @@ namespace BTDB.SnappyCompression
                 d += 5;
                 dL -= 5;
             }
-            Array.Copy(src, s, dst, d, sL);
+            src.Slice(s,sL).CopyTo(dst.Slice(d));
             d += sL;
             dL -= sL;
             return true;
         }
 
-        static bool EmitCopy(byte[] dst, ref int d, ref int dL, int offset, int length)
+        static bool EmitCopy(in Span<byte> dst, ref int d, ref int dL, int offset, int length)
         {
             while (length > 0)
             {
@@ -98,7 +98,7 @@ namespace BTDB.SnappyCompression
             return true;
         }
 
-        static void EmitLength(byte[] dst, ref int d, ref int dL, int length)
+        static void EmitLength(in Span<byte> dst, ref int d, ref int dL, int length)
         {
             if (length < 0x80)
             {
@@ -142,12 +142,12 @@ namespace BTDB.SnappyCompression
             }
         }
 
-        public static int Compress(ByteBuffer dstBuf, ByteBuffer srcBuf)
+        public static int Compress(Span<byte> dstBuf, ReadOnlySpan<byte> srcBuf)
         {
-            var src = srcBuf.Buffer;
-            var dst = dstBuf.Buffer;
-            var s = srcBuf.Offset;
-            var d = dstBuf.Offset;
+            var src = srcBuf;
+            var dst = dstBuf;
+            var s = 0;
+            var d = 0;
             var sL = srcBuf.Length;
             var dL = dstBuf.Length;
             if (dL < 5) return -1;
@@ -155,7 +155,7 @@ namespace BTDB.SnappyCompression
             if (sL <= 4)
             {
                 if (!EmitLiteral(dst, ref d, ref dL, src, s, sL)) return -1;
-                return d - dstBuf.Offset;
+                return d;
             }
             var shift = 32 - 8;
             var tableSize = 1 << 8;
@@ -210,15 +210,24 @@ namespace BTDB.SnappyCompression
             {
                 if (!EmitLiteral(dst, ref d, ref dL, src, lit, s - lit)) return -1;
             }
-            return d - dstBuf.Offset;
+            return d;
         }
 
         public static bool TryCompress(ref ByteBuffer data, int maxSizeInPercent)
         {
-            var compressed = ByteBuffer.NewAsync(new byte[data.Length * (long)maxSizeInPercent / 100]);
+            var compressed = new byte[data.Length * (long)maxSizeInPercent / 100];
+            var compressedLength = Compress(compressed, data.AsSyncReadOnlySpan());
+            if (compressedLength < 0) return false;
+            data = ByteBuffer.NewAsync(compressed, 0, compressedLength);
+            return true;
+        }
+
+        public static bool TryCompress(ref ReadOnlySpan<byte> data, int maxSizeInPercent)
+        {
+            var compressed = new byte[data.Length * (long)maxSizeInPercent / 100];
             var compressedLength = Compress(compressed, data);
             if (compressedLength < 0) return false;
-            data = ByteBuffer.NewAsync(compressed.Buffer, 0, compressedLength);
+            data = compressed.AsSpan(0, compressedLength);
             return true;
         }
     }

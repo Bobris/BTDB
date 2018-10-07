@@ -152,7 +152,7 @@ namespace BTDB.KVDBLayer.BTree
             throw new ArgumentException();
         }
 
-        public void Iterate(BTreeIterateAction action)
+        public void Iterate(ValuesIterateAction action)
         {
             if (_rootNode == null) return;
             _rootNode.Iterate(action);

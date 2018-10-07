@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.ARTLib
 {
-    internal class Cursor : ICursor
+    class Cursor : ICursor
     {
         RootNode _rootNode;
         StructList<CursorItem> _stack;
@@ -148,6 +148,14 @@ namespace BTDB.ARTLib
                 }
             }
             return buffer.Slice(0, keyLength);
+        }
+
+        public byte[] GetKeyAsByteArray()
+        {
+            AssertValid();
+            var result = new byte[GetKeyLength()];
+            FillByKey(result);
+            return result;
         }
 
         public bool KeyHasPrefix(ReadOnlySpan<byte> prefix)

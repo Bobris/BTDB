@@ -14,6 +14,7 @@ namespace BTDB.StreamLayer
             Pos = 0;
             End = 0;
         }
+
         protected byte[] Buf;
         protected int Pos;
         protected int End;
@@ -27,6 +28,7 @@ namespace BTDB.StreamLayer
             {
                 FlushBuffer();
             }
+
             Buf[Pos++] = 0;
         }
 
@@ -36,7 +38,8 @@ namespace BTDB.StreamLayer
             {
                 FlushBuffer();
             }
-            Buf[Pos++] = (byte)(value ? 1 : 0);
+
+            Buf[Pos++] = (byte) (value ? 1 : 0);
         }
 
         public void WriteUInt8(byte value)
@@ -45,6 +48,7 @@ namespace BTDB.StreamLayer
             {
                 FlushBuffer();
             }
+
             Buf[Pos++] = value;
         }
 
@@ -54,7 +58,8 @@ namespace BTDB.StreamLayer
             {
                 FlushBuffer();
             }
-            Buf[Pos++] = (byte)value;
+
+            Buf[Pos++] = (byte) value;
         }
 
         public void WriteInt8Ordered(sbyte value)
@@ -63,7 +68,8 @@ namespace BTDB.StreamLayer
             {
                 FlushBuffer();
             }
-            Buf[Pos++] = (byte)(value + 128);
+
+            Buf[Pos++] = (byte) (value + 128);
         }
 
         public void WriteVInt16(short value)
@@ -101,6 +107,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
             }
+
             PackUnpack.PackVInt(Buf, ref Pos, value);
         }
 
@@ -119,6 +126,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
             }
+
             PackUnpack.PackVUInt(Buf, ref Pos, value);
         }
 
@@ -135,6 +143,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
             }
+
             PackUnpack.PackInt64BE(Buf, Pos, value);
             Pos += 8;
         }
@@ -152,6 +161,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
             }
+
             PackUnpack.PackInt32BE(Buf, Pos, value);
             Pos += 4;
         }
@@ -169,6 +179,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
             }
+
             PackUnpack.PackInt32LE(Buf, Pos, value);
             Pos += 4;
         }
@@ -187,8 +198,10 @@ namespace BTDB.StreamLayer
                 else if (value == DateTime.MaxValue)
                     value = DateTime.MaxValue.ToUniversalTime();
                 else
-                    throw new ArgumentOutOfRangeException(nameof(value), "DateTime.Kind cannot be stored as Unspecified");
+                    throw new ArgumentOutOfRangeException(nameof(value),
+                        "DateTime.Kind cannot be stored as Unspecified");
             }
+
             WriteDateTime(value);
         }
 
@@ -204,12 +217,14 @@ namespace BTDB.StreamLayer
                 WriteByteZero();
                 return;
             }
+
             var l = value.Length;
             if (l == 0)
             {
                 WriteUInt8(1);
                 return;
             }
+
             var buf = Buf;
             var pos = Pos;
             var end = End;
@@ -217,7 +232,7 @@ namespace BTDB.StreamLayer
             {
                 var strPtr = strPtrStart;
                 var strPtrEnd = strPtrStart + l;
-                var toEncode = (uint)(l + 1);
+                var toEncode = (uint) (l + 1);
                 doEncode:
                 var toEncodeLen = PackUnpack.LengthVUInt(toEncode);
                 if (pos + toEncodeLen <= end)
@@ -232,6 +247,7 @@ namespace BTDB.StreamLayer
                     pos = Pos;
                     end = End;
                 }
+
                 while (strPtr != strPtrEnd)
                 {
                     var c = *strPtr++;
@@ -245,7 +261,8 @@ namespace BTDB.StreamLayer
                             pos = Pos;
                             end = End;
                         }
-                        buf[pos++] = (byte)c;
+
+                        buf[pos++] = (byte) c;
                     }
                     else
                     {
@@ -254,15 +271,17 @@ namespace BTDB.StreamLayer
                             var c2 = *strPtr;
                             if (char.IsLowSurrogate(c2))
                             {
-                                toEncode = (uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000);
+                                toEncode = (uint) ((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000);
                                 strPtr++;
                                 goto doEncode;
                             }
                         }
+
                         toEncode = c;
                         goto doEncode;
                     }
                 }
+
                 Pos = pos;
             }
         }
@@ -274,6 +293,7 @@ namespace BTDB.StreamLayer
                 WriteVUInt32(0x110001);
                 return;
             }
+
             var l = value.Length;
             int i = 0;
             while (i < l)
@@ -284,54 +304,50 @@ namespace BTDB.StreamLayer
                     var c2 = value[i + 1];
                     if (char.IsLowSurrogate(c2))
                     {
-                        WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
+                        WriteVUInt32((uint) ((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
                         i += 2;
                         continue;
                     }
                 }
-                WriteVUInt32((uint)c + 1);
+
+                WriteVUInt32((uint) c + 1);
                 i++;
             }
+
             WriteByteZero();
         }
 
-        public virtual void WriteBlock(byte[] data, int offset, int length)
+        public virtual void WriteBlock(ReadOnlySpan<byte> data)
         {
-            while (length > 0)
+            while (data.Length > 0)
             {
                 if (Pos >= End) FlushBuffer();
                 var l = End - Pos;
-                if (length < l) l = length;
-                Array.Copy(data, offset, Buf, Pos, l);
-                offset += l;
-                length -= l;
+                if (data.Length < l) l = data.Length;
+                data.Slice(0, l).CopyTo(new Span<byte>(Buf, Pos, l));
+                data = data.Slice(l);
                 Pos += l;
             }
         }
 
-        public void WriteBlock(IntPtr data, int length)
+        public void WriteBlock(byte[] buffer, int offset, int length)
         {
-            while (length > 0)
-            {
-                if (Pos >= End) FlushBuffer();
-                var l = End - Pos;
-                if (length < l) l = length;
-                Marshal.Copy(data, Buf, Pos, l);
-                data += l;
-                length -= l;
-                Pos += l;
-            }
+            WriteBlock(buffer.AsSpan(offset, length));
+        }
+
+        public unsafe void WriteBlock(IntPtr data, int length)
+        {
+            WriteBlock(new ReadOnlySpan<byte>(data.ToPointer(), length));
         }
 
         public void WriteBlock(byte[] data)
         {
-            WriteBlock(data, 0, data.Length);
+            WriteBlock(data.AsSpan());
         }
 
         public unsafe void WriteGuid(Guid value)
         {
-            var ptr = (IntPtr)(byte*)&value;
-            WriteBlock(ptr, 16);
+            WriteBlock(new ReadOnlySpan<byte>((byte*) &value, 16));
         }
 
         public void WriteSingle(float value)
@@ -347,9 +363,9 @@ namespace BTDB.StreamLayer
         public void WriteDecimal(decimal value)
         {
             var ints = decimal.GetBits(value);
-            var header = (byte)((ints[3] >> 16) & 31);
+            var header = (byte) ((ints[3] >> 16) & 31);
             if (ints[3] < 0) header |= 128;
-            var first = (uint)ints[0] + ((ulong)ints[1] << 32);
+            var first = (uint) ints[0] + ((ulong) ints[1] << 32);
             if (ints[2] == 0)
             {
                 if (first == 0)
@@ -365,19 +381,19 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                if ((uint)ints[2] < 0x10000000)
+                if ((uint) ints[2] < 0x10000000)
                 {
                     header |= 64;
                     WriteUInt8(header);
-                    WriteVUInt32((uint)ints[2]);
-                    WriteInt64((long)first);
+                    WriteVUInt32((uint) ints[2]);
+                    WriteInt64((long) first);
                 }
                 else
                 {
                     header |= 64 | 32;
                     WriteUInt8(header);
                     WriteInt32(ints[2]);
-                    WriteInt64((long)first);
+                    WriteInt64((long) first);
                 }
             }
         }
@@ -389,13 +405,14 @@ namespace BTDB.StreamLayer
                 WriteVUInt32(0);
                 return;
             }
-            WriteVUInt32((uint)(value.Length + 1));
+
+            WriteVUInt32((uint) (value.Length + 1));
             WriteBlock(value);
         }
 
         public void WriteByteArray(ByteBuffer value)
         {
-            WriteVUInt32((uint)(value.Length + 1));
+            WriteVUInt32((uint) (value.Length + 1));
             WriteBlock(value);
         }
 
@@ -407,7 +424,7 @@ namespace BTDB.StreamLayer
 
         public void WriteBlock(ByteBuffer data)
         {
-            WriteBlock(data.Buffer, data.Offset, data.Length);
+            WriteBlock(data.AsSyncReadOnlySpan());
         }
 
         public void WriteIPAddress(IPAddress value)
@@ -417,13 +434,14 @@ namespace BTDB.StreamLayer
                 WriteUInt8(3);
                 return;
             }
+
             if (value.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 if (value.ScopeId != 0)
                 {
                     WriteUInt8(2);
                     WriteBlock(value.GetAddressBytes());
-                    WriteVUInt64((ulong)value.ScopeId);
+                    WriteVUInt64((ulong) value.ScopeId);
                 }
                 else
                 {
@@ -435,7 +453,7 @@ namespace BTDB.StreamLayer
             {
                 WriteUInt8(0);
 #pragma warning disable 612,618
-                WriteInt32LE((int)value.Address);
+                WriteInt32LE((int) value.Address);
 #pragma warning restore 612,618
             }
         }

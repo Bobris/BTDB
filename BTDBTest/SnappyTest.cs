@@ -12,7 +12,7 @@ namespace BTDBTest
         {
             var s = new byte[] { 1, 2, 3, 1, 2, 3, 1, 2, 3 };
             var t = new byte[10];
-            var r = SnappyCompress.Compress(ByteBuffer.NewSync(t), ByteBuffer.NewSync(s));
+            var r = SnappyCompress.Compress(t, s);
             Assert.Equal(7, r);
             var d = SnappyDecompress.Decompress(ByteBuffer.NewSync(t, 0, r));
             Assert.Equal(s, d.ToArraySegment());
@@ -85,11 +85,11 @@ namespace BTDBTest
         void RoundTrip(byte[] source)
         {
             var compressed = new byte[(long)source.Length * 6 / 5 + 32];
-            var compressedLength = SnappyCompress.Compress(ByteBuffer.NewSync(compressed), ByteBuffer.NewSync(source));
+            var compressedLength = SnappyCompress.Compress(compressed, source);
             var decompressed = SnappyDecompress.Decompress(ByteBuffer.NewSync(compressed, 0, compressedLength));
             Assert.Equal(source, decompressed.ToArraySegment());
             compressed = new byte[compressedLength / 2];
-            Assert.Equal(-1, SnappyCompress.Compress(ByteBuffer.NewSync(compressed), ByteBuffer.NewSync(source)));
+            Assert.Equal(-1, SnappyCompress.Compress(compressed, source));
         }
     }
 }

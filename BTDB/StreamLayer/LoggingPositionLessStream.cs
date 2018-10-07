@@ -23,10 +23,10 @@ namespace BTDB.StreamLayer
             _logAction(string.Format(CultureInfo.InvariantCulture, what, parameters));
         }
 
-        public int Read(byte[] data, int offset, int size, ulong pos)
+        public int Read(Span<byte> data, ulong pos)
         {
-            int res = _positionLessStream.Read(data, offset, size, pos);
-            Log("read size:{2}/{0} pos:{1} datalen:{3} dataofs:{4}", size, pos, res, data.Length, offset);
+            int res = _positionLessStream.Read(data, pos);
+            Log("read size:{2}/{0} pos:{1}", data.Length, pos, res);
             int i = 0;
             int j = 0;
             var sb = new StringBuilder(8 + 16 * 3);
@@ -42,7 +42,7 @@ namespace BTDB.StreamLayer
                 {
                     sb.AppendFormat("{0:X8}", pos + (uint) i);
                 }
-                sb.AppendFormat(" {0:X2}", data[offset + i]);
+                sb.AppendFormat(" {0:X2}", data[i]);
                 j++;
                 i++;
             }
@@ -53,13 +53,13 @@ namespace BTDB.StreamLayer
             return res;
         }
 
-        public void Write(byte[] data, int offset, int size, ulong pos)
+        public void Write(ReadOnlySpan<byte> data, ulong pos)
         {
-            Log("write size:{0} pos:{1} datalen:{2} dataofs:{3}", size, pos, data.Length, offset);
+            Log("write size:{0} pos:{1} datalen:{2}", data.Length, pos, data.Length);
             int i = 0;
             int j = 0;
             var sb = new StringBuilder(8 + 16 * 3);
-            while (i < size)
+            while (i < data.Length)
             {
                 if (j == 16)
                 {
@@ -71,7 +71,7 @@ namespace BTDB.StreamLayer
                 {
                     sb.AppendFormat("{0:X8}", pos + (uint) i);
                 }
-                sb.AppendFormat(" {0:X2}", data[offset + i]);
+                sb.AppendFormat(" {0:X2}", data[i]);
                 j++;
                 i++;
             }
@@ -81,7 +81,7 @@ namespace BTDB.StreamLayer
             }
             try
             {
-                _positionLessStream.Write(data, offset, size, pos);
+                _positionLessStream.Write(data, pos);
             }
             catch (Exception ex)
             {

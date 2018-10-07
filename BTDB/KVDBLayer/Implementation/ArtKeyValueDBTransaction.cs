@@ -1,27 +1,30 @@
-using BTDB.ARTLib;
-using BTDB.Buffer;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using BTDB.ARTLib;
+using BTDB.Buffer;
+using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.KVDBLayer
 {
-    class ArtInMemoryKeyValueDBTransaction : IKeyValueDBTransaction
+    class ArtKeyValueDBTransaction : IKeyValueDBTransaction
     {
-        readonly ArtInMemoryKeyValueDB _keyValueDB;
+        readonly ArtKeyValueDB _keyValueDB;
         internal IRootNode ArtRoot { get; private set; }
         ICursor _cursor;
         ICursor _cursor2;
         byte[] _prefix;
         bool _readOnly;
-        bool _writting;
-        bool _preapprovedWritting;
+        bool _writing;
+        bool _preapprovedWriting;
         long _prefixKeyStart;
         long _prefixKeyCount;
         long _keyIndex;
+        bool _temporaryCloseTransactionLog;
 
-        public ArtInMemoryKeyValueDBTransaction(ArtInMemoryKeyValueDB keyValueDB, IRootNode artRoot, bool writting, bool readOnly)
+        public ArtKeyValueDBTransaction(ArtKeyValueDB keyValueDB, IRootNode artRoot, bool writing, bool readOnly)
         {
-            _preapprovedWritting = writting;
+            _preapprovedWriting = writing;
             _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _prefix = Array.Empty<byte>();
@@ -33,12 +36,12 @@ namespace BTDB.KVDBLayer
             ArtRoot = artRoot;
         }
 
-        ~ArtInMemoryKeyValueDBTransaction()
+        ~ArtKeyValueDBTransaction()
         {
             if (ArtRoot != null)
             {
-                _keyValueDB.Logger?.ReportTransactionLeak(this);
                 Dispose();
+                _keyValueDB.Logger?.ReportTransactionLeak(this);
             }
         }
 
@@ -103,23 +106,27 @@ namespace BTDB.KVDBLayer
 
         public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
-            MakeWrittable();
+            MakeWritable();
+            Span<byte> trueValue = stackalloc byte[12];
             bool result;
             var keyLen = _prefix.Length + key.Length;
             if (_prefix.Length == 0)
             {
-                result = _cursor.Upsert(key, value);
+                _keyValueDB.WriteCreateOrUpdateCommand(key, value, trueValue);
+                result = _cursor.Upsert(key, trueValue);
             }
             else if (key.Length == 0)
             {
-                result = _cursor.Upsert(_prefix, value);
+                _keyValueDB.WriteCreateOrUpdateCommand(_prefix, value, trueValue);
+                result = _cursor.Upsert(_prefix, trueValue);
             }
             else
             {
-                Span<byte> temp = keyLen < 256 ? stackalloc byte[keyLen] : new byte[keyLen];
+                var temp = keyLen < 256 ? stackalloc byte[keyLen] : new byte[keyLen];
                 _prefix.CopyTo(temp);
                 key.CopyTo(temp.Slice(_prefix.Length));
-                result = _cursor.Upsert(_prefix, value);
+                _keyValueDB.WriteCreateOrUpdateCommand(temp, value, trueValue);
+                result = _cursor.Upsert(temp, trueValue);
             }
             _keyIndex = -1;
             if (result && _prefixKeyCount >= 0) _prefixKeyCount++;
@@ -131,25 +138,27 @@ namespace BTDB.KVDBLayer
             return CreateOrUpdateKeyValue(key.AsSyncReadOnlySpan(), value.AsSyncReadOnlySpan());
         }
 
-        void MakeWrittable()
+        void MakeWritable()
         {
-            if (_writting) return;
-            if (_preapprovedWritting)
+            if (_writing) return;
+            if (_preapprovedWriting)
             {
-                _writting = true;
-                _preapprovedWritting = false;
+                _writing = true;
+                _preapprovedWriting = false;
+                _keyValueDB.WriteStartTransaction();
                 return;
             }
             if (_readOnly)
             {
                 throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
             }
-            var oldArtRoot = ArtRoot;
-            ArtRoot = _keyValueDB.MakeWritableTransaction(this, oldArtRoot);
+            ArtRoot = _keyValueDB.MakeWritableTransaction(this, ArtRoot);
             _cursor.SetNewRoot(ArtRoot);
             _cursor2?.SetNewRoot(ArtRoot);
             ArtRoot.DescriptionForLeaks = _descriptionForLeaks;
-            _writting = true;
+            _writing = true;
+            InvalidateCurrentKey();
+            _keyValueDB.WriteStartTransaction();
         }
 
         public long GetKeyValueCount()
@@ -254,13 +263,33 @@ namespace BTDB.KVDBLayer
         public ByteBuffer GetValue()
         {
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
-            return ByteBuffer.NewAsync(_cursor.GetValue());
+            var trueValue = _cursor.GetValue();
+            try
+            {
+                return ByteBuffer.NewAsync(_keyValueDB.ReadValue(trueValue));
+            }
+            catch (BTDBException ex)
+            {
+                var oldestRoot = (IRootNode)_keyValueDB.OldestRoot;
+                var lastCommited = _keyValueDB._lastCommited;
+                throw new BTDBException($"GetValue failed in TrId:{ArtRoot.TransactionId},TRL:{ArtRoot.TrLogFileId},Ofs:{ArtRoot.TrLogOffset},ComUlong:{ArtRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+            }
         }
 
         public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();
-            return _cursor.GetValue();
+            var trueValue = _cursor.GetValue();
+            try
+            {
+                return _keyValueDB.ReadValue(trueValue);
+            }
+            catch (BTDBException ex)
+            {
+                var oldestRoot = (IRootNode)_keyValueDB.OldestRoot;
+                var lastCommited = _keyValueDB._lastCommited;
+                throw new BTDBException($"GetValue failed in TrId:{ArtRoot.TransactionId},TRL:{ArtRoot.TrLogFileId},Ofs:{ArtRoot.TrLogOffset},ComUlong:{ArtRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+            }
         }
 
         void EnsureValidKey()
@@ -274,14 +303,17 @@ namespace BTDB.KVDBLayer
         public void SetValue(ByteBuffer value)
         {
             EnsureValidKey();
-            MakeWrittable();
-            _cursor.WriteValue(value.AsSyncReadOnlySpan());
+            MakeWritable();
+            Span<byte> trueValue = stackalloc byte[12];
+            _keyValueDB.WriteCreateOrUpdateCommand(GetCurrentKeyFromStack().AsSyncReadOnlySpan(), value.AsSyncReadOnlySpan(), trueValue);
+            _cursor.WriteValue(trueValue);
         }
 
         public void EraseCurrent()
         {
             EnsureValidKey();
-            MakeWrittable();
+            MakeWritable();
+            _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             _cursor.Erase();
             InvalidateCurrentKey();
             if (_prefixKeyCount >= 0) _prefixKeyCount--;
@@ -297,23 +329,35 @@ namespace BTDB.KVDBLayer
             if (firstKeyIndex < 0) firstKeyIndex = 0;
             if (lastKeyIndex >= GetKeyValueCount()) lastKeyIndex = _prefixKeyCount - 1;
             if (lastKeyIndex < firstKeyIndex) return;
-            MakeWrittable();
+            MakeWritable();
             firstKeyIndex += _prefixKeyStart;
             lastKeyIndex += _prefixKeyStart;
-            if (_cursor2 == null)
-            {
-                _cursor2 = ArtRoot.CreateCursor();
-            }
             _cursor.SeekIndex(firstKeyIndex);
-            _cursor2.SeekIndex(lastKeyIndex);
-            _cursor.EraseTo(_cursor2);
+            if (lastKeyIndex != firstKeyIndex)
+            {
+                if (_cursor2 == null)
+                {
+                    _cursor2 = ArtRoot.CreateCursor();
+                }
+                _cursor2.SeekIndex(lastKeyIndex);
+                var firstKey = GetCurrentKeyFromStack();
+                var secondKey = ByteBuffer.NewAsync(new byte[_cursor2.GetKeyLength()]);
+                _cursor2.FillByKey(secondKey.AsSyncSpan());
+                _keyValueDB.WriteEraseRangeCommand(firstKey, secondKey);
+                _cursor.EraseTo(_cursor2);
+            }
+            else
+            {
+                _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
+                _cursor.Erase();
+            }
             InvalidateCurrentKey();
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
         }
 
         public bool IsWritting()
         {
-            return _writting;
+            return _writing;
         }
 
         public ulong GetCommitUlong()
@@ -325,14 +369,15 @@ namespace BTDB.KVDBLayer
         {
             if (ArtRoot.CommitUlong != value)
             {
-                MakeWrittable();
+                MakeWritable();
                 ArtRoot.CommitUlong = value;
             }
         }
 
         public void NextCommitTemporaryCloseTransactionLog()
         {
-            // There is no transaction log ...
+            MakeWritable();
+            _temporaryCloseTransactionLog = true;
         }
 
         public void Commit()
@@ -341,15 +386,15 @@ namespace BTDB.KVDBLayer
             InvalidateCurrentKey();
             var currentArtRoot = ArtRoot;
             ArtRoot = null;
-            if (_preapprovedWritting)
+            if (_preapprovedWriting)
             {
-                _preapprovedWritting = false;
-                _keyValueDB.RevertWritingTransaction(currentArtRoot);
+                _preapprovedWriting = false;
+                _keyValueDB.RevertWritingTransaction(currentArtRoot, true);
             }
-            else if (_writting)
+            else if (_writing)
             {
-                _keyValueDB.CommitWritingTransaction(currentArtRoot);
-                _writting = false;
+                _keyValueDB.CommitWritingTransaction(currentArtRoot, _temporaryCloseTransactionLog);
+                _writing = false;
             }
             else
             {
@@ -361,11 +406,11 @@ namespace BTDB.KVDBLayer
         {
             var currentArtRoot = ArtRoot;
             ArtRoot = null;
-            if (_writting || _preapprovedWritting)
+            if (_writing || _preapprovedWriting)
             {
-                _keyValueDB.RevertWritingTransaction(currentArtRoot);
-                _writting = false;
-                _preapprovedWritting = false;
+                _keyValueDB.RevertWritingTransaction(currentArtRoot, _preapprovedWriting);
+                _writing = false;
+                _preapprovedWriting = false;
             }
             else if (currentArtRoot != null)
             {
@@ -381,7 +426,12 @@ namespace BTDB.KVDBLayer
 
         public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
         {
-            return new KeyValuePair<uint, uint>((uint)_cursor.GetKeyLength(), (uint)_cursor.GetValueLength());
+            if (!IsValidKey()) return new KeyValuePair<uint, uint>();
+            var keyLen = _cursor.GetKeyLength();
+            var trueValue = _cursor.GetValue();
+            return new KeyValuePair<uint, uint>(
+                (uint)keyLen,
+                _keyValueDB.CalcValueSize(MemoryMarshal.Read<uint>(trueValue), MemoryMarshal.Read<uint>(trueValue.Slice(4)), MemoryMarshal.Read<int>(trueValue.Slice(8))));
         }
 
         public byte[] GetKeyPrefix()
@@ -398,7 +448,7 @@ namespace BTDB.KVDBLayer
         {
             if (ArtRoot.GetUlong(idx) != value)
             {
-                MakeWrittable();
+                MakeWritable();
                 ArtRoot.SetUlong(idx, value);
             }
         }
@@ -415,7 +465,7 @@ namespace BTDB.KVDBLayer
             set
             {
                 _descriptionForLeaks = value;
-                if (_preapprovedWritting || _writting) ArtRoot.DescriptionForLeaks = value;
+                if (_preapprovedWriting || _writing) ArtRoot.DescriptionForLeaks = value;
             }
         }
 

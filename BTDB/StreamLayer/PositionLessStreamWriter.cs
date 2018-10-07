@@ -38,21 +38,21 @@ namespace BTDB.StreamLayer
 
         public override void FlushBuffer()
         {
-            _stream.Write(Buf, 0, Pos, _ofs);
+            _stream.Write(Buf.AsSpan(0, Pos), _ofs);
             _ofs += (ulong)Pos;
             Pos = 0;
         }
 
-        public override void WriteBlock(byte[] data, int offset, int length)
+        public override void WriteBlock(ReadOnlySpan<byte> data)
         {
-            if (length < Buf.Length)
+            if (data.Length < Buf.Length)
             {
-                base.WriteBlock(data, offset, length);
+                base.WriteBlock(data);
                 return;
             }
             if (Pos != 0) FlushBuffer();
-            _stream.Write(data, offset, length, _ofs);
-            _ofs += (ulong)length;
+            _stream.Write(data, _ofs);
+            _ofs += (ulong)data.Length;
         }
 
         public override long GetCurrentPosition()

@@ -66,7 +66,7 @@ namespace BTDB.EventStoreLayer
         {
             startOffset = (int)EndBufferLen + HeaderSize;
             var writer = new ByteBufferWriter();
-            writer.WriteBlock(_zeroes, 0, startOffset);
+            writer.WriteBlock(_zeroes.AsSpan(0, startOffset));
             serializerContext = Mapping;
             if (metadata != null)
                 serializerContext = serializerContext.StoreNewDescriptors(writer, metadata);
@@ -105,7 +105,7 @@ namespace BTDB.EventStoreLayer
                 }
             }
             lenWithoutEndPadding = (int)writer.GetCurrentPosition();
-            writer.WriteBlock(_zeroes, 0, (int)(SectorSize - 1));
+            writer.WriteBlock(_zeroes.AsSpan(0, (int)(SectorSize - 1)));
             block = writer.Data;
             if (CompressionStrategy.ShouldTryToCompress(lenWithoutEndPadding - startOffset))
             {

@@ -1,4 +1,4 @@
-﻿using BTDB.KVDBLayer;
+using BTDB.KVDBLayer;
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;

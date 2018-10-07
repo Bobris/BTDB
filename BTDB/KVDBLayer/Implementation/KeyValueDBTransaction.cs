@@ -25,7 +25,7 @@ namespace BTDB.KVDBLayer
             _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _btreeRoot = btreeRoot;
-            _prefix = BitArrayManipulation.EmptyByteArray;
+            _prefix = Array.Empty<byte>();
             _prefixKeyStart = 0;
             _prefixKeyCount = -1;
             _keyIndex = -1;
@@ -249,7 +249,9 @@ namespace BTDB.KVDBLayer
             }
             catch (BTDBException ex)
             {
-                throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{_keyValueDB.LastCommited.TransactionId},ComUlong:{_keyValueDB.LastCommited.CommitUlong} OldestTrId:{_keyValueDB.OldestRoot.TransactionId},TRL:{_keyValueDB.OldestRoot.TrLogFileId},ComUlong:{_keyValueDB.OldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                var oldestRoot = (IBTreeRootNode)_keyValueDB.OldestRoot;
+                var lastCommited = (IBTreeRootNode)_keyValueDB.LastCommited;
+                throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
             }
         }
 
@@ -279,7 +281,7 @@ namespace BTDB.KVDBLayer
             var nodeIdxPair = _stack[_stack.Count - 1];
             var memberValue = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
             var memberKey = ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
-            _keyValueDB.WriteCreateOrUpdateCommand(BitArrayManipulation.EmptyByteArray, memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs, out memberValue.ValueSize);
+            _keyValueDB.WriteCreateOrUpdateCommand(Array.Empty<byte>(), memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs, out memberValue.ValueSize);
             ((IBTreeLeafNode)nodeIdxPair.Node).SetMemberValue(nodeIdxPair.Idx, memberValue);
         }
 

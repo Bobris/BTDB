@@ -11,24 +11,30 @@ namespace BTDB.KVDBLayer
     {
         IRootNode _lastCommited;
         ArtInMemoryKeyValueDBTransaction _writingTransaction;
-        readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
+
+        readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue =
+            new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
+
         readonly object _writeLock = new object();
-        readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>(); 
-        
+        readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>();
+
         public ArtInMemoryKeyValueDB(IOffHeapAllocator allocator)
         {
             _lastCommited = ARTImpl.CreateEmptyRoot(allocator, false);
+            _lastCommited.Commit();
         }
 
         public void Dispose()
         {
             lock (_writeLock)
             {
-                if (_writingTransaction != null) throw new BTDBException("Cannot dispose KeyValueDB when writting transaction still running");
+                if (_writingTransaction != null)
+                    throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
                 while (_writeWaitingQueue.Count > 0)
                 {
                     _writeWaitingQueue.Dequeue().TrySetCanceled();
                 }
+
                 DereferenceRoot(_lastCommited);
                 FreeWaitingToDispose();
             }
@@ -36,18 +42,16 @@ namespace BTDB.KVDBLayer
 
         public bool DurableTransactions { get; set; }
 
-        internal IRootNode LastCommited => _lastCommited;
-
         public IKeyValueDBTransaction StartTransaction()
         {
-            var node = LastCommited;
+            var node = _lastCommited;
             node.Reference();
             return new ArtInMemoryKeyValueDBTransaction(this, node, false, false);
         }
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
-            var node = LastCommited;
+            var node = _lastCommited;
             node.Reference();
             return new ArtInMemoryKeyValueDBTransaction(this, node, false, true);
         }
@@ -59,19 +63,20 @@ namespace BTDB.KVDBLayer
                 var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
                 if (_writingTransaction == null)
                 {
-                    NewWrittingTransactionUnsafe(tcs);
+                    NewWritingTransactionUnsafe(tcs);
                 }
                 else
                 {
                     _writeWaitingQueue.Enqueue(tcs);
                 }
+
                 return tcs.Task;
             }
         }
 
         public string CalcStats()
         {
-            return "KeyValueCount:" + LastCommited.GetCount() + Environment.NewLine;
+            return "KeyValueCount:" + _lastCommited.GetCount() + Environment.NewLine;
         }
 
         public bool Compact(CancellationToken cancellation)
@@ -81,26 +86,32 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBLogger Logger { get; set; }
 
-        public ulong? PreserveHistoryUpToCommitUlong {
+        public ulong? PreserveHistoryUpToCommitUlong
+        {
             get { return null; }
-            set { /* ignore */ }
+            set
+            {
+                /* ignore */
+            }
         }
 
-        internal IRootNode MakeWrittableTransaction(ArtInMemoryKeyValueDBTransaction keyValueDBTransaction, IRootNode artRoot)
+        internal IRootNode MakeWritableTransaction(ArtInMemoryKeyValueDBTransaction keyValueDBTransaction,
+            IRootNode artRoot)
         {
             lock (_writeLock)
             {
-                if (_writingTransaction != null) throw new BTDBTransactionRetryException("Another writting transaction already running");
-                if (LastCommited != artRoot) throw new BTDBTransactionRetryException("Another writting transaction already finished");
+                if (_writingTransaction != null)
+                    throw new BTDBTransactionRetryException("Another writing transaction already running");
+                if (_lastCommited != artRoot)
+                    throw new BTDBTransactionRetryException("Another writing transaction already finished");
                 _writingTransaction = keyValueDBTransaction;
-                var result = _lastCommited;
-                _lastCommited = result.Snapshot();
-                artRoot.Dereference();
+                var result = _lastCommited.CreateWritableTransaction();
+                DereferenceRoot(artRoot);
                 return result;
             }
         }
 
-        internal void CommitWrittingTransaction(IRootNode artRoot)
+        internal void CommitWritingTransaction(IRootNode artRoot)
         {
             lock (_writeLock)
             {
@@ -109,25 +120,35 @@ namespace BTDB.KVDBLayer
                 {
                     _lastCommited.Dispose();
                 }
+
                 _lastCommited = artRoot;
-                TryDequeWaiterForWrittingTransaction();
+                _lastCommited.Commit();
+                TryDequeWaiterForWritingTransaction();
             }
         }
 
-        void TryDequeWaiterForWrittingTransaction()
+        void TryDequeWaiterForWritingTransaction()
         {
             FreeWaitingToDispose();
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            NewWrittingTransactionUnsafe(tcs);
+            NewWritingTransactionUnsafe(tcs);
         }
 
-        void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
+        void NewWritingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
         {
             FreeWaitingToDispose();
-            var newTransactionRoot = LastCommited;
-            _lastCommited = newTransactionRoot.Snapshot();
-            _writingTransaction = new ArtInMemoryKeyValueDBTransaction(this, newTransactionRoot, true, false);
+            var newTransactionRoot = _lastCommited.CreateWritableTransaction();
+            try
+            {
+                _writingTransaction = new ArtInMemoryKeyValueDBTransaction(this, newTransactionRoot, true, false);
+            }
+            catch
+            {
+                newTransactionRoot.Dispose();
+                throw;
+            }
+
             tcs.TrySetResult(_writingTransaction);
         }
 
@@ -139,18 +160,13 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal void RevertWrittingTransaction(IRootNode currentArtRoot)
+        internal void RevertWritingTransaction(IRootNode currentArtRoot)
         {
             lock (_writeLock)
             {
-                currentArtRoot.RevertTo(_lastCommited);
-                if (_lastCommited.Dereference())
-                {
-                    _lastCommited.Dispose();
-                }
-                _lastCommited = currentArtRoot;
+                currentArtRoot.Dispose();
                 _writingTransaction = null;
-                TryDequeWaiterForWrittingTransaction();
+                TryDequeWaiterForWritingTransaction();
             }
         }
 

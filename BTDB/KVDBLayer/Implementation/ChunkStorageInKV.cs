@@ -176,7 +176,7 @@ namespace BTDB.KVDBLayer
                 if (d.TryGetValue(key20, out val))
                 {
                     var buf = new byte[val.ContentLength];
-                    _chunkStorageInKV._fileCollection.GetFile(val.FileId).RandomRead(buf, 0, buf.Length, val.FileOfs, false);
+                    _chunkStorageInKV._fileCollection.GetFile(val.FileId).RandomRead(buf, val.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(buf));
                 }
                 else
@@ -192,12 +192,12 @@ namespace BTDB.KVDBLayer
             if (_pureValueFileWriter != null)
             {
                 _pureValueFileWriter.FlushBuffer();
-                _pureValueFile.HardFlush();                
+                _pureValueFile.HardFlush();
             }
             if (_hashIndexWriter != null)
             {
                 _hashIndexWriter.FlushBuffer();
-                _hashIndexFile.HardFlush();                
+                _hashIndexFile.HardFlush();
             }
         }
 

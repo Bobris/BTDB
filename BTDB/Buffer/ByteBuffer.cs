@@ -37,7 +37,7 @@ namespace BTDB.Buffer
 
         public static ByteBuffer NewEmpty()
         {
-            return new ByteBuffer(BitArrayManipulation.EmptyByteArray, 0, 0);
+            return new ByteBuffer(Array.Empty<byte>(), 0, 0);
         }
 
         ByteBuffer(byte[] buffer, uint offset, int length)
@@ -96,7 +96,7 @@ namespace BTDB.Buffer
         public byte[] ToByteArray()
         {
             var safeSelf = ToAsyncSafe();
-            var buf = safeSelf.Buffer ?? BitArrayManipulation.EmptyByteArray;
+            var buf = safeSelf.Buffer ?? Array.Empty<byte>();
             if (safeSelf.Offset == 0 && safeSelf.Length == buf.Length)
             {
                 return buf;

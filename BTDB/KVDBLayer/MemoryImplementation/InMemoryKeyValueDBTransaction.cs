@@ -11,20 +11,20 @@ namespace BTDB.KVDBLayer
         IBTreeRootNode _btreeRoot;
         readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
         byte[] _prefix;
-        bool _writting;
+        bool _writing;
         readonly bool _readOnly;
-        bool _preapprovedWritting;
+        bool _preapprovedWriting;
         long _prefixKeyStart;
         long _prefixKeyCount;
         long _keyIndex;
 
-        public InMemoryKeyValueDBTransaction(InMemoryKeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writting, bool readOnly)
+        public InMemoryKeyValueDBTransaction(InMemoryKeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing, bool readOnly)
         {
-            _preapprovedWritting = writting;
+            _preapprovedWriting = writing;
             _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _btreeRoot = btreeRoot;
-            _prefix = BitArrayManipulation.EmptyByteArray;
+            _prefix = Array.Empty<byte>();
             _prefixKeyStart = 0;
             _prefixKeyCount = -1;
             _keyIndex = -1;
@@ -117,11 +117,11 @@ namespace BTDB.KVDBLayer
 
         void MakeWrittable()
         {
-            if (_writting) return;
-            if (_preapprovedWritting)
+            if (_writing) return;
+            if (_preapprovedWriting)
             {
-                _writting = true;
-                _preapprovedWritting = false;
+                _writing = true;
+                _preapprovedWriting = false;
                 return;
             }
             if (_readOnly)
@@ -131,7 +131,7 @@ namespace BTDB.KVDBLayer
             var oldBTreeRoot = BtreeRoot;
             _btreeRoot = _keyValueDB.MakeWrittableTransaction(this, oldBTreeRoot);
             _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
-            _writting = true;
+            _writing = true;
             InvalidateCurrentKey();
         }
 
@@ -288,7 +288,7 @@ namespace BTDB.KVDBLayer
 
         public bool IsWritting()
         {
-            return _writting;
+            return _writing;
         }
 
         public ulong GetCommitUlong()
@@ -316,25 +316,25 @@ namespace BTDB.KVDBLayer
             InvalidateCurrentKey();
             var currentBtreeRoot = _btreeRoot;
             _btreeRoot = null;
-            if (_preapprovedWritting)
+            if (_preapprovedWriting)
             {
-                _preapprovedWritting = false;
+                _preapprovedWriting = false;
                 _keyValueDB.RevertWrittingTransaction();
             }
-            else if (_writting)
+            else if (_writing)
             {
                 _keyValueDB.CommitWrittingTransaction(currentBtreeRoot);
-                _writting = false;
+                _writing = false;
             }
         }
 
         public void Dispose()
         {
-            if (_writting || _preapprovedWritting)
+            if (_writing || _preapprovedWriting)
             {
                 _keyValueDB.RevertWrittingTransaction();
-                _writting = false;
-                _preapprovedWritting = false;
+                _writing = false;
+                _preapprovedWriting = false;
             }
             _btreeRoot = null;
         }
@@ -383,7 +383,7 @@ namespace BTDB.KVDBLayer
             set
             {
                 _descriptionForLeaks = value;
-                if (_preapprovedWritting || _writting) _btreeRoot.DescriptionForLeaks = value;
+                if (_preapprovedWriting || _writing) _btreeRoot.DescriptionForLeaks = value;
             }
         }
 

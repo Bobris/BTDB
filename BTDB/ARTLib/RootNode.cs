@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace BTDB.ARTLib
 {
-    internal class RootNode : IRootNode
+    class RootNode : IRootNode
     {
         internal RootNode(ARTImpl impl)
         {
@@ -20,6 +20,8 @@ namespace BTDB.ARTLib
 
         public ulong CommitUlong { get; set; }
         public long TransactionId { get; set; }
+        public uint TrLogFileId { get; set; }
+        public uint TrLogOffset { get; set; }
         public string DescriptionForLeaks { get; set; }
 
         public void Dispose()
@@ -34,11 +36,33 @@ namespace BTDB.ARTLib
             snapshot._root = _root;
             snapshot.CommitUlong = CommitUlong;
             snapshot.TransactionId = TransactionId;
+            snapshot.TrLogFileId = TrLogFileId;
+            snapshot.TrLogOffset = TrLogOffset;
             snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
             if (_writtable)
                 TransactionId++;
             NodeUtils.Reference(_root);
             return snapshot;
+        }
+
+        public IRootNode CreateWritableTransaction()
+        {
+            if (_writtable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
+            var node = new RootNode(_impl);
+            node._writtable = true;
+            node._root = _root;
+            node.CommitUlong = CommitUlong;
+            node.TransactionId = TransactionId + 1;
+            node.TrLogFileId = TrLogFileId;
+            node.TrLogOffset = TrLogOffset;
+            node._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
+            NodeUtils.Reference(_root);
+            return node;
+        }
+
+        public void Commit()
+        {
+            _writtable = false;
         }
 
         public ICursor CreateCursor()
@@ -62,6 +86,8 @@ namespace BTDB.ARTLib
             _ulongs = ((RootNode)snapshot)._ulongs == null ? null : (ulong[])((RootNode)snapshot)._ulongs.Clone();
             CommitUlong = ((RootNode)snapshot).CommitUlong;
             TransactionId = ((RootNode)snapshot).TransactionId;
+            TrLogFileId = ((RootNode)snapshot).TrLogFileId;
+            TrLogOffset = ((RootNode)snapshot).TrLogOffset;
             if (oldRoot != _root)
             {
                 NodeUtils.Reference(_root);
@@ -90,6 +116,8 @@ namespace BTDB.ARTLib
             return _ulongs == null ? 0U : (uint)_ulongs.Length;
         }
 
+        public ulong[] UlongsArray => _ulongs;
+
         public void Reference()
         {
             Interlocked.Increment(ref _referenceCount);
@@ -99,5 +127,7 @@ namespace BTDB.ARTLib
         {
             return Interlocked.Decrement(ref _referenceCount) == 0;
         }
+
+        public bool ShouldBeDisposed => _referenceCount == 0;
     }
 }

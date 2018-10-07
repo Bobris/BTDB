@@ -33,37 +33,35 @@ namespace BTDB.StreamLayer
                 End = -1;
                 return;
             }
-            End = _stream.Read(Buf, 0, Buf.Length, _ofs);
+            End = _stream.Read(Buf.AsSpan(), _ofs);
             _ofs += (ulong)End;
             Pos = 0;
         }
 
-        public override void ReadBlock(byte[] data, int offset, int length)
+        public override void ReadBlock(Span<byte> data)
         {
-            if (length < Buf.Length)
+            if (data.Length < Buf.Length)
             {
-                base.ReadBlock(data, offset, length);
+                base.ReadBlock(data);
                 return;
             }
             var l = End - Pos;
-            Array.Copy(Buf, Pos, data, offset, l);
-            offset += l;
-            length -= l;
+            Buf.AsSpan(Pos, l).CopyTo(data);
+            data = data.Slice(l);
             Pos += l;
 
-            while (length > 0)
+            while (data.Length > 0)
             {
-                var readed = _stream.Read(data, offset, length, _ofs);
-                if (readed <= 0)
+                var read = _stream.Read(data, _ofs);
+                if (read <= 0)
                 {
                     _ofs = _valueSize;
                     Pos = -1;
                     End = -1;
                     throw new EndOfStreamException();
                 }
-                _ofs += (ulong)readed;
-                offset += readed;
-                length -= readed;
+                _ofs += (ulong)read;
+                data = data.Slice(read);
             }
         }
 

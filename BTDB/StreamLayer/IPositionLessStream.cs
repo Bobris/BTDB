@@ -4,9 +4,9 @@ namespace BTDB.StreamLayer
 {
     public interface IPositionLessStream : IDisposable
     {
-        int Read(byte[] data, int offset, int size, ulong position);
+        int Read(Span<byte> data, ulong position);
 
-        void Write(byte[] data, int offset, int size, ulong position);
+        void Write(ReadOnlySpan<byte> data, ulong position);
 
         void Flush();
 

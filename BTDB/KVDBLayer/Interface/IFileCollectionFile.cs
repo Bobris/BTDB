@@ -1,3 +1,4 @@
+using System;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -7,7 +8,7 @@ namespace BTDB.KVDBLayer
         uint Index { get; }
         AbstractBufferedReader GetExclusiveReader();
 
-        void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache);
+        void RandomRead(Span<byte> data, ulong position, bool doNotCache);
         AbstractBufferedWriter GetAppenderWriter();
         void HardFlush();
         void SetSize(long size);

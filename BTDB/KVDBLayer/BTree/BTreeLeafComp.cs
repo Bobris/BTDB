@@ -378,12 +378,12 @@ namespace BTDB.KVDBLayer.BTree
             }
         }
 
-        public void Iterate(BTreeIterateAction action)
+        public void Iterate(ValuesIterateAction action)
         {
             var kv = _keyvalues;
-            for (var i = 0; i < kv.Length; i++)
+            foreach (var member in kv)
             {
-                var member = kv[i];
+                if (member.ValueFileId == 0) continue;
                 action(member.ValueFileId, member.ValueOfs, member.ValueSize);
             }
         }
@@ -391,22 +391,22 @@ namespace BTDB.KVDBLayer.BTree
         public IBTreeNode ReplaceValues(ReplaceValuesCtx ctx)
         {
             var result = this;
-            var keyvalues = _keyvalues;
+            var keyValues = _keyvalues;
             var map = ctx._newPositionMap;
-            for (var i = 0; i < keyvalues.Length; i++)
+            for (var i = 0; i < keyValues.Length; i++)
             {
-                ref var ii = ref keyvalues[i];
+                ref var ii = ref keyValues[i];
                 if (map.TryGetValue(((ulong)ii.ValueFileId << 32) | ii.ValueOfs, out var newOffset))
                 {
                     if (result.TransactionId != ctx._transactionId)
                     {
-                        var newKeyValues = new Member[keyvalues.Length];
-                        Array.Copy(keyvalues, newKeyValues, newKeyValues.Length);
+                        var newKeyValues = new Member[keyValues.Length];
+                        Array.Copy(keyValues, newKeyValues, newKeyValues.Length);
                         result = new BTreeLeafComp(ctx._transactionId, _keyBytes, newKeyValues);
-                        keyvalues = newKeyValues;
+                        keyValues = newKeyValues;
                     }
-                    keyvalues[i].ValueFileId = ctx._valueFileId;
-                    keyvalues[i].ValueOfs = newOffset;
+                    keyValues[i].ValueFileId = ctx._valueFileId;
+                    keyValues[i].ValueOfs = newOffset;
                 }
             }
             return result;

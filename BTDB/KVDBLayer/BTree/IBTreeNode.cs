@@ -3,7 +3,7 @@ using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTree
 {
-    internal delegate void BTreeIterateAction(uint valueFileId, uint valueOfs, int valueSize);
+    public delegate void ValuesIterateAction(uint valueFileId, uint valueOfs, int valueSize);
 
     interface IBTreeNode
     {
@@ -18,7 +18,7 @@ namespace BTDB.KVDBLayer.BTree
         void FillStackByRightMost(List<NodeIdxPair> stack, int i);
         int GetLastChildrenIdx();
         IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
-        void Iterate(BTreeIterateAction action);
+        void Iterate(ValuesIterateAction action);
         IBTreeNode ReplaceValues(ReplaceValuesCtx ctx);
     }
 }

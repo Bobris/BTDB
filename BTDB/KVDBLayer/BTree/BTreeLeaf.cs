@@ -17,17 +17,6 @@ namespace BTDB.KVDBLayer.BTree
             _keyvalues = new BTreeLeafMember[length];
         }
 
-        internal BTreeLeaf(long transactionId, int length, Func<BTreeLeafMember> memberGenerator)
-        {
-            Debug.Assert(length > 0 && length <= MaxMembers);
-            TransactionId = transactionId;
-            _keyvalues = new BTreeLeafMember[length];
-            for (int i = 0; i < _keyvalues.Length; i++)
-            {
-                _keyvalues[i] = memberGenerator();
-            }
-        }
-
         internal BTreeLeaf(long transactionId, BTreeLeafMember[] newKeyValues)
         {
             TransactionId = transactionId;
@@ -254,12 +243,12 @@ namespace BTDB.KVDBLayer.BTree
             return new BTreeLeaf(transactionId, newKeyValues);
         }
 
-        public void Iterate(BTreeIterateAction action)
+        public void Iterate(ValuesIterateAction action)
         {
             var kv = _keyvalues;
-            for (var i = 0; i < kv.Length; i++)
+            foreach (var member in kv)
             {
-                var member = kv[i];
+                if (member.ValueFileId == 0) continue;
                 action(member.ValueFileId, member.ValueOfs, member.ValueSize);
             }
         }

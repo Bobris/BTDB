@@ -20,6 +20,7 @@ namespace BTDB.ARTLib
         bool IsValid();
         int GetKeyLength();
         Span<byte> FillByKey(Span<byte> buffer);
+        byte[] GetKeyAsByteArray();
         bool KeyHasPrefix(ReadOnlySpan<byte> prefix);
         int GetValueLength();
         ReadOnlySpan<byte> GetValue();

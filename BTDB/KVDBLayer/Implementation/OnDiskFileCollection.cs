@@ -10,7 +10,8 @@ namespace BTDB.KVDBLayer
     {
         public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
         {
-            get {
+            get
+            {
                 return _deleteFileCollectionStrategy ??
                        (_deleteFileCollectionStrategy = new JustDeleteFileCollectionStrategy());
             }
@@ -40,7 +41,8 @@ namespace BTDB.KVDBLayer
                 _owner = owner;
                 _index = index;
                 _fileName = fileName;
-                _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
+                _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
+                    FileOptions.None);
                 _writer = new Writer(this);
             }
 
@@ -75,31 +77,39 @@ namespace BTDB.KVDBLayer
                         End = -1;
                         return;
                     }
-                    _owner._stream.Position = (long)_ofs;
+
+                    _owner._stream.Position = (long) _ofs;
                     End = _owner._stream.Read(Buf, 0, Buf.Length);
-                    _ofs += (ulong)End;
+                    _ofs += (ulong) End;
                     Pos = 0;
                 }
 
-                public override void ReadBlock(byte[] data, int offset, int length)
+                public override void ReadBlock(Span<byte> data)
                 {
-                    if (length < Buf.Length)
+                    if (data.Length < Buf.Length)
                     {
-                        base.ReadBlock(data, offset, length);
+                        base.ReadBlock(data);
                         return;
                     }
+
                     var l = End - Pos;
-                    Array.Copy(Buf, Pos, data, offset, l);
-                    offset += l;
-                    length -= l;
+                    Buf.AsSpan(Pos, l).CopyTo(data);
+                    data = data.Slice(l);
                     Pos += l;
-                    _owner._stream.Position = (long)_ofs;
-                    var read = _owner._stream.Read(data, offset, length);
-                    if (read != length)
+                    _owner._stream.Position = (long) _ofs;
+#if NETCOREAPP
+                    var read = _owner._stream.Read(data);
+#else
+                    var tempBuf = new byte[data.Length];
+                    var read = _owner._stream.Read(tempBuf, 0, data.Length);
+                    tempBuf.AsSpan(0, read).CopyTo(data);
+#endif
+                    if (read != data.Length)
                     {
                         throw new EndOfStreamException();
                     }
-                    _ofs += (ulong)read;
+
+                    _ofs += (ulong) read;
                 }
 
                 public override void SkipBlock(int length)
@@ -109,22 +119,24 @@ namespace BTDB.KVDBLayer
                         base.SkipBlock(length);
                         return;
                     }
-                    if (GetCurrentPosition() + length > (long)_valueSize)
+
+                    if (GetCurrentPosition() + length > (long) _valueSize)
                     {
                         _ofs = _valueSize;
                         Pos = 0;
                         End = -1;
                         throw new EndOfStreamException();
                     }
+
                     var l = End - Pos;
                     Pos = End;
                     length -= l;
-                    _ofs += (ulong)length;
+                    _ofs += (ulong) length;
                 }
 
                 public override long GetCurrentPosition()
                 {
-                    return (long)_ofs - End + Pos;
+                    return (long) _ofs - End + Pos;
                 }
             }
 
@@ -138,7 +150,7 @@ namespace BTDB.KVDBLayer
                     _file = file;
                     Buf = new byte[32768];
                     End = Buf.Length;
-                    Ofs = (ulong)_file._stream.Length;
+                    Ofs = (ulong) _file._stream.Length;
                 }
 
                 public override void FlushBuffer()
@@ -147,33 +159,39 @@ namespace BTDB.KVDBLayer
                     {
                         lock (_file._lock)
                         {
-                            _file._stream.Position = (long)Ofs;
+                            _file._stream.Position = (long) Ofs;
                             _file._stream.Write(Buf, 0, Pos);
                         }
-                        Ofs += (ulong)Pos;
+
+                        Ofs += (ulong) Pos;
                         Pos = 0;
                     }
                 }
 
-                public override void WriteBlock(byte[] data, int offset, int length)
+                public override void WriteBlock(ReadOnlySpan<byte> data)
                 {
-                    if (length < Buf.Length)
+                    if (data.Length < Buf.Length)
                     {
-                        base.WriteBlock(data, offset, length);
+                        base.WriteBlock(data);
                         return;
                     }
+
                     FlushBuffer();
                     lock (_file._lock)
                     {
-                        _file._stream.Position = (long)Ofs;
-                        _file._stream.Write(data, offset, length);
-                        Ofs += (ulong)length;
+                        _file._stream.Position = (long) Ofs;
+#if NETCOREAPP
+                        _file._stream.Write(data);
+#else
+                        _file._stream.Write(data.ToArray(), 0, data.Length);
+#endif
+                        Ofs += (ulong) data.Length;
                     }
                 }
 
                 public override long GetCurrentPosition()
                 {
-                    return (long)(Ofs + (ulong)Pos);
+                    return (long) (Ofs + (ulong) Pos);
                 }
 
                 internal byte[] GetBuffer()
@@ -187,25 +205,33 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
-            public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
+            public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
             {
                 lock (_lock)
                 {
-                    if (size > 0 && position < _writer.Ofs)
+                    if (data.Length > 0 && position < _writer.Ofs)
                     {
-                        _stream.Position = (long)position;
-                        var read = size;
-                        if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
-                        if (_stream.Read(data, offset, read) != read)
+                        _stream.Position = (long) position;
+                        var read = data.Length;
+                        if (_writer.Ofs - position < (ulong) read) read = (int) (_writer.Ofs - position);
+#if NETCOREAPP
+                        if (_stream.Read(data.Slice(0,read)) != read)
                             throw new EndOfStreamException();
-                        size -= read;
-                        offset += read;
-                        position += (ulong)read;
+#else
+                        var tempBuf = new byte[read];
+                        if (_stream.Read(tempBuf, 0, read) != read)
+                            throw new EndOfStreamException();
+                        tempBuf.AsSpan(0, read).CopyTo(data);
+#endif
+                        data = data.Slice(read);
+                        position += (ulong) read;
                     }
-                    if (size == 0) return;
-                    if ((ulong)_writer.GetCurrentPosition() < position + (ulong)size)
+
+                    if (data.Length == 0) return;
+                    if ((ulong) _writer.GetCurrentPosition() < position + (ulong) data.Length)
                         throw new EndOfStreamException();
-                    Array.Copy(_writer.GetBuffer(), (int)(position - _writer.Ofs), data, offset, size);
+
+                    _writer.GetBuffer().AsSpan((int) (position - _writer.Ofs), data.Length).CopyTo(data);
                 }
             }
 
@@ -240,7 +266,7 @@ namespace BTDB.KVDBLayer
             {
                 lock (_lock)
                 {
-                    return (ulong)_writer.GetCurrentPosition();
+                    return (ulong) _writer.GetCurrentPosition();
                 }
             }
 
@@ -256,6 +282,7 @@ namespace BTDB.KVDBLayer
                     newFiles = new Dictionary<uint, File>(oldFiles);
                     newFiles.Remove(_index);
                 } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);
+
                 _stream.Dispose();
                 _owner.DeleteFileCollectionStrategy.DeleteFile(_fileName);
             }
@@ -271,7 +298,7 @@ namespace BTDB.KVDBLayer
                 if (id == 0) continue;
                 var file = new File(this, id, filePath);
                 _files.Add(id, file);
-                if (id > _maxFileId) _maxFileId = (int)id;
+                if (id > _maxFileId) _maxFileId = (int) id;
             }
         }
 
@@ -282,12 +309,13 @@ namespace BTDB.KVDBLayer
             {
                 return result;
             }
+
             return 0;
         }
 
         public IFileCollectionFile AddFile(string humanHint)
         {
-            var index = (uint)Interlocked.Increment(ref _maxFileId);
+            var index = (uint) Interlocked.Increment(ref _maxFileId);
             var fileName = index.ToString("D8") + "." + (humanHint ?? "");
             var file = new File(this, index, Path.Combine(_directory, fileName));
             Dictionary<uint, File> newFiles;
@@ -295,14 +323,15 @@ namespace BTDB.KVDBLayer
             do
             {
                 oldFiles = _files;
-                newFiles = new Dictionary<uint, File>(oldFiles) { { index, file } };
+                newFiles = new Dictionary<uint, File>(oldFiles) {{index, file}};
             } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
+
             return file;
         }
 
         public uint GetCount()
         {
-            return (uint)_files.Count;
+            return (uint) _files.Count;
         }
 
         public IFileCollectionFile GetFile(uint index)

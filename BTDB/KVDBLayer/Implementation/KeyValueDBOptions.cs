@@ -1,3 +1,5 @@
+using BTDB.ARTLib;
+
 namespace BTDB.KVDBLayer
 {
     public class KeyValueDBOptions
@@ -8,5 +10,6 @@ namespace BTDB.KVDBLayer
         public ICompactorScheduler CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
         public ulong? OpenUpToCommitUlong;
         public ulong? PreserveHistoryUpToCommitUlong;
+        public IOffHeapAllocator Allocator;
     }
 }

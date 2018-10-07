@@ -10,9 +10,6 @@ namespace BTDB.KVDBLayer
 {
     public class OnDiskMemoryMappedFileCollection : IFileCollection
     {
-        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")]
-        static extern unsafe void CopyMemory(byte* dst, byte* src, long size);
-
         public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
         {
             get
@@ -51,7 +48,8 @@ namespace BTDB.KVDBLayer
                 _owner = owner;
                 _index = index;
                 _fileName = fileName;
-                _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1, FileOptions.None);
+                _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
+                    FileOptions.None);
                 _trueLength = _stream.Length;
                 _writer = new Writer(this);
             }
@@ -69,7 +67,8 @@ namespace BTDB.KVDBLayer
             void MapContent()
             {
                 if (_accessor != null) return;
-                _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, 0, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true);
+                _memoryMappedFile = MemoryMappedFile.CreateFromFile(_stream, null, 0, MemoryMappedFileAccess.ReadWrite,
+                    HandleInheritability.None, true);
                 _accessor = _memoryMappedFile.CreateViewAccessor();
                 _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _pointer);
             }
@@ -98,6 +97,7 @@ namespace BTDB.KVDBLayer
                     {
                         _owner.MapContent();
                     }
+
                     _ofs = 0;
                     Buf = new byte[32768];
                     FillBuffer();
@@ -111,34 +111,29 @@ namespace BTDB.KVDBLayer
                         End = -1;
                         return;
                     }
-                    End = (int)Math.Min((long)(_valueSize - _ofs), Buf.Length);
-                    fixed (byte* dst = Buf)
-                    {
-                        CopyMemory(dst, _owner._pointer + _ofs, End);
-                    }
-                    _ofs += (ulong)End;
+
+                    End = (int) Math.Min((long) (_valueSize - _ofs), Buf.Length);
+                    new Span<byte>(_owner._pointer + _ofs, End).CopyTo(Buf.AsSpan(0, End));
+                    _ofs += (ulong) End;
                     Pos = 0;
                 }
 
-                public override void ReadBlock(byte[] data, int offset, int length)
+                public override void ReadBlock(Span<byte> data)
                 {
-                    if (length < Buf.Length)
+                    if (data.Length < Buf.Length)
                     {
-                        base.ReadBlock(data, offset, length);
+                        base.ReadBlock(data);
                         return;
                     }
+
                     var l = End - Pos;
-                    Array.Copy(Buf, Pos, data, offset, l);
-                    offset += l;
-                    length -= l;
+                    Buf.AsSpan(Pos, l).CopyTo(data);
+                    data = data.Slice(l);
                     Pos += l;
-                    if ((long)_valueSize - (long)_ofs < length)
+                    if ((long) _valueSize - (long) _ofs < data.Length)
                         throw new EndOfStreamException();
-                    fixed (byte* dst = data)
-                    {
-                        CopyMemory(dst + offset, _owner._pointer + _ofs, length);
-                    }
-                    _ofs += (ulong)length;
+                    new Span<byte>(_owner._pointer + _ofs, data.Length).CopyTo(data);
+                    _ofs += (ulong) data.Length;
                 }
 
                 public override void SkipBlock(int length)
@@ -148,22 +143,24 @@ namespace BTDB.KVDBLayer
                         base.SkipBlock(length);
                         return;
                     }
-                    if (GetCurrentPosition() + length > (long)_valueSize)
+
+                    if (GetCurrentPosition() + length > (long) _valueSize)
                     {
                         _ofs = _valueSize;
                         Pos = 0;
                         End = -1;
                         throw new EndOfStreamException();
                     }
+
                     var l = End - Pos;
                     Pos = End;
                     length -= l;
-                    _ofs += (ulong)length;
+                    _ofs += (ulong) length;
                 }
 
                 public override long GetCurrentPosition()
                 {
-                    return (long)_ofs - End + Pos;
+                    return (long) _ofs - End + Pos;
                 }
             }
 
@@ -177,7 +174,7 @@ namespace BTDB.KVDBLayer
                     _file = file;
                     Buf = new byte[1024 * 32];
                     End = Buf.Length;
-                    Ofs = (ulong)_file._trueLength;
+                    Ofs = (ulong) _file._trueLength;
                 }
 
                 public override void FlushBuffer()
@@ -186,14 +183,12 @@ namespace BTDB.KVDBLayer
                     {
                         lock (_file._lock)
                         {
-                            ExpandIfNeeded((long)Ofs + Pos);
-                            fixed (byte* src = Buf)
-                            {
-                                CopyMemory(_file._pointer + Ofs, src, Pos);
-                            }
-                            Ofs += (ulong)Pos;
-                            _file._trueLength = (long)Ofs;
+                            ExpandIfNeeded((long) Ofs + Pos);
+                            Buf.AsSpan(0, Pos).CopyTo(new Span<byte>(_file._pointer + Ofs, Pos));
+                            Ofs += (ulong) Pos;
+                            _file._trueLength = (long) Ofs;
                         }
+
                         Pos = 0;
                     }
                 }
@@ -206,31 +201,30 @@ namespace BTDB.KVDBLayer
                         var newsize = ((size - 1) / ResizeChunkSize + 1) * ResizeChunkSize;
                         _file._stream.SetLength(newsize);
                     }
+
                     _file.MapContent();
                 }
 
-                public override void WriteBlock(byte[] data, int offset, int length)
+                public override void WriteBlock(ReadOnlySpan<byte> data)
                 {
-                    if (length < Buf.Length)
+                    if (data.Length < Buf.Length)
                     {
-                        base.WriteBlock(data, offset, length);
+                        base.WriteBlock(data);
                         return;
                     }
+
                     FlushBuffer();
                     lock (_file._lock)
                     {
-                        fixed (byte* src = data)
-                        {
-                            CopyMemory(_file._pointer + Ofs, src + offset, length);
-                        }
-                        Ofs += (ulong)length;
-                        _file._trueLength = (long)Ofs;
+                        data.CopyTo(new Span<byte>(_file._pointer + Ofs, data.Length));
+                        Ofs += (ulong) data.Length;
+                        _file._trueLength = (long) Ofs;
                     }
                 }
 
                 public override long GetCurrentPosition()
                 {
-                    return (long)(Ofs + (ulong)Pos);
+                    return (long) (Ofs + (ulong) Pos);
                 }
 
                 internal byte[] GetBuffer()
@@ -244,27 +238,24 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
-            public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
+            public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
             {
                 lock (_lock)
                 {
-                    if (size > 0 && position < _writer.Ofs)
+                    if (data.Length > 0 && position < _writer.Ofs)
                     {
                         MapContent();
-                        var read = size;
-                        if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
-                        fixed (byte* dst = data)
-                        {
-                            CopyMemory(dst + offset, _pointer + position, read);
-                        }
-                        size -= read;
-                        offset += read;
-                        position += (ulong)read;
+                        var read = data.Length;
+                        if (_writer.Ofs - position < (ulong) read) read = (int) (_writer.Ofs - position);
+                        new Span<byte>(_pointer + position, read).CopyTo(data);
+                        data = data.Slice(read);
+                        position += (ulong) read;
                     }
-                    if (size == 0) return;
-                    if ((ulong)_writer.GetCurrentPosition() < position + (ulong)size)
+
+                    if (data.Length == 0) return;
+                    if ((ulong) _writer.GetCurrentPosition() < position + (ulong) data.Length)
                         throw new EndOfStreamException();
-                    Array.Copy(_writer.GetBuffer(), (int)(position - _writer.Ofs), data, offset, size);
+                    _writer.GetBuffer().AsSpan((int) (position - _writer.Ofs), data.Length).CopyTo(data);
                 }
             }
 
@@ -307,7 +298,7 @@ namespace BTDB.KVDBLayer
             {
                 lock (_lock)
                 {
-                    return (ulong)_writer.GetCurrentPosition();
+                    return (ulong) _writer.GetCurrentPosition();
                 }
             }
 
@@ -323,6 +314,7 @@ namespace BTDB.KVDBLayer
                     newFiles = new Dictionary<uint, File>(oldFiles);
                     newFiles.Remove(_index);
                 } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);
+
                 _stream.Dispose();
                 _owner.DeleteFileCollectionStrategy.DeleteFile(_fileName);
             }
@@ -338,7 +330,7 @@ namespace BTDB.KVDBLayer
                 if (id == 0) continue;
                 var file = new File(this, id, filePath);
                 _files.Add(id, file);
-                if (id > _maxFileId) _maxFileId = (int)id;
+                if (id > _maxFileId) _maxFileId = (int) id;
             }
         }
 
@@ -349,12 +341,13 @@ namespace BTDB.KVDBLayer
             {
                 return result;
             }
+
             return 0;
         }
 
         public IFileCollectionFile AddFile(string humanHint)
         {
-            var index = (uint)Interlocked.Increment(ref _maxFileId);
+            var index = (uint) Interlocked.Increment(ref _maxFileId);
             var fileName = index.ToString("D8") + "." + (humanHint ?? "");
             var file = new File(this, index, Path.Combine(_directory, fileName));
             Dictionary<uint, File> newFiles;
@@ -362,20 +355,20 @@ namespace BTDB.KVDBLayer
             do
             {
                 oldFiles = _files;
-                newFiles = new Dictionary<uint, File>(oldFiles) { { index, file } };
+                newFiles = new Dictionary<uint, File>(oldFiles) {{index, file}};
             } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
+
             return file;
         }
 
         public uint GetCount()
         {
-            return (uint)_files.Count;
+            return (uint) _files.Count;
         }
 
         public IFileCollectionFile GetFile(uint index)
         {
-            File value;
-            return _files.TryGetValue(index, out value) ? value : null;
+            return _files.TryGetValue(index, out var value) ? value : null;
         }
 
         public IEnumerable<IFileCollectionFile> Enumerate()

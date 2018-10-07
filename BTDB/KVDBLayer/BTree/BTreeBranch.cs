@@ -363,7 +363,7 @@ namespace BTDB.KVDBLayer.BTree
             return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
         }
 
-        public void Iterate(BTreeIterateAction action)
+        public void Iterate(ValuesIterateAction action)
         {
             foreach (var child in _children)
             {
