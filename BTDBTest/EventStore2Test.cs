@@ -902,5 +902,52 @@ namespace BTDBTest
             Assert.Equal(1ul, ev.Prop.First().Key);
         }
 
+
+     
+        public class ObjectWithIDictionary
+        {
+            public IDictionary<ulong, string> Items { get; set; }
+        }
+
+        [Fact]
+        public void CanSerializeOdbDictionary()
+        {
+            using (var kvDb = new KeyValueDB(new InMemoryFileCollection()))
+            using (var objDb = new ObjectDB())
+            {
+                objDb.Open(kvDb, false);
+
+                using (var tr = objDb.StartWritingTransaction().Result)
+                {
+                    var singleton = tr.Singleton<ObjectWithIDictionary>();
+                    singleton.Items[1] = "ahoj";
+
+                    SerializeOdbDict(singleton.Items);       
+                    
+                    tr.Commit();
+                }
+            }
+        }
+
+        void SerializeOdbDict(IDictionary<ulong,string> dictItems)
+        {
+            var serializer = new EventSerializer();
+            bool hasMetadata;
+            var obj = new ObjectWithIDictionary
+            {
+                Items = dictItems
+            };
+            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            
+            Assert.Equal(obj.Items, ((ObjectWithIDictionary)obj2).Items);
+        }
     }
 }
