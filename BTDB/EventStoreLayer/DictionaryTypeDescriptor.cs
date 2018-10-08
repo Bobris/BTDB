@@ -360,7 +360,7 @@ namespace BTDB.EventStoreLayer
                 var next = ilGenerator.DefineLabel();
                 ilGenerator
                     .Ldloc(localDict)
-                    .Castclass(typeAsDictionary)
+                    .Isinst(typeAsDictionary)
                     .Brfalse(notDictionary)
                     .Ldloc(localDict)
                     .Castclass(typeAsDictionary)

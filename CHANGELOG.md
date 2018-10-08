@@ -5,6 +5,7 @@
 ### Fixed
 
 Exception in EventStore2Layer serialization does not corrupt next serializations anymore.
+Serialization of non Dictionary in EventStore does not fail.
 
 ## 14.12.0
 
