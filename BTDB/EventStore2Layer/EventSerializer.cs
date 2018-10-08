@@ -11,20 +11,36 @@ using System.Diagnostics;
 
 namespace BTDB.EventStore2Layer
 {
-    public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDescriptorSerializerLiteContext, ITypeDescriptorFactory, ITypeBinarySerializerContext
+    public class EventSerializer : IEventSerializer, ITypeDescriptorCallbacks, IDescriptorSerializerLiteContext,
+        ITypeDescriptorFactory, ITypeBinarySerializerContext
     {
         public const int ReservedBuildinTypes = 50;
-        readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2Info = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
-        readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew = new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+
+        readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2Info =
+            new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+
+        readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew =
+            new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
+
         readonly List<SerializerTypeInfo> _id2Info = new List<SerializerTypeInfo>();
         readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
-        readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
-        readonly Dictionary<object, int> _visited = new Dictionary<object, int>(ReferenceEqualityComparer<object>.Instance);
+
+        readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
+            new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+
+        readonly Dictionary<object, int> _visited =
+            new Dictionary<object, int>(ReferenceEqualityComparer<object>.Instance);
+
         readonly ByteBufferWriter _writer = new ByteBufferWriter();
-        readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>.Instance);
+
+        readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache =
+            new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>
+                .Instance);
+
         bool _newTypeFound;
 
-        public EventSerializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
+        public EventSerializer(ITypeNameMapper typeNameMapper = null,
+            ITypeConvertorGenerator typeConvertorGenerator = null)
         {
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? new DefaultTypeConvertorGenerator();
@@ -47,12 +63,16 @@ namespace BTDB.EventStore2Layer
                     _typeOrDescriptor2Info[type] = infoForType;
                 }
             }
+
             while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
         }
 
-        Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> BuildComplexSaver(ITypeDescriptor descriptor)
+        Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> BuildComplexSaver(
+            ITypeDescriptor descriptor)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(descriptor.Name + "Saver");
+            var method =
+                ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(
+                    descriptor.Name + "Saver");
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
@@ -75,6 +95,7 @@ namespace BTDB.EventStore2Layer
                 if (_gathererCache.TryGetValue(type, out res))
                     return res;
             }
+
             var gen = descriptor.BuildNewDescriptorGenerator();
             if (gen == null)
             {
@@ -82,12 +103,15 @@ namespace BTDB.EventStore2Layer
             }
             else
             {
-                var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
+                var method =
+                    ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
+                        "GatherAllObjectsForTypeExtraction_" + descriptor.Name);
                 var il = method.Generator;
                 gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
                 il.Ret();
                 res = method.Create();
             }
+
             if (type != null) _gathererCache[type] = res;
             return res;
         }
@@ -148,6 +172,7 @@ namespace BTDB.EventStore2Layer
                     throw new BTDBException("Metadata corrupted");
                 return infoForType.Descriptor;
             }
+
             return new PlaceHolderDescriptor(typeId);
         }
 
@@ -157,7 +182,7 @@ namespace BTDB.EventStore2Layer
             var typeId = reader.ReadVInt32();
             while (typeId != 0)
             {
-                var typeCategory = (TypeCategory)reader.ReadUInt8();
+                var typeCategory = (TypeCategory) reader.ReadUInt8();
                 ITypeDescriptor descriptor;
                 switch (typeCategory)
                 {
@@ -181,25 +206,31 @@ namespace BTDB.EventStore2Layer
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+
                 while (-typeId - 1 >= _id2InfoNew.Count)
                     _id2InfoNew.Add(null);
                 if (_id2InfoNew[-typeId - 1] == null)
-                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
+                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo {Id = typeId, Descriptor = descriptor};
                 typeId = reader.ReadVInt32();
             }
+
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
                 _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
                 {
                     var placeHolderDescriptor = d as PlaceHolderDescriptor;
-                    return placeHolderDescriptor != null ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor : d;
+                    return placeHolderDescriptor != null
+                        ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor
+                        : d;
                 });
             }
+
             // This additional cycle is needed to fill names of recursive structures
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
                 _id2InfoNew[i].Descriptor.MapNestedTypes(d => d);
             }
+
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
                 var infoForType = _id2InfoNew[i];
@@ -213,6 +244,7 @@ namespace BTDB.EventStore2Layer
                         break;
                     }
                 }
+
                 if (infoForType.Id < 0)
                 {
                     infoForType.Id = _id2Info.Count;
@@ -220,6 +252,7 @@ namespace BTDB.EventStore2Layer
                     _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
                 }
             }
+
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
                 _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
@@ -228,6 +261,7 @@ namespace BTDB.EventStore2Layer
                     return _remapToOld.TryGetValue(d, out res) ? res : d;
                 });
             }
+
             _id2InfoNew.Clear();
             _remapToOld.Clear();
         }
@@ -240,38 +274,51 @@ namespace BTDB.EventStore2Layer
                 _writer.WriteUInt8(0); // null
                 return _writer.GetDataAndRewind();
             }
-            _newTypeFound = false;
-            StoreObject(obj);
-            _visited.Clear();
-            if (!_newTypeFound)
+
+            try
             {
-                // No unknown metadata found - to be optimistic pays off
+                _newTypeFound = false;
+                StoreObject(obj);
+                _visited.Clear();
+                if (!_newTypeFound)
+                {
+                    // No unknown metadata found - to be optimistic pays off
+                    hasMetaData = false;
+                    return _writer.GetDataAndRewind();
+                }
+
+                StoreNewDescriptors(obj);
+                if (_typeOrDescriptor2InfoNew.Count > 0)
+                {
+                    _writer.GetDataAndRewind();
+                    if (MergeTypesByShapeAndStoreNew())
+                    {
+                        _typeOrDescriptor2InfoNew.Clear();
+                        _visited.Clear();
+                        hasMetaData = true;
+                        return _writer.GetDataAndRewind();
+                    }
+
+                    _typeOrDescriptor2InfoNew.Clear();
+                }
+
+                _visited.Clear();
+                _newTypeFound = false;
+                StoreObject(obj);
+                if (_newTypeFound)
+                {
+                    throw new BTDBException("Forgot descriptor or type");
+                }
+
+                _visited.Clear();
                 hasMetaData = false;
                 return _writer.GetDataAndRewind();
             }
-            StoreNewDescriptors(obj);
-            if (_typeOrDescriptor2InfoNew.Count > 0)
+            catch
             {
-                _writer.GetDataAndRewind();
-                if (MergeTypesByShapeAndStoreNew())
-                {
-                    _typeOrDescriptor2InfoNew.Clear();
-                    _visited.Clear();
-                    hasMetaData = true;
-                    return _writer.GetDataAndRewind();
-                }
-                _typeOrDescriptor2InfoNew.Clear();
+                _visited.Clear();
+                throw;
             }
-            _visited.Clear();
-            _newTypeFound = false;
-            StoreObject(obj);
-            if (_newTypeFound)
-            {
-                throw new BTDBException("Forgot descriptor or type");
-            }
-            _visited.Clear();
-            hasMetaData = false;
-            return _writer.GetDataAndRewind();
         }
 
         public ITypeDescriptor Create(Type type)
@@ -290,9 +337,19 @@ namespace BTDB.EventStore2Layer
                     {
                         if (type != typeAlternative)
                         {
-                            if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
-                            if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                            if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
+                            {
+                                _typeOrDescriptor2Info[type] = result;
+                                return result.Descriptor;
+                            }
+
+                            if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
+                            {
+                                _typeOrDescriptor2InfoNew[type] = result;
+                                return result.Descriptor;
+                            }
                         }
+
                         desc = new ListTypeDescriptor(this, typeAlternative);
                     }
                     else
@@ -302,9 +359,19 @@ namespace BTDB.EventStore2Layer
                         {
                             if (type != typeAlternative)
                             {
-                                if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
-                                if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                                if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
+                                {
+                                    _typeOrDescriptor2Info[type] = result;
+                                    return result.Descriptor;
+                                }
+
+                                if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
+                                {
+                                    _typeOrDescriptor2InfoNew[type] = result;
+                                    return result.Descriptor;
+                                }
                             }
+
                             desc = new DictionaryTypeDescriptor(this, typeAlternative);
                         }
                         else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
@@ -318,9 +385,19 @@ namespace BTDB.EventStore2Layer
                             {
                                 if (type != typeAlternative)
                                 {
-                                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
-                                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
+                                    {
+                                        _typeOrDescriptor2Info[type] = result;
+                                        return result.Descriptor;
+                                    }
+
+                                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
+                                    {
+                                        _typeOrDescriptor2InfoNew[type] = result;
+                                        return result.Descriptor;
+                                    }
                                 }
+
                                 desc = new NullableTypeDescriptor(this, typeAlternative);
                             }
                         }
@@ -330,8 +407,18 @@ namespace BTDB.EventStore2Layer
                 {
                     typeAlternative = type.SpecializationOf(typeof(IList<>));
                     Debug.Assert(typeAlternative != null && type != typeAlternative);
-                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2Info[type] = result; return result.Descriptor; }
-                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result)) { _typeOrDescriptor2InfoNew[type] = result; return result.Descriptor; }
+                    if (_typeOrDescriptor2Info.TryGetValue(typeAlternative, out result))
+                    {
+                        _typeOrDescriptor2Info[type] = result;
+                        return result.Descriptor;
+                    }
+
+                    if (_typeOrDescriptor2InfoNew.TryGetValue(typeAlternative, out result))
+                    {
+                        _typeOrDescriptor2InfoNew[type] = result;
+                        return result.Descriptor;
+                    }
+
                     desc = new ListTypeDescriptor(this, typeAlternative);
                 }
                 else if (type.IsEnum)
@@ -347,6 +434,7 @@ namespace BTDB.EventStore2Layer
                     desc = new ObjectTypeDescriptor(this, type);
                 }
             }
+
             if (desc == null) throw new BTDBException("Don't know how to serialize type " + type.ToSimpleName());
             result = new SerializerTypeInfo
             {
@@ -363,6 +451,7 @@ namespace BTDB.EventStore2Layer
                 if (typeAlternative != null) _typeOrDescriptor2InfoNew.Remove(typeAlternative);
                 return null;
             }
+
             return desc;
         }
 
@@ -387,6 +476,7 @@ namespace BTDB.EventStore2Layer
                             Descriptor = newDesc
                         };
                     }
+
                     _typeOrDescriptor2InfoNew[origDesc] = info;
                 }
             }
@@ -401,15 +491,19 @@ namespace BTDB.EventStore2Layer
                         if (!_typeOrDescriptor2Info.TryGetValue(desc, out info))
                         {
                             // If it is not in old nor new, than fail with clearer description
-                            throw new BTDBException("EventSerializer.StoreNewDescriptors bug " + obj.GetType().ToSimpleName());
+                            throw new BTDBException("EventSerializer.StoreNewDescriptors bug " +
+                                                    obj.GetType().ToSimpleName());
                         }
                     }
                 }
             }
+
             if (info.NestedObjGatherer == null)
             {
-                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor, knowDescriptor == null ? obj.GetType() : typeof(object));
+                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor,
+                    knowDescriptor == null ? obj.GetType() : typeof(object));
             }
+
             info.NestedObjGatherer(obj, this);
         }
 
@@ -425,12 +519,14 @@ namespace BTDB.EventStore2Layer
                     hasCycle = true;
                     return new PlaceHolderDescriptor(old);
                 }
+
                 visited.Add(origDesc);
                 SerializerTypeInfo info;
                 if (_typeOrDescriptor2Info.TryGetValue(old, out info))
                 {
                     return info.Descriptor;
                 }
+
                 if (old is ObjectTypeDescriptor || old is EnumTypeDescriptor)
                 {
                     var type = TypeNameMapper.ToType(old.Name) ?? typeof(object);
@@ -439,6 +535,7 @@ namespace BTDB.EventStore2Layer
                         return Create(type);
                     }
                 }
+
                 return old.CloneAndMapNestedTypes(this, old2New);
             };
             var res = old2New(origDesc);
@@ -451,8 +548,9 @@ namespace BTDB.EventStore2Layer
                 {
                     if (old is PlaceHolderDescriptor)
                     {
-                        return ((PlaceHolderDescriptor)old).TypeDesc;
+                        return ((PlaceHolderDescriptor) old).TypeDesc;
                     }
+
                     if (visited.Contains(old)) return old;
                     visited.Add(old);
                     old.MapNestedTypes(deplaceholder);
@@ -460,6 +558,7 @@ namespace BTDB.EventStore2Layer
                 };
                 res.MapNestedTypes(deplaceholder);
             }
+
             foreach (var existingTypeDescriptor in _typeOrDescriptor2Info)
             {
                 if (res.Equals(existingTypeDescriptor.Value.Descriptor))
@@ -467,6 +566,7 @@ namespace BTDB.EventStore2Layer
                     return existingTypeDescriptor.Value.Descriptor;
                 }
             }
+
             foreach (var existingTypeDescriptor in _typeOrDescriptor2InfoNew)
             {
                 if (res.Equals(existingTypeDescriptor.Value.Descriptor))
@@ -474,6 +574,7 @@ namespace BTDB.EventStore2Layer
                     return existingTypeDescriptor.Value.Descriptor;
                 }
             }
+
             return res;
         }
 
@@ -495,6 +596,7 @@ namespace BTDB.EventStore2Layer
                         }
                     }
                 }
+
                 if (info.Id == 0)
                 {
                     if (toStore == null) toStore = new List<SerializerTypeInfo>();
@@ -509,6 +611,7 @@ namespace BTDB.EventStore2Layer
                     }
                 }
             }
+
             if (toStore != null)
             {
                 for (int i = toStore.Count - 1; i >= 0; i--)
@@ -516,9 +619,11 @@ namespace BTDB.EventStore2Layer
                     _writer.WriteVInt32(toStore[i].Id);
                     StoreDescriptor(toStore[i].Descriptor, _writer);
                 }
+
                 _writer.WriteVInt32(0);
                 return true;
             }
+
             return false;
         }
 
@@ -526,29 +631,30 @@ namespace BTDB.EventStore2Layer
         {
             if (descriptor is ListTypeDescriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.List);
+                writer.WriteUInt8((byte) TypeCategory.List);
             }
             else if (descriptor is DictionaryTypeDescriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.Dictionary);
+                writer.WriteUInt8((byte) TypeCategory.Dictionary);
             }
             else if (descriptor is ObjectTypeDescriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.Class);
+                writer.WriteUInt8((byte) TypeCategory.Class);
             }
             else if (descriptor is EnumTypeDescriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.Enum);
+                writer.WriteUInt8((byte) TypeCategory.Enum);
             }
             else if (descriptor is NullableTypeDescriptor)
             {
-                writer.WriteUInt8((byte)TypeCategory.Nullable);
+                writer.WriteUInt8((byte) TypeCategory.Nullable);
             }
             else
             {
                 throw new ArgumentOutOfRangeException();
             }
-            ((IPersistTypeDescriptor)descriptor).Persist(writer, (w, d) =>
+
+            ((IPersistTypeDescriptor) descriptor).Persist(writer, (w, d) =>
             {
                 SerializerTypeInfo result;
                 if (!_typeOrDescriptor2Info.TryGetValue(d, out result))
@@ -566,14 +672,16 @@ namespace BTDB.EventStore2Layer
                 _writer.WriteUInt8(0);
                 return;
             }
+
             var visited = _visited;
             int index;
             if (visited.TryGetValue(obj, out index))
             {
                 _writer.WriteUInt8(1); // backreference
-                _writer.WriteVUInt32((uint)index);
+                _writer.WriteVUInt32((uint) index);
                 return;
             }
+
             visited.Add(obj, visited.Count);
             SerializerTypeInfo info;
             if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
@@ -593,8 +701,9 @@ namespace BTDB.EventStore2Layer
                     return;
                 }
             }
+
             if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
-            _writer.WriteVUInt32((uint)info.Id);
+            _writer.WriteVUInt32((uint) info.Id);
             info.ComplexSaver(_writer, this, obj);
         }
     }

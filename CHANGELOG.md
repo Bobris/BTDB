@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Exception in EventStore2Layer serialization does not corrupt next serializations anymore.
+
 ## 14.12.0
 
 ### Fixed
