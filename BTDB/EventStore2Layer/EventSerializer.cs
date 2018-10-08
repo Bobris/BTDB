@@ -290,7 +290,7 @@ namespace BTDB.EventStore2Layer
                 StoreNewDescriptors(obj);
                 if (_typeOrDescriptor2InfoNew.Count > 0)
                 {
-                    _writer.GetDataAndRewind();
+                    _writer.Rewind();
                     if (MergeTypesByShapeAndStoreNew())
                     {
                         _typeOrDescriptor2InfoNew.Clear();
@@ -318,6 +318,7 @@ namespace BTDB.EventStore2Layer
             {
                 _visited.Clear();
                 _typeOrDescriptor2InfoNew.Clear();
+                _writer.Rewind();
                 throw;
             }
         }
