@@ -317,6 +317,7 @@ namespace BTDB.EventStore2Layer
             catch
             {
                 _visited.Clear();
+                _typeOrDescriptor2InfoNew.Clear();
                 throw;
             }
         }
