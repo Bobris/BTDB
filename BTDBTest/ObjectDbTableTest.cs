@@ -2236,5 +2236,42 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        public class ApplicationV3
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong ApplicationId { get; set; }
+            public string Description { get; set; }
+            public ulong CreatedUserId { get; set; }
+        }
+
+        public interface IApplicationV3Table
+        {
+            bool Upsert(ApplicationV3 applicationV3);
+            IEnumerator<ApplicationV3> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+        }
+
+        [Fact]
+        public void DeserializeWellDuringListing()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IApplicationV3Table>("Company");
+                var table = creator(tr);
+                var app = new ApplicationV3{ CompanyId = 1, ApplicationId = 100, CreatedUserId = 100, Description = "info"};
+                table.Upsert(app);
+
+                var en = table.ListById(1, new AdvancedEnumeratorParam<ulong>());
+                Assert.True(en.MoveNext());
+                var app2 = en.Current;
+                Assert.Equal(app.Description, app2.Description);
+                Assert.Equal(app.ApplicationId, app2.ApplicationId);
+                Assert.Equal(app.CreatedUserId, app2.CreatedUserId);
+                tr.Commit();
+            }
+        }
+
     }
 }
