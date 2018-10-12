@@ -1,5 +1,7 @@
 # BTDB
 
+[![Build Status](https://dev.azure.com/bletocha/bletocha/_apis/build/status/Bobris.BTDB)](https://dev.azure.com/bletocha/bletocha/_build/latest?definitionId=1)
+
 Currently this project these parts:
 
 * Key Value Database
