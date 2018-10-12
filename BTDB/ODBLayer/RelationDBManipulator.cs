@@ -351,6 +351,7 @@ namespace BTDB.ODBLayer
         public T FindBySecondaryKeyOrDefault(uint secondaryKeyIndex, uint prefixParametersCount, ByteBuffer secKeyBytes,
                                              bool throwWhenNotFound)
         {
+            _transaction.TransactionProtector.Start();
             _transaction.KeyValueDBTransaction.SetKeyPrefix(secKeyBytes);
             if (!_transaction.KeyValueDBTransaction.FindFirstKey())
             {

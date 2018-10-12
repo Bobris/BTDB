@@ -1749,13 +1749,14 @@ namespace BTDBTest
             public string Name { get; set; }
         }
 
-        public interface ISimpleRelation
+        public interface ISimpleRelation : IReadOnlyCollection<SimpleObject>
         {
             void Insert(SimpleObject obj);
 
             bool RemoveById(ulong id);
 
             IEnumerator<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
+            SimpleObject FindByNameOrDefault(string name);
         }
 
         [Fact]
@@ -1787,6 +1788,33 @@ namespace BTDBTest
             Assert.Equal("Relation modified during iteration.", exc.Message);
         }
 
+        [Fact]
+        public void TransactionProtectionWorksForFindingBySecondaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+                var personSimpleTable = creator(tr);
+                personSimpleTable.Insert(new SimpleObject {Id = 1, Name = "code1"});
+                personSimpleTable.Insert(new SimpleObject {Id = 2, Name = "code2"});
+                var cnt = 0;
+                
+                using (var en = personSimpleTable.GetEnumerator())
+                {                        
+                    while (en.MoveNext())
+                    {
+                        cnt++;
+                        var so = en.Current;
+                        Assert.Null(personSimpleTable.FindByNameOrDefault("x"));
+                    }
+                }
+                
+                Assert.Equal(2, cnt);
+                tr.Commit();
+            }
+        }
+        
+        
         [Fact]
         public void NotCompleteSecondaryKeyIsRecalculatedDuringInit()
         {
