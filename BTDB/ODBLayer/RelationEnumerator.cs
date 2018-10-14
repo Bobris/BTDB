@@ -580,6 +580,7 @@ namespace BTDB.ODBLayer
                     _keyValueTr.FindPreviousKey();
                 }
             }
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             //read key
             var keyData = _keyValueTr.GetKeyAsByteArray();
             var reader = new ByteArrayReader(keyData);

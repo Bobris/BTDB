@@ -994,6 +994,7 @@ namespace BTDB.ODBLayer
                         _keyValueTr.FindPreviousKey();
                     }
                 }
+                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter; 
                 key = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsByteArray());
                 return true;
             }

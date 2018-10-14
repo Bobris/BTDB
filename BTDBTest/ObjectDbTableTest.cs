@@ -1492,12 +1492,12 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FindByMetodsChecksParameterTypes()
+        public void FindByMethodsChecksParameterTypes()
         {
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() =>
-                tr.InitRelation<IProductionInvalidTable>("FindByMetodsChecksParameterTypes"));
+                tr.InitRelation<IProductionInvalidTable>("FindByMethodsChecksParameterTypes"));
                 Assert.Contains("expected 'System.DateTime'", ex.Message);
             }
         }
