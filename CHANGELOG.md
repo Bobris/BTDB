@@ -1,10 +1,10 @@
 # Changelog
 
 ## [unreleased]
+
 ### Fixed
 
-Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well. 
-
+Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well.
 
 ## 14.12.1
 
