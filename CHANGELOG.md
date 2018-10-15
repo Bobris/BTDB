@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 14.12.2
+
 ### Fixed
 
 Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well.
