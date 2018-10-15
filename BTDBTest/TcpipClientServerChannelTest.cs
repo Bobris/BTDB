@@ -35,7 +35,7 @@ namespace BTDBTest
             Assert.NotNull(connectException);
         }
 
-        [Fact]
+        [Fact(Skip = "Flaky")]
         public void ConnectClientToServerClientDisconnects()
         {
             var server = new TcpipServer(_ipEndPoint);
