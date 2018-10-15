@@ -20,7 +20,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void ConnectNothereFails()
+        public void ConnectNowhereFails()
         {
             var e = new AutoResetEvent(false);
             var client = new TcpipClient(_ipEndPoint);
