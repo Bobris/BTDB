@@ -518,17 +518,17 @@ namespace BTDBTest
             AssertNoLeaksInDb();
         }
 
-        public interface INodes
+        public class NodesBase
         {
         }
 
-        public class NodesA : INodes
+        public class NodesA : NodesBase
         {
             public string F { get; set; }
             public IDictionary<ulong, ulong> A { get; set; }
         }
 
-        public class NodesB : INodes
+        public class NodesB : NodesBase
         {
             public IDictionary<ulong, ulong> B { get; set; }
             public string E { get; set; }
@@ -538,7 +538,7 @@ namespace BTDBTest
         {
             [PrimaryKey]
             public ulong Id { get; set; }
-            public INodes Nodes { get; set; }
+            public NodesBase Nodes { get; set; }
         }
 
         public interface IGraph
@@ -551,6 +551,7 @@ namespace BTDBTest
         [Fact]
         public void FreeWorksAlsoForDifferentSubObjects()
         {
+            _db.RegisterType(typeof(NodesBase));
             _db.RegisterType(typeof(NodesA));
             _db.RegisterType(typeof(NodesB));
 
@@ -570,12 +571,20 @@ namespace BTDBTest
                     Nodes = new NodesB { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
                 };
                 table.Insert(graph);
+                graph = new Graph
+                {
+                    Id = 3,
+                    Nodes = new NodesBase()
+                };
+                table.Insert(graph);
 
                 Assert.True(table.FindById(1).Nodes is NodesA);
                 Assert.True(table.FindById(2).Nodes is NodesB);
+                Assert.True(table.FindById(3).Nodes is NodesBase);
 
                 table.RemoveById(1);
                 table.RemoveById(2);
+                table.RemoveById(3);
                 tr.Commit();
             }
             AssertNoLeaksInDb();
