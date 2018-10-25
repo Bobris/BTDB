@@ -31,7 +31,7 @@ namespace SimpleTester
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
-            new KeyValueSpeedTest(true).Run();
+            //new KeyValueSpeedTest(true).Run();
             //new KeyValueSpeedTest(false).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
@@ -42,6 +42,7 @@ namespace SimpleTester
             //new CompactorLatencyMeasurement().Run();
             //new ClassGenerator().Run();
             //new EventLayer2TestWithALotOfClasses().Run();
+            BenchmarkRunner.Run<RelationFreeContentTest>();
         }
     }
 }
