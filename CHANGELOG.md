@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 15.0.0
+
 ### Added
 ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
 
