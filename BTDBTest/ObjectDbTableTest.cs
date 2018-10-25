@@ -170,6 +170,8 @@ namespace BTDBTest
             bool Upsert(PersonSimple person);
             // Update will throw if does not exist
             void Update(PersonSimple person);
+            bool ShallowUpsert(PersonSimple person);
+            void ShallowUpdate(PersonSimple person);
             IEnumerator<PersonSimple> GetEnumerator();
             // Returns true if removed
             bool RemoveById(ulong tenantId, string email);
@@ -245,6 +247,35 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void ShallowUpsertWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                Assert.True(personSimpleTable.ShallowUpsert(person), "Is newly inserted");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                person.Name = "Lubos";
+                Assert.False(personSimpleTable.ShallowUpsert(person), "Was already there");
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+            }
+        }
+
+        [Fact]
         public void UpdateWorks()
         {
             var person = new PersonSimple
@@ -271,6 +302,44 @@ namespace BTDBTest
                 person.Name = "Lubos";
                 person.Ratings.Add("History", new List<byte> { 3 });
                 personSimpleTable.Update(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+                Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
+            }
+        }
+
+        [Fact]
+        public void ShallowUpdateWorks()
+        {
+            var person = new PersonSimple
+            {
+                TenantId = 1,
+                Email = "nospam@nospam.cz",
+                Name = "Boris",
+                Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
+            };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                Assert.Throws<BTDBException>(() => personSimpleTable.ShallowUpdate(person));
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                person.Name = "Lubos";
+                person.Ratings.Add("History", new List<byte> { 3 });
+                personSimpleTable.ShallowUpdate(person);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -1798,9 +1867,9 @@ namespace BTDBTest
                 personSimpleTable.Insert(new SimpleObject {Id = 1, Name = "code1"});
                 personSimpleTable.Insert(new SimpleObject {Id = 2, Name = "code2"});
                 var cnt = 0;
-                
+
                 using (var en = personSimpleTable.GetEnumerator())
-                {                        
+                {
                     while (en.MoveNext())
                     {
                         cnt++;
@@ -1808,13 +1877,13 @@ namespace BTDBTest
                         Assert.Null(personSimpleTable.FindByNameOrDefault("x"));
                     }
                 }
-                
+
                 Assert.Equal(2, cnt);
                 tr.Commit();
             }
         }
-        
-        
+
+
         [Fact]
         public void NotCompleteSecondaryKeyIsRecalculatedDuringInit()
         {

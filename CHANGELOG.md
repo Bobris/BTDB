@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
+
+### Changed
 IIndirect objects are not automatically deleted during removal from relations.
 
 ## 14.12.2

@@ -16,6 +16,7 @@ namespace SimpleTester
     {
         void Insert(Test test);
         void Update(Test test);
+        void ShallowUpdate(Test test);
         Test FindByIdOrDefault(ulong companyId, ulong id);
     }
 
@@ -118,5 +119,18 @@ namespace SimpleTester
                 tr.Commit();
             }
         }
+
+        [Benchmark]
+        public void ShallowUpdateInRelation()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var table = _creator(tr);
+                var test = table.FindByIdOrDefault(1, 1);
+                table.ShallowUpdate(test);
+                tr.Commit();
+            }
+        }
+
     }
 }

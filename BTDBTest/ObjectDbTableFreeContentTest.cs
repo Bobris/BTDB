@@ -44,6 +44,8 @@ namespace BTDBTest
             void Insert(Link link);
             void Update(Link link);
             bool Upsert(Link link);
+            void ShallowUpdate(Link link);
+            bool ShallowUpsert(Link link);
             bool RemoveById(ulong id);
             Link FindById(ulong id);
         }
@@ -96,6 +98,26 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void LeakingIDictionaryInShallowUpdate()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.ShallowUpdate(link); //replace dict
+                link = links.FindById(2);
+                link.Edges.Add(20, 30);
+                links.ShallowUpdate(link); //update dict, must not free
+                link = links.FindById(2);
+                Assert.Equal(2, link.Edges.Count);
+                tr.Commit();
+            }
+            Assert.NotEmpty(FindLeaks());
+        }
+
+        [Fact]
         public void FreeIDictionaryInUpsert()
         {
             var creator = InitILinks();
@@ -107,6 +129,20 @@ namespace BTDBTest
                 tr.Commit();
             }
             AssertNoLeaksInDb();
+        }
+
+        [Fact]
+        public void LeakingIDictionaryInShallowUpsert()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.ShallowUpsert(link); //replace dict
+                tr.Commit();
+            }
+            Assert.NotEmpty(FindLeaks());
         }
 
         public class LinkInList
