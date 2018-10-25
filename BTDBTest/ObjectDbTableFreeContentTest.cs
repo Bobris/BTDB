@@ -448,7 +448,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FreeIIndirect()
+        public void IIndirectIsNotFreedAutomatically()
         {
             Func<IObjectDBTransaction, IHddRelation> creator;
             using (var tr = _db.StartTransaction())
@@ -467,7 +467,6 @@ namespace BTDBTest
                 files.Insert(file);
                 tr.Commit();
             }
-            AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
                 var files = creator(tr);
@@ -476,7 +475,7 @@ namespace BTDBTest
                 files.RemoveById(1);
                 tr.Commit();
             }
-            AssertNoLeaksInDb();
+            Assert.NotEmpty(FindLeaks());
         }
 
         public class Setting

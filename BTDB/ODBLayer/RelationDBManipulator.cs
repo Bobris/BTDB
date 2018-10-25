@@ -188,19 +188,14 @@ namespace BTDB.ODBLayer
         void FreeContentInUpdate(ByteBuffer oldValueBytes, ByteBuffer newValueBytes)
         {
             var oldDicts = _relationInfo.FreeContentOldDict;
-            var oldOids = _relationInfo.FreeContentOldOid;
             oldDicts.Clear();
-            oldOids.Clear();
-            _relationInfo.FindUsedObjectsToFree(_transaction, oldValueBytes, oldDicts, oldOids);
-            if (oldDicts.Count == 0 && oldOids.Count == 0)
+            _relationInfo.FindUsedObjectsToFree(_transaction, oldValueBytes, oldDicts);
+            if (oldDicts.Count == 0)
                 return;
             var newDicts = _relationInfo.FreeContentNewDict;
-            var newOids = _relationInfo.FreeContentNewOid;
             newDicts.Clear();
-            newOids.Clear();
-            _relationInfo.FindUsedObjectsToFree(_transaction, newValueBytes, newDicts, newOids);
+            _relationInfo.FindUsedObjectsToFree(_transaction, newValueBytes, newDicts);
             CompareAndRelease(oldDicts, newDicts, RelationInfo.FreeIDictionary);
-            CompareAndRelease(oldOids, newOids, RelationInfo.FreeObject);
         }
 
         public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)

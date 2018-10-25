@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+IIndirect objects are not automatically deleted during removal from relations.
+
 ## 14.12.2
 
 ### Fixed
