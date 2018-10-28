@@ -150,13 +150,34 @@ namespace BTDB.FieldHandler
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(HandledType());
-            //decides upon current version  (null for object types never stored in DB)
-            var needsContent = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
+            var needsFreeContent = NeedsFreeContent.No;
+            var type = HandledType();
+            if (_objectDB.IsPolymorphicType(type, out var subTypes))
+            {
+                foreach (var st in subTypes)
+                {
+                    UpdateNeedsFreeContent(st, ref needsFreeContent);
+                }
+                if (!type.IsInterface)
+                    UpdateNeedsFreeContent(type, ref needsFreeContent);
+            }
+            else
+            {
+                UpdateNeedsFreeContent(type, ref needsFreeContent);
+            }
+
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
-            return needsContent;
+            return needsFreeContent;
+        }
+
+        void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
+        {
+            //decides upon current version  (null for object types never stored in DB)
+            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(type);
+            var needsContentPartial = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
+            Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
         }
     }
 }

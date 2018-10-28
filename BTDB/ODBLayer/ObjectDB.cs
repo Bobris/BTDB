@@ -13,6 +13,7 @@ namespace BTDB.ODBLayer
     {
         IKeyValueDB _keyValueDB;
         IType2NameRegistry _type2Name;
+        IPolymorphicTypesRegistry _polymorphicTypesRegistry;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
         bool _dispose;
@@ -61,6 +62,7 @@ namespace BTDB.ODBLayer
             _keyValueDB = keyValueDB;
             _dispose = dispose;
             _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
+            _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
             AutoRegisterTypes = options.AutoRegisterType;
             ActualOptions = options;
 
@@ -159,6 +161,18 @@ namespace BTDB.ODBLayer
         public string RegisterType(Type type, string asName)
         {
             return Type2NameRegistry.RegisterType(type, asName);
+        }
+
+        public string RegisterPolymorphicType(Type type, Type baseType)
+        {
+            var name = RegisterType(type);
+            _polymorphicTypesRegistry.RegisterPolymorphicType(type, baseType);
+            return name;
+        }
+
+        public bool IsPolymorphicType(Type baseType, out IEnumerable<Type> subTypes)
+        {
+            return _polymorphicTypesRegistry.IsPolymorphicType(baseType, out subTypes);
         }
 
         public Type TypeByName(string name)
