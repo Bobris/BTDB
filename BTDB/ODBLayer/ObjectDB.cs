@@ -150,29 +150,34 @@ namespace BTDB.ODBLayer
 
         public string RegisterType(Type type)
         {
+            return RegisterType(type, true);
+        }
+
+        public string RegisterType(Type type, string withName)
+        {
+            return RegisterType(type, withName, true);
+        }
+
+        internal string RegisterType(Type type, bool manualRegistration)
+        {
             if (type == null) throw new ArgumentNullException(nameof(type));
             var name = Type2NameRegistry.FindNameByType(type);
             if (name != null) return name;
             name = type.Name;
             if (type.IsInterface && name.StartsWith("I", StringComparison.Ordinal)) name = name.Substring(1);
-            return RegisterType(type, name);
+            return RegisterType(type, name, manualRegistration);
         }
 
-        public string RegisterType(Type type, string asName)
+        internal string RegisterType(Type type, string asName, bool manualRegistration)
         {
+            if (manualRegistration)
+                _polymorphicTypesRegistry.RegisterPolymorphicType(type);
             return Type2NameRegistry.RegisterType(type, asName);
         }
 
-        public string RegisterPolymorphicType(Type type, Type baseType)
+        public IEnumerable<Type> GetPolymorphicTypes(Type baseType)
         {
-            var name = RegisterType(type);
-            _polymorphicTypesRegistry.RegisterPolymorphicType(type, baseType);
-            return name;
-        }
-
-        public bool IsPolymorphicType(Type baseType, out IEnumerable<Type> subTypes)
-        {
-            return _polymorphicTypesRegistry.IsPolymorphicType(baseType, out subTypes);
+            return _polymorphicTypesRegistry.GetPolymorphicTypes(baseType);
         }
 
         public Type TypeByName(string name)

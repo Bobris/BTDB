@@ -646,7 +646,7 @@ namespace BTDB.ODBLayer
                     {
                         throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
                     }
-                    name = _owner.RegisterType(type);
+                    name = _owner.RegisterType(type, manualRegistration: false);
                 }
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }

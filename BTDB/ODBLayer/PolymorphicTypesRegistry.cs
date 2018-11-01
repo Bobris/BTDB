@@ -1,38 +1,32 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace BTDB.ODBLayer
 {
     public class PolymorphicTypesRegistry : IPolymorphicTypesRegistry
     {
         readonly object _lock = new object();
-        readonly IDictionary<Type, List<Type>> _subTypes = new Dictionary<Type, List<Type>>();
+        readonly HashSet<Type> _types = new HashSet<Type>();
 
-        public void RegisterPolymorphicType(Type type, Type baseType)
+        public void RegisterPolymorphicType(Type type)
         {
-            if (!baseType.IsAssignableFrom(type))
-                throw new ArgumentException();
             lock (_lock)
             {
-                if (_subTypes.TryGetValue(baseType, out var sub))
-                    sub.Add(type);
-                else
-                    _subTypes[baseType] = new List<Type> {type};
+                _types.Add(type);
             }
         }
 
-        public bool IsPolymorphicType(Type baseType, out IEnumerable<Type> subTypes)
+        public IEnumerable<Type> GetPolymorphicTypes(Type baseType)
         {
+            var res = new List<Type>();
             lock (_lock)
             {
-                if (!_subTypes.TryGetValue(baseType, out var sub))
+                foreach (var t in _types)
                 {
-                    subTypes = null;
-                    return false;
+                    if (!baseType.IsAssignableFrom(t)) continue;
+                    yield return t;
                 }
-
-                subTypes = sub;
-                return true;
             }
         }
     }

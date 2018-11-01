@@ -19,7 +19,7 @@ namespace BTDB.FieldHandler
             _objectDB = objectDB;
             _type = Unwrap(type);
             _indirect = _type != type;
-            _typeName = _objectDB.RegisterType(_type);
+            _typeName = (_objectDB as ObjectDB)?.RegisterType(_type, false);
             var writer = new ByteBufferWriter();
             writer.WriteString(_typeName);
             _configuration = writer.Data.ToByteArray();
@@ -152,19 +152,12 @@ namespace BTDB.FieldHandler
         {
             var needsFreeContent = NeedsFreeContent.No;
             var type = HandledType();
-            if (_objectDB.IsPolymorphicType(type, out var subTypes))
+            foreach (var st in _objectDB.GetPolymorphicTypes(type))
             {
-                foreach (var st in subTypes)
-                {
-                    UpdateNeedsFreeContent(st, ref needsFreeContent);
-                }
-                if (!type.IsInterface)
-                    UpdateNeedsFreeContent(type, ref needsFreeContent);
+                UpdateNeedsFreeContent(st, ref needsFreeContent);
             }
-            else
-            {
+            if (!type.IsInterface && !type.IsAbstract)
                 UpdateNeedsFreeContent(type, ref needsFreeContent);
-            }
 
             ilGenerator
                 .Do(pushReaderOrCtx)

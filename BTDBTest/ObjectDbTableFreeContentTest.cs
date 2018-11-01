@@ -826,8 +826,8 @@ namespace BTDBTest
         [Fact]
         public void FreeWorksAlsoForDifferentSubObjectsWithoutIface()
         {
-            _db.RegisterPolymorphicType(typeof(NodesOne), typeof(NodesBase));
-            _db.RegisterPolymorphicType(typeof(NodesTwo), typeof(NodesBase));
+            _db.RegisterType(typeof(NodesOne));
+            _db.RegisterType(typeof(NodesTwo));
 
             using (var tr = _db.StartTransaction())
             {
