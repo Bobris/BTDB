@@ -122,7 +122,8 @@ namespace BTDB.ODBLayer
         {
             foreach (var method in methods)
             {
-                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert")
+                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert"
+                    && method.Name != "ShallowUpdate" && method.Name != "ShallowUpsert")
                     continue;
                 var @params = method.GetParameters();
                 if (@params.Length != 1)
