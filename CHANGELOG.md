@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface. 
+
+
 ## 15.0.0
 
 ### Added

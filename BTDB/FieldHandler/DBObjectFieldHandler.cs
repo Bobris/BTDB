@@ -19,7 +19,7 @@ namespace BTDB.FieldHandler
             _objectDB = objectDB;
             _type = Unwrap(type);
             _indirect = _type != type;
-            _typeName = _objectDB.RegisterType(_type);
+            _typeName = (_objectDB as ObjectDB)?.RegisterType(_type, false);
             var writer = new ByteBufferWriter();
             writer.WriteString(_typeName);
             _configuration = writer.Data.ToByteArray();
@@ -150,13 +150,27 @@ namespace BTDB.FieldHandler
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(HandledType());
-            //decides upon current version  (null for object types never stored in DB)
-            var needsContent = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
+            var needsFreeContent = NeedsFreeContent.No;
+            var type = HandledType();
+            foreach (var st in _objectDB.GetPolymorphicTypes(type))
+            {
+                UpdateNeedsFreeContent(st, ref needsFreeContent);
+            }
+            if (!type.IsInterface && !type.IsAbstract)
+                UpdateNeedsFreeContent(type, ref needsFreeContent);
+
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
-            return needsContent;
+            return needsFreeContent;
+        }
+
+        void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
+        {
+            //decides upon current version  (null for object types never stored in DB)
+            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(type);
+            var needsContentPartial = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
+            Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
         }
     }
 }

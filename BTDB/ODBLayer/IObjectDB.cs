@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -20,6 +21,8 @@ namespace BTDB.ODBLayer
         string RegisterType(Type type);
 
         string RegisterType(Type type, string withName);
+
+        IEnumerable<Type> GetPolymorphicTypes(Type baseType);
 
         Type TypeByName(string name);
 
