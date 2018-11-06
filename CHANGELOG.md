@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 15.1.0
+
 ### Added
 
 Added way to skip Events in EventStoreLayer Deserialization.
