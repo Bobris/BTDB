@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using BTDB.Buffer;
@@ -249,10 +250,31 @@ namespace BTDB.EventStoreLayer
             var readEvents = observer.ObservedMetadata(metadata, eventCount);
             if (!readEvents) return observer.ShouldStopReadingNextEvents();
             var events = new object[eventCount];
+            var successfulEventCount = 0;
             for (var i = 0; i < eventCount; i++)
             {
                 events[i] = Mapping.LoadObject(reader);
+                try
+                {
+                    events[i] = Mapping.LoadObject(reader);
+                    successfulEventCount++;
+                }
+                catch (EventSkippedException)
+                {
+                }
             }
+
+            if (eventCount != successfulEventCount)
+            {
+                var successfulEvent = new List<object>();
+                foreach (var ev in events)
+                {
+                    if (ev != null)
+                        successfulEvent.Add(ev);
+                }
+                events = successfulEvent.ToArray();
+            }
+
             observer.ObservedEvents(events);
             return observer.ShouldStopReadingNextEvents();
         }
