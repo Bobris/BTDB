@@ -2,6 +2,65 @@
 
 ## [unreleased]
 
+### Fixed
+
+Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface. 
+
+
+## 15.0.0
+
+### Added
+ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
+
+### Changed
+IIndirect objects are not automatically deleted during removal from relations.
+
+## 14.12.2
+
+### Fixed
+
+Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well.
+
+## 14.12.1
+
+### Fixed
+
+Exception in EventStore2Layer serialization does not corrupt next serializations anymore.
+Serialization of non Dictionary in EventStore does not fail.
+
+## 14.12.0
+
+### Fixed
+
+Skipping removed field (inline object) when deserializing older version in relations
+
+## 14.11.0
+
+### Added
+
+EventLayer serializers support IOrderedDictionary<K,V> type
+
+## 14.10.0
+
+### Added
+
+ArtInMemoryKeyValueDB - less memory hungry KVDB - use it only in .NetCore 2.1 target
+Generics classes now supported in EventLayer serializers
+DBOptions.WithSelfHealing switches db to try self heal rather then fail fast mode
+IObjectDBLogger for ObjectDB, actually for reporting deletion of incompatible data in self heal mode.
+
+## 14.9.0
+
+### Fixed
+
+Rare exception during checking possibility of usage of optimized version of prefix based remove when so far unseen objects was used as key in IDictionary
+
+## 14.8.0
+
+### Changed
+
+Dumping JsonLike output from TypeDescriptor is now more JSON compliant.
+
 ## 14.7.0
 
 ### Added
@@ -126,40 +185,40 @@ IPAddress can now serialize and deserialize null value.
 
 ### Added
 
--   Synchronization lock in EventLayer2 Deserialization to be on safe side.
+- Synchronization lock in EventLayer2 Deserialization to be on safe side.
 
 ## 12.4.0.0
 
 ### Added
 
--   PersistedNameAttribute is supported on Apart Fields in relation interfaces
+- PersistedNameAttribute is supported on Apart Fields in relation interfaces
 
 ## 12.3.0.0
 
 ### Added
 
--   IOC now resolves optional parameters that are not registered with its provided value
+- IOC now resolves optional parameters that are not registered with its provided value
 
 ### Fixed
 
--   Fixed problem with calculating index from older version value in specific case
+- Fixed problem with calculating index from older version value in specific case
 
 ## 12.2.0.0
 
 ### Added
 
--   new method DeleteAllData() on ObjectDBTransaction
--   PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
+- new method DeleteAllData() on ObjectDBTransaction
+- PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
 
 ## 12.1.0.0
 
 ### Added
 
--   Event deserialization now automatically converts Enums to integer types.
+- Event deserialization now automatically converts Enums to integer types.
 
 ## 12.0.0.0
 
 ### Added
 
--   Changelog
--   Nullable support in both ODb and EventStore
+- Changelog
+- Nullable support in both ODb and EventStore

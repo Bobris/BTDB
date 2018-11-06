@@ -183,10 +183,10 @@ namespace BTDB.FieldHandler
             yield return _itemHandler;
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             Skip(ilGenerator, pushReaderOrCtx);
-            return false;
+            return NeedsFreeContent.No;
         }
     }
 }

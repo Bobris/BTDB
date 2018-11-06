@@ -12,16 +12,6 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    public class KeyValueDBOptions
-    {
-        public IFileCollection FileCollection;
-        public ICompressionStrategy Compression = new SnappyCompressionStrategy();
-        public uint FileSplitSize = int.MaxValue;
-        public ICompactorScheduler CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
-        public ulong? OpenUpToCommitUlong;
-        public ulong? PreserveHistoryUpToCommitUlong;
-    }
-
     public class KeyValueDB : IKeyValueDB, IHaveSubDB
     {
         const int MaxValueSizeInlineInMemory = 7;
@@ -78,13 +68,6 @@ namespace BTDB.KVDBLayer
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning(true);
-        }
-
-        internal struct KeyIndexInfo
-        {
-            public uint Key;
-            public long Generation;
-            public ulong CommitUlong;
         }
 
         internal List<KeyIndexInfo> BuildKeyIndexInfos()

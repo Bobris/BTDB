@@ -276,9 +276,9 @@ namespace BTDB.FieldHandler
             yield return _valuesHandler;
         }
 
-        public bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
-            var needsFreeContent = false;
+            var needsFreeContent = NeedsFreeContent.No;
             var localCount = ilGenerator.DeclareLocal(typeof(uint));
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();

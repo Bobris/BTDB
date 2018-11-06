@@ -39,7 +39,7 @@ namespace SimpleTester
                 yield return $"a{rnd.Next(999)}@b{count}.com";
         }
 
-        interface IMesureOperations
+        interface IMeasureOperations
         {
             void Insert();
             void List();
@@ -47,18 +47,18 @@ namespace SimpleTester
             void Remove();
         }
 
-        //definitinos for relations
+        //definitions for relations
         public interface IPersonTable
         {
             void Insert(Person person);
             void Update(Person person);
             Person FindById(ulong id);
             void RemoveById(ulong id);
-            IEnumerator<Person> ListByEmail(AdvancedEnumeratorParam<Person> param);
+            IEnumerator<Person> ListByEmail(AdvancedEnumeratorParam<string> param);
         }
         //
 
-        class RelationPersonTest : IMesureOperations
+        class RelationPersonTest : IMeasureOperations
         {
             readonly int _count;
             readonly ObjectDB _db;
@@ -94,7 +94,7 @@ namespace SimpleTester
                 using (var tr = _db.StartTransaction())
                 {
                     var personTable = _creator(tr);
-                    var en = personTable.ListByEmail(AdvancedEnumeratorParam<Person>.Instance);
+                    var en = personTable.ListByEmail(AdvancedEnumeratorParam<string>.Instance);
                     while (en.MoveNext())
                     {
                         sum += en.Current.Id;
@@ -144,7 +144,7 @@ namespace SimpleTester
         }
         //
 
-        class SingletonPersonTest : IMesureOperations
+        class SingletonPersonTest : IMeasureOperations
         {
             readonly int _count;
             readonly ObjectDB _db;
@@ -230,7 +230,7 @@ namespace SimpleTester
         }
 
 
-        void Measure(string name, IMesureOperations testImpl)
+        void Measure(string name, IMeasureOperations testImpl)
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();

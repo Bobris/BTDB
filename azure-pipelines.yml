@@ -1,0 +1,29 @@
+variables:
+  buildConfiguration: 'Release'
+
+jobs:
+- job: 'netcore_linux'
+  pool: 
+    vmImage: 'Ubuntu 16.04'
+  steps:
+  - script:
+      dotnet build --configuration $(buildConfiguration)
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: test
+      projects: '**/*Test/*.csproj'
+      arguments: '--configuration $(buildConfiguration)'
+
+- job: 'netcore_net471_win'
+  pool: 
+    vmImage: vs2017-win2016
+  steps:
+  - script:
+      dotnet build --configuration $(buildConfiguration)
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: test
+      projects: '**/*Test/*.csproj'
+      arguments: '--configuration $(buildConfiguration)'
+
+ 

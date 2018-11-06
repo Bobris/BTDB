@@ -26,6 +26,7 @@ namespace BTDB.ChunkCache
         AbstractBufferedWriter _cacheValueWriter;
         long _fileGeneration;
         Task _compactionTask;
+        internal Task CurrentCompactionTask() => _compactionTask;
         CancellationTokenSource _compactionCts;
         readonly object _startNewValueFileLocker = new object();
 

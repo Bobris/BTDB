@@ -94,6 +94,11 @@ namespace BTDB.KVDBLayer
             return BtreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
         }
 
+        public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            return CreateOrUpdateKeyValue(ByteBuffer.NewAsync(key), ByteBuffer.NewAsync(value));
+        }
+
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWrittable();
@@ -224,6 +229,11 @@ namespace BTDB.KVDBLayer
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
             var nodeIdxPair = _stack[_stack.Count - 1];
             return ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
+        }
+
+        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        {
+            return GetValue().AsSyncReadOnlySpan();
         }
 
         void EnsureValidKey()
