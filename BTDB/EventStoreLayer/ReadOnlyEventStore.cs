@@ -255,7 +255,7 @@ namespace BTDB.EventStoreLayer
             {
                 try
                 {
-                    events[i] = Mapping.LoadObject(reader);
+                    events[successfulEventCount] = Mapping.LoadObject(reader);
                     successfulEventCount++;
                 }
                 catch (EventSkippedException)
@@ -265,13 +265,7 @@ namespace BTDB.EventStoreLayer
 
             if (eventCount != successfulEventCount)
             {
-                var successfulEvent = new List<object>();
-                foreach (var ev in events)
-                {
-                    if (ev != null)
-                        successfulEvent.Add(ev);
-                }
-                events = successfulEvent.ToArray();
+                Array.Resize(ref events, successfulEventCount);
             }
 
             observer.ObservedEvents(events);

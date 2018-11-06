@@ -1001,5 +1001,70 @@ namespace BTDBTest
             Assert.True(ev.DictionaryWithNullables[1]);
             Assert.False(ev.DictionaryWithNullables[2].HasValue);
         }
+
+        public class SelectiveTypeMapper : ITypeNameMapper
+        {
+            readonly ITypeNameMapper _parent;
+            readonly string _name;
+
+            public SelectiveTypeMapper(string name, ITypeNameMapper parent = null)
+            {
+                _name = name;
+                _parent = parent ?? new FullNameTypeMapper();
+            }
+
+            public string ToName(Type type)
+            {
+                return _parent.ToName(type);
+            }
+
+            public Type ToType(string name)
+            {
+                if (name == _name) throw new EventSkippedException();
+                return _parent.ToType(name);
+            }
+        }
+
+        internal class SimpleEventObserver : IEventStoreObserver
+        {
+            public readonly List<object[]> Events = new List<object[]>();
+
+            public bool ObservedMetadata(object metadata, uint eventCount)
+            {
+                return true;
+            }
+
+            public virtual bool ShouldStopReadingNextEvents()
+            {
+                return false;
+            }
+
+            public void ObservedEvents(object[] events)
+            {
+                Events.Add(events);
+            }
+        }
+
+        [Fact]
+        public void TypeMapperCanForceSkipEvents()
+        {
+            var manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new FullNameTypeMapper());
+            var file = new MemoryEventFileStorage();
+            var appender = manager.AppendToStore(file);
+            var user = new User { Name = "A", Age = 1 };
+            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
+            var userEventMore = new UserEventMore { Id = 11, User1 = user, User2 = user };
+            appender.Store(null, new object[] { userEvent, userEventMore });
+
+            manager = new EventStoreManager();
+            manager.SetNewTypeNameMapper(new SelectiveTypeMapper("BTDBTest.EventStoreTest+UserEventMore"));
+            var reader = manager.OpenReadOnlyStore(file);
+            var eventObserver = new SimpleEventObserver();
+            reader.ReadFromStartToEnd(eventObserver);
+            Assert.Single(eventObserver.Events[0]);
+            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
+            Assert.Same(readUserEvent.User1, readUserEvent.User2);
+        }
     }
 }
