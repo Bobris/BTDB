@@ -253,14 +253,10 @@ namespace BTDB.EventStoreLayer
             var successfulEventCount = 0;
             for (var i = 0; i < eventCount; i++)
             {
-                try
-                {
-                    events[successfulEventCount] = Mapping.LoadObject(reader);
-                    successfulEventCount++;
-                }
-                catch (EventSkippedException)
-                {
-                }
+                var ev = Mapping.LoadObject(reader);
+                if (ev == null) continue;
+                events[successfulEventCount] = ev;
+                successfulEventCount++;
             }
 
             if (eventCount != successfulEventCount)

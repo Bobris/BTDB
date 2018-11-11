@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Skipping Events in EventStoreLayer Deserialization 
+
 ## 15.1.0
 
 ### Added

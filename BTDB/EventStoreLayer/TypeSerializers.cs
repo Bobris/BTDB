@@ -243,7 +243,14 @@ namespace BTDB.EventStoreLayer
 
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
         {
-            var loadAsType = LoadAsType(descriptor);
+            Type loadAsType = null;
+            try
+            {
+                loadAsType = LoadAsType(descriptor);
+            }
+            catch (EventSkippedException)
+            {
+            }
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             if (descriptor.AnyOpNeedsCtx())
@@ -261,13 +268,23 @@ namespace BTDB.EventStoreLayer
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3), loadAsType);
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3), loadAsType);
             }
             else
             {
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3), loadAsType);
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3), loadAsType);
             }
-            if (loadAsType.IsValueType)
+            if (loadAsType == null)
+            {
+                il.Ldnull();
+            }
+            else if (loadAsType.IsValueType)
             {
                 il.Box(loadAsType);
             }

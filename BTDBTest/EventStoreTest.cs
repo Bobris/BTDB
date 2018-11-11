@@ -1052,18 +1052,19 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new FullNameTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "A", Age = 1 };
+            var user = new User { Name = "ABC", Age = 88 };
             var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
             var userEventMore = new UserEventMore { Id = 11, User1 = user, User2 = user };
+
             appender.Store(null, new object[] { userEvent, userEventMore });
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new SelectiveTypeMapper("BTDBTest.EventStoreTest+UserEventMore"));
+            manager.SetNewTypeNameMapper(new SelectiveTypeMapper("BTDBTest.EventStoreTest+UserEvent"));
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new SimpleEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             Assert.Single(eventObserver.Events[0]);
-            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventMore)eventObserver.Events[0][0];
             Assert.Same(readUserEvent.User1, readUserEvent.User2);
         }
     }
