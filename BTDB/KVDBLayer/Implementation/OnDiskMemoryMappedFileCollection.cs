@@ -10,8 +10,10 @@ namespace BTDB.KVDBLayer
 {
     public class OnDiskMemoryMappedFileCollection : IFileCollection
     {
-        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")]
-        static extern unsafe void CopyMemory(byte* dst, byte* src, long size);
+        static unsafe void CopyMemory(byte* dst, byte* src, long size)
+        {
+            System.Buffer.MemoryCopy(src, dst, size, size);
+        }
 
         public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
         {
