@@ -2,9 +2,13 @@
 
 ## [unreleased]
 
+### Improved
+
+Speed of OnDiskFileCollection improved by using new PRead and PWrite methods implemented for Windows and Posix.
+
 ### Fixed
 
-Skipping Events in EventStoreLayer Deserialization 
+Skipping Events in EventStoreLayer Deserialization
 
 ## 15.1.0
 
@@ -14,14 +18,16 @@ Added way to skip Events in EventStoreLayer Deserialization.
 
 ### Fixed
 
-Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface. 
+Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface.
 
 ## 15.0.0
 
 ### Added
+
 ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
 
 ### Changed
+
 IIndirect objects are not automatically deleted during removal from relations.
 
 ## 14.12.2
