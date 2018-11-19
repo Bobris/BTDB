@@ -88,6 +88,10 @@ namespace BTDB.ODBLayer
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());
+            if (ti == null)
+            {
+                throw new BTDBException($"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
+            }
             EnsureClientTypeNotNull(ti);
             IfNeededPersistTableInfo(ti);
             var writer = writerCtx.Writer();

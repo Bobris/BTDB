@@ -5,6 +5,7 @@
 ### Improved
 
 Speed of OnDiskFileCollection improved by using new PRead and PWrite methods implemented for Windows and Posix.
+Better exception in WriteInlineObject when object type could not be stored.
 
 ### Fixed
 
