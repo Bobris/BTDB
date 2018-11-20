@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace ODbDump
 {
@@ -685,16 +686,24 @@ namespace ODbDump
                 }
                 case "compact":
                 {
+                    var sw = new Stopwatch();
+                    sw.Start();
                     using (var dfc = new OnDiskFileCollection(args[0]))
                     using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                     {
-                        Console.WriteLine("Starting first compaction");
+                        kdb.Logger = new ConsoleKvdbLogger();
+                        sw.Stop();
+                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}");
+                        sw.Restart();
                         while (kdb.Compact(new CancellationToken()))
                         {
-                            Console.WriteLine(kdb.CalcStats());
-                            Console.WriteLine("Another compaction needed");
+                            sw.Stop();
+                            Console.WriteLine($"Compaction iteration in {sw.Elapsed.TotalSeconds:F1}");
+                            sw.Restart();
                         }
 
+                        sw.Stop();
+                        Console.WriteLine($"Final compaction in {sw.Elapsed.TotalSeconds:F1}");
                         Console.WriteLine(kdb.CalcStats());
                     }
 
@@ -732,6 +741,27 @@ namespace ODbDump
                 }
             }
         }
-    }
 
+        class ConsoleKvdbLogger : IKeyValueDBLogger
+        {
+            public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
+            {
+            }
+
+            public void CompactionStart(ulong totalWaste)
+            {
+                Console.WriteLine($"Starting compaction with {totalWaste} wasted bytes");
+            }
+
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+            {
+                Console.WriteLine($"Pvl file {fileId} with size {size} created");
+            }
+
+            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+            {
+                Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1}");
+            }
+        }
+    }
 }

@@ -130,30 +130,35 @@ namespace BTDB.KVDBLayer
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
             }
-            _cancellation.ThrowIfCancellationRequested();
-            uint valueFileId;
-            var writer = _keyValueDB.StartPureValuesFile(out valueFileId);
             var toRemoveFileIds = new List<uint>();
-            _newPositionMap = new Dictionary<ulong, uint>();
-            while (true)
+            long btreesCorrectInTransactionId;
+            do
             {
-                var wastefullFileId = FindMostWastefullFile(_keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
-                if (wastefullFileId == 0) break;
-                MoveValuesContent(writer, wastefullFileId);
-                if (_fileStats[wastefullFileId].IsFreeToDelete())
-                    toRemoveFileIds.Add(wastefullFileId);
-                _fileStats[wastefullFileId] = new FileStat(0);
-            }
-            var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
-            valueFile.HardFlush();
-            valueFile.Truncate();
-            _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize());
-            var btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, valueFileId, _newPositionMap);
+                _cancellation.ThrowIfCancellationRequested();
+                uint valueFileId;
+                var writer = _keyValueDB.StartPureValuesFile(out valueFileId);
+                _newPositionMap = new Dictionary<ulong, uint>();
+                while (true)
+                {
+                    var wastefullFileId = FindMostWastefullFile(_keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
+                    if (wastefullFileId == 0) break;
+                    MoveValuesContent(writer, wastefullFileId);
+                    if (_fileStats[wastefullFileId].IsFreeToDelete())
+                        toRemoveFileIds.Add(wastefullFileId);
+                    _fileStats[wastefullFileId] = new FileStat(0);
+                }
+                var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
+                valueFile.HardFlush();
+                valueFile.Truncate();
+                _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize());
+                btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, valueFileId, _newPositionMap);
+                if (_newPositionMap.Count == 0)
+                {
+                    toRemoveFileIds.Add(valueFileId);
+                }
+                totalWaste = CalcTotalWaste();
+            } while (!IsWasteSmall(totalWaste));
             _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
-            if (_newPositionMap.Count == 0)
-            {
-                toRemoveFileIds.Add(valueFileId);
-            }
             if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
             {
                 _keyValueDB.MarkAsUnknown(toRemoveFileIds);
@@ -162,7 +167,7 @@ namespace BTDB.KVDBLayer
             return true;
         }
 
-        private void ForbidDeleteOfFilesUsedByStillRunningOldTransaction(IBTreeRootNode root)
+        void ForbidDeleteOfFilesUsedByStillRunningOldTransaction(IBTreeRootNode root)
         {
             root.Iterate((valueFileId, valueOfs, valueSize) =>
             {
