@@ -119,9 +119,9 @@ namespace SimpleTester
             Console.WriteLine($"Compaction started with {totalWaste} waste");
         }
 
-        public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+        public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
         {
-            Console.WriteLine($"Compaction created pure value file id: {fileId} size: {size}");
+            Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
         }
 
         public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)

@@ -1099,12 +1099,11 @@ namespace BTDB.KVDBLayer
             return writer;
         }
 
-        internal long ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId, Dictionary<ulong, uint> newPositionMap)
+        internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
         {
             var ctx = new ReplaceValuesCtx
             {
                 _cancellation = cancellation,
-                _valueFileId = valueFileId,
                 _newPositionMap = newPositionMap
             };
             while (true)
@@ -1113,7 +1112,7 @@ namespace BTDB.KVDBLayer
                 ctx._interrupt = false;
                 using (var tr = StartWritingTransaction().Result)
                 {
-                    var newRoot = (tr as KeyValueDBTransaction).BtreeRoot;
+                    var newRoot = ((KeyValueDBTransaction) tr).BtreeRoot;
                     newRoot.ReplaceValues(ctx);
                     cancellation.ThrowIfCancellationRequested();
                     lock (_writeLock)

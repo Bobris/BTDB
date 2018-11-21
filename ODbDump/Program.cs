@@ -753,9 +753,9 @@ namespace ODbDump
                 Console.WriteLine($"Starting compaction with {totalWaste} wasted bytes");
             }
 
-            public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
             {
-                Console.WriteLine($"Pvl file {fileId} with size {size} created");
+                Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
             }
 
             public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
