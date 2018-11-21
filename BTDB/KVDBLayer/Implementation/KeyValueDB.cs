@@ -35,6 +35,7 @@ namespace BTDB.KVDBLayer
         readonly IFileCollectionWithFileInfos _fileCollection;
         readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
         readonly Func<CancellationToken, bool> _compactFunc;
+        public uint CompactorRamLimitInMb { get; set; }
 
         public KeyValueDB(IFileCollection fileCollection)
             : this(fileCollection, new SnappyCompressionStrategy())
@@ -65,6 +66,7 @@ namespace BTDB.KVDBLayer
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             _lastCommited = new BTreeRoot(0);
             _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
+            CompactorRamLimitInMb = 200;
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
             _compactorScheduler?.AdviceRunning(true);

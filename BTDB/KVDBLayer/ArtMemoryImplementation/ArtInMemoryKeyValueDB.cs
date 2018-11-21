@@ -13,8 +13,8 @@ namespace BTDB.KVDBLayer
         ArtInMemoryKeyValueDBTransaction _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
         readonly object _writeLock = new object();
-        readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>(); 
-        
+        readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>();
+
         public ArtInMemoryKeyValueDB(IOffHeapAllocator allocator)
         {
             _lastCommited = ARTImpl.CreateEmptyRoot(allocator, false);
@@ -80,6 +80,8 @@ namespace BTDB.KVDBLayer
         }
 
         public IKeyValueDBLogger Logger { get; set; }
+
+        public uint CompactorRamLimitInMb { get; set; }
 
         public ulong? PreserveHistoryUpToCommitUlong {
             get { return null; }

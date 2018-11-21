@@ -198,7 +198,7 @@ namespace BTDBTest
             var ctr = GetCountingTransaction(tr);
             Assert.Equal(eraseAll, ctr.EraseAllCount);
             Assert.Equal(eraseCurrent, ctr.EraseCurrentCount);
-       
+
         }
 
         class InMemoryKeyValueDBWithCount : IKeyValueDB
@@ -252,6 +252,8 @@ namespace BTDBTest
                 get { return _keyValueDB.Logger; }
                 set { _keyValueDB.Logger = value; }
             }
+
+            public uint CompactorRamLimitInMb { get; set; }
 
             public void Dispose()
             {

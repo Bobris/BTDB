@@ -608,14 +608,24 @@ namespace BTDBTest
                             using (var tr = kvDb.StartWritingTransaction().Result)
                             {
                                 var key = new byte[4];
-                                BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i*2);
+                                BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i * 2);
                                 tr.FindExactKey(key);
                                 tr.EraseCurrent();
                                 tr.Commit();
                             }
                         }
-                        kvDb.Compact(new System.Threading.CancellationToken());
+                        while (kvDb.Compact(new System.Threading.CancellationToken())) ;
                         Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction + 2, fileCountAfterFirstCompaction + 50);
+                    }
+                    for (var i = 0; i < 4; i++)
+                    {
+                        using (var tr = kvDb.StartWritingTransaction().Result)
+                        {
+                            var key = new byte[4];
+                            BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                            tr.CreateOrUpdateKeyValueUnsafe(key, new byte[2000]);
+                            tr.Commit();
+                        }
                     }
                     while (kvDb.Compact(new System.Threading.CancellationToken())) ;
                     Assert.InRange(fileCollection.GetCount(), fileCountAfterFirstCompaction / 3, 2 * fileCountAfterFirstCompaction / 3);

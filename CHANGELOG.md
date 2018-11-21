@@ -4,8 +4,13 @@
 
 ### Improved
 
+Much faster compaction when a lot of changes were done. New IKeyValueDB.CompactorRamLimitInMb does limit RAM usage for longer time.
 Speed of OnDiskFileCollection improved by using new PRead and PWrite methods implemented for Windows and Posix.
 Better exception in WriteInlineObject when object type could not be stored.
+
+### Breaking Changes
+
+Modified IKeyValueDBLogger and IKeyValueDB so implementation needs to be modified.
 
 ### Fixed
 

@@ -23,5 +23,9 @@ namespace BTDB.KVDBLayer
         ulong? PreserveHistoryUpToCommitUlong { get; set; }
 
         IKeyValueDBLogger Logger { get; set; }
+
+        // Try to limit additional memory for Compactor. Setting this value higher can speed up compactor.
+        // Current default is 200MB. It will always do at least one iteration so it will make progress.
+        uint CompactorRamLimitInMb { get; set; }
     }
 }
