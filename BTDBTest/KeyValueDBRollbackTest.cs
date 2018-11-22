@@ -33,7 +33,8 @@ namespace BTDBTest
                         }
                         if (i % 5 == 0)
                             kv.Compact(new System.Threading.CancellationToken());
-                        if (i == 50) kv.PreserveHistoryUpToCommitUlong = (ulong)i;
+                        if (i == 50)
+                            kv.PreserveHistoryUpToCommitUlong = (ulong)i;
                     }
                 }
                 using (var kv = new KeyValueDB(new KeyValueDBOptions

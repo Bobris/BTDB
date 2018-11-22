@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
 using BTDB.StreamLayer;
 
@@ -11,7 +12,7 @@ namespace BTDB.KVDBLayer
     {
         readonly KeyValueDB _keyValueDB;
         IBTreeRootNode _root;
-        FileStat[] _fileStats;
+        RefDictionary<uint, FileStat> _fileStats;
 
         Dictionary<ulong, ulong> _newPositionMap;
         readonly CancellationToken _cancellation;
@@ -70,25 +71,25 @@ namespace BTDB.KVDBLayer
 
         void ForbidDeletePreservingHistory(long dontTouchGeneration, long[] usedFilesFromOldGenerations)
         {
-            for (var i = 0; i < _fileStats.Length; i++)
+            foreach (var fileStat in _fileStats.Index)
             {
-                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration((uint) i, dontTouchGeneration)
+                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(_fileStats.KeyRef(fileStat), dontTouchGeneration)
                     || (usedFilesFromOldGenerations != null && Array.BinarySearch(usedFilesFromOldGenerations,
-                            _keyValueDB.GetGeneration((uint) i)) >= 0))
-                    _fileStats[i].MarkForbidToDelete();
+                            _keyValueDB.GetGeneration(_fileStats.KeyRef(fileStat))) >= 0))
+                    _fileStats.ValueRef(fileStat).MarkForbidToDelete();
             }
         }
 
         void MarkTotallyUselessFilesAsUnknown()
         {
             List<uint> toRemoveFileIds = null;
-            for (var i = 0; i < _fileStats.Length; i++)
+            foreach (var fileStat in _fileStats.Index)
             {
-                if (_fileStats[i].Useless())
+                if (_fileStats.ValueRef(fileStat).Useless())
                 {
                     if (toRemoveFileIds == null)
                         toRemoveFileIds = new List<uint>();
-                    toRemoveFileIds.Add((uint) i);
+                    toRemoveFileIds.Add(_fileStats.KeyRef(fileStat));
                 }
             }
 
@@ -131,7 +132,7 @@ namespace BTDB.KVDBLayer
             _keyValueDB.Logger?.CompactionStart(totalWaste);
             if (IsWasteSmall(totalWaste))
             {
-                if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong) (_keyValueDB.MaxTrLogFileSize / 4))
+                if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
                     _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
                 _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return false;
@@ -172,20 +173,20 @@ namespace BTDB.KVDBLayer
                     FindMostWastefullFile(_keyValueDB.MaxTrLogFileSize - writer.GetCurrentPosition());
                 if (wastefullFileId == 0) break;
                 MoveValuesContent(writer, wastefullFileId, valueFileId);
-                if (_fileStats[wastefullFileId].IsFreeToDelete())
+                if (_fileStats.GetOrFakeValueRef(wastefullFileId).IsFreeToDelete())
                     toRemoveFileIds.Add(wastefullFileId);
-                _fileStats[wastefullFileId] = new FileStat(0);
+                _fileStats.GetOrFakeValueRef(wastefullFileId) = new FileStat(0);
             }
 
             var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
             valueFile.HardFlush();
             valueFile.Truncate();
             _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
-                (uint) _newPositionMap.Count, 24 *
+                (uint)_newPositionMap.Count, 24 *
 #if NETFRAMEWORK
                                                   (ulong) _newPositionMap.Count
 #else
-                                              (ulong) _newPositionMap.EnsureCapacity(0)
+                                              (ulong)_newPositionMap.EnsureCapacity(0)
 #endif
             );
         }
@@ -194,16 +195,14 @@ namespace BTDB.KVDBLayer
         {
             root.Iterate((valueFileId, valueOfs, valueSize) =>
             {
-                var id = valueFileId;
-                var fileStats = _fileStats;
                 _cancellation.ThrowIfCancellationRequested();
-                if (id < fileStats.Length) fileStats[id].MarkForbidToDelete();
+                _fileStats.GetOrFakeValueRef(valueFileId).MarkForbidToDelete();
             });
         }
 
         bool IsWasteSmall(ulong totalWaste)
         {
-            return totalWaste < (ulong) _keyValueDB.MaxTrLogFileSize / 4;
+            return totalWaste < (ulong)_keyValueDB.MaxTrLogFileSize / 4;
         }
 
         void MoveValuesContent(AbstractBufferedWriter writer, uint wastefullFileId, uint pvlFileId)
@@ -211,7 +210,7 @@ namespace BTDB.KVDBLayer
             const uint blockSize = 128 * 1024;
             var wasteFullStream = _keyValueDB.FileCollection.GetFile(wastefullFileId);
             var totalSize = wasteFullStream.GetSize();
-            var blocks = (int) ((totalSize + blockSize - 1) / blockSize);
+            var blocks = (int)((totalSize + blockSize - 1) / blockSize);
             var wasteInMemory = new byte[blocks][];
             var pos = 0UL;
             for (var i = 0; i < blocks; i++)
@@ -220,25 +219,25 @@ namespace BTDB.KVDBLayer
                 wasteInMemory[i] = new byte[blockSize];
                 var readSize = totalSize - pos;
                 if (readSize > blockSize) readSize = blockSize;
-                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int) readSize, pos, true);
+                wasteFullStream.RandomRead(wasteInMemory[i], 0, (int)readSize, pos, true);
                 pos += readSize;
             }
 
             _root.Iterate((valueFileId, valueOfs, valueSize) =>
             {
                 if (valueFileId != wastefullFileId) return;
-                var size = (uint) Math.Abs(valueSize);
-                _newPositionMap.Add(((ulong) wastefullFileId << 32) | valueOfs,
-                    ((ulong) pvlFileId << 32) + (ulong) writer.GetCurrentPosition());
+                var size = (uint)Math.Abs(valueSize);
+                _newPositionMap.Add(((ulong)wastefullFileId << 32) | valueOfs,
+                    ((ulong)pvlFileId << 32) + (ulong)writer.GetCurrentPosition());
                 pos = valueOfs;
                 while (size > 0)
                 {
                     _cancellation.ThrowIfCancellationRequested();
                     var blockId = pos / blockSize;
                     var blockStart = pos % blockSize;
-                    var writeSize = (uint) (blockSize - blockStart);
+                    var writeSize = (uint)(blockSize - blockStart);
                     if (writeSize > size) writeSize = size;
-                    writer.WriteBlock(wasteInMemory[blockId], (int) blockStart, (int) writeSize);
+                    writer.WriteBlock(wasteInMemory[blockId], (int)blockStart, (int)writeSize);
                     size -= writeSize;
                     pos += writeSize;
                 }
@@ -248,9 +247,9 @@ namespace BTDB.KVDBLayer
         ulong CalcTotalWaste()
         {
             var total = 0ul;
-            foreach (var fileStat in _fileStats)
+            foreach (var fileStat in _fileStats.Index)
             {
-                var waste = fileStat.CalcWasteIgnoreUseless();
+                var waste = _fileStats.ValueRef(fileStat).CalcWasteIgnoreUseless();
                 if (waste > 1024) total += waste;
             }
 
@@ -262,12 +261,12 @@ namespace BTDB.KVDBLayer
             if (space <= 0) return 0;
             var bestWaste = 0u;
             var bestFile = 0u;
-            for (var index = 0u; index < _fileStats.Length; index++)
+            foreach (var fileStat in _fileStats.Index)
             {
-                var waste = _fileStats[index].CalcWasteIgnoreUseless();
-                if (waste <= bestWaste || space < _fileStats[index].CalcUsed()) continue;
+                var waste = _fileStats.ValueRef(fileStat).CalcWasteIgnoreUseless();
+                if (waste <= bestWaste || space < _fileStats.ValueRef(fileStat).CalcUsed()) continue;
                 bestWaste = waste;
-                bestFile = index;
+                bestFile = _fileStats.KeyRef(fileStat);
             }
 
             return bestFile;
@@ -275,13 +274,15 @@ namespace BTDB.KVDBLayer
 
         void InitFileStats(long dontTouchGeneration)
         {
-            _fileStats = new FileStat[_keyValueDB.FileCollection.FileInfos.Max(f => f.Key) + 1];
+            _fileStats = new RefDictionary<uint, FileStat>();
             foreach (var file in _keyValueDB.FileCollection.FileInfos)
             {
-                if (file.Key >= _fileStats.Length) continue;
                 if (file.Value.SubDBId != 0) continue;
-                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(file.Key, dontTouchGeneration)) continue;
-                _fileStats[file.Key] = new FileStat((uint) _keyValueDB.FileCollection.GetSize(file.Key));
+                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(file.Key, dontTouchGeneration))
+                {
+                    continue;
+                }
+                _fileStats.GetOrAddValueRef(file.Key) = new FileStat((uint)_keyValueDB.FileCollection.GetSize(file.Key));
             }
         }
 
@@ -289,10 +290,8 @@ namespace BTDB.KVDBLayer
         {
             root.Iterate((valueFileId, valueOfs, valueSize) =>
             {
-                var id = valueFileId;
-                var fileStats = _fileStats;
                 _cancellation.ThrowIfCancellationRequested();
-                if (id < fileStats.Length) fileStats[id].AddLength((uint) Math.Abs(valueSize));
+                _fileStats.GetOrFakeValueRef(valueFileId).AddLength((uint)Math.Abs(valueSize));
             });
         }
     }
