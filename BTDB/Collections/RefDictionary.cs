@@ -18,7 +18,7 @@ namespace BTDB.Collections
     /// 2) It does not store the hash code (assumes it is cheap to equate values).
     /// 3) It does not accept an equality comparer (assumes Object.GetHashCode() and Object.Equals() or overridden implementation are cheap and sufficient).
     /// 4) Have GetOrFakeValue method
-    /// 5) Enumerator allows to get value by ref
+    /// 5) Index Enumerator allowing to get value by ref ValueRef and KeyRef methods
     /// </summary>
     [DebuggerTypeProxy(typeof(RefDictionaryDebugView<,>))]
     [DebuggerDisplay("Count = {Count}")]
@@ -28,18 +28,19 @@ namespace BTDB.Collections
         // Array.Empty would give divide by zero in modulo operation. So we use static one element arrays.
         // The first add will cause a resize replacing these with real arrays of power of 2 elements.
         // Arrays are wrapped in a class to avoid being duplicated for each <TKey, TValue>
-        private static readonly Entry[] InitialEntries = new Entry[1];
-        private int _count;
+        static readonly Entry[] InitialEntries = new Entry[1];
+
+        int _count;
         // 0-based index into _entries of head of free chain: -1 means empty
-        private int _freeList = -1;
+        int _freeList = -1;
         // 1-based index into _entries; 0 means empty
-        private int[] _buckets;
-        private Entry[] _entries;
+        int[] _buckets;
+        Entry[] _entries;
 
         TValue _fake;
 
         [DebuggerDisplay("({key}, {value})->{next}")]
-        private struct Entry
+        struct Entry
         {
             public TKey key;
             public TValue value;
@@ -73,9 +74,9 @@ namespace BTDB.Collections
         public bool ContainsKey(TKey key)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int collisionCount = 0;
-            for (int i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
+            var entries = _entries;
+            var collisionCount = 0;
+            for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
                     (uint)i < (uint)entries.Length; i = entries[i].next)
             {
                 if (key.Equals(entries[i].key))
@@ -95,9 +96,9 @@ namespace BTDB.Collections
         public bool TryGetValue(TKey key, out TValue value)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int collisionCount = 0;
-            for (int i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
+            var entries = _entries;
+            var collisionCount = 0;
+            for (var i = _buckets[key.GetHashCode() & (_buckets.Length - 1)] - 1;
                     (uint)i < (uint)entries.Length; i = entries[i].next)
             {
                 if (key.Equals(entries[i].key))
@@ -121,15 +122,15 @@ namespace BTDB.Collections
         public bool Remove(TKey key)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
-            int entryIndex = _buckets[bucketIndex] - 1;
+            var entries = _entries;
+            var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
+            var entryIndex = _buckets[bucketIndex] - 1;
 
-            int lastIndex = -1;
-            int collisionCount = 0;
+            var lastIndex = -1;
+            var collisionCount = 0;
             while (entryIndex != -1)
             {
-                ref Entry candidate = ref entries[entryIndex];
+                ref var candidate = ref entries[entryIndex];
                 if (candidate.key.Equals(key))
                 {
                     if (lastIndex != -1)
@@ -167,10 +168,10 @@ namespace BTDB.Collections
         public ref TValue GetOrFakeValueRef(TKey key)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int collisionCount = 0;
-            int bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
-            for (int i = _buckets[bucketIndex] - 1;
+            var entries = _entries;
+            var collisionCount = 0;
+            var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
+            for (var i = _buckets[bucketIndex] - 1;
                     (uint)i < (uint)entries.Length; i = entries[i].next)
             {
                 if (key.Equals(entries[i].key))
@@ -190,10 +191,10 @@ namespace BTDB.Collections
         public ref TValue GetOrFakeValueRef(TKey key, out bool found)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int collisionCount = 0;
-            int bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
-            for (int i = _buckets[bucketIndex] - 1;
+            var entries = _entries;
+            var collisionCount = 0;
+            var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
+            for (var i = _buckets[bucketIndex] - 1;
                     (uint)i < (uint)entries.Length; i = entries[i].next)
             {
                 if (key.Equals(entries[i].key))
@@ -218,10 +219,10 @@ namespace BTDB.Collections
         public ref TValue GetOrAddValueRef(TKey key)
         {
             if (key == null) HashHelpers.ThrowKeyArgumentNullException();
-            Entry[] entries = _entries;
-            int collisionCount = 0;
-            int bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
-            for (int i = _buckets[bucketIndex] - 1;
+            var entries = _entries;
+            var collisionCount = 0;
+            var bucketIndex = key.GetHashCode() & (_buckets.Length - 1);
+            for (var i = _buckets[bucketIndex] - 1;
                     (uint)i < (uint)entries.Length; i = entries[i].next)
             {
                 if (key.Equals(entries[i].key))
@@ -239,9 +240,9 @@ namespace BTDB.Collections
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private ref TValue AddKey(TKey key, int bucketIndex)
+        ref TValue AddKey(TKey key, int bucketIndex)
         {
-            Entry[] entries = _entries;
+            var entries = _entries;
             int entryIndex;
             if (_freeList != -1)
             {
@@ -266,10 +267,10 @@ namespace BTDB.Collections
             return ref entries[entryIndex].value;
         }
 
-        private Entry[] Resize()
+        Entry[] Resize()
         {
-            int count = _count;
-            int newSize = _entries.Length * 2;
+            var count = _count;
+            var newSize = _entries.Length * 2;
             if ((uint)newSize > (uint)int.MaxValue) // uint cast handles overflow
                 throw new InvalidOperationException("Capacity overflow");
 
@@ -279,7 +280,7 @@ namespace BTDB.Collections
             var newBuckets = new int[entries.Length];
             while (count-- > 0)
             {
-                int bucketIndex = entries[count].key.GetHashCode() & (newBuckets.Length - 1);
+                var bucketIndex = entries[count].key.GetHashCode() & (newBuckets.Length - 1);
                 entries[count].next = newBuckets[bucketIndex] - 1;
                 newBuckets[bucketIndex] = count + 1;
             }
@@ -296,12 +297,12 @@ namespace BTDB.Collections
                 throw new ArgumentNullException("array");
             // Let the runtime validate the index
 
-            Entry[] entries = _entries;
-            int i = 0;
-            int count = _count;
+            var entries = _entries;
+            var i = 0;
+            var count = _count;
             while (count > 0)
             {
-                Entry entry = entries[i];
+                var entry = entries[i];
                 if (entry.next > -2) // part of free list?
                 {
                     count--;
@@ -320,10 +321,10 @@ namespace BTDB.Collections
 
         public struct Enumerator : IEnumerator<KeyValuePair<TKey, TValue>>
         {
-            private readonly RefDictionary<TKey, TValue> _dictionary;
-            private int _index;
-            private int _count;
-            private KeyValuePair<TKey, TValue> _current;
+            readonly RefDictionary<TKey, TValue> _dictionary;
+            int _index;
+            int _count;
+            KeyValuePair<TKey, TValue> _current;
 
             internal Enumerator(RefDictionary<TKey, TValue> dictionary)
             {
@@ -366,7 +367,14 @@ namespace BTDB.Collections
         }
 
 
-        public ref TKey KeyRef(uint index)
+        public ref readonly TKey KeyRef(uint index)
+        {
+            return ref _entries[(int)index].key;
+        }
+
+
+        // Key should not be mutated in way it will change its hash
+        public ref TKey DangerousKeyRef(uint index)
         {
             return ref _entries[(int)index].key;
         }
@@ -395,9 +403,9 @@ namespace BTDB.Collections
 
             public struct FastEnumerator : IEnumerator<uint>
             {
-                private readonly RefDictionary<TKey, TValue> _dictionary;
-                private int _index;
-                private int _count;
+                readonly RefDictionary<TKey, TValue> _dictionary;
+                int _index;
+                int _count;
                 uint _current;
 
                 internal FastEnumerator(RefDictionary<TKey, TValue> dictionary)
@@ -440,9 +448,9 @@ namespace BTDB.Collections
         }
     }
 
-    internal sealed class RefDictionaryDebugView<K, V> where K : IEquatable<K>
+    sealed class RefDictionaryDebugView<K, V> where K : IEquatable<K>
     {
-        private readonly RefDictionary<K, V> _dictionary;
+        readonly RefDictionary<K, V> _dictionary;
 
         public RefDictionaryDebugView(RefDictionary<K, V> dictionary)
         {

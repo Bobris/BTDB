@@ -182,7 +182,7 @@ namespace BTDB.KVDBLayer
             valueFile.HardFlush();
             valueFile.Truncate();
             _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
-                (uint)_newPositionMap.Count, 24 *
+                (uint)_newPositionMap.Count, 28 *
 #if NETFRAMEWORK
                                                   (ulong) _newPositionMap.Count
 #else
@@ -207,7 +207,7 @@ namespace BTDB.KVDBLayer
 
         void MoveValuesContent(AbstractBufferedWriter writer, uint wastefullFileId, uint pvlFileId)
         {
-            const uint blockSize = 128 * 1024;
+            const uint blockSize = 256 * 1024;
             var wasteFullStream = _keyValueDB.FileCollection.GetFile(wastefullFileId);
             var totalSize = wasteFullStream.GetSize();
             var blocks = (int)((totalSize + blockSize - 1) / blockSize);

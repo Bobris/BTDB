@@ -181,7 +181,7 @@ namespace BTDB.KVDBLayer
         {
             var preserveKeyIndexKey = uint.MaxValue;
             var preserveHistoryUpToCommitUlong = (ulong)Interlocked.Read(ref _preserveHistoryUpToCommitUlong);
-            if (preserveHistoryUpToCommitUlong != ulong.MaxValue)
+            if (preserveHistoryUpToCommitUlong != ulong.MaxValue && LastCommited.CommitUlong != preserveHistoryUpToCommitUlong)
             {
 
                 var nearKeyIndex = keyIndexes.Count - 1;
