@@ -47,7 +47,6 @@ namespace BTDB.KVDBLayer
         readonly IFileCollectionWithFileInfos _fileCollection;
         readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
         readonly Func<CancellationToken, bool> _compactFunc;
-        IRootNode _oldestRoot;
 
         public ArtKeyValueDB(IFileCollection fileCollection)
             : this(fileCollection, new SnappyCompressionStrategy())
@@ -64,8 +63,11 @@ namespace BTDB.KVDBLayer
             ICompactorScheduler compactorScheduler)
             : this(new KeyValueDBOptions
             {
-                Allocator = new HGlobalAllocator(), FileCollection = fileCollection, Compression = compression,
-                FileSplitSize = fileSplitSize, CompactorScheduler = compactorScheduler
+                Allocator = new HGlobalAllocator(),
+                FileCollection = fileCollection,
+                Compression = compression,
+                FileSplitSize = fileSplitSize,
+                CompactorScheduler = compactorScheduler
             })
         {
         }
@@ -198,6 +200,7 @@ namespace BTDB.KVDBLayer
                         {
                             _lastCommited.Dispose();
                             _lastCommited = _nextRoot;
+                            _lastCommited.Commit();
                             _nextRoot = null;
                             firstTrLogId = info.TrLogFileId;
                             firstTrLogOffset = info.TrLogOffset;
@@ -404,6 +407,7 @@ namespace BTDB.KVDBLayer
 
                 HashSet<uint> usedFileIds = new HashSet<uint>();
                 var cursor = _nextRoot.CreateCursor();
+                Span<byte> trueValue = stackalloc byte[12];
                 if (info.Compression == KeyIndexCompression.Old)
                 {
                     for (var i = 0L; i < keyCount; i++)
@@ -416,9 +420,9 @@ namespace BTDB.KVDBLayer
                             _compression.DecompressKey(ref key);
                         }
 
+                        trueValue.Clear();
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
-                        Span<byte> trueValue = stackalloc byte[12];
                         MemoryMarshal.Write(trueValue, ref vFileId);
                         var valueOfs = reader.ReadVUInt32();
                         var valueSize = reader.ReadVInt32();
@@ -479,7 +483,7 @@ namespace BTDB.KVDBLayer
                         prevKey = key;
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
-                        Span<byte> trueValue = stackalloc byte[12];
+                        trueValue.Clear();
                         MemoryMarshal.Write(trueValue, ref vFileId);
                         var valueOfs = reader.ReadVUInt32();
                         var valueSize = reader.ReadVInt32();
@@ -575,6 +579,7 @@ namespace BTDB.KVDBLayer
                 return false;
             }
 
+            Span<byte> trueValue = stackalloc byte[12];
             var collectionFile = FileCollection.GetFile(fileId);
             var reader = collectionFile.GetExclusiveReader();
             try
@@ -630,7 +635,7 @@ namespace BTDB.KVDBLayer
                                 _compression.DecompressKey(ref keyBuf);
                             }
 
-                            Span<byte> trueValue = stackalloc byte[12];
+                            trueValue.Clear();
                             var valueOfs = (uint) reader.GetCurrentPosition();
                             var valueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen;
                             if (valueLen <= MaxValueSizeInlineInMemory &&
@@ -1433,6 +1438,7 @@ namespace BTDB.KVDBLayer
         internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
         {
             byte[] restartKey = null;
+            Span<byte> newValue = stackalloc byte[12];
             while (true)
             {
                 var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
@@ -1455,7 +1461,6 @@ namespace BTDB.KVDBLayer
                             (MemoryMarshal.Read<uint>(value) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
                             out var targetOfs))
                         {
-                            Span<byte> newValue = stackalloc byte[12];
                             var valueFileId = (uint) (targetOfs >> 32);
                             var valueFileOfs = (uint) targetOfs;
                             MemoryMarshal.Write(newValue, ref valueFileId);

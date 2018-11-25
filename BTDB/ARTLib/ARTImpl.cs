@@ -127,7 +127,7 @@ namespace BTDB.ARTLib
                 (newNode, children) = EraseRangeFromNode(isUnique, leftItem._node, leftItem._posInNode, leftItem._byte, leftNode, rightItem._posInNode, rightItem._byte, rightNode);
                 goto up;
             }
-            up:
+        up:
             if (newNode == IntPtr.Zero)
             {
                 if (leftIndex > 0)
@@ -1227,13 +1227,13 @@ namespace BTDB.ARTLib
                         }
                         goto up;
                 }
-                down:
+            down:
                 if (IsPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
                 {
                     PushLeftMost(ptr, (int)stackItem._keyOffset, ref stack);
                 }
                 return true;
-                up:
+            up:
                 stack.Pop();
             }
             return false;
@@ -1292,13 +1292,13 @@ namespace BTDB.ARTLib
                         }
                         goto up;
                 }
-                down:
+            down:
                 if (IsPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
                 {
                     PushRightMost(ptr, (int)stackItem._keyOffset, ref stack);
                 }
                 return true;
-                up:
+            up:
                 if (header._nodeType.HasFlag(NodeType.IsLeaf))
                 {
                     stackItem._posInNode = -1;
@@ -1306,7 +1306,7 @@ namespace BTDB.ARTLib
                     stack[stack.Count - 1] = stackItem;
                     return true;
                 }
-                trullyUp:
+            trullyUp:
                 stack.Pop();
             }
             return false;
@@ -2545,6 +2545,7 @@ namespace BTDB.ARTLib
                     return true;
                 }
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
+                var headerBackup = header;
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0 ? 0 : FindFirstDifference(key.Slice(keyOffset), keyPrefixPtr, commonKeyAndPrefixSize);

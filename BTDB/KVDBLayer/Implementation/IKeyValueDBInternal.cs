@@ -13,7 +13,6 @@ namespace BTDB.KVDBLayer
         IFileCollectionWithFileInfos FileCollection { get; }
         bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
         long MaxTrLogFileSize { get; }
-        IKeyValueDBLogger Logger { get; }
         bool AreAllTransactionsBeforeFinished(long transactionId);
         IRootNodeInternal OldestRoot { get; }
         IRootNodeInternal LastCommited { get; }

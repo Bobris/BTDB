@@ -689,7 +689,7 @@ namespace ODbDump
                     var sw = new Stopwatch();
                     sw.Start();
                     using (var dfc = new OnDiskFileCollection(args[0]))
-                    using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                    using (var kdb = new ArtKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                     {
                         kdb.Logger = new ConsoleKvdbLogger();
                         sw.Stop();
@@ -755,7 +755,8 @@ namespace ODbDump
 
             public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
             {
-                Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
+                Console.WriteLine(
+                    $"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
             }
 
             public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
