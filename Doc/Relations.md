@@ -63,6 +63,12 @@ will throw if does not exist
     var inserted = personTable.Upsert(new Person { Id = 2, Name = "superadmin", Age = 100 });
 return true if inserted
 
+### ShallowUpdate ###
+    It is like `Update`, but it does not try to compare and free any nested content. It is especially faster without secondary indexes when it does not even need to read old value.
+
+### ShallowUpsert ###
+    It is like `Upsert`, but it does not try to compare and free any nested content. It is especially faster without secondary indexes when it does not even need to read old value.
+
 ### Remove ###
     (void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
 Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for example    `void RemoveById(ulong tenantId, ulong userId);`

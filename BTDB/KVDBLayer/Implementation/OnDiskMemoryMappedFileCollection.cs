@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.StreamLayer;
 
@@ -10,6 +9,11 @@ namespace BTDB.KVDBLayer
 {
     public class OnDiskMemoryMappedFileCollection : IFileCollection
     {
+        static unsafe void CopyMemory(byte* dst, byte* src, long size)
+        {
+            System.Buffer.MemoryCopy(src, dst, size, size);
+        }
+
         public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
         {
             get
@@ -267,15 +271,7 @@ namespace BTDB.KVDBLayer
             public void HardFlush()
             {
                 _writer.FlushBuffer();
-                var fileStream = _stream as FileStream;
-                if (fileStream != null)
-                {
-                    fileStream.Flush(true);
-                }
-                else
-                {
-                    _stream.Flush();
-                }
+                _stream.Flush(true);
             }
 
             public void SetSize(long size)

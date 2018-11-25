@@ -335,7 +335,7 @@ namespace BTDB.ODBLayer
         {
             var data = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
             Array.Copy(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
-            Array.Copy(keyBytes.Buffer, 0, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
 
             return (T)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
         }
@@ -499,7 +499,7 @@ namespace BTDB.ODBLayer
         {
             var data = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
             Array.Copy(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
-            Array.Copy(keyBytes.Buffer, 0, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
 
             return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
         }
@@ -580,6 +580,7 @@ namespace BTDB.ODBLayer
                     _keyValueTr.FindPreviousKey();
                 }
             }
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             //read key
             var keyData = _keyValueTr.GetKeyAsByteArray();
             var reader = new ByteArrayReader(keyData);

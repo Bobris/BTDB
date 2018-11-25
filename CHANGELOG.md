@@ -2,6 +2,55 @@
 
 ## [unreleased]
 
+## 16.0.0
+
+### Improved
+
+Much faster compaction when a lot of changes were done. New IKeyValueDB.CompactorRamLimitInMb does limit RAM usage for longer time.
+Speed of OnDiskFileCollection improved by using new PRead and PWrite methods implemented for Windows and Posix.
+Better exception in WriteInlineObject when object type could not be stored.
+
+### Breaking Changes
+
+Modified IKeyValueDBLogger and IKeyValueDB so implementation needs to be modified.
+
+### Fixed
+
+Skipping Events in EventStoreLayer Deserialization
+
+## 15.1.0
+
+### Added
+
+Added way to skip Events in EventStoreLayer Deserialization.
+
+### Fixed
+
+Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface.
+
+## 15.0.0
+
+### Added
+
+ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
+
+### Changed
+
+IIndirect objects are not automatically deleted during removal from relations.
+
+## 14.12.2
+
+### Fixed
+
+Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well.
+
+## 14.12.1
+
+### Fixed
+
+Exception in EventStore2Layer serialization does not corrupt next serializations anymore.
+Serialization of non Dictionary in EventStore does not fail.
+
 ## 14.12.0
 
 ### Fixed

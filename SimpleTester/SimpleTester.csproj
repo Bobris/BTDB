@@ -11,6 +11,7 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.10.14" />
     <PackageReference Include="Disruptor" Version="3.3.8" />
     <PackageReference Include="FluentAssertions" Version="5.3.0" />
+    <PackageReference Include="HdrHistogram" Version="2.5.0" />
     <PackageReference Include="protobuf-net" Version="2.3.7" />
   </ItemGroup>
   <ItemGroup>

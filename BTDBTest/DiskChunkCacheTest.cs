@@ -2,16 +2,24 @@ using System;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.ChunkCache;
 using BTDB.KVDBLayer;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace BTDBTest
 {
     public class DiskChunkCacheTest
     {
+        readonly ITestOutputHelper _output;
         readonly ThreadLocal<HashAlgorithm> _hashAlg = new ThreadLocal<HashAlgorithm>(() => new SHA1CryptoServiceProvider());
+
+        public DiskChunkCacheTest(ITestOutputHelper output)
+        {
+            _output = output;
+        }
 
         ByteBuffer CalcHash(byte[] bytes)
         {
@@ -65,7 +73,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void SizeDoesNotGrowOverLimit()
+        public async Task SizeDoesNotGrowOverLimit()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -75,7 +83,9 @@ namespace BTDBTest
                     for (var i = 0; i < 80; i++)
                     {
                         Put(cache, i);
-                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
+                        if (CalcLength(fileCollection) <= cacheCapacity) continue;
+                        await FinishCompactTask(cache);
+                        Assert.True(CalcLength(fileCollection) <= cacheCapacity);
                     }
                 }
             }
@@ -96,7 +106,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void GettingContentMakesItStayLongerIncreasingRate()
+        public async Task GettingContentMakesItStayLongerIncreasingRate()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -108,7 +118,9 @@ namespace BTDBTest
                         Put(cache, i);
                         for (var j = 0; j < i; j++)
                             Get(cache, i);
-                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
+                        if (CalcLength(fileCollection) <= cacheCapacity) continue;
+                        await FinishCompactTask(cache);
+                        Assert.True(CalcLength(fileCollection) <= cacheCapacity);
                     }
                     Assert.True(Get(cache, 79));
                     Assert.False(Get(cache, 0));
@@ -117,7 +129,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void GettingContentMakesItStayLongerDecreasingRate()
+        public async Task GettingContentMakesItStayLongerDecreasingRate()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -129,14 +141,26 @@ namespace BTDBTest
                         Put(cache, i);
                         for (var j = 0; j < 79 - i; j++)
                             Get(cache, i);
-                        Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
+                        if (CalcLength(fileCollection) <= cacheCapacity) continue;
+                        await FinishCompactTask(cache);
+                        Assert.True(CalcLength(fileCollection) <= cacheCapacity);
                     }
-                    Console.WriteLine(cache.CalcStats());
+                    _output.WriteLine(cache.CalcStats());
                     Assert.True(Get(cache, 0));
                     Assert.False(Get(cache, 60));
                 }
             }
         }
+
+        async Task FinishCompactTask(DiskChunkCache cache)
+        {
+            var t = cache.CurrentCompactionTask();
+            if (t == null) return;
+            await t;
+        }
+
+        long CalcLength(IFileCollection fileCollection) =>
+            fileCollection.Enumerate().Sum(f => (long) f.GetSize());
 
         [Fact]
         public void AccessEveryTenthTenTimesMoreMakesItStay()
@@ -154,7 +178,7 @@ namespace BTDBTest
                         if (i==42) Thread.Sleep(500);
                         Assert.True(fileCollection.Enumerate().Sum(f => (long)f.GetSize()) <= cacheCapacity);
                     }
-                    Console.WriteLine(cache.CalcStats());
+                    _output.WriteLine(cache.CalcStats());
                     Assert.True(Get(cache, 0));
                     Assert.False(Get(cache, 1));
                 }

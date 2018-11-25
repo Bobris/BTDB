@@ -6,7 +6,7 @@ namespace BTDB.KVDBLayer
     {
         void ReportTransactionLeak(IKeyValueDBTransaction transaction);
         void CompactionStart(ulong totalWaste);
-        void CompactionCreatedPureValueFile(uint fileId, ulong size);
+        void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory);
         void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration);
     }
 }

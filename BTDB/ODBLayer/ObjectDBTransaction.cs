@@ -82,12 +82,16 @@ namespace BTDB.ODBLayer
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
-            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds, readerWithFree.Oids);
+            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds);
         }
 
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());
+            if (ti == null)
+            {
+                throw new BTDBException($"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
+            }
             EnsureClientTypeNotNull(ti);
             IfNeededPersistTableInfo(ti);
             var writer = writerCtx.Writer();
@@ -646,7 +650,7 @@ namespace BTDB.ODBLayer
                     {
                         throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
                     }
-                    name = _owner.RegisterType(type);
+                    name = _owner.RegisterType(type, manualRegistration: false);
                 }
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }

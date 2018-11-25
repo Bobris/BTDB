@@ -15,7 +15,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    public class ArtKeyValueDB : IKeyValueDB, IHaveSubDB, IKeyValueDBInternal
+    public class ArtKeyValueDB : IHaveSubDB, IKeyValueDBInternal
     {
         const int MaxValueSizeInlineInMemory = 7;
         const int EndOfIndexFileMarker = 0x1234DEAD;
@@ -303,10 +303,10 @@ namespace BTDB.KVDBLayer
             return preserveKeyIndexKey;
         }
 
-        long IKeyValueDBInternal.ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId,
-            Dictionary<ulong, uint> newPositionMap)
+        long IKeyValueDBInternal.ReplaceBTreeValues(CancellationToken cancellation,
+            Dictionary<ulong, ulong> newPositionMap)
         {
-            return ReplaceBTreeValues(cancellation, valueFileId, newPositionMap);
+            return ReplaceBTreeValues(cancellation, newPositionMap);
         }
 
         void IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
@@ -921,6 +921,8 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBLogger Logger { get; set; }
 
+        public uint CompactorRamLimitInMb { get; set; }
+
         public ulong? PreserveHistoryUpToCommitUlong
         {
             get
@@ -1428,8 +1430,7 @@ namespace BTDB.KVDBLayer
             return writer;
         }
 
-        internal long ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId,
-            Dictionary<ulong, uint> newPositionMap)
+        internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
         {
             byte[] restartKey = null;
             while (true)
@@ -1455,8 +1456,10 @@ namespace BTDB.KVDBLayer
                             out var targetOfs))
                         {
                             Span<byte> newValue = stackalloc byte[12];
+                            var valueFileId = (uint) (targetOfs >> 32);
+                            var valueFileOfs = (uint) targetOfs;
                             MemoryMarshal.Write(newValue, ref valueFileId);
-                            MemoryMarshal.Write(newValue.Slice(4), ref targetOfs);
+                            MemoryMarshal.Write(newValue.Slice(4), ref valueFileOfs);
                             value.Slice(8).CopyTo(newValue.Slice(8));
                             cursor.WriteValue(newValue);
                         }

@@ -170,6 +170,8 @@ namespace BTDBTest
             bool Upsert(PersonSimple person);
             // Update will throw if does not exist
             void Update(PersonSimple person);
+            bool ShallowUpsert(PersonSimple person);
+            void ShallowUpdate(PersonSimple person);
             IEnumerator<PersonSimple> GetEnumerator();
             // Returns true if removed
             bool RemoveById(ulong tenantId, string email);
@@ -245,6 +247,35 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void ShallowUpsertWorks()
+        {
+            var person = new PersonSimple { TenantId = 1, Email = "nospam@nospam.cz", Name = "Boris" };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                Assert.True(personSimpleTable.ShallowUpsert(person), "Is newly inserted");
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                person.Name = "Lubos";
+                Assert.False(personSimpleTable.ShallowUpsert(person), "Was already there");
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+            }
+        }
+
+        [Fact]
         public void UpdateWorks()
         {
             var person = new PersonSimple
@@ -271,6 +302,44 @@ namespace BTDBTest
                 person.Name = "Lubos";
                 person.Ratings.Add("History", new List<byte> { 3 });
                 personSimpleTable.Update(person);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var personSimpleTable = creator(tr);
+                var p = GetNext(personSimpleTable.GetEnumerator());
+                Assert.Equal("Lubos", p.Name);
+                Assert.Equal(new List<byte> { 3 }, p.Ratings["History"]);
+            }
+        }
+
+        [Fact]
+        public void ShallowUpdateWorks()
+        {
+            var person = new PersonSimple
+            {
+                TenantId = 1,
+                Email = "nospam@nospam.cz",
+                Name = "Boris",
+                Ratings = new Dictionary<string, IList<byte>> { { "Czech", new List<byte> { 1, 2, 1 } } },
+            };
+            Func<IObjectDBTransaction, ISimplePersonTable> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                Assert.Throws<BTDBException>(() => personSimpleTable.ShallowUpdate(person));
+                personSimpleTable.Insert(person);
+                tr.Commit();
+            }
+            ReopenDb();
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<ISimplePersonTable>("Person");
+                var personSimpleTable = creator(tr);
+                person.Name = "Lubos";
+                person.Ratings.Add("History", new List<byte> { 3 });
+                personSimpleTable.ShallowUpdate(person);
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -1492,12 +1561,12 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FindByMetodsChecksParameterTypes()
+        public void FindByMethodsChecksParameterTypes()
         {
             using (var tr = _db.StartTransaction())
             {
                 var ex = Assert.Throws<BTDBException>(() =>
-                tr.InitRelation<IProductionInvalidTable>("FindByMetodsChecksParameterTypes"));
+                tr.InitRelation<IProductionInvalidTable>("FindByMethodsChecksParameterTypes"));
                 Assert.Contains("expected 'System.DateTime'", ex.Message);
             }
         }
@@ -1749,13 +1818,14 @@ namespace BTDBTest
             public string Name { get; set; }
         }
 
-        public interface ISimpleRelation
+        public interface ISimpleRelation : IReadOnlyCollection<SimpleObject>
         {
             void Insert(SimpleObject obj);
 
             bool RemoveById(ulong id);
 
             IEnumerator<SimpleObject> ListByName(string name, AdvancedEnumeratorParam<ulong> param);
+            SimpleObject FindByNameOrDefault(string name);
         }
 
         [Fact]
@@ -1786,6 +1856,33 @@ namespace BTDBTest
 
             Assert.Equal("Relation modified during iteration.", exc.Message);
         }
+
+        [Fact]
+        public void TransactionProtectionWorksForFindingBySecondaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<ISimpleRelation>("ISimpleRelation");
+                var personSimpleTable = creator(tr);
+                personSimpleTable.Insert(new SimpleObject {Id = 1, Name = "code1"});
+                personSimpleTable.Insert(new SimpleObject {Id = 2, Name = "code2"});
+                var cnt = 0;
+
+                using (var en = personSimpleTable.GetEnumerator())
+                {
+                    while (en.MoveNext())
+                    {
+                        cnt++;
+                        var so = en.Current;
+                        Assert.Null(personSimpleTable.FindByNameOrDefault("x"));
+                    }
+                }
+
+                Assert.Equal(2, cnt);
+                tr.Commit();
+            }
+        }
+
 
         [Fact]
         public void NotCompleteSecondaryKeyIsRecalculatedDuringInit()
@@ -2236,5 +2333,42 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        public class ApplicationV3
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public ulong ApplicationId { get; set; }
+            public string Description { get; set; }
+            public ulong CreatedUserId { get; set; }
+        }
+
+        public interface IApplicationV3Table
+        {
+            bool Upsert(ApplicationV3 applicationV3);
+            IEnumerator<ApplicationV3> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
+        }
+
+        [Fact]
+        public void DeserializeWellDuringListing()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IApplicationV3Table>("Company");
+                var table = creator(tr);
+                var app = new ApplicationV3{ CompanyId = 1, ApplicationId = 100, CreatedUserId = 100, Description = "info"};
+                table.Upsert(app);
+
+                var en = table.ListById(1, new AdvancedEnumeratorParam<ulong>());
+                Assert.True(en.MoveNext());
+                var app2 = en.Current;
+                Assert.Equal(app.Description, app2.Description);
+                Assert.Equal(app.ApplicationId, app2.ApplicationId);
+                Assert.Equal(app.CreatedUserId, app2.CreatedUserId);
+                tr.Commit();
+            }
+        }
+
     }
 }

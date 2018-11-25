@@ -1281,7 +1281,7 @@ namespace BTDBTest
             {
             }
 
-            public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
             {
             }
 

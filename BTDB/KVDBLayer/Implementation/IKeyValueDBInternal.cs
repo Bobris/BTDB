@@ -6,7 +6,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
 {
-    interface IKeyValueDBInternal
+    interface IKeyValueDBInternal : IKeyValueDB
     {
         long GetGeneration(uint fileId);
         void MarkAsUnknown(IEnumerable<uint> fileIds);
@@ -17,8 +17,7 @@ namespace BTDB.KVDBLayer
         bool AreAllTransactionsBeforeFinished(long transactionId);
         IRootNodeInternal OldestRoot { get; }
         IRootNodeInternal LastCommited { get; }
-        long ReplaceBTreeValues(CancellationToken cancellation, uint valueFileId,
-            Dictionary<ulong, uint> newPositionMap);
+        long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
         void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
         AbstractBufferedWriter StartPureValuesFile(out uint fileId);
         bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);

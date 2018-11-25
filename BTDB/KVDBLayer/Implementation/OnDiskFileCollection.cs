@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using BTDB.StreamLayer;
+using Microsoft.Win32.SafeHandles;
 
 namespace BTDB.KVDBLayer
 {
@@ -32,9 +33,10 @@ namespace BTDB.KVDBLayer
             readonly OnDiskFileCollection _owner;
             readonly uint _index;
             readonly string _fileName;
-            readonly Stream _stream;
-            readonly object _lock = new object();
+            readonly FileStream _stream;
+            readonly SafeFileHandle _handle;
             readonly Writer _writer;
+            readonly ReaderWriterLockSlim _readerWriterLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
 
             public File(OnDiskFileCollection owner, uint index, string fileName)
             {
@@ -43,12 +45,14 @@ namespace BTDB.KVDBLayer
                 _fileName = fileName;
                 _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
                     FileOptions.None);
+                _handle = _stream.SafeFileHandle;
                 _writer = new Writer(this);
             }
 
             internal void Dispose()
             {
                 _writer.FlushBuffer();
+                _handle.Dispose();
                 _stream.Dispose();
             }
 
@@ -78,8 +82,7 @@ namespace BTDB.KVDBLayer
                         return;
                     }
 
-                    _owner._stream.Position = (long) _ofs;
-                    End = _owner._stream.Read(Buf, 0, Buf.Length);
+                    End = (int) PlatformMethods.Instance.PRead(_owner._handle, Buf.AsSpan(0, Buf.Length), _ofs);
                     _ofs += (ulong) End;
                     Pos = 0;
                 }
@@ -96,20 +99,13 @@ namespace BTDB.KVDBLayer
                     Buf.AsSpan(Pos, l).CopyTo(data);
                     data = data.Slice(l);
                     Pos += l;
-                    _owner._stream.Position = (long) _ofs;
-#if NETCOREAPP
-                    var read = _owner._stream.Read(data);
-#else
-                    var tempBuf = new byte[data.Length];
-                    var read = _owner._stream.Read(tempBuf, 0, data.Length);
-                    tempBuf.AsSpan(0, read).CopyTo(data);
-#endif
+                    var read = PlatformMethods.Instance.PRead(_owner._handle, data, _ofs);
                     if (read != data.Length)
                     {
                         throw new EndOfStreamException();
                     }
 
-                    _ofs += (ulong) read;
+                    _ofs += read;
                 }
 
                 public override void SkipBlock(int length)
@@ -150,21 +146,22 @@ namespace BTDB.KVDBLayer
                     _file = file;
                     Buf = new byte[32768];
                     End = Buf.Length;
-                    Ofs = (ulong) _file._stream.Length;
+                    using (_file._readerWriterLock.WriteLock())
+                    {
+                        Ofs = (ulong) _file._stream.Length;
+                    }
                 }
 
                 public override void FlushBuffer()
                 {
                     if (Pos != 0)
                     {
-                        lock (_file._lock)
+                        PlatformMethods.Instance.PWrite(_file._handle, Buf.AsSpan(0, Pos), Ofs);
+                        using (_file._readerWriterLock.WriteLock())
                         {
-                            _file._stream.Position = (long) Ofs;
-                            _file._stream.Write(Buf, 0, Pos);
+                            Ofs += (ulong) Pos;
+                            Pos = 0;
                         }
-
-                        Ofs += (ulong) Pos;
-                        Pos = 0;
                     }
                 }
 
@@ -177,14 +174,9 @@ namespace BTDB.KVDBLayer
                     }
 
                     FlushBuffer();
-                    lock (_file._lock)
+                    PlatformMethods.Instance.PWrite(_file._handle, data, Ofs);
+                    using (_file._readerWriterLock.WriteLock())
                     {
-                        _file._stream.Position = (long) Ofs;
-#if NETCOREAPP
-                        _file._stream.Write(data);
-#else
-                        _file._stream.Write(data.ToArray(), 0, data.Length);
-#endif
                         Ofs += (ulong) data.Length;
                     }
                 }
@@ -207,22 +199,14 @@ namespace BTDB.KVDBLayer
 
             public void RandomRead(Span<byte> data, ulong position, bool doNotCache)
             {
-                lock (_lock)
+                using (_readerWriterLock.ReadLock())
                 {
                     if (data.Length > 0 && position < _writer.Ofs)
                     {
-                        _stream.Position = (long) position;
                         var read = data.Length;
                         if (_writer.Ofs - position < (ulong) read) read = (int) (_writer.Ofs - position);
-#if NETCOREAPP
-                        if (_stream.Read(data.Slice(0,read)) != read)
+                        if (PlatformMethods.Instance.PRead(_handle, data.Slice(0, read), position) != read)
                             throw new EndOfStreamException();
-#else
-                        var tempBuf = new byte[read];
-                        if (_stream.Read(tempBuf, 0, read) != read)
-                            throw new EndOfStreamException();
-                        tempBuf.AsSpan(0, read).CopyTo(data);
-#endif
                         data = data.Slice(read);
                         position += (ulong) read;
                     }
@@ -230,7 +214,6 @@ namespace BTDB.KVDBLayer
                     if (data.Length == 0) return;
                     if ((ulong) _writer.GetCurrentPosition() < position + (ulong) data.Length)
                         throw new EndOfStreamException();
-
                     _writer.GetBuffer().AsSpan((int) (position - _writer.Ofs), data.Length).CopyTo(data);
                 }
             }
@@ -243,15 +226,7 @@ namespace BTDB.KVDBLayer
             public void HardFlush()
             {
                 _writer.FlushBuffer();
-                var fileStream = _stream as FileStream;
-                if (fileStream != null)
-                {
-                    fileStream.Flush(true);
-                }
-                else
-                {
-                    _stream.Flush();
-                }
+                _stream.Flush(true);
             }
 
             public void SetSize(long size)
@@ -264,7 +239,7 @@ namespace BTDB.KVDBLayer
 
             public ulong GetSize()
             {
-                lock (_lock)
+                using (_readerWriterLock.ReadLock())
                 {
                     return (ulong) _writer.GetCurrentPosition();
                 }

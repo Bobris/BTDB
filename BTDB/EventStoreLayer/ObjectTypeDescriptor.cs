@@ -245,7 +245,10 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            throw new InvalidOperationException();
+            foreach (var pair in _fields)
+            {
+                pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            }
         }
 
         int FindFieldIndex(string fieldName)
