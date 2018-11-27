@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Reintroduced PossitionLessStream and rename FileStream one to PossitionLessFileStream
+
 ## 16.0.0
 
 ### Improved
