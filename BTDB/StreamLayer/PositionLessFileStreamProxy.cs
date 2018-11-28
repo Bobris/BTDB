@@ -22,6 +22,7 @@ namespace BTDB.StreamLayer
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             _stream = stream;
+            _handle = _stream.SafeFileHandle;
             _dispose = dispose;
         }
 
