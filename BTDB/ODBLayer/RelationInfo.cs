@@ -728,8 +728,8 @@ namespace BTDB.ODBLayer
                 var name = GetPersistentName(method.Name.Substring(4), properties);
                 if (!pks.TryGetValue(name, out var tfi))
                     throw new BTDBException($"Property {name} is not part of primary key.");
-                if (method.ReturnType != tfi.Handler.HandledType())
-                    throw new BTDBException($"Property {name} has different return type then member of primary key with the same name.");
+                if (!tfi.Handler.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
+                    throw new BTDBException($"Property {name} has incompatible return type with the member of primary key with the same name.");
                 result.Add(name, method);
             }
             return result;
@@ -1229,6 +1229,11 @@ namespace BTDB.ODBLayer
             Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, Id);
             Prefix = prefix;
+        }
+
+        public override string ToString()
+        {
+            return $"{Name} {ClientType} Id:{Id}";
         }
     }
 

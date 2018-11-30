@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Type check when generating apart fields in relations.
+
 ## 16.1.0
 
 ### Added
