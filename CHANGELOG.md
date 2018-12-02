@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 16.2.0
+
 ### Fixed
 
 Failure to open DB in special case after erasing and compaction.
