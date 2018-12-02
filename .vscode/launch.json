@@ -5,15 +5,25 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": ".NET Core Launch (console)",
+      "name": "SimpleTester Debug",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      // If you have changed target frameworks, make sure to update the program path.
       "program": "${workspaceFolder}/SimpleTester/bin/Debug/netcoreapp2.1/SimpleTester.dll",
       "args": [],
       "cwd": "${workspaceFolder}/SimpleTester",
-      // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "OdbDump Debug",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "buildODbDump",
+      "program": "${workspaceFolder}/ODbDump/bin/Debug/netcoreapp2.1/ODbDump.dll",
+      "args": [".", "compact"],
+      "cwd": "C:/Research/bug/big",
       "console": "internalConsole",
       "stopAtEntry": false,
       "internalConsoleOptions": "openOnSessionStart"

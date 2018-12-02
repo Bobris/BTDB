@@ -4,6 +4,7 @@
 
 ### Fixed
 
+Failure to open DB in special case after erasing and compaction.
 Type check when generating apart fields in relations.
 
 ## 16.1.0

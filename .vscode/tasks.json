@@ -7,6 +7,13 @@
       "type": "process",
       "args": ["build", "${workspaceFolder}/SimpleTester/SimpleTester.csproj"],
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "buildODbDump",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["build", "${workspaceFolder}/ODbDump/ODbDump.csproj"],
+      "problemMatcher": "$msCompile"
     }
   ]
 }

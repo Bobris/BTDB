@@ -322,15 +322,7 @@ namespace BTDB.KVDBLayer
                     });
                 }
                 var trlGeneration = GetGeneration(info.TrLogFileId);
-                try
-                {
-                    info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi)).Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // KVI uses missing pvl/trl file
-                    return false;
-                }
+                info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGenerationIgnoreMissing(fi)).Where(gen => gen > 0 && gen < trlGeneration).OrderBy(a => a).ToArray();
                 if (reader.Eof) return true;
                 if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
                 return false;
@@ -1145,6 +1137,17 @@ namespace BTDB.KVDBLayer
             if (fileInfo == null)
             {
                 throw new ArgumentOutOfRangeException(nameof(fileId));
+            }
+            return fileInfo.Generation;
+        }
+
+        internal long GetGenerationIgnoreMissing(uint fileId)
+        {
+            if (fileId == 0) return -1;
+            var fileInfo = FileCollection.FileInfoByIdx(fileId);
+            if (fileInfo == null)
+            {
+                return -1;
             }
             return fileInfo.Generation;
         }
