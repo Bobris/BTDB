@@ -19,7 +19,7 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
+    <PackageReference Condition=" '$(TargetFramework)' != 'net471' " Include="Mono.Posix.NETStandard" Version="1.0.0" />
     <PackageReference Include="System.Memory" Version="4.5.1" />
     <PackageReference Include="System.Numerics.Vectors" Version="4.4.0" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.1" />
