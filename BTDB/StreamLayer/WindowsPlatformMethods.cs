@@ -27,7 +27,10 @@ namespace BTDB.StreamLayer
                 var result = ReadFile(handle, dataptr, data.Length, (IntPtr) (&bread), &overlapped);
                 if (result != 0)
                     return bread;
-                throw Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error());
+                var lastError = Marshal.GetLastWin32Error();
+                if (lastError == 38) //ERROR_HANDLE_EOF
+                    return 0;
+                throw Marshal.GetExceptionForHR(lastError & ushort.MaxValue | -2147024896); //GetHRForLastWin32Error
             }
         }
 
