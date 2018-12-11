@@ -27,6 +27,7 @@ namespace BTDB.EventStoreLayer
         readonly Func<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSaverFactoryAction;
         readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
+        Type _preciseType;
 
         public TypeSerializers() : this(null)
         {
@@ -69,7 +70,7 @@ namespace BTDB.EventStoreLayer
         public ITypeDescriptor DescriptorOf(Type objType)
         {
             var res = _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
-            if (res!=null) _descriptorSet.GetOrAdd(res, true);
+            if (res != null) _descriptorSet.GetOrAdd(res, true);
             return res;
         }
 
@@ -400,8 +401,9 @@ namespace BTDB.EventStoreLayer
             return method.Create();
         }
 
-        public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor)
+        public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor, Type preciseType)
         {
+            _preciseType = preciseType;
             return _newDescriptorSavers.GetOrAdd(descriptor, _newDescriptorSaverFactoryAction);
         }
 
@@ -414,7 +416,7 @@ namespace BTDB.EventStoreLayer
             }
             var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
             var il = method.Generator;
-            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), typeof(object));
+            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), _preciseType);
             il.Ret();
             return method.Create();
         }
