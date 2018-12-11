@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 16.2.1
+
 ### Fixed
 
 PRead behavior on Windows file end. Fixed Nested Dictionaries type gathering exception.
