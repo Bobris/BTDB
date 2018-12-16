@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.0.0
+
 ### Changed
 
 IFileCollection modified to allow faster implementations possible.
