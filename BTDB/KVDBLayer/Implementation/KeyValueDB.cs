@@ -156,7 +156,8 @@ namespace BTDB.KVDBLayer
                 if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
                 {
                     WriteStartOfNewTransactionLogFile();
-                    FlushCurrentTrl();
+                    _fileWithTransactionLog.HardFlush();
+                    _fileWithTransactionLog.Truncate();
                     UpdateTransactionLogInBTreeRoot(LastCommited);
                 }
                 CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
@@ -243,16 +244,7 @@ namespace BTDB.KVDBLayer
                     }
                 }
                 var trlGeneration = GetGeneration(info.TrLogFileId);
-                try
-                {
-                    info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi)).Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // KVI uses missing pvl/trl file
-                    info.UsedFilesInOlderGenerations = new long[0];
-                    return false;
-                }
+                info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGenerationIgnoreMissing(fi)).Where(gen => gen > 0 && gen < trlGeneration).OrderBy(a => a).ToArray();
                 if (reader.Eof) return true;
                 if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
                 return false;
@@ -601,9 +593,7 @@ namespace BTDB.KVDBLayer
             if (_writerWithTransactionLog != null)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                _writerWithTransactionLog.FlushBuffer();
-                _fileWithTransactionLog.HardFlush();
-                _fileWithTransactionLog.Truncate();
+                _fileWithTransactionLog.HardFlushTruncateSwitchToDisposedMode();
             }
         }
 
@@ -714,18 +704,27 @@ namespace BTDB.KVDBLayer
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
             }
-            if (DurableTransactions || !temporaryCloseTransactionLog)
-                _writerWithTransactionLog.FlushBuffer();
             UpdateTransactionLogInBTreeRoot(btreeRoot);
-            if (DurableTransactions)
-                _fileWithTransactionLog.HardFlush();
             if (temporaryCloseTransactionLog)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                _writerWithTransactionLog.FlushBuffer();
                 if (DurableTransactions)
+                {
                     _fileWithTransactionLog.HardFlush();
+                }
+                else
+                {
+                    _fileWithTransactionLog.Flush();
+                }
                 _fileWithTransactionLog.Truncate();
+            }
+            else if (DurableTransactions)
+            {
+                _fileWithTransactionLog.HardFlush();
+            }
+            else
+            {
+                _fileWithTransactionLog.Flush();
             }
             lock (_writeLock)
             {
@@ -756,7 +755,8 @@ namespace BTDB.KVDBLayer
 
         void UpdateTransactionLogInBTreeRoot(IBTreeRootNode btreeRoot)
         {
-            if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog && btreeRoot.TrLogFileId != 0)
+            // Create new KVI file if new trl file was created, if preserve history is used it this is co
+            if (btreeRoot.TrLogFileId != _fileIdWithTransactionLog && btreeRoot.TrLogFileId != 0 && !PreserveHistoryUpToCommitUlong.HasValue)
             {
                 _compactorScheduler?.AdviceRunning(false);
             }
@@ -790,7 +790,7 @@ namespace BTDB.KVDBLayer
             if (!nothingWrittenToTransactionLog)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
-                _writerWithTransactionLog.FlushBuffer();
+                _fileWithTransactionLog.Flush();
                 var newRoot = _lastCommited.CloneRoot();
                 UpdateTransactionLogInBTreeRoot(newRoot);
                 lock (_writeLock)
@@ -837,7 +837,7 @@ namespace BTDB.KVDBLayer
             if (_writerWithTransactionLog != null)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.EndOfFile);
-                FlushCurrentTrl();
+                _fileWithTransactionLog.HardFlushTruncateSwitchToReadOnlyMode();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
             }
             _fileWithTransactionLog = FileCollection.AddFile("trl");
@@ -846,13 +846,6 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
             transactionLog.WriteHeader(_writerWithTransactionLog);
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
-        }
-
-        void FlushCurrentTrl()
-        {
-            _writerWithTransactionLog.FlushBuffer();
-            _fileWithTransactionLog.HardFlush();
-            _fileWithTransactionLog.Truncate();
         }
 
         public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out uint valueFileId, out uint valueOfs, out int valueSize)
@@ -1022,7 +1015,7 @@ namespace BTDB.KVDBLayer
         {
             var start = DateTime.UtcNow;
             var file = FileCollection.AddFile("kvi");
-            var writer = file.GetAppenderWriter();
+            var writer = file.GetExclusiveAppenderWriter();
             var keyCount = root.CalcKeyCount();
             if (root.TrLogFileId != 0)
                 FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
@@ -1061,12 +1054,9 @@ namespace BTDB.KVDBLayer
                     prevKey = key;
                 } while (root.FindNextKey(stack));
             }
-            writer.FlushBuffer();
             file.HardFlush();
             writer.WriteInt32(EndOfIndexFileMarker);
-            writer.FlushBuffer();
-            file.HardFlush();
-            file.Truncate();
+            file.HardFlushTruncateSwitchToDisposedMode();
             var trlGeneration = GetGeneration(keyIndex.TrLogFileId);
             keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi)).Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
             FileCollection.SetInfo(file.Index, keyIndex);

@@ -406,7 +406,7 @@ namespace BTDB.ChunkCache
         {
             RemoveAllHashIndexAndUnknownFiles();
             var file = _fileCollection.AddFile("chi");
-            var writer = file.GetAppenderWriter();
+            var writer = file.GetExclusiveAppenderWriter();
             var keyCount = _cache.Count;
             var fileInfo = new FileHashIndex(AllocNewFileGeneration(), _keySize, keyCount);
             _fileInfos.TryAdd(file.Index, fileInfo);
@@ -422,7 +422,7 @@ namespace BTDB.ChunkCache
                 writer.WriteBlock(keyBuf);
             }
             writer.WriteVUInt32(0); // Zero FileOfs as End of file mark
-            file.HardFlush();
+            file.HardFlushTruncateSwitchToDisposedMode();
         }
 
         void RemoveAllHashIndexAndUnknownFiles()

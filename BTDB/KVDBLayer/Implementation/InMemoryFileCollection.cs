@@ -141,6 +141,15 @@ namespace BTDB.KVDBLayer
                 return _writer;
             }
 
+            public AbstractBufferedWriter GetExclusiveAppenderWriter()
+            {
+                return _writer;
+            }
+
+            public void Flush()
+            {
+            }
+
             public void HardFlush()
             {
             }
@@ -152,6 +161,22 @@ namespace BTDB.KVDBLayer
             }
 
             public void Truncate()
+            {
+            }
+
+            public void SwitchToReadOnlyMode()
+            {
+            }
+
+            public void HardFlushTruncateSwitchToReadOnlyMode()
+            {
+            }
+
+            public void SwitchToDisposedMode()
+            {
+            }
+
+            public void HardFlushTruncateSwitchToDisposedMode()
             {
             }
 
@@ -213,7 +238,7 @@ namespace BTDB.KVDBLayer
             return _files.Values;
         }
 
-        public void ConcurentTemporaryTruncate(uint index, uint offset)
+        public void ConcurrentTemporaryTruncate(uint index, uint offset)
         {
             // Nothing to do
         }

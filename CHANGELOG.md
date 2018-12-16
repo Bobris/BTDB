@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+IFileCollection modified to allow faster implementations possible.
+
 ## 16.2.1
 
 ### Fixed

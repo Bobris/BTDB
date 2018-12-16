@@ -191,13 +191,11 @@ namespace BTDB.KVDBLayer
         {
             if (_pureValueFileWriter != null)
             {
-                _pureValueFileWriter.FlushBuffer();
-                _pureValueFile.HardFlush();                
+                _pureValueFile.HardFlushTruncateSwitchToDisposedMode();
             }
             if (_hashIndexWriter != null)
             {
-                _hashIndexWriter.FlushBuffer();
-                _hashIndexFile.HardFlush();                
+                _hashIndexFile.HardFlushTruncateSwitchToDisposedMode();
             }
         }
 
@@ -213,7 +211,7 @@ namespace BTDB.KVDBLayer
             _pureValueFileWriter.WriteBlock(content);
             if (_pureValueFileWriter.GetCurrentPosition() >= _maxFileSize)
             {
-                _pureValueFileWriter.FlushBuffer();
+                _pureValueFile.HardFlushTruncateSwitchToReadOnlyMode();
                 StartNewPureValueFile();
             }
             return result;
@@ -243,7 +241,7 @@ namespace BTDB.KVDBLayer
         void StartNewHashIndexFile()
         {
             _hashIndexFile = _fileCollection.AddFile("hid");
-            _hashIndexWriter = _hashIndexFile.GetAppenderWriter();
+            _hashIndexWriter = _hashIndexFile.GetExclusiveAppenderWriter();
             var fileInfo = new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid, (uint)_keyLen);
             fileInfo.WriteHeader(_hashIndexWriter);
             _fileCollection.SetInfo(_hashIndexFile.Index, fileInfo);

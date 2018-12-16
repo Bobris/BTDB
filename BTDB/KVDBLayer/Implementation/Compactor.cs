@@ -179,12 +179,11 @@ namespace BTDB.KVDBLayer
             }
 
             var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
-            valueFile.HardFlush();
-            valueFile.Truncate();
+            valueFile.HardFlushTruncateSwitchToReadOnlyMode();
             _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
                 (uint)_newPositionMap.Count, 28 *
 #if NETFRAMEWORK
-                                                  (ulong) _newPositionMap.Count
+                                              (ulong) _newPositionMap.Count
 #else
                                               (ulong)_newPositionMap.EnsureCapacity(0)
 #endif

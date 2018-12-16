@@ -274,6 +274,16 @@ namespace BTDB.KVDBLayer
                 return _writer;
             }
 
+            public AbstractBufferedWriter GetExclusiveAppenderWriter()
+            {
+                return _writer;
+            }
+
+            public void Flush()
+            {
+                _writer.FlushBuffer();
+            }
+
             public void HardFlush()
             {
                 _writer.FlushBuffer();
@@ -294,6 +304,26 @@ namespace BTDB.KVDBLayer
             {
                 UnmapContent();
                 _stream.SetLength(_trueLength);
+            }
+
+            public void SwitchToReadOnlyMode()
+            {
+            }
+
+            public void HardFlushTruncateSwitchToReadOnlyMode()
+            {
+                HardFlush();
+                Truncate();
+            }
+
+            public void SwitchToDisposedMode()
+            {
+            }
+
+            public void HardFlushTruncateSwitchToDisposedMode()
+            {
+                HardFlush();
+                Truncate();
             }
 
             public ulong GetSize()
@@ -376,7 +406,7 @@ namespace BTDB.KVDBLayer
             return _files.Values;
         }
 
-        public void ConcurentTemporaryTruncate(uint index, uint offset)
+        public void ConcurrentTemporaryTruncate(uint index, uint offset)
         {
             // Nothing to do
         }
