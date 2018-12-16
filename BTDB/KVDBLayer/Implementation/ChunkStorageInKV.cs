@@ -209,6 +209,7 @@ namespace BTDB.KVDBLayer
             result.FileId = _pureValueFile.Index;
             result.FileOfs = (uint)_pureValueFileWriter.GetCurrentPosition();
             _pureValueFileWriter.WriteBlock(content);
+            _pureValueFile.Flush();
             if (_pureValueFileWriter.GetCurrentPosition() >= _maxFileSize)
             {
                 _pureValueFile.HardFlushTruncateSwitchToReadOnlyMode();
@@ -223,6 +224,7 @@ namespace BTDB.KVDBLayer
             _pureValueFileWriter = _pureValueFile.GetAppenderWriter();
             var fileInfo = new FilePureValuesWithId(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid);
             fileInfo.WriteHeader(_pureValueFileWriter);
+            _pureValueFile.Flush();
             _fileCollection.SetInfo(_pureValueFile.Index, fileInfo);
         }
 

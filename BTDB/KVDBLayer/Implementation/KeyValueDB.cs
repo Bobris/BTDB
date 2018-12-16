@@ -704,27 +704,20 @@ namespace BTDB.KVDBLayer
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
             }
-            UpdateTransactionLogInBTreeRoot(btreeRoot);
-            if (temporaryCloseTransactionLog)
-            {
-                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                if (DurableTransactions)
-                {
-                    _fileWithTransactionLog.HardFlush();
-                }
-                else
-                {
-                    _fileWithTransactionLog.Flush();
-                }
-                _fileWithTransactionLog.Truncate();
-            }
-            else if (DurableTransactions)
+            if (DurableTransactions)
             {
                 _fileWithTransactionLog.HardFlush();
             }
             else
             {
                 _fileWithTransactionLog.Flush();
+            }
+            UpdateTransactionLogInBTreeRoot(btreeRoot);
+            if (temporaryCloseTransactionLog)
+            {
+                _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
+                _fileWithTransactionLog.Flush();
+                _fileWithTransactionLog.Truncate();
             }
             lock (_writeLock)
             {

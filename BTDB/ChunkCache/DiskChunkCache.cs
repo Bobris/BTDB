@@ -146,6 +146,7 @@ namespace BTDB.ChunkCache
                 cacheValue.FileId = _cacheValueFileId;
                 cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
                 _cacheValueWriter.WriteBlock(content);
+                _cacheValueFile.Flush();
             }
             cacheValue.ContentLength = (uint)content.Length;
             _cache.TryAdd(k, cacheValue);
