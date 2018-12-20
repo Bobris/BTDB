@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.0.1
+
 ### Changed
 
 Added new method into IFileCollectionFile.AdvisePrefetch. It is called during DB open on files which are expected to be read by RandomRead.
