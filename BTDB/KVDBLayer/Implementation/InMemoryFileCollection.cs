@@ -77,6 +77,10 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
+            public void AdvisePrefetch()
+            {
+            }
+
             public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
             {
                 var storage = Volatile.Read(ref _data);
@@ -163,17 +167,9 @@ namespace BTDB.KVDBLayer
             {
             }
 
-            public void SwitchToReadOnlyMode()
-            {
-            }
-
             public void HardFlushTruncateSwitchToReadOnlyMode()
             {
                 Flush();
-            }
-
-            public void SwitchToDisposedMode()
-            {
             }
 
             public void HardFlushTruncateSwitchToDisposedMode()

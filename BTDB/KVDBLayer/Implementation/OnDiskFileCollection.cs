@@ -198,6 +198,10 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
+            public void AdvisePrefetch()
+            {
+            }
+
             public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
             {
                 using (_readerWriterLock.ReadLock())
@@ -249,17 +253,9 @@ namespace BTDB.KVDBLayer
             {
             }
 
-            public void SwitchToReadOnlyMode()
-            {
-            }
-
             public void HardFlushTruncateSwitchToReadOnlyMode()
             {
                 HardFlush();
-            }
-
-            public void SwitchToDisposedMode()
-            {
             }
 
             public void HardFlushTruncateSwitchToDisposedMode()

@@ -162,7 +162,28 @@ namespace BTDB.KVDBLayer
                 }
                 CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
             }
+            if (_fileIdWithTransactionLog != 0)
+            {
+                if (_writerWithTransactionLog == null)
+                {
+                    _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
+                    _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
+                }
+                if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+                {
+                    WriteStartOfNewTransactionLogFile();
+                }
+            }
             _fileCollection.DeleteAllUnknownFiles();
+            foreach (var fileInfo in _fileCollection.FileInfos)
+            {
+                var fi = fileInfo.Value;
+                var ft = fi.FileType;
+                if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId || ft == KVFileType.PureValues)
+                {
+                    _fileCollection.GetFile(fileInfo.Key)?.AdvisePrefetch();
+                }
+            }
         }
 
         internal long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey)

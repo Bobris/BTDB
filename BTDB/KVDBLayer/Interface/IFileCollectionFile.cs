@@ -7,6 +7,9 @@ namespace BTDB.KVDBLayer
         uint Index { get; }
         AbstractBufferedReader GetExclusiveReader();
 
+        // RandomRead will be used, it is good to have this file in cache
+        void AdvisePrefetch();
+
         void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache);
         // can use RandomRead and when will stop writing SwitchToReadOnlyMode will be called
         AbstractBufferedWriter GetAppenderWriter();
@@ -15,21 +18,20 @@ namespace BTDB.KVDBLayer
         // this should not need to cache written data in memory, saving memory
         AbstractBufferedWriter GetExclusiveAppenderWriter();
 
-        // called in non-durable transaction commit, asynchronous Writer.FlushBuffers
+        // called in non-durable transaction commit, kind of asynchronous Writer.FlushBuffers
         void Flush();
+
+        // Flush() and synchronously wait for OS file buffers to flush
         void HardFlush();
         void SetSize(long size);
         void Truncate();
 
+        // combination of three methods could be done asynchronously
         // will only use RandomRead for this file till end of process
-        void SwitchToReadOnlyMode();
-
-        // combination of three methods could be done asynchronously
         void HardFlushTruncateSwitchToReadOnlyMode();
-        // will not read or write this file till end of process
-        void SwitchToDisposedMode();
 
         // combination of three methods could be done asynchronously
+        // will not read or write this file till dispose of KeyValueDB
         void HardFlushTruncateSwitchToDisposedMode();
 
         ulong GetSize();
