@@ -177,8 +177,7 @@ namespace BTDB.KVDBLayer
             _fileCollection.DeleteAllUnknownFiles();
             foreach (var fileInfo in _fileCollection.FileInfos)
             {
-                var fi = fileInfo.Value;
-                var ft = fi.FileType;
+                var ft = fileInfo.Value.FileType;
                 if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId || ft == KVFileType.PureValues)
                 {
                     _fileCollection.GetFile(fileInfo.Key)?.AdvisePrefetch();
