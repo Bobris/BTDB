@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Way to limit Compactor Write and Read Speed by setting `KeyValueDBOptions`. Default is unlimited.
+
 ## 17.0.1
 
 ### Changed

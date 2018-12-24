@@ -8,5 +8,7 @@ namespace BTDB.KVDBLayer
         public ICompactorScheduler CompactorScheduler = KVDBLayer.CompactorScheduler.Instance;
         public ulong? OpenUpToCommitUlong;
         public ulong? PreserveHistoryUpToCommitUlong;
+        public ulong? CompactorReadBytesPerSecondLimit;
+        public ulong? CompactorWriteBytesPerSecondLimit;
     }
 }
