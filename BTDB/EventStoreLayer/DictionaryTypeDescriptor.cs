@@ -197,7 +197,7 @@ namespace BTDB.EventStoreLayer
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor, targetTypeArguments[0]);
                 var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor, targetTypeArguments[1]);
                 if (_owner._type == null) _owner._type = type;
-                var isDict = type != null && type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+                var isDict = type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
                 var typeAsIDictionary = isDict ? type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = isDict
                     ? typeAsIDictionary.GetMethods()

@@ -74,10 +74,10 @@ namespace BTDB.KVDBLayer
             if (hashKeyIndexFiles.Count == 0)
                 return;
             hashKeyIndexFiles.Sort((x, y) => x.Value < y.Value ? -1 : x.Value > y.Value ? 1 : 0);
-            TryLoadHashKeyIndex(hashKeyIndexFiles[hashKeyIndexFiles.Count - 1].Key);
+            LoadHashKeyIndex(hashKeyIndexFiles[hashKeyIndexFiles.Count - 1].Key);
         }
 
-        bool TryLoadHashKeyIndex(uint hashKeyIndexFileId)
+        void LoadHashKeyIndex(uint hashKeyIndexFileId)
         {
             var reader = _fileCollection.GetFile(hashKeyIndexFileId).GetExclusiveReader();
             _keyLen = (int) ((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
@@ -92,7 +92,6 @@ namespace BTDB.KVDBLayer
                 reader.ReadBlock(keyBuf);
                 _dict20.TryAdd(new ByteStructs.Key20(keyBuf), value);
             }
-            return true;
         }
 
         void CheckOrInitKeyLen(int keyLen)

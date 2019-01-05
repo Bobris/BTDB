@@ -435,15 +435,10 @@ namespace BTDB.ODBLayer
         {
             var tableInfo = AutoRegisterType(type);
             tableInfo.EnsureClientTypeVersion();
-            var oid = 0ul;
+            const ulong oid = 0ul;
             var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
             var obj = tableInfo.Creator(this, metadata);
             tableInfo.Initializer(this, metadata, obj);
-            if (oid != 0)
-            {
-                AddToObjCache(oid, obj, metadata);
-                AddToDirtySet(oid, obj);
-            }
             return obj;
         }
 

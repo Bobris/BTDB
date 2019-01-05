@@ -15,13 +15,14 @@ namespace BTDB.DtoChannel
         readonly ITypeSerializersMapping _sendingMapping;
         readonly FastSubject<object> _onReceive = new FastSubject<object>();
         readonly object _sendLocker = new object();
+        readonly IDisposable _subscription;
 
         public DtoChannel(IChannel channel, ITypeSerializerMappingFactory mappingFactory)
         {
             _channel = channel;
             _receivingMapping = mappingFactory.CreateMapping();
             _sendingMapping = mappingFactory.CreateMapping();
-            _channel.OnReceive.Subscribe(new Receiver(this));
+            _subscription = _channel.OnReceive.Subscribe(new Receiver(this));
         }
 
         class Receiver : IObserver<ByteBuffer>
@@ -86,6 +87,7 @@ namespace BTDB.DtoChannel
 
         public void Dispose()
         {
+            _subscription.Dispose();
             _channel.Dispose();
         }
     }
