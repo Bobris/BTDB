@@ -1,18 +1,20 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
 
 namespace BTDB.EventStoreLayer
 {
     public class TypeSerializers : ITypeSerializers, ITypeSerializerMappingFactory
     {
         ITypeNameMapper _typeNameMapper;
+        readonly TypeSerializersOptions _options;
+
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -29,11 +31,7 @@ namespace BTDB.EventStoreLayer
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
         Type _preciseType;
 
-        public TypeSerializers() : this(null)
-        {
-        }
-
-        public TypeSerializers(ITypeNameMapper typeNameMapper)
+        public TypeSerializers(ITypeNameMapper typeNameMapper = null, TypeSerializersOptions options = null)
         {
             ConvertorGenerator = new DefaultTypeConvertorGenerator();
             SetTypeNameMapper(typeNameMapper);
@@ -43,6 +41,7 @@ namespace BTDB.EventStoreLayer
             _newDescriptorSaverFactoryAction = NewDescriptorSaverFactory;
             _loaderFactoryAction = LoaderFactory;
             _buildFromTypeAction = BuildFromType;
+            _options = options ?? TypeSerializersOptions.Default;
         }
 
         public void SetTypeNameMapper(ITypeNameMapper typeNameMapper)
@@ -118,7 +117,8 @@ namespace BTDB.EventStoreLayer
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
-                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                        else if (_typeSerializers._options.IgnoreIIndirect &&
+                            type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
                         {
                             return null;
                         }
