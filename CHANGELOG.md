@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.2.0
+
 ### Added
 
 Extend TypeSerializers with optional configuration options.
