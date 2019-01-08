@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+Extend TypeSerializers with optional configuration options.
+
+Options consist of one option for `IIndirect<T>`, whether it is serialized or ignored.
+
 ## 17.1.0
 
 ### Added
