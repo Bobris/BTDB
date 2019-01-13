@@ -16,6 +16,8 @@ namespace BTDB.KVDBLayer
         bool AreAllTransactionsBeforeFinished(long transactionId);
         IRootNodeInternal OldestRoot { get; }
         IRootNodeInternal LastCommited { get; }
+        ulong CompactorWriteBytesPerSecondLimit { get; }
+        ulong CompactorReadBytesPerSecondLimit { get; }
         long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
         void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
         AbstractBufferedWriter StartPureValuesFile(out uint fileId);

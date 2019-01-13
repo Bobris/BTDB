@@ -2070,16 +2070,25 @@ namespace BTDBTest
         {
             [PrimaryKey(1)]
             [PersistedName("BusinessId")]
-            public ulong CompanyId { get; set; }
+            public uint CompanyId { get; set; }
+            [PrimaryKey(2)]
+            public string Code { get; set; }
+            [PrimaryKey(3)]
+            public ulong Id { get; set; }
             public string Name { get; set; }
+            
         }
 
 
         public interface ICompanyName : IReadOnlyCollection<CompanyName>
         {
             [PersistedName("BusinessId")]
-            ulong CompanyId { get; set; }
+            uint CompanyId { get; set; }
+            string Code { get; set; }
+            
             void Insert(CompanyName room);
+
+            CompanyName FindById(ulong Id);
         }
 
         [Fact]
@@ -2090,10 +2099,14 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ICompanyName>("ICompanyName");
                 var table = creator(tr);
                 table.CompanyId = 10;
-                table.Insert(new CompanyName { Name = "Q" });
+                table.Code = "X";
+                
+                table.Insert(new CompanyName { Name = "Q", Id = 11 });
                 Assert.Single(table);
                 foreach (var c in table)
                     Assert.Equal(10u, table.CompanyId);
+                var cn = table.FindById(11);
+                Assert.Equal("X", cn.Code);
             }
         }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -9,7 +10,7 @@ namespace BTDBTest
     public class KeyValueDBRollbackTest
     {
         [Fact]
-        public void CanRoolback()
+        public void CanRollback()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -87,7 +88,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CannotRoolbackTooFar()
+        public void CannotRollbackTooFar()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -131,7 +132,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CanRoolbackToStartIfNoTrlMissing()
+        public void CanRollbackToStartIfNoTrlMissing()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -188,7 +189,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CannotRoolbackToStartIfAnyTrlMissing()
+        public void CannotRollbackToStartIfAnyTrlMissing()
         {
             using (var fileCollection = new InMemoryFileCollection())
             {
@@ -633,5 +634,52 @@ namespace BTDBTest
                 }
             }
         }
+
+        [Fact]
+        public void CanOpenDbAfterDeletingAndCompacting()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                var options = new KeyValueDBOptions
+                {
+                    Compression = new NoCompressionStrategy(),
+                    FileCollection = fileCollection,
+                    FileSplitSize = 4096,
+                    OpenUpToCommitUlong = null,
+                    PreserveHistoryUpToCommitUlong = null,
+                    CompactorScheduler = null,
+                };
+
+                using (var kvDb = new KeyValueDB(options))
+                {
+                    using (var tr = kvDb.StartWritingTransaction().Result)
+                    {
+                        tr.CreateOrUpdateKeyValue(new byte[5], new byte[3000]);
+                        tr.CreateOrUpdateKeyValue(new byte[6], new byte[2000]);
+                        tr.Commit();
+                    }
+
+                    kvDb.Compact(CancellationToken.None);
+                }
+                using (var kvDb = new KeyValueDB(options))
+                {
+                    using (var tr = kvDb.StartWritingTransaction().Result)
+                    {
+                        tr.FindFirstKey();
+                        tr.EraseCurrent();
+                        tr.Commit();
+                    }
+
+                    kvDb.Compact(CancellationToken.None);
+                }
+
+                using (var kvDb = new KeyValueDB(options))
+                {
+                    // If there is error in KVI 3 it will create new KVI 4, but there is no problem in KVI 3
+                    Assert.Null(kvDb.FileCollection.FileInfoByIdx(4));
+                }
+            }
+        }
+
     }
 }

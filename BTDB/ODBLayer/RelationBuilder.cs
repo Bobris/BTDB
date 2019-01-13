@@ -82,6 +82,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator.Newobj(() => new ByteBufferWriter());
             reqMethod.Generator.Stloc(writerLoc);
 
+            WriteShortPrefixIl(reqMethod.Generator, il => il.Ldloc(writerLoc), ObjectDB.AllRelationsPKPrefix);
             //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
             WriteIdIl(reqMethod.Generator, il => il.Ldloc(writerLoc), (int)_relationInfo.Id);
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
@@ -131,10 +132,16 @@ namespace BTDB.ODBLayer
             Action<IILGen> pushWriter = il => il.Ldloc(writerLoc);
 
             if (isPrefixBased)
+            {
                 WriteShortPrefixIl(reqMethod.Generator, pushWriter, _relationInfo.Prefix);
+            }
             else
+            {
+                WriteShortPrefixIl(reqMethod.Generator, pushWriter, ObjectDB.AllRelationsPKPrefix);
                 //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(reqMethod.Generator, pushWriter, (int)_relationInfo.Id);
+                WriteIdIl(reqMethod.Generator, pushWriter, (int) _relationInfo.Id);
+            }
+
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
 
@@ -436,10 +443,16 @@ namespace BTDB.ODBLayer
         {
             var isPrefixBased = ReturnsEnumerableOfClientType(methodReturnType, _relationInfo.ClientType);
             if (isPrefixBased)
+            {
                 WriteShortPrefixIl(ilGenerator, pushWriter, _relationInfo.Prefix);
+            }
             else
+            {
+                WriteShortPrefixIl(ilGenerator, pushWriter, ObjectDB.AllRelationsPKPrefix);
                 //ByteBufferWriter.WriteVUInt32(RelationInfo.Id);
-                WriteIdIl(ilGenerator, pushWriter, (int)_relationInfo.Id);
+                WriteIdIl(ilGenerator, pushWriter, (int) _relationInfo.Id);
+            }
+
             var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
 
             var count = SaveMethodParameters(ilGenerator, methodName, methodParameters, methodParameters.Length,

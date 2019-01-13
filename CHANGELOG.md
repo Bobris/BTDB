@@ -2,6 +2,45 @@
 
 ## [unreleased]
 
+## 17.2.0
+
+### Added
+
+Extend TypeSerializers with optional configuration options.
+
+Options consist of one option for `IIndirect<T>`, whether it is serialized or ignored.
+
+## 17.1.0
+
+### Added
+
+Way to limit Compactor Write and Read Speed by setting `KeyValueDBOptions`. Default is unlimited.
+
+## 17.0.1
+
+### Changed
+
+Added new method into IFileCollectionFile.AdvisePrefetch. It is called during DB open on files which are expected to be read by RandomRead.
+
+## 17.0.0
+
+### Changed
+
+IFileCollection modified to allow faster implementations possible.
+
+## 16.2.1
+
+### Fixed
+
+PRead behavior on Windows file end. Fixed Nested Dictionaries type gathering exception.
+
+## 16.2.0
+
+### Fixed
+
+Failure to open DB in special case after erasing and compaction.
+Type check when generating apart fields in relations.
+
 ## 16.1.0
 
 ### Added

@@ -515,7 +515,7 @@ namespace BTDB.ODBLayer
                 var skf = skFieldIds[skFieldIdx];
                 if (skf.IsFromPrimaryKey)
                 {
-                    InitializeBuffer(2, ref firstBuffer, ilGenerator, pks);
+                    InitializeBuffer(2, ref firstBuffer, ilGenerator, pks, true);
                     //firstBuffer.ActualFieldIdx == number of processed PK's
                     for (var pkIdx = firstBuffer.ActualFieldIdx; pkIdx < skf.Index; pkIdx++)
                     {
@@ -529,7 +529,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    InitializeBuffer(3, ref secondBuffer, ilGenerator, valueFields);
+                    InitializeBuffer(3, ref secondBuffer, ilGenerator, valueFields, false);
 
                     var valueFieldIdx = valueFields.FindIndex(tfi => tfi.Name == skFields[skFieldIdx].Name);
                     if (valueFieldIdx >= 0)
@@ -606,26 +606,28 @@ namespace BTDB.ODBLayer
             return writerOrCtx;
         }
 
-        static void InitializeBuffer(ushort bufferArgIdx, ref BufferInfo bufferInfo, IILGen ilGenerator, List<TableFieldInfo> fields)
+        static void InitializeBuffer(ushort bufferArgIdx, ref BufferInfo bufferInfo, IILGen ilGenerator, 
+            List<TableFieldInfo> fields, bool skipAllRelationsPKPrefix)
         {
-            if (!bufferInfo.ReaderCreated)
-            {
-                bufferInfo.ReaderCreated = true;
-                bufferInfo.PushReader = il => il.Ldarg(bufferArgIdx);
+            if (bufferInfo.ReaderCreated) return;
+            bufferInfo.ReaderCreated = true;
+            bufferInfo.PushReader = il => il.Ldarg(bufferArgIdx);
 
+            if (skipAllRelationsPKPrefix)
                 ilGenerator
-                    .Do(bufferInfo.PushReader).Call(() => default(AbstractBufferedReader).SkipVUInt32());
+                    .Do(bufferInfo.PushReader).Call(() => default(AbstractBufferedReader).SkipInt8()); //ObjectDB.AllRelationsPKPrefix
+            ilGenerator
+                .Do(bufferInfo.PushReader).Call(() => default(AbstractBufferedReader).SkipVUInt32());
 
-                if (fields.Any(tfi => tfi.Handler.NeedsCtx()))
-                {
-                    var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                    ilGenerator
-                        .Ldarg(0) //tr
-                        .Ldarg(bufferArgIdx)
-                        .Newobj(() => new DBReaderCtx(null, null))
-                        .Stloc(readerCtxLocal);
-                    bufferInfo.PushCtx = il => il.Ldloc(readerCtxLocal);
-                }
+            if (fields.Any(tfi => tfi.Handler.NeedsCtx()))
+            {
+                var readerCtxLocal = ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                ilGenerator
+                    .Ldarg(0) //tr
+                    .Ldarg(bufferArgIdx)
+                    .Newobj(() => new DBReaderCtx(null, null))
+                    .Stloc(readerCtxLocal);
+                bufferInfo.PushCtx = il => il.Ldloc(readerCtxLocal);
             }
         }
 
@@ -728,8 +730,8 @@ namespace BTDB.ODBLayer
                 var name = GetPersistentName(method.Name.Substring(4), properties);
                 if (!pks.TryGetValue(name, out var tfi))
                     throw new BTDBException($"Property {name} is not part of primary key.");
-                if (method.ReturnType != tfi.Handler.HandledType())
-                    throw new BTDBException($"Property {name} has different return type then member of primary key with the same name.");
+                if (!tfi.Handler.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
+                    throw new BTDBException($"Property {name} has incompatible return type with the member of primary key with the same name.");
                 result.Add(name, method);
             }
             return result;
@@ -1134,12 +1136,15 @@ namespace BTDB.ODBLayer
         }
 
         public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes,
-                                     bool keyContainsRelationIndex = true)
+                                     bool keyContainsPrefix = true)
         {
             var obj = Creator(tr);
             var keyReader = new ByteBufferReader(keyBytes);
-            if (keyContainsRelationIndex)
+            if (keyContainsPrefix)
+            {
+                keyReader.SkipBlock(ObjectDB.AllRelationsSKPrefix.Length);
                 keyReader.SkipVUInt32(); //index Relation
+            }
             GetPrimaryKeysLoader()(tr, keyReader, obj);
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
@@ -1229,6 +1234,11 @@ namespace BTDB.ODBLayer
             Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, Id);
             Prefix = prefix;
+        }
+
+        public override string ToString()
+        {
+            return $"{Name} {ClientType} Id:{Id}";
         }
     }
 

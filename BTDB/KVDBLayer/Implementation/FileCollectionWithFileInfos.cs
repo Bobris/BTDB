@@ -177,7 +177,7 @@ namespace BTDB.KVDBLayer
 
         public void ConcurentTemporaryTruncate(uint idx, uint offset)
         {
-            _fileCollection.ConcurentTemporaryTruncate(idx, offset);
+            _fileCollection.ConcurrentTemporaryTruncate(idx, offset);
         }
     }
 }

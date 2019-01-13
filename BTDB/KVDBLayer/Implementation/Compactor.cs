@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
+using BTDB.KVDBLayer.Implementation;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -15,6 +15,7 @@ namespace BTDB.KVDBLayer
         RefDictionary<uint, FileStat> _fileStats;
 
         Dictionary<ulong, ulong> _newPositionMap;
+        BytesPerSecondLimiter _writerBytesPerSecondLimiter;
         readonly CancellationToken _cancellation;
 
         struct FileStat
@@ -167,6 +168,7 @@ namespace BTDB.KVDBLayer
         void CompactOnePureValueFileIteration(List<uint> toRemoveFileIds)
         {
             _cancellation.ThrowIfCancellationRequested();
+            _writerBytesPerSecondLimiter = new BytesPerSecondLimiter(_keyValueDB.CompactorWriteBytesPerSecondLimit);
             var writer = _keyValueDB.StartPureValuesFile(out var valueFileId);
             while (true)
             {
@@ -180,8 +182,7 @@ namespace BTDB.KVDBLayer
             }
 
             var valueFile = _keyValueDB.FileCollection.GetFile(valueFileId);
-            valueFile.HardFlush();
-            valueFile.Truncate();
+            valueFile.HardFlushTruncateSwitchToReadOnlyMode();
             _keyValueDB.Logger?.CompactionCreatedPureValueFile(valueFileId, valueFile.GetSize(),
                 (uint) _newPositionMap.Count, 28 *
 #if NETFRAMEWORK
@@ -214,6 +215,7 @@ namespace BTDB.KVDBLayer
             var blocks = (int) ((totalSize + blockSize - 1) / blockSize);
             var wasteInMemory = new byte[blocks][];
             var pos = 0UL;
+            var readLimiter = new BytesPerSecondLimiter(_keyValueDB.CompactorReadBytesPerSecondLimit);
             for (var i = 0; i < blocks; i++)
             {
                 _cancellation.ThrowIfCancellationRequested();
@@ -222,6 +224,7 @@ namespace BTDB.KVDBLayer
                 if (readSize > blockSize) readSize = blockSize;
                 wasteFullStream.RandomRead(wasteInMemory[i].AsSpan(0, (int) readSize), pos, true);
                 pos += readSize;
+                readLimiter.Limit(pos);
             }
 
             _keyValueDB.IterateRoot(_root, (valueFileId, valueOfs, valueSize) =>
@@ -241,6 +244,7 @@ namespace BTDB.KVDBLayer
                     writer.WriteBlock(wasteInMemory[blockId], (int) blockStart, (int) writeSize);
                     size -= writeSize;
                     pos += writeSize;
+                    _writerBytesPerSecondLimiter.Limit((ulong) writer.GetCurrentPosition());
                 }
             });
         }

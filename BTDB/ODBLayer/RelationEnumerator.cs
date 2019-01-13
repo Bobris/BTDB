@@ -136,9 +136,9 @@ namespace BTDB.ODBLayer
         public override ByteBuffer GetKeyBytes()
         {
             var keyBytes = base.GetKeyBytes();
-            var keyData = new byte[KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length + keyBytes.Length];
-            Array.Copy(KeyBytes.Buffer, KeyBytes.Offset + ObjectDB.AllRelationsPKPrefix.Length, keyData, 0, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length);
-            Array.Copy(keyBytes.Buffer, keyBytes.Offset, keyData, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length, keyBytes.Length);
+            var keyData = new byte[KeyBytes.Length + keyBytes.Length];
+            Array.Copy(KeyBytes.Buffer, KeyBytes.Offset, keyData, 0, KeyBytes.Length);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, keyData, KeyBytes.Length, keyBytes.Length);
 
             return ByteBuffer.NewAsync(keyData);
         }

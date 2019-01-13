@@ -90,7 +90,7 @@ namespace BTDB.EventStoreLayer
             // This additional cycle is needed to fill names of recursive structures
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
-                _id2DescriptorMap[(int) i].Descriptor.MapNestedTypes(d => d);
+                _id2DescriptorMap[(int)i].Descriptor.MapNestedTypes(d => d);
             }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
@@ -276,7 +276,7 @@ namespace BTDB.EventStoreLayer
             }
             if (!infoForType.KnownNewTypeDiscoverer)
             {
-                infoForType.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor);
+                infoForType.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor, obj.GetType());
                 infoForType.KnownNewTypeDiscoverer = true;
             }
             var action = infoForType.NewTypeDiscoverer;
@@ -394,7 +394,7 @@ namespace BTDB.EventStoreLayer
                 }
                 if (!infoForType.KnownNewTypeDiscoverer)
                 {
-                    infoForType.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor);
+                    infoForType.NewTypeDiscoverer = _typeSerializers.GetNewDescriptorSaver(infoForType.Descriptor, obj.GetType());
                     infoForType.KnownNewTypeDiscoverer = true;
                 }
                 var action = infoForType.NewTypeDiscoverer;

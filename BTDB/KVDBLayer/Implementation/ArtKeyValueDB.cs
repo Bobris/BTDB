@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using BTDB.ARTLib;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.BTree;
+using BTDB.KVDBLayer.Implementation;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 
@@ -41,6 +42,8 @@ namespace BTDB.KVDBLayer
         AbstractBufferedWriter _writerWithTransactionLog;
         static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
         public long MaxTrLogFileSize { get; }
+        public ulong CompactorReadBytesPerSecondLimit { get; }
+        public ulong CompactorWriteBytesPerSecondLimit { get; }
         readonly ICompressionStrategy _compression;
         readonly ICompactorScheduler _compactorScheduler;
 
@@ -84,6 +87,8 @@ namespace BTDB.KVDBLayer
             _compression = options.Compression ?? throw new ArgumentNullException(nameof(options.Compression));
             DurableTransactions = false;
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
+            CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
+            CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
             _lastCommited = ARTImpl.CreateEmptyRoot(options.Allocator, true);
             _lastCommited.Commit();
             _preserveHistoryUpToCommitUlong = (long) (options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
@@ -230,21 +235,39 @@ namespace BTDB.KVDBLayer
                 }
 
                 LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
-                if (openUpToCommitUlong.HasValue || latestTrLogFileId != firstTrLogId && firstTrLogId != 0 ||
-                    !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
+                if (openUpToCommitUlong.HasValue || latestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
                 {
                     // Need to create new trl if cannot append to last one so it is then written to kvi
                     if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
                     {
                         WriteStartOfNewTransactionLogFile();
-                        FlushCurrentTrl();
+                        _fileWithTransactionLog.HardFlush();
+                        _fileWithTransactionLog.Truncate();
                         UpdateTransactionLogInBTreeRoot(_lastCommited);
                     }
-
-                    CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration);
+                    CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
                 }
-
+                if (_fileIdWithTransactionLog != 0)
+                {
+                    if (_writerWithTransactionLog == null)
+                    {
+                        _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
+                        _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
+                    }
+                    if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+                    {
+                        WriteStartOfNewTransactionLogFile();
+                    }
+                }
                 _fileCollection.DeleteAllUnknownFiles();
+                foreach (var fileInfo in _fileCollection.FileInfos)
+                {
+                    var ft = fileInfo.Value.FileType;
+                    if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId || ft == KVFileType.PureValues)
+                    {
+                        _fileCollection.GetFile(fileInfo.Key)?.AdvisePrefetch();
+                    }
+                }
             }
             finally
             {
@@ -322,9 +345,9 @@ namespace BTDB.KVDBLayer
             return StartPureValuesFile(out fileId);
         }
 
-        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
+        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration, bool fullSpeed = false)
         {
-            var idxFileId = CreateKeyIndexFile(_lastCommited, cancellation);
+            var idxFileId = CreateKeyIndexFile(_lastCommited, cancellation, fullSpeed);
             MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
                 p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
                 p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
@@ -367,17 +390,8 @@ namespace BTDB.KVDBLayer
                 }
 
                 var trlGeneration = GetGeneration(info.TrLogFileId);
-                try
-                {
-                    info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi))
-                        .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // KVI uses missing pvl/trl file
-                    info.UsedFilesInOlderGenerations = Array.Empty<long>();
-                    return false;
-                }
+                info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
+                    .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
 
                 if (reader.Eof) return true;
                 if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
@@ -531,16 +545,8 @@ namespace BTDB.KVDBLayer
                 }
 
                 var trlGeneration = GetGeneration(info.TrLogFileId);
-                try
-                {
-                    info.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi))
-                        .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // KVI uses missing pvl/trl file
-                    return false;
-                }
+                info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
+                    .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
 
                 if (reader.Eof) return true;
                 if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
@@ -1128,7 +1134,7 @@ namespace BTDB.KVDBLayer
             if (_writerWithTransactionLog != null)
             {
                 _writerWithTransactionLog.WriteUInt8((byte) KVCommandType.EndOfFile);
-                FlushCurrentTrl();
+                _fileWithTransactionLog.HardFlushTruncateSwitchToReadOnlyMode();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
             }
 
@@ -1139,13 +1145,6 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
             transactionLog.WriteHeader(_writerWithTransactionLog);
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
-        }
-
-        void FlushCurrentTrl()
-        {
-            _writerWithTransactionLog.FlushBuffer();
-            _fileWithTransactionLog.HardFlush();
-            _fileWithTransactionLog.Truncate();
         }
 
         public void WriteCreateOrUpdateCommand(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value,
@@ -1296,9 +1295,9 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog.WriteBlock(secondKey);
         }
 
-        uint CreateKeyIndexFile(IRootNode root, CancellationToken cancellation)
+        uint CreateKeyIndexFile(IRootNode root, CancellationToken cancellation, bool fullSpeed)
         {
-            var start = DateTime.UtcNow;
+            var bytesPerSecondLimiter = new BytesPerSecondLimiter(fullSpeed ? 0 : CompactorWriteBytesPerSecondLimit);
             var file = FileCollection.AddFile("kvi");
             var writer = file.GetAppenderWriter();
             var keyCount = root.GetCount();
@@ -1399,6 +1398,7 @@ namespace BTDB.KVDBLayer
                     }
 
                     prevKey = key;
+                    bytesPerSecondLimiter.Limit((ulong)writer.GetCurrentPosition());
                 }
             }
 
@@ -1409,10 +1409,10 @@ namespace BTDB.KVDBLayer
             file.HardFlush();
             file.Truncate();
             var trlGeneration = GetGeneration(keyIndex.TrLogFileId);
-            keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(fi => GetGeneration(fi))
+            keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
                 .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
             FileCollection.SetInfo(file.Index, keyIndex);
-            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), DateTime.UtcNow - start);
+            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), TimeSpan.FromMilliseconds(bytesPerSecondLimiter.TotalTimeInMs));
             return file.Index;
         }
 
@@ -1516,6 +1516,17 @@ namespace BTDB.KVDBLayer
                 throw new ArgumentOutOfRangeException(nameof(fileId));
             }
 
+            return fileInfo.Generation;
+        }
+
+        internal long GetGenerationIgnoreMissing(uint fileId)
+        {
+            if (fileId == 0) return -1;
+            var fileInfo = FileCollection.FileInfoByIdx(fileId);
+            if (fileInfo == null)
+            {
+                return -1;
+            }
             return fileInfo.Generation;
         }
 
