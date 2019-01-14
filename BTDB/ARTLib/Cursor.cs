@@ -79,6 +79,11 @@ namespace BTDB.ARTLib
             return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor)to)._stack);
         }
 
+        public void StructureCheck()
+        {
+            _rootNode._impl.StructureCheck(_rootNode._root);
+        }
+
         public bool FindExact(ReadOnlySpan<byte> key)
         {
             return _rootNode._impl.FindExact(_rootNode, ref _stack, key);

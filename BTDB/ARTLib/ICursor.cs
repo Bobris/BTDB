@@ -29,5 +29,6 @@ namespace BTDB.ARTLib
         bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content);
         void Erase();
         long EraseTo(ICursor to);
+        void StructureCheck();
     }
 }
