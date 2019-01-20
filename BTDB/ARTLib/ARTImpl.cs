@@ -504,6 +504,8 @@ namespace BTDB.ARTLib
                                     if (idx == 255) continue;
                                     if ((i >= leftByte) && (i <= rightByte))
                                     {
+                                        bytePtrs[i] = 255;
+                                        // Just to decrease reference count
                                         WritePtrInNode(NodeUtils.PtrInNode(node, idx), IntPtr.Zero);
                                     }
                                     else
@@ -3310,6 +3312,7 @@ namespace BTDB.ARTLib
                     unsafe
                     {
                         var span = new Span<byte>((nodePtr + 16).ToPointer(), 256);
+                        StructureCheck48(span, header.ChildCount);
                         for (int j = 0; j < 256; j++)
                         {
                             if (span[j] == 255)
@@ -3345,6 +3348,22 @@ namespace BTDB.ARTLib
 
             Debug.Assert(header._recursiveChildCount == childrenCount);
             return childrenCount;
+        }
+
+        static void StructureCheck48(in Span<byte> ptr, int childCount)
+        {
+            Span<byte> cnts = stackalloc byte[48];
+            for (var i = 0; i < 256; i++)
+            {
+                var p = ptr[i];
+                if (p == 255) continue;
+                cnts[p]++;
+            }
+
+            for (var i = 0; i < 48; i++)
+            {
+                Debug.Assert(cnts[i] == (i < childCount ? 1 : 0));
+            }
         }
     }
 }

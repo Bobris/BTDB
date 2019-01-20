@@ -24,15 +24,15 @@ namespace BTDB.ARTLib
 
         public void SetNewRoot(IRootNode artRoot)
         {
-            var newRoot = (RootNode)artRoot;
+            var newRoot = (RootNode) artRoot;
             if (newRoot._root != _rootNode._root)
                 throw new ArgumentException("SetNewRoot allows only upgrades to writtable identical root");
-            _rootNode = (RootNode)artRoot;
+            _rootNode = (RootNode) artRoot;
         }
 
         public long CalcDistance(ICursor to)
         {
-            if (_rootNode != ((Cursor)to)._rootNode)
+            if (_rootNode != ((Cursor) to)._rootNode)
                 throw new ArgumentException("Cursor must be from same transaction", nameof(to));
             return to.CalcIndex() - CalcIndex();
         }
@@ -50,7 +50,9 @@ namespace BTDB.ARTLib
         public void Erase()
         {
             AssertWrittable();
-            EraseTo(this);
+            if (!IsValid())
+                throw new ArgumentException("Cursor must be valid", "this");
+            _rootNode._impl.EraseRange(_rootNode, ref _stack, ref _stack);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -70,13 +72,13 @@ namespace BTDB.ARTLib
         public long EraseTo(ICursor to)
         {
             AssertWrittable();
-            if (_rootNode != ((Cursor)to)._rootNode)
+            if (_rootNode != ((Cursor) to)._rootNode)
                 throw new ArgumentException("Both cursors must be from same transaction", nameof(to));
             if (!to.IsValid())
                 throw new ArgumentException("Cursor must be valid", nameof(to));
             if (!IsValid())
                 throw new ArgumentException("Cursor must be valid", "this");
-            return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor)to)._stack);
+            return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor) to)._stack);
         }
 
         public void StructureCheck()
@@ -107,7 +109,7 @@ namespace BTDB.ARTLib
         public int GetKeyLength()
         {
             if (_stack.Count == 0) return -1;
-            return (int)_stack[_stack.Count - 1]._keyOffset;
+            return (int) _stack[_stack.Count - 1]._keyOffset;
         }
 
         public bool IsValid()
@@ -133,9 +135,10 @@ namespace BTDB.ARTLib
         {
             AssertValid();
             var stack = _stack;
-            var keyLength = (int)stack[stack.Count - 1]._keyOffset;
+            var keyLength = (int) stack[stack.Count - 1]._keyOffset;
             if (buffer.Length < keyLength || keyLength < 0)
-                throw new ArgumentOutOfRangeException(nameof(buffer), "Key has " + keyLength + " bytes, but provided buffer has only " + buffer.Length);
+                throw new ArgumentOutOfRangeException(nameof(buffer),
+                    "Key has " + keyLength + " bytes, but provided buffer has only " + buffer.Length);
             var offset = 0;
             var i = 0u;
             while (offset < keyLength)
@@ -144,14 +147,21 @@ namespace BTDB.ARTLib
                 if (offset < stackItem._keyOffset - (stackItem._posInNode == -1 ? 0 : 1))
                 {
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(stackItem._node);
-                    unsafe { Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(buffer.Slice(offset)), ref Unsafe.AsRef<byte>(keyPrefixPtr.ToPointer()), keyPrefixSize); }
-                    offset += (int)keyPrefixSize;
+                    unsafe
+                    {
+                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(buffer.Slice(offset)),
+                            ref Unsafe.AsRef<byte>(keyPrefixPtr.ToPointer()), keyPrefixSize);
+                    }
+
+                    offset += (int) keyPrefixSize;
                 }
+
                 if (stackItem._posInNode != -1)
                 {
                     buffer[offset++] = stackItem._byte;
                 }
             }
+
             return buffer.Slice(0, keyLength);
         }
 
@@ -168,27 +178,30 @@ namespace BTDB.ARTLib
             if (_stack.Count == 0)
                 return false;
             var stack = _stack;
-            var keyLength = (int)stack[stack.Count - 1]._keyOffset;
+            var keyLength = (int) stack[stack.Count - 1]._keyOffset;
             if (prefix.Length > keyLength)
                 return false;
             var offset = 0;
             var i = 0;
             while (offset < prefix.Length)
             {
-                ref var stackItem = ref stack[(uint)i++];
+                ref var stackItem = ref stack[(uint) i++];
                 if (offset < stackItem._keyOffset - (stackItem._posInNode == -1 ? 0 : 1))
                 {
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(stackItem._node);
                     unsafe
                     {
-                        var commonLength = Math.Min((int)keyPrefixSize, prefix.Length - offset);
-                        if (!new Span<byte>(keyPrefixPtr.ToPointer(), commonLength).SequenceEqual(prefix.Slice(offset, commonLength)))
+                        var commonLength = Math.Min((int) keyPrefixSize, prefix.Length - offset);
+                        if (!new Span<byte>(keyPrefixPtr.ToPointer(), commonLength).SequenceEqual(prefix.Slice(offset,
+                            commonLength)))
                             return false;
                     }
-                    offset += (int)keyPrefixSize;
+
+                    offset += (int) keyPrefixSize;
                     if (offset >= prefix.Length)
                         return true;
                 }
+
                 if (stackItem._posInNode != -1)
                 {
                     if (prefix[offset] != stackItem._byte)
@@ -196,6 +209,7 @@ namespace BTDB.ARTLib
                     offset++;
                 }
             }
+
             return true;
         }
 
@@ -208,9 +222,10 @@ namespace BTDB.ARTLib
             if (stackItem._posInNode == -1)
             {
                 var (size, _) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
-                return (int)size;
+                return (int) size;
             }
-            return (int)NodeUtils.ReadLenFromPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode));
+
+            return (int) NodeUtils.ReadLenFromPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode));
         }
 
         public ReadOnlySpan<byte> GetValue()
@@ -220,17 +235,27 @@ namespace BTDB.ARTLib
             if (stackItem._posInNode == -1)
             {
                 var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
-                unsafe { return new Span<byte>(ptr.ToPointer(), (int)size); }
+                unsafe
+                {
+                    return new Span<byte>(ptr.ToPointer(), (int) size);
+                }
             }
+
             var ptr2 = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
             if (_rootNode._impl.IsValue12)
             {
-                unsafe { return new Span<byte>(ptr2.ToPointer(), 12); }
+                unsafe
+                {
+                    return new Span<byte>(ptr2.ToPointer(), 12);
+                }
             }
             else
             {
                 var size2 = NodeUtils.ReadLenFromPtr(ptr2);
-                unsafe { return new Span<byte>(NodeUtils.SkipLenFromPtr(ptr2).ToPointer(), (int)size2); }
+                unsafe
+                {
+                    return new Span<byte>(NodeUtils.SkipLenFromPtr(ptr2).ToPointer(), (int) size2);
+                }
             }
         }
 
@@ -240,6 +265,7 @@ namespace BTDB.ARTLib
             {
                 return FindFirst(new ReadOnlySpan<byte>());
             }
+
             return _rootNode._impl.MoveNext(ref _stack);
         }
 
@@ -249,6 +275,7 @@ namespace BTDB.ARTLib
             {
                 return FindLast(new ReadOnlySpan<byte>());
             }
+
             return _rootNode._impl.MovePrevious(ref _stack);
         }
 
@@ -259,6 +286,7 @@ namespace BTDB.ARTLib
             {
                 return false;
             }
+
             return _rootNode._impl.SeekIndex(index, _rootNode._root, ref _stack);
         }
 
