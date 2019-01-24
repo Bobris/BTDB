@@ -89,7 +89,13 @@ for example `int RemoveById(ulong tenantId)` removes all users for given tenant
     int RemoveByIdPartial(primaryKey1 [, primaryKey2, ...] , maxCount);
 
 additionally can be limited number of deleted items at once
-`int RemoveByIdPartial(ulong tenantId, int maxCount)`
+
+    `int RemoveByIdPartial(ulong tenantId, int maxCount)`
+
+advanced enumeration param can be used same way as in ListById
+
+    `int RemoveById(primaryKey1 , primaryKey2, ..., primaryKey_N-1, AdvancedEnumeratorParam<typeof(primaryKeyField(N))>);`
+
 
 ### Contains
 

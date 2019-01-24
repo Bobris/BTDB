@@ -355,6 +355,28 @@ namespace BTDB.ODBLayer
             return removedCount;
         }
 
+        public int RemoveByIdAdvancedParam(RelationDBManipulator<T> manipulator, ByteBuffer prefixBytes, uint prefixFieldCount,
+            EnumerationOrder order,
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+        {
+            using (var enumerator = new RelationAdvancedEnumerator<T>(manipulator, prefixBytes, prefixFieldCount,
+                order, startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes))
+            {
+                var keysToDelete = new List<ByteBuffer>();
+                while (enumerator.MoveNext())
+                {
+                    keysToDelete.Add(enumerator.GetKeyBytes());
+                }
+
+                foreach (var key in keysToDelete)
+                {
+                    RemoveById(key, true);
+                }
+
+                return keysToDelete.Count;
+            }
+        }
 
         public IEnumerator<T> GetEnumerator()
         {

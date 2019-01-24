@@ -1,6 +1,7 @@
 # Changelog
 
 ## [unreleased]
+RemoveById supports advanced enumeration param in relations
 
 ## 17.2.0
 
