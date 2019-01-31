@@ -537,7 +537,7 @@ namespace BTDB.ARTLib
                             rightByte--;
                         }
 
-                        if (willBeChildCount < header._childCount)
+                        if (willBeChildCount < header.ChildCount)
                         {
                             for (int i = leftByte; i <= rightByte; i++)
                             {
@@ -2810,7 +2810,6 @@ namespace BTDB.ARTLib
                 }
 
                 ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var headerBackup = header;
                 var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int) keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0

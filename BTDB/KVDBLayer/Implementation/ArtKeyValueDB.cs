@@ -66,7 +66,7 @@ namespace BTDB.KVDBLayer
             ICompactorScheduler compactorScheduler)
             : this(new KeyValueDBOptions
             {
-                Allocator = new HGlobalAllocator(),
+                Allocator = new MallocAllocator(),
                 FileCollection = fileCollection,
                 Compression = compression,
                 FileSplitSize = fileSplitSize,
@@ -235,7 +235,8 @@ namespace BTDB.KVDBLayer
                 }
 
                 LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
-                if (openUpToCommitUlong.HasValue || latestTrLogFileId != firstTrLogId && firstTrLogId != 0 || !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
+                if (openUpToCommitUlong.HasValue || latestTrLogFileId != firstTrLogId && firstTrLogId != 0 ||
+                    !hasKeyIndex && _fileCollection.FileInfos.Any(p => p.Value.SubDBId == 0))
                 {
                     // Need to create new trl if cannot append to last one so it is then written to kvi
                     if (openUpToCommitUlong.HasValue && _fileIdWithTransactionLog == 0)
@@ -245,8 +246,10 @@ namespace BTDB.KVDBLayer
                         _fileWithTransactionLog.Truncate();
                         UpdateTransactionLogInBTreeRoot(_lastCommited);
                     }
+
                     CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
                 }
+
                 if (_fileIdWithTransactionLog != 0)
                 {
                     if (_writerWithTransactionLog == null)
@@ -254,16 +257,19 @@ namespace BTDB.KVDBLayer
                         _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
                         _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
                     }
+
                     if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                     {
                         WriteStartOfNewTransactionLogFile();
                     }
                 }
+
                 _fileCollection.DeleteAllUnknownFiles();
                 foreach (var fileInfo in _fileCollection.FileInfos)
                 {
                     var ft = fileInfo.Value.FileType;
-                    if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId || ft == KVFileType.PureValues)
+                    if (ft == KVFileType.TransactionLog || ft == KVFileType.PureValuesWithId ||
+                        ft == KVFileType.PureValues)
                     {
                         _fileCollection.GetFile(fileInfo.Key)?.AdvisePrefetch();
                     }
@@ -345,7 +351,8 @@ namespace BTDB.KVDBLayer
             return StartPureValuesFile(out fileId);
         }
 
-        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration, bool fullSpeed = false)
+        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
+            bool fullSpeed = false)
         {
             var idxFileId = CreateKeyIndexFile(_lastCommited, cancellation, fullSpeed);
             MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
@@ -602,13 +609,19 @@ namespace BTDB.KVDBLayer
                 if (reader.Eof) return true;
                 var afterTemporaryEnd = false;
                 var finishReading = false;
-                var cursor = _lastCommited.CreateCursor();
-                var cursor2 = _lastCommited.CreateCursor();
+                ICursor cursor;
+                ICursor cursor2;
                 if (_nextRoot != null)
                 {
-                    cursor.SetNewRoot(_nextRoot);
-                    cursor2.SetNewRoot(_nextRoot);
+                    cursor = _nextRoot.CreateCursor();
+                    cursor2 = _nextRoot.CreateCursor();
                 }
+                else
+                {
+                    cursor = _lastCommited.CreateCursor();
+                    cursor2 = _lastCommited.CreateCursor();
+                }
+
 
                 while (!reader.Eof)
                 {
@@ -1398,7 +1411,7 @@ namespace BTDB.KVDBLayer
                     }
 
                     prevKey = key;
-                    bytesPerSecondLimiter.Limit((ulong)writer.GetCurrentPosition());
+                    bytesPerSecondLimiter.Limit((ulong) writer.GetCurrentPosition());
                 }
             }
 
@@ -1412,7 +1425,8 @@ namespace BTDB.KVDBLayer
             keyIndex.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
                 .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
             FileCollection.SetInfo(file.Index, keyIndex);
-            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(), TimeSpan.FromMilliseconds(bytesPerSecondLimiter.TotalTimeInMs));
+            Logger?.KeyValueIndexCreated(file.Index, keyIndex.KeyValueCount, file.GetSize(),
+                TimeSpan.FromMilliseconds(bytesPerSecondLimiter.TotalTimeInMs));
             return file.Index;
         }
 
@@ -1527,6 +1541,7 @@ namespace BTDB.KVDBLayer
             {
                 return -1;
             }
+
             return fileInfo.Generation;
         }
 

@@ -20,6 +20,19 @@ namespace ARTLibTest
         }
 
         [Fact]
+        public void MallocAllocatorReturnsPointerCanWriteInto()
+        {
+            var allocator = new MallocAllocator();
+            var ptr = allocator.Allocate((IntPtr)4);
+            unsafe
+            {
+                *(int*)ptr = 0x12345678;
+                Assert.Equal(0x12345678, *(int*)ptr);
+            }
+            allocator.Deallocate(ptr);
+        }
+
+        [Fact]
         public void LeakDetectorWorks()
         {
             var allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
