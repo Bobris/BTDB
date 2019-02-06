@@ -56,18 +56,18 @@ namespace ODbDump
 
     class ToConsoleVisitorNice : ToConsoleFastVisitor, IODBVisitor
     {
-        string _currentFieldName;
+        protected string _currentFieldName;
         readonly Stack<int> _listItemIndexStack = new Stack<int>();
         int _itemIndex;
-        int _iid;
+        protected int _iid;
 
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public virtual bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
             Print($"Singleton {tableId}-{tableName ?? "?Unknown?"} oid:{oid}");
             return true;
         }
 
-        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public virtual bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
             _indent++;
             Print($"Object oid:{oid} {tableId}-{tableName ?? "?Unknown?"} version:{version}");
@@ -104,7 +104,7 @@ namespace ODbDump
             Print($"{_currentFieldName}: Oid#{oid}");
         }
 
-        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        public virtual bool StartInlineObject(uint tableId, string tableName, uint version)
         {
             Print($"{_currentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
             _indent++;
@@ -238,6 +238,29 @@ namespace ODbDump
         }
     }
 
+    class ToConsoleVisitorForComparison : ToConsoleVisitorNice
+    {
+        public override bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        {
+            Print($"Singleton {tableName ?? "?Unknown?"}");
+            return true;
+        }
+
+        public override bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        {
+            _indent++;
+            Print($"Object {tableName ?? "?Unknown?"}");
+            return true;
+        }
+
+        public override bool StartInlineObject(uint tableId, string tableName, uint version)
+        {
+            Print($"{_currentFieldName}: InlineObject {tableName} ref#{_iid}");
+            _indent++;
+            return true;
+        }
+    }
+    
     class ToConsoleVisitor : ToConsoleFastVisitor, IODBVisitor
     {
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
@@ -547,6 +570,7 @@ namespace ODbDump
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
+                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import");
                 return;
             }
 
@@ -574,6 +598,24 @@ namespace ODbDump
                             var visitor = new ToConsoleVisitorNice();
                             var iterator = new ODBIterator(tr, visitor);
                             iterator.Iterate();
+                        }
+                    }
+
+                    break;
+                }
+                case "comparedump":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        odb.Open(kdb, false);
+                        using (var trkv = kdb.StartReadOnlyTransaction())
+                        using (var tr = odb.StartTransaction())
+                        {
+                            var visitor = new ToConsoleVisitorForComparison();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate(sortTableByNameAsc: true);
                         }
                     }
 
