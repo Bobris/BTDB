@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+ODbDump is now published in way it works not just on my machine.
+
 ## 17.4.0
 
 ### Added

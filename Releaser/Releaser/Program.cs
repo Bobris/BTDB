@@ -204,14 +204,14 @@ namespace Releaser
 
         static void BuildODbDump(string projDir)
         {
-            var start = new ProcessStartInfo("dotnet", "build -c Release")
+            var start = new ProcessStartInfo("dotnet", "publish -c Release -f netcoreapp2.1")
             {
                 UseShellExecute = true,
                 WorkingDirectory = projDir + "/ODbDump"
             };
             var process = Process.Start(start);
             process.WaitForExit();
-            var source = projDir + "/ODbDump/bin/Release/netcoreapp2.1";
+            var source = projDir + "/ODbDump/bin/Release/netcoreapp2.1/publish";
             System.IO.Compression.ZipFile.CreateFromDirectory(source, projDir + "/ODbDump/bin/Release/ODbDump.zip", System.IO.Compression.CompressionLevel.Optimal, false);
         }
     }
