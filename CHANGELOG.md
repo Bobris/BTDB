@@ -2,7 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+ODbDump is now part of release. ODbDump has new dump mode useful for comparing DBs.
+
 ## 17.3.0
+
 RemoveById supports advanced enumeration param in relations
 
 ## 17.2.0
