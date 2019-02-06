@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.4.0
+
 ### Added
 
 ODbDump is now part of release. ODbDump has new dump mode useful for comparing DBs.
