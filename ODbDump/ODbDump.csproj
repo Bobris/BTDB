@@ -4,7 +4,7 @@
     <TargetFrameworks>netcoreapp2.1</TargetFrameworks>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
-    <Version>17.4.0</Version>
+    <Version>17.4.1</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
   </PropertyGroup>
   <ItemGroup>
