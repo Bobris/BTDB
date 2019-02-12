@@ -99,7 +99,7 @@ namespace ODbDump
             Print($"{_currentFieldName}: {content}");
         }
 
-        public void OidReference(ulong oid)
+        public virtual void OidReference(ulong oid)
         {
             Print($"{_currentFieldName}: Oid#{oid}");
         }
@@ -258,6 +258,11 @@ namespace ODbDump
             Print($"{_currentFieldName}: InlineObject {tableName} ref#{_iid}");
             _indent++;
             return true;
+        }
+
+        public override void OidReference(ulong oid)
+        {
+            Print($"{_currentFieldName}: OidReference");
         }
     }
     
