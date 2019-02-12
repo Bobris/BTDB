@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Additional nonderministic info removed from compare mode of ODbDump.
+
 ## 17.4.1
 
 ### Fixed
