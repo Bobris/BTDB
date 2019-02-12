@@ -92,6 +92,8 @@ namespace Releaser
                 outputLogLines.Insert(topVersionLine + 1, "");
                 if (Directory.Exists(projDir + "/BTDB/bin/Release"))
                     Directory.Delete(projDir + "/BTDB/bin/Release", true);
+                if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
+                    Directory.Delete(projDir + "/ODbDump/bin/Release", true);
                 Build(projDir, newVersion);
                 BuildODbDump(projDir);
                 var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
