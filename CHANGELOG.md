@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+ODbDump has new command `leaks` which prints out unreachable objects in DB.
+
 ## 17.4.2
 
 ### Fixed

@@ -13,8 +13,8 @@ namespace BTDB.ODBLayer
     public class ODBIterator
     {
         readonly IInternalObjectDBTransaction _tr;
-        readonly IODBFastVisitor _fastVisitor;
-        readonly IODBVisitor _visitor;
+        IODBFastVisitor _fastVisitor;
+        IODBVisitor _visitor;
         Dictionary<uint, string> _tableId2Name;
         readonly IKeyValueDBTransaction _trkv;
         Dictionary<uint, ulong> _singletons;
@@ -115,6 +115,23 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public void IterateUnseenOid(ulong oid, IODBFastVisitor visitor)
+        {
+            var visitorBackup = _visitor;
+            var fastVisitorBackup = _fastVisitor;
+            try
+            {
+                _visitor = visitor as IODBVisitor;
+                _fastVisitor = visitor;
+                IterateOid(oid);
+            }
+            finally
+            {
+                _visitor = visitorBackup;
+                _fastVisitor = fastVisitorBackup;
+            }
+        }
+        
         void IterateOid(ulong oid)
         {
             if (!_visitedOids.Add(oid))

@@ -575,7 +575,7 @@ namespace ODbDump
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
-                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import");
+                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks");
                 return;
             }
 
@@ -777,6 +777,19 @@ namespace ODbDump
                     {
                         KeyValueDBExportImporter.Import(tr, st);
                         tr.Commit();
+                    }
+
+                    break;
+                }
+                case "leaks":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        Console.WriteLine("Leaks: ");
+                        odb.Open(kdb, false);
+                        odb.DumpLeaks();
                     }
 
                     break;

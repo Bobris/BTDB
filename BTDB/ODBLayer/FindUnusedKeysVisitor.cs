@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 
@@ -55,7 +56,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public void Iterate(IObjectDBTransaction tr)
+        public ODBIterator Iterate(IObjectDBTransaction tr)
         {
             var iterator = new ODBIterator(tr, new VisitorForFindUnused(this));
             using (_kvtr = _keyValueDb.StartWritingTransaction().Result)
@@ -64,6 +65,7 @@ namespace BTDB.ODBLayer
                 _kvtr.Commit();
             }
             _kvtr = null;
+            return iterator;
         }
 
         public IEnumerable<UnseenKey> UnseenKeys()
