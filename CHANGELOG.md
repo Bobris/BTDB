@@ -4,7 +4,10 @@
 
 ### Added
 
-ODbDump has new command `leaks` which prints out unreachable objects in DB.
+ODbDump has new commands
+ - `leaks` which prints out unreachable objects in DB.
+ - `frequency` which prints number of items in relations and top level dictionaries in singletons
+ 
 
 ## 17.4.2
 
