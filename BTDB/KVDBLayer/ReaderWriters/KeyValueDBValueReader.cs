@@ -2,7 +2,7 @@
 
 namespace BTDB.KVDBLayer
 {
-    public class KeyValueDBValueReader : ByteBufferReader, ICanMemorizePosition
+    public class KeyValueDBValueReader : ByteBufferReader
     {
         readonly IKeyValueDBTransaction _transaction;
 
@@ -14,28 +14,6 @@ namespace BTDB.KVDBLayer
         public void Restart()
         {
             Restart(_transaction.GetValue());
-        }
-
-        public IMemorizedPosition MemorizeCurrentPosition()
-        {
-            return new MemorizedPosition(this);
-        }
-
-        class MemorizedPosition : IMemorizedPosition
-        {
-            readonly KeyValueDBValueReader _owner;
-            readonly int _pos;
-
-            public MemorizedPosition(KeyValueDBValueReader owner)
-            {
-                _owner = owner;
-                _pos = owner.Pos;
-            }
-
-            public void Restore()
-            {
-                _owner.Pos = _pos;
-            }
         }
     }
 }

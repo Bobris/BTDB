@@ -8,6 +8,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using BTDBTest;
 //using JetBrains.Profiler.Windows.Api;
 
 namespace SimpleTester
@@ -31,7 +32,8 @@ namespace SimpleTester
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
-            //new KeyValueSpeedTest(false,true).Run();
+            //new KeyValueSpeedTest(true).Run();
+            //new KeyValueSpeedTest(false).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
@@ -40,7 +42,9 @@ namespace SimpleTester
             //new TestCompactor().Run(new CancellationToken());
             //new CompactorLatencyMeasurement().Run();
             //new ClassGenerator().Run();
-            new EventLayer2TestWithALotOfClasses().Run();
+            //new EventLayer2TestWithALotOfClasses().Run();
+            //BenchmarkRunner.Run<RelationFreeContentTest>();
+            new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
         }
     }
 }

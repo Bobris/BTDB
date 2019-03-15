@@ -18,5 +18,5 @@ TestResults
 *.crunchsolution.cache
 *.DotSettings
 /BTDB.sln.ide
-/.vs
-/Releaser/.vs
+.vs
+.idea

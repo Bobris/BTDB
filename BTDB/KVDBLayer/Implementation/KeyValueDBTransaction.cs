@@ -98,6 +98,11 @@ namespace BTDB.KVDBLayer
             return BtreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
         }
 
+        public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            return CreateOrUpdateKeyValue(ByteBuffer.NewAsync(key), ByteBuffer.NewAsync(value));
+        }
+
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWrittable();
@@ -246,6 +251,11 @@ namespace BTDB.KVDBLayer
             {
                 throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{_keyValueDB.LastCommited.TransactionId},ComUlong:{_keyValueDB.LastCommited.CommitUlong} OldestTrId:{_keyValueDB.OldestRoot.TransactionId},TRL:{_keyValueDB.OldestRoot.TrLogFileId},ComUlong:{_keyValueDB.OldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
             }
+        }
+
+        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        {
+            return GetValue().AsSyncReadOnlySpan();
         }
 
         void EnsureValidKey()

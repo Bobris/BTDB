@@ -1,12 +1,12 @@
+using BTDB.FieldHandler;
+using BTDB.IL;
+using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using BTDB.FieldHandler;
-using BTDB.IL;
-using BTDB.ODBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
@@ -80,8 +80,10 @@ namespace BTDB.EventStoreLayer
 
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
-            text.Append("List<");
+            text.Append("Dictionary<");
             _keyDescriptor.BuildHumanReadableFullName(text, stack, indent);
+            text.Append(", ");
+            _valueDescriptor.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 
@@ -103,10 +105,12 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
+        Type GetInterface(Type type) => type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
+
         public Type GetPreferedType(Type targetType)
         {
             if (_type == targetType) return _type;
-            var targetIDictionary = targetType.GetInterface("IDictionary`2") ?? targetType;
+            var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
             var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
             var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
@@ -125,11 +129,12 @@ namespace BTDB.EventStoreLayer
             if (targetType == typeof(object))
                 targetType = GetPreferedType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var targetIDictionary = targetType.GetInterface("IDictionary`2") ?? targetType;
+            var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
             var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
             var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
-            var dictionaryType = typeof(DictionaryWithDescriptor<,>).MakeGenericType(keyType, valueType);
+            var dictionaryTypeGenericDefinition = targetType.InheritsOrImplements(typeof(IOrderedDictionary<,>)) ? typeof(OrderedDictionaryWithDescriptor<,>) : typeof(DictionaryWithDescriptor<,>);
+            var dictionaryType = dictionaryTypeGenericDefinition.MakeGenericType(keyType, valueType);
             if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
             var localDict = ilGenerator.DeclareLocal(dictionaryType);
             var loadFinished = ilGenerator.DefineLabel();
@@ -158,7 +163,7 @@ namespace BTDB.EventStoreLayer
             _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType, _convertorGenerator);
             _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType, _convertorGenerator);
             ilGenerator
-                .Callvirt(dictionaryType.GetMethod("Add"))
+                .Callvirt(dictionaryType.GetMethod(nameof(IDictionary.Add)))
                 .Br(next)
                 .Mark(loadFinished)
                 .Ldloc(localDict)
@@ -187,20 +192,20 @@ namespace BTDB.EventStoreLayer
 
                 if (type == typeof(object))
                     type = _owner.GetPreferedType();
-                var targetIDictionary = type.GetInterface("IDictionary`2") ?? type;
+                var targetIDictionary = _owner.GetInterface(type);
                 var targetTypeArguments = targetIDictionary.GetGenericArguments();
                 var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor, targetTypeArguments[0]);
                 var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor, targetTypeArguments[1]);
                 if (_owner._type == null) _owner._type = type;
-                var isDict = type != null && type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+                var isDict = type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
                 var typeAsIDictionary = isDict ? type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = isDict
                     ? typeAsIDictionary.GetMethods()
                         .Single(
-                            m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
-                    : typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod("GetEnumerator");
+                            m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
+                    : typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod(nameof(IEnumerable.GetEnumerator));
                 var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
                 var typeKeyValuePair = currentGetter.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
@@ -217,7 +222,7 @@ namespace BTDB.EventStoreLayer
                         {
                             il
                                 .Ldloca(localEnumerator)
-                                .Call(typeAsIEnumerator.GetMethod("MoveNext"));
+                                .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext)));
                         }
                         else
                         {
@@ -338,16 +343,16 @@ namespace BTDB.EventStoreLayer
                 .Mark(notnull)
                 .Do(pushWriter)
                 .Ldloc(localDict)
-                .Callvirt(typeAsICollection.GetProperty("Count").GetGetMethod())
+                .Callvirt(typeAsICollection.GetProperty(nameof(ICollection.Count)).GetGetMethod())
                 .LdcI4(1)
                 .Add()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
             {
                 var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = typeAsDictionary.GetMethods()
-                        .Single(m => m.Name == "GetEnumerator" && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                        .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
                 var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
                 var typeKeyValuePair = currentGetter.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
@@ -355,7 +360,7 @@ namespace BTDB.EventStoreLayer
                 var next = ilGenerator.DefineLabel();
                 ilGenerator
                     .Ldloc(localDict)
-                    .Castclass(typeAsDictionary)
+                    .Isinst(typeAsDictionary)
                     .Brfalse(notDictionary)
                     .Ldloc(localDict)
                     .Castclass(typeAsDictionary)
@@ -364,7 +369,7 @@ namespace BTDB.EventStoreLayer
                     .Try()
                     .Mark(next)
                     .Ldloca(localEnumerator)
-                    .Call(typeAsIEnumerator.GetMethod("MoveNext"))
+                    .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext)))
                     .Brfalse(finish)
                     .Ldloca(localEnumerator)
                     .Call(currentGetter)
@@ -384,9 +389,9 @@ namespace BTDB.EventStoreLayer
                     .Br(completeFinish);
             }
             {
-                var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod("GetEnumerator");
+                var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod(nameof(IEnumerable.GetEnumerator));
                 var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty("Current").GetGetMethod();
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
                 var typeKeyValuePair = currentGetter.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);

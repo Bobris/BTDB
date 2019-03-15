@@ -70,7 +70,7 @@ namespace BTDB.IL.Caching
         }
     }
 
-    class CachingILDynamicMethod<TDelegate> : CachingILDynamicMethod, IILDynamicMethod<TDelegate> where TDelegate : class
+    class CachingILDynamicMethod<TDelegate> : CachingILDynamicMethod, IILDynamicMethod<TDelegate> where TDelegate : Delegate
     {
         public CachingILDynamicMethod(CachingILBuilder cachingILBuilder, string name)
             : base(cachingILBuilder, name, typeof(TDelegate))

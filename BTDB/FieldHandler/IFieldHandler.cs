@@ -14,10 +14,18 @@ namespace BTDB.FieldHandler
         void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
         void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue);
 
-        bool FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx); //returns true if needs to be called
+        NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
 
         // typeHandler is preferred FieldHandler for type could be null if unknown
         IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler);
         IFieldHandler SpecializeSaveForType(Type type);
     }
+
+    public enum NeedsFreeContent
+    {
+        No,
+        Unknown,
+        Yes
+    }
+
 }

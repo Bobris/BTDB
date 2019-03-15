@@ -26,6 +26,7 @@ namespace BTDB.ChunkCache
         AbstractBufferedWriter _cacheValueWriter;
         long _fileGeneration;
         Task _compactionTask;
+        internal Task CurrentCompactionTask() => _compactionTask;
         CancellationTokenSource _compactionCts;
         readonly object _startNewValueFileLocker = new object();
 
@@ -145,6 +146,7 @@ namespace BTDB.ChunkCache
                 cacheValue.FileId = _cacheValueFileId;
                 cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
                 _cacheValueWriter.WriteBlock(content);
+                _cacheValueFile.Flush();
             }
             cacheValue.ContentLength = (uint)content.Length;
             _cache.TryAdd(k, cacheValue);
@@ -405,7 +407,7 @@ namespace BTDB.ChunkCache
         {
             RemoveAllHashIndexAndUnknownFiles();
             var file = _fileCollection.AddFile("chi");
-            var writer = file.GetAppenderWriter();
+            var writer = file.GetExclusiveAppenderWriter();
             var keyCount = _cache.Count;
             var fileInfo = new FileHashIndex(AllocNewFileGeneration(), _keySize, keyCount);
             _fileInfos.TryAdd(file.Index, fileInfo);
@@ -421,7 +423,7 @@ namespace BTDB.ChunkCache
                 writer.WriteBlock(keyBuf);
             }
             writer.WriteVUInt32(0); // Zero FileOfs as End of file mark
-            file.HardFlush();
+            file.HardFlushTruncateSwitchToDisposedMode();
         }
 
         void RemoveAllHashIndexAndUnknownFiles()

@@ -1,12 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using Assent;
 using BTDB.Buffer;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
+using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace BTDBTest
@@ -422,5 +424,164 @@ namespace BTDBTest
             });
         }
 
+        class GenericClass<T>
+        {
+            public T Value { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                return obj is GenericClass<T> wrapper &&
+                       EqualityComparer<T>.Default.Equals(Value, wrapper.Value);
+            }
+
+            public override int GetHashCode()
+            {
+                return Value?.GetHashCode() ?? 0;
+            }
+        }
+
+        [Fact]
+        public void CanSerializeGenericType()
+        {
+            TestSerialization(new GenericClass<int> { Value = 42 });
+        }
+
+        class ClassWithIOrderedDictionary : IEquatable<ClassWithIOrderedDictionary>
+        {
+            public IOrderedDictionary<int, int> IOrderedDictionary { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                return Equals(obj as ClassWithIOrderedDictionary);
+            }
+
+            public bool Equals(ClassWithIOrderedDictionary other)
+            {
+                if (other == null)
+                    return false;
+                if (IOrderedDictionary == other.IOrderedDictionary) return true;
+                if (IOrderedDictionary == null || other.IOrderedDictionary == null) return false;
+                if (IOrderedDictionary.Count != other.IOrderedDictionary.Count) return false;
+                foreach (var pair in IOrderedDictionary)
+                {
+                    if (!other.IOrderedDictionary.ContainsKey(pair.Key))
+                        return false;
+
+                    if (other.IOrderedDictionary[pair.Key] != pair.Value)
+                        return false;
+                }
+                return true;
+            }
+
+            public override int GetHashCode()
+            {
+                return IOrderedDictionary?.GetHashCode() ?? 0;
+            }
+        }
+
+        class DummyOrderedDictionary<TKey, TValue> : Dictionary<TKey, TValue>, IOrderedDictionary<TKey, TValue>
+        {
+            public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start) => throw new NotImplementedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator() => throw new NotImplementedException();
+            public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd) => throw new NotImplementedException();
+        }
+
+        [Fact]
+        public void CanSerializeIOrderedDictionaryType()
+        {
+            TestSerialization(new ClassWithIOrderedDictionary
+            {
+                IOrderedDictionary = new DummyOrderedDictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3,
+                }
+            });
+        }
+
+        public class ClassWithBoxedIEnumerable
+        {
+            public object Value { get; set; }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is ClassWithBoxedIEnumerable o)
+                {
+                    var enumA = ((IEnumerable)Value).GetEnumerator();
+                    var enumB = ((IEnumerable)o.Value).GetEnumerator();
+                    enumA.Reset();
+                    enumB.Reset();
+
+                    while (enumA.MoveNext() | enumB.MoveNext())
+                    {
+                        if (!enumA.Current.Equals(enumB.Current))
+                            return false;
+                    }
+                    return true;
+                }
+                return false;
+            }
+
+            public override int GetHashCode()
+            {
+                return Value?.GetHashCode() ?? 0;
+            }
+        }
+
+        [Fact]
+        public void CanSerializeBoxedList()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new List<int>
+                {
+                    1,2,3
+                }
+            });
+        }
+
+        [Fact]
+        public void CanSerializeBoxedDictionary()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new Dictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3
+                }
+            });
+        }
+
+        class MyList<T> : List<T>
+        {
+        }
+
+        [Fact(Skip = "By design - not supported yet")]
+        public void CanSerializeBoxedCustomList()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new MyList<int>
+                {
+                    1,2,3
+                }
+            });
+        }
+
+        [Fact(Skip = "By design - not supported yet")]
+        public void CanSerializeBoxedIOrderedDictionary()
+        {
+            TestSerialization(new ClassWithBoxedIEnumerable
+            {
+                Value = new DummyOrderedDictionary<int, int>
+                {
+                    [1] = 2,
+                    [2] = 3
+                }
+            });
+        }
     }
 }

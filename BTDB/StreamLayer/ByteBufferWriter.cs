@@ -21,6 +21,11 @@ namespace BTDB.StreamLayer
             Pos = 0;
         }
 
+        public void Rewind()
+        {
+            Pos = 0;
+        }
+
         public ByteBuffer GetDataAndRewind()
         {
             var len = Pos;

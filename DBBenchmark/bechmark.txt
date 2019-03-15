@@ -1,0 +1,46 @@
+﻿					BTDB memory mapped		LMDB			BTDB inMemmory		BTDB (OnDiskFileCollection)
+
+					Sample Data(9mil. párů, klíč-hodnota, cca 1GB dat)
+									
+InsertDataTest				15 799,3785ms			124 928,0787ms		
+(naplnění db, jeden komit na konci)
+
+InsertDataByItemTest			39 845,0451ms			302 950,0772ms		
+(naplnění db, komit po každém páru)
+
+ReadAllData				 5 765,7165ms			  3 991,6564ms		
+(přečtení celé db, kontrola hodnoty)
+
+Velikost DB na disku			1 354 723 110 bajtů		1 534 132 224 bajtů
+(bez komprese)
+
+					Sample Data randomizované pořadí
+
+InsertDataTest				 62 618,3366ms			253 145,3415ms		54 242,2848ms		 55 243,5678ms
+(naplnění db, jeden komit na konci)
+
+InsertDataByItemTest			119 339,4013ms			492 942,6577ms					105 248,365ms
+(naplnění db, komit po každém páru)
+
+ReadAllData				 20 265,1341ms			 11 759,032ms		19 885,0231ms		 41 947,0676ms
+(přečtení celé db, kontrola hodnoty)
+
+InsertItem:         			    102,276ms			    658,503ms		     0,0213ms		     0,0282ms
+(přidání klíč-hodnota do naplněné DB)
+
+ReadItem:				      0,0141ms			      0,7328ms		     0,0088ms		     0,0177ms
+(získání jedné hodnoty z naplněné DB)
+
+					generovaná data (klíč 100bytů, value 100MB, 100 párů, seřazené)
+HugeTest (z BTDB/SimpleTester/KeyValueSpeedTest.cs)
+Time to create 10GB DB:      		24 137,2424ms			26 161,9114ms
+Time to read all values 10GB DB:      	 5 240,7626ms			 7 843,6327ms
+
+					generovaná random data (velikost klíče 10-50bytů, value 50-500bytů)
+					99 999párů
+
+InsertDataTest				   274,2357ms			3 603,9513ms
+
+InsertDataByItemTest			   511,4135ms			5 397,4416ms
+
+ReadAllData				    87,0146ms			   95,4715ms

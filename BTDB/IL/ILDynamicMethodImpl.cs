@@ -53,7 +53,7 @@ namespace BTDB.IL
         public MethodInfo TrueMethodInfo => _delegateType.GetMethod("Invoke");
     }
 
-    class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : class
+    class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : Delegate
     {
         public ILDynamicMethodImpl(string name):base(name,typeof(TDelegate),null)
         {

@@ -1272,6 +1272,7 @@ namespace BTDBTest
         public class LoggerMock : IKeyValueDBLogger
         {
             public IKeyValueDBTransaction Leaked;
+            public TimeSpan KviTime;
             public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
             {
                 Leaked = transaction;
@@ -1281,12 +1282,46 @@ namespace BTDBTest
             {
             }
 
-            public void CompactionCreatedPureValueFile(uint fileId, ulong size)
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
             {
             }
 
             public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
             {
+                KviTime = duration;
+            }
+        }
+
+        [Fact]
+        public void CompactionLimitsKviWriteSpeed()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = new KeyValueDB(new KeyValueDBOptions
+                {
+                    FileCollection = fileCollection,
+                    Compression = new NoCompressionStrategy(),
+                    CompactorScheduler = null,
+                    CompactorWriteBytesPerSecondLimit = 20000,
+                    FileSplitSize = 60000
+                }))
+                {
+                    var logger = new LoggerMock();
+                    db.Logger = logger;
+                    using (var tr = db.StartTransaction())
+                    {
+                        var key = new byte[100];
+                        for (var i = 0; i < 256; i++)
+                        {
+                            for (var j = 0; j < 100; j++) key[j] = (byte)i;
+                            tr.CreateOrUpdateKeyValue(key, key);
+                        }
+                        tr.Commit();
+                    }
+                    db.Compact(CancellationToken.None);
+                    // Kvi size = 27640 => ~1.4s
+                    Assert.InRange(logger.KviTime.TotalMilliseconds, 1000, 2000);
+                }
             }
         }
 

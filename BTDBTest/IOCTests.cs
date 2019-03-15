@@ -912,7 +912,7 @@ namespace BTDBTest
         [InlineData(typeof(ClassWithFloat))]
         [InlineData(typeof(ClassWithDouble))]
         [InlineData(typeof(ClassWithDoubleCastedFromFloat))]
-        [InlineData(typeof(ClassWithDecimal), Skip = "Not supported yet")]
+        //[InlineData(typeof(ClassWithDecimal), Skip = "Not supported yet")]
         [InlineData(typeof(ClassWithString))]
         [InlineData(typeof(ClassWithClass))]
         [InlineData(typeof(ClassWithStruct))]
@@ -921,7 +921,7 @@ namespace BTDBTest
         [InlineData(typeof(ClassWithNullable))]
         [InlineData(typeof(ClassWithNullable2))]
         [InlineData(typeof(ClassWithNullableStruct))]
-        [InlineData(typeof(ClassWithDateTime), Skip = "Not supported yet")]
+        //[InlineData(typeof(ClassWithDateTime), Skip = "Not supported yet")]
         [InlineData(typeof(ClassWithNullableDateTime))]
         public void ResolveWithOptionalParameterWithoutRegister(Type type)
         {

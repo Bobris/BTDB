@@ -18,6 +18,13 @@ namespace BTDB.Buffer
             return new ByteBuffer(buffer, (uint)offset, length);
         }
 
+        public static ByteBuffer NewAsync(ReadOnlySpan<byte> readOnlySpan)
+        {
+            var result = new ByteBuffer(new byte[readOnlySpan.Length], 0, readOnlySpan.Length);
+            readOnlySpan.CopyTo(result.AsSyncSpan());
+            return result;
+        }
+
         public static ByteBuffer NewSync(byte[] buffer)
         {
             return new ByteBuffer(buffer, 0x80000000u, buffer.Length);
@@ -97,6 +104,16 @@ namespace BTDB.Buffer
             var copy = new byte[safeSelf.Length];
             Array.Copy(safeSelf.Buffer, safeSelf.Offset, copy, 0, safeSelf.Length);
             return copy;
+        }
+
+        public ReadOnlySpan<byte> AsSyncReadOnlySpan()
+        {
+            return new ReadOnlySpan<byte>(Buffer, Offset, Length);
+        }
+
+        public Span<byte> AsSyncSpan()
+        {
+            return new Span<byte>(Buffer, Offset, Length);
         }
 
         public ByteBuffer ResizingAppend(ByteBuffer append)

@@ -73,7 +73,7 @@ namespace BTDB.ODBLayer
             return obj;
         }
 
-        public bool FreeContentInNativeObject(IReaderCtx readerCtx)
+        public void FreeContentInNativeObject(IReaderCtx readerCtx)
         {
             var reader = readerCtx.Reader();
             var tableId = reader.ReadVUInt32();
@@ -82,13 +82,16 @@ namespace BTDB.ODBLayer
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
-            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds, readerWithFree.Oids);
-            return freeContentTuple.Item1;
+            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds);
         }
 
         public void WriteInlineObject(object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());
+            if (ti == null)
+            {
+                throw new BTDBException($"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
+            }
             EnsureClientTypeNotNull(ti);
             IfNeededPersistTableInfo(ti);
             var writer = writerCtx.Writer();
@@ -432,15 +435,10 @@ namespace BTDB.ODBLayer
         {
             var tableInfo = AutoRegisterType(type);
             tableInfo.EnsureClientTypeVersion();
-            var oid = 0ul;
+            const ulong oid = 0ul;
             var metadata = new DBObjectMetadata(oid, DBObjectState.Dirty);
             var obj = tableInfo.Creator(this, metadata);
             tableInfo.Initializer(this, metadata, obj);
-            if (oid != 0)
-            {
-                AddToObjCache(oid, obj, metadata);
-                AddToDirtySet(oid, obj);
-            }
             return obj;
         }
 
@@ -647,7 +645,7 @@ namespace BTDB.ODBLayer
                     {
                         throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
                     }
-                    name = _owner.RegisterType(type);
+                    name = _owner.RegisterType(type, manualRegistration: false);
                 }
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }

@@ -2,6 +2,173 @@
 
 ## [unreleased]
 
+### Added
+
+ODbDump has new commands
+ - `leaks` which prints out unreachable objects in DB.
+ - `frequency` which prints number of items in relations and top level dictionaries in singletons
+ 
+
+## 17.4.2
+
+### Fixed
+
+Additional nonderministic info removed from compare mode of ODbDump.
+
+## 17.4.1
+
+### Fixed
+
+ODbDump is now published in way it works not just on my machine.
+
+## 17.4.0
+
+### Added
+
+ODbDump is now part of release. ODbDump has new dump mode useful for comparing DBs.
+
+## 17.3.0
+
+RemoveById supports advanced enumeration param in relations
+
+## 17.2.0
+
+### Added
+
+Extend TypeSerializers with optional configuration options.
+
+Options consist of one option for `IIndirect<T>`, whether it is serialized or ignored.
+
+## 17.1.0
+
+### Added
+
+Way to limit Compactor Write and Read Speed by setting `KeyValueDBOptions`. Default is unlimited.
+
+## 17.0.1
+
+### Changed
+
+Added new method into IFileCollectionFile.AdvisePrefetch. It is called during DB open on files which are expected to be read by RandomRead.
+
+## 17.0.0
+
+### Changed
+
+IFileCollection modified to allow faster implementations possible.
+
+## 16.2.1
+
+### Fixed
+
+PRead behavior on Windows file end. Fixed Nested Dictionaries type gathering exception.
+
+## 16.2.0
+
+### Fixed
+
+Failure to open DB in special case after erasing and compaction.
+Type check when generating apart fields in relations.
+
+## 16.1.0
+
+### Added
+
+Reintroduced PossitionLessStream and rename FileStream one to PossitionLessFileStream
+
+## 16.0.0
+
+### Improved
+
+Much faster compaction when a lot of changes were done. New IKeyValueDB.CompactorRamLimitInMb does limit RAM usage for longer time.
+Speed of OnDiskFileCollection improved by using new PRead and PWrite methods implemented for Windows and Posix.
+Better exception in WriteInlineObject when object type could not be stored.
+
+### Breaking Changes
+
+Modified IKeyValueDBLogger and IKeyValueDB so implementation needs to be modified.
+
+### Fixed
+
+Skipping Events in EventStoreLayer Deserialization
+
+## 15.1.0
+
+### Added
+
+Added way to skip Events in EventStoreLayer Deserialization.
+
+### Fixed
+
+Deletion of dictionaries during update/delete in relation in subclasses when not defined in declaration by interface.
+
+## 15.0.0
+
+### Added
+
+ShallowUpsert and ShallowUpdate relation methods which does not try to prevent leaks, but are much faster.
+
+### Changed
+
+IIndirect objects are not automatically deleted during removal from relations.
+
+## 14.12.2
+
+### Fixed
+
+Calling ListBy{SecondaryKey}OrDefault for not existing item during enumerating relations cooperates well.
+
+## 14.12.1
+
+### Fixed
+
+Exception in EventStore2Layer serialization does not corrupt next serializations anymore.
+Serialization of non Dictionary in EventStore does not fail.
+
+## 14.12.0
+
+### Fixed
+
+Skipping removed field (inline object) when deserializing older version in relations
+
+## 14.11.0
+
+### Added
+
+EventLayer serializers support IOrderedDictionary<K,V> type
+
+## 14.10.0
+
+### Added
+
+ArtInMemoryKeyValueDB - less memory hungry KVDB - use it only in .NetCore 2.1 target
+Generics classes now supported in EventLayer serializers
+DBOptions.WithSelfHealing switches db to try self heal rather then fail fast mode
+IObjectDBLogger for ObjectDB, actually for reporting deletion of incompatible data in self heal mode.
+
+## 14.9.0
+
+### Fixed
+
+Rare exception during checking possibility of usage of optimized version of prefix based remove when so far unseen objects was used as key in IDictionary
+
+## 14.8.0
+
+### Changed
+
+Dumping JsonLike output from TypeDescriptor is now more JSON compliant.
+
+## 14.7.0
+
+### Added
+
+Delegate constrains are now supported in C# 7.3, so it now makes compile time errors instead of runtime where possible.
+
+### Fixed
+
+Rare failure in IOC when running in parallel.
+Better exception message when types of fields in Deserialization are different.
+
 ## 14.6.0
 
 ### Added
@@ -115,40 +282,40 @@ IPAddress can now serialize and deserialize null value.
 
 ### Added
 
--   Synchronization lock in EventLayer2 Deserialization to be on safe side.
+- Synchronization lock in EventLayer2 Deserialization to be on safe side.
 
 ## 12.4.0.0
 
 ### Added
 
--   PersistedNameAttribute is supported on Apart Fields in relation interfaces
+- PersistedNameAttribute is supported on Apart Fields in relation interfaces
 
 ## 12.3.0.0
 
 ### Added
 
--   IOC now resolves optional parameters that are not registered with its provided value
+- IOC now resolves optional parameters that are not registered with its provided value
 
 ### Fixed
 
--   Fixed problem with calculating index from older version value in specific case
+- Fixed problem with calculating index from older version value in specific case
 
 ## 12.2.0.0
 
 ### Added
 
--   new method DeleteAllData() on ObjectDBTransaction
--   PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
+- new method DeleteAllData() on ObjectDBTransaction
+- PersistedNameAttribute is additionally allowed on interfaces - useful for Relations
 
 ## 12.1.0.0
 
 ### Added
 
--   Event deserialization now automatically converts Enums to integer types.
+- Event deserialization now automatically converts Enums to integer types.
 
 ## 12.0.0.0
 
 ### Added
 
--   Changelog
--   Nullable support in both ODb and EventStore
+- Changelog
+- Nullable support in both ODb and EventStore

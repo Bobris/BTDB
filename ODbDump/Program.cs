@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace ODbDump
 {
@@ -14,14 +15,15 @@ namespace ODbDump
     {
         internal int _indent = 0;
 
-        StringBuilder _builder = new StringBuilder();
+        readonly StringBuilder _builder = new StringBuilder();
+
         public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
         }
 
-        public void Print(string s)
+        public virtual void Print(string s)
         {
-            Console.WriteLine(new String(' ', _indent * 2) + s);
+            Console.WriteLine(new string(' ', _indent * 2) + s);
         }
 
         void Print(ByteBuffer b)
@@ -32,24 +34,40 @@ namespace ODbDump
                 if (i > 0) _builder.Append(' ');
                 _builder.Append(b[i].ToString("X2"));
             }
-            Console.Write(_builder.ToString());
+
+            Print(_builder.ToString());
+        }
+    }
+
+    class ToFileVisitorNice : ToConsoleVisitorNice
+    {
+        readonly StreamWriter _streamWriter;
+
+        public ToFileVisitorNice(StreamWriter streamWriter)
+        {
+            _streamWriter = streamWriter;
+        }
+
+        public override void Print(string s)
+        {
+            _streamWriter.WriteLine(new string(' ', _indent * 2) + s);
         }
     }
 
     class ToConsoleVisitorNice : ToConsoleFastVisitor, IODBVisitor
     {
-        string _currentFieldName;
-        Stack<int> _listItemIndexStack = new Stack<int>();
+        protected string _currentFieldName;
+        readonly Stack<int> _listItemIndexStack = new Stack<int>();
         int _itemIndex;
-        int _iid;
+        protected int _iid;
 
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public virtual bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
             Print($"Singleton {tableId}-{tableName ?? "?Unknown?"} oid:{oid}");
             return true;
         }
 
-        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public virtual bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
             _indent++;
             Print($"Object oid:{oid} {tableId}-{tableName ?? "?Unknown?"} version:{version}");
@@ -81,12 +99,12 @@ namespace ODbDump
             Print($"{_currentFieldName}: {content}");
         }
 
-        public void OidReference(ulong oid)
+        public virtual void OidReference(ulong oid)
         {
             Print($"{_currentFieldName}: Oid#{oid}");
         }
 
-        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        public virtual bool StartInlineObject(uint tableId, string tableName, uint version)
         {
             Print($"{_currentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
             _indent++;
@@ -202,6 +220,7 @@ namespace ODbDump
             _itemIndex++;
             _indent--;
         }
+
         public void EndRelation()
         {
             _itemIndex = _listItemIndexStack.Pop();
@@ -219,6 +238,34 @@ namespace ODbDump
         }
     }
 
+    class ToConsoleVisitorForComparison : ToConsoleVisitorNice
+    {
+        public override bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        {
+            Print($"Singleton {tableName ?? "?Unknown?"}");
+            return true;
+        }
+
+        public override bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        {
+            _indent++;
+            Print($"Object {tableName ?? "?Unknown?"}");
+            return true;
+        }
+
+        public override bool StartInlineObject(uint tableId, string tableName, uint version)
+        {
+            Print($"{_currentFieldName}: InlineObject {tableName} ref#{_iid}");
+            _indent++;
+            return true;
+        }
+
+        public override void OidReference(ulong oid)
+        {
+            Print($"{_currentFieldName}: OidReference");
+        }
+    }
+    
     class ToConsoleVisitor : ToConsoleFastVisitor, IODBVisitor
     {
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
@@ -507,6 +554,7 @@ namespace ODbDump
         public void EndRelationValue()
         {
         }
+
         public void EndRelation()
         {
         }
@@ -520,6 +568,187 @@ namespace ODbDump
         }
     }
 
+    class FrequencyVisitor : ToConsoleFastVisitor, IODBVisitor
+    {
+        readonly Dictionary<string, int> _relationFrequency = new Dictionary<string, int>();
+        readonly Dictionary<string, int> _singletonFrequency = new Dictionary<string, int>();
+
+        string _currentRelation;
+        string _currentSingleton;
+        int _currentCount;
+
+        public void OutputStatistic()
+        {
+            Console.WriteLine("name, count, type");
+            foreach (var kv in _relationFrequency)
+            {
+                Console.WriteLine($"{kv.Key},{kv.Value},relation");
+            }
+            foreach (var kv in _singletonFrequency)
+            {
+                Console.WriteLine($"{kv.Key},{kv.Value},singleton");
+            }
+        }
+
+        void Flush()
+        {
+            if (!string.IsNullOrEmpty(_currentRelation))
+            {
+                _relationFrequency.Add(_currentRelation, _currentCount);
+                _currentRelation = null;
+            } else if (!string.IsNullOrEmpty(_currentSingleton))
+            {
+                _singletonFrequency.Add(_currentSingleton, _currentCount);
+                _currentSingleton = null;
+            }
+
+            _currentCount = 0;
+        }
+       
+        
+        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        {
+            Flush();
+            _currentSingleton = tableName;
+            return true;
+        }
+
+ 
+        public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        {
+            return true;
+        }
+
+        public bool StartField(string name)
+        {
+            return true;
+        }
+
+        public bool NeedScalarAsObject()
+        {
+            return false;
+        }
+
+        public void ScalarAsObject(object content)
+        {
+        }
+
+        public bool NeedScalarAsText()
+        {
+            return false;
+        }
+
+        public void ScalarAsText(string content)
+        {
+        }
+
+        public void OidReference(ulong oid)
+        {
+        }
+
+        public bool StartInlineObject(uint tableId, string tableName, uint version)
+        {
+            return false;
+        }
+
+        public void EndInlineObject()
+        {
+        }
+
+        public bool StartList()
+        {
+            return false;
+        }
+
+        public bool StartItem()
+        {
+            return false;
+        }
+
+        public void EndItem()
+        {
+        }
+
+        public void EndList()
+        {
+        }
+
+        public bool StartDictionary()
+        {
+            return true;
+        }
+
+        public bool StartDictKey()
+        {
+            _currentCount++;
+            return false;
+        }
+
+        public void EndDictKey()
+        {
+        }
+
+        public bool StartDictValue()
+        {
+            return false;
+        }
+
+        public void EndDictValue()
+        {
+        }
+
+        public void EndDictionary()
+        {
+        }
+
+        public void EndField()
+        {
+        }
+
+        public void EndObject()
+        {
+        }
+
+        public bool StartRelation(string relationName)
+        {
+            Flush();
+            _currentRelation = relationName;
+            return true;
+        }
+
+        public bool StartRelationKey()
+        {
+            _currentCount++;
+            return false;
+        }
+
+        public void EndRelationKey()
+        {
+        }
+
+        public bool StartRelationValue()
+        {
+            return false;
+        }
+
+        public void EndRelationValue()
+        {
+        }
+
+        public void EndRelation()
+        {
+            Flush();
+        }
+
+        public void InlineBackRef(int iid)
+        {
+        }
+
+        public void InlineRef(int iid)
+        {
+        }
+    }
+    
     class Program
     {
         static void Main(string[] args)
@@ -527,8 +756,10 @@ namespace ODbDump
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
+                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, frequency");
                 return;
             }
+
             var action = "nicedump";
             if (args.Length > 1)
             {
@@ -538,130 +769,255 @@ namespace ODbDump
             switch (action)
             {
                 case "nicedump":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
-                        using (var odb = new ObjectDB())
+                        odb.Open(kdb, false);
+                        using (var trkv = kdb.StartReadOnlyTransaction())
+                        using (var tr = odb.StartTransaction())
                         {
-                            odb.Open(kdb, false);
-                            using (var trkv = kdb.StartReadOnlyTransaction())
-                            using (var tr = odb.StartTransaction())
-                            {
-                                Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                                Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                                Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                                var visitor = new ToConsoleVisitorNice();
-                                var iterator = new ODBIterator(tr, visitor);
-                                iterator.Iterate();
-                            }
+                            Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                            Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                            Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                            var visitor = new ToConsoleVisitorNice();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate();
                         }
-                        break;
                     }
+
+                    break;
+                }
+                case "comparedump":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        odb.Open(kdb, false);
+                        using (var trkv = kdb.StartReadOnlyTransaction())
+                        using (var tr = odb.StartTransaction())
+                        {
+                            var visitor = new ToConsoleVisitorForComparison();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate(sortTableByNameAsc: true);
+                        }
+                    }
+
+                    break;
+                }
+                case "diskdump":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    using (var tst = File.CreateText(Path.Combine(args[0], "dump.txt")))
+                    {
+                        odb.Open(kdb, false);
+                        using (var trkv = kdb.StartReadOnlyTransaction())
+                        using (var tr = odb.StartTransaction())
+                        {
+                            tst.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                            tst.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                            tst.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                            var visitor = new ToFileVisitorNice(tst);
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate();
+                        }
+                    }
+
+                    break;
+                }
                 case "dump":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
-                        using (var odb = new ObjectDB())
+                        odb.Open(kdb, false);
+                        using (var trkv = kdb.StartReadOnlyTransaction())
+                        using (var tr = odb.StartTransaction())
                         {
-                            odb.Open(kdb, false);
-                            using (var trkv = kdb.StartReadOnlyTransaction())
-                            using (var tr = odb.StartTransaction())
-                            {
-                                Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                                Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                                Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                                var visitor = new ToConsoleVisitor();
-                                var iterator = new ODBIterator(tr, visitor);
-                                iterator.Iterate();
-                            }
+                            Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                            Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                            Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                            var visitor = new ToConsoleVisitor();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate();
                         }
-                        break;
                     }
+
+                    break;
+                }
                 case "dumpnull":
                 case "null":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
-                        using (var odb = new ObjectDB())
+                        odb.Open(kdb, false);
+                        using (var tr = odb.StartTransaction())
                         {
-                            odb.Open(kdb, false);
-                            using (var tr = odb.StartTransaction())
-                            {
-                                var visitor = new ToNullVisitor();
-                                var iterator = new ODBIterator(tr, visitor);
-                                iterator.Iterate();
-                            }
+                            var visitor = new ToNullVisitor();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate();
                         }
-                        break;
                     }
+
+                    break;
+                }
                 case "stat":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
-                        {
-                            Console.WriteLine(kdb.CalcStats());
-                        }
-                        break;
+                        Console.WriteLine(kdb.CalcStats());
                     }
+
+                    break;
+                }
                 case "fileheaders":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        var fcfi = new FileCollectionWithFileInfos(dfc);
+                        foreach (var fi in fcfi.FileInfos)
                         {
-                            var fcfi = new FileCollectionWithFileInfos(dfc);
-                            foreach (var fi in fcfi.FileInfos)
+                            var details = "";
+                            switch (fi.Value)
                             {
-                                var details = "";
-                                var keyindex = fi.Value as IKeyIndex;
-                                if (keyindex != null)
+                                case IKeyIndex keyindex:
                                 {
-                                    details = string.Format("KVCount:{0} CommitUlong:{1} TrLogFileId:{2} TrLogOffset:{3}", keyindex.KeyValueCount, keyindex.CommitUlong, keyindex.TrLogFileId, keyindex.TrLogOffset);
+                                    details =
+                                        $"KVCount:{keyindex.KeyValueCount} CommitUlong:{keyindex.CommitUlong} TrLogFileId:{keyindex.TrLogFileId} TrLogOffset:{keyindex.TrLogOffset}";
                                     var usedFiles = keyindex.UsedFilesInOlderGenerations;
                                     if (usedFiles != null)
                                     {
                                         details += " UsedFiles:" + string.Join(",", usedFiles);
                                     }
+
+                                    break;
                                 }
-                                var trlog = fi.Value as IFileTransactionLog;
-                                if (trlog != null)
-                                {
+                                case IFileTransactionLog trlog:
                                     details = string.Format("Previous File Id: {0}", trlog.PreviousFileId);
-                                }
-                                Console.WriteLine("File {0} Guid:{3} Gen:{2} Type:{1} {4}", fi.Key, fi.Value.FileType.ToString(), fi.Value.Generation, fi.Value.Guid, details);
+                                    break;
                             }
+
+                            Console.WriteLine("File {0} Guid:{3} Gen:{2} Type:{1} {4}", fi.Key,
+                                fi.Value.FileType.ToString(), fi.Value.Generation, fi.Value.Guid, details);
                         }
-                        break;
                     }
+
+                    break;
+                }
                 case "compact":
+                {
+                    var sw = new Stopwatch();
+                    sw.Start();
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                        kdb.Logger = new ConsoleKvdbLogger();
+                        sw.Stop();
+                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}");
+                        sw.Restart();
+                        while (kdb.Compact(new CancellationToken()))
                         {
-                            Console.WriteLine("Starting first compaction");
-                            while (kdb.Compact(new CancellationToken()))
-                            {
-                                Console.WriteLine(kdb.CalcStats());
-                                Console.WriteLine("Another compaction needed");
-                            }
-                            Console.WriteLine(kdb.CalcStats());
+                            sw.Stop();
+                            Console.WriteLine($"Compaction iteration in {sw.Elapsed.TotalSeconds:F1}");
+                            sw.Restart();
                         }
-                        break;
+
+                        sw.Stop();
+                        Console.WriteLine($"Final compaction in {sw.Elapsed.TotalSeconds:F1}");
+                        Console.WriteLine(kdb.CalcStats());
                     }
+
+                    break;
+                }
                 case "export":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var tr = kdb.StartReadOnlyTransaction())
+                    using (var st = File.Create(Path.Combine(args[0], "snapshot.dat")))
                     {
-                        using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
-                        using (var tr = kdb.StartReadOnlyTransaction())
-                        using (var st = File.Create(Path.Combine(args[0], "export.dat")))
+                        KeyValueDBExportImporter.Export(tr, st);
+                    }
+
+                    break;
+                }
+                case "import":
+                {
+                    using (var st = File.OpenRead(Path.Combine(args[0], "snapshot.dat")))
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var tr = kdb.StartTransaction())
+                    {
+                        KeyValueDBExportImporter.Import(tr, st);
+                        tr.Commit();
+                    }
+
+                    break;
+                }
+                case "leaks":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        Console.WriteLine("Leaks: ");
+                        odb.Open(kdb, false);
+                        odb.DumpLeaks();
+                    }
+                    break;
+                }
+                case "frequency":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        odb.Open(kdb, false);
+                        using (var tr = odb.StartTransaction())
                         {
-                            KeyValueDBExportImporter.Export(tr, st);
+                            var visitor = new FrequencyVisitor();
+                            var iterator = new ODBIterator(tr, visitor);
+                            iterator.Iterate();
+                            visitor.OutputStatistic();
                         }
-                        break;
                     }
+                }
+                    break;
                 default:
-                    {
-                        Console.WriteLine($"Unknown action: {action}");
-                        break;
-                    }
+                {
+                    Console.WriteLine($"Unknown action: {action}");
+                    break;
+                }
+            }
+        }
+
+        class ConsoleKvdbLogger : IKeyValueDBLogger
+        {
+            public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
+            {
+            }
+
+            public void CompactionStart(ulong totalWaste)
+            {
+                Console.WriteLine($"Starting compaction with {totalWaste} wasted bytes");
+            }
+
+            public void CompactionCreatedPureValueFile(uint fileId, ulong size, uint itemsInMap, ulong roughMemory)
+            {
+                Console.WriteLine($"Pvl file {fileId} with size {size} created. Items in map {itemsInMap} roughly {roughMemory} bytes.");
+            }
+
+            public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
+            {
+                Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1}");
             }
         }
     }

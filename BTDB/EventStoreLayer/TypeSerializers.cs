@@ -1,18 +1,20 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
 
 namespace BTDB.EventStoreLayer
 {
     public class TypeSerializers : ITypeSerializers, ITypeSerializerMappingFactory
     {
         ITypeNameMapper _typeNameMapper;
+        readonly TypeSerializersOptions _options;
+
         readonly ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders = new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSavers = new ConcurrentDictionary<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly ConcurrentDictionary<ITypeDescriptor, bool> _descriptorSet = new ConcurrentDictionary<ITypeDescriptor, bool>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -27,12 +29,9 @@ namespace BTDB.EventStoreLayer
         readonly Func<ITypeDescriptor, Action<object, IDescriptorSerializerLiteContext>> _newDescriptorSaverFactoryAction;
         readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
+        Type _preciseType;
 
-        public TypeSerializers() : this(null)
-        {
-        }
-
-        public TypeSerializers(ITypeNameMapper typeNameMapper)
+        public TypeSerializers(ITypeNameMapper typeNameMapper = null, TypeSerializersOptions options = null)
         {
             ConvertorGenerator = new DefaultTypeConvertorGenerator();
             SetTypeNameMapper(typeNameMapper);
@@ -42,6 +41,7 @@ namespace BTDB.EventStoreLayer
             _newDescriptorSaverFactoryAction = NewDescriptorSaverFactory;
             _loaderFactoryAction = LoaderFactory;
             _buildFromTypeAction = BuildFromType;
+            _options = options ?? TypeSerializersOptions.Default;
         }
 
         public void SetTypeNameMapper(ITypeNameMapper typeNameMapper)
@@ -69,7 +69,7 @@ namespace BTDB.EventStoreLayer
         public ITypeDescriptor DescriptorOf(Type objType)
         {
             var res = _type2DescriptorMap.GetOrAdd(objType, _buildFromTypeAction);
-            if (res!=null) _descriptorSet.GetOrAdd(res, true);
+            if (res != null) _descriptorSet.GetOrAdd(res, true);
             return res;
         }
 
@@ -117,13 +117,18 @@ namespace BTDB.EventStoreLayer
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
-                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                        else if (_typeSerializers._options.IgnoreIIndirect &&
+                            type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
                         {
                             return null;
                         }
                         else if (Nullable.GetUnderlyingType(type) != null)
                         {
                             result = new NullableTypeDescriptor(_typeSerializers, type);
+                        }
+                        else
+                        {
+                            result = new ObjectTypeDescriptor(_typeSerializers, type);
                         }
                     }
                     else if (type.IsArray)
@@ -239,7 +244,14 @@ namespace BTDB.EventStoreLayer
 
         Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object> LoaderFactory(ITypeDescriptor descriptor)
         {
-            var loadAsType = LoadAsType(descriptor);
+            Type loadAsType = null;
+            try
+            {
+                loadAsType = LoadAsType(descriptor);
+            }
+            catch (EventSkippedException)
+            {
+            }
             var methodBuilder = ILBuilder.Instance.NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             if (descriptor.AnyOpNeedsCtx())
@@ -257,13 +269,23 @@ namespace BTDB.EventStoreLayer
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3), loadAsType);
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldloc(localCtx), ilGen => ilGen.Ldarg(3), loadAsType);
             }
             else
             {
-                descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3), loadAsType);
+                if (loadAsType == null)
+                    descriptor.GenerateSkip(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1));
+                else
+                    descriptor.GenerateLoad(il, ilGen => ilGen.Ldarg(0), ilGen => ilGen.Ldarg(1), ilGen => ilGen.Ldarg(3), loadAsType);
             }
-            if (loadAsType.IsValueType)
+            if (loadAsType == null)
+            {
+                il.Ldnull();
+            }
+            else if (loadAsType.IsValueType)
             {
                 il.Box(loadAsType);
             }
@@ -379,8 +401,9 @@ namespace BTDB.EventStoreLayer
             return method.Create();
         }
 
-        public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor)
+        public Action<object, IDescriptorSerializerLiteContext> GetNewDescriptorSaver(ITypeDescriptor descriptor, Type preciseType)
         {
+            _preciseType = preciseType;
             return _newDescriptorSavers.GetOrAdd(descriptor, _newDescriptorSaverFactoryAction);
         }
 
@@ -393,7 +416,7 @@ namespace BTDB.EventStoreLayer
             }
             var method = ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>("GatherAllObjectsForTypeExtraction_" + descriptor.Name);
             var il = method.Generator;
-            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), typeof(object));
+            gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), _preciseType);
             il.Ret();
             return method.Create();
         }

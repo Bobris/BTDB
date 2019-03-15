@@ -1,5 +1,5 @@
 ﻿List<VInt32>
-List<String>
+Dictionary<String, Double>
 BTDBTest.TypeSerializersTest+SimpleDto
 {
     IntField : VInt32
@@ -11,7 +11,7 @@ BTDBTest.TypeSerializersTest+ClassWithList
 }
 BTDBTest.TypeSerializersTest+ClassWithDict
 {
-    Dict : List<VInt32>
+    Dict : Dictionary<VInt32, String>
 }
 BTDBTest.TypeSerializersTest+SelfPointing1
 {

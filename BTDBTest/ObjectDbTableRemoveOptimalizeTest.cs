@@ -198,7 +198,7 @@ namespace BTDBTest
             var ctr = GetCountingTransaction(tr);
             Assert.Equal(eraseAll, ctr.EraseAllCount);
             Assert.Equal(eraseCurrent, ctr.EraseCurrentCount);
-       
+
         }
 
         class InMemoryKeyValueDBWithCount : IKeyValueDB
@@ -253,6 +253,8 @@ namespace BTDBTest
                 set { _keyValueDB.Logger = value; }
             }
 
+            public uint CompactorRamLimitInMb { get; set; }
+
             public void Dispose()
             {
                 _keyValueDB.Dispose();
@@ -262,7 +264,6 @@ namespace BTDBTest
         class KeyValueDBTransactionWithCount : IKeyValueDBTransaction
         {
             IKeyValueDBTransaction _keyValueDBTransaction;
-
 
             public KeyValueDBTransactionWithCount(IKeyValueDBTransaction keyValueDBTransaction)
             {
@@ -310,6 +311,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.Find(key);
             }
 
+            public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+            {
+                return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
+            }
+
             public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
             {
                 return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
@@ -348,6 +354,11 @@ namespace BTDBTest
             public ByteBuffer GetValue()
             {
                 return _keyValueDBTransaction.GetValue();
+            }
+
+            public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+            {
+                return _keyValueDBTransaction.GetValueAsReadOnlySpan();
             }
 
             public void SetValue(ByteBuffer value)
@@ -433,7 +444,5 @@ namespace BTDBTest
                 _keyValueDBTransaction.Dispose();
             }
         }
-
-
     }
 }

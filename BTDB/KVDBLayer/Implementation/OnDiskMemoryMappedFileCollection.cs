@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.MemoryMappedFiles;
-using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.StreamLayer;
 
@@ -10,8 +9,10 @@ namespace BTDB.KVDBLayer
 {
     public class OnDiskMemoryMappedFileCollection : IFileCollection
     {
-        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")]
-        static extern unsafe void CopyMemory(byte* dst, byte* src, long size);
+        static unsafe void CopyMemory(byte* dst, byte* src, long size)
+        {
+            System.Buffer.MemoryCopy(src, dst, size, size);
+        }
 
         public IDeleteFileCollectionStrategy DeleteFileCollectionStrategy
         {
@@ -244,6 +245,10 @@ namespace BTDB.KVDBLayer
                 return new Reader(this);
             }
 
+            public void AdvisePrefetch()
+            {
+            }
+
             public void RandomRead(byte[] data, int offset, int size, ulong position, bool doNotCache)
             {
                 lock (_lock)
@@ -273,18 +278,20 @@ namespace BTDB.KVDBLayer
                 return _writer;
             }
 
-            public void HardFlush()
+            public AbstractBufferedWriter GetExclusiveAppenderWriter()
+            {
+                return _writer;
+            }
+
+            public void Flush()
             {
                 _writer.FlushBuffer();
-                var fileStream = _stream as FileStream;
-                if (fileStream != null)
-                {
-                    fileStream.Flush(true);
-                }
-                else
-                {
-                    _stream.Flush();
-                }
+            }
+
+            public void HardFlush()
+            {
+                Flush();
+                _stream.Flush(true);
             }
 
             public void SetSize(long size)
@@ -301,6 +308,18 @@ namespace BTDB.KVDBLayer
             {
                 UnmapContent();
                 _stream.SetLength(_trueLength);
+            }
+
+            public void HardFlushTruncateSwitchToReadOnlyMode()
+            {
+                HardFlush();
+                Truncate();
+            }
+
+            public void HardFlushTruncateSwitchToDisposedMode()
+            {
+                HardFlush();
+                Truncate();
             }
 
             public ulong GetSize()
@@ -383,7 +402,7 @@ namespace BTDB.KVDBLayer
             return _files.Values;
         }
 
-        public void ConcurentTemporaryTruncate(uint index, uint offset)
+        public void ConcurrentTemporaryTruncate(uint index, uint offset)
         {
             // Nothing to do
         }

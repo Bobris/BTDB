@@ -1,42 +1,44 @@
 # BTDB
 
+[![Build Status](https://dev.azure.com/bletocha/bletocha/_apis/build/status/Bobris.BTDB)](https://dev.azure.com/bletocha/bletocha/_build/latest?definitionId=1)
+
 Currently this project these parts:
 
-* Key Value Database
-* Wrapped Dynamic IL generation with debugging + extensions
-* IOC Container
-* Object Database
-* RPC Library
-* Dto Channel
-* Snappy Compression
-* Event Storage
+- Key Value Database
+- Wrapped Dynamic IL generation with debugging + extensions
+- IOC Container
+- Object Database
+- RPC Library
+- Dto Channel
+- Snappy Compression
+- Event Storage
 
-All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently targeting .Net 4.5, main code is without any dependency. Code is tested using NUnit Framework.
+All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently multitargeting .NetCore 2.1 and .Net 4.7.1 (soon to be deprecated), main code has just one dependency (Mono.Posix.NETStandard). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
-It is available in Nuget <http://www.nuget.org/packages/BTDB>
-It is also available as Source Nuget <https://www.nuget.org/packages/BTDB.Sources>
+It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
 
 ---
+
 ## Key Value Database
 
 ### Features:
 
-* This is Key Value store written in C# without using any native code.
-* It is easily embeddable. 
-* One storage is just one directory.
-* It has [ACID] properties with [MVCC].
-* At one time there could be multiple read only transactions and one read/write transaction.
-* Export/Import to stream - could be used for compaction, snapshotting
-* Automatic compaction
-* Customizable compression
-* Relatively Fast DB Open due to key index file - though it still needs to load all keys to memory
-* Inspired by Bitcask [https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf]
+- This is Key Value store written in C# without using any native code.
+- It is easily embeddable.
+- One storage is just one directory.
+- It has [ACID] properties with [MVCC].
+- At one time there could be multiple read only transactions and one read/write transaction.
+- Export/Import to stream - could be used for compaction, snapshotting
+- Automatic compaction
+- Customizable compression
+- Relatively Fast DB Open due to key index file - though it still needs to load all keys to memory
+- Inspired by Bitcask [https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf]
 
 ### Design limits:
 
-* All keys data needs to fit in RAM
-* Maximum Key length is limited by 31bits (2GB).
-* Maximum value length is limited by 31bits (2GB).
+- All keys data needs to fit in RAM
+- Maximum Key length is limited by 31bits (2GB).
+- Maximum value length is limited by 31bits (2GB).
 
 ### Sample code:
 
@@ -52,10 +54,11 @@ It is also available as Source Nuget <https://www.nuget.org/packages/BTDB.Source
 
 ### Roadmap:
 
-* Everything is there just use it
-* Try prefix/postfix key compression in memory BTree
+- Everything is there just use it
+- Try prefix/postfix key compression in memory BTree
 
 ---
+
 ## Wrapped Dynamic IL generation with debugging + extensions
 
 This help you to write fluent code which generates IL code in runtime. It is used in Object Database part.
@@ -77,22 +80,23 @@ This help you to write fluent code which generates IL code in runtime. It is use
 
 ### Roadmap:
 
-* Add support for all IL instructions as needed
+- Add support for all IL instructions as needed
 
 ---
+
 ## Object Database
 
 ### Features:
 
-* Builds on top of Key Value Database and Reflection.Emit extensions.
-* It stores Plain .Net Objects and only their public properties with getters and setters.
-* All [ACID] and [MVCC] properties are preserved of course.
-* Automatic upgrading of model on read with dynamically generated optimal IL code.
-* Automatic versioning of model changes.
-* Enumeration of all objects
-* Each object type could store its "singleton" - very useful for root objects
-* Relations - Table with primary key and multiple secondary keys
-* By default objects are stored inline in parent object, use IIndirect for objects with Oid which will load lazily 
+- Builds on top of Key Value Database and Reflection.Emit extensions.
+- It stores Plain .Net Objects and only their public properties with getters and setters.
+- All [ACID] and [MVCC] properties are preserved of course.
+- Automatic upgrading of model on read with dynamically generated optimal IL code.
+- Automatic versioning of model changes.
+- Enumeration of all objects
+- Each object type could store its "singleton" - very useful for root objects
+- Relations - Table with primary key and multiple secondary keys
+- By default objects are stored inline in parent object, use IIndirect for objects with Oid which will load lazily
 
 Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/ODBDictionary.md]
 Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
@@ -119,22 +123,23 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ### Roadmap:
 
-* Support more types of properties
-* Performance tests
-* Free text search (far future)
+- Support more types of properties
+- Performance tests
+- Free text search (far future)
 
 ---
+
 ## RPC Library
 
 Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad performance)
 
 ### Features:
 
-* TCP/IP comunication, service types negotiation
-* Automatic serialization with dynamically generated optimal IL code.
-* Both Client and Server can register services
-* Async calls, OneWay calls, Exception propagation
-* Services could be interfaces, classes, delegates
+- TCP/IP comunication, service types negotiation
+- Automatic serialization with dynamically generated optimal IL code.
+- Both Client and Server can register services
+- Async calls, OneWay calls, Exception propagation
+- Services could be interfaces, classes, delegates
 
 ### Sample code:
 
@@ -146,26 +151,28 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 
 ### Roadmap:
 
-* Even more speed and event based TCP/IP server channels
+- Even more speed and event based TCP/IP server channels
 
 ---
+
 ## Event storage
 
 ### Features:
 
-* Optimal serialization with metadata
-* Deserialization also to dynamic
-* Storage is transactional
-* As storage could be used Azure Page Blobs
-* EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
+- Optimal serialization with metadata
+- Deserialization also to dynamic
+- Storage is transactional
+- As storage could be used Azure Page Blobs
+- EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
 
 ---
+
 ## Dto Channel
 
 ### Features:
 
-* Send and receive Dto over Tcp/Ip
-* Identical serialization from Event Storage
+- Send and receive Dto over Tcp/Ip
+- Identical serialization from Event Storage
 
 ### Sample code:
 
@@ -176,21 +183,22 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 
 ### Roadmap:
 
-* Even more speed and event based TCP/IP server channels
+- Even more speed and event based TCP/IP server channels
 
 ---
+
 ## Snappy Compression
 
 ### Features:
 
-* Ported and inspired mainly by Go version of Snappy Compression [http://code.google.com/p/snappy/]
-* Fully compatible with original
-* Fully managed and safe implementation
-* Compression is aborted when target buffer size is not big enough
+- Ported and inspired mainly by Go version of Snappy Compression [http://code.google.com/p/snappy/]
+- Fully compatible with original
+- Fully managed and safe implementation
+- Compression is aborted when target buffer size is not big enough
 
 ### Roadmap:
 
-* Slower but better compressors options
+- Slower but better compressors options
 
-[ACID]:http://en.wikipedia.org/wiki/ACID
-[MVCC]:http://en.wikipedia.org/wiki/Multiversion_concurrency_control
+[acid]: http://en.wikipedia.org/wiki/ACID
+[mvcc]: http://en.wikipedia.org/wiki/Multiversion_concurrency_control

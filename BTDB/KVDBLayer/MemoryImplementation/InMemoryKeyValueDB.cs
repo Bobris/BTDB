@@ -12,7 +12,7 @@ namespace BTDB.KVDBLayer
         InMemoryKeyValueDBTransaction _writingTransaction;
         readonly Queue<TaskCompletionSource<IKeyValueDBTransaction>> _writeWaitingQueue = new Queue<TaskCompletionSource<IKeyValueDBTransaction>>();
         readonly object _writeLock = new object();
-        
+
         public InMemoryKeyValueDB()
         {
             _lastCommited = new BTreeRoot(0);
@@ -72,6 +72,8 @@ namespace BTDB.KVDBLayer
         }
 
         public IKeyValueDBLogger Logger { get; set; }
+
+        public uint CompactorRamLimitInMb { get; set; }
 
         public ulong? PreserveHistoryUpToCommitUlong {
             get { return null; }

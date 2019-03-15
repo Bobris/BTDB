@@ -32,7 +32,7 @@ namespace BTDBTest
 #endif
         }
 
-        static bool IsNetCore()
+        public static bool IsNetCore()
         {
             return RuntimeInformation.FrameworkDescription.StartsWith(".NET Core", StringComparison.OrdinalIgnoreCase);
         }

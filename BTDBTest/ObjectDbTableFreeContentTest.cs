@@ -44,6 +44,8 @@ namespace BTDBTest
             void Insert(Link link);
             void Update(Link link);
             bool Upsert(Link link);
+            void ShallowUpdate(Link link);
+            bool ShallowUpsert(Link link);
             bool RemoveById(ulong id);
             Link FindById(ulong id);
         }
@@ -96,6 +98,26 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void LeakingIDictionaryInShallowUpdate()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.ShallowUpdate(link); //replace dict
+                link = links.FindById(2);
+                link.Edges.Add(20, 30);
+                links.ShallowUpdate(link); //update dict, must not free
+                link = links.FindById(2);
+                Assert.Equal(2, link.Edges.Count);
+                tr.Commit();
+            }
+            Assert.NotEmpty(FindLeaks());
+        }
+
+        [Fact]
         public void FreeIDictionaryInUpsert()
         {
             var creator = InitILinks();
@@ -107,6 +129,20 @@ namespace BTDBTest
                 tr.Commit();
             }
             AssertNoLeaksInDb();
+        }
+
+        [Fact]
+        public void LeakingIDictionaryInShallowUpsert()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.ShallowUpsert(link); //replace dict
+                tr.Commit();
+            }
+            Assert.NotEmpty(FindLeaks());
         }
 
         public class LinkInList
@@ -448,7 +484,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FreeIIndirect()
+        public void IIndirectIsNotFreedAutomatically()
         {
             Func<IObjectDBTransaction, IHddRelation> creator;
             using (var tr = _db.StartTransaction())
@@ -467,7 +503,6 @@ namespace BTDBTest
                 files.Insert(file);
                 tr.Commit();
             }
-            AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
                 var files = creator(tr);
@@ -476,7 +511,7 @@ namespace BTDBTest
                 files.RemoveById(1);
                 tr.Commit();
             }
-            AssertNoLeaksInDb();
+            Assert.NotEmpty(FindLeaks());
         }
 
         public class Setting
@@ -708,6 +743,188 @@ namespace BTDBTest
                     Dict = new Dictionary<int, bool> { [1] = true }
                 });
                 files.RemoveById(0, 0);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+        public class ImportData
+        {
+            [PrimaryKey]
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(Order = 1)]
+            public ulong Id { get; set; }
+
+            public IDictionary<ObjectId, ObjectNode> Items { get; set; }
+        }
+
+        public interface IImportDataTable
+        {
+            bool Insert(ImportData item);
+            void Update(ImportData item);
+            int RemoveById(ulong companyId);
+        }
+
+        public class ObjectNode
+        {
+            public string Sample { get; set; }
+        }
+
+        public class ObjectId
+        {
+            public ulong Id { get; set; }
+        }
+
+        [Fact]
+        public void DoNotPanicWhenUnknownStatusInIDictionaryKey()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IImportDataTable>("ImportData");
+                var table = creator(tr);
+                table.Insert(new ImportData
+                {
+                    Items = new Dictionary<ObjectId, ObjectNode>
+                    {
+                        [new ObjectId()] = new ObjectNode()
+                    }
+                });
+                tr.Commit();
+            }
+        }
+
+        public class NodesBase
+        {
+        }
+
+        public class NodesOne : NodesBase
+        {
+            public string F { get; set; }
+            public IDictionary<ulong, ulong> A { get; set; }
+        }
+
+        public class NodesTwo : NodesBase
+        {
+            public IDictionary<ulong, ulong> B { get; set; }
+            public string E { get; set; }
+        }
+
+        public class NodesGraph
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public NodesBase Nodes { get; set; }
+        }
+
+        public interface IGraphTable
+        {
+            void Insert(NodesGraph license);
+            Graph FindById(ulong id);
+            bool RemoveById(ulong id);
+        }
+
+        [Fact]
+        public void FreeWorksAlsoForDifferentSubObjectsWithoutIface()
+        {
+            _db.RegisterType(typeof(NodesOne));
+            _db.RegisterType(typeof(NodesTwo));
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IGraphTable>("GraphTable");
+                var table = creator(tr);
+                var graph = new NodesGraph
+                {
+                    Id = 1,
+                    Nodes = new NodesOne { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
+                };
+                table.Insert(graph);
+                graph = new NodesGraph
+                {
+                    Id = 2,
+                    Nodes = new NodesTwo { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
+                };
+                table.Insert(graph);
+                graph = new NodesGraph
+                {
+                    Id = 3,
+                    Nodes = new NodesBase()
+                };
+                table.Insert(graph);
+                
+                Assert.True(table.FindById(1).Nodes is NodesOne);
+                Assert.True(table.FindById(2).Nodes is NodesTwo);
+
+                table.RemoveById(1);
+                table.RemoveById(2);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
+        public class EmailMessage
+        {
+            public IDictionary<string, string> Bcc { get; set; }
+            public IDictionary<string, string> Cc { get; set; }
+            public IDictionary<string, string> To { get; set; }
+        }
+
+        public class EmailDb
+        {
+            public EmailMessage Content { get; set; }
+        }
+
+        public class BatchDb
+        {
+            [PrimaryKey(1)] 
+            public Guid ItemId { get; set; }
+            public IDictionary<Guid, EmailDb> MailPieces { get; set; }
+        }
+
+        public interface IBatchTable : IReadOnlyCollection<BatchDb>
+        {
+            void Insert(BatchDb batch);
+            void Update(BatchDb batch);
+            BatchDb FindByIdOrDefault(Guid itemId);
+        }
+
+        [Fact(Skip = "prepared for discussion")]
+        public void LeakCanBeMade()
+        {
+            Func<IObjectDBTransaction, IBatchTable> creator = null;
+            var guid = Guid.NewGuid();
+            var mailGuid = Guid.NewGuid();
+
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IBatchTable>("IBatchTable");
+                var table = creator(tr);
+                var batch = new BatchDb
+                {
+                    ItemId = guid,
+                    MailPieces = new Dictionary<Guid, EmailDb>
+                    {
+                        [mailGuid] = new EmailDb
+                        {
+                            Content = new EmailMessage
+                            {
+                                Bcc = new Dictionary<string, string> {["a"] = "b"},
+                                Cc = new Dictionary<string, string> {["c"] = "d"},
+                                To = new Dictionary<string, string> {["e"] = "f"}
+                            }
+                        }
+                    }
+                };
+                table.Insert(batch);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = creator(tr);
+                var batch = table.FindByIdOrDefault(guid);
+                batch.MailPieces[mailGuid] = null;  //LEAK - removed immediately from db, in table.Update don't have previous value 
+                table.Update(batch);
                 tr.Commit();
             }
             AssertNoLeaksInDb();

@@ -245,7 +245,10 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            throw new InvalidOperationException();
+            foreach (var pair in _fields)
+            {
+                pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            }
         }
 
         int FindFieldIndex(string fieldName)
@@ -359,7 +362,7 @@ namespace BTDB.EventStoreLayer
                 foreach (var item in _ownerDescriptor._fields)
                 {
                     if (idx > 0) sb.Append(", ");
-                    sb.Append(item.Key).Append(": ").AppendJsonLike(_fieldValues[idx]);
+                    sb.Append($"\"{item.Key}\"").Append(": ").AppendJsonLike(_fieldValues[idx]);
                     idx++;
                 }
                 sb.Append(" }");

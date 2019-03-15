@@ -126,19 +126,21 @@ namespace BTDB.ODBLayer
 
         protected override T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + _skipBytes, KeyBytes.Length - _skipBytes);
-            keyWriter.WriteBlock(keyBytes);
+            var keyData = new byte[KeyBytes.Length - _skipBytes + keyBytes.Length];
+            Array.Copy(KeyBytes.Buffer, KeyBytes.Offset + _skipBytes, keyData, 0, KeyBytes.Length - _skipBytes);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, keyData, KeyBytes.Length - _skipBytes, keyBytes.Length);
 
-            return (T)RelationInfo.CreateInstance(Transaction, keyWriter.Data, valueBytes, false);
+            return (T)RelationInfo.CreateInstance(Transaction, ByteBuffer.NewAsync(keyData), valueBytes, false);
         }
 
         public override ByteBuffer GetKeyBytes()
         {
-            var keyWriter = new ByteBufferWriter();
-            keyWriter.WriteBlock(KeyBytes.Buffer, KeyBytes.Offset + ObjectDB.AllRelationsPKPrefix.Length, KeyBytes.Length - ObjectDB.AllRelationsPKPrefix.Length);
-            keyWriter.WriteBlock(base.GetKeyBytes());
-            return keyWriter.Data;
+            var keyBytes = base.GetKeyBytes();
+            var keyData = new byte[KeyBytes.Length + keyBytes.Length];
+            Array.Copy(KeyBytes.Buffer, KeyBytes.Offset, keyData, 0, KeyBytes.Length);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, keyData, KeyBytes.Length, keyBytes.Length);
+
+            return ByteBuffer.NewAsync(keyData);
         }
     }
 
@@ -331,11 +333,17 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(ByteBuffer keyBytes)
         {
-            var writer = new ByteBufferWriter();
-            writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
-            writer.WriteBlock(keyBytes);
+            var data = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
+            Array.Copy(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
 
-            return (T)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
+            return (T)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
+        }
+        
+        public ByteBuffer GetKeyBytes()
+        {
+            var key = ByteBuffer.NewEmpty();
+            return key.ResizingAppend(ByteBuffer.NewSync(_keyValueTr.GetKeyPrefix())).ResizingAppend(_keyValueTr.GetKey());
         }
 
         void Seek()
@@ -495,11 +503,11 @@ namespace BTDB.ODBLayer
 
         protected virtual TValue CreateInstance(ByteBuffer prefixKeyBytes, ByteBuffer keyBytes)
         {
-            var writer = new ByteBufferWriter();
-            writer.WriteBlock(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, _keyBytes.Length - _lengthOfNonDataPrefix);
-            writer.WriteBlock(keyBytes);
+            var data = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
+            Array.Copy(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0, _keyBytes.Length - _lengthOfNonDataPrefix);
+            Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix, keyBytes.Length);
 
-            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, writer.Data, _keyValueTr.GetValue(), false);
+            return (TValue)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
         }
 
         public TValue CurrentValue
@@ -578,6 +586,7 @@ namespace BTDB.ODBLayer
                     _keyValueTr.FindPreviousKey();
                 }
             }
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             //read key
             var keyData = _keyValueTr.GetKeyAsByteArray();
             var reader = new ByteArrayReader(keyData);
