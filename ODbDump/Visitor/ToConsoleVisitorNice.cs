@@ -102,7 +102,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictKey()
         {
-            _currentFieldName = $"Key[{_itemIndex}]";
+            _currentFieldName = "Key";
             return true;
         }
 
@@ -112,7 +112,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictValue()
         {
-            _currentFieldName = $"Value[{_itemIndex}]";
+            _currentFieldName = "Value";
             return true;
         }
 
@@ -147,7 +147,7 @@ namespace ODbDump.Visitor
 
         public bool StartRelationKey()
         {
-            Print($"Key[{_itemIndex}]");
+            Print("Key");
             _indent++;
             return true;
         }
@@ -159,7 +159,7 @@ namespace ODbDump.Visitor
 
         public bool StartRelationValue()
         {
-            Print($"Value[{_itemIndex}]");
+            Print("Value");
             _indent++;
             return true;
         }

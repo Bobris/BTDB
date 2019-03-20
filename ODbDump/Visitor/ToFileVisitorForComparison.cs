@@ -60,7 +60,7 @@ namespace ODbDump.Visitor
 
         public override void ScalarAsObject(object content)
         {
-            if (_hashStrings && content.GetType() == typeof(string))
+            if (_hashStrings && content != null && content.GetType() == typeof(string))
             {
                 var hash = _hashAlgorithm.ComputeHash(Encoding.UTF8.GetBytes(content as string));
                 var sb = new StringBuilder();
