@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
+using ODbDump.Visitor;
 
 namespace ODbDump
 {
