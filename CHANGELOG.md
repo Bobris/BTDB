@@ -5,9 +5,13 @@
 ### Added
 
 ODbDump has new commands
- - `leaks` which prints out unreachable objects in DB.
- - `frequency` which prints number of items in relations and top level dictionaries in singletons
- 
+
+- `leaks` which prints out unreachable objects in DB.
+- `frequency` which prints number of items in relations and top level dictionaries in singletons
+
+### Fixed
+
+ODBLayer correctly supports interfaces in properties.
 
 ## 17.4.2
 
