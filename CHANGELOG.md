@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.5.1
+
 ### Fixed
 
 - Compactor does not ends in endless cycle when DB is opened with more than 4 times smaller split size than it was created.
