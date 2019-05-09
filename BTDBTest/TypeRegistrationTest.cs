@@ -5,35 +5,41 @@ using Xunit;
 
 namespace BTDBTest
 {
-    public class Parent
-    {
-        public IChild Child { get; set; }
-    }
-
-    public class ParentNewVersion
-    {
-        public IChild Child { get; set; }
-        public ulong Something { get; set; }
-    }
-
-    public interface IChild
-    {
-        ulong Id { get; set; }
-    }
-
-    public class Child : IChild
-    {
-        public ulong Id { get; set; }
-    }
-
-    public class DerivedChild : Child
-    {
-    }
-
     public class TypeRegistrationTest : IDisposable
     {
         IKeyValueDB _lowDb;
         IObjectDB _db;
+
+        public class Parent
+        {
+            public IChild Child { get; set; }
+        }
+
+        public class ParentOldVersion
+        {
+            public Child Child { get; set; }
+        }
+
+        public class ParentNewVersion
+        {
+            public IChild Child { get; set; }
+            public ulong Something { get; set; }
+        }
+
+        public interface IChild
+        {
+            ulong Id { get; set; }
+        }
+
+        public class Child : IChild
+        {
+            public ulong Id { get; set; }
+        }
+
+        public class DerivedChild : Child
+        {
+        }
+
 
         public TypeRegistrationTest()
         {
@@ -76,6 +82,29 @@ namespace BTDBTest
             {
                 var parent = (ParentNewVersion)tr.Get(oid);
                 Assert.NotNull(parent.Child);
+                Assert.Equal(1ul, parent.Child.Id);
+            }
+        }
+
+        [Fact]
+        public void UpgradesFromClassToInterface()
+        {
+            ulong oid;
+            _db.RegisterType(typeof(ParentOldVersion), "Parent");
+            using (var tr = _db.StartTransaction())
+            {
+                oid = tr.Store(new ParentOldVersion { Child = new DerivedChild { Id = 1 } });
+                tr.Commit();
+            }
+            ReopenDb();
+            _db.RegisterType(typeof(ParentNewVersion), "Parent");
+            _db.RegisterType(typeof(DerivedChild));
+            _db.RegisterType(typeof(Child));
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var parent = (ParentNewVersion)tr.Get(oid);
+                Assert.NotNull(parent.Child);
+                Assert.Equal(1ul, parent.Child.Id);
             }
         }
     }
