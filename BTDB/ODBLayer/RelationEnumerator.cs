@@ -339,6 +339,12 @@ namespace BTDB.ODBLayer
 
             return (T)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
         }
+        
+        public ByteBuffer GetKeyBytes()
+        {
+            var key = ByteBuffer.NewEmpty();
+            return key.ResizingAppend(ByteBuffer.NewSync(_keyValueTr.GetKeyPrefix())).ResizingAppend(_keyValueTr.GetKey());
+        }
 
         void Seek()
         {

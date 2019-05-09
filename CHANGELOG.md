@@ -2,6 +2,49 @@
 
 ## [unreleased]
 
+## 17.5.2
+
+## 17.5.1
+
+### Fixed
+
+- Compactor does not ends in endless cycle when DB is opened with more than 4 times smaller split size than it was created.
+
+## 17.5.0
+
+### Added
+
+ODbDump has new commands
+
+- `leaks` which prints out unreachable objects in DB.
+- `frequency` which prints number of items in relations and top level dictionaries in singletons
+
+### Fixed
+
+ODBLayer correctly supports interfaces in properties.
+
+## 17.4.2
+
+### Fixed
+
+Additional nonderministic info removed from compare mode of ODbDump.
+
+## 17.4.1
+
+### Fixed
+
+ODbDump is now published in way it works not just on my machine.
+
+## 17.4.0
+
+### Added
+
+ODbDump is now part of release. ODbDump has new dump mode useful for comparing DBs.
+
+## 17.3.0
+
+RemoveById supports advanced enumeration param in relations
+
 ## 17.2.0
 
 ### Added

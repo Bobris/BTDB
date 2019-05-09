@@ -2382,6 +2382,62 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+        
+        public class ItemTask
+        {
+            [PrimaryKey(1)]
+            public ulong CompanyId { get; set; }
 
+            [PrimaryKey(2)]
+            public DateTime Expiration { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public interface IItemTaskTable: IReadOnlyCollection<ItemTask>
+        {
+            void Insert(ItemTask room);
+            int RemoveById(AdvancedEnumeratorParam<ulong> param);
+            int RemoveById(ulong companyId, AdvancedEnumeratorParam<DateTime> param);
+        }
+
+        [Fact]
+        public void RemoveByIdWithAdvancedEnumerator()
+        {
+            Func<IObjectDBTransaction, IItemTaskTable> creator;
+            var date = new DateTime(2019, 1, 24, 1, 0, 0, DateTimeKind.Utc);
+            
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IItemTaskTable>("ItemTask");
+                var items = creator(tr);
+                items.Insert(new ItemTask {CompanyId = 1, Expiration = date, Name = "1"});
+                items.Insert(new ItemTask {CompanyId = 1, Expiration = date + TimeSpan.FromDays(1), Name = "2"});
+                items.Insert(new ItemTask {CompanyId = 2, Expiration = date, Name = "1"});
+                items.Insert(new ItemTask {CompanyId = 2, Expiration = date + TimeSpan.FromDays(1), Name = "3"});
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var items = creator(tr);
+                var cnt = items.RemoveById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                    1, KeyProposition.Included,
+                    1 + 1, KeyProposition.Excluded));
+
+                Assert.Equal(2, cnt);
+                Assert.Equal(2, items.Count);
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var items = creator(tr);
+                var cnt = items.RemoveById(1, new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
+                    date, KeyProposition.Included,
+                    date + TimeSpan.FromDays(1), KeyProposition.Excluded));
+
+                Assert.Equal(1, cnt);
+            }
+        }
     }
 }

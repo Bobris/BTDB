@@ -92,7 +92,10 @@ namespace Releaser
                 outputLogLines.Insert(topVersionLine + 1, "");
                 if (Directory.Exists(projDir + "/BTDB/bin/Release"))
                     Directory.Delete(projDir + "/BTDB/bin/Release", true);
+                if (Directory.Exists(projDir + "/ODbDump/bin/Release"))
+                    Directory.Delete(projDir + "/ODbDump/bin/Release", true);
                 Build(projDir, newVersion);
+                BuildODbDump(projDir);
                 var client = new GitHubClient(new ProductHeaderValue("BTDB-releaser"));
                 client.SetRequestTimeout(TimeSpan.FromMinutes(15));
                 var fileNameOfToken = Environment.GetEnvironmentVariable("USERPROFILE") + "/.github/token.txt";
@@ -112,6 +115,7 @@ namespace Releaser
                 File.WriteAllText(projDir + "/CHANGELOG.md", string.Join("", outputLogLines.Select(s => s + '\n')));
                 Commands.Stage(gitrepo, "CHANGELOG.md");
                 Commands.Stage(gitrepo, "BTDB/BTDB.csproj");
+                Commands.Stage(gitrepo, "ODbDump/ODbDump.csproj");
                 var author = new LibGit2Sharp.Signature("Releaser", "boris.letocha@gmail.com", DateTime.Now);
                 var committer = author;
                 var commit = gitrepo.Commit("Released " + newVersion, author, committer);
@@ -131,8 +135,11 @@ namespace Releaser
                 var release2 = await client.Repository.Release.Create(BTDBRepo.Id, release);
                 Console.WriteLine("release url:");
                 Console.WriteLine(release2.HtmlUrl);
-                var uploadAsset = await UploadWithRetry(projDir, client, release2, "BTDB.zip");
+                var uploadAsset = await UploadWithRetry(projDir + "/BTDB/bin/Release/", client, release2, "BTDB.zip");
                 Console.WriteLine("BTDB url:");
+                Console.WriteLine(uploadAsset.BrowserDownloadUrl);
+                uploadAsset = await UploadWithRetry(projDir + "/ODbDump/bin/Release/", client, release2, "ODbDump.zip");
+                Console.WriteLine("ODbDump url:");
                 Console.WriteLine(uploadAsset.BrowserDownloadUrl);
                 Console.WriteLine("Press Enter for finish");
                 Console.ReadLine();
@@ -146,6 +153,10 @@ namespace Releaser
             var content = File.ReadAllText(fn);
             content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
             File.WriteAllText(fn, content, new UTF8Encoding(false));
+            fn = projDir + "/ODbDump/ODbDump.csproj";
+            content = File.ReadAllText(fn);
+            content = new Regex("<Version>.+</Version>").Replace(content, "<Version>" + newVersion + "</Version>");
+            File.WriteAllText(fn, content, new UTF8Encoding(false));
         }
 
         static async Task<ReleaseAsset> UploadWithRetry(string projDir, GitHubClient client, Release release2, string fileName)
@@ -154,7 +165,7 @@ namespace Releaser
             {
                 try
                 {
-                    return await client.Repository.Release.UploadAsset(release2, new ReleaseAssetUpload(fileName, "application/zip", File.OpenRead(projDir + "/BTDB/bin/Release/" + fileName), TimeSpan.FromMinutes(14)));
+                    return await client.Repository.Release.UploadAsset(release2, new ReleaseAssetUpload(fileName, "application/zip", File.OpenRead(projDir + fileName), TimeSpan.FromMinutes(14)));
                 }
                 catch (Exception)
                 {
@@ -169,8 +180,7 @@ namespace Releaser
             var start = new ProcessStartInfo("dotnet", "pack -c Release")
             {
                 UseShellExecute = true,
-                WorkingDirectory = projDir + "/BTDB",
-                
+                WorkingDirectory = projDir + "/BTDB"
             };
             var process = Process.Start(start);
             process.WaitForExit();
@@ -192,6 +202,19 @@ namespace Releaser
             };
             process = Process.Start(start);
             process.WaitForExit();
+        }
+
+        static void BuildODbDump(string projDir)
+        {
+            var start = new ProcessStartInfo("dotnet", "publish -c Release -f netcoreapp2.1")
+            {
+                UseShellExecute = true,
+                WorkingDirectory = projDir + "/ODbDump"
+            };
+            var process = Process.Start(start);
+            process.WaitForExit();
+            var source = projDir + "/ODbDump/bin/Release/netcoreapp2.1/publish";
+            System.IO.Compression.ZipFile.CreateFromDirectory(source, projDir + "/ODbDump/bin/Release/ODbDump.zip", System.IO.Compression.CompressionLevel.Optimal, false);
         }
     }
 }

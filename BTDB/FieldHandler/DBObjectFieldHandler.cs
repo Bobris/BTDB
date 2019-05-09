@@ -19,10 +19,19 @@ namespace BTDB.FieldHandler
             _objectDB = objectDB;
             _type = Unwrap(type);
             _indirect = _type != type;
-            _typeName = (_objectDB as ObjectDB)?.RegisterType(_type, false);
-            var writer = new ByteBufferWriter();
-            writer.WriteString(_typeName);
-            _configuration = writer.Data.ToByteArray();
+            if (_type.IsInterface)
+            {
+                _type = typeof(object);
+                _typeName = null;
+                _configuration = Array.Empty<byte>();
+            }
+            else
+            {
+                _typeName = (_objectDB as ObjectDB)?.RegisterType(_type, false);
+                var writer = new ByteBufferWriter();
+                writer.WriteString(_typeName);
+                _configuration = writer.Data.ToByteArray();
+            }
         }
 
         static Type Unwrap(Type type)
@@ -45,13 +54,32 @@ namespace BTDB.FieldHandler
         {
             _objectDB = objectDB;
             _configuration = configuration;
-            _typeName = string.Intern(new ByteArrayReader(configuration).ReadString());
-            _indirect = false;
+            if (configuration.Length == 0)
+            {
+                _typeName = null;
+            }
+            else
+            {
+                _typeName = string.Intern(new ByteArrayReader(configuration).ReadString());
+                _indirect = false;
+            }
             CreateType();
+        }
+
+        public DBObjectFieldHandler(IObjectDB objectDB, Type type, bool indirect) : this(objectDB, type)
+        {
+            _objectDB = objectDB;
+            _type = type;
+            _typeName = null;
+            _indirect = indirect;
         }
 
         Type CreateType()
         {
+            if (_typeName == null)
+            {
+                return _type = typeof(object);
+            }
             return _type = _objectDB.TypeByName(_typeName);
         }
 
@@ -126,6 +154,11 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
+            var needType = Unwrap(type);
+            if (needType.IsInterface)
+            {
+                return new DBObjectFieldHandler(_objectDB, needType, needType != type);
+            }
             if (this == typeHandler) return this;
             var myType = HandledType();
             if (type != myType && Unwrap(type) == myType && typeHandler.HandledType() == type)
@@ -135,6 +168,11 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
+            var needType = Unwrap(type);
+            if (needType.IsInterface)
+            {
+                return new DBObjectFieldHandler(_objectDB, needType, needType != type);
+            }
             return this;
         }
 
@@ -168,7 +206,7 @@ namespace BTDB.FieldHandler
         void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
         {
             //decides upon current version  (null for object types never stored in DB)
-            var tableInfo = ((ObjectDB) _objectDB).TablesInfo.FindByType(type);
+            var tableInfo = ((ObjectDB)_objectDB).TablesInfo.FindByType(type);
             var needsContentPartial = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
             Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
         }

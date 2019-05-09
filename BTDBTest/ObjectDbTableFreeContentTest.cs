@@ -861,8 +861,75 @@ namespace BTDBTest
             }
             AssertNoLeaksInDb();
         }
-        
-        
+
+        public class EmailMessage
+        {
+            public IDictionary<string, string> Bcc { get; set; }
+            public IDictionary<string, string> Cc { get; set; }
+            public IDictionary<string, string> To { get; set; }
+        }
+
+        public class EmailDb
+        {
+            public EmailMessage Content { get; set; }
+        }
+
+        public class BatchDb
+        {
+            [PrimaryKey(1)] 
+            public Guid ItemId { get; set; }
+            public IDictionary<Guid, EmailDb> MailPieces { get; set; }
+        }
+
+        public interface IBatchTable : IReadOnlyCollection<BatchDb>
+        {
+            void Insert(BatchDb batch);
+            void Update(BatchDb batch);
+            BatchDb FindByIdOrDefault(Guid itemId);
+        }
+
+        [Fact(Skip = "prepared for discussion")]
+        public void LeakCanBeMade()
+        {
+            Func<IObjectDBTransaction, IBatchTable> creator = null;
+            var guid = Guid.NewGuid();
+            var mailGuid = Guid.NewGuid();
+
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IBatchTable>("IBatchTable");
+                var table = creator(tr);
+                var batch = new BatchDb
+                {
+                    ItemId = guid,
+                    MailPieces = new Dictionary<Guid, EmailDb>
+                    {
+                        [mailGuid] = new EmailDb
+                        {
+                            Content = new EmailMessage
+                            {
+                                Bcc = new Dictionary<string, string> {["a"] = "b"},
+                                Cc = new Dictionary<string, string> {["c"] = "d"},
+                                To = new Dictionary<string, string> {["e"] = "f"}
+                            }
+                        }
+                    }
+                };
+                table.Insert(batch);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var table = creator(tr);
+                var batch = table.FindByIdOrDefault(guid);
+                batch.MailPieces[mailGuid] = null;  //LEAK - removed immediately from db, in table.Update don't have previous value 
+                table.Update(batch);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         void AssertNoLeaksInDb()
         {
             var leaks = FindLeaks();
