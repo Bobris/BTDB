@@ -743,6 +743,7 @@ namespace BTDB.KVDBLayer
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
                 _fileWithTransactionLog.Flush();
                 _fileWithTransactionLog.Truncate();
+                _compactorScheduler?.AdviceRunning(true); // <= Schedule randomly delayed DB compaction
             }
             lock (_writeLock)
             {

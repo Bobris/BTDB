@@ -35,7 +35,7 @@ namespace BTDB.KVDBLayer
         {
             _timer = new Timer(OnTimer);
             _firstTime = true;
-            WaitTime = TimeSpan.FromMinutes(10 + new Random().NextDouble() * 5);
+            WaitTime = TimeSpan.FromMinutes(30 + new Random().NextDouble() * 15);
         }
 
         public Func<CancellationToken, bool> AddCompactAction(Func<CancellationToken, bool> compactAction)

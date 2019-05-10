@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+- When preserving history KVDB did not advising compaction without restarting application.
+
+### Changed
+
+- Default CompactorScheduler wait time to 30-45 minutes.
+
 ## 17.5.2
 
 ## 17.5.1
