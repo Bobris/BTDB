@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.6.0
+
 ### Fixed
 
 - When preserving history KVDB did not advising compaction without restarting application.
