@@ -8,7 +8,6 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Linq;
-using System.Diagnostics;
 using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer

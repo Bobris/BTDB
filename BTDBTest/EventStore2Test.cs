@@ -5,7 +5,6 @@ using BTDB.EventStoreLayer;
 using Xunit;
 using static BTDBTest.EventStoreTest;
 using BTDB.FieldHandler;
-using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Linq;

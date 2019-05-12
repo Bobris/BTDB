@@ -307,5 +307,10 @@ namespace BTDB.ARTLib
         {
             _stack.Clear();
         }
+
+        public void IterateNodeInfo(Action<ArtNodeInfo> iterator)
+        {
+            _rootNode._impl.IterateNodeInfo(_rootNode._root, 0, iterator);
+        }
     }
 }

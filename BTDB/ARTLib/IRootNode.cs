@@ -5,7 +5,8 @@ namespace BTDB.ARTLib
 {
     public interface IRootNode: IRootNodeInternal, IDisposable
     {
-        void Reference();
+        // Return true if it should be disposed
+        bool Reference();
         bool Dereference();
         bool ShouldBeDisposed { get; }
 

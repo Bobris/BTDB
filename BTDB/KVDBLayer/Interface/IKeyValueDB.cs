@@ -6,7 +6,7 @@ namespace BTDB.KVDBLayer
 {
     public interface IKeyValueDB: IDisposable
     {
-        // Default are durable, not corrupting commits (true). In case of false and crash of OS or computer, database could became corrupted, and unopennable.
+        // Default are durable, not corrupting commits (true). In case of false and crash of OS or computer, transactions could lost, but it should be possible to open DB.
         bool DurableTransactions { get; set; }
 
         IKeyValueDBTransaction StartTransaction();

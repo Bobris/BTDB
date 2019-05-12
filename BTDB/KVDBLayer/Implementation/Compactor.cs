@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using BTDB.Collections;
-using BTDB.KVDBLayer.BTree;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.StreamLayer;
 

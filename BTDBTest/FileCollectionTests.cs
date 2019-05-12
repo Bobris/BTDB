@@ -3,8 +3,6 @@ using System.IO;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using Xunit;
-using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace BTDBTest
 {

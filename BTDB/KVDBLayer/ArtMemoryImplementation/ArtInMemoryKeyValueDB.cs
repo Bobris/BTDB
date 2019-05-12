@@ -44,16 +44,24 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBTransaction StartTransaction()
         {
-            var node = _lastCommited;
-            node.Reference();
-            return new ArtInMemoryKeyValueDBTransaction(this, node, false, false);
+            while (true)
+            {
+                var node = _lastCommited;
+                // Memory barrier inside next statement
+                if (!node.Reference())
+                    return new ArtInMemoryKeyValueDBTransaction(this, node, false, false);
+            }
         }
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
-            var node = _lastCommited;
-            node.Reference();
-            return new ArtInMemoryKeyValueDBTransaction(this, node, false, true);
+            while (true)
+            {
+                var node = _lastCommited;
+                // Memory barrier inside next statement
+                if (!node.Reference())
+                    return new ArtInMemoryKeyValueDBTransaction(this, node, false, true);
+            }
         }
 
         public Task<IKeyValueDBTransaction> StartWritingTransaction()

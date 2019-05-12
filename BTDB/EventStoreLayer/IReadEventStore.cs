@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace BTDB.EventStoreLayer
 {
     public interface IReadEventStore

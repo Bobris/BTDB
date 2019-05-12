@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using BTDB.ARTLib;
 using BTDB.Buffer;
-using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.KVDBLayer
 {

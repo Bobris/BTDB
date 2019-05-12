@@ -118,9 +118,18 @@ namespace BTDB.ARTLib
 
         public ulong[] UlongsArray => _ulongs;
 
-        public void Reference()
+        public bool Reference()
         {
-            Interlocked.Increment(ref _referenceCount);
+            while (true)
+            {
+                var original = Thread.VolatileRead(ref _referenceCount);
+                if (original == 0)
+                    return true;
+                if (Interlocked.CompareExchange(ref _referenceCount, original + 1, original) == original)
+                {
+                    return false;
+                }
+            }
         }
 
         public bool Dereference()

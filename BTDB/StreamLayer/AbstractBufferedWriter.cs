@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer

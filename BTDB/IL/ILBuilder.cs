@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using BTDB.IL.Caching;
 
 namespace BTDB.IL

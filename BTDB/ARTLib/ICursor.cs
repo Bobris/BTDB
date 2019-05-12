@@ -30,5 +30,6 @@ namespace BTDB.ARTLib
         void Erase();
         long EraseTo(ICursor to);
         void StructureCheck();
+        void IterateNodeInfo(Action<ArtNodeInfo> iterator);
     }
 }

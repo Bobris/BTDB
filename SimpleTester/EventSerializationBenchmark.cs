@@ -8,7 +8,6 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BTDB.Buffer;
 using BTDB.EventStore2Layer;
-using BTDB.StreamLayer;
 using FluentAssertions;
 using ProtoBuf.Meta;
 using SimpleTester.TestModel;
