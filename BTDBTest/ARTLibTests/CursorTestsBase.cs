@@ -18,7 +18,7 @@ namespace ARTLibTest
         public CursorTestsBase()
         {
             _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
-            _root = ARTImpl12.CreateEmptyRoot(_allocator, Is12);
+            _root = Is12 ? ARTImpl12.CreateEmptyRoot(_allocator) : ARTImplV.CreateEmptyRoot(_allocator);
             _cursor = _root.CreateCursor();
         }
 

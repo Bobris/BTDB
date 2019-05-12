@@ -41,7 +41,7 @@ namespace BTDB.ARTLib
             snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
             if (_writtable)
                 TransactionId++;
-            NodeUtils12.Reference(_root);
+            NodeUtilsV.Reference(_root);
             return snapshot;
         }
 
@@ -56,7 +56,7 @@ namespace BTDB.ARTLib
             node.TrLogFileId = TrLogFileId;
             node.TrLogOffset = TrLogOffset;
             node._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            NodeUtils12.Reference(_root);
+            NodeUtilsV.Reference(_root);
             return node;
         }
 
@@ -139,5 +139,4 @@ namespace BTDB.ARTLib
 
         public bool ShouldBeDisposed => _referenceCount == 0;
     }
-
 }

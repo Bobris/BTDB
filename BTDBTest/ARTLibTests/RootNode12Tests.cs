@@ -12,7 +12,7 @@ namespace ARTLibTest
         public RootNode12Tests()
         {
             _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
-            _impl = new ARTImpl12(_allocator, false);
+            _impl = new ARTImpl12(_allocator);
         }
 
         public void Dispose()
@@ -63,7 +63,5 @@ namespace ARTLibTest
                 }
             }
         }
-
     }
-
 }

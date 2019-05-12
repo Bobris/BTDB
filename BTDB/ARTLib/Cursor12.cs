@@ -51,8 +51,7 @@ namespace BTDB.ARTLib
         public void Erase()
         {
             AssertWrittable();
-            if (!IsValid())
-                throw new ArgumentException("Cursor must be valid", "this");
+            AssertValid();
             _rootNode._impl.EraseRange(_rootNode, ref _stack, ref _stack);
         }
 
@@ -61,13 +60,8 @@ namespace BTDB.ARTLib
         {
             if (!_rootNode._writtable)
             {
-                ThrowCursorNotWrittable();
+                ArtUtils.ThrowCursorNotWrittable();
             }
-        }
-
-        static void ThrowCursorNotWrittable()
-        {
-            throw new InvalidOperationException("Cursor not writtable");
         }
 
         public long EraseTo(ICursor to)
@@ -123,13 +117,8 @@ namespace BTDB.ARTLib
         {
             if (_stack.Count == 0)
             {
-                ThrowCursorHaveToBeValid();
+                ArtUtils.ThrowCursorHaveToBeValid();
             }
-        }
-
-        static void ThrowCursorHaveToBeValid()
-        {
-            throw new InvalidOperationException("Cursor must be valid for this operation");
         }
 
         public Span<byte> FillByKey(Span<byte> buffer)
@@ -217,16 +206,7 @@ namespace BTDB.ARTLib
         public int GetValueLength()
         {
             AssertValid();
-            if (_rootNode._impl.IsValue12)
-                return 12;
-            var stackItem = _stack[_stack.Count - 1];
-            if (stackItem._posInNode == -1)
-            {
-                var (size, _) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
-                return (int) size;
-            }
-
-            return (int) NodeUtils12.ReadLenFromPtr(NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode));
+            return 12;
         }
 
         public ReadOnlySpan<byte> GetValue()
@@ -243,20 +223,9 @@ namespace BTDB.ARTLib
             }
 
             var ptr2 = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
-            if (_rootNode._impl.IsValue12)
+            unsafe
             {
-                unsafe
-                {
-                    return new Span<byte>(ptr2.ToPointer(), 12);
-                }
-            }
-            else
-            {
-                var size2 = NodeUtils12.ReadLenFromPtr(ptr2);
-                unsafe
-                {
-                    return new Span<byte>(NodeUtils12.SkipLenFromPtr(ptr2).ToPointer(), (int) size2);
-                }
+                return new Span<byte>(ptr2.ToPointer(), 12);
             }
         }
 

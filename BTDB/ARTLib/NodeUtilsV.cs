@@ -7,79 +7,17 @@ namespace BTDB.ARTLib
     {
         internal static int BaseSize(NodeTypeV nodeType)
         {
-            switch (nodeType & NodeTypeV.NodeSizePtrMask)
+            switch (nodeType & NodeTypeV.NodeSizeMask)
             {
-                case NodeTypeV.NodeLeaf:
-                case NodeTypeV.NodeLeaf | NodeTypeV.Has12BPtrs:
-                    return 16;
+                case NodeTypeV.NodeLeaf: return 16;
                 case NodeTypeV.Node4: return 16 + 4 + 4 * 8;
-                case NodeTypeV.Node4 | NodeTypeV.Has12BPtrs: return 16 + 4 + 4 * 12;
                 case NodeTypeV.Node16: return 16 + 16 + 16 * 8;
-                case NodeTypeV.Node16 | NodeTypeV.Has12BPtrs: return 16 + 16 + 16 * 12;
                 case NodeTypeV.Node48: return 16 + 256 + 48 * 8;
-                case NodeTypeV.Node48 | NodeTypeV.Has12BPtrs: return 16 + 256 + 48 * 12;
                 case NodeTypeV.Node256: return 16 + 256 * 8;
-                case NodeTypeV.Node256 | NodeTypeV.Has12BPtrs: return 16 + 256 * 12;
                 default: throw new InvalidOperationException();
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe byte ReadByte(IntPtr ptr)
-        {
-            return *(byte*)ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteByte(IntPtr ptr, byte value)
-        {
-            *(byte*)ptr = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteByte(IntPtr ptr, int offset, byte value)
-        {
-            *(byte*)(ptr + offset) = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteInt32Alligned(IntPtr ptr, int value)
-        {
-            *(int*)ptr = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe int ReadInt32Alligned(IntPtr ptr)
-        {
-            return *(int*)ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe IntPtr ReadIntPtrUnalligned(IntPtr ptr)
-        {
-            return *(IntPtr*)ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteIntPtrUnalligned(IntPtr ptr, IntPtr value)
-        {
-            *(IntPtr*)ptr = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static IntPtr Read12Ptr(IntPtr childPtr)
-        {
-            return ReadIntPtrUnalligned(childPtr + sizeof(uint));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static bool IsPtr12Ptr(IntPtr childPtr)
-        {
-            unsafe
-            {
-                return *(uint*)childPtr == uint.MaxValue;
-            }
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsPtrPtr(IntPtr child)
@@ -90,25 +28,13 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr ReadPtr(IntPtr ptr)
         {
-            return ReadIntPtrUnalligned(ptr);
+            return ArtUtils.ReadIntPtrUnaligned(ptr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe ref NodeHeaderV Ptr2NodeHeader(IntPtr pointerInt)
         {
             return ref *(NodeHeaderV*)pointerInt;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static IntPtr AlignPtrUpInt32(IntPtr ptr)
-        {
-            return ptr + (((~(int)ptr.ToInt64()) + 1) & 3);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static uint AlignUIntUpInt32(uint ptr)
-        {
-            return ptr + (((~ptr) + 1) & 3);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -129,10 +55,10 @@ namespace BTDB.ARTLib
             var ptr = nodePtr + baseSize;
             if (size == 0xffff)
             {
-                size = (uint)ReadInt32Alligned(ptr);
+                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
                 ptr += sizeof(uint);
             }
-            if ((header._nodeType & (NodeTypeV.IsLeaf | NodeTypeV.Has12BPtrs)) == NodeTypeV.IsLeaf)
+            if (header._nodeType.HasFlag(NodeTypeV.IsLeaf))
             {
                 ptr += sizeof(uint);
             }
@@ -148,12 +74,12 @@ namespace BTDB.ARTLib
             {
                 var baseSize = BaseSize(header._nodeType);
                 var ptr = nodePtr + baseSize;
-                size = (uint)ReadInt32Alligned(ptr);
+                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
             }
             return size;
         }
 
-        internal static (uint Size, IntPtr Ptr) GetValueSizeAndPtr(IntPtr nodePtr)
+        internal static unsafe (uint Size, IntPtr Ptr) GetValueSizeAndPtr(IntPtr nodePtr)
         {
             ref NodeHeaderV header = ref Ptr2NodeHeader(nodePtr);
             var baseSize = BaseSize(header._nodeType);
@@ -161,55 +87,39 @@ namespace BTDB.ARTLib
             var ptr = nodePtr + baseSize;
             if (prefixSize == 0xffff)
             {
-                unsafe { prefixSize = *(uint*)ptr; };
+                prefixSize = *(uint*)ptr;
                 ptr += sizeof(uint);
             }
             uint size;
-            if ((header._nodeType & (NodeTypeV.IsLeaf | NodeTypeV.Has12BPtrs)) == NodeTypeV.IsLeaf)
-            {
-                unsafe { size = *(uint*)ptr; };
-                ptr += sizeof(uint);
-                ptr += (int)prefixSize;
-            }
-            else
-            {
-                size = 12;
-                ptr += (int)prefixSize;
-                ptr = AlignPtrUpInt32(ptr);
-            }
+            size = *(uint*)ptr;
+            ptr += sizeof(uint);
+            ptr += (int)prefixSize;
             return (size, ptr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint ReadLenFromPtr(IntPtr ptr)
         {
-            AssertLittleEndian();
+            ArtUtils.AssertLittleEndian();
             unsafe { return ((uint)*(byte*)ptr.ToPointer()) >> 1; }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr SkipLenFromPtr(IntPtr ptr)
         {
-            AssertLittleEndian();
-            return ptr + 1;
+            return ptr + (BitConverter.IsLittleEndian ? 1 : 0);
         }
 
         internal static IntPtr PtrInNode(IntPtr node, int posInNode)
         {
             var nodeType = Ptr2NodeHeader(node)._nodeType;
-            switch (nodeType & NodeTypeV.NodeSizePtrMask)
+            switch (nodeType & NodeTypeV.NodeSizeMask)
             {
-                case NodeTypeV.NodeLeaf:
-                case NodeTypeV.NodeLeaf | NodeTypeV.Has12BPtrs:
-                    return node + 16;
+                case NodeTypeV.NodeLeaf: return node + 16;
                 case NodeTypeV.Node4: return node + 16 + 4 + posInNode * 8;
-                case NodeTypeV.Node4 | NodeTypeV.Has12BPtrs: return node + 16 + 4 + posInNode * 12;
                 case NodeTypeV.Node16: return node + 16 + 16 + posInNode * 8;
-                case NodeTypeV.Node16 | NodeTypeV.Has12BPtrs: return node + 16 + 16 + posInNode * 12;
                 case NodeTypeV.Node48: return node + 16 + 256 + posInNode * 8;
-                case NodeTypeV.Node48 | NodeTypeV.Has12BPtrs: return node + 16 + 256 + posInNode * 12;
                 case NodeTypeV.Node256: return node + 16 + posInNode * 8;
-                case NodeTypeV.Node256 | NodeTypeV.Has12BPtrs: return node + 16 + posInNode * 12;
                 default: throw new InvalidOperationException();
             }
         }
@@ -224,15 +134,6 @@ namespace BTDB.ARTLib
                 case NodeTypeV.Node48: return 48;
                 case NodeTypeV.Node256: return 256;
                 default: throw new InvalidOperationException();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void AssertLittleEndian()
-        {
-            if (!BitConverter.IsLittleEndian)
-            {
-                throw new NotSupportedException("Only Little Endian platform supported");
             }
         }
     }

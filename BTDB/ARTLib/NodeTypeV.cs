@@ -22,8 +22,6 @@ namespace BTDB.ARTLib
         Node48 = 4,
         Node256 = 5,
         NodeSizeMask = 7,
-        Has12BPtrs = 8,
-        NodeSizePtrMask = 15,
         IsLeaf = 16
     }
 }

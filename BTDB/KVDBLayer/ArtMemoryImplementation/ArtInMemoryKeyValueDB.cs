@@ -20,7 +20,7 @@ namespace BTDB.KVDBLayer
 
         public ArtInMemoryKeyValueDB(IOffHeapAllocator allocator)
         {
-            _lastCommited = ARTImpl12.CreateEmptyRoot(allocator, false);
+            _lastCommited = ARTImplV.CreateEmptyRoot(allocator);
             _lastCommited.Commit();
         }
 
