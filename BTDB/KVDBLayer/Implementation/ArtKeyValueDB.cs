@@ -893,18 +893,30 @@ namespace BTDB.KVDBLayer
 
         public IKeyValueDBTransaction StartTransaction()
         {
-            var node = _lastCommited;
-            node.Reference();
-            _usedNodesInReadonlyTransactions.TryAdd(node, true);
-            return new ArtKeyValueDBTransaction(this, node, false, false);
+            while (true)
+            {
+                var node = _lastCommited;
+                // Memory barrier inside next statement
+                if (!node.Reference())
+                {
+                    _usedNodesInReadonlyTransactions.TryAdd(node, true);
+                    return new ArtKeyValueDBTransaction(this, node, false, false);
+                }
+            }
         }
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
-            var node = _lastCommited;
-            node.Reference();
-            _usedNodesInReadonlyTransactions.TryAdd(node, true);
-            return new ArtKeyValueDBTransaction(this, node, false, true);
+            while (true)
+            {
+                var node = _lastCommited;
+                // Memory barrier inside next statement
+                if (!node.Reference())
+                {
+                    _usedNodesInReadonlyTransactions.TryAdd(node, true);
+                    return new ArtKeyValueDBTransaction(this, node, false, true);
+                }
+            }
         }
 
         public Task<IKeyValueDBTransaction> StartWritingTransaction()
