@@ -1,3 +1,4 @@
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Diagnostics;
@@ -7,13 +8,13 @@ using System.Runtime.InteropServices;
 
 namespace BTDB.ARTLib
 {
-    public class ARTImpl
+    public class ARTImpl12
     {
         internal readonly bool IsValue12;
         readonly IOffHeapAllocator _allocator;
         internal readonly int PtrSize;
 
-        internal ARTImpl(IOffHeapAllocator allocator, bool isValue12)
+        internal ARTImpl12(IOffHeapAllocator allocator, bool isValue12)
         {
             _allocator = allocator;
             IsValue12 = isValue12;
@@ -22,32 +23,32 @@ namespace BTDB.ARTLib
 
         public static IRootNode CreateEmptyRoot(IOffHeapAllocator allocator, bool isValue12)
         {
-            return new RootNode(new ARTImpl(allocator, isValue12));
+            return new RootNode12(new ARTImpl12(allocator, isValue12));
         }
 
-        unsafe internal IntPtr AllocateNode(NodeType nodeType, uint keyPrefixLength, uint valueLength)
+        unsafe internal IntPtr AllocateNode(NodeType12 nodeType, uint keyPrefixLength, uint valueLength)
         {
             IntPtr node;
             int baseSize;
             if (IsValue12)
             {
-                nodeType = nodeType | NodeType.Has12BPtrs;
-                baseSize = NodeUtils.BaseSize(nodeType);
-                var size = baseSize + NodeUtils.AlignUIntUpInt32(keyPrefixLength) +
-                           (nodeType.HasFlag(NodeType.IsLeaf) ? 12 : 0);
+                nodeType = nodeType | NodeType12.Has12BPtrs;
+                baseSize = NodeUtils12.BaseSize(nodeType);
+                var size = baseSize + NodeUtils12.AlignUIntUpInt32(keyPrefixLength) +
+                           (nodeType.HasFlag(NodeType12.IsLeaf) ? 12 : 0);
                 if (keyPrefixLength >= 0xffff) size += 4;
                 node = _allocator.Allocate((IntPtr)size);
             }
             else
             {
-                baseSize = NodeUtils.BaseSize(nodeType);
-                var size = baseSize + keyPrefixLength + (nodeType.HasFlag(NodeType.IsLeaf) ? valueLength : 0);
+                baseSize = NodeUtils12.BaseSize(nodeType);
+                var size = baseSize + keyPrefixLength + (nodeType.HasFlag(NodeType12.IsLeaf) ? valueLength : 0);
                 if (keyPrefixLength >= 0xffff) size += 4;
-                if (nodeType.HasFlag(NodeType.IsLeaf)) size += 4;
+                if (nodeType.HasFlag(NodeType12.IsLeaf)) size += 4;
                 node = _allocator.Allocate((IntPtr)size);
             }
 
-            ref var nodeHeader = ref NodeUtils.Ptr2NodeHeader(node);
+            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeader(node);
             nodeHeader._nodeType = nodeType;
             nodeHeader._childCount = 0;
             nodeHeader._referenceCount = 1;
@@ -64,17 +65,17 @@ namespace BTDB.ARTLib
                 nodeHeader._keyPrefixLength = (ushort)keyPrefixLength;
             }
 
-            if (!IsValue12 && nodeType.HasFlag(NodeType.IsLeaf))
+            if (!IsValue12 && nodeType.HasFlag(NodeType12.IsLeaf))
             {
                 *(uint*)(node + baseSize).ToPointer() = valueLength;
             }
 
-            if ((nodeType & NodeType.NodeSizeMask) == NodeType.Node48)
+            if ((nodeType & NodeType12.NodeSizeMask) == NodeType12.Node48)
             {
                 Unsafe.InitBlock((node + 16).ToPointer(), 255, 256);
             }
 
-            if ((nodeType & NodeType.NodeSizePtrMask) == (NodeType.Node256 | NodeType.Has12BPtrs))
+            if ((nodeType & NodeType12.NodeSizePtrMask) == (NodeType12.Node256 | NodeType12.Has12BPtrs))
             {
                 var p = (uint*)(node + 16).ToPointer();
                 for (var i = 0; i < 256; i++)
@@ -87,7 +88,7 @@ namespace BTDB.ARTLib
             return node;
         }
 
-        internal long EraseRange(RootNode rootNode, ref StructList<CursorItem> left, ref StructList<CursorItem> right)
+        internal long EraseRange(RootNode12 rootNode, ref StructList<CursorItem> left, ref StructList<CursorItem> right)
         {
             var isUnique = true;
             var leftIndex = 0u;
@@ -114,7 +115,7 @@ namespace BTDB.ARTLib
                         goto up;
                     }
 
-                    if (NodeUtils.Ptr2NodeHeader(leftItem._node)._referenceCount > 1)
+                    if (NodeUtils12.Ptr2NodeHeader(leftItem._node)._referenceCount > 1)
                         isUnique = false;
                     leftIndex++;
                     rightIndex++;
@@ -122,7 +123,7 @@ namespace BTDB.ARTLib
                 }
 
                 var downUnique = isUnique;
-                if (NodeUtils.Ptr2NodeHeader(leftItem._node)._referenceCount > 1)
+                if (NodeUtils12.Ptr2NodeHeader(leftItem._node)._referenceCount > 1)
                     downUnique = false;
                 var leftNode = IntPtr.Zero;
                 var rightNode = IntPtr.Zero;
@@ -166,7 +167,7 @@ namespace BTDB.ARTLib
         {
             var downDownUnique = downUnique;
             var node = span[0]._node;
-            if (NodeUtils.Ptr2NodeHeader(node)._referenceCount > 1)
+            if (NodeUtils12.Ptr2NodeHeader(node)._referenceCount > 1)
                 downDownUnique = false;
             var newNode = IntPtr.Zero;
             var children = 0L;
@@ -185,31 +186,31 @@ namespace BTDB.ARTLib
 
         (short pos, byte @byte) GetStartPosAndByte(IntPtr node)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(node);
-            if (header._nodeType.HasFlag(NodeType.IsLeaf))
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            if (header._nodeType.HasFlag(NodeType12.IsLeaf))
             {
                 return (-1, 0);
             }
 
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.Node4:
-                case NodeType.Node16:
-                    return (0, NodeUtils.ReadByte(node + 16));
-                case NodeType.Node48:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
+                    return (0, NodeUtils12.ReadByte(node + 16));
+                case NodeType12.Node48:
                     for (var i = 0; i < 256; i++)
                     {
-                        var pos = NodeUtils.ReadByte(node + 16 + i);
+                        var pos = NodeUtils12.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
                     }
 
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (var i = 0; i < 256; i++)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(node, i), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(node, i), out var ptr))
                         {
                             if (ptr == IntPtr.Zero)
                                 continue;
@@ -226,26 +227,26 @@ namespace BTDB.ARTLib
 
         (short pos, byte @byte) GetStartPosAndByteSkipLeaf(IntPtr node)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(node);
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.Node4:
-                case NodeType.Node16:
-                    return (0, NodeUtils.ReadByte(node + 16));
-                case NodeType.Node48:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
+                    return (0, NodeUtils12.ReadByte(node + 16));
+                case NodeType12.Node48:
                     for (var i = 0; i < 256; i++)
                     {
-                        var pos = NodeUtils.ReadByte(node + 16 + i);
+                        var pos = NodeUtils12.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
                     }
 
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (var i = 0; i < 256; i++)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(node, i), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(node, i), out var ptr))
                         {
                             if (ptr == IntPtr.Zero)
                                 continue;
@@ -264,7 +265,7 @@ namespace BTDB.ARTLib
         {
             var downDownUnique = downUnique;
             var node = span[0]._node;
-            if (NodeUtils.Ptr2NodeHeader(node)._referenceCount > 1)
+            if (NodeUtils12.Ptr2NodeHeader(node)._referenceCount > 1)
                 downDownUnique = false;
             var newNode = IntPtr.Zero;
             var children = 0L;
@@ -283,31 +284,31 @@ namespace BTDB.ARTLib
 
         (short pos, byte @byte) GetEndPosAndByte(IntPtr node)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(node);
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.NodeLeaf:
+                case NodeType12.NodeLeaf:
                     return (-1, 0);
-                case NodeType.Node4:
-                case NodeType.Node16:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
                     {
                         var pos = header._childCount - 1;
-                        return ((short)pos, NodeUtils.ReadByte(node + 16 + pos));
+                        return ((short)pos, NodeUtils12.ReadByte(node + 16 + pos));
                     }
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     for (var i = 255; i >= 0; i--)
                     {
-                        var pos = NodeUtils.ReadByte(node + 16 + i);
+                        var pos = NodeUtils12.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
                     }
 
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (var i = 255; i >= 0; i--)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(node, i), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(node, i), out var ptr))
                         {
                             if (ptr == IntPtr.Zero)
                                 continue;
@@ -325,15 +326,15 @@ namespace BTDB.ARTLib
         (IntPtr newNode, long children) EraseRangeFromNode(bool canBeInplace, IntPtr node, short leftPos, byte leftByte,
             IntPtr leftNode, short rightPos, byte rightByte, IntPtr rightNode)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(node);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
             if (header._referenceCount > 1)
                 canBeInplace = false;
-            if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+            if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
             {
                 return (IntPtr.Zero, 1);
             }
 
-            var willBeIsLeaf = header._nodeType.HasFlag(NodeType.IsLeaf) && (leftPos > -1);
+            var willBeIsLeaf = header._nodeType.HasFlag(NodeType12.IsLeaf) && (leftPos > -1);
             var willBeChildCount = header.ChildCount;
             var children = 0L;
             if (leftPos == -1)
@@ -342,16 +343,16 @@ namespace BTDB.ARTLib
                 (leftPos, leftByte) = GetStartPosAndByteSkipLeaf(node);
             }
 
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.Node4:
-                case NodeType.Node16:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
                     for (var i = leftPos; i <= rightPos; i++)
                     {
                         willBeChildCount--;
-                        if (IsPtr(NodeUtils.PtrInNode(node, i), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(node, i), out var ptr))
                         {
-                            children += (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                            children += (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                         }
                         else
                         {
@@ -360,7 +361,7 @@ namespace BTDB.ARTLib
                     }
 
                     break;
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     unsafe
                     {
                         var span = new Span<byte>((node + 16).ToPointer(), 256);
@@ -369,9 +370,9 @@ namespace BTDB.ARTLib
                             if (span[i] == 255)
                                 continue;
                             willBeChildCount--;
-                            if (IsPtr(NodeUtils.PtrInNode(node, span[i]), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(node, span[i]), out var ptr))
                             {
-                                children += (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                                children += (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                             }
                             else
                             {
@@ -381,14 +382,14 @@ namespace BTDB.ARTLib
                     }
 
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (int j = leftByte; j <= rightByte; j++)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(node, j), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(node, j), out var ptr))
                         {
                             if (ptr == IntPtr.Zero)
                                 continue;
-                            children += (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                            children += (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                         }
                         else
                         {
@@ -403,13 +404,13 @@ namespace BTDB.ARTLib
 
             if (leftNode != IntPtr.Zero)
             {
-                children -= (long)NodeUtils.Ptr2NodeHeader(leftNode)._recursiveChildCount;
+                children -= (long)NodeUtils12.Ptr2NodeHeader(leftNode)._recursiveChildCount;
                 willBeChildCount++;
             }
 
             if (rightNode != IntPtr.Zero)
             {
-                children -= (long)NodeUtils.Ptr2NodeHeader(rightNode)._recursiveChildCount;
+                children -= (long)NodeUtils12.Ptr2NodeHeader(rightNode)._recursiveChildCount;
                 willBeChildCount++;
             }
 
@@ -418,46 +419,46 @@ namespace BTDB.ARTLib
                 return (IntPtr.Zero, children);
             }
 
-            var newNodeType = NodeType.NodeLeaf;
+            var newNodeType = NodeType12.NodeLeaf;
             if (willBeChildCount > 48)
             {
-                newNodeType = NodeType.Node256;
+                newNodeType = NodeType12.Node256;
             }
             else if (willBeChildCount > 16)
             {
-                newNodeType = NodeType.Node48;
+                newNodeType = NodeType12.Node48;
             }
             else if (willBeChildCount > 4)
             {
-                newNodeType = NodeType.Node16;
+                newNodeType = NodeType12.Node16;
             }
             else if ((willBeChildCount > 1) || (willBeChildCount == 1 && willBeIsLeaf))
             {
-                newNodeType = NodeType.Node4;
+                newNodeType = NodeType12.Node4;
             }
 
             if (willBeIsLeaf)
             {
-                newNodeType |= NodeType.IsLeaf;
+                newNodeType |= NodeType12.IsLeaf;
             }
 
-            newNodeType |= header._nodeType & NodeType.Has12BPtrs;
+            newNodeType |= header._nodeType & NodeType12.Has12BPtrs;
             if (canBeInplace && header._nodeType == newNodeType)
             {
-                switch (newNodeType & NodeType.NodeSizeMask)
+                switch (newNodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         {
                             if (leftNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, leftPos), leftNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, leftPos), leftNode);
                                 leftPos++;
                             }
 
                             if (rightNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, rightPos), rightNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, rightPos), rightNode);
                                 rightPos--;
                             }
 
@@ -465,28 +466,28 @@ namespace BTDB.ARTLib
                             {
                                 for (var i = leftPos; i <= rightPos; i++)
                                 {
-                                    WritePtrInNode(NodeUtils.PtrInNode(node, i), IntPtr.Zero);
+                                    WritePtrInNode(NodeUtils12.PtrInNode(node, i), IntPtr.Zero);
                                 }
 
                                 MoveMemory(node + 16 + rightPos + 1, node + 16 + leftPos,
                                     header._childCount - rightPos - 1);
-                                MoveMemory(NodeUtils.PtrInNode(node, rightPos + 1), NodeUtils.PtrInNode(node, leftPos),
+                                MoveMemory(NodeUtils12.PtrInNode(node, rightPos + 1), NodeUtils12.PtrInNode(node, leftPos),
                                     (header._childCount - rightPos - 1) * PtrSize);
                             }
 
                             break;
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         {
                             if (leftNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, leftPos), leftNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, leftPos), leftNode);
                                 leftByte++;
                             }
 
                             if (rightNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, rightPos), rightNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, rightPos), rightNode);
                                 rightByte--;
                             }
 
@@ -505,7 +506,7 @@ namespace BTDB.ARTLib
                                         {
                                             bytePtrs[i] = 255;
                                             // Just to decrease reference count
-                                            WritePtrInNode(NodeUtils.PtrInNode(node, idx), IntPtr.Zero);
+                                            WritePtrInNode(NodeUtils12.PtrInNode(node, idx), IntPtr.Zero);
                                         }
                                         else
                                         {
@@ -522,17 +523,17 @@ namespace BTDB.ARTLib
 
                             break;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         {
                             if (leftNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, leftPos), leftNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, leftPos), leftNode);
                                 leftByte++;
                             }
 
                             if (rightNode != IntPtr.Zero)
                             {
-                                WritePtrInNode(NodeUtils.PtrInNode(node, rightPos), rightNode);
+                                WritePtrInNode(NodeUtils12.PtrInNode(node, rightPos), rightNode);
                                 rightByte--;
                             }
 
@@ -540,7 +541,7 @@ namespace BTDB.ARTLib
                             {
                                 for (int i = leftByte; i <= rightByte; i++)
                                 {
-                                    WritePtrInNode(NodeUtils.PtrInNode(node, i), IntPtr.Zero);
+                                    WritePtrInNode(NodeUtils12.PtrInNode(node, i), IntPtr.Zero);
                                 }
                             }
 
@@ -569,25 +570,25 @@ namespace BTDB.ARTLib
                 }
                 else
                 {
-                    switch (header._nodeType & NodeType.NodeSizeMask)
+                    switch (header._nodeType & NodeType12.NodeSizeMask)
                     {
-                        case NodeType.Node4:
-                        case NodeType.Node16:
+                        case NodeType12.Node4:
+                        case NodeType12.Node16:
                             {
                                 if (leftPos > 0)
                                 {
-                                    onlyByte = NodeUtils.ReadByte(node + 16);
-                                    onlyPtr = NodeUtils.PtrInNode(node, 0);
+                                    onlyByte = NodeUtils12.ReadByte(node + 16);
+                                    onlyPtr = NodeUtils12.PtrInNode(node, 0);
                                 }
                                 else
                                 {
-                                    onlyByte = NodeUtils.ReadByte(node + 16 + rightPos + 1);
-                                    onlyPtr = NodeUtils.PtrInNode(node, rightPos + 1);
+                                    onlyByte = NodeUtils12.ReadByte(node + 16 + rightPos + 1);
+                                    onlyPtr = NodeUtils12.PtrInNode(node, rightPos + 1);
                                 }
 
                                 break;
                             }
-                        case NodeType.Node48:
+                        case NodeType12.Node48:
                             {
                                 for (var i = 0; i < 256; i++)
                                 {
@@ -597,16 +598,16 @@ namespace BTDB.ARTLib
                                         continue;
                                     }
 
-                                    var idx = NodeUtils.ReadByte(node + 16 + i);
+                                    var idx = NodeUtils12.ReadByte(node + 16 + i);
                                     if (idx == 255) continue;
                                     onlyByte = (byte)i;
-                                    onlyPtr = NodeUtils.PtrInNode(node, idx);
+                                    onlyPtr = NodeUtils12.PtrInNode(node, idx);
                                     break;
                                 }
 
                                 break;
                             }
-                        case NodeType.Node256:
+                        case NodeType12.Node256:
                             {
                                 for (int i = 0; i < 256; i++)
                                 {
@@ -616,14 +617,14 @@ namespace BTDB.ARTLib
                                         continue;
                                     }
 
-                                    if (IsPtr(NodeUtils.PtrInNode(node, i), out var j))
+                                    if (IsPtr(NodeUtils12.PtrInNode(node, i), out var j))
                                     {
                                         if (j == IntPtr.Zero)
                                             continue;
                                     }
 
                                     onlyByte = (byte)i;
-                                    onlyPtr = NodeUtils.PtrInNode(node, i);
+                                    onlyPtr = NodeUtils12.PtrInNode(node, i);
                                     break;
                                 }
 
@@ -634,21 +635,21 @@ namespace BTDB.ARTLib
                     if (IsPtr(onlyPtr, out var ptr))
                     {
                         onlyPtr = ptr;
-                        NodeUtils.Reference(onlyPtr);
+                        NodeUtils12.Reference(onlyPtr);
                     }
                     else
                     {
-                        var (prefixSize, prefixPtr) = NodeUtils.GetPrefixSizeAndPtr(node);
+                        var (prefixSize, prefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(node);
                         var (valueSize, valuePtr) = GetValueSizeAndPtrFromPtrInNode(onlyPtr);
                         var newNode =
-                            AllocateNode(NodeType.NodeLeaf | NodeType.IsLeaf | (IsValue12 ? NodeType.Has12BPtrs : 0),
+                            AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf | (IsValue12 ? NodeType12.Has12BPtrs : 0),
                                 prefixSize + 1, valueSize);
-                        var (newPrefixSize, newPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+                        var (newPrefixSize, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                         CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
-                        NodeUtils.WriteByte(newPrefixPtr + (int)prefixSize, onlyByte);
+                        NodeUtils12.WriteByte(newPrefixPtr + (int)prefixSize, onlyByte);
                         if (valueSize > 0)
                         {
-                            var (newValueSize, newValuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                            var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                             CopyMemory(valuePtr, newValuePtr, (int)valueSize);
                         }
 
@@ -658,11 +659,11 @@ namespace BTDB.ARTLib
 
                 // scope for consistent local variable names
                 {
-                    var (prefixSize, prefixPtr) = NodeUtils.GetPrefixSizeAndPtr(node);
+                    var (prefixSize, prefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(node);
                     var newNode = CloneNodeWithKeyPrefixCut(onlyPtr, -(int)(prefixSize + 1));
-                    var (newPrefixSize, newPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+                    var (newPrefixSize, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                     CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
-                    NodeUtils.WriteByte(newPrefixPtr, (int)prefixSize, onlyByte);
+                    NodeUtils12.WriteByte(newPrefixPtr, (int)prefixSize, onlyByte);
                     Dereference(onlyPtr);
                     return (newNode, children);
                 }
@@ -670,32 +671,32 @@ namespace BTDB.ARTLib
 
             // scope for consistent local variable names
             {
-                var (prefixSize, prefixPtr) = NodeUtils.GetPrefixSizeAndPtr(node);
-                var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(node);
+                var (prefixSize, prefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(node);
+                var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(node);
                 var newNode = AllocateNode(newNodeType, prefixSize, valueSize);
                 if (prefixSize > 0)
                 {
-                    var (newPrefixSize, newPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+                    var (newPrefixSize, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                     CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
                 }
 
                 if (willBeIsLeaf)
                 {
-                    var (newValueSize, newValuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                    var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                     CopyMemory(valuePtr, newValuePtr, (int)valueSize);
                 }
 
                 if (willBeChildCount == 0)
                 {
-                    NodeUtils.Ptr2NodeHeader(newNode)._recursiveChildCount = 1;
+                    NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = 1;
                     return (newNode, children);
                 }
 
                 Pusher pusher = new Pusher(newNode, newNodeType);
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         {
                             for (var i = 0; i < header._childCount; i++)
                             {
@@ -712,12 +713,12 @@ namespace BTDB.ARTLib
                                     continue;
                                 }
 
-                                pusher.Push(NodeUtils.ReadByte(node + 16 + i), NodeUtils.PtrInNode(node, i));
+                                pusher.Push(NodeUtils12.ReadByte(node + 16 + i), NodeUtils12.PtrInNode(node, i));
                             }
 
                             break;
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         {
                             unsafe
                             {
@@ -739,13 +740,13 @@ namespace BTDB.ARTLib
                                         continue;
                                     }
 
-                                    pusher.Push((byte)i, NodeUtils.PtrInNode(node, idx));
+                                    pusher.Push((byte)i, NodeUtils12.PtrInNode(node, idx));
                                 }
                             }
 
                             break;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         {
                             for (var i = 0; i < 256; i++)
                             {
@@ -762,20 +763,20 @@ namespace BTDB.ARTLib
                                     continue;
                                 }
 
-                                if (IsPtr(NodeUtils.PtrInNode(node, i), out var j))
+                                if (IsPtr(NodeUtils12.PtrInNode(node, i), out var j))
                                 {
                                     if (j == IntPtr.Zero)
                                         continue;
                                 }
 
-                                pusher.Push((byte)i, NodeUtils.PtrInNode(node, i));
+                                pusher.Push((byte)i, NodeUtils12.PtrInNode(node, i));
                             }
 
                             break;
                         }
                 }
 
-                ref var newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+                ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
                 newHeader._childCount = (byte)willBeChildCount;
                 newHeader._recursiveChildCount = header._recursiveChildCount - (ulong)children;
                 return (newNode, children);
@@ -789,61 +790,61 @@ namespace BTDB.ARTLib
             readonly int _type;
             int _idx;
 
-            public Pusher(IntPtr node, NodeType nodeType)
+            public Pusher(IntPtr node, NodeType12 nodeType)
             {
                 _idx = 0;
-                switch (nodeType & NodeType.NodeSizePtrMask)
+                switch (nodeType & NodeType12.NodeSizePtrMask)
                 {
-                    case NodeType.Node4:
+                    case NodeType12.Node4:
                         {
                             _type = 0;
                             _byteDst = node + 16;
                             _dst = node + 16 + 4;
                             break;
                         }
-                    case NodeType.Node4 | NodeType.Has12BPtrs:
+                    case NodeType12.Node4 | NodeType12.Has12BPtrs:
                         {
                             _type = 1;
                             _byteDst = node + 16;
                             _dst = node + 16 + 4;
                             break;
                         }
-                    case NodeType.Node16:
+                    case NodeType12.Node16:
                         {
                             _type = 0;
                             _byteDst = node + 16;
                             _dst = node + 16 + 16;
                             break;
                         }
-                    case NodeType.Node16 | NodeType.Has12BPtrs:
+                    case NodeType12.Node16 | NodeType12.Has12BPtrs:
                         {
                             _type = 1;
                             _byteDst = node + 16;
                             _dst = node + 16 + 16;
                             break;
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         {
                             _type = 2;
                             _byteDst = node + 16;
                             _dst = node + 16 + 256;
                             break;
                         }
-                    case NodeType.Node48 | NodeType.Has12BPtrs:
+                    case NodeType12.Node48 | NodeType12.Has12BPtrs:
                         {
                             _type = 3;
                             _byteDst = node + 16;
                             _dst = node + 16 + 256;
                             break;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         {
                             _type = 4;
                             _byteDst = node;
                             _dst = node + 16;
                             break;
                         }
-                    case NodeType.Node256 | NodeType.Has12BPtrs:
+                    case NodeType12.Node256 | NodeType12.Has12BPtrs:
                         {
                             _type = 5;
                             _byteDst = node;
@@ -861,47 +862,47 @@ namespace BTDB.ARTLib
                 {
                     case 0:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte);
+                            NodeUtils12.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            NodeUtils.WriteIntPtrUnalligned(_dst, ptr);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst, ptr);
                             _dst += 8;
                             break;
                         }
                     case 1:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte);
+                            NodeUtils12.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            NodeUtils.WriteInt32Alligned(_dst, unchecked((int)uint.MaxValue));
-                            NodeUtils.WriteIntPtrUnalligned(_dst + 4, ptr);
+                            NodeUtils12.WriteInt32Alligned(_dst, unchecked((int)uint.MaxValue));
+                            NodeUtils12.WriteIntPtrUnalligned(_dst + 4, ptr);
                             _dst += 12;
                             break;
                         }
                     case 2:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            NodeUtils12.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            NodeUtils.WriteIntPtrUnalligned(_dst, ptr);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst, ptr);
                             _dst += 8;
                             break;
                         }
                     case 3:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            NodeUtils12.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            NodeUtils.WriteInt32Alligned(_dst, unchecked((int)uint.MaxValue));
-                            NodeUtils.WriteIntPtrUnalligned(_dst + 4, ptr);
+                            NodeUtils12.WriteInt32Alligned(_dst, unchecked((int)uint.MaxValue));
+                            NodeUtils12.WriteIntPtrUnalligned(_dst + 4, ptr);
                             _dst += 12;
                             break;
                         }
                     case 4:
                         {
-                            NodeUtils.WriteIntPtrUnalligned(_dst + 8 * @byte, ptr);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst + 8 * @byte, ptr);
                             break;
                         }
                     case 5:
                         {
-                            NodeUtils.WriteInt32Alligned(_dst + 12 * @byte, unchecked((int)uint.MaxValue));
-                            NodeUtils.WriteIntPtrUnalligned(_dst + 4 + 12 * @byte, ptr);
+                            NodeUtils12.WriteInt32Alligned(_dst + 12 * @byte, unchecked((int)uint.MaxValue));
+                            NodeUtils12.WriteIntPtrUnalligned(_dst + 4 + 12 * @byte, ptr);
                             break;
                         }
                 }
@@ -913,66 +914,66 @@ namespace BTDB.ARTLib
                 {
                     case 0:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte);
+                            NodeUtils12.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            var p = NodeUtils.ReadIntPtrUnalligned(source);
-                            NodeUtils.WriteIntPtrUnalligned(_dst, p);
-                            if (NodeUtils.IsPtrPtr(p))
-                                NodeUtils.Reference(p);
+                            var p = NodeUtils12.ReadIntPtrUnalligned(source);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst, p);
+                            if (NodeUtils12.IsPtrPtr(p))
+                                NodeUtils12.Reference(p);
                             _dst += 8;
                             break;
                         }
                     case 1:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte);
+                            NodeUtils12.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            NodeUtils.WriteInt32Alligned(_dst, NodeUtils.ReadInt32Alligned(source));
-                            NodeUtils.WriteInt32Alligned(_dst + 4, NodeUtils.ReadInt32Alligned(source + 4));
-                            NodeUtils.WriteInt32Alligned(_dst + 8, NodeUtils.ReadInt32Alligned(source + 8));
-                            if (NodeUtils.IsPtr12Ptr(source))
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(source));
+                            NodeUtils12.WriteInt32Alligned(_dst, NodeUtils12.ReadInt32Alligned(source));
+                            NodeUtils12.WriteInt32Alligned(_dst + 4, NodeUtils12.ReadInt32Alligned(source + 4));
+                            NodeUtils12.WriteInt32Alligned(_dst + 8, NodeUtils12.ReadInt32Alligned(source + 8));
+                            if (NodeUtils12.IsPtr12Ptr(source))
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(source));
                             _dst += 12;
                             break;
                         }
                     case 2:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            NodeUtils12.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            var p = NodeUtils.ReadIntPtrUnalligned(source);
-                            NodeUtils.WriteIntPtrUnalligned(_dst, p);
-                            if (NodeUtils.IsPtrPtr(p))
-                                NodeUtils.Reference(p);
+                            var p = NodeUtils12.ReadIntPtrUnalligned(source);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst, p);
+                            if (NodeUtils12.IsPtrPtr(p))
+                                NodeUtils12.Reference(p);
                             _dst += 8;
                             break;
                         }
                     case 3:
                         {
-                            NodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            NodeUtils12.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            NodeUtils.WriteInt32Alligned(_dst, NodeUtils.ReadInt32Alligned(source));
-                            NodeUtils.WriteInt32Alligned(_dst + 4, NodeUtils.ReadInt32Alligned(source + 4));
-                            NodeUtils.WriteInt32Alligned(_dst + 8, NodeUtils.ReadInt32Alligned(source + 8));
-                            if (NodeUtils.IsPtr12Ptr(source))
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(source));
+                            NodeUtils12.WriteInt32Alligned(_dst, NodeUtils12.ReadInt32Alligned(source));
+                            NodeUtils12.WriteInt32Alligned(_dst + 4, NodeUtils12.ReadInt32Alligned(source + 4));
+                            NodeUtils12.WriteInt32Alligned(_dst + 8, NodeUtils12.ReadInt32Alligned(source + 8));
+                            if (NodeUtils12.IsPtr12Ptr(source))
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(source));
                             _dst += 12;
                             break;
                         }
                     case 4:
                         {
-                            var p = NodeUtils.ReadIntPtrUnalligned(source);
-                            NodeUtils.WriteIntPtrUnalligned(_dst + 8 * @byte, p);
-                            if (NodeUtils.IsPtrPtr(p))
-                                NodeUtils.Reference(p);
+                            var p = NodeUtils12.ReadIntPtrUnalligned(source);
+                            NodeUtils12.WriteIntPtrUnalligned(_dst + 8 * @byte, p);
+                            if (NodeUtils12.IsPtrPtr(p))
+                                NodeUtils12.Reference(p);
                             break;
                         }
                     case 5:
                         {
                             var ofs = 12 * @byte;
-                            NodeUtils.WriteInt32Alligned(_dst + ofs, NodeUtils.ReadInt32Alligned(source));
-                            NodeUtils.WriteInt32Alligned(_dst + ofs + 4, NodeUtils.ReadInt32Alligned(source + 4));
-                            NodeUtils.WriteInt32Alligned(_dst + ofs + 8, NodeUtils.ReadInt32Alligned(source + 8));
-                            if (NodeUtils.IsPtr12Ptr(source))
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(source));
+                            NodeUtils12.WriteInt32Alligned(_dst + ofs, NodeUtils12.ReadInt32Alligned(source));
+                            NodeUtils12.WriteInt32Alligned(_dst + ofs + 4, NodeUtils12.ReadInt32Alligned(source + 4));
+                            NodeUtils12.WriteInt32Alligned(_dst + ofs + 8, NodeUtils12.ReadInt32Alligned(source + 8));
+                            if (NodeUtils12.IsPtr12Ptr(source))
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(source));
                             break;
                         }
                 }
@@ -990,21 +991,21 @@ namespace BTDB.ARTLib
                 ref var stackItem = ref stack[(uint)i];
                 if (stackItem._posInNode == -1)
                     return res;
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
-                if (header._nodeType.HasFlag(NodeType.IsLeaf))
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+                if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                     res++;
-                switch (header._nodeType & NodeType.NodeSizePtrMask)
+                switch (header._nodeType & NodeType12.NodeSizePtrMask)
                 {
-                    case NodeType.Node4:
+                    case NodeType12.Node4:
                         {
                             var ptrInNode = stackItem._node + 16 + 4;
                             var limit = ptrInNode + stackItem._posInNode * 8;
                             for (; ptrInNode != limit; ptrInNode += 8)
                             {
-                                var child = NodeUtils.ReadPtr(ptrInNode);
-                                if (NodeUtils.IsPtrPtr(child))
+                                var child = NodeUtils12.ReadPtr(ptrInNode);
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(child)._recursiveChildCount;
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(child)._recursiveChildCount;
                                 }
                                 else
                                 {
@@ -1013,15 +1014,15 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node4 | NodeType.Has12BPtrs:
+                    case NodeType12.Node4 | NodeType12.Has12BPtrs:
                         {
                             var ptrInNode = stackItem._node + 16 + 4;
                             var limit = ptrInNode + stackItem._posInNode * 12;
                             for (; ptrInNode != limit; ptrInNode += 12)
                             {
-                                if (NodeUtils.IsPtr12Ptr(ptrInNode))
+                                if (NodeUtils12.IsPtr12Ptr(ptrInNode))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(NodeUtils.Read12Ptr(ptrInNode))
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(NodeUtils12.Read12Ptr(ptrInNode))
                                         ._recursiveChildCount;
                                 }
                                 else
@@ -1031,16 +1032,16 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node16:
+                    case NodeType12.Node16:
                         {
                             var ptrInNode = stackItem._node + 16 + 16;
                             var limit = ptrInNode + stackItem._posInNode * 8;
                             for (; ptrInNode != limit; ptrInNode += 8)
                             {
-                                var child = NodeUtils.ReadPtr(ptrInNode);
-                                if (NodeUtils.IsPtrPtr(child))
+                                var child = NodeUtils12.ReadPtr(ptrInNode);
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(child)._recursiveChildCount;
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(child)._recursiveChildCount;
                                 }
                                 else
                                 {
@@ -1049,15 +1050,15 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node16 | NodeType.Has12BPtrs:
+                    case NodeType12.Node16 | NodeType12.Has12BPtrs:
                         {
                             var ptrInNode = stackItem._node + 16 + 16;
                             var limit = ptrInNode + stackItem._posInNode * 12;
                             for (; ptrInNode != limit; ptrInNode += 12)
                             {
-                                if (NodeUtils.IsPtr12Ptr(ptrInNode))
+                                if (NodeUtils12.IsPtr12Ptr(ptrInNode))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(NodeUtils.Read12Ptr(ptrInNode))
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(NodeUtils12.Read12Ptr(ptrInNode))
                                         ._recursiveChildCount;
                                 }
                                 else
@@ -1067,7 +1068,7 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((stackItem._node + 16).ToPointer(), stackItem._byte);
@@ -1076,10 +1077,10 @@ namespace BTDB.ARTLib
                                 if (span[j] == 255)
                                     continue;
                                 var ptrInNode = stackItem._node + 16 + 256 + span[j] * 8;
-                                var child = NodeUtils.ReadPtr(ptrInNode);
-                                if (NodeUtils.IsPtrPtr(child))
+                                var child = NodeUtils12.ReadPtr(ptrInNode);
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(child)._recursiveChildCount;
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(child)._recursiveChildCount;
                                 }
                                 else
                                 {
@@ -1089,7 +1090,7 @@ namespace BTDB.ARTLib
                         }
 
                         break;
-                    case NodeType.Node48 | NodeType.Has12BPtrs:
+                    case NodeType12.Node48 | NodeType12.Has12BPtrs:
                         unsafe
                         {
                             var span = new Span<byte>((stackItem._node + 16).ToPointer(), stackItem._byte);
@@ -1098,9 +1099,9 @@ namespace BTDB.ARTLib
                                 if (span[j] == 255)
                                     continue;
                                 var ptrInNode = stackItem._node + 16 + 256 + span[j] * 12;
-                                if (NodeUtils.IsPtr12Ptr(ptrInNode))
+                                if (NodeUtils12.IsPtr12Ptr(ptrInNode))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(NodeUtils.Read12Ptr(ptrInNode))
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(NodeUtils12.Read12Ptr(ptrInNode))
                                         ._recursiveChildCount;
                                 }
                                 else
@@ -1111,18 +1112,18 @@ namespace BTDB.ARTLib
                         }
 
                         break;
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         {
                             var ptrInNode = stackItem._node + 16;
                             var limit = ptrInNode + stackItem._posInNode * 8;
                             for (; ptrInNode != limit; ptrInNode += 8)
                             {
-                                var child = NodeUtils.ReadPtr(ptrInNode);
+                                var child = NodeUtils12.ReadPtr(ptrInNode);
                                 if (child == IntPtr.Zero)
                                     continue;
-                                if (NodeUtils.IsPtrPtr(child))
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
-                                    res += (long)NodeUtils.Ptr2NodeHeader(child)._recursiveChildCount;
+                                    res += (long)NodeUtils12.Ptr2NodeHeader(child)._recursiveChildCount;
                                 }
                                 else
                                 {
@@ -1131,17 +1132,17 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node256 | NodeType.Has12BPtrs:
+                    case NodeType12.Node256 | NodeType12.Has12BPtrs:
                         {
                             var ptrInNode = stackItem._node + 16;
                             var limit = ptrInNode + stackItem._posInNode * 12;
                             for (; ptrInNode != limit; ptrInNode += 12)
                             {
-                                if (NodeUtils.IsPtr12Ptr(ptrInNode))
+                                if (NodeUtils12.IsPtr12Ptr(ptrInNode))
                                 {
-                                    var child = NodeUtils.Read12Ptr(ptrInNode);
+                                    var child = NodeUtils12.Read12Ptr(ptrInNode);
                                     if (child != IntPtr.Zero)
-                                        res += (long)NodeUtils.Ptr2NodeHeader(child)._recursiveChildCount;
+                                        res += (long)NodeUtils12.Ptr2NodeHeader(child)._recursiveChildCount;
                                 }
                                 else
                                 {
@@ -1166,11 +1167,11 @@ namespace BTDB.ARTLib
             var keyOffset = 0u;
             while (true)
             {
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
                 if (index >= (long)header._recursiveChildCount)
                     return false;
-                keyOffset += NodeUtils.GetPrefixSize(top);
-                if (header._nodeType.HasFlag(NodeType.IsLeaf))
+                keyOffset += NodeUtils12.GetPrefixSize(top);
+                if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                 {
                     if (index == 0)
                     {
@@ -1182,18 +1183,18 @@ namespace BTDB.ARTLib
                 }
 
                 keyOffset++;
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         for (int j = 0; j < header._childCount; j++)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(top, j), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(top, j), out var ptr))
                             {
-                                var rcc = (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                                var rcc = (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                 if (index < rcc)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, NodeUtils.ReadByte(top + 16 + j));
+                                    stack.Add().Set(top, keyOffset, (short)j, NodeUtils12.ReadByte(top + 16 + j));
                                     top = ptr;
                                     break;
                                 }
@@ -1204,7 +1205,7 @@ namespace BTDB.ARTLib
                             {
                                 if (index == 0)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, NodeUtils.ReadByte(top + 16 + j));
+                                    stack.Add().Set(top, keyOffset, (short)j, NodeUtils12.ReadByte(top + 16 + j));
                                     return true;
                                 }
 
@@ -1213,7 +1214,7 @@ namespace BTDB.ARTLib
                         }
 
                         break;
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((top + 16).ToPointer(), 256);
@@ -1221,9 +1222,9 @@ namespace BTDB.ARTLib
                             {
                                 if (span[j] == 255)
                                     continue;
-                                if (IsPtr(NodeUtils.PtrInNode(top, span[j]), out var ptr))
+                                if (IsPtr(NodeUtils12.PtrInNode(top, span[j]), out var ptr))
                                 {
-                                    var rcc = (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                                    var rcc = (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                     if (index < rcc)
                                     {
                                         stack.Add().Set(top, keyOffset, span[j], (byte)j);
@@ -1247,14 +1248,14 @@ namespace BTDB.ARTLib
                         }
 
                         break;
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         for (int j = 0; j < 256; j++)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(top, j), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(top, j), out var ptr))
                             {
                                 if (ptr == IntPtr.Zero)
                                     continue;
-                                var rcc = (long)NodeUtils.Ptr2NodeHeader(ptr)._recursiveChildCount;
+                                var rcc = (long)NodeUtils12.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                 if (index < rcc)
                                 {
                                     stack.Add().Set(top, keyOffset, (short)j, (byte)j);
@@ -1286,14 +1287,14 @@ namespace BTDB.ARTLib
             while (stack.Count > 0)
             {
                 ref var stackItem = ref stack[stack.Count - 1];
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 if (stackItem._posInNode == -1) stackItem._keyOffset++;
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.NodeLeaf:
+                    case NodeType12.NodeLeaf:
                         goto up;
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         {
                             if (stackItem._posInNode == header._childCount - 1)
                             {
@@ -1301,10 +1302,10 @@ namespace BTDB.ARTLib
                             }
 
                             stackItem._posInNode++;
-                            stackItem._byte = NodeUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
+                            stackItem._byte = NodeUtils12.ReadByte(stackItem._node + 16 + stackItem._posInNode);
                             goto down;
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((stackItem._node + 16).ToPointer(), 256);
@@ -1319,10 +1320,10 @@ namespace BTDB.ARTLib
 
                             goto up;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         for (int j = (stackItem._posInNode == -1) ? 0 : (stackItem._byte + 1); j < 256; j++)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(stackItem._node, j), out var ptr2))
+                            if (IsPtr(NodeUtils12.PtrInNode(stackItem._node, j), out var ptr2))
                             {
                                 if (ptr2 == IntPtr.Zero)
                                 {
@@ -1344,7 +1345,7 @@ namespace BTDB.ARTLib
                 }
 
             down:
-                if (IsPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
+                if (IsPtr(NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
                 {
                     PushLeftMost(ptr, (int)stackItem._keyOffset, ref stack);
                 }
@@ -1362,16 +1363,16 @@ namespace BTDB.ARTLib
             while (stack.Count > 0)
             {
                 ref var stackItem = ref stack[stack.Count - 1];
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 if (stackItem._posInNode == -1)
                 {
                     goto trullyUp;
                 }
 
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         {
                             if (stackItem._posInNode == 0)
                             {
@@ -1379,10 +1380,10 @@ namespace BTDB.ARTLib
                             }
 
                             stackItem._posInNode--;
-                            stackItem._byte = NodeUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
+                            stackItem._byte = NodeUtils12.ReadByte(stackItem._node + 16 + stackItem._posInNode);
                             goto down;
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((stackItem._node + 16).ToPointer(), 256);
@@ -1397,10 +1398,10 @@ namespace BTDB.ARTLib
 
                             goto up;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         for (int j = stackItem._byte - 1; j >= 0; j--)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(stackItem._node, j), out var ptr2))
+                            if (IsPtr(NodeUtils12.PtrInNode(stackItem._node, j), out var ptr2))
                             {
                                 if (ptr2 == IntPtr.Zero)
                                 {
@@ -1417,14 +1418,14 @@ namespace BTDB.ARTLib
                 }
 
             down:
-                if (IsPtr(NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
+                if (IsPtr(NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode), out var ptr))
                 {
                     PushRightMost(ptr, (int)stackItem._keyOffset, ref stack);
                 }
 
                 return true;
             up:
-                if (header._nodeType.HasFlag(NodeType.IsLeaf))
+                if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                 {
                     stackItem._posInNode = -1;
                     stackItem._keyOffset--;
@@ -1441,8 +1442,8 @@ namespace BTDB.ARTLib
 
         internal IntPtr CloneNode(IntPtr nodePtr)
         {
-            ref NodeHeader header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils.BaseSize(header._nodeType);
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType);
             var prefixSize = (uint)header._keyPrefixLength;
             var ptr = nodePtr + baseSize;
             if (prefixSize == 0xffff)
@@ -1456,9 +1457,9 @@ namespace BTDB.ARTLib
                 ptr += sizeof(uint);
             }
 
-            if ((header._nodeType & NodeType.IsLeaf) == NodeType.IsLeaf)
+            if ((header._nodeType & NodeType12.IsLeaf) == NodeType12.IsLeaf)
             {
-                if ((header._nodeType & (NodeType.IsLeaf | NodeType.Has12BPtrs)) == NodeType.IsLeaf)
+                if ((header._nodeType & (NodeType12.IsLeaf | NodeType12.Has12BPtrs)) == NodeType12.IsLeaf)
                 {
                     unsafe
                     {
@@ -1472,7 +1473,7 @@ namespace BTDB.ARTLib
                 else
                 {
                     ptr += (int)prefixSize;
-                    ptr = NodeUtils.AlignPtrUpInt32(ptr);
+                    ptr = NodeUtils12.AlignPtrUpInt32(ptr);
                     ptr += 12;
                 }
             }
@@ -1488,7 +1489,7 @@ namespace BTDB.ARTLib
                 System.Buffer.MemoryCopy(nodePtr.ToPointer(), newNode.ToPointer(), size.ToInt64(), size.ToInt64());
             }
 
-            ref NodeHeader newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+            ref NodeHeader12 newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
             newHeader._referenceCount = 1;
             ReferenceAllChildren(newNode);
             return newNode;
@@ -1506,31 +1507,31 @@ namespace BTDB.ARTLib
 
         unsafe IntPtr ExpandNode(IntPtr nodePtr)
         {
-            ref NodeHeader header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(nodePtr);
-            var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(nodePtr);
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
+            var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(nodePtr);
             var newNodeType = header._nodeType + 1;
             var newNode = AllocateNode(newNodeType, keyPrefixSize, valueSize);
-            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
-            if (newNodeType.HasFlag(NodeType.IsLeaf))
+            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
+            if (newNodeType.HasFlag(NodeType12.IsLeaf))
             {
-                var (newValueSize, newValuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                 CopyMemory(valuePtr, newValuePtr, (int)valueSize);
             }
 
             CopyMemory(keyPrefixPtr, newKeyPrefixPtr, (int)keyPrefixSize);
-            ref NodeHeader newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+            ref NodeHeader12 newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
             newHeader._childCount = header._childCount;
             newHeader._recursiveChildCount = header._recursiveChildCount;
-            switch (newNodeType & NodeType.NodeSizeMask)
+            switch (newNodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.Node16:
+                case NodeType12.Node16:
                     {
                         CopyMemory(nodePtr + 16, newNode + 16, 4);
-                        CopyMemory(NodeUtils.PtrInNode(nodePtr, 0), NodeUtils.PtrInNode(newNode, 0), 4 * PtrSize);
+                        CopyMemory(NodeUtils12.PtrInNode(nodePtr, 0), NodeUtils12.PtrInNode(newNode, 0), 4 * PtrSize);
                         break;
                     }
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     {
                         var srcBytesPtr = (byte*)(nodePtr + 16).ToPointer();
                         var dstBytesPtr = (byte*)(newNode + 16).ToPointer();
@@ -1539,17 +1540,17 @@ namespace BTDB.ARTLib
                             dstBytesPtr[srcBytesPtr[i]] = (byte)i;
                         }
 
-                        CopyMemory(NodeUtils.PtrInNode(nodePtr, 0), NodeUtils.PtrInNode(newNode, 0), 16 * PtrSize);
+                        CopyMemory(NodeUtils12.PtrInNode(nodePtr, 0), NodeUtils12.PtrInNode(newNode, 0), 16 * PtrSize);
                         break;
                     }
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     {
                         var srcBytesPtr = (byte*)(nodePtr + 16).ToPointer();
                         for (var i = 0; i < 256; i++)
                         {
                             var pos = srcBytesPtr[i];
                             if (pos == 255) continue;
-                            CopyMemory(NodeUtils.PtrInNode(nodePtr, pos), NodeUtils.PtrInNode(newNode, i), PtrSize);
+                            CopyMemory(NodeUtils12.PtrInNode(nodePtr, pos), NodeUtils12.PtrInNode(newNode, i), PtrSize);
                         }
 
                         break;
@@ -1564,14 +1565,14 @@ namespace BTDB.ARTLib
 
         IntPtr CloneNodeWithKeyPrefixCut(IntPtr nodePtr, int skipPrefix)
         {
-            ref NodeHeader header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils.BaseSize(header._nodeType);
-            var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(nodePtr);
-            var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(nodePtr);
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
+            var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(nodePtr);
             var newNode = AllocateNode(header._nodeType, (uint)(keyPrefixSize - skipPrefix), valueSize);
-            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
-            var (newValueSize, newValuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
-            ref NodeHeader newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
+            var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
+            ref NodeHeader12 newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
             var backupNewKeyPrefix = newHeader._keyPrefixLength;
             unsafe
             {
@@ -1587,7 +1588,7 @@ namespace BTDB.ARTLib
                         .CopyTo(new Span<byte>(newKeyPrefixPtr.ToPointer(), (int)newKeyPrefixSize));
                 }
 
-                if (header._nodeType.HasFlag(NodeType.IsLeaf))
+                if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                 {
                     new Span<byte>(valuePtr.ToPointer(), (int)valueSize).CopyTo(new Span<byte>(newValuePtr.ToPointer(),
                         (int)newValueSize));
@@ -1602,21 +1603,21 @@ namespace BTDB.ARTLib
 
         IntPtr CloneNodeWithValueResize(IntPtr nodePtr, int length)
         {
-            ref NodeHeader header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils.BaseSize(header._nodeType);
-            var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(nodePtr);
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
             var newNodeType = header._nodeType;
             if (length < 0)
             {
-                newNodeType = newNodeType & (~NodeType.IsLeaf);
+                newNodeType = newNodeType & (~NodeType12.IsLeaf);
             }
             else
             {
-                newNodeType = newNodeType | NodeType.IsLeaf;
+                newNodeType = newNodeType | NodeType12.IsLeaf;
             }
 
             var newNode = AllocateNode(newNodeType, keyPrefixSize, (uint)(length < 0 ? 0 : length));
-            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
             unsafe
             {
                 new Span<byte>(nodePtr.ToPointer(), baseSize).CopyTo(new Span<byte>(newNode.ToPointer(), baseSize));
@@ -1624,7 +1625,7 @@ namespace BTDB.ARTLib
                     new Span<byte>(newKeyPrefixPtr.ToPointer(), (int)newKeyPrefixSize));
             }
 
-            ref NodeHeader newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+            ref NodeHeader12 newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
             newHeader._nodeType = newNodeType;
             newHeader._referenceCount = 1;
             ReferenceAllChildren(newNode);
@@ -1633,117 +1634,117 @@ namespace BTDB.ARTLib
 
         void ReferenceAllChildren(IntPtr node)
         {
-            ref var nodeHeader = ref NodeUtils.Ptr2NodeHeader(node);
-            switch (nodeHeader._nodeType & NodeType.NodeSizePtrMask)
+            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeader(node);
+            switch (nodeHeader._nodeType & NodeType12.NodeSizePtrMask)
             {
-                case NodeType.NodeLeaf:
-                case NodeType.NodeLeaf | NodeType.Has12BPtrs:
+                case NodeType12.NodeLeaf:
+                case NodeType12.NodeLeaf | NodeType12.Has12BPtrs:
                     // does not contain any pointers
                     break;
-                case NodeType.Node4:
+                case NodeType12.Node4:
                     {
                         var p = node + 16 + 4;
                         var limit = p + nodeHeader._childCount * 8;
                         for (; p != limit; p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
-                                NodeUtils.Reference(child);
+                                NodeUtils12.Reference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node4 | NodeType.Has12BPtrs:
+                case NodeType12.Node4 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 4;
                         var limit = p + nodeHeader._childCount * 12;
                         for (; p != limit; p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(p));
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node16:
+                case NodeType12.Node16:
                     {
                         var p = node + 16 + 16;
                         var limit = p + nodeHeader._childCount * 8;
                         for (; p != limit; p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
-                                NodeUtils.Reference(child);
+                                NodeUtils12.Reference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node16 | NodeType.Has12BPtrs:
+                case NodeType12.Node16 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 16;
                         var limit = p + nodeHeader._childCount * 12;
                         for (; p != limit; p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(p));
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     {
                         var p = node + 16 + 256;
                         var limit = p + nodeHeader._childCount * 8;
                         for (; p != limit; p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
-                                NodeUtils.Reference(child);
+                                NodeUtils12.Reference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node48 | NodeType.Has12BPtrs:
+                case NodeType12.Node48 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 256;
                         var limit = p + nodeHeader._childCount * 12;
                         for (; p != limit; p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(p));
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     {
                         var p = node + 16;
                         var limit = p + 256 * 8;
                         for (; p != limit; p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
-                                NodeUtils.Reference(child);
+                                NodeUtils12.Reference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node256 | NodeType.Has12BPtrs:
+                case NodeType12.Node256 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16;
                         var limit = p + 256 * 12;
                         for (; p != limit; p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                NodeUtils.Reference(NodeUtils.Read12Ptr(p));
+                                NodeUtils12.Reference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
@@ -1756,110 +1757,110 @@ namespace BTDB.ARTLib
         {
             if (node == IntPtr.Zero)
                 return;
-            ref var nodeHeader = ref NodeUtils.Ptr2NodeHeader(node);
+            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeader(node);
             if (!nodeHeader.Dereference()) return;
-            switch (nodeHeader._nodeType & NodeType.NodeSizePtrMask)
+            switch (nodeHeader._nodeType & NodeType12.NodeSizePtrMask)
             {
-                case NodeType.NodeLeaf:
-                case NodeType.NodeLeaf | NodeType.Has12BPtrs:
+                case NodeType12.NodeLeaf:
+                case NodeType12.NodeLeaf | NodeType12.Has12BPtrs:
                     // does not contain any pointers
                     break;
-                case NodeType.Node4:
+                case NodeType12.Node4:
                     {
                         var p = node + 16 + 4;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 Dereference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node4 | NodeType.Has12BPtrs:
+                case NodeType12.Node4 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 4;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                Dereference(NodeUtils.Read12Ptr(p));
+                                Dereference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node16:
+                case NodeType12.Node16:
                     {
                         var p = node + 16 + 16;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 Dereference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node16 | NodeType.Has12BPtrs:
+                case NodeType12.Node16 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 16;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                Dereference(NodeUtils.Read12Ptr(p));
+                                Dereference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     {
                         var p = node + 16 + 256;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 Dereference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node48 | NodeType.Has12BPtrs:
+                case NodeType12.Node48 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16 + 256;
                         for (var i = 0; i < nodeHeader._childCount; i++, p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                Dereference(NodeUtils.Read12Ptr(p));
+                                Dereference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
                     break;
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     {
                         var p = node + 16;
                         for (var i = 0; i < 256; i++, p += 8)
                         {
-                            var child = NodeUtils.ReadPtr(p);
-                            if (NodeUtils.IsPtrPtr(child))
+                            var child = NodeUtils12.ReadPtr(p);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 Dereference(child);
                             }
                         }
                     }
                     break;
-                case NodeType.Node256 | NodeType.Has12BPtrs:
+                case NodeType12.Node256 | NodeType12.Has12BPtrs:
                     {
                         var p = node + 16;
                         for (var i = 0; i < 256; i++, p += 12)
                         {
-                            if (NodeUtils.IsPtr12Ptr(p))
+                            if (NodeUtils12.IsPtr12Ptr(p))
                             {
-                                Dereference(NodeUtils.Read12Ptr(p));
+                                Dereference(NodeUtils12.Read12Ptr(p));
                             }
                         }
                     }
@@ -1879,7 +1880,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        internal void WriteValue(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> content)
+        internal void WriteValue(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> content)
         {
             if (IsValue12)
             {
@@ -1888,7 +1889,7 @@ namespace BTDB.ARTLib
                 ref var stackItem = ref stack[stack.Count - 1];
                 if (stackItem._posInNode == -1)
                 {
-                    var ptr = NodeUtils.GetValueSizeAndPtr(stackItem._node).Ptr;
+                    var ptr = NodeUtils12.GetValueSizeAndPtr(stackItem._node).Ptr;
                     unsafe
                     {
                         content.CopyTo(new Span<byte>(ptr.ToPointer(), 12));
@@ -1896,7 +1897,7 @@ namespace BTDB.ARTLib
                 }
                 else
                 {
-                    var ptr = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
+                    var ptr = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
                     unsafe
                     {
                         content.CopyTo(new Span<byte>(ptr.ToPointer(), 12));
@@ -1908,7 +1909,7 @@ namespace BTDB.ARTLib
                 ref var stackItem = ref stack[stack.Count - 1];
                 if (stackItem._posInNode == -1)
                 {
-                    var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
+                    var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                     if (size == content.Length)
                     {
                         MakeUnique(rootNode, stack.AsSpan());
@@ -1919,7 +1920,7 @@ namespace BTDB.ARTLib
                     }
 
                     stackItem = ref stack[stack.Count - 1];
-                    (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
+                    (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                     unsafe
                     {
                         content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -1935,10 +1936,10 @@ namespace BTDB.ARTLib
                     else
                     {
                         stackItem = ref stack.Add();
-                        stackItem.Set(AllocateNode(NodeType.NodeLeaf | NodeType.IsLeaf, 0, (uint)content.Length),
+                        stackItem.Set(AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, 0, (uint)content.Length),
                             stack[stack.Count - 1]._keyOffset, -1, 0);
                         WritePtrInNode(stack[stack.Count - 2], stackItem._node);
-                        var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
+                        var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                         unsafe
                         {
                             content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -1948,12 +1949,12 @@ namespace BTDB.ARTLib
             }
         }
 
-        void MakeUniqueLastResize(RootNode rootNode, ref StructList<CursorItem> stack, int length)
+        void MakeUniqueLastResize(RootNode12 rootNode, ref StructList<CursorItem> stack, int length)
         {
             for (int i = 0; i < stack.Count; i++)
             {
                 ref var stackItem = ref stack[(uint)i];
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 if (header._referenceCount == 1 && i != stack.Count - 1)
                     continue;
                 IntPtr newNode;
@@ -1970,7 +1971,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        void MakeUniqueAndOverwriteIfNeeded(RootNode rootNode, in Span<CursorItem> stack, IntPtr newNode)
+        void MakeUniqueAndOverwriteIfNeeded(RootNode12 rootNode, in Span<CursorItem> stack, IntPtr newNode)
         {
             if (stack.Length == 0)
             {
@@ -1980,21 +1981,21 @@ namespace BTDB.ARTLib
             else
             {
                 ref var stackItem = ref stack[stack.Length - 1];
-                var ptr = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
+                var ptr = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
                 if (IsPtr(ptr, out var ptrTo) && ptrTo == newNode)
                     return;
                 MakeUnique(rootNode, stack);
-                ptr = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
+                ptr = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
                 WritePtrInNode(ptr, newNode);
             }
         }
 
-        void MakeUnique(RootNode rootNode, Span<CursorItem> stack)
+        void MakeUnique(RootNode12 rootNode, Span<CursorItem> stack)
         {
             for (int i = 0; i < stack.Length; i++)
             {
                 ref var stackItem = ref stack[i];
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 if (header._referenceCount == 1)
                     continue;
                 var newNode = CloneNode(stackItem._node);
@@ -2002,7 +2003,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        void OverwriteNodePtrInStack(RootNode rootNode, Span<CursorItem> stack, int i, IntPtr newNode)
+        void OverwriteNodePtrInStack(RootNode12 rootNode, Span<CursorItem> stack, int i, IntPtr newNode)
         {
             ref var stackItem = ref stack[i];
             stackItem._node = newNode;
@@ -2020,14 +2021,14 @@ namespace BTDB.ARTLib
         void WritePtrAndByteInNode(in CursorItem stackItem, IntPtr newNode)
         {
             WritePtrInNode(stackItem, newNode);
-            var nodeType = NodeUtils.Ptr2NodeHeader(stackItem._node)._nodeType & NodeType.NodeSizeMask;
-            if (nodeType != NodeType.Node256)
-                NodeUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
+            var nodeType = NodeUtils12.Ptr2NodeHeader(stackItem._node)._nodeType & NodeType12.NodeSizeMask;
+            if (nodeType != NodeType12.Node256)
+                NodeUtils12.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
         }
 
         void WritePtrInNode(in CursorItem stackItem, IntPtr newNode)
         {
-            var ptr = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
+            var ptr = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
             WritePtrInNode(ptr, newNode);
         }
 
@@ -2035,9 +2036,9 @@ namespace BTDB.ARTLib
         {
             if (IsValue12)
             {
-                if (NodeUtils.IsPtr12Ptr(ptrInNode))
+                if (NodeUtils12.IsPtr12Ptr(ptrInNode))
                 {
-                    Dereference(NodeUtils.Read12Ptr(ptrInNode));
+                    Dereference(NodeUtils12.Read12Ptr(ptrInNode));
                 }
 
                 Unsafe.Write(ptrInNode.ToPointer(), uint.MaxValue);
@@ -2045,8 +2046,8 @@ namespace BTDB.ARTLib
             }
             else
             {
-                var child = NodeUtils.ReadPtr(ptrInNode);
-                if (NodeUtils.IsPtrPtr(child))
+                var child = NodeUtils12.ReadPtr(ptrInNode);
+                if (NodeUtils12.IsPtrPtr(child))
                 {
                     Dereference(child);
                 }
@@ -2058,21 +2059,21 @@ namespace BTDB.ARTLib
         void WriteContentAndByteInNode(in CursorItem stackItem, ReadOnlySpan<byte> content)
         {
             WriteContentInNode(stackItem, content);
-            var nodeType = NodeUtils.Ptr2NodeHeader(stackItem._node)._nodeType & NodeType.NodeSizeMask;
-            if (nodeType != NodeType.Node256)
-                NodeUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
+            var nodeType = NodeUtils12.Ptr2NodeHeader(stackItem._node)._nodeType & NodeType12.NodeSizeMask;
+            if (nodeType != NodeType12.Node256)
+                NodeUtils12.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
         }
 
         void WriteContentInNode(in CursorItem stackItem, ReadOnlySpan<byte> content)
         {
-            var ptr = NodeUtils.PtrInNode(stackItem._node, stackItem._posInNode);
+            var ptr = NodeUtils12.PtrInNode(stackItem._node, stackItem._posInNode);
             unsafe
             {
                 if (IsValue12)
                 {
-                    if (NodeUtils.IsPtr12Ptr(ptr))
+                    if (NodeUtils12.IsPtr12Ptr(ptr))
                     {
-                        Dereference(NodeUtils.Read12Ptr(ptr));
+                        Dereference(NodeUtils12.Read12Ptr(ptr));
                     }
 
                     unsafe
@@ -2082,17 +2083,17 @@ namespace BTDB.ARTLib
                 }
                 else
                 {
-                    var child = NodeUtils.ReadPtr(ptr);
-                    if (NodeUtils.IsPtrPtr(child))
+                    var child = NodeUtils12.ReadPtr(ptr);
+                    if (NodeUtils12.IsPtrPtr(child))
                     {
                         Dereference(child);
                     }
 
                     unsafe
                     {
-                        NodeUtils.AssertLittleEndian();
+                        NodeUtils12.AssertLittleEndian();
                         *(byte*)ptr.ToPointer() = (byte)((content.Length << 1) + 1);
-                        content.CopyTo(new Span<byte>(NodeUtils.SkipLenFromPtr(ptr).ToPointer(), 7));
+                        content.CopyTo(new Span<byte>(NodeUtils12.SkipLenFromPtr(ptr).ToPointer(), 7));
                     }
                 }
             }
@@ -2115,7 +2116,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        internal bool FindExact(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
+        internal bool FindExact(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
         {
             stack.Clear();
             var top = rootNode._root;
@@ -2129,8 +2130,8 @@ namespace BTDB.ARTLib
                     return false;
                 }
 
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0
                     ? 0
@@ -2143,7 +2144,7 @@ namespace BTDB.ARTLib
 
                 if (keyPrefixSize == keyRest)
                 {
-                    if (!header._nodeType.HasFlag(NodeType.IsLeaf))
+                    if (!header._nodeType.HasFlag(NodeType12.IsLeaf))
                     {
                         stack.Clear();
                         return false;
@@ -2153,7 +2154,7 @@ namespace BTDB.ARTLib
                     return true;
                 }
 
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     stack.Clear();
                     return false;
@@ -2165,7 +2166,7 @@ namespace BTDB.ARTLib
                 {
                     keyOffset += newKeyPrefixSize + 1;
                     stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
-                    if (IsPtr(NodeUtils.PtrInNode(top, pos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
                         continue;
@@ -2182,7 +2183,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        internal FindResult Find(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix,
+        internal FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix,
             ReadOnlySpan<byte> key)
         {
             stack.Clear();
@@ -2197,8 +2198,8 @@ namespace BTDB.ARTLib
             while (true)
             {
                 var keyRest = totalKeyLength - keyOffset;
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(top);
 
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var diffPos = commonKeyAndPrefixSize == 0
@@ -2210,7 +2211,7 @@ namespace BTDB.ARTLib
                     {
                         PushLeftMost(top, keyOffset, ref stack);
                         if (diffPos >= keyRest) return FindResult.Next;
-                        return NodeUtils.ReadByte(keyPrefixPtr + diffPos) <
+                        return NodeUtils12.ReadByte(keyPrefixPtr + diffPos) <
                                GetByteFromKeyPair(keyPrefix, key, keyOffset + diffPos)
                             ? FindResult.Previous
                             : FindResult.Next;
@@ -2222,7 +2223,7 @@ namespace BTDB.ARTLib
 
                 if (keyPrefixSize == keyRest)
                 {
-                    if (!header._nodeType.HasFlag(NodeType.IsLeaf))
+                    if (!header._nodeType.HasFlag(NodeType12.IsLeaf))
                     {
                         PushLeftMost(top, keyOffset, ref stack);
                         return FindResult.Next;
@@ -2232,7 +2233,7 @@ namespace BTDB.ARTLib
                     return FindResult.Exact;
                 }
 
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     keyOffset += diffPos;
                     if (keyOffset >= keyPrefix.Length)
@@ -2251,7 +2252,7 @@ namespace BTDB.ARTLib
                 if (pos >= 0)
                 {
                     stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
-                    if (IsPtr(NodeUtils.PtrInNode(top, pos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
                         continue;
@@ -2281,7 +2282,7 @@ namespace BTDB.ARTLib
                 {
                     var (nearPos, nearByte) = FindNearPosAndByte(top, pos, b);
                     stack.Add().Set(top, (uint)keyOffset, nearPos, nearByte);
-                    if (IsPtr(NodeUtils.PtrInNode(top, nearPos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, nearPos), out var newTop))
                     {
                         if (nearByte < b)
                         {
@@ -2309,17 +2310,17 @@ namespace BTDB.ARTLib
 
         unsafe (short nearPos, byte nearByte) FindNearPosAndByte(IntPtr node, int pos, byte @byte)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(node);
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.Node4:
-                case NodeType.Node16:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
                     {
                         pos = ~pos;
                         if (pos >= header._childCount) pos--;
-                        return ((short)pos, NodeUtils.ReadByte(node + 16 + pos));
+                        return ((short)pos, NodeUtils12.ReadByte(node + 16 + pos));
                     }
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     {
                         var bytePtrs = new Span<byte>((node + 16).ToPointer(), 256);
                         pos = @byte + 1;
@@ -2344,12 +2345,12 @@ namespace BTDB.ARTLib
                             pos--;
                         }
                     }
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     {
                         pos = @byte + 1;
                         while (pos < 256)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(node, pos), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(node, pos), out var ptr))
                             {
                                 if (ptr == IntPtr.Zero)
                                 {
@@ -2364,7 +2365,7 @@ namespace BTDB.ARTLib
                         pos = @byte - 1;
                         while (pos >= 0)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(node, pos), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(node, pos), out var ptr))
                             {
                                 if (ptr == IntPtr.Zero)
                                 {
@@ -2393,7 +2394,7 @@ namespace BTDB.ARTLib
             return key1[offset];
         }
 
-        internal bool FindFirst(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix)
+        internal bool FindFirst(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix)
         {
             stack.Clear();
             var top = rootNode._root;
@@ -2407,8 +2408,8 @@ namespace BTDB.ARTLib
                     return false;
                 }
 
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0
                     ? 0
@@ -2421,7 +2422,7 @@ namespace BTDB.ARTLib
 
                 if (newKeyPrefixSize == keyRest)
                 {
-                    if (!header._nodeType.HasFlag(NodeType.IsLeaf))
+                    if (!header._nodeType.HasFlag(NodeType12.IsLeaf))
                     {
                         PushLeftMost(top, keyOffset, ref stack);
                         return true;
@@ -2431,7 +2432,7 @@ namespace BTDB.ARTLib
                     return true;
                 }
 
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     stack.Clear();
                     return false;
@@ -2443,7 +2444,7 @@ namespace BTDB.ARTLib
                 {
                     keyOffset += newKeyPrefixSize + 1;
                     stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
-                    if (IsPtr(NodeUtils.PtrInNode(top, pos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
                         continue;
@@ -2460,7 +2461,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        internal bool FindLast(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix)
+        internal bool FindLast(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix)
         {
             stack.Clear();
             var top = rootNode._root;
@@ -2474,8 +2475,8 @@ namespace BTDB.ARTLib
                     return false;
                 }
 
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0
                     ? 0
@@ -2492,7 +2493,7 @@ namespace BTDB.ARTLib
                     return true;
                 }
 
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     stack.Clear();
                     return false;
@@ -2504,7 +2505,7 @@ namespace BTDB.ARTLib
                 {
                     keyOffset += newKeyPrefixSize + 1;
                     stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
-                    if (IsPtr(NodeUtils.PtrInNode(top, pos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
                         continue;
@@ -2525,22 +2526,22 @@ namespace BTDB.ARTLib
         {
             while (true)
             {
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                keyOffset += (int)NodeUtils.GetPrefixSize(top);
-                if (header._nodeType.HasFlag(NodeType.IsLeaf))
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                keyOffset += (int)NodeUtils12.GetPrefixSize(top);
+                if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                 {
                     stack.Add().Set(top, (uint)keyOffset, -1, 0);
                     return;
                 }
 
                 keyOffset++;
-                switch (header._nodeType & NodeType.NodeSizePtrMask)
+                switch (header._nodeType & NodeType12.NodeSizePtrMask)
                 {
-                    case NodeType.Node4:
+                    case NodeType12.Node4:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils.ReadByte(top + 16));
-                            var child = NodeUtils.ReadPtr(top + 16 + 4);
-                            if (NodeUtils.IsPtrPtr(child))
+                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils12.ReadByte(top + 16));
+                            var child = NodeUtils12.ReadPtr(top + 16 + 4);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 top = child;
                                 break;
@@ -2550,13 +2551,13 @@ namespace BTDB.ARTLib
                                 return;
                             }
                         }
-                    case NodeType.Node4 | NodeType.Has12BPtrs:
+                    case NodeType12.Node4 | NodeType12.Has12BPtrs:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils.ReadByte(top + 16));
+                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils12.ReadByte(top + 16));
                             var ptr = top + 16 + 4;
-                            if (NodeUtils.IsPtr12Ptr(ptr))
+                            if (NodeUtils12.IsPtr12Ptr(ptr))
                             {
-                                top = NodeUtils.Read12Ptr(ptr);
+                                top = NodeUtils12.Read12Ptr(ptr);
                                 break;
                             }
                             else
@@ -2564,11 +2565,11 @@ namespace BTDB.ARTLib
                                 return;
                             }
                         }
-                    case NodeType.Node16:
+                    case NodeType12.Node16:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils.ReadByte(top + 16));
-                            var child = NodeUtils.ReadPtr(top + 16 + 16);
-                            if (NodeUtils.IsPtrPtr(child))
+                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils12.ReadByte(top + 16));
+                            var child = NodeUtils12.ReadPtr(top + 16 + 16);
+                            if (NodeUtils12.IsPtrPtr(child))
                             {
                                 top = child;
                                 break;
@@ -2578,13 +2579,13 @@ namespace BTDB.ARTLib
                                 return;
                             }
                         }
-                    case NodeType.Node16 | NodeType.Has12BPtrs:
+                    case NodeType12.Node16 | NodeType12.Has12BPtrs:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils.ReadByte(top + 16));
+                            stack.Add().Set(top, (uint)keyOffset, 0, NodeUtils12.ReadByte(top + 16));
                             var ptr = top + 16 + 16;
-                            if (NodeUtils.IsPtr12Ptr(ptr))
+                            if (NodeUtils12.IsPtr12Ptr(ptr))
                             {
-                                top = NodeUtils.Read12Ptr(ptr);
+                                top = NodeUtils12.Read12Ptr(ptr);
                                 break;
                             }
                             else
@@ -2592,7 +2593,7 @@ namespace BTDB.ARTLib
                                 return;
                             }
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((top + 16).ToPointer(), 256);
@@ -2602,8 +2603,8 @@ namespace BTDB.ARTLib
                                 if (pos == 255)
                                     continue;
                                 stack.Add().Set(top, (uint)keyOffset, pos, (byte)j);
-                                var child = NodeUtils.ReadPtr(top + 16 + 256 + pos * 8);
-                                if (NodeUtils.IsPtrPtr(child))
+                                var child = NodeUtils12.ReadPtr(top + 16 + 256 + pos * 8);
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
                                     top = child;
                                     break;
@@ -2614,7 +2615,7 @@ namespace BTDB.ARTLib
 
                             break;
                         }
-                    case NodeType.Node48 | NodeType.Has12BPtrs:
+                    case NodeType12.Node48 | NodeType12.Has12BPtrs:
                         unsafe
                         {
                             var span = new Span<byte>((top + 16).ToPointer(), 256);
@@ -2625,9 +2626,9 @@ namespace BTDB.ARTLib
                                     continue;
                                 stack.Add().Set(top, (uint)keyOffset, pos, (byte)j);
                                 var ptr = top + 16 + 256 + pos * 12;
-                                if (NodeUtils.IsPtr12Ptr(ptr))
+                                if (NodeUtils12.IsPtr12Ptr(ptr))
                                 {
-                                    top = NodeUtils.Read12Ptr(ptr);
+                                    top = NodeUtils12.Read12Ptr(ptr);
                                     break;
                                 }
 
@@ -2636,13 +2637,13 @@ namespace BTDB.ARTLib
 
                             break;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         {
                             var p = top + 16;
                             for (var j = 0; true; j++, p += 8)
                             {
-                                var child = NodeUtils.ReadPtr(p);
-                                if (NodeUtils.IsPtrPtr(child))
+                                var child = NodeUtils12.ReadPtr(p);
+                                if (NodeUtils12.IsPtrPtr(child))
                                 {
                                     if (child != IntPtr.Zero)
                                     {
@@ -2661,14 +2662,14 @@ namespace BTDB.ARTLib
                             }
                         }
                         break;
-                    case NodeType.Node256 | NodeType.Has12BPtrs:
+                    case NodeType12.Node256 | NodeType12.Has12BPtrs:
                         {
                             var p = top + 16;
                             for (var j = 0; true; j++, p += 12)
                             {
-                                if (NodeUtils.IsPtr12Ptr(p))
+                                if (NodeUtils12.IsPtr12Ptr(p))
                                 {
-                                    var child = NodeUtils.Read12Ptr(p);
+                                    var child = NodeUtils12.Read12Ptr(p);
                                     if (child != IntPtr.Zero)
                                     {
                                         stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
@@ -2694,23 +2695,23 @@ namespace BTDB.ARTLib
         {
             while (true)
             {
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                keyOffset += (int)NodeUtils.GetPrefixSize(top);
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                keyOffset += (int)NodeUtils12.GetPrefixSize(top);
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     stack.Add().Set(top, (uint)keyOffset, -1, 0);
                     return;
                 }
 
                 keyOffset++;
-                switch (header._nodeType & NodeType.NodeSizeMask)
+                switch (header._nodeType & NodeType12.NodeSizeMask)
                 {
-                    case NodeType.Node4:
-                    case NodeType.Node16:
+                    case NodeType12.Node4:
+                    case NodeType12.Node16:
                         {
                             var pos = header._childCount - 1;
-                            stack.Add().Set(top, (uint)keyOffset, (short)pos, NodeUtils.ReadByte(top + 16 + pos));
-                            if (IsPtr(NodeUtils.PtrInNode(top, pos), out var ptr))
+                            stack.Add().Set(top, (uint)keyOffset, (short)pos, NodeUtils12.ReadByte(top + 16 + pos));
+                            if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var ptr))
                             {
                                 top = ptr;
                                 break;
@@ -2720,7 +2721,7 @@ namespace BTDB.ARTLib
                                 return;
                             }
                         }
-                    case NodeType.Node48:
+                    case NodeType12.Node48:
                         unsafe
                         {
                             var span = new Span<byte>((top + 16).ToPointer(), 256);
@@ -2729,7 +2730,7 @@ namespace BTDB.ARTLib
                                 if (span[j] == 255)
                                     continue;
                                 stack.Add().Set(top, (uint)keyOffset, span[j], (byte)j);
-                                if (IsPtr(NodeUtils.PtrInNode(top, span[j]), out var ptr))
+                                if (IsPtr(NodeUtils12.PtrInNode(top, span[j]), out var ptr))
                                 {
                                     top = ptr;
                                     break;
@@ -2740,10 +2741,10 @@ namespace BTDB.ARTLib
 
                             break;
                         }
-                    case NodeType.Node256:
+                    case NodeType12.Node256:
                         for (int j = 255; true; j--)
                         {
-                            if (IsPtr(NodeUtils.PtrInNode(top, j), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(top, j), out var ptr))
                             {
                                 if (ptr != IntPtr.Zero)
                                 {
@@ -2766,7 +2767,7 @@ namespace BTDB.ARTLib
             }
         }
 
-        internal bool Upsert(RootNode rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key,
+        internal bool Upsert(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key,
             ReadOnlySpan<byte> content)
         {
             if (IsValue12)
@@ -2789,15 +2790,15 @@ namespace BTDB.ARTLib
 
                     ref var stackItem = ref stack.Add();
                     stackItem.Set(
-                        AllocateNode(NodeType.NodeLeaf | NodeType.IsLeaf, (uint)keyRest, (uint)content.Length),
+                        AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, (uint)keyRest, (uint)content.Length),
                         (uint)key.Length, -1, 0);
-                    var (size, ptr) = NodeUtils.GetPrefixSizeAndPtr(stackItem._node);
+                    var (size, ptr) = NodeUtils12.GetPrefixSizeAndPtr(stackItem._node);
                     unsafe
                     {
                         key.Slice(keyOffset).CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
                     }
 
-                    (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
+                    (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                     unsafe
                     {
                         content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -2808,8 +2809,8 @@ namespace BTDB.ARTLib
                     return true;
                 }
 
-                ref var header = ref NodeUtils.Ptr2NodeHeader(top);
-                var (keyPrefixSize, keyPrefixPtr) = NodeUtils.GetPrefixSizeAndPtr(top);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(top);
                 var commonKeyAndPrefixSize = Math.Min(keyRest, (int)keyPrefixSize);
                 var newKeyPrefixSize = commonKeyAndPrefixSize == 0
                     ? 0
@@ -2817,28 +2818,28 @@ namespace BTDB.ARTLib
                 if (newKeyPrefixSize < keyPrefixSize)
                 {
                     MakeUnique(rootNode, stack.AsSpan());
-                    var nodeType = NodeType.Node4 | (newKeyPrefixSize == keyRest ? NodeType.IsLeaf : 0);
+                    var nodeType = NodeType12.Node4 | (newKeyPrefixSize == keyRest ? NodeType12.IsLeaf : 0);
                     var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize, (uint)content.Length);
                     try
                     {
-                        ref var newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+                        ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
                         newHeader.ChildCount = 1;
                         newHeader._recursiveChildCount = header._recursiveChildCount;
-                        var (size, ptr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+                        var (size, ptr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                         unsafe
                         {
                             key.Slice(keyOffset, newKeyPrefixSize)
                                 .CopyTo(new Span<byte>(ptr.ToPointer(), newKeyPrefixSize));
                         }
 
-                        if (IsValue12 && (header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf &&
+                        if (IsValue12 && (header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf &&
                             newKeyPrefixSize + 1 == keyPrefixSize)
                         {
-                            var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(top);
+                            var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(top);
                             unsafe
                             {
                                 WriteContentAndByteInNode(
-                                    new CursorItem(newNode, 0, 0, NodeUtils.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
+                                    new CursorItem(newNode, 0, 0, NodeUtils12.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
                                     new Span<byte>(valuePtr.ToPointer(), (int)valueSize));
                             }
                         }
@@ -2846,14 +2847,14 @@ namespace BTDB.ARTLib
                         {
                             var newNode2 = CloneNodeWithKeyPrefixCut(top, newKeyPrefixSize + 1);
                             WritePtrAndByteInNode(
-                                new CursorItem(newNode, 0, 0, NodeUtils.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
+                                new CursorItem(newNode, 0, 0, NodeUtils12.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
                                 newNode2);
                         }
 
-                        if (nodeType.HasFlag(NodeType.IsLeaf))
+                        if (nodeType.HasFlag(NodeType12.IsLeaf))
                         {
                             stack.Add().Set(newNode, (uint)key.Length, -1, 0);
-                            (size, ptr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                            (size, ptr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                             unsafe
                             {
                                 content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -2886,9 +2887,9 @@ namespace BTDB.ARTLib
                 if (keyPrefixSize == keyRest)
                 {
                     stack.Add().Set(top, (uint)key.Length, -1, 0);
-                    var hadIsLeaf = header._nodeType.HasFlag(NodeType.IsLeaf);
-                    if (header._nodeType.HasFlag(NodeType.IsLeaf) &&
-                        (IsValue12 || NodeUtils.GetValueSizeAndPtr(top).Size == content.Length))
+                    var hadIsLeaf = header._nodeType.HasFlag(NodeType12.IsLeaf);
+                    if (header._nodeType.HasFlag(NodeType12.IsLeaf) &&
+                        (IsValue12 || NodeUtils12.GetValueSizeAndPtr(top).Size == content.Length))
                     {
                         MakeUnique(rootNode, stack.AsSpan());
                     }
@@ -2897,7 +2898,7 @@ namespace BTDB.ARTLib
                         MakeUniqueLastResize(rootNode, ref stack, content.Length);
                     }
 
-                    var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stack[stack.Count - 1]._node);
+                    var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stack[stack.Count - 1]._node);
                     unsafe
                     {
                         content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -2913,25 +2914,25 @@ namespace BTDB.ARTLib
                 }
 
                 var b = key[keyOffset + newKeyPrefixSize];
-                if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                 {
                     MakeUnique(rootNode, stack.AsSpan());
-                    var nodeType = NodeType.Node4 | NodeType.IsLeaf;
-                    var (topValueSize, topValuePtr) = NodeUtils.GetValueSizeAndPtr(top);
+                    var nodeType = NodeType12.Node4 | NodeType12.IsLeaf;
+                    var (topValueSize, topValuePtr) = NodeUtils12.GetValueSizeAndPtr(top);
                     var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize, topValueSize);
                     try
                     {
-                        ref var newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+                        ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
                         newHeader.ChildCount = 1;
                         newHeader._recursiveChildCount = 1;
-                        var (size, ptr) = NodeUtils.GetPrefixSizeAndPtr(newNode);
+                        var (size, ptr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                         unsafe
                         {
                             key.Slice(keyOffset, newKeyPrefixSize)
                                 .CopyTo(new Span<byte>(ptr.ToPointer(), newKeyPrefixSize));
                         }
 
-                        var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                        var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                         unsafe
                         {
                             new Span<byte>(topValuePtr.ToPointer(), (int)topValueSize).CopyTo(
@@ -2939,7 +2940,7 @@ namespace BTDB.ARTLib
                         }
 
                         keyOffset += newKeyPrefixSize + 1;
-                        NodeUtils.WriteByte(newNode, 16, b);
+                        NodeUtils12.WriteByte(newNode, 16, b);
                         stack.Add().Set(newNode, (uint)keyOffset, 0, b);
                         top = IntPtr.Zero;
                         OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
@@ -2957,10 +2958,10 @@ namespace BTDB.ARTLib
                 {
                     keyOffset += newKeyPrefixSize + 1;
                     stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
-                    if (IsPtr(NodeUtils.PtrInNode(top, pos), out var newTop))
+                    if (IsPtr(NodeUtils12.PtrInNode(top, pos), out var newTop))
                     {
                         if (key.Length == keyOffset && IsValueInlineable(content) &&
-                            (NodeUtils.Ptr2NodeHeader(newTop)._nodeType & NodeType.NodeSizeMask) == NodeType.NodeLeaf)
+                            (NodeUtils12.Ptr2NodeHeader(newTop)._nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf)
                         {
                             MakeUnique(rootNode, stack.AsSpan());
                             WriteContentInNode(stack[stack.Count - 1], content);
@@ -2981,9 +2982,9 @@ namespace BTDB.ARTLib
                         else
                         {
                             ref var stackItem = ref stack.Add();
-                            stackItem.Set(AllocateNode(NodeType.NodeLeaf | NodeType.IsLeaf, 0, (uint)content.Length),
+                            stackItem.Set(AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, 0, (uint)content.Length),
                                 (uint)key.Length, -1, 0);
-                            var (size, ptr) = NodeUtils.GetValueSizeAndPtr(stackItem._node);
+                            var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                             unsafe
                             {
                                 content.CopyTo(new Span<byte>(ptr.ToPointer(), (int)size));
@@ -2995,15 +2996,15 @@ namespace BTDB.ARTLib
                         return false;
                     }
 
-                    var nodeType = NodeType.Node4 | NodeType.IsLeaf;
-                    var (topValueSize, topValuePtr) = GetValueSizeAndPtrFromPtrInNode(NodeUtils.PtrInNode(top, pos));
+                    var nodeType = NodeType12.Node4 | NodeType12.IsLeaf;
+                    var (topValueSize, topValuePtr) = GetValueSizeAndPtrFromPtrInNode(NodeUtils12.PtrInNode(top, pos));
                     var newNode = AllocateNode(nodeType, 0, topValueSize);
                     try
                     {
-                        ref var newHeader = ref NodeUtils.Ptr2NodeHeader(newNode);
+                        ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
                         newHeader.ChildCount = 1;
                         newHeader._recursiveChildCount = 1;
-                        var (valueSize, valuePtr) = NodeUtils.GetValueSizeAndPtr(newNode);
+                        var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                         unsafe
                         {
                             new Span<byte>(topValuePtr.ToPointer(), (int)topValueSize).CopyTo(
@@ -3053,7 +3054,7 @@ namespace BTDB.ARTLib
         {
             if (IsValue12)
                 return (12, ptr);
-            return (NodeUtils.ReadLenFromPtr(ptr), NodeUtils.SkipLenFromPtr(ptr));
+            return (NodeUtils12.ReadLenFromPtr(ptr), NodeUtils12.SkipLenFromPtr(ptr));
         }
 
         bool IsValueInlineable(ReadOnlySpan<byte> content)
@@ -3065,9 +3066,9 @@ namespace BTDB.ARTLib
 
         bool IsPtr12(IntPtr ptr, out IntPtr pointsTo)
         {
-            if (NodeUtils.IsPtr12Ptr(ptr))
+            if (NodeUtils12.IsPtr12Ptr(ptr))
             {
-                pointsTo = NodeUtils.Read12Ptr(ptr);
+                pointsTo = NodeUtils12.Read12Ptr(ptr);
                 return true;
             }
 
@@ -3077,8 +3078,8 @@ namespace BTDB.ARTLib
 
         bool IsPtrX(IntPtr ptr, out IntPtr pointsTo)
         {
-            var child = NodeUtils.ReadPtr(ptr);
-            if (NodeUtils.IsPtrPtr(child))
+            var child = NodeUtils12.ReadPtr(ptr);
+            if (NodeUtils12.IsPtrPtr(child))
             {
                 pointsTo = child;
                 return true;
@@ -3092,16 +3093,16 @@ namespace BTDB.ARTLib
         {
             if (IsValue12)
             {
-                if (NodeUtils.IsPtr12Ptr(ptr))
+                if (NodeUtils12.IsPtr12Ptr(ptr))
                 {
-                    pointsTo = NodeUtils.Read12Ptr(ptr);
+                    pointsTo = NodeUtils12.Read12Ptr(ptr);
                     return true;
                 }
             }
             else
             {
-                var child = NodeUtils.ReadPtr(ptr);
-                if (NodeUtils.IsPtrPtr(child))
+                var child = NodeUtils12.ReadPtr(ptr);
+                if (NodeUtils12.IsPtrPtr(child))
                 {
                     pointsTo = child;
                     return true;
@@ -3114,27 +3115,27 @@ namespace BTDB.ARTLib
 
         unsafe int Find(IntPtr nodePtr, byte b)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.Node256)
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.Node256)
             {
-                var ptr = NodeUtils.PtrInNode(nodePtr, b);
+                var ptr = NodeUtils12.PtrInNode(nodePtr, b);
                 if (IsValue12)
                 {
-                    if (NodeUtils.IsPtr12Ptr(ptr) && NodeUtils.Read12Ptr(ptr) == IntPtr.Zero)
+                    if (NodeUtils12.IsPtr12Ptr(ptr) && NodeUtils12.Read12Ptr(ptr) == IntPtr.Zero)
                         return ~b;
                 }
                 else
                 {
-                    if (NodeUtils.ReadPtr(ptr) == IntPtr.Zero)
+                    if (NodeUtils12.ReadPtr(ptr) == IntPtr.Zero)
                         return ~b;
                 }
 
                 return b;
             }
 
-            if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.Node48)
+            if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.Node48)
             {
-                var pos = NodeUtils.ReadByte(nodePtr + 16 + b);
+                var pos = NodeUtils12.ReadByte(nodePtr + 16 + b);
                 if (pos == 255)
                     return ~header._childCount;
                 return pos;
@@ -3171,7 +3172,7 @@ namespace BTDB.ARTLib
 
         unsafe short InsertChildIntoNode4(IntPtr nodePtr, byte b)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
             var childernBytes = new ReadOnlySpan<byte>((nodePtr + 16).ToPointer(), header._childCount);
             var pos = BinarySearch(childernBytes, b);
             pos = ~pos;
@@ -3179,32 +3180,32 @@ namespace BTDB.ARTLib
             {
                 childernBytes.Slice(pos)
                     .CopyTo(new Span<byte>((nodePtr + 16).ToPointer(), header._childCount + 1).Slice(pos + 1));
-                var chPtr = NodeUtils.PtrInNode(nodePtr, pos);
+                var chPtr = NodeUtils12.PtrInNode(nodePtr, pos);
                 var chSize = PtrSize * (header._childCount - pos);
                 new Span<byte>(chPtr.ToPointer(), chSize).CopyTo(new Span<byte>((chPtr + PtrSize).ToPointer(), chSize));
             }
 
-            NodeUtils.WriteByte(nodePtr, 16 + pos, b);
+            NodeUtils12.WriteByte(nodePtr, 16 + pos, b);
             header._childCount++;
-            InitializeZeroPtrValue(NodeUtils.PtrInNode(nodePtr, pos));
+            InitializeZeroPtrValue(NodeUtils12.PtrInNode(nodePtr, pos));
             return (short)pos;
         }
 
         unsafe void InsertChildRaw(IntPtr nodePtr, ref int pos, byte b)
         {
-            ref var header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
-            if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.Node256)
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.Node256)
             {
                 pos = b;
                 header._childCount++;
-                InitializeZeroPtrValue(NodeUtils.PtrInNode(nodePtr, pos));
+                InitializeZeroPtrValue(NodeUtils12.PtrInNode(nodePtr, pos));
                 return;
             }
 
-            if ((header._nodeType & NodeType.NodeSizeMask) == NodeType.Node48)
+            if ((header._nodeType & NodeType12.NodeSizeMask) == NodeType12.Node48)
             {
                 pos = header._childCount;
-                NodeUtils.WriteByte(nodePtr, 16 + b, (byte)pos);
+                NodeUtils12.WriteByte(nodePtr, 16 + b, (byte)pos);
             }
             else
             {
@@ -3213,16 +3214,16 @@ namespace BTDB.ARTLib
                 {
                     childrenBytes.Slice(pos)
                         .CopyTo(new Span<byte>((nodePtr + 16).ToPointer(), header._childCount + 1).Slice(pos + 1));
-                    var chPtr = NodeUtils.PtrInNode(nodePtr, pos);
+                    var chPtr = NodeUtils12.PtrInNode(nodePtr, pos);
                     var chSize = PtrSize * (header._childCount - pos);
                     MoveMemory(chPtr, chPtr + PtrSize, chSize);
                 }
 
-                NodeUtils.WriteByte(nodePtr, 16 + pos, b);
+                NodeUtils12.WriteByte(nodePtr, 16 + pos, b);
             }
 
             header._childCount++;
-            InitializeZeroPtrValue(NodeUtils.PtrInNode(nodePtr, pos));
+            InitializeZeroPtrValue(NodeUtils12.PtrInNode(nodePtr, pos));
         }
 
         unsafe int FindFirstDifference(ReadOnlySpan<byte> buf1, IntPtr buf2IntPtr, int len)
@@ -3268,7 +3269,7 @@ namespace BTDB.ARTLib
             for (int i = 0; i < stack.Length; i++)
             {
                 ref var stackItem = ref stack[i];
-                ref var header = ref NodeUtils.Ptr2NodeHeader(stackItem._node);
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 header._recursiveChildCount = (ulong)unchecked((long)header._recursiveChildCount + delta);
             }
         }
@@ -3277,23 +3278,23 @@ namespace BTDB.ARTLib
         {
             if (nodePtr == IntPtr.Zero)
                 return 0;
-            ref var header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
             Debug.Assert(header._referenceCount > 0 && header._referenceCount < 2000);
             var childrenCount = 0ul;
-            if (header._nodeType.HasFlag(NodeType.IsLeaf))
+            if (header._nodeType.HasFlag(NodeType12.IsLeaf))
                 childrenCount++;
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.NodeLeaf:
+                case NodeType12.NodeLeaf:
                     childrenCount = 1;
                     break;
-                case NodeType.Node4:
-                case NodeType.Node16:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
                     {
                         for (var pos = 0; pos < header._childCount; pos++)
                         {
-                            var b = NodeUtils.ReadByte(nodePtr + 16 + pos);
-                            if (IsPtr(NodeUtils.PtrInNode(nodePtr, pos), out var ptr))
+                            var b = NodeUtils12.ReadByte(nodePtr + 16 + pos);
+                            if (IsPtr(NodeUtils12.PtrInNode(nodePtr, pos), out var ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
                                 childrenCount += StructureCheck(ptr);
@@ -3306,7 +3307,7 @@ namespace BTDB.ARTLib
 
                         break;
                     }
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     unsafe
                     {
                         var span = new Span<byte>((nodePtr + 16).ToPointer(), 256);
@@ -3315,7 +3316,7 @@ namespace BTDB.ARTLib
                         {
                             if (span[j] == 255)
                                 continue;
-                            if (IsPtr(NodeUtils.PtrInNode(nodePtr, span[j]), out var ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(nodePtr, span[j]), out var ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
                                 childrenCount += StructureCheck(ptr);
@@ -3328,10 +3329,10 @@ namespace BTDB.ARTLib
 
                         break;
                     }
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (int j = 0; j < 256; j++)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(nodePtr, j), out var ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(nodePtr, j), out var ptr))
                         {
                             childrenCount += StructureCheck(ptr);
                         }
@@ -3368,13 +3369,13 @@ namespace BTDB.ARTLib
         {
             if (nodePtr == IntPtr.Zero)
                 return;
-            ref var header = ref NodeUtils.Ptr2NodeHeader(nodePtr);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
             ArtNodeInfo nodeInfo = new ArtNodeInfo();
             nodeInfo.Deepness = deepness;
             nodeInfo.ChildCount = (uint)header.ChildCount;
             nodeInfo.RecursiveChildCount = header._recursiveChildCount;
-            nodeInfo.HasLeafChild = header._nodeType.HasFlag(NodeType.IsLeaf);
-            var baseSize = NodeUtils.BaseSize(header._nodeType);
+            nodeInfo.HasLeafChild = header._nodeType.HasFlag(NodeType12.IsLeaf);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType);
             var prefixSize = (uint)header._keyPrefixLength;
             var ptr = nodePtr + baseSize;
             if (prefixSize == 0xffff)
@@ -3387,9 +3388,9 @@ namespace BTDB.ARTLib
             }
             nodeInfo.PrefixKeySize = prefixSize;
 
-            if ((header._nodeType & NodeType.IsLeaf) == NodeType.IsLeaf)
+            if ((header._nodeType & NodeType12.IsLeaf) == NodeType12.IsLeaf)
             {
-                if ((header._nodeType & (NodeType.IsLeaf | NodeType.Has12BPtrs)) == NodeType.IsLeaf)
+                if ((header._nodeType & (NodeType12.IsLeaf | NodeType12.Has12BPtrs)) == NodeType12.IsLeaf)
                 {
                     unsafe
                     {
@@ -3403,7 +3404,7 @@ namespace BTDB.ARTLib
                 else
                 {
                     ptr += (int)prefixSize;
-                    ptr = NodeUtils.AlignPtrUpInt32(ptr);
+                    ptr = NodeUtils12.AlignPtrUpInt32(ptr);
                     ptr += 12;
                 }
             }
@@ -3414,19 +3415,19 @@ namespace BTDB.ARTLib
 
             var size = ptr.ToInt64() - nodePtr.ToInt64();
             nodeInfo.NodeByteSize = (uint)size;
-            nodeInfo.MaxChildCount = (uint)NodeUtils.MaxChildren(header._nodeType);
+            nodeInfo.MaxChildCount = (uint)NodeUtils12.MaxChildren(header._nodeType);
             iterator(nodeInfo);
-            switch (header._nodeType & NodeType.NodeSizeMask)
+            switch (header._nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.NodeLeaf:
+                case NodeType12.NodeLeaf:
                     break;
-                case NodeType.Node4:
-                case NodeType.Node16:
+                case NodeType12.Node4:
+                case NodeType12.Node16:
                     {
                         for (var pos = 0; pos < header._childCount; pos++)
                         {
-                            var b = NodeUtils.ReadByte(nodePtr + 16 + pos);
-                            if (IsPtr(NodeUtils.PtrInNode(nodePtr, pos), out ptr))
+                            var b = NodeUtils12.ReadByte(nodePtr + 16 + pos);
+                            if (IsPtr(NodeUtils12.PtrInNode(nodePtr, pos), out ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
                                 IterateNodeInfo(ptr, deepness + 1, iterator);
@@ -3434,7 +3435,7 @@ namespace BTDB.ARTLib
                         }
                         break;
                     }
-                case NodeType.Node48:
+                case NodeType12.Node48:
                     unsafe
                     {
                         var span = new Span<byte>((nodePtr + 16).ToPointer(), 256);
@@ -3442,7 +3443,7 @@ namespace BTDB.ARTLib
                         {
                             if (span[j] == 255)
                                 continue;
-                            if (IsPtr(NodeUtils.PtrInNode(nodePtr, span[j]), out ptr))
+                            if (IsPtr(NodeUtils12.PtrInNode(nodePtr, span[j]), out ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
                                 IterateNodeInfo(ptr, deepness + 1, iterator);
@@ -3450,10 +3451,10 @@ namespace BTDB.ARTLib
                         }
                         break;
                     }
-                case NodeType.Node256:
+                case NodeType12.Node256:
                     for (int j = 0; j < 256; j++)
                     {
-                        if (IsPtr(NodeUtils.PtrInNode(nodePtr, j), out ptr))
+                        if (IsPtr(NodeUtils12.PtrInNode(nodePtr, j), out ptr))
                         {
                             IterateNodeInfo(ptr, deepness + 1, iterator);
                         }

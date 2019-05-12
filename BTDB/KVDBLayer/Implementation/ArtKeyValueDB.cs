@@ -90,7 +90,7 @@ namespace BTDB.KVDBLayer
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
             CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
-            _lastCommited = ARTImpl.CreateEmptyRoot(options.Allocator, true);
+            _lastCommited = ARTImpl12.CreateEmptyRoot(options.Allocator, true);
             _lastCommited.Commit();
             _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);

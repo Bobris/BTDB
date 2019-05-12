@@ -14,7 +14,7 @@ namespace BTDB.ARTLib
     // [Value Data]                                           y 
 
     [Flags]
-    enum NodeType : byte
+    enum NodeType12 : byte
     {
         NodeLeaf = 0,
         Node4 = 2,

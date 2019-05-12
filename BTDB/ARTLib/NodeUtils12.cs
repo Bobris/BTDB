@@ -3,23 +3,23 @@ using System.Runtime.CompilerServices;
 
 namespace BTDB.ARTLib
 {
-    static class NodeUtils
+    static class NodeUtils12
     {
-        internal static int BaseSize(NodeType nodeType)
+        internal static int BaseSize(NodeType12 nodeType)
         {
-            switch (nodeType & NodeType.NodeSizePtrMask)
+            switch (nodeType & NodeType12.NodeSizePtrMask)
             {
-                case NodeType.NodeLeaf:
-                case NodeType.NodeLeaf | NodeType.Has12BPtrs:
+                case NodeType12.NodeLeaf:
+                case NodeType12.NodeLeaf | NodeType12.Has12BPtrs:
                     return 16;
-                case NodeType.Node4: return 16 + 4 + 4 * 8;
-                case NodeType.Node4 | NodeType.Has12BPtrs: return 16 + 4 + 4 * 12;
-                case NodeType.Node16: return 16 + 16 + 16 * 8;
-                case NodeType.Node16 | NodeType.Has12BPtrs: return 16 + 16 + 16 * 12;
-                case NodeType.Node48: return 16 + 256 + 48 * 8;
-                case NodeType.Node48 | NodeType.Has12BPtrs: return 16 + 256 + 48 * 12;
-                case NodeType.Node256: return 16 + 256 * 8;
-                case NodeType.Node256 | NodeType.Has12BPtrs: return 16 + 256 * 12;
+                case NodeType12.Node4: return 16 + 4 + 4 * 8;
+                case NodeType12.Node4 | NodeType12.Has12BPtrs: return 16 + 4 + 4 * 12;
+                case NodeType12.Node16: return 16 + 16 + 16 * 8;
+                case NodeType12.Node16 | NodeType12.Has12BPtrs: return 16 + 16 + 16 * 12;
+                case NodeType12.Node48: return 16 + 256 + 48 * 8;
+                case NodeType12.Node48 | NodeType12.Has12BPtrs: return 16 + 256 + 48 * 12;
+                case NodeType12.Node256: return 16 + 256 * 8;
+                case NodeType12.Node256 | NodeType12.Has12BPtrs: return 16 + 256 * 12;
                 default: throw new InvalidOperationException();
             }
         }
@@ -94,9 +94,9 @@ namespace BTDB.ARTLib
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe ref NodeHeader Ptr2NodeHeader(IntPtr pointerInt)
+        internal static unsafe ref NodeHeader12 Ptr2NodeHeader(IntPtr pointerInt)
         {
-            return ref *(NodeHeader*)pointerInt;
+            return ref *(NodeHeader12*)pointerInt;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -122,7 +122,7 @@ namespace BTDB.ARTLib
 
         internal static (uint Size, IntPtr Ptr) GetPrefixSizeAndPtr(IntPtr nodePtr)
         {
-            ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             var size = (uint)header._keyPrefixLength;
             if (size == 0) return (0, IntPtr.Zero);
             var baseSize = BaseSize(header._nodeType);
@@ -132,7 +132,7 @@ namespace BTDB.ARTLib
                 size = (uint)ReadInt32Alligned(ptr);
                 ptr += sizeof(uint);
             }
-            if ((header._nodeType & (NodeType.IsLeaf | NodeType.Has12BPtrs)) == NodeType.IsLeaf)
+            if ((header._nodeType & (NodeType12.IsLeaf | NodeType12.Has12BPtrs)) == NodeType12.IsLeaf)
             {
                 ptr += sizeof(uint);
             }
@@ -142,7 +142,7 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint GetPrefixSize(IntPtr nodePtr)
         {
-            ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             var size = (uint)header._keyPrefixLength;
             if (size == 0xffff)
             {
@@ -155,7 +155,7 @@ namespace BTDB.ARTLib
 
         internal static (uint Size, IntPtr Ptr) GetValueSizeAndPtr(IntPtr nodePtr)
         {
-            ref NodeHeader header = ref Ptr2NodeHeader(nodePtr);
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             var baseSize = BaseSize(header._nodeType);
             var prefixSize = (uint)header._keyPrefixLength;
             var ptr = nodePtr + baseSize;
@@ -165,7 +165,7 @@ namespace BTDB.ARTLib
                 ptr += sizeof(uint);
             }
             uint size;
-            if ((header._nodeType & (NodeType.IsLeaf | NodeType.Has12BPtrs)) == NodeType.IsLeaf)
+            if ((header._nodeType & (NodeType12.IsLeaf | NodeType12.Has12BPtrs)) == NodeType12.IsLeaf)
             {
                 unsafe { size = *(uint*)ptr; };
                 ptr += sizeof(uint);
@@ -197,32 +197,32 @@ namespace BTDB.ARTLib
         internal static IntPtr PtrInNode(IntPtr node, int posInNode)
         {
             var nodeType = Ptr2NodeHeader(node)._nodeType;
-            switch (nodeType & NodeType.NodeSizePtrMask)
+            switch (nodeType & NodeType12.NodeSizePtrMask)
             {
-                case NodeType.NodeLeaf:
-                case NodeType.NodeLeaf | NodeType.Has12BPtrs:
+                case NodeType12.NodeLeaf:
+                case NodeType12.NodeLeaf | NodeType12.Has12BPtrs:
                     return node + 16;
-                case NodeType.Node4: return node + 16 + 4 + posInNode * 8;
-                case NodeType.Node4 | NodeType.Has12BPtrs: return node + 16 + 4 + posInNode * 12;
-                case NodeType.Node16: return node + 16 + 16 + posInNode * 8;
-                case NodeType.Node16 | NodeType.Has12BPtrs: return node + 16 + 16 + posInNode * 12;
-                case NodeType.Node48: return node + 16 + 256 + posInNode * 8;
-                case NodeType.Node48 | NodeType.Has12BPtrs: return node + 16 + 256 + posInNode * 12;
-                case NodeType.Node256: return node + 16 + posInNode * 8;
-                case NodeType.Node256 | NodeType.Has12BPtrs: return node + 16 + posInNode * 12;
+                case NodeType12.Node4: return node + 16 + 4 + posInNode * 8;
+                case NodeType12.Node4 | NodeType12.Has12BPtrs: return node + 16 + 4 + posInNode * 12;
+                case NodeType12.Node16: return node + 16 + 16 + posInNode * 8;
+                case NodeType12.Node16 | NodeType12.Has12BPtrs: return node + 16 + 16 + posInNode * 12;
+                case NodeType12.Node48: return node + 16 + 256 + posInNode * 8;
+                case NodeType12.Node48 | NodeType12.Has12BPtrs: return node + 16 + 256 + posInNode * 12;
+                case NodeType12.Node256: return node + 16 + posInNode * 8;
+                case NodeType12.Node256 | NodeType12.Has12BPtrs: return node + 16 + posInNode * 12;
                 default: throw new InvalidOperationException();
             }
         }
 
-        internal static int MaxChildren(NodeType nodeType)
+        internal static int MaxChildren(NodeType12 nodeType)
         {
-            switch (nodeType & NodeType.NodeSizeMask)
+            switch (nodeType & NodeType12.NodeSizeMask)
             {
-                case NodeType.NodeLeaf: return 0;
-                case NodeType.Node4: return 4;
-                case NodeType.Node16: return 16;
-                case NodeType.Node48: return 48;
-                case NodeType.Node256: return 256;
+                case NodeType12.NodeLeaf: return 0;
+                case NodeType12.Node4: return 4;
+                case NodeType12.Node16: return 16;
+                case NodeType12.Node48: return 48;
+                case NodeType12.Node256: return 256;
                 default: throw new InvalidOperationException();
             }
         }

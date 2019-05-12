@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 
-namespace BTDB.ARTLib
+namespace BTDB.Collections
 {
     public struct StructList<T>
     {

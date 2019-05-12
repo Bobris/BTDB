@@ -3,9 +3,9 @@ using System.Threading;
 
 namespace BTDB.ARTLib
 {
-    class RootNode : IRootNode
+    class RootNodeV : IRootNode
     {
-        internal RootNode(ARTImpl impl)
+        internal RootNodeV(ARTImplV impl)
         {
             _impl = impl;
             _root = IntPtr.Zero;
@@ -15,7 +15,7 @@ namespace BTDB.ARTLib
 
         int _referenceCount;
         internal IntPtr _root;
-        internal ARTImpl _impl;
+        internal ARTImplV _impl;
         internal bool _writtable;
 
         public ulong CommitUlong { get; set; }
@@ -31,7 +31,7 @@ namespace BTDB.ARTLib
 
         public IRootNode Snapshot()
         {
-            var snapshot = new RootNode(_impl);
+            var snapshot = new RootNodeV(_impl);
             snapshot._writtable = false;
             snapshot._root = _root;
             snapshot.CommitUlong = CommitUlong;
@@ -41,14 +41,14 @@ namespace BTDB.ARTLib
             snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
             if (_writtable)
                 TransactionId++;
-            NodeUtils.Reference(_root);
+            NodeUtils12.Reference(_root);
             return snapshot;
         }
 
         public IRootNode CreateWritableTransaction()
         {
             if (_writtable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
-            var node = new RootNode(_impl);
+            var node = new RootNodeV(_impl);
             node._writtable = true;
             node._root = _root;
             node.CommitUlong = CommitUlong;
@@ -56,7 +56,7 @@ namespace BTDB.ARTLib
             node.TrLogFileId = TrLogFileId;
             node.TrLogOffset = TrLogOffset;
             node._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            NodeUtils.Reference(_root);
+            NodeUtils12.Reference(_root);
             return node;
         }
 
@@ -67,13 +67,13 @@ namespace BTDB.ARTLib
 
         public ICursor CreateCursor()
         {
-            return new Cursor(this);
+            return new CursorV(this);
         }
 
         public long GetCount()
         {
             if (_root == IntPtr.Zero) return 0;
-            ref var header = ref NodeUtils.Ptr2NodeHeader(_root);
+            ref var header = ref NodeUtilsV.Ptr2NodeHeader(_root);
             return (long)header._recursiveChildCount;
         }
 
@@ -82,15 +82,15 @@ namespace BTDB.ARTLib
             if (!_writtable)
                 throw new InvalidOperationException("Only writtable root node could be reverted");
             var oldRoot = _root;
-            _root = ((RootNode)snapshot)._root;
-            _ulongs = ((RootNode)snapshot)._ulongs == null ? null : (ulong[])((RootNode)snapshot)._ulongs.Clone();
-            CommitUlong = ((RootNode)snapshot).CommitUlong;
-            TransactionId = ((RootNode)snapshot).TransactionId;
-            TrLogFileId = ((RootNode)snapshot).TrLogFileId;
-            TrLogOffset = ((RootNode)snapshot).TrLogOffset;
+            _root = ((RootNodeV)snapshot)._root;
+            _ulongs = ((RootNodeV)snapshot)._ulongs == null ? null : (ulong[])((RootNodeV)snapshot)._ulongs.Clone();
+            CommitUlong = ((RootNodeV)snapshot).CommitUlong;
+            TransactionId = ((RootNodeV)snapshot).TransactionId;
+            TrLogFileId = ((RootNodeV)snapshot).TrLogFileId;
+            TrLogOffset = ((RootNodeV)snapshot).TrLogOffset;
             if (oldRoot != _root)
             {
-                NodeUtils.Reference(_root);
+                NodeUtilsV.Reference(_root);
                 _impl.Dereference(oldRoot);
             }
         }
@@ -139,4 +139,5 @@ namespace BTDB.ARTLib
 
         public bool ShouldBeDisposed => _referenceCount == 0;
     }
+
 }

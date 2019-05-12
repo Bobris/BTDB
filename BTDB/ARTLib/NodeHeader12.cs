@@ -4,10 +4,10 @@ using System.Runtime.InteropServices;
 namespace BTDB.ARTLib
 {
     [StructLayout(LayoutKind.Explicit, Pack = 8, Size = 16)]
-    struct NodeHeader
+    struct NodeHeader12
     {
         [FieldOffset(0)]
-        internal NodeType _nodeType;
+        internal NodeType12 _nodeType;
         [FieldOffset(1)]
         internal byte _childCount;
         [FieldOffset(2)]
@@ -30,7 +30,7 @@ namespace BTDB.ARTLib
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool IsNode256() => (_nodeType & NodeType.NodeSizeMask) == NodeType.Node256;
+        internal bool IsNode256() => (_nodeType & NodeType12.NodeSizeMask) == NodeType12.Node256;
 
         internal int ChildCount
         {
@@ -43,7 +43,8 @@ namespace BTDB.ARTLib
         public bool IsFull
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => !IsNode256() && _childCount == NodeUtils.MaxChildren(_nodeType);
+            get => !IsNode256() && _childCount == NodeUtils12.MaxChildren(_nodeType);
         }
     }
 }
+

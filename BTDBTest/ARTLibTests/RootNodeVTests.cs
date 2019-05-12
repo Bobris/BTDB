@@ -4,15 +4,15 @@ using Xunit;
 
 namespace ARTLibTest
 {
-    public class RootNodeTests: IDisposable
+    public class RootNodeVTests : IDisposable
     {
         LeakDetectorWrapperAllocator _allocator;
-        ARTImpl _impl;
+        ARTImplV _impl;
 
-        public RootNodeTests()
+        public RootNodeVTests()
         {
             _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
-            _impl = new ARTImpl(_allocator, false);
+            _impl = new ARTImplV(_allocator, false);
         }
 
         public void Dispose()
@@ -24,7 +24,7 @@ namespace ARTLibTest
         [Fact]
         public void CouldBeCreated()
         {
-            using (var root = new RootNode(_impl))
+            using (var root = new RootNodeV(_impl))
             {
             }
         }
@@ -32,7 +32,7 @@ namespace ARTLibTest
         [Fact]
         public void CanCreateSnapshot()
         {
-            using (var root = new RootNode(_impl))
+            using (var root = new RootNodeV(_impl))
             {
                 using (var snapshot = root.Snapshot())
                 {
@@ -43,7 +43,7 @@ namespace ARTLibTest
         [Fact]
         public void CanRevertToSnapshot()
         {
-            using (var root = new RootNode(_impl))
+            using (var root = new RootNodeV(_impl))
             {
                 using (var snapshot = root.Snapshot())
                 {
@@ -55,7 +55,7 @@ namespace ARTLibTest
         [Fact]
         public void ItIsForbiddenToRevertSnapshot()
         {
-            using (var root = new RootNode(_impl))
+            using (var root = new RootNodeV(_impl))
             {
                 using (var snapshot = root.Snapshot())
                 {
@@ -65,4 +65,5 @@ namespace ARTLibTest
         }
 
     }
+
 }
