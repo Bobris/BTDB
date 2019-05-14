@@ -27,7 +27,7 @@ namespace BTDB.ARTLib
         {
             IntPtr node;
             int baseSize;
-            baseSize = NodeUtils12.BaseSize(nodeType);
+            baseSize = NodeUtils12.BaseSize(nodeType).Base;
             var size = baseSize + ArtUtils.AlignUIntUpInt32(keyPrefixLength) +
                         (nodeType.HasFlag(NodeType12.IsLeaf) ? 12 : 0);
             if (keyPrefixLength >= 0xffff) size += 4;
@@ -1265,7 +1265,7 @@ namespace BTDB.ARTLib
         internal unsafe IntPtr CloneNode(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType).Base;
             var prefixSize = (uint)header._keyPrefixLength;
             var ptr = nodePtr + baseSize;
             if (prefixSize == 0xffff)
@@ -1356,7 +1356,7 @@ namespace BTDB.ARTLib
         IntPtr CloneNodeWithKeyPrefixCut(IntPtr nodePtr, int skipPrefix)
         {
             ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType).Base;
             var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
             var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(nodePtr);
             var newNode = AllocateNode(header._nodeType, (uint)(keyPrefixSize - skipPrefix), valueSize);
@@ -1394,7 +1394,7 @@ namespace BTDB.ARTLib
         IntPtr CloneNodeWithValueResize(IntPtr nodePtr, int length)
         {
             ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
-            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType).Base;
             var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
             var newNodeType = header._nodeType;
             if (length < 0)
@@ -2855,7 +2855,7 @@ namespace BTDB.ARTLib
             nodeInfo.ChildCount = (uint)header.ChildCount;
             nodeInfo.RecursiveChildCount = header._recursiveChildCount;
             nodeInfo.HasLeafChild = header._nodeType.HasFlag(NodeType12.IsLeaf);
-            var baseSize = NodeUtils12.BaseSize(header._nodeType);
+            var baseSize = NodeUtils12.BaseSize(header._nodeType).Base;
             var prefixSize = (uint)header._keyPrefixLength;
             var ptr = nodePtr + baseSize;
             if (prefixSize == 0xffff)

@@ -9,8 +9,10 @@ namespace BTDB.ARTLib
     // Reference Count                                   4    4
     // Recursive Child Count                             8    8
     // [Over 0xffff Key Prefix Length]                base    4
-    // [Prefix Key Data]                                      x
-    // [Value Data]                                          12 
+    // [HasSuffixes Children Suffix Offsets]                  2*(MaxChildren+1)
+    // [HasSuffixes Suffix Bytes]                             *(-2)
+    // [Prefix Key Data]                                      PrefixLen
+    // [Value Data]                               upAlign4    12
 
     [Flags]
     enum NodeType12 : byte
@@ -21,6 +23,7 @@ namespace BTDB.ARTLib
         Node48 = 4,
         Node256 = 5,
         NodeSizeMask = 7,
+        HasSuffixes = 8,
         IsLeaf = 16
     }
 }
