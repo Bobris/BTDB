@@ -23,7 +23,7 @@ namespace BTDB.ARTLib
             return new RootNode12(new ARTImpl12(allocator));
         }
 
-        unsafe internal IntPtr AllocateNode(NodeType12 nodeType, uint keyPrefixLength, uint valueLength)
+        internal unsafe IntPtr AllocateNode(NodeType12 nodeType, uint keyPrefixLength)
         {
             IntPtr node;
             int baseSize;
@@ -622,13 +622,13 @@ namespace BTDB.ARTLib
                         var (valueSize, valuePtr) = GetValueSizeAndPtrFromPtrInNode(onlyPtr);
                         var newNode =
                             AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf,
-                                prefixSize + 1, valueSize);
-                        var (newPrefixSize, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
+                                prefixSize + 1);
+                        var (_, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                         ArtUtils.CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
                         ArtUtils.WriteByte(newPrefixPtr + (int)prefixSize, onlyByte);
                         if (valueSize > 0)
                         {
-                            var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
+                            var (_, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                             ArtUtils.CopyMemory(valuePtr, newValuePtr, (int)valueSize);
                         }
 
@@ -652,10 +652,10 @@ namespace BTDB.ARTLib
             {
                 var (prefixSize, prefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(node);
                 var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(node);
-                var newNode = AllocateNode(newNodeType, prefixSize, valueSize);
+                var newNode = AllocateNode(newNodeType, prefixSize);
                 if (prefixSize > 0)
                 {
-                    var (newPrefixSize, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
+                    var (_, newPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
                     ArtUtils.CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
                 }
 
@@ -1301,11 +1301,11 @@ namespace BTDB.ARTLib
             var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
             var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(nodePtr);
             var newNodeType = header._nodeType + 1;
-            var newNode = AllocateNode(newNodeType, keyPrefixSize, valueSize);
-            var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
+            var newNode = AllocateNode(newNodeType, keyPrefixSize);
+            var (_, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
             if (newNodeType.HasFlag(NodeType12.IsLeaf))
             {
-                var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
+                var (_, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
                 ArtUtils.CopyMemory(valuePtr, newValuePtr, (int)valueSize);
             }
 
@@ -1359,7 +1359,7 @@ namespace BTDB.ARTLib
             var baseSize = NodeUtils12.BaseSize(header._nodeType).Base;
             var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(nodePtr);
             var (valueSize, valuePtr) = NodeUtils12.GetValueSizeAndPtr(nodePtr);
-            var newNode = AllocateNode(header._nodeType, (uint)(keyPrefixSize - skipPrefix), valueSize);
+            var newNode = AllocateNode(header._nodeType, (uint)(keyPrefixSize - skipPrefix));
             var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
             var (newValueSize, newValuePtr) = NodeUtils12.GetValueSizeAndPtr(newNode);
             ref NodeHeader12 newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
@@ -1406,7 +1406,7 @@ namespace BTDB.ARTLib
                 newNodeType = newNodeType | NodeType12.IsLeaf;
             }
 
-            var newNode = AllocateNode(newNodeType, keyPrefixSize, (uint)(length < 0 ? 0 : length));
+            var newNode = AllocateNode(newNodeType, keyPrefixSize);
             var (newKeyPrefixSize, newKeyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(newNode);
             unsafe
             {
@@ -2308,7 +2308,7 @@ namespace BTDB.ARTLib
 
                     ref var stackItem = ref stack.Add();
                     stackItem.Set(
-                        AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, (uint)keyRest, (uint)content.Length),
+                        AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, (uint)keyRest),
                         (uint)key.Length, -1, 0);
                     var (size, ptr) = NodeUtils12.GetPrefixSizeAndPtr(stackItem._node);
                     unsafe
@@ -2337,7 +2337,7 @@ namespace BTDB.ARTLib
                 {
                     MakeUnique(rootNode, stack.AsSpan());
                     var nodeType = NodeType12.Node4 | (newKeyPrefixSize == keyRest ? NodeType12.IsLeaf : 0);
-                    var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize, (uint)content.Length);
+                    var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize);
                     try
                     {
                         ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
@@ -2436,7 +2436,7 @@ namespace BTDB.ARTLib
                     MakeUnique(rootNode, stack.AsSpan());
                     var nodeType = NodeType12.Node4 | NodeType12.IsLeaf;
                     var (topValueSize, topValuePtr) = NodeUtils12.GetValueSizeAndPtr(top);
-                    var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize, topValueSize);
+                    var newNode = AllocateNode(nodeType, (uint)newKeyPrefixSize);
                     try
                     {
                         ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
@@ -2499,7 +2499,7 @@ namespace BTDB.ARTLib
                         else
                         {
                             ref var stackItem = ref stack.Add();
-                            stackItem.Set(AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, 0, (uint)content.Length),
+                            stackItem.Set(AllocateNode(NodeType12.NodeLeaf | NodeType12.IsLeaf, 0),
                                 (uint)key.Length, -1, 0);
                             var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                             unsafe
@@ -2515,7 +2515,7 @@ namespace BTDB.ARTLib
 
                     var nodeType = NodeType12.Node4 | NodeType12.IsLeaf;
                     var (topValueSize, topValuePtr) = GetValueSizeAndPtrFromPtrInNode(NodeUtils12.PtrInNode(top, pos));
-                    var newNode = AllocateNode(nodeType, 0, topValueSize);
+                    var newNode = AllocateNode(nodeType, 0);
                     try
                     {
                         ref var newHeader = ref NodeUtils12.Ptr2NodeHeader(newNode);
