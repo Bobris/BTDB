@@ -25,15 +25,15 @@ namespace BTDB.ARTLib
 
         public void SetNewRoot(IRootNode artRoot)
         {
-            var newRoot = (RootNode12) artRoot;
+            var newRoot = (RootNode12)artRoot;
             if (newRoot._root != _rootNode._root)
                 throw new ArgumentException("SetNewRoot allows only upgrades to writtable identical root");
-            _rootNode = (RootNode12) artRoot;
+            _rootNode = (RootNode12)artRoot;
         }
 
         public long CalcDistance(ICursor to)
         {
-            if (_rootNode != ((Cursor12) to)._rootNode)
+            if (_rootNode != ((Cursor12)to)._rootNode)
                 throw new ArgumentException("Cursor must be from same transaction", nameof(to));
             return to.CalcIndex() - CalcIndex();
         }
@@ -67,13 +67,13 @@ namespace BTDB.ARTLib
         public long EraseTo(ICursor to)
         {
             AssertWrittable();
-            if (_rootNode != ((Cursor12) to)._rootNode)
+            if (_rootNode != ((Cursor12)to)._rootNode)
                 throw new ArgumentException("Both cursors must be from same transaction", nameof(to));
             if (!to.IsValid())
                 throw new ArgumentException("Cursor must be valid", nameof(to));
             if (!IsValid())
                 throw new ArgumentException("Cursor must be valid", "this");
-            return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor12) to)._stack);
+            return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor12)to)._stack);
         }
 
         public void StructureCheck()
@@ -104,7 +104,13 @@ namespace BTDB.ARTLib
         public int GetKeyLength()
         {
             if (_stack.Count == 0) return -1;
-            return (int) _stack[_stack.Count - 1]._keyOffset;
+            ref var stackItem = ref _stack[_stack.Count - 1];
+            var offset = stackItem._keyOffset;
+            if (stackItem._posInNode >= 0)
+            {
+                offset += NodeUtils12.GetSuffixSize(stackItem._node, stackItem._posInNode);
+            }
+            return (int)offset;
         }
 
         public bool IsValid()
@@ -121,38 +127,36 @@ namespace BTDB.ARTLib
             }
         }
 
-        public Span<byte> FillByKey(Span<byte> buffer)
+        public unsafe Span<byte> FillByKey(Span<byte> buffer)
         {
             AssertValid();
             var stack = _stack;
-            var keyLength = (int) stack[stack.Count - 1]._keyOffset;
-            if (buffer.Length < keyLength || keyLength < 0)
-                throw new ArgumentOutOfRangeException(nameof(buffer),
-                    "Key has " + keyLength + " bytes, but provided buffer has only " + buffer.Length);
             var offset = 0;
             var i = 0u;
-            while (offset < keyLength)
+            while (i < stack.Count)
             {
                 ref var stackItem = ref stack[i++];
                 if (offset < stackItem._keyOffset - (stackItem._posInNode == -1 ? 0 : 1))
                 {
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(stackItem._node);
-                    unsafe
-                    {
-                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(buffer.Slice(offset)),
-                            ref Unsafe.AsRef<byte>(keyPrefixPtr.ToPointer()), keyPrefixSize);
-                    }
-
-                    offset += (int) keyPrefixSize;
+                    new Span<byte>(keyPrefixPtr.ToPointer(), (int)keyPrefixSize).CopyTo(buffer.Slice(offset));
+                    offset += (int)keyPrefixSize;
                 }
 
                 if (stackItem._posInNode != -1)
                 {
                     buffer[offset++] = stackItem._byte;
+                    if (i == stack.Count)
+                    {
+                        var (suffixSize, suffixPtr) = NodeUtils12.GetSuffixSizeAndPtr(stackItem._node, stackItem._posInNode);
+                        new Span<byte>(suffixPtr.ToPointer(), (int)suffixSize).CopyTo(buffer.Slice(offset));
+                        offset += (int)suffixSize;
+                        break;
+                    }
                 }
             }
 
-            return buffer.Slice(0, keyLength);
+            return buffer.Slice(0, offset);
         }
 
         public byte[] GetKeyAsByteArray()
@@ -168,26 +172,23 @@ namespace BTDB.ARTLib
             if (_stack.Count == 0)
                 return false;
             var stack = _stack;
-            var keyLength = (int) stack[stack.Count - 1]._keyOffset;
-            if (prefix.Length > keyLength)
-                return false;
             var offset = 0;
             var i = 0;
-            while (offset < prefix.Length)
+            while (offset < prefix.Length && i < stack.Count)
             {
-                ref var stackItem = ref stack[(uint) i++];
+                ref var stackItem = ref stack[(uint)i++];
                 if (offset < stackItem._keyOffset - (stackItem._posInNode == -1 ? 0 : 1))
                 {
                     var (keyPrefixSize, keyPrefixPtr) = NodeUtils12.GetPrefixSizeAndPtr(stackItem._node);
                     unsafe
                     {
-                        var commonLength = Math.Min((int) keyPrefixSize, prefix.Length - offset);
+                        var commonLength = Math.Min((int)keyPrefixSize, prefix.Length - offset);
                         if (!new Span<byte>(keyPrefixPtr.ToPointer(), commonLength).SequenceEqual(prefix.Slice(offset,
                             commonLength)))
                             return false;
                     }
 
-                    offset += (int) keyPrefixSize;
+                    offset += (int)keyPrefixSize;
                     if (offset >= prefix.Length)
                         return true;
                 }
@@ -197,10 +198,24 @@ namespace BTDB.ARTLib
                     if (prefix[offset] != stackItem._byte)
                         return false;
                     offset++;
+                    if (offset >= prefix.Length)
+                        return true;
+                    if (i == stack.Count)
+                    {
+                        var (suffixSize, suffixPtr) = NodeUtils12.GetSuffixSizeAndPtr(stackItem._node, stackItem._posInNode);
+                        unsafe
+                        {
+                            var commonLength = Math.Min((int)suffixSize, prefix.Length - offset);
+                            if (!new Span<byte>(suffixPtr.ToPointer(), commonLength).SequenceEqual(prefix.Slice(offset,
+                                commonLength)))
+                                return false;
+                            offset += commonLength;
+                        }
+                    }
                 }
             }
 
-            return true;
+            return offset >= prefix.Length;
         }
 
         public int GetValueLength()
@@ -218,7 +233,7 @@ namespace BTDB.ARTLib
                 var (size, ptr) = NodeUtils12.GetValueSizeAndPtr(stackItem._node);
                 unsafe
                 {
-                    return new Span<byte>(ptr.ToPointer(), (int) size);
+                    return new Span<byte>(ptr.ToPointer(), (int)size);
                 }
             }
 

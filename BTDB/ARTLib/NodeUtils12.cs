@@ -104,13 +104,49 @@ namespace BTDB.ARTLib
             var suffixOfs2 = *(ushort*)(ptr + i * 2 + 2);
             Debug.Assert(suffixOfs == suffixOfs2);
             var suffixOfs3 = *(ushort*)(ptr + 2 * maxChildren);
-            for (var j = i + 1; i <= maxChildren; j++)
+            for (var j = i + 1; j <= maxChildren; j++)
             {
                 *(ushort*)(ptr + j * 2) += (ushort)src.Size;
             }
             ptr += 2 * maxChildren + 2;
             if (suffixOfs3 > suffixOfs2) ArtUtils.MoveMemory(ptr + suffixOfs2, ptr + (int)(suffixOfs2 + src.Size), suffixOfs3 - suffixOfs2);
             ArtUtils.CopyMemory(src.Ptr, ptr + suffixOfs, (int)src.Size);
+        }
+
+        internal static unsafe void SetSuffix(IntPtr suffixPtr, int i, int maxChildren, ReadOnlySpan<byte> src)
+        {
+            if (src.Length == 0) return;
+            var ptr = suffixPtr;
+            var suffixOfs = *(ushort*)(ptr + i * 2);
+            var suffixOfs2 = *(ushort*)(ptr + i * 2 + 2);
+            Debug.Assert(suffixOfs == suffixOfs2);
+            var suffixOfs3 = *(ushort*)(ptr + 2 * maxChildren);
+            for (var j = i + 1; j <= maxChildren; j++)
+            {
+                *(ushort*)(ptr + j * 2) += (ushort)src.Length;
+            }
+            ptr += 2 * maxChildren + 2;
+            if (suffixOfs3 > suffixOfs2) ArtUtils.MoveMemory(ptr + suffixOfs2, ptr + (suffixOfs2 + src.Length), suffixOfs3 - suffixOfs2);
+            src.CopyTo(new Span<byte>((ptr + suffixOfs).ToPointer(), src.Length));
+        }
+
+        internal static unsafe uint GetSuffixSize(IntPtr nodePtr, int i)
+        {
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            if (!header._nodeType.HasFlag(NodeType12.HasSuffixes))
+            {
+                return 0;
+            }
+            var baseSize = BaseSize(header._nodeType).Base;
+            var prefixSize = (uint)header._keyPrefixLength;
+            var ptr = nodePtr + baseSize;
+            if (prefixSize == 0xffff)
+            {
+                ptr += sizeof(uint);
+            }
+            var suffixOfs = *(ushort*)(ptr + i * 2);
+            var suffixSize = (uint)(*(ushort*)(ptr + i * 2 + 2) - suffixOfs);
+            return suffixSize;
         }
 
         internal static unsafe (uint Size, IntPtr Ptr) GetSuffixSizeAndPtr(IntPtr nodePtr, int i)
@@ -133,7 +169,7 @@ namespace BTDB.ARTLib
             return (suffixSize, ptr);
         }
 
-        internal static unsafe (uint, IntPtr) GetSuffixTotalSizeAndPtr(IntPtr nodePtr)
+        internal static unsafe (uint totalSuffixSize, IntPtr totalSuffixPtr) GetSuffixTotalSizeAndPtr(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             if (!header._nodeType.HasFlag(NodeType12.HasSuffixes))
@@ -172,7 +208,7 @@ namespace BTDB.ARTLib
             return (12, ptr);
         }
 
-        internal static unsafe (uint prefixSize, IntPtr prefixPtr, uint totalSuffixSize, IntPtr suffixPtr, uint valueSize, IntPtr valuePtr) GetAllSizeAndPtr(IntPtr nodePtr)
+        internal static unsafe (int baseSize, int maxChildren, uint prefixSize, IntPtr prefixPtr, uint totalSuffixSize, IntPtr suffixPtr, uint valueSize, IntPtr valuePtr) GetAllSizeAndPtr(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             var (baseSize, maxChildren) = BaseSize(header._nodeType);
@@ -197,9 +233,9 @@ namespace BTDB.ARTLib
             {
                 ptr += (int)prefixSize;
                 ptr = ArtUtils.AlignPtrUpInt32(ptr);
-                return (prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 12, ptr);
+                return (baseSize, maxChildren, prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 12, ptr);
             }
-            return (prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 0, IntPtr.Zero);
+            return (baseSize, maxChildren, prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 0, IntPtr.Zero);
         }
 
         internal static unsafe (uint prefixSize, IntPtr prefixPtr, IntPtr suffixPtr, uint valueSize, IntPtr valuePtr) GetAllSizeAndPtr(IntPtr nodePtr, uint totalSuffixSize)
@@ -255,6 +291,18 @@ namespace BTDB.ARTLib
                 case NodeType12.Node256: return 256;
                 default: throw new InvalidOperationException();
             }
+        }
+
+        internal static int CalcTotalSuffixSize(uint suffixSize, int maxChildren)
+        {
+            return (int)suffixSize + maxChildren * 2 + 2;
+        }
+
+        internal static bool ValidateSuffix(ref int suffix)
+        {
+            if (suffix > 0 && suffix < 256) return true;
+            suffix = 0;
+            return false;
         }
     }
 }

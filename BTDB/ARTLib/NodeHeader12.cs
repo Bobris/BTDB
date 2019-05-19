@@ -45,6 +45,8 @@ namespace BTDB.ARTLib
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => !IsNode256() && _childCount == NodeUtils12.MaxChildren(_nodeType);
         }
+
+        public bool IsNodeLeaf => (_nodeType & NodeType12.NodeSizeMask) == NodeType12.NodeLeaf;
     }
 }
 

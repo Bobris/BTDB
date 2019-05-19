@@ -927,13 +927,15 @@ namespace ARTLibTest
         public void EraseToOneChild(int count)
         {
             var val = GetSampleValue().ToArray();
-            var key = new byte[2];
+            var key = new byte[3];
             for (int i = 0; i < count; i++)
             {
                 key[1] = (byte)(i * 2);
+                key[2] = (byte)(i + 5);
                 _cursor.Upsert(key, val);
             }
             key[1] = 2;
+            key[2] = 6;
             _cursor.FindExact(key);
             var c2 = _cursor.Clone();
             c2.FindLast(new ReadOnlySpan<byte>());
@@ -943,6 +945,7 @@ namespace ARTLibTest
             _cursor.FillByKey(key);
             Assert.Equal(0, key[0]);
             Assert.Equal(0, key[1]);
+            Assert.Equal(5, key[2]);
             Assert.Equal(val, _cursor.GetValue().ToArray());
             _cursor.Erase();
             for (int i = 0; i < count; i++)
