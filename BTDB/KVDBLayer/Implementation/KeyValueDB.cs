@@ -375,7 +375,7 @@ namespace BTDB.KVDBLayer
                         var keyLengthWithoutPrefix = (int) reader.ReadVUInt32();
                         var key = ByteBuffer.NewAsync(new byte[prefixLen + keyLengthWithoutPrefix]);
                         Array.Copy(prevKey.Buffer, prevKey.Offset, key.Buffer, key.Offset, prefixLen);
-                        reader.ReadBlock(key.SubBuffer(prefixLen));
+                        reader.ReadBlock(key.Slice(prefixLen));
                         prevKey = key;
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
@@ -1176,10 +1176,9 @@ namespace BTDB.KVDBLayer
                             break;
                         }
                     }
-
-                    writer.WriteVUInt32((uint) prefixLen);
-                    writer.WriteVUInt32((uint) (key.Length - prefixLen));
-                    writer.WriteBlock(key.SubBuffer(prefixLen));
+                    writer.WriteVUInt32((uint)prefixLen);
+                    writer.WriteVUInt32((uint)(key.Length - prefixLen));
+                    writer.WriteBlock(key.Slice(prefixLen));
                     var vFileId = memberValue.ValueFileId;
                     if (vFileId > 0) usedFileIds.Add(vFileId);
                     writer.WriteVUInt32(vFileId);
