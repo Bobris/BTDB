@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 
 namespace BTDB.Buffer
 {
@@ -7,6 +8,15 @@ namespace BTDB.Buffer
         byte[] _buffer;
         uint _offset;
         readonly int _length;
+
+        public static ByteBuffer NewAsync(ReadOnlyMemory<byte> buffer)
+        {
+            if (MemoryMarshal.TryGetArray(buffer, out var segment))
+            {
+                return NewAsync(segment.Array, segment.Offset, segment.Count);
+            }
+            return NewAsync(buffer.ToArray());
+        }
 
         public static ByteBuffer NewAsync(byte[] buffer)
         {
@@ -61,12 +71,12 @@ namespace BTDB.Buffer
             }
         }
 
-        public ByteBuffer SubBuffer(int offset)
+        public ByteBuffer Slice(int offset)
         {
             return AsyncSafe ? NewAsync(Buffer, Offset + offset, Length - offset) : NewSync(Buffer, Offset + offset, Length - offset);
         }
 
-        public ByteBuffer SubBuffer(int offset, int length)
+        public ByteBuffer Slice(int offset, int length)
         {
             return AsyncSafe ? NewAsync(Buffer, Offset + offset, length) : NewSync(Buffer, Offset + offset, length);
         }

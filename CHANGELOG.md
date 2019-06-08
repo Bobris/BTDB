@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Added
+
+New method `ByteBuffer ByteBuffer.NewAsync(ReadOnlyMemory<byte> buffer)`.
+
+### Changed
+
+Supports only .Net Core 2.2 or better.
+
 ## 17.6.0
 
 ### Fixed
