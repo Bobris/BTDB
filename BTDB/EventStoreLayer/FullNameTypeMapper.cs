@@ -45,6 +45,7 @@ namespace BTDB.EventStoreLayer
 
         enum TokenType
         {
+            Left,
             Type,
             GenericType
         }
@@ -65,6 +66,7 @@ namespace BTDB.EventStoreLayer
 
             var stack = new Stack<Token>();
             stack.Push(new Token { TokenType = TokenType.GenericType, End = i });
+            stack.Push(new Token { TokenType = TokenType.Left });
             stack.Push(new Token { TokenType = TokenType.Type, Start = i + 1 });
 
             while (++i < name.Length)
@@ -75,8 +77,9 @@ namespace BTDB.EventStoreLayer
                     stack.Peek().End = i;
 
                     var args = new List<Token>();
-                    while (stack.Peek().TokenType != TokenType.GenericType)
+                    while (stack.Peek().TokenType != TokenType.Left)
                         args.Add(stack.Pop());
+                    stack.Pop();
 
                     int arity = args.Count;
                     var token = stack.Peek();
@@ -87,8 +90,13 @@ namespace BTDB.EventStoreLayer
                     for (int j = 0; j < arity; j++)
                     {
                         var argToken = args[arity - j - 1];
-                        var argTypeName = name.Substring(argToken.Start, argToken.End - argToken.Start);
-                        typeArgs[j] = Type.GetType(argTypeName);
+                        if (argToken.TokenType == TokenType.GenericType)
+                            typeArgs[j] = argToken.Type;
+                        else
+                        {
+                            var argTypeName = name.Substring(argToken.Start, argToken.End - argToken.Start);
+                            typeArgs[j] = Type.GetType(argTypeName);
+                        }
                     }
 
                     token.Type = genericDefinition.MakeGenericType(typeArgs);
@@ -106,6 +114,7 @@ namespace BTDB.EventStoreLayer
                     Debug.Assert(stack.Peek().TokenType == TokenType.Type);
                     stack.Peek().TokenType = TokenType.GenericType;
                     stack.Peek().End = i;
+                    stack.Push(new Token { TokenType = TokenType.Left });
                     stack.Push(new Token { TokenType = TokenType.Type, Start = i + 1 });
                 }
             }
