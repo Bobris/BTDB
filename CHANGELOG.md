@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.7.0
+
 ### Added
 
 New method `ByteBuffer ByteBuffer.NewAsync(ReadOnlyMemory<byte> buffer)`.
