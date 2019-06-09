@@ -22,9 +22,7 @@ namespace BTDB.EventStoreLayer
             if (type.IsGenericType)
             {
                 sb
-                    .Append(type.Namespace)
-                    .Append('.')
-                    .Append(type.Name, 0, type.Name.IndexOf('`'))
+                    .Append(type.FullName, 0, type.FullName.IndexOf('`'))
                     .Append('<');
 
                 var args = type.GetGenericArguments();
@@ -84,7 +82,7 @@ namespace BTDB.EventStoreLayer
                     int arity = args.Count;
                     var token = stack.Peek();
                     var typeName = name.Substring(token.Start, token.End - token.Start);
-                    var genericDefinition = Type.GetType(typeName + '`' + arity);
+                    var genericDefinition = ToTypeInternal(typeName + '`' + arity);
 
                     var typeArgs = new Type[arity];
                     for (int j = 0; j < arity; j++)
@@ -95,7 +93,7 @@ namespace BTDB.EventStoreLayer
                         else
                         {
                             var argTypeName = name.Substring(argToken.Start, argToken.End - argToken.Start);
-                            typeArgs[j] = Type.GetType(argTypeName);
+                            typeArgs[j] = ToTypeInternal(argTypeName);
                         }
                     }
 
