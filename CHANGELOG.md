@@ -6,6 +6,8 @@
 
 New method `ByteBuffer ByteBuffer.NewAsync(ReadOnlyMemory<byte> buffer)`.
 
+FullNameTypeMapper improved support for generics. Types can migrate assemblies even for generic arguments. (by https://github.com/JanVargovsky)
+
 ### Changed
 
 Supports only .Net Core 2.2 or better.
