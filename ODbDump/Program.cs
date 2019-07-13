@@ -5,6 +5,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Diagnostics;
 using ODbDump.Visitor;
+using BTDB.StreamLayer;
 
 namespace ODbDump
 {
@@ -27,6 +28,15 @@ namespace ODbDump
 
             switch (action)
             {
+                case "realpath":
+                {
+                    var res = PlatformMethods.Instance.RealPath(args[0]);
+                    if (res == null)
+                        Console.WriteLine("Error resolving real path for " + args[0]);
+                    else
+                        Console.WriteLine(res);
+                    break;
+                }
                 case "nicedump":
                 {
                     using (var dfc = new OnDiskFileCollection(args[0]))

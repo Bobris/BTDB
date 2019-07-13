@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+New method `IPlatformMethods.RealPath` for platform independent expanding of symlinks.
+
 ## 17.7.0
 
 ### Added
