@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>netcoreapp2.2</TargetFrameworks>
@@ -6,6 +6,7 @@
     <LangVersion>latest</LangVersion>
     <Version>17.5.2</Version>
     <Version>17.7.0</Version>
+    <Version>17.8.0</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
   </PropertyGroup>
   <ItemGroup>
