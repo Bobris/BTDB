@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+ODBIterator extented to be able to seek and display only what is needed.
+
 ## 17.8.0
 
 ### Added

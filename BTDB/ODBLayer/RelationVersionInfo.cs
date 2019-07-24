@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -47,10 +48,10 @@ namespace BTDB.ODBLayer
         }
     }
 
-    class RelationVersionInfo
+    public class RelationVersionInfo
     {
-        readonly IList<TableFieldInfo> _primaryKeyFields;
-        readonly IList<TableFieldInfo> _secondaryKeyFields;
+        IReadOnlyList<TableFieldInfo> _primaryKeyFields;
+        IReadOnlyList<TableFieldInfo> _secondaryKeyFields;
         IDictionary<string, uint> _secondaryKeysNames;
         IDictionary<uint, SecondaryKeyInfo> _secondaryKeys;
 
@@ -62,7 +63,7 @@ namespace BTDB.ODBLayer
                                    TableFieldInfo[] secondaryKeyFields,
                                    TableFieldInfo[] fields, RelationVersionInfo prevVersion)
         {
-            _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+            _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
             _secondaryKeyFields = secondaryKeyFields;
             CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
             _fields = fields;
@@ -161,10 +162,10 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        RelationVersionInfo(IList<TableFieldInfo> primaryKeyFields,
+        RelationVersionInfo(IReadOnlyList<TableFieldInfo> primaryKeyFields,
                             Dictionary<uint, SecondaryKeyInfo> secondaryKeys,
                             Dictionary<string, uint> secondaryKeysNames,
-                            IList<TableFieldInfo> secondaryKeyFields,
+                            IReadOnlyList<TableFieldInfo> secondaryKeyFields,
                             TableFieldInfo[] fields)
         {
             _primaryKeyFields = primaryKeyFields;
@@ -179,12 +180,12 @@ namespace BTDB.ODBLayer
             get { return _fields.Concat(_primaryKeyFields).FirstOrDefault(tfi => tfi.Name == name); }
         }
 
-        internal IReadOnlyCollection<TableFieldInfo> GetValueFields()
+        public IReadOnlyList<TableFieldInfo> GetValueFields()
         {
             return _fields;
         }
 
-        internal IList<TableFieldInfo> GetPrimaryKeyFields()
+        public IReadOnlyList<TableFieldInfo> GetPrimaryKeyFields()
         {
             return _primaryKeyFields;
         }
@@ -326,10 +327,16 @@ namespace BTDB.ODBLayer
 
         public void ResolveFieldHandlers(IFieldHandlerFactory fieldHandlerFactory)
         {
+            var resolvedPrimaryKeyFields = new TableFieldInfo[_primaryKeyFields.Count];
             for (var i = 0; i < _primaryKeyFields.Count; i++)
-                _primaryKeyFields[i] = ((UnresolvedTableFieldInfo)_primaryKeyFields[i]).Resolve(fieldHandlerFactory);
+                resolvedPrimaryKeyFields[i] = ((UnresolvedTableFieldInfo)_primaryKeyFields[i]).Resolve(fieldHandlerFactory);
+            _primaryKeyFields = resolvedPrimaryKeyFields;
+
+            var resolvedSecondaryKeyFields = new TableFieldInfo[_secondaryKeyFields.Count];
             for (var i = 0; i < _secondaryKeyFields.Count; i++)
-                _secondaryKeyFields[i] = ((UnresolvedTableFieldInfo)_secondaryKeyFields[i]).Resolve(fieldHandlerFactory);
+                resolvedSecondaryKeyFields[i] = ((UnresolvedTableFieldInfo)_secondaryKeyFields[i]).Resolve(fieldHandlerFactory);
+            _secondaryKeyFields = resolvedSecondaryKeyFields;
+
             for (var i = 0; i < _fields.Length; i++)
                 _fields[i] = ((UnresolvedTableFieldInfo)_fields[i]).Resolve(fieldHandlerFactory);
         }
