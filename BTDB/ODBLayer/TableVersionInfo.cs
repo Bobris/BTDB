@@ -13,11 +13,11 @@ namespace BTDB.ODBLayer
             _tableFields = tableFields;
         }
 
-        internal int FieldCount => _tableFields.Length;
+        public int FieldCount => _tableFields.Length;
 
-        internal TableFieldInfo this[int idx] => _tableFields[idx];
+        public TableFieldInfo this[int idx] => _tableFields[idx];
 
-        internal TableFieldInfo this[string name]
+        public TableFieldInfo this[string name]
         {
             get { return _tableFields.FirstOrDefault(tfi => tfi.Name == name); }
         }
