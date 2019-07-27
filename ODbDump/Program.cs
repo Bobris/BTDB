@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Threading;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using System.Diagnostics;
@@ -198,7 +197,7 @@ namespace ODbDump
                     {
                         kdb.Logger = new ConsoleKvdbLogger();
                         sw.Stop();
-                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}");
+                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1} Memory {GC.GetTotalMemory(true)} Working set {Process.GetCurrentProcess().WorkingSet64}");
                         sw.Restart();
                         while (kdb.Compact(new CancellationToken()))
                         {
