@@ -959,18 +959,12 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void CannotObtainRawDefaultValueOfDateTime()
+        public void CanObtainRawDefaultValueOfDateTime()
         {
-            // Once this test fails (it really returns DateTime's default value) 
-            // you might remove the exception in the GenerationContext.NeedsForConstructor method
-            // Related issues:
-            // https://github.com/dotnet/corefx/issues/26164
-            // https://github.com/dotnet/csharplang/issues/1236
-
             var ctor = typeof(ClassWithDateTime).GetConstructors()[0];
             var dateTimeParameter = ctor.GetParameters()[0];
-            Assert.Throws<FormatException>(() => dateTimeParameter.HasDefaultValue);
-            Assert.Throws<FormatException>(() => dateTimeParameter.RawDefaultValue);
+            Assert.True(dateTimeParameter.HasDefaultValue);
+            Assert.Null(dateTimeParameter.RawDefaultValue);
         }
     }
 }

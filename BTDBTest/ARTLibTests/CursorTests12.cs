@@ -2,7 +2,7 @@
 
 namespace ARTLibTest
 {
-    public class CursorTests12 : CursorTestsBase
+    class CursorTests12 : CursorTestsBase
     {
         public override bool Is12 => true;
 

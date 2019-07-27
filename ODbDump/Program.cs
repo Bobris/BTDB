@@ -6,6 +6,7 @@ using System.Diagnostics;
 using ODbDump.Visitor;
 using BTDB.StreamLayer;
 using System.Linq;
+using System.Threading;
 
 namespace ODbDump
 {
@@ -221,16 +222,10 @@ namespace ODbDump
                         break;
                     }
                 case "compact":
-                {
-                    var sw = new Stopwatch();
-                    sw.Start();
-                    using (var dfc = new OnDiskFileCollection(args[0]))
                     {
-                        kdb.Logger = new ConsoleKvdbLogger();
-                        sw.Stop();
-                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1} Memory {GC.GetTotalMemory(true)} Working set {Process.GetCurrentProcess().WorkingSet64}");
-                        sw.Restart();
-                        while (kdb.Compact(new CancellationToken()))
+                        var sw = new Stopwatch();
+                        sw.Start();
+                        using (var dfc = new OnDiskFileCollection(args[0]))
                         using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                         {
                             kdb.Logger = new ConsoleKvdbLogger();

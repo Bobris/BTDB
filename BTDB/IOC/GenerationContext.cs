@@ -66,9 +66,6 @@ namespace BTDB.IOC
         {
             foreach (var parameter in constructor.GetParameters())
             {
-                if (parameter.ParameterType == typeof(DateTime))
-                    throw new NotSupportedException("Not supported because of bug in .NET");
-
                 yield return new Need
                 {
                     Kind = NeedKind.ConstructorParameter,

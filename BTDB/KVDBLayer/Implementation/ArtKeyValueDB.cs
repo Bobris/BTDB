@@ -501,7 +501,7 @@ namespace BTDB.KVDBLayer
                         var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
                         var key = ByteBuffer.NewAsync(new byte[prefixLen + keyLengthWithoutPrefix]);
                         Array.Copy(prevKey.Buffer, prevKey.Offset, key.Buffer, key.Offset, prefixLen);
-                        reader.ReadBlock(key.SubBuffer(prefixLen));
+                        reader.ReadBlock(key.Slice(prefixLen));
                         prevKey = key;
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
