@@ -1,7 +1,7 @@
 using System;
 using Mono.Unix;
 
-namespace BTDB.ARTLib
+namespace BTDB.Allocators
 {
     public class MallocAllocator : IOffHeapAllocator
     {

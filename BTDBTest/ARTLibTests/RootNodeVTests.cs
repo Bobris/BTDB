@@ -1,4 +1,5 @@
-﻿using BTDB.ARTLib;
+﻿using BTDB.Allocators;
+using BTDB.ARTLib;
 using System;
 using Xunit;
 

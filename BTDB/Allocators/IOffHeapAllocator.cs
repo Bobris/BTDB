@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace BTDB.ARTLib
+namespace BTDB.Allocators
 {
     public interface IOffHeapAllocator
     {

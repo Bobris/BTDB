@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.Allocators;
 using BTDB.ARTLib;
 
 namespace BTDB.KVDBLayer

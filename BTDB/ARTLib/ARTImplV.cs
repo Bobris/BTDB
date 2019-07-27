@@ -1,4 +1,5 @@
-﻿using BTDB.Collections;
+﻿using BTDB.Allocators;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Diagnostics;

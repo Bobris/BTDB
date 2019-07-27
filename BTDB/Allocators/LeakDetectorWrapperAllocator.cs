@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 
-namespace BTDB.ARTLib
+namespace BTDB.Allocators
 {
     class LeakDetectorWrapperAllocator : IOffHeapAllocator, IDisposable
     {
@@ -28,7 +28,7 @@ namespace BTDB.ARTLib
             var res = _wrapped.Allocate(size + 32);
             unsafe
             {
-                new Span<byte>((res).ToPointer(), 16).Fill(0xBB);
+                new Span<byte>(res.ToPointer(), 16).Fill(0xBB);
                 new Span<byte>((res + 16).ToPointer(), size.ToInt32()).Fill(255);
                 new Span<byte>((res + size.ToInt32() + 16).ToPointer(), 16).Fill(0xEE);
             }
@@ -45,13 +45,13 @@ namespace BTDB.ARTLib
             unsafe
             {
                 var span = new Span<byte>(ptr.ToPointer(), 16);
-                for (int i = 0; i < 16; i++)
+                for (var i = 0; i < 16; i++)
                 {
                     if (span[i] != 0xBB)
                         throw new InvalidOperationException("Overwrite of block at begging " + i);
                 }
                 span = new Span<byte>((ptr + size.ToInt32() + 16).ToPointer(), 16);
-                for (int i = 0; i < 16; i++)
+                for (var i = 0; i < 16; i++)
                 {
                     if (span[i] != 0xEE)
                         throw new InvalidOperationException("Overwrite of block at end " + i);

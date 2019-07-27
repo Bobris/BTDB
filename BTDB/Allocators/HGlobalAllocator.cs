@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace BTDB.ARTLib
+namespace BTDB.Allocators
 {
     public class HGlobalAllocator : IOffHeapAllocator
     {

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BTDB.ARTLib;
+using BTDB.Allocators;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using Xunit;

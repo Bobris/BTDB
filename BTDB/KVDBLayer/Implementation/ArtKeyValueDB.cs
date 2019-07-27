@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using BTDB.Allocators;
 using BTDB.ARTLib;
 using BTDB.Buffer;
 using BTDB.Collections;
