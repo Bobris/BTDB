@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BTDB.Buffer;
+using System;
 using System.Runtime.CompilerServices;
 
 namespace BTDB.ARTLib
@@ -28,7 +29,7 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr ReadPtr(IntPtr ptr)
         {
-            return ArtUtils.ReadIntPtrUnaligned(ptr);
+            return TreeNodeUtils.ReadIntPtrUnaligned(ptr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -55,7 +56,7 @@ namespace BTDB.ARTLib
             var ptr = nodePtr + baseSize;
             if (size == 0xffff)
             {
-                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
+                size = (uint)TreeNodeUtils.ReadInt32Aligned(ptr);
                 ptr += sizeof(uint);
             }
             if (header._nodeType.HasFlag(NodeTypeV.IsLeaf))
@@ -74,7 +75,7 @@ namespace BTDB.ARTLib
             {
                 var baseSize = BaseSize(header._nodeType);
                 var ptr = nodePtr + baseSize;
-                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
+                size = (uint)TreeNodeUtils.ReadInt32Aligned(ptr);
             }
             return size;
         }
@@ -100,7 +101,7 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint ReadLenFromPtr(IntPtr ptr)
         {
-            ArtUtils.AssertLittleEndian();
+            TreeNodeUtils.AssertLittleEndian();
             unsafe { return ((uint)*(byte*)ptr.ToPointer()) >> 1; }
         }
 

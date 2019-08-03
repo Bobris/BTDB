@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BTDB.Buffer;
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -22,7 +23,7 @@ namespace BTDB.ARTLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr Read12Ptr(IntPtr childPtr)
         {
-            return ArtUtils.ReadIntPtrUnaligned(childPtr + sizeof(uint));
+            return TreeNodeUtils.ReadIntPtrUnaligned(childPtr + sizeof(uint));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -58,7 +59,7 @@ namespace BTDB.ARTLib
             var ptr = nodePtr + baseSize;
             if (size == 0xffff)
             {
-                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
+                size = (uint)TreeNodeUtils.ReadInt32Aligned(ptr);
                 ptr += sizeof(uint);
             }
             if (header._nodeType.HasFlag(NodeType12.HasSuffixes))
@@ -78,7 +79,7 @@ namespace BTDB.ARTLib
             {
                 var (baseSize, _) = BaseSize(header._nodeType);
                 var ptr = nodePtr + baseSize;
-                size = (uint)ArtUtils.ReadInt32Aligned(ptr);
+                size = (uint)TreeNodeUtils.ReadInt32Aligned(ptr);
             }
             return size;
         }
@@ -109,8 +110,8 @@ namespace BTDB.ARTLib
                 *(ushort*)(ptr + j * 2) += (ushort)src.Size;
             }
             ptr += 2 * maxChildren + 2;
-            if (suffixOfs3 > suffixOfs2) ArtUtils.MoveMemory(ptr + suffixOfs2, ptr + (int)(suffixOfs2 + src.Size), suffixOfs3 - suffixOfs2);
-            ArtUtils.CopyMemory(src.Ptr, ptr + suffixOfs, (int)src.Size);
+            if (suffixOfs3 > suffixOfs2) TreeNodeUtils.MoveMemory(ptr + suffixOfs2, ptr + (int)(suffixOfs2 + src.Size), suffixOfs3 - suffixOfs2);
+            TreeNodeUtils.CopyMemory(src.Ptr, ptr + suffixOfs, (int)src.Size);
         }
 
         internal static unsafe void SetSuffix(IntPtr suffixPtr, int i, int maxChildren, ReadOnlySpan<byte> src)
@@ -126,7 +127,7 @@ namespace BTDB.ARTLib
                 *(ushort*)(ptr + j * 2) += (ushort)src.Length;
             }
             ptr += 2 * maxChildren + 2;
-            if (suffixOfs3 > suffixOfs2) ArtUtils.MoveMemory(ptr + suffixOfs2, ptr + (suffixOfs2 + src.Length), suffixOfs3 - suffixOfs2);
+            if (suffixOfs3 > suffixOfs2) TreeNodeUtils.MoveMemory(ptr + suffixOfs2, ptr + (suffixOfs2 + src.Length), suffixOfs3 - suffixOfs2);
             src.CopyTo(new Span<byte>((ptr + suffixOfs).ToPointer(), src.Length));
         }
 
@@ -204,7 +205,7 @@ namespace BTDB.ARTLib
                 ptr += 2 + *(ushort*)ptr;
             }
             ptr += (int)prefixSize;
-            ptr = ArtUtils.AlignPtrUpInt32(ptr);
+            ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
             return (12, ptr);
         }
 
@@ -232,7 +233,7 @@ namespace BTDB.ARTLib
             if (header._nodeType.HasFlag(NodeType12.IsLeaf))
             {
                 ptr += (int)prefixSize;
-                ptr = ArtUtils.AlignPtrUpInt32(ptr);
+                ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
                 return (baseSize, maxChildren, prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 12, ptr);
             }
             return (baseSize, maxChildren, prefixSize, prefixPtr, totalSuffixSize, suffixPtr, 0, IntPtr.Zero);
@@ -260,7 +261,7 @@ namespace BTDB.ARTLib
             if (header._nodeType.HasFlag(NodeType12.IsLeaf))
             {
                 ptr += (int)prefixSize;
-                ptr = ArtUtils.AlignPtrUpInt32(ptr);
+                ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
                 return (prefixSize, prefixPtr, suffixPtr, 12, ptr);
             }
             return (prefixSize, prefixPtr, suffixPtr, 0, IntPtr.Zero);

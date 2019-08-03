@@ -1,4 +1,5 @@
-﻿using BTDB.Collections;
+﻿using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Runtime.CompilerServices;
@@ -60,7 +61,7 @@ namespace BTDB.ARTLib
         {
             if (!_rootNode._writtable)
             {
-                ArtUtils.ThrowCursorNotWrittable();
+                TreeNodeUtils.ThrowCursorNotWrittable();
             }
         }
 
@@ -117,7 +118,7 @@ namespace BTDB.ARTLib
         {
             if (_stack.Count == 0)
             {
-                ArtUtils.ThrowCursorHaveToBeValid();
+                TreeNodeUtils.ThrowCursorHaveToBeValid();
             }
         }
 

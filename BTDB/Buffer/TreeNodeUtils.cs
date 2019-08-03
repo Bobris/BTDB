@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 
-namespace BTDB.ARTLib
+namespace BTDB.Buffer
 {
-    static class ArtUtils
+    static class TreeNodeUtils
     {
         internal static void ThrowCursorHaveToBeValid()
         {
@@ -67,15 +67,39 @@ namespace BTDB.ARTLib
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static IntPtr AlignPtrUpInt16(IntPtr ptr)
+        {
+            return ptr + ((int)ptr.ToInt64() & 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static uint AlignUIntUpInt16(uint ptr)
+        {
+            return ptr + (ptr & 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt32(IntPtr ptr)
         {
-            return ptr + (((~(int)ptr.ToInt64()) + 1) & 3);
+            return ptr + (~(int)ptr.ToInt64() + 1 & 3);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint AlignUIntUpInt32(uint ptr)
         {
-            return ptr + (((~ptr) + 1) & 3);
+            return ptr + (~ptr + 1 & 3);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static IntPtr AlignPtrUpInt64(IntPtr ptr)
+        {
+            return ptr + (~(int)ptr.ToInt64() + 1 & 7);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static uint AlignUIntUpInt64(uint ptr)
+        {
+            return ptr + (~ptr + 1 & 7);
         }
 
         internal static unsafe void CopyMemory(IntPtr src, IntPtr dst, int size)
@@ -86,6 +110,13 @@ namespace BTDB.ARTLib
         internal static unsafe void MoveMemory(IntPtr src, IntPtr dst, int size)
         {
             new Span<byte>(src.ToPointer(), size).CopyTo(new Span<byte>(dst.ToPointer(), size));
+        }
+
+        internal static bool IsPrefix(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prefix)
+        {
+            if (data.Length < prefix.Length)
+                return false;
+            return data.Slice(0, prefix.Length).SequenceEqual(prefix);
         }
     }
 }

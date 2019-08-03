@@ -1,4 +1,5 @@
 ﻿using BTDB.Allocators;
+using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
@@ -172,11 +173,11 @@ namespace BTDB.ARTLib
             {
                 case NodeTypeV.Node4:
                 case NodeTypeV.Node16:
-                    return (0, ArtUtils.ReadByte(node + 16));
+                    return (0, TreeNodeUtils.ReadByte(node + 16));
                 case NodeTypeV.Node48:
                     for (var i = 0; i < 256; i++)
                     {
-                        var pos = ArtUtils.ReadByte(node + 16 + i);
+                        var pos = TreeNodeUtils.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
@@ -208,11 +209,11 @@ namespace BTDB.ARTLib
             {
                 case NodeTypeV.Node4:
                 case NodeTypeV.Node16:
-                    return (0, ArtUtils.ReadByte(node + 16));
+                    return (0, TreeNodeUtils.ReadByte(node + 16));
                 case NodeTypeV.Node48:
                     for (var i = 0; i < 256; i++)
                     {
-                        var pos = ArtUtils.ReadByte(node + 16 + i);
+                        var pos = TreeNodeUtils.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
@@ -269,12 +270,12 @@ namespace BTDB.ARTLib
                 case NodeTypeV.Node16:
                     {
                         var pos = header._childCount - 1;
-                        return ((short)pos, ArtUtils.ReadByte(node + 16 + pos));
+                        return ((short)pos, TreeNodeUtils.ReadByte(node + 16 + pos));
                     }
                 case NodeTypeV.Node48:
                     for (var i = 255; i >= 0; i--)
                     {
-                        var pos = ArtUtils.ReadByte(node + 16 + i);
+                        var pos = TreeNodeUtils.ReadByte(node + 16 + i);
                         if (pos == 255)
                             continue;
                         return (pos, (byte)i);
@@ -552,12 +553,12 @@ namespace BTDB.ARTLib
                             {
                                 if (leftPos > 0)
                                 {
-                                    onlyByte = ArtUtils.ReadByte(node + 16);
+                                    onlyByte = TreeNodeUtils.ReadByte(node + 16);
                                     onlyPtr = NodeUtilsV.PtrInNode(node, 0);
                                 }
                                 else
                                 {
-                                    onlyByte = ArtUtils.ReadByte(node + 16 + rightPos + 1);
+                                    onlyByte = TreeNodeUtils.ReadByte(node + 16 + rightPos + 1);
                                     onlyPtr = NodeUtilsV.PtrInNode(node, rightPos + 1);
                                 }
 
@@ -573,7 +574,7 @@ namespace BTDB.ARTLib
                                         continue;
                                     }
 
-                                    var idx = ArtUtils.ReadByte(node + 16 + i);
+                                    var idx = TreeNodeUtils.ReadByte(node + 16 + i);
                                     if (idx == 255) continue;
                                     onlyByte = (byte)i;
                                     onlyPtr = NodeUtilsV.PtrInNode(node, idx);
@@ -621,7 +622,7 @@ namespace BTDB.ARTLib
                                 prefixSize + 1, valueSize);
                         var (newPrefixSize, newPrefixPtr) = NodeUtilsV.GetPrefixSizeAndPtr(newNode);
                         CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
-                        ArtUtils.WriteByte(newPrefixPtr + (int)prefixSize, onlyByte);
+                        TreeNodeUtils.WriteByte(newPrefixPtr + (int)prefixSize, onlyByte);
                         if (valueSize > 0)
                         {
                             var (newValueSize, newValuePtr) = NodeUtilsV.GetValueSizeAndPtr(newNode);
@@ -638,7 +639,7 @@ namespace BTDB.ARTLib
                     var newNode = CloneNodeWithKeyPrefixCut(onlyPtr, -(int)(prefixSize + 1));
                     var (newPrefixSize, newPrefixPtr) = NodeUtilsV.GetPrefixSizeAndPtr(newNode);
                     CopyMemory(prefixPtr, newPrefixPtr, (int)prefixSize);
-                    ArtUtils.WriteByte(newPrefixPtr, (int)prefixSize, onlyByte);
+                    TreeNodeUtils.WriteByte(newPrefixPtr, (int)prefixSize, onlyByte);
                     Dereference(onlyPtr);
                     return (newNode, children);
                 }
@@ -688,7 +689,7 @@ namespace BTDB.ARTLib
                                     continue;
                                 }
 
-                                pusher.Push(ArtUtils.ReadByte(node + 16 + i), NodeUtilsV.PtrInNode(node, i));
+                                pusher.Push(TreeNodeUtils.ReadByte(node + 16 + i), NodeUtilsV.PtrInNode(node, i));
                             }
 
                             break;
@@ -809,23 +810,23 @@ namespace BTDB.ARTLib
                 {
                     case 0:
                         {
-                            ArtUtils.WriteByte(_byteDst, @byte);
+                            TreeNodeUtils.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            ArtUtils.WriteIntPtrUnaligned(_dst, ptr);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst, ptr);
                             _dst += 8;
                             break;
                         }
                     case 2:
                         {
-                            ArtUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            TreeNodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            ArtUtils.WriteIntPtrUnaligned(_dst, ptr);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst, ptr);
                             _dst += 8;
                             break;
                         }
                     case 4:
                         {
-                            ArtUtils.WriteIntPtrUnaligned(_dst + 8 * @byte, ptr);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst + 8 * @byte, ptr);
                             break;
                         }
                 }
@@ -837,10 +838,10 @@ namespace BTDB.ARTLib
                 {
                     case 0:
                         {
-                            ArtUtils.WriteByte(_byteDst, @byte);
+                            TreeNodeUtils.WriteByte(_byteDst, @byte);
                             _byteDst += 1;
-                            var p = ArtUtils.ReadIntPtrUnaligned(source);
-                            ArtUtils.WriteIntPtrUnaligned(_dst, p);
+                            var p = TreeNodeUtils.ReadIntPtrUnaligned(source);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst, p);
                             if (NodeUtilsV.IsPtrPtr(p))
                                 NodeUtilsV.Reference(p);
                             _dst += 8;
@@ -848,10 +849,10 @@ namespace BTDB.ARTLib
                         }
                     case 2:
                         {
-                            ArtUtils.WriteByte(_byteDst, @byte, (byte)_idx);
+                            TreeNodeUtils.WriteByte(_byteDst, @byte, (byte)_idx);
                             _idx++;
-                            var p = ArtUtils.ReadIntPtrUnaligned(source);
-                            ArtUtils.WriteIntPtrUnaligned(_dst, p);
+                            var p = TreeNodeUtils.ReadIntPtrUnaligned(source);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst, p);
                             if (NodeUtilsV.IsPtrPtr(p))
                                 NodeUtilsV.Reference(p);
                             _dst += 8;
@@ -859,8 +860,8 @@ namespace BTDB.ARTLib
                         }
                     case 4:
                         {
-                            var p = ArtUtils.ReadIntPtrUnaligned(source);
-                            ArtUtils.WriteIntPtrUnaligned(_dst + 8 * @byte, p);
+                            var p = TreeNodeUtils.ReadIntPtrUnaligned(source);
+                            TreeNodeUtils.WriteIntPtrUnaligned(_dst + 8 * @byte, p);
                             if (NodeUtilsV.IsPtrPtr(p))
                                 NodeUtilsV.Reference(p);
                             break;
@@ -1006,7 +1007,7 @@ namespace BTDB.ARTLib
                                 var rcc = (long)NodeUtilsV.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                 if (index < rcc)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, ArtUtils.ReadByte(top + 16 + j));
+                                    stack.Add().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
                                     top = ptr;
                                     break;
                                 }
@@ -1017,7 +1018,7 @@ namespace BTDB.ARTLib
                             {
                                 if (index == 0)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, ArtUtils.ReadByte(top + 16 + j));
+                                    stack.Add().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
                                     return true;
                                 }
 
@@ -1114,7 +1115,7 @@ namespace BTDB.ARTLib
                             }
 
                             stackItem._posInNode++;
-                            stackItem._byte = ArtUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
+                            stackItem._byte = TreeNodeUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
                             goto down;
                         }
                     case NodeTypeV.Node48:
@@ -1192,7 +1193,7 @@ namespace BTDB.ARTLib
                             }
 
                             stackItem._posInNode--;
-                            stackItem._byte = ArtUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
+                            stackItem._byte = TreeNodeUtils.ReadByte(stackItem._node + 16 + stackItem._posInNode);
                             goto down;
                         }
                     case NodeTypeV.Node48:
@@ -1272,7 +1273,7 @@ namespace BTDB.ARTLib
             if (header._nodeType.HasFlag(NodeTypeV.IsLeaf))
             {
                 ptr += (int)prefixSize;
-                ptr = ArtUtils.AlignPtrUpInt32(ptr);
+                ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
                 ptr += 12;
             }
             else
@@ -1685,7 +1686,7 @@ namespace BTDB.ARTLib
             WritePtrInNode(stackItem, newNode);
             var nodeType = NodeUtilsV.Ptr2NodeHeader(stackItem._node)._nodeType & NodeTypeV.NodeSizeMask;
             if (nodeType != NodeTypeV.Node256)
-                ArtUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
+                TreeNodeUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
         }
 
         void WritePtrInNode(in CursorItem stackItem, IntPtr newNode)
@@ -1710,7 +1711,7 @@ namespace BTDB.ARTLib
             WriteContentInNode(stackItem, content);
             var nodeType = NodeUtilsV.Ptr2NodeHeader(stackItem._node)._nodeType & NodeTypeV.NodeSizeMask;
             if (nodeType != NodeTypeV.Node256)
-                ArtUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
+                TreeNodeUtils.WriteByte(stackItem._node, 16 + stackItem._posInNode, stackItem._byte);
         }
 
         void WriteContentInNode(in CursorItem stackItem, ReadOnlySpan<byte> content)
@@ -1726,7 +1727,7 @@ namespace BTDB.ARTLib
 
                 unsafe
                 {
-                    ArtUtils.AssertLittleEndian();
+                    TreeNodeUtils.AssertLittleEndian();
                     *(byte*)ptr.ToPointer() = (byte)((content.Length << 1) + 1);
                     content.CopyTo(new Span<byte>(NodeUtilsV.SkipLenFromPtr(ptr).ToPointer(), 7));
                 }
@@ -1833,7 +1834,7 @@ namespace BTDB.ARTLib
                     {
                         PushLeftMost(top, keyOffset, ref stack);
                         if (diffPos >= keyRest) return FindResult.Next;
-                        return ArtUtils.ReadByte(keyPrefixPtr + diffPos) <
+                        return TreeNodeUtils.ReadByte(keyPrefixPtr + diffPos) <
                                GetByteFromKeyPair(keyPrefix, key, keyOffset + diffPos)
                             ? FindResult.Previous
                             : FindResult.Next;
@@ -1940,7 +1941,7 @@ namespace BTDB.ARTLib
                     {
                         pos = ~pos;
                         if (pos >= header._childCount) pos--;
-                        return ((short)pos, ArtUtils.ReadByte(node + 16 + pos));
+                        return ((short)pos, TreeNodeUtils.ReadByte(node + 16 + pos));
                     }
                 case NodeTypeV.Node48:
                     {
@@ -2161,7 +2162,7 @@ namespace BTDB.ARTLib
                 {
                     case NodeTypeV.Node4:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, ArtUtils.ReadByte(top + 16));
+                            stack.Add().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
                             var child = NodeUtilsV.ReadPtr(top + 16 + 4);
                             if (NodeUtilsV.IsPtrPtr(child))
                             {
@@ -2175,7 +2176,7 @@ namespace BTDB.ARTLib
                         }
                     case NodeTypeV.Node16:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, ArtUtils.ReadByte(top + 16));
+                            stack.Add().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
                             var child = NodeUtilsV.ReadPtr(top + 16 + 16);
                             if (NodeUtilsV.IsPtrPtr(child))
                             {
@@ -2257,7 +2258,7 @@ namespace BTDB.ARTLib
                     case NodeTypeV.Node16:
                         {
                             var pos = header._childCount - 1;
-                            stack.Add().Set(top, (uint)keyOffset, (short)pos, ArtUtils.ReadByte(top + 16 + pos));
+                            stack.Add().Set(top, (uint)keyOffset, (short)pos, TreeNodeUtils.ReadByte(top + 16 + pos));
                             if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var ptr))
                             {
                                 top = ptr;
@@ -2379,7 +2380,7 @@ namespace BTDB.ARTLib
 
                         var newNode2 = CloneNodeWithKeyPrefixCut(top, newKeyPrefixSize + 1);
                         WritePtrAndByteInNode(
-                            new CursorItem(newNode, 0, 0, ArtUtils.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
+                            new CursorItem(newNode, 0, 0, TreeNodeUtils.ReadByte(keyPrefixPtr + newKeyPrefixSize)),
                             newNode2);
 
                         if (nodeType.HasFlag(NodeTypeV.IsLeaf))
@@ -2471,7 +2472,7 @@ namespace BTDB.ARTLib
                         }
 
                         keyOffset += newKeyPrefixSize + 1;
-                        ArtUtils.WriteByte(newNode, 16, b);
+                        TreeNodeUtils.WriteByte(newNode, 16, b);
                         stack.Add().Set(newNode, (uint)keyOffset, 0, b);
                         top = IntPtr.Zero;
                         OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
@@ -2632,7 +2633,7 @@ namespace BTDB.ARTLib
 
             if ((header._nodeType & NodeTypeV.NodeSizeMask) == NodeTypeV.Node48)
             {
-                var pos = ArtUtils.ReadByte(nodePtr + 16 + b);
+                var pos = TreeNodeUtils.ReadByte(nodePtr + 16 + b);
                 if (pos == 255)
                     return ~header._childCount;
                 return pos;
@@ -2682,7 +2683,7 @@ namespace BTDB.ARTLib
                 new Span<byte>(chPtr.ToPointer(), chSize).CopyTo(new Span<byte>((chPtr + PtrSize).ToPointer(), chSize));
             }
 
-            ArtUtils.WriteByte(nodePtr, 16 + pos, b);
+            TreeNodeUtils.WriteByte(nodePtr, 16 + pos, b);
             header._childCount++;
             InitializeZeroPtrValue(NodeUtilsV.PtrInNode(nodePtr, pos));
             return (short)pos;
@@ -2702,7 +2703,7 @@ namespace BTDB.ARTLib
             if ((header._nodeType & NodeTypeV.NodeSizeMask) == NodeTypeV.Node48)
             {
                 pos = header._childCount;
-                ArtUtils.WriteByte(nodePtr, 16 + b, (byte)pos);
+                TreeNodeUtils.WriteByte(nodePtr, 16 + b, (byte)pos);
             }
             else
             {
@@ -2716,7 +2717,7 @@ namespace BTDB.ARTLib
                     MoveMemory(chPtr, chPtr + PtrSize, chSize);
                 }
 
-                ArtUtils.WriteByte(nodePtr, 16 + pos, b);
+                TreeNodeUtils.WriteByte(nodePtr, 16 + pos, b);
             }
 
             header._childCount++;
@@ -2790,7 +2791,7 @@ namespace BTDB.ARTLib
                     {
                         for (var pos = 0; pos < header._childCount; pos++)
                         {
-                            var b = ArtUtils.ReadByte(nodePtr + 16 + pos);
+                            var b = TreeNodeUtils.ReadByte(nodePtr + 16 + pos);
                             if (IsPtr(NodeUtilsV.PtrInNode(nodePtr, pos), out var ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
@@ -2914,7 +2915,7 @@ namespace BTDB.ARTLib
                     {
                         for (var pos = 0; pos < header._childCount; pos++)
                         {
-                            var b = ArtUtils.ReadByte(nodePtr + 16 + pos);
+                            var b = TreeNodeUtils.ReadByte(nodePtr + 16 + pos);
                             if (IsPtr(NodeUtilsV.PtrInNode(nodePtr, pos), out ptr))
                             {
                                 Debug.Assert(ptr != IntPtr.Zero);
