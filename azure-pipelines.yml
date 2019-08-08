@@ -14,6 +14,7 @@ jobs:
     inputs:
       command: test
       projects: '**/*Test/*.csproj'
+      testRunTitle: Linux
       arguments: '--configuration $(buildConfiguration)'
 
 - job: 'netcore_net471_win'
@@ -26,6 +27,5 @@ jobs:
     inputs:
       command: test
       projects: '**/*Test/*.csproj'
+      testRunTitle: Windows
       arguments: '--configuration $(buildConfiguration)'
-
- 
