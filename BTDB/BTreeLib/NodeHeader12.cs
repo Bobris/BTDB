@@ -54,6 +54,14 @@ namespace BTDB.BTreeLib
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => IsNodeLeaf ? _childCount : _recursiveChildCount;
         }
+        public int KeyCount
+        {
+            get
+            {
+                if (IsNodeLeaf) return _childCount;
+                return _childCount - 1;
+            }
+        }
     }
 }
 

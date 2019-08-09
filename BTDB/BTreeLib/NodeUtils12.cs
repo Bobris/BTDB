@@ -144,5 +144,30 @@ namespace BTDB.BTreeLib
             else
                 return (int)(ptr.ToInt64() - nodePtr.ToInt64() + 8 * header._childCount);
         }
+
+        internal static unsafe long GetTotalSufixLen(IntPtr nodePtr)
+        {
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            long len = 0;
+            if (header.HasLongKeys)
+            {
+                var keys = GetLongKeyPtrs(nodePtr);
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    len += TreeNodeUtils.ReadInt32Aligned(keys[i]);
+                }
+            } 
+            else
+            {
+                var ptr = nodePtr + 8;
+                ptr += header._keyPrefixLength;
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount + (header.IsNodeLeaf ? 1 : 0);
+                ptr += 2 * offsetsCount;
+                len = *(ushort*)(ptr - 2);
+            }
+            return len;
+        }
     }
 }

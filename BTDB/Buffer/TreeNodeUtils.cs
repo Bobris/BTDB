@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace BTDB.Buffer
 {
@@ -117,6 +119,84 @@ namespace BTDB.Buffer
             if (data.Length < prefix.Length)
                 return false;
             return data.Slice(0, prefix.Length).SequenceEqual(prefix);
+        }
+
+        internal static unsafe int FindFirstDifference(ReadOnlySpan<byte> buf1, IntPtr buf2IntPtr, int len)
+        {
+            fixed (byte* buf1Ptr = &MemoryMarshal.GetReference(buf1))
+            {
+                var buf2Ptr = (byte*)buf2IntPtr.ToPointer();
+                int i = 0;
+                int n;
+                if (Vector.IsHardwareAccelerated && len >= Vector<byte>.Count)
+                {
+                    n = len - Vector<byte>.Count;
+                    while (n >= i)
+                    {
+                        if (Unsafe.ReadUnaligned<Vector<byte>>(buf1Ptr + i) !=
+                            Unsafe.ReadUnaligned<Vector<byte>>(buf2Ptr + i))
+                            break;
+                        i += Vector<byte>.Count;
+                    }
+                }
+
+                n = len - sizeof(long);
+                while (n >= i)
+                {
+                    if (Unsafe.ReadUnaligned<long>(buf1Ptr + i) != Unsafe.ReadUnaligned<long>(buf2Ptr + i))
+                        break;
+                    i += sizeof(long);
+                }
+
+                while (len > i)
+                {
+                    if (*(buf1Ptr + i) != *(buf2Ptr + i))
+                        break;
+                    i++;
+                }
+
+                return i;
+            }
+        }
+
+        internal static unsafe int FindFirstDifference(ReadOnlySpan<byte> buf1, ReadOnlySpan<byte> buf2)
+        {
+            var len = Math.Min(buf1.Length, buf2.Length);
+            if (len == 0) return 0;
+            fixed (byte* buf1Ptr = &MemoryMarshal.GetReference(buf1))
+            fixed (byte* buf2Ptr = &MemoryMarshal.GetReference(buf2))
+            {
+                int i = 0;
+                int n;
+                if (Vector.IsHardwareAccelerated && len >= Vector<byte>.Count)
+                {
+                    n = len - Vector<byte>.Count;
+                    while (n >= i)
+                    {
+                        if (Unsafe.ReadUnaligned<Vector<byte>>(buf1Ptr + i) !=
+                            Unsafe.ReadUnaligned<Vector<byte>>(buf2Ptr + i))
+                            break;
+                        i += Vector<byte>.Count;
+                    }
+                }
+
+                n = len - sizeof(long);
+                while (n >= i)
+                {
+                    if (Unsafe.ReadUnaligned<long>(buf1Ptr + i) != Unsafe.ReadUnaligned<long>(buf2Ptr + i))
+                        break;
+                    i += sizeof(long);
+                }
+
+                while (len > i)
+                {
+                    if (*(buf1Ptr + i) != *(buf2Ptr + i))
+                        break;
+                    i++;
+                }
+
+                return i;
+            }
         }
     }
 }
