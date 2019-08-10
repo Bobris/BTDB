@@ -42,6 +42,31 @@ namespace BTDB.Collections
             Array.Resize(ref _a, (int)Math.Min(int.MaxValue, Math.Max(2u, _count * 2)));
         }
 
+        public ref T Insert(uint index)
+        {
+            if (index > _count) ThrowIndexOutOfRange(index);
+            if (_a == null || _count == _a.Length)
+            {
+                Expand();
+            }
+
+            _count++;
+            if (index + 1 < _count)
+            {
+                AsSpan((int)index, (int)_count - (int)index - 1).CopyTo(AsSpan((int)index + 1, (int)(_count - index - 1)));
+            }
+            _a[index] = default;
+            return ref _a[index];
+        }
+
+        public void RemoveAt(uint index)
+        {
+            if (index >= _count) ThrowIndexOutOfRange(index);
+            AsSpan((int)index + 1).CopyTo(AsSpan((int)index));
+            _count--;
+            _a[_count] = default;
+        }
+
         public ref T this[uint index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

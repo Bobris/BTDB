@@ -169,5 +169,54 @@ namespace BTDB.BTreeLib
             }
             return len;
         }
+
+        internal static unsafe long GetTotalSufixLen(IntPtr nodePtr, int start, int end)
+        {
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            long len = 0;
+            if (header.HasLongKeys)
+            {
+                var keys = GetLongKeyPtrs(nodePtr);
+                for (int i = start; i < end; i++)
+                {
+                    len += TreeNodeUtils.ReadInt32Aligned(keys[i]);
+                }
+            }
+            else
+            {
+                var ptr = nodePtr + 8;
+                ptr += header._keyPrefixLength;
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                var offsetsPtr = (ushort *)ptr;
+                return offsetsPtr[end] - offsetsPtr[start];
+            }
+            return len;
+        }
+
+        internal unsafe static Span<byte> LongKeyPtrToSpan(IntPtr ptr)
+        {
+            var size = TreeNodeUtils.ReadInt32Aligned(ptr);
+            return new Span<byte>((ptr + 4).ToPointer(), size);
+        }
+
+        internal static Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySufix)
+        {
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            while (!header.IsNodeLeaf)
+            {
+                nodePtr = GetBranchValuePtr(nodePtr, 0);
+                header = Ptr2NodeHeader(nodePtr);
+            }
+            if (header.HasLongKeys)
+            {
+                keySufix = LongKeyPtrToSpan(GetLongKeyPtrs(nodePtr)[0]);
+            }
+            else
+            {
+                var keyOfs = GetKeySpans(nodePtr, out var keySufixes);
+                keySufix = keySufixes.Slice(0, keyOfs[1]);
+            }
+            return GetPrefixSpan(nodePtr);
+        }
     }
 }

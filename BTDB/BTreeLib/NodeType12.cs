@@ -27,7 +27,8 @@ namespace BTDB.BTreeLib
     [Flags]
     enum NodeType12 : byte
     {
+        IsBranch = 0,
         IsLeaf = 1,
-        HasLongKeys = 2
+        HasLongKeys = 2,
     }
 }
