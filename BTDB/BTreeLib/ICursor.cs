@@ -11,6 +11,7 @@ namespace BTDB.BTreeLib
         bool FindExact(ReadOnlySpan<byte> key);
         bool FindFirst(ReadOnlySpan<byte> keyPrefix);
         bool FindLast(ReadOnlySpan<byte> keyPrefix);
+        FindResult Find(ReadOnlySpan<byte> key);
         FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key);
         bool SeekIndex(long index);
         bool MoveNext();

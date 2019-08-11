@@ -40,6 +40,10 @@ namespace BTDB.BTreeLib
 
             internal void AddKey(in ReadOnlySpan<byte> key)
             {
+                if (_pos == 0)
+                {
+                    key.Slice(0, _prefixLen).CopyTo(_prefixBytes);
+                }
                 if (_hasLongKeys)
                 {
                     _longKeys[_pos++] = _impl.AllocateLongKey(key.Slice(_prefixLen));
@@ -55,9 +59,32 @@ namespace BTDB.BTreeLib
 
             internal void AddKey(in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySufix)
             {
+                if (_pos == 0)
+                {
+                    if (keyPrefix.Length >= _prefixLen)
+                    {
+                        keyPrefix.Slice(0, _prefixLen).CopyTo(_prefixBytes);
+                    }
+                    else
+                    {
+                        keyPrefix.CopyTo(_prefixBytes);
+                        keySufix.Slice(0, _prefixLen - keyPrefix.Length).CopyTo(_prefixBytes.Slice(keyPrefix.Length));
+                    }
+                }
                 if (keyPrefix.Length <= _prefixLen)
                 {
-                    AddKey(keySufix.Slice(_prefixLen - keyPrefix.Length));
+                    var key = keySufix.Slice(_prefixLen - keyPrefix.Length);
+                    if (_hasLongKeys)
+                    {
+                        _longKeys[_pos++] = _impl.AllocateLongKey(key);
+                    }
+                    else
+                    {
+                        var ofs = _keyOffsets[_pos];
+                        var len = key.Length;
+                        _keyOffsets[++_pos] = (ushort)(ofs + len);
+                        key.CopyTo(_keySufixes.Slice(ofs, len));
+                    }
                     return;
                 }
                 if (_hasLongKeys)
@@ -460,8 +487,7 @@ namespace BTDB.BTreeLib
             return l * 2;
         }
 
-        internal unsafe FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix,
-            ReadOnlySpan<byte> key)
+        internal unsafe FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
         {
             stack.Clear();
             var top = rootNode._root;
@@ -472,7 +498,6 @@ namespace BTDB.BTreeLib
             while (true)
             {
                 ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
-                var restKeyPrefix = keyPrefix;
                 var restKey = key;
                 if (header._keyPrefixLength > 0)
                 {
@@ -512,14 +537,25 @@ namespace BTDB.BTreeLib
             }
         }
 
-        byte GetByteFromKeyPair(in ReadOnlySpan<byte> key1, in ReadOnlySpan<byte> key2, int offset)
+        internal unsafe FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix,
+            ReadOnlySpan<byte> key)
         {
-            if (offset >= key1.Length)
+            var keyLen = keyPrefix.Length + key.Length;
+            if (keyPrefix.Length == 0)
             {
-                return key2[offset - key1.Length];
+                return Find(rootNode, ref stack, key);
             }
-
-            return key1[offset];
+            else if (key.Length == 0)
+            {
+                return Find(rootNode, ref stack, keyPrefix);
+            }
+            else
+            {
+                var temp = keyLen < 256 ? stackalloc byte[keyLen] : new byte[keyLen];
+                keyPrefix.CopyTo(temp);
+                key.CopyTo(temp.Slice(keyPrefix.Length));
+                return Find(rootNode, ref stack, temp);
+            }
         }
 
         internal unsafe bool FindFirst(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> keyPrefix)
@@ -532,42 +568,60 @@ namespace BTDB.BTreeLib
             }
             while (true)
             {
+                var idx = BinarySearch(top, keyPrefix);
                 ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
-                if (header._keyPrefixLength > 0)
-                {
-                    var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
-                    if (prefix.SequenceCompareTo(keyPrefix) < 0)
-                    {
-                        stack.Clear();
-                        return false;
-                    }
-                    throw new NotImplementedException();
-                }
-                var keyRest = keyPrefix.Slice(header._keyPrefixLength);
-                int idx;
-                if (header.HasLongKeys)
-                {
-                    var keys = NodeUtils12.GetLongKeyPtrs(top);
-                    idx = BinarySearchLongKeys(keys, keyRest);
-                }
-                else
-                {
-                    var offsets = NodeUtils12.GetKeySpans(top, out var keys);
-                    idx = BinarySearchKeys(offsets, keys, keyRest);
-                }
                 if (header.IsNodeLeaf)
                 {
-                    if ((idx & 1) != 0)
+                    if ((idx & 1) == 1)
                     {
-                        stack.Add().Set(top, (byte)(idx >> 1));
+                        stack.Add().Set(top, (byte)(idx / 2));
+                        return true;
+                    }
+                    if (idx == 0) idx = 2;
+                    idx = idx / 2 - 1;
+                    if (IsKeyPrefix(top, idx, keyPrefix))
+                    {
+                        stack.Add().Set(top, (byte)idx);
                         return true;
                     }
                     stack.Clear();
                     return false;
                 }
-                idx = (idx + 1) >> 2;
+                if ((idx & 1) == 1)
+                {
+                    idx++;
+                }
+                idx = idx / 2;
                 stack.Add().Set(top, (byte)idx);
                 top = NodeUtils12.GetBranchValuePtr(top, idx);
+            }
+        }
+
+        internal bool IsKeyPrefix(IntPtr nodePtr, int idx, ReadOnlySpan<byte> prefix)
+        {
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var nodePrefix = NodeUtils12.GetPrefixSpan(nodePtr);
+            if (nodePrefix.Length >= prefix.Length)
+            {
+                return nodePrefix.Slice(0, prefix.Length).SequenceEqual(prefix);
+            }
+            if (nodePrefix.Length > 0)
+            {
+                if (!nodePrefix.SequenceEqual(prefix.Slice(0, nodePrefix.Length)))
+                    return false;
+                prefix = prefix.Slice(nodePrefix.Length);
+            }
+            if (header.HasLongKeys)
+            {
+                var keys = NodeUtils12.GetLongKeyPtrs(nodePtr);
+                return TreeNodeUtils.IsPrefix(NodeUtils12.LongKeyPtrToSpan(keys[idx]), prefix);
+            }
+            else
+            {
+                var keyOffsets = NodeUtils12.GetKeySpans(nodePtr, out var keySufixes);
+                var ofs = keyOffsets[idx];
+                var lenSufix = keyOffsets[idx + 1] - ofs;
+                return TreeNodeUtils.IsPrefix(keySufixes.Slice(ofs, lenSufix), prefix);
             }
         }
 
@@ -628,17 +682,16 @@ namespace BTDB.BTreeLib
             var top = rootNode._root;
             if (top == IntPtr.Zero)
             {
+                KeyPusher keyPusher;
                 if (key.Length > MaxPrefixSize)
                 {
-                    top = AllocateLeaf(1, MaxPrefixSize, (uint)key.Length - MaxPrefixSize, out var keyPusher);
-                    key.Slice(0, MaxPrefixSize).CopyTo(keyPusher._prefixBytes);
-                    keyPusher.AddKey(key);
+                    top = AllocateLeaf(1, MaxPrefixSize, (uint)key.Length - MaxPrefixSize, out keyPusher);
                 }
                 else
                 {
-                    top = AllocateLeaf(1, (ushort)key.Length, 0, out var keyPusher);
-                    key.CopyTo(keyPusher._prefixBytes);
+                    top = AllocateLeaf(1, (ushort)key.Length, 0, out keyPusher);
                 }
+                keyPusher.AddKey(key);
                 content.CopyTo(NodeUtils12.GetLeafValues(top));
                 stack.Add().Set(top, 0);
                 rootNode._root = top;
@@ -671,7 +724,6 @@ namespace BTDB.BTreeLib
                     var newSuffixLen = NodeUtils12.GetTotalSufixLen(top) + header._keyPrefixLength * header._childCount;
                     newSuffixLen -= newPrefixLen * (header._childCount + 1) - key.Length;
                     var newNode = AllocateLeaf((uint)header._childCount + 1, (uint)newPrefixLen, (ulong)newSuffixLen, out var keyPusher);
-                    key.Slice(0, newPrefixLen).CopyTo(keyPusher._prefixBytes);
                     var prefixBytes = NodeUtils12.GetPrefixSpan(top);
                     if (header.HasLongKeys)
                     {
@@ -720,7 +772,6 @@ namespace BTDB.BTreeLib
                         var newSuffixLen = NodeUtils12.GetTotalSufixLen(top, 0, MaxChildren / 2) + header._keyPrefixLength * (MaxChildren / 2);
                         newSuffixLen -= newPrefixLen * (MaxChildren / 2 + 1) - key.Length;
                         var newNode = AllocateLeaf((uint)MaxChildren / 2 + 1, (uint)newPrefixLen, (ulong)newSuffixLen, out var keyPusher);
-                        key.Slice(0, newPrefixLen).CopyTo(keyPusher._prefixBytes);
                         var prefixBytes = NodeUtils12.GetPrefixSpan(top);
                         if (header.HasLongKeys)
                         {
@@ -763,7 +814,6 @@ namespace BTDB.BTreeLib
                         newSuffixLen -= newPrefixLen * rightCount;
                         var newNode2 = AllocateLeaf((uint)rightCount, (uint)newPrefixLen, (ulong)newSuffixLen, out keyPusher);
                         prefixBytes = NodeUtils12.GetPrefixSpan(top);
-                        prefixBytes.CopyTo(keyPusher._prefixBytes);
                         if (header.HasLongKeys)
                         {
                             var longKeys = NodeUtils12.GetLongKeyPtrs(top);
@@ -785,12 +835,78 @@ namespace BTDB.BTreeLib
                         stack.Add().Set(newNode, (byte)idx);
                         var splitInserter = new SplitInserter(this, rootNode, newNode, newNode2);
                         splitInserter.Run(ref stack, false);
-                        return true;
                     }
                     else
                     {
-                        throw new NotImplementedException();
+                        var newPrefixLen = CalcCommonPrefix(top, 0, MaxChildren / 2);
+                        var newSuffixLen = NodeUtils12.GetTotalSufixLen(top, 0, MaxChildren / 2) + header._keyPrefixLength * (MaxChildren / 2);
+                        newSuffixLen -= newPrefixLen * (MaxChildren / 2);
+                        var newNode = AllocateLeaf((uint)MaxChildren / 2, (uint)newPrefixLen, (ulong)newSuffixLen, out var keyPusher);
+                        var prefixBytes = NodeUtils12.GetPrefixSpan(top);
+                        if (header.HasLongKeys)
+                        {
+                            var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                            for (int i = 0; i < MaxChildren / 2; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                        }
+                        else
+                        {
+                            var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                            for (int i = 0; i < MaxChildren / 2; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
+                            }
+                        }
+                        var newValues = NodeUtils12.GetLeafValues(newNode);
+                        var oldValues = NodeUtils12.GetLeafValues(top);
+                        oldValues.Slice(0, 12 * (MaxChildren / 2)).CopyTo(newValues);
+                        oldValues = oldValues.Slice(12 * (MaxChildren / 2));
+
+                        newPrefixLen = CalcCommonPrefix(top, MaxChildren / 2, MaxChildren, key);
+                        var rightCount = MaxChildren - MaxChildren / 2 + 1;
+                        newSuffixLen = NodeUtils12.GetTotalSufixLen(top, MaxChildren / 2, MaxChildren) + header._keyPrefixLength * (rightCount - 1);
+                        newSuffixLen -= newPrefixLen * rightCount - key.Length;
+                        var newNode2 = AllocateLeaf((uint)rightCount, (uint)newPrefixLen, (ulong)newSuffixLen, out keyPusher);
+                        prefixBytes = NodeUtils12.GetPrefixSpan(top);
+                        if (header.HasLongKeys)
+                        {
+                            var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                            for (int i = MaxChildren / 2; i < idx; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                            keyPusher.AddKey(key);
+                            for (int i = idx; i < MaxChildren; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                        }
+                        else
+                        {
+                            var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                            for (int i = MaxChildren / 2; i < idx; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
+                            }
+                            keyPusher.AddKey(key);
+                            for (int i = idx; i < MaxChildren; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
+                            }
+                        }
+                        newValues = NodeUtils12.GetLeafValues(newNode2);
+                        oldValues.Slice(0, 12 * (idx - MaxChildren / 2)).CopyTo(newValues);
+                        newValues = newValues.Slice(12 * (idx - MaxChildren / 2));
+                        content.CopyTo(newValues);
+                        newValues = newValues.Slice(12);
+                        oldValues.Slice(12 * (idx - MaxChildren / 2)).CopyTo(newValues);
+                        stack.Add().Set(newNode2, (byte)(idx - MaxChildren / 2));
+                        var splitInserter = new SplitInserter(this, rootNode, newNode, newNode2);
+                        splitInserter.Run(ref stack, true);
                     }
+                    return true;
                 }
             }
         }
@@ -985,7 +1101,6 @@ namespace BTDB.BTreeLib
                 {
                     var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
                     var newRootNode = _owner.AllocateBranch(2, (uint)keyPrefix.Length, (ulong)keySufix.Length, out var keyPusher);
-                    keyPrefix.CopyTo(keyPusher._prefixBytes);
                     keyPusher.AddKey(keyPrefix, keySufix);
                     var branchValues = NodeUtils12.GetBranchValuePtrs(newRootNode);
                     branchValues[0] = _newChildNode;

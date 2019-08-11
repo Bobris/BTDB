@@ -81,6 +81,11 @@ namespace BTDB.BTreeLib
             return _rootNode._impl.FindExact(_rootNode, ref _stack, key);
         }
 
+        public FindResult Find(ReadOnlySpan<byte> key)
+        {
+            return _rootNode._impl.Find(_rootNode, ref _stack, key);
+        }
+
         public FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key)
         {
             return _rootNode._impl.Find(_rootNode, ref _stack, keyPrefix, key);
@@ -166,32 +171,7 @@ namespace BTDB.BTreeLib
             if (_stack.Count == 0)
                 return false;
             ref var stackItem = ref _stack[_stack.Count - 1];
-            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
-            var nodePrefix = NodeUtils12.GetPrefixSpan(stackItem._node);
-            if (nodePrefix.Length >= prefix.Length)
-            {
-                return nodePrefix.Slice(0, prefix.Length).SequenceEqual(prefix);
-            }
-            if (nodePrefix.Length > 0)
-            {
-                if (!nodePrefix.SequenceEqual(prefix.Slice(0, nodePrefix.Length)))
-                    return false;
-                prefix = prefix.Slice(nodePrefix.Length);
-            }
-            if (header.HasLongKeys)
-            {
-                var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
-                var keyPtr = keys[stackItem._posInNode];
-                var lenSufix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
-                return TreeNodeUtils.IsPrefix(new Span<byte>((keyPtr + 4).ToPointer(), lenSufix), prefix);
-            }
-            else
-            {
-                var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var keySufixes);
-                var ofs = keyOffsets[stackItem._posInNode];
-                var lenSufix = keyOffsets[stackItem._posInNode + 1] - ofs;
-                return TreeNodeUtils.IsPrefix(keySufixes.Slice(ofs, lenSufix), prefix);
-            }
+            return _rootNode._impl.IsKeyPrefix(stackItem._node, stackItem._posInNode, prefix);
         }
 
         public int GetValueLength()
