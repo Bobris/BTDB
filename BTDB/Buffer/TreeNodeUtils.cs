@@ -198,5 +198,15 @@ namespace BTDB.Buffer
                 return i;
             }
         }
+
+        internal static unsafe int FindFirstDifference(in ReadOnlySpan<byte> buf1, in ReadOnlySpan<byte> buf2a, in ReadOnlySpan<byte> buf2b)
+        {
+            var pos = FindFirstDifference(buf1, buf2a);
+            if (pos < buf2a.Length || pos == buf1.Length)
+            {
+                return pos;
+            }
+            return buf2a.Length + FindFirstDifference(buf1.Slice(buf2a.Length), buf2b);
+        }
     }
 }

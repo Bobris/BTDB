@@ -577,9 +577,8 @@ namespace BTDB.BTreeLib
                         stack.Add().Set(top, (byte)(idx / 2));
                         return true;
                     }
-                    if (idx == 0) idx = 2;
-                    idx = idx / 2 - 1;
-                    if (IsKeyPrefix(top, idx, keyPrefix))
+                    idx = idx / 2;
+                    if (idx < header._childCount && IsKeyPrefix(top, idx, keyPrefix))
                     {
                         stack.Add().Set(top, (byte)idx);
                         return true;
@@ -704,8 +703,7 @@ namespace BTDB.BTreeLib
 
                 if (!header.IsNodeLeaf)
                 {
-                    idx = (idx + 1) / 2;
-                    if (idx >= header._childCount) idx--;
+                    idx = idx / 2;
                     stack.Add().Set(top, (byte)idx);
                     top = NodeUtils12.GetBranchValuePtr(top, idx);
                     continue;
@@ -923,6 +921,12 @@ namespace BTDB.BTreeLib
             return TreeNodeUtils.FindFirstDifference(prefix, key);
         }
 
+        int CalcCommonPrefix(IntPtr nodePtr, in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySufix)
+        {
+            var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
+            return TreeNodeUtils.FindFirstDifference(prefix, keyPrefix, keySufix);
+        }
+
         int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> key)
         {
             var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
@@ -952,6 +956,56 @@ namespace BTDB.BTreeLib
                 for (var i = startIdx; i < endIdx; i++)
                 {
                     var newCommon = TreeNodeUtils.FindFirstDifference(GetShortKey(keyOfs, keyData, i), keyWithoutPrefix);
+                    if (newCommon < common)
+                    {
+                        common = newCommon;
+                        if (common == 0)
+                            return prefix.Length;
+                    }
+                }
+            }
+            return prefix.Length + common;
+        }
+
+        int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySufix)
+        {
+            var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
+            var common = TreeNodeUtils.FindFirstDifference(prefix, keyPrefix, keySufix);
+            if (common < prefix.Length || keyPrefix.Length + keySufix.Length == common)
+                return common;
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var keyPrefixWithoutPrefix = keyPrefix;
+            var keySufixWithoutPrefix = keySufix;
+            if (prefix.Length < keyPrefixWithoutPrefix.Length)
+            {
+                keyPrefixWithoutPrefix = keyPrefixWithoutPrefix.Slice(prefix.Length);
+            }
+            else
+            {
+                keyPrefixWithoutPrefix = keySufixWithoutPrefix.Slice(prefix.Length - keyPrefixWithoutPrefix.Length);
+                keySufixWithoutPrefix = new Span<byte>();
+            }
+            common = keyPrefixWithoutPrefix.Length + keySufixWithoutPrefix.Length;
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(nodePtr);
+                for (var i = startIdx; i < endIdx; i++)
+                {
+                    var newCommon = TreeNodeUtils.FindFirstDifference(NodeUtils12.LongKeyPtrToSpan(longKeys[i]), keyPrefixWithoutPrefix, keySufixWithoutPrefix);
+                    if (newCommon < common)
+                    {
+                        common = newCommon;
+                        if (common == 0)
+                            return prefix.Length;
+                    }
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(nodePtr, out var keyData);
+                for (var i = startIdx; i < endIdx; i++)
+                {
+                    var newCommon = TreeNodeUtils.FindFirstDifference(GetShortKey(keyOfs, keyData, i), keyPrefixWithoutPrefix, keySufixWithoutPrefix);
                     if (newCommon < common)
                     {
                         common = newCommon;
@@ -1096,7 +1150,7 @@ namespace BTDB.BTreeLib
 
             internal void Run(ref StructList<CursorItem> stack, bool rightInsert)
             {
-                var stackIdx = stack.Count - 2;
+                var stackIdx = (int)stack.Count - 2;
                 if (stackIdx < 0)
                 {
                     var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
@@ -1110,7 +1164,70 @@ namespace BTDB.BTreeLib
                     _owner.OverwriteNodePtrInStack(_rootNode, stack.AsSpan(), 0, newRootNode);
                     return;
                 }
+                var top = stack[(uint)stackIdx]._node;
+                var idx = stack[(uint)stackIdx]._posInNode;
+                ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
+                if (header._childCount < MaxChildren)
+                {
+                    var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
+                    var newPrefixLen = _owner.CalcCommonPrefix(top, keyPrefix, keySufix);
+                    var newSuffixLen = NodeUtils12.GetTotalSufixLen(top) + header._keyPrefixLength * (header._childCount - 1);
+                    newSuffixLen -= newPrefixLen * (header._childCount + 1 - 1) - keyPrefix.Length - keySufix.Length;
+                    var newNode = _owner.AllocateBranch((uint)header._childCount + 1, (uint)newPrefixLen, (ulong)newSuffixLen, out var keyPusher);
+                    NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = header._recursiveChildCount + 1;
+                    var prefixBytes = NodeUtils12.GetPrefixSpan(top);
+                    if (header.HasLongKeys)
+                    {
+                        var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                        for (int i = 0; i < idx; i++)
+                        {
+                            keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                        }
+                        keyPusher.AddKey(keyPrefix, keySufix);
+                        for (int i = idx; i < longKeys.Length; i++)
+                        {
+                            keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                        }
+                    }
+                    else
+                    {
+                        var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                        for (int i = 0; i < idx; i++)
+                        {
+                            keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
+                        }
+                        keyPusher.AddKey(keyPrefix, keySufix);
+                        for (int i = idx; i < keyOfs.Length - 1; i++)
+                        {
+                            keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
+                        }
+                    }
+                    var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
+                    var oldValues = NodeUtils12.GetBranchValuePtrs(top);
+                    CopyAndReferenceBranchValues(oldValues.Slice(0, idx), newValues);
+                    newValues = newValues.Slice(idx);
+                    newValues[0] = _newChildNode;
+                    newValues[1] = _newChildNode2;
+                    newValues = newValues.Slice(2);
+                    CopyAndReferenceBranchValues(oldValues.Slice(idx + 1), newValues);
+                    _owner.MakeUnique(_rootNode, stack.AsSpan().Slice(0, stackIdx));
+                    _owner.AdjustRecursiveChildCount(stack.AsSpan().Slice(0, stackIdx), 1);
+                    _owner.OverwriteNodePtrInStack(_rootNode, stack.AsSpan(), stackIdx, newNode);
+                    stack[(uint)stackIdx]._posInNode = (byte)(idx + (rightInsert ? 1 : 0));
+                    return;
+                }
+
                 throw new NotImplementedException();
+            }
+
+            static void CopyAndReferenceBranchValues(Span<IntPtr> from, Span<IntPtr> to)
+            {
+                for (int i = 0; i < from.Length; i++)
+                {
+                    var node = from[i];
+                    NodeUtils12.Reference(node);
+                    to[i] = node;
+                }
             }
         }
     }

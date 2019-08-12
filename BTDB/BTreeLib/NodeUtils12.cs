@@ -33,7 +33,7 @@ namespace BTDB.BTreeLib
         internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, out Span<byte> keys)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
-            var ptr = nodePtr + 8;
+            var ptr = nodePtr + (int)header.Size;
             ptr += header._keyPrefixLength;
             Debug.Assert(!header.HasLongKeys);
             ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
@@ -48,7 +48,7 @@ namespace BTDB.BTreeLib
         internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, uint totalSufixLength, out Span<byte> keySufixes)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
-            var ptr = nodePtr + 8;
+            var ptr = nodePtr + (int)header.Size;
             ptr += header._keyPrefixLength;
             Debug.Assert(!header.HasLongKeys);
             ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
@@ -72,6 +72,7 @@ namespace BTDB.BTreeLib
         internal static unsafe Span<byte> GetLeafValues(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            Debug.Assert(header.IsNodeLeaf);
             var ptr = nodePtr + 8;
             ptr += header._keyPrefixLength;
             if (header.HasLongKeys)
@@ -92,9 +93,10 @@ namespace BTDB.BTreeLib
         internal static unsafe Span<IntPtr> GetBranchValuePtrs(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            Debug.Assert(!header.IsNodeLeaf);
             var ptr = nodePtr + 16;
             ptr += header._keyPrefixLength;
-            if (header._nodeType.HasFlag(NodeType12.HasLongKeys))
+            if (header.HasLongKeys)
             {
                 ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
                 ptr += 8 * (header._childCount - 1);
@@ -106,7 +108,7 @@ namespace BTDB.BTreeLib
                 ptr += 2 + *(ushort*)ptr;
                 ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
             }
-            return new Span<IntPtr>(ptr.ToPointer(), 8 * header._childCount);
+            return new Span<IntPtr>(ptr.ToPointer(), header._childCount);
         }
 
         internal static IntPtr GetBranchValuePtr(IntPtr nodePtr, int index)
@@ -159,7 +161,7 @@ namespace BTDB.BTreeLib
             } 
             else
             {
-                var ptr = nodePtr + 8;
+                var ptr = nodePtr + (int)header.Size;
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 var offsetsPtr = ptr;
@@ -184,7 +186,7 @@ namespace BTDB.BTreeLib
             }
             else
             {
-                var ptr = nodePtr + 8;
+                var ptr = nodePtr + (int)header.Size;
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 var offsetsPtr = (ushort *)ptr;
