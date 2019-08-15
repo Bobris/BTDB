@@ -168,6 +168,7 @@ namespace BTreeLibTest
             {
                 key[0] = (byte)i;
                 Assert.True(_cursor.Upsert(key, val));
+                Assert.Equal(i, _cursor.CalcIndex());
                 Assert.Equal(i + 1, _root.GetCount());
                 Assert.Equal(key.Length, _cursor.GetKeyLength());
                 Assert.Equal(key, _cursor.FillByKey(new byte[key.Length]).ToArray());
@@ -190,8 +191,8 @@ namespace BTreeLibTest
             {
                 key[1] = (byte)i;
                 Assert.True(_cursor.Upsert(key, val));
-                Assert.Equal(20 + 1 + i, _cursor.CalcIndex());
                 Assert.Equal(256 + i + 1, _root.GetCount());
+                Assert.Equal(20 + 1 + i, _cursor.CalcIndex());
                 Assert.Equal(key.Length, _cursor.GetKeyLength());
                 Assert.Equal(key, _cursor.FillByKey(new byte[key.Length]).ToArray());
                 Assert.Equal(val.Length, _cursor.GetValueLength());

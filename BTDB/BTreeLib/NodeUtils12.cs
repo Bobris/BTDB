@@ -158,7 +158,7 @@ namespace BTDB.BTreeLib
                 {
                     len += TreeNodeUtils.ReadInt32Aligned(keys[i]);
                 }
-            } 
+            }
             else
             {
                 var ptr = nodePtr + (int)header.Size;
@@ -189,7 +189,7 @@ namespace BTDB.BTreeLib
                 var ptr = nodePtr + (int)header.Size;
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-                var offsetsPtr = (ushort *)ptr;
+                var offsetsPtr = (ushort*)ptr;
                 return offsetsPtr[end] - offsetsPtr[start];
             }
             return len;
@@ -207,7 +207,7 @@ namespace BTDB.BTreeLib
             while (!header.IsNodeLeaf)
             {
                 nodePtr = GetBranchValuePtr(nodePtr, 0);
-                header = Ptr2NodeHeader(nodePtr);
+                header = ref Ptr2NodeHeader(nodePtr);
             }
             if (header.HasLongKeys)
             {
@@ -219,6 +219,17 @@ namespace BTDB.BTreeLib
                 keySufix = keySufixes.Slice(0, keyOfs[1]);
             }
             return GetPrefixSpan(nodePtr);
+        }
+
+        internal static void RecalcRecursiveChildrenCount(IntPtr nodePtr)
+        {
+            var children = GetBranchValuePtrs(nodePtr);
+            var res = 0UL;
+            for (var i = 0; i < children.Length; i++)
+            {
+                res += Ptr2NodeHeader(children[i]).RecursiveChildCount;
+            }
+            Ptr2NodeHeader(nodePtr)._recursiveChildCount = res;
         }
     }
 }

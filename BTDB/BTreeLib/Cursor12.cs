@@ -40,7 +40,7 @@ namespace BTDB.BTreeLib
 
         public long CalcIndex()
         {
-            return _rootNode._impl.CalcIndex(_stack);
+            return _rootNode._impl.CalcIndex(_stack.AsSpan());
         }
 
         public ICursor Clone()
