@@ -494,6 +494,28 @@ namespace BTDB.BTreeLib
             return l * 2;
         }
 
+        int BinarySearchKeysLast(Span<ushort> offsets, Span<byte> keys, ReadOnlySpan<byte> key)
+        {
+            var l = 0;
+            var r = offsets.Length - 1;
+            while (l < r)
+            {
+                var m = (l + r) / 2;
+                var start = offsets[m];
+                var middleKey = keys.Slice(start, Math.Min(offsets[m + 1] - start, key.Length));
+                var comp = middleKey.SequenceCompareTo(key);
+                if (comp <= 0)
+                {
+                    l = m + 1;
+                }
+                else
+                {
+                    r = m;
+                }
+            }
+            return l;
+        }
+
         int BinarySearchLongKeys(Span<IntPtr> keys, ReadOnlySpan<byte> key)
         {
             var l = 0;
@@ -517,6 +539,27 @@ namespace BTDB.BTreeLib
                 }
             }
             return l * 2;
+        }
+
+        int BinarySearchLongKeysLast(Span<IntPtr> keys, ReadOnlySpan<byte> key)
+        {
+            var l = 0;
+            var r = keys.Length;
+            while (l < r)
+            {
+                var m = (l + r) / 2;
+                var middleKey = NodeUtils12.LongKeyPtrToSpan(keys[m]);
+                var comp = middleKey.Slice(0, Math.Min(middleKey.Length, key.Length)).SequenceCompareTo(key);
+                if (comp <= 0)
+                {
+                    l = m + 1;
+                }
+                else
+                {
+                    r = m;
+                }
+            }
+            return l;
         }
 
         internal unsafe FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
@@ -670,36 +713,93 @@ namespace BTDB.BTreeLib
                 if (header._keyPrefixLength > 0)
                 {
                     var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
-                    if (prefix.SequenceCompareTo(keyPrefix) < 0)
+                    var commonLen = Math.Min(prefix.Length, keyPrefix.Length);
+                    var comp = prefix.Slice(0, commonLen).SequenceCompareTo(keyPrefix.Slice(0, commonLen));
+                    if (comp < 0)
                     {
+                        if (!header.IsNodeLeaf)
+                        {
+                            stack.Add().Set(top, (byte)(header._childCount - 1));
+                            top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
+                            continue;
+                        }
                         stack.Clear();
                         return false;
                     }
-                    throw new NotImplementedException();
+                    if (comp > 0)
+                    {
+                        if (!header.IsNodeLeaf)
+                        {
+                            stack.Add().Set(top, 0);
+                            top = NodeUtils12.GetBranchValuePtr(top, 0);
+                            continue;
+                        }
+                        stack.Clear();
+                        return false;
+                    }
+                    if (prefix.Length >= keyPrefix.Length)
+                    {
+                        stack.Add().Set(top, (byte)(header._childCount - 1));
+                        if (!header.IsNodeLeaf)
+                        {
+                            top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
+                            continue;
+                        }
+                        return true;
+                    }
                 }
                 var keyRest = keyPrefix.Slice(header._keyPrefixLength);
                 int idx;
                 if (header.HasLongKeys)
                 {
                     var keys = NodeUtils12.GetLongKeyPtrs(top);
-                    idx = BinarySearchLongKeys(keys, keyRest);
+                    idx = BinarySearchLongKeysLast(keys, keyRest);
+                    if (header.IsNodeLeaf)
+                    {
+                        if (idx >= header._childCount)
+                        {
+                            idx--;
+                        }
+                        else if (idx > 0)
+                        {
+                            var k = NodeUtils12.LongKeyPtrToSpan(keys[idx]);
+                            if (k.Slice(0, Math.Min(k.Length, keyPrefix.Length)).SequenceCompareTo(keyPrefix) > 0)
+                                idx--;
+                        }
+                        if (!IsKeyPrefix(top, idx, keyPrefix))
+                        {
+                            stack.Clear();
+                            return false;
+                        }
+                        stack.Add().Set(top, (byte)idx);
+                        return true;
+                    }
                 }
                 else
                 {
                     var offsets = NodeUtils12.GetKeySpans(top, out var keys);
-                    idx = BinarySearchKeys(offsets, keys, keyRest);
-                }
-                if (header.IsNodeLeaf)
-                {
-                    if ((idx & 1) != 0)
+                    idx = BinarySearchKeysLast(offsets, keys, keyRest);
+                    if (header.IsNodeLeaf)
                     {
-                        stack.Add().Set(top, (byte)(idx >> 1));
+                        if (idx >= header._childCount)
+                        {
+                            idx--;
+                        }
+                        else if (idx > 0)
+                        {
+                            var k = GetShortKey(offsets, keys, idx);
+                            if (k.Slice(0, Math.Min(k.Length, keyPrefix.Length)).SequenceCompareTo(keyPrefix) > 0)
+                                idx--;
+                        }
+                        if (!IsKeyPrefix(top, idx, keyPrefix))
+                        {
+                            stack.Clear();
+                            return false;
+                        }
+                        stack.Add().Set(top, (byte)idx);
                         return true;
                     }
-                    stack.Clear();
-                    return false;
                 }
-                idx = (idx + 1) >> 1;
                 stack.Add().Set(top, (byte)idx);
                 top = NodeUtils12.GetBranchValuePtr(top, idx);
             }
