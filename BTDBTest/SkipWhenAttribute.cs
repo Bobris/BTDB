@@ -32,11 +32,6 @@ namespace BTDBTest
 #endif
         }
 
-        public static bool IsNetCore()
-        {
-            return RuntimeInformation.FrameworkDescription.StartsWith(".NET Core", StringComparison.OrdinalIgnoreCase);
-        }
-
         internal static bool IsValid(Is cond)
         {
             switch (cond)
@@ -45,10 +40,6 @@ namespace BTDBTest
                     return IsDebug();
                 case Is.Release:
                     return !IsDebug();
-                case Is.NetCore:
-                    return IsNetCore();
-                case Is.NetFramework:
-                    return !IsNetCore();
                 default:
                     throw new InvalidEnumArgumentException();
             }

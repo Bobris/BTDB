@@ -219,7 +219,94 @@ namespace BTDB.BTreeLib
 
         internal long EraseRange(RootNode12 rootNode, ref StructList<CursorItem> left, ref StructList<CursorItem> right)
         {
-            throw new NotImplementedException();
+            Debug.Assert(left.Count == right.Count);
+            var idx = 0u;
+            IntPtr node = IntPtr.Zero;
+            long count = 0;
+            while (true)
+            {
+                ref var leftItem = ref left[idx];
+                ref var rightItem = ref right[idx];
+                if (idx + 1 == left.Count)
+                {
+                    (node, count) = EraseFromLeaf(leftItem._node, leftItem._posInNode, rightItem._posInNode);
+                    break;
+                }
+                if (leftItem._posInNode == rightItem._posInNode)
+                {
+                    idx++;
+                    continue;
+                }
+                throw new NotImplementedException();
+            }
+            var stack = left.AsSpan().Slice(0, (int)idx + 1);
+            if (idx == 0)
+            {
+                OverwriteNodePtrInStack(rootNode, stack, 0, node);
+                goto finish;
+            }
+            if (node == IntPtr.Zero)
+            {
+                throw new NotImplementedException();
+            }
+            MakeUnique(rootNode, stack);
+            AdjustRecursiveChildCount(stack, -count);
+            OverwriteNodePtrInStack(rootNode, stack, (int)idx, node);
+            finish:
+            left.Clear();
+            right.Clear();
+            return count;
+        }
+
+        (IntPtr newNode, long count) EraseFromLeaf(IntPtr node, int leftPos, int rightPos)
+        {
+            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(node);
+            Debug.Assert(header.IsNodeLeaf);
+            if (rightPos >= header._childCount)
+            {
+                rightPos = header._childCount - 1;
+            }
+            var newCount = header._childCount - (rightPos + 1 - leftPos);
+            if (newCount == 0)
+            {
+                return (IntPtr.Zero, header._childCount);
+            }
+            var newPrefixLen = CalcCommonPrefixExcept(node, leftPos, rightPos);
+            var newSufixLen = NodeUtils12.GetTotalSufixLenExcept(node, leftPos, rightPos) + header._keyPrefixLength * header._childCount;
+            newSufixLen -= newPrefixLen * newCount;
+            var newNode = AllocateLeaf((uint)newCount, (uint)newPrefixLen, (ulong)newSufixLen, out var keyPusher);
+            var prefixBytes = NodeUtils12.GetPrefixSpan(node);
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(node);
+                for (int i = 0; i < longKeys.Length; i++)
+                {
+                    if (i == leftPos)
+                    {
+                        i = rightPos;
+                        continue;
+                    }
+                    keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(node, out var keyData);
+                for (int i = 0; i < keyOfs.Length - 1; i++)
+                {
+                    if (i == leftPos)
+                    {
+                        i = rightPos;
+                        continue;
+                    }
+                    keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
+                }
+            }
+            var newValues = NodeUtils12.GetLeafValues(newNode);
+            var oldValues = NodeUtils12.GetLeafValues(node);
+            oldValues.Slice(0, 12 * leftPos).CopyTo(newValues);
+            oldValues.Slice((rightPos + 1) * 12).CopyTo(newValues.Slice(12 * leftPos));
+            return (newNode, rightPos + 1 - leftPos);
         }
 
         internal bool SeekIndex(long index, IntPtr top, ref StructList<CursorItem> stack)
@@ -1189,6 +1276,55 @@ namespace BTDB.BTreeLib
                 first = GetShortKey(keyOfs, keyData, startIdx);
                 for (var i = startIdx + 1; i < endIdx; i++)
                 {
+                    var newCommon = TreeNodeUtils.FindFirstDifference(GetShortKey(keyOfs, keyData, i), first);
+                    if (newCommon < common)
+                    {
+                        common = newCommon;
+                        if (common == 0)
+                            return prefix.Length;
+                    }
+                }
+            }
+            return prefix.Length + common;
+        }
+
+        int CalcCommonPrefixExcept(IntPtr nodePtr, int startIdx, int endIdx)
+        {
+            var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            var common = int.MaxValue;
+            ReadOnlySpan<byte> first;
+            if (header.HasLongKeys)
+            {
+                var longKeys = NodeUtils12.GetLongKeyPtrs(nodePtr);
+                first = NodeUtils12.LongKeyPtrToSpan(longKeys[startIdx == 0 ? endIdx + 1 : 0]);
+                for (var i = 0; i < longKeys.Length; i++)
+                {
+                    if (i == startIdx)
+                    {
+                        i = endIdx;
+                        continue;
+                    }
+                    var newCommon = TreeNodeUtils.FindFirstDifference(NodeUtils12.LongKeyPtrToSpan(longKeys[i]), first);
+                    if (newCommon < common)
+                    {
+                        common = newCommon;
+                        if (common == 0)
+                            return prefix.Length;
+                    }
+                }
+            }
+            else
+            {
+                var keyOfs = NodeUtils12.GetKeySpans(nodePtr, out var keyData);
+                first = GetShortKey(keyOfs, keyData, startIdx == 0 ? endIdx + 1 : 0);
+                for (var i = 0; i < keyOfs.Length - 1; i++)
+                {
+                    if (i == startIdx)
+                    {
+                        i = endIdx;
+                        continue;
+                    }
                     var newCommon = TreeNodeUtils.FindFirstDifference(GetShortKey(keyOfs, keyData, i), first);
                     if (newCommon < common)
                     {

@@ -1032,7 +1032,6 @@ namespace BTreeLibTest
         [InlineData(40, -1, 40, 255, 257)]
         public void BigErase256Works(byte l0, int l1, byte r0, byte r1, int erased)
         {
-            if (!SkipWhenAttribute.IsNetCore()) return;
             var key = new byte[2];
             for (int i = 0; i <= 255; i++)
             {
@@ -1076,7 +1075,6 @@ namespace BTreeLibTest
         [InlineData(20, -1, 22, 40, 96)]
         public void BigErase48Works(byte l0, int l1, byte r0, byte r1, int erased)
         {
-            if (!SkipWhenAttribute.IsNetCore()) return;
             var key = new byte[2];
             for (int i = 10; i <= 40; i++)
             {
