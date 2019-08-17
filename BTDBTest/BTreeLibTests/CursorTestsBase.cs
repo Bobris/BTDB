@@ -283,6 +283,27 @@ namespace BTreeLibTest
         }
 
         [Fact]
+        public void ALotOfInsertsInIncreasingOrderWorks()
+        {
+            var val = GetSampleValue().ToArray();
+            var key = new byte[4];
+            for (var i = 0; i < 10000; i++)
+            {
+                BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                Assert.True(_cursor.Upsert(key, val));
+                Assert.Equal(i + 1, _root.GetCount());
+                Assert.Equal(key.Length, _cursor.GetKeyLength());
+                Assert.Equal(key, _cursor.FillByKey(new byte[key.Length]).ToArray());
+            }
+            for (var i = 0; i < 10000; i++)
+            {
+                BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
+                Assert.True(_cursor.FindExact(key));
+                Assert.Equal(i, _cursor.CalcIndex());
+            }
+        }
+
+        [Fact]
         public void FindFirstWorks()
         {
             var val = GetSampleValue().ToArray();

@@ -434,10 +434,23 @@ namespace BTDB.BTreeLib
                         return false;
                     }
                     var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
-                    if (!key.Slice(0, header._keyPrefixLength).SequenceEqual(prefix))
+                    var comp = key.Slice(0, header._keyPrefixLength).SequenceCompareTo(prefix);
+                    if (comp != 0 && header.IsNodeLeaf)
                     {
                         stack.Clear();
                         return false;
+                    }
+                    if (comp < 0)
+                    {
+                        stack.Add().Set(top, 0);
+                        top = NodeUtils12.GetBranchValuePtr(top, 0);
+                        continue;
+                    }
+                    if (comp > 0)
+                    {
+                        stack.Add().Set(top, (byte)(header._childCount - 1));
+                        top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
+                        continue;
                     }
                 }
                 var keyRest = key.Slice(header._keyPrefixLength);
@@ -1355,7 +1368,7 @@ namespace BTDB.BTreeLib
                 {
                     if (idx < MaxChildren / 2)
                     {
-                        var splitPos = MaxChildren / 2;
+                        const int splitPos = MaxChildren / 2;
                         var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
                         var newPrefixLen = _owner.CalcCommonPrefix(top, 0, splitPos - 1, keyPrefix, keySufix);
                         var newSuffixLen = NodeUtils12.GetTotalSufixLen(top, 0, splitPos - 1) + header._keyPrefixLength * (splitPos - 1);
@@ -1427,13 +1440,84 @@ namespace BTDB.BTreeLib
                         _newChildNode = newNode;
                         _newChildNode2 = newNode2;
                         rightInsert = false;
-                        stackIdx--;
-                        goto again;
                     }
                     else
                     {
-                        throw new NotImplementedException();
+                        const int splitPos = MaxChildren / 2;
+                        var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
+                        var newPrefixLen = _owner.CalcCommonPrefix(top, 0, splitPos - 1);
+                        var newSuffixLen = NodeUtils12.GetTotalSufixLen(top, 0, splitPos - 1) + header._keyPrefixLength * (splitPos - 1);
+                        newSuffixLen -= newPrefixLen * (splitPos - 1);
+                        var newNode = _owner.AllocateBranch(splitPos, (uint)newPrefixLen, (ulong)newSuffixLen, out var keyPusher);
+                        var prefixBytes = NodeUtils12.GetPrefixSpan(top);
+                        if (header.HasLongKeys)
+                        {
+                            var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                            for (int i = 0; i < splitPos - 1; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                        }
+                        else
+                        {
+                            var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                            for (int i = 0; i < splitPos - 1; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
+                            }
+                        }
+                        var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
+                        var oldValues = NodeUtils12.GetBranchValuePtrs(top);
+                        CopyAndReferenceBranchValues(oldValues.Slice(0, splitPos), newValues);
+                        oldValues = oldValues.Slice(splitPos);
+
+                        newPrefixLen = _owner.CalcCommonPrefix(top, splitPos, MaxChildren - 1, keyPrefix, keySufix);
+                        var rightCount = MaxChildren - splitPos + 1;
+                        newSuffixLen = NodeUtils12.GetTotalSufixLen(top, splitPos, MaxChildren - 1) + header._keyPrefixLength * (rightCount - 2);
+                        newSuffixLen -= newPrefixLen * (rightCount - 1) - keyPrefix.Length - keySufix.Length;
+                        var newNode2 = _owner.AllocateBranch((uint)rightCount, (uint)newPrefixLen, (ulong)newSuffixLen, out keyPusher);
+                        if (header.HasLongKeys)
+                        {
+                            var longKeys = NodeUtils12.GetLongKeyPtrs(top);
+                            for (int i = splitPos; i < idx; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                            keyPusher.AddKey(keyPrefix, keySufix);
+                            for (int i = idx; i < MaxChildren - 1; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
+                            }
+                        }
+                        else
+                        {
+                            var keyOfs = NodeUtils12.GetKeySpans(top, out var keyData);
+                            for (int i = splitPos; i < idx; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
+                            }
+                            keyPusher.AddKey(keyPrefix, keySufix);
+                            for (int i = idx; i < MaxChildren - 1; i++)
+                            {
+                                keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
+                            }
+                        }
+                        newValues = NodeUtils12.GetBranchValuePtrs(newNode2);
+                        CopyAndReferenceBranchValues(oldValues.Slice(0, idx - splitPos), newValues);
+                        newValues = newValues.Slice(idx - splitPos);
+                        newValues[0] = _newChildNode;
+                        newValues[1] = _newChildNode2;
+                        newValues = newValues.Slice(2);
+                        CopyAndReferenceBranchValues(oldValues.Slice(idx - splitPos + 1), newValues);
+                        stack[(uint)stackIdx].Set(newNode, (byte)(idx - splitPos + (rightInsert ? 1 : 0)));
+                        NodeUtils12.RecalcRecursiveChildrenCount(newNode);
+                        NodeUtils12.RecalcRecursiveChildrenCount(newNode2);
+                        _newChildNode = newNode;
+                        _newChildNode2 = newNode2;
+                        rightInsert = true;
                     }
+                    stackIdx--;
+                    goto again;
                 }
             }
 
