@@ -22,8 +22,8 @@ namespace SimpleTester
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
-            //new KeyValueSpeedTest(true).Run();
-            //new KeyValueSpeedTest(false).Run();
+            new KeyValueSpeedTest(KVType.Managed, false, true).Run();
+            new KeyValueSpeedTest(KVType.BTree, false, true).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
@@ -34,7 +34,7 @@ namespace SimpleTester
             //new ClassGenerator().Run();
             //new EventLayer2TestWithALotOfClasses().Run();
             //BenchmarkRunner.Run<RelationFreeContentTest>();
-            new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
+            //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
         }
     }
 }

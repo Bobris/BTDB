@@ -445,6 +445,7 @@ namespace BTDB.BTreeLib
                     keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                 }
             }
+            keyPusher.Finish();
             var newValues = NodeUtils12.GetLeafValues(newNode);
             var oldValues = NodeUtils12.GetLeafValues(node);
             oldValues.Slice(0, 12 * leftPos).CopyTo(newValues);
@@ -1066,6 +1067,7 @@ namespace BTDB.BTreeLib
                     top = AllocateLeaf(1, (ushort)key.Length, 0, out keyPusher);
                 }
                 keyPusher.AddKey(key);
+                keyPusher.Finish();
                 content.CopyTo(NodeUtils12.GetLeafValues(top));
                 stack.Add().Set(top, 0);
                 rootNode._root = top;
@@ -1124,6 +1126,7 @@ namespace BTDB.BTreeLib
                             keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                         }
                     }
+                    keyPusher.Finish();
                     var newValues = NodeUtils12.GetLeafValues(newNode);
                     var oldValues = NodeUtils12.GetLeafValues(top);
                     oldValues.Slice(0, 12 * idx).CopyTo(newValues);
@@ -1172,6 +1175,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         var newValues = NodeUtils12.GetLeafValues(newNode);
                         var oldValues = NodeUtils12.GetLeafValues(top);
                         oldValues.Slice(0, 12 * idx).CopyTo(newValues);
@@ -1203,6 +1207,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         newValues = NodeUtils12.GetLeafValues(newNode2);
                         oldValues.CopyTo(newValues);
                         stack.Add().Set(newNode, (byte)idx);
@@ -1232,6 +1237,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         var newValues = NodeUtils12.GetLeafValues(newNode);
                         var oldValues = NodeUtils12.GetLeafValues(top);
                         oldValues.Slice(0, 12 * (MaxChildren / 2)).CopyTo(newValues);
@@ -1269,6 +1275,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         newValues = NodeUtils12.GetLeafValues(newNode2);
                         oldValues.Slice(0, 12 * (idx - MaxChildren / 2)).CopyTo(newValues);
                         newValues = newValues.Slice(12 * (idx - MaxChildren / 2));
@@ -1581,6 +1588,7 @@ namespace BTDB.BTreeLib
                     var keyPrefix = NodeUtils12.GetLeftestKey(_newChildNode2, out var keySufix);
                     var newRootNode = _owner.AllocateBranch(2, (uint)keyPrefix.Length, (ulong)keySufix.Length, out var keyPusher);
                     keyPusher.AddKey(keyPrefix, keySufix);
+                    keyPusher.Finish();
                     var branchValues = NodeUtils12.GetBranchValuePtrs(newRootNode);
                     branchValues[0] = _newChildNode;
                     branchValues[1] = _newChildNode2;
@@ -1629,6 +1637,7 @@ namespace BTDB.BTreeLib
                             keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
                         }
                     }
+                    keyPusher.Finish();
                     var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
                     var oldValues = NodeUtils12.GetBranchValuePtrs(top);
                     NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx), newValues);
@@ -1680,6 +1689,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
                         var oldValues = NodeUtils12.GetBranchValuePtrs(top);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx), newValues);
@@ -1711,6 +1721,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         newValues = NodeUtils12.GetBranchValuePtrs(newNode2);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues, newValues);
                         stack[(uint)stackIdx].Set(newNode, (byte)(idx + (rightInsert ? 1 : 0)));
@@ -1745,6 +1756,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
                         var oldValues = NodeUtils12.GetBranchValuePtrs(top);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, splitPos), newValues);
@@ -1781,6 +1793,7 @@ namespace BTDB.BTreeLib
                                 keyPusher.AddKey(prefixBytes, _owner.GetShortKey(keyOfs, keyData, i));
                             }
                         }
+                        keyPusher.Finish();
                         newValues = NodeUtils12.GetBranchValuePtrs(newNode2);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx - splitPos), newValues);
                         newValues = newValues.Slice(idx - splitPos);

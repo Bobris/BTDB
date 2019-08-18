@@ -7,6 +7,13 @@ using System.IO;
 
 namespace SimpleTester
 {
+    enum KVType
+    {
+        Managed,
+        Art,
+        BTree
+    }
+
     class KeyValueSpeedTest
     {
         readonly Stopwatch _sw = new Stopwatch();
@@ -14,17 +21,19 @@ namespace SimpleTester
         readonly bool _memoryMapped;
         IFileCollection _fileCollection;
         readonly bool _fastInMemory;
+        readonly KVType _kvType;
 
-        public KeyValueSpeedTest(bool inMemory, bool memoryMapped)
+        public KeyValueSpeedTest(KVType kvType, bool inMemory, bool memoryMapped)
         {
+            _kvType = kvType;
             _inMemory = inMemory;
             _memoryMapped = memoryMapped;
         }
 
-        public KeyValueSpeedTest(bool useArt = false)
+        public KeyValueSpeedTest(KVType kvType)
         {
+            _kvType = kvType;
             _fastInMemory = true;
-            _memoryMapped = useArt;
         }
 
         IFileCollection CreateTestFileCollection()
@@ -101,14 +110,33 @@ namespace SimpleTester
         {
             if (fileCollection == null)
             {
-                if (_memoryMapped)
-                    return new ArtInMemoryKeyValueDB(new HGlobalAllocator());
-                else
-                    return new InMemoryKeyValueDB();
+                switch (_kvType)
+                {
+                    case KVType.Managed:
+                        return new InMemoryKeyValueDB();
+                    case KVType.Art:
+                        return new ArtInMemoryKeyValueDB(new HGlobalAllocator());
+                    default:
+                        throw new NotImplementedException();
+                }
             }
-            if (compressionStrategy == null)
-                return new KeyValueDB(fileCollection);
-            return new KeyValueDB(fileCollection, compressionStrategy);
+            switch(_kvType)
+            {
+                case KVType.Managed:
+                    if (compressionStrategy == null)
+                        return new KeyValueDB(fileCollection);
+                    return new KeyValueDB(fileCollection, compressionStrategy);
+                case KVType.Art:
+                    if (compressionStrategy == null)
+                        return new ArtKeyValueDB(fileCollection);
+                    return new ArtKeyValueDB(fileCollection, compressionStrategy);
+                case KVType.BTree:
+                    if (compressionStrategy == null)
+                        return new BTreeKeyValueDB(fileCollection);
+                    return new BTreeKeyValueDB(fileCollection, compressionStrategy);
+                default:
+                    throw new NotImplementedException();
+            }
         }
 
         void DoWork5ReadCheck()
@@ -214,7 +242,7 @@ namespace SimpleTester
             var rnd = new Random(1234);
             using (var fileCollection = CreateTestFileCollection())
             {
-                using (var db = CreateKeyValueDB(fileCollection))
+                using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
                 {
                     using (var tr = db.StartTransaction())
                     {
@@ -344,7 +372,6 @@ namespace SimpleTester
             {
                 using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
                 {
-                    db.DurableTransactions = true;
                     using (var tr = db.StartTransaction())
                     {
                         for (int i = 0; i < keys; i++)
@@ -357,24 +384,24 @@ namespace SimpleTester
                         }
                         tr.Commit();
                     }
+                    Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" + Process.GetCurrentProcess().WorkingSet64 / 1024);
                 }
             }
-            Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds);
         }
 
         public void Run()
         {
-            Console.WriteLine("InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory, _memoryMapped);
+            Console.WriteLine("Type: {3} InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory, _memoryMapped, _kvType);
             //CreateTestDB(9999999);
-            CreateRandomKeySequence(10000);
+            CreateRandomKeySequence(10000000);
             //DoWork5(true);
             //CheckKeySequence(10000000);
             //CreateTestDB(9999999);
             //OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
-            DoWork5(false);
-            DoWork5(true);
+            //DoWork5(false);
+            //DoWork5(true);
             //DoWork5ReadCheck();
         }
     }

@@ -287,7 +287,7 @@ namespace BTreeLibTest
         {
             var val = GetSampleValue().ToArray();
             var key = new byte[4];
-            for (var i = 0; i < 10000; i++)
+            for (var i = 0; i < 100000; i++)
             {
                 BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
                 Assert.True(_cursor.Upsert(key, val));
@@ -295,12 +295,32 @@ namespace BTreeLibTest
                 Assert.Equal(key.Length, _cursor.GetKeyLength());
                 Assert.Equal(key, _cursor.FillByKey(new byte[key.Length]).ToArray());
             }
-            for (var i = 0; i < 10000; i++)
+            for (var i = 0; i < 100000; i++)
             {
                 BTDB.Buffer.PackUnpack.PackInt32BE(key, 0, i);
                 Assert.True(_cursor.FindExact(key));
                 Assert.Equal(i, _cursor.CalcIndex());
             }
+        }
+
+        [Fact]
+        public void SomeInsertsInIncreasingOrderWithSnapshotWorks()
+        {
+            var val = GetSampleValue().ToArray();
+            var key = new byte[2];
+            for (var i = 0; i < 200; i++)
+            {
+                key[0] = (byte)i;
+                Assert.True(_cursor.Upsert(key, val));
+                Assert.Equal(i + 1, _root.GetCount());
+                Assert.Equal(key.Length, _cursor.GetKeyLength());
+                Assert.Equal(key, _cursor.FillByKey(new byte[key.Length]).ToArray());
+            }
+            var startRoot = _root.Snapshot();
+            key[0] = 0;
+            key[1] = 1;
+            Assert.True(_cursor.Upsert(key, val));
+            startRoot.Dispose();
         }
 
         [Fact]

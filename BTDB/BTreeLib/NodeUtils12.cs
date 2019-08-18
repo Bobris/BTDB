@@ -141,7 +141,7 @@ namespace BTDB.BTreeLib
             else
             {
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-                ptr += 2 * header._childCount;
+                ptr += 2 * header.KeyCount;
                 ptr += 2 + *(ushort*)ptr;
                 if (header.IsNodeLeaf)
                     ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
