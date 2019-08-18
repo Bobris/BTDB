@@ -10,6 +10,13 @@ namespace BTDB.BTreeLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe ref NodeHeader12 Ptr2NodeHeader(IntPtr pointerInt)
         {
+            Debug.Assert((uint)(*(NodeHeader12*)pointerInt)._nodeType < 4);
+            return ref *(NodeHeader12*)pointerInt;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe ref NodeHeader12 Ptr2NodeHeaderInit(IntPtr pointerInt)
+        {
             return ref *(NodeHeader12*)pointerInt;
         }
 

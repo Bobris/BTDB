@@ -141,7 +141,7 @@ namespace BTDB.BTreeLib
             keyPusher._prefixLen = (ushort)keyPrefixLength;
             size += 12 * childCount;
             node = _allocator.Allocate((IntPtr)size);
-            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeader(node);
+            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeaderInit(node);
             nodeHeader._nodeType = nodeType;
             nodeHeader._childCount = (byte)childCount;
             nodeHeader._keyPrefixLength = (ushort)keyPrefixLength;
@@ -185,7 +185,7 @@ namespace BTDB.BTreeLib
             keyPusher._prefixLen = (ushort)keyPrefixLength;
             size += 8 * childCount;
             node = _allocator.Allocate((IntPtr)size);
-            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeader(node);
+            ref var nodeHeader = ref NodeUtils12.Ptr2NodeHeaderInit(node);
             nodeHeader._nodeType = nodeType;
             nodeHeader._childCount = (byte)childCount;
             nodeHeader._keyPrefixLength = (ushort)keyPrefixLength;
