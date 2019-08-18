@@ -249,7 +249,7 @@ namespace BTDB.BTreeLib
             return GetPrefixSpan(nodePtr);
         }
 
-        internal static void RecalcRecursiveChildrenCount(IntPtr nodePtr)
+        internal static long RecalcRecursiveChildrenCount(IntPtr nodePtr)
         {
             var children = GetBranchValuePtrs(nodePtr);
             var res = 0UL;
@@ -258,6 +258,17 @@ namespace BTDB.BTreeLib
                 res += Ptr2NodeHeader(children[i]).RecursiveChildCount;
             }
             Ptr2NodeHeader(nodePtr)._recursiveChildCount = res;
+            return (long)res;
+        }
+
+        internal static void CopyAndReferenceBranchValues(Span<IntPtr> from, Span<IntPtr> to)
+        {
+            for (var i = 0; i < from.Length; i++)
+            {
+                var node = from[i];
+                Reference(node);
+                to[i] = node;
+            }
         }
     }
 }
