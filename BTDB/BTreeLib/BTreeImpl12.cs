@@ -102,6 +102,18 @@ namespace BTDB.BTreeLib
                     keySufix.CopyTo(dest);
                 }
             }
+
+            internal void Finish()
+            {
+                if (_hasLongKeys)
+                {
+                    Debug.Assert(_pos == _longKeys.Length);
+                }
+                else
+                {
+                    Debug.Assert(_pos == _keyOffsets.Length - 1);
+                }
+            }
         }
 
         internal unsafe IntPtr AllocateLeaf(uint childCount, uint keyPrefixLength, ulong totalSuffixLength, out KeyPusher keyPusher)
@@ -305,11 +317,11 @@ namespace BTDB.BTreeLib
             var leftChildSufix = new Span<byte>();
             var rightChildPrefix = new Span<byte>();
             var rightChildSufix = new Span<byte>();
-            if (leftChild != IntPtr.Zero)
+            if (leftChild != IntPtr.Zero && leftPos > 0)
             {
                 leftChildPrefix = NodeUtils12.GetLeftestKey(leftChild, out leftChildSufix);
             }
-            if (rightChild != IntPtr.Zero)
+            if (rightChild != IntPtr.Zero && (leftPos > 0 || leftChild != IntPtr.Zero))
             {
                 rightChildPrefix = NodeUtils12.GetLeftestKey(rightChild, out rightChildSufix);
             }
@@ -335,11 +347,11 @@ namespace BTDB.BTreeLib
                 {
                     if (i == leftPosKey)
                     {
-                        if (leftChild != IntPtr.Zero)
+                        if (leftChild != IntPtr.Zero && leftPos > 0)
                         {
                             keyPusher.AddKey(leftChildPrefix, leftChildSufix);
                         }
-                        if (rightChild != IntPtr.Zero)
+                        if (rightChild != IntPtr.Zero && (leftPos > 0 || leftChild != IntPtr.Zero))
                         {
                             keyPusher.AddKey(rightChildPrefix, rightChildSufix);
                         }
@@ -356,11 +368,11 @@ namespace BTDB.BTreeLib
                 {
                     if (i == leftPosKey)
                     {
-                        if (leftChild != IntPtr.Zero)
+                        if (leftChild != IntPtr.Zero && leftPos > 0)
                         {
                             keyPusher.AddKey(leftChildPrefix, leftChildSufix);
                         }
-                        if (rightChild != IntPtr.Zero)
+                        if (rightChild != IntPtr.Zero && (leftPos > 0 || leftChild != IntPtr.Zero))
                         {
                             keyPusher.AddKey(rightChildPrefix, rightChildSufix);
                         }
@@ -370,6 +382,7 @@ namespace BTDB.BTreeLib
                     keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                 }
             }
+            keyPusher.Finish();
             var newValues = NodeUtils12.GetBranchValuePtrs(newNode);
             var oldValues = NodeUtils12.GetBranchValuePtrs(node);
             NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, leftPos), newValues);
