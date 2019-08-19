@@ -22,7 +22,7 @@ namespace SimpleTester
             //new ChannelSpeedTest().Run(args);
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
-            new KeyValueSpeedTest(KVType.Managed, false, true).Run();
+            //new KeyValueSpeedTest(KVType.Managed, false, true).Run();
             new KeyValueSpeedTest(KVType.BTree, false, true).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();

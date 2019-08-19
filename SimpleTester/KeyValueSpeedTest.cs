@@ -120,7 +120,7 @@ namespace SimpleTester
                         throw new NotImplementedException();
                 }
             }
-            switch(_kvType)
+            switch (_kvType)
             {
                 case KVType.Managed:
                     if (compressionStrategy == null)
@@ -275,7 +275,7 @@ namespace SimpleTester
                     _sw.Stop();
                     GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
                     var memFinish = GC.GetTotalMemory(false);
-                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB", _sw.Elapsed.TotalMilliseconds, (memFinish - memStart) / 1024);
+                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB {2}KB", _sw.Elapsed.TotalMilliseconds, (memFinish - memStart) / 1024, Process.GetCurrentProcess().WorkingSet64 / 1024);
                     Console.WriteLine(db.CalcStats());
                     _sw.Restart();
                 }
@@ -393,11 +393,11 @@ namespace SimpleTester
         {
             Console.WriteLine("Type: {3} InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory, _memoryMapped, _kvType);
             //CreateTestDB(9999999);
-            CreateRandomKeySequence(10000000);
+            //CreateRandomKeySequence(10000000);
             //DoWork5(true);
             //CheckKeySequence(10000000);
-            //CreateTestDB(9999999);
-            //OpenDBSpeedTest();
+            CreateTestDB(9999999);
+            OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
             //DoWork5(false);
