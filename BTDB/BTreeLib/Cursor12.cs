@@ -236,5 +236,12 @@ namespace BTDB.BTreeLib
         {
             _stack.Clear();
         }
+
+        public void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
+        {
+            AssertWrittable();
+            Invalidate();
+            _rootNode._impl.BuildTree(_rootNode, keyCount, generator);
+        }
     }
 }

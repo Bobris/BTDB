@@ -73,7 +73,7 @@ namespace BTDB.BTreeLib
             var ptr = nodePtr + (int)header.Size;
             ptr += header._keyPrefixLength;
             ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
-            return new Span<IntPtr>(ptr.ToPointer(), 8 * (header._childCount - (header.IsNodeLeaf ? 0 : 1)));
+            return new Span<IntPtr>(ptr.ToPointer(), header._childCount - (header.IsNodeLeaf ? 0 : 1));
         }
 
         internal static unsafe Span<byte> GetLeafValues(IntPtr nodePtr)

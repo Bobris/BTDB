@@ -428,12 +428,12 @@ namespace BTDB.KVDBLayer
                         _nextRoot.SetUlong(i, info.Ulongs[i]);
                     }
 
-                HashSet<uint> usedFileIds = new HashSet<uint>();
+                var usedFileIds = new HashSet<uint>();
                 var cursor = _nextRoot.CreateCursor();
-                Span<byte> trueValue = stackalloc byte[12];
+                var trueValue = new byte[12];
                 if (info.Compression == KeyIndexCompression.Old)
                 {
-                    for (var i = 0L; i < keyCount; i++)
+                    cursor.BuildTree(keyCount, () =>
                     {
                         var keyLength = reader.ReadVInt32();
                         var key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
@@ -443,7 +443,7 @@ namespace BTDB.KVDBLayer
                             _compression.DecompressKey(ref key);
                         }
 
-                        trueValue.Clear();
+                        Array.Clear(trueValue, 0, 12);
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
                         MemoryMarshal.Write(trueValue, ref vFileId);
@@ -484,19 +484,19 @@ namespace BTDB.KVDBLayer
                         }
                         else
                         {
-                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            MemoryMarshal.Write(trueValue.AsSpan(4), ref valueOfs);
+                            MemoryMarshal.Write(trueValue.AsSpan(8), ref valueSize);
                         }
 
-                        cursor.Upsert(key.AsSyncReadOnlySpan(), trueValue);
-                    }
+                        return (key, trueValue);
+                    });
                 }
                 else
                 {
                     if (info.Compression != KeyIndexCompression.None)
                         return false;
                     var prevKey = ByteBuffer.NewEmpty();
-                    for (var i = 0L; i < keyCount; i++)
+                    cursor.BuildTree(keyCount, () =>
                     {
                         var prefixLen = (int)reader.ReadVUInt32();
                         var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
@@ -506,7 +506,7 @@ namespace BTDB.KVDBLayer
                         prevKey = key;
                         var vFileId = reader.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
-                        trueValue.Clear();
+                        Array.Clear(trueValue, 0, 12);
                         MemoryMarshal.Write(trueValue, ref vFileId);
                         var valueOfs = reader.ReadVUInt32();
                         var valueSize = reader.ReadVInt32();
@@ -545,12 +545,12 @@ namespace BTDB.KVDBLayer
                         }
                         else
                         {
-                            MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                            MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                            MemoryMarshal.Write(trueValue.AsSpan(4), ref valueOfs);
+                            MemoryMarshal.Write(trueValue.AsSpan(8), ref valueSize);
                         }
 
-                        cursor.Upsert(key.AsSyncReadOnlySpan(), trueValue);
-                    }
+                        return (key, trueValue);
+                    });
                 }
 
                 var trlGeneration = GetGeneration(info.TrLogFileId);

@@ -234,7 +234,6 @@ namespace SimpleTester
                     Console.WriteLine(db.CalcStats());
                 }
             }
-
         }
 
         void CreateTestDB(int keys)

@@ -337,6 +337,7 @@ namespace BTDB.KVDBLayer
                     newFiles.Remove(_index);
                 } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);
 
+                UnmapContent();
                 _stream.Dispose();
                 _owner.DeleteFileCollectionStrategy.DeleteFile(_fileName);
             }

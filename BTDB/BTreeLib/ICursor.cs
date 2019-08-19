@@ -1,4 +1,5 @@
-﻿using BTDB.KVDBLayer;
+﻿using BTDB.Buffer;
+using BTDB.KVDBLayer;
 using System;
 
 namespace BTDB.BTreeLib
@@ -30,5 +31,6 @@ namespace BTDB.BTreeLib
         bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content);
         void Erase();
         long EraseTo(ICursor to);
+        void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator);
     }
 }
