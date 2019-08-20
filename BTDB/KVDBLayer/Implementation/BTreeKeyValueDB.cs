@@ -1250,10 +1250,9 @@ namespace BTDB.KVDBLayer
 
         public uint CalcValueSize(uint valueFileId, uint valueOfs, int valueSize)
         {
-            if (valueSize == 0) return 0;
             if (valueFileId == 0)
             {
-                return (uint)(valueSize >> 24);
+                return valueOfs & 0xff;
             }
 
             return (uint)Math.Abs(valueSize);
