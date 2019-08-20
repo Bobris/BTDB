@@ -106,11 +106,6 @@ namespace BTDB.KVDBLayer
         {
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            NewWrittingTransactionUnsafe(tcs);
-        }
-
-        void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
-        {
             tcs.TrySetResult(NewWrittingTransactionUnsafe());
         }
         
