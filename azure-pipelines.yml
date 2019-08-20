@@ -1,31 +1,31 @@
 variables:
-  buildConfiguration: 'Release'
+  buildConfiguration: "Release"
 
 jobs:
-- job: 'netcore_linux'
-  pool: 
-    vmImage: 'Ubuntu 16.04'
-  container:
-    image: mcr.microsoft.com/dotnet/core/sdk:3.0
-  steps:
-  - script:
-      dotnet build --configuration $(buildConfiguration)
-  - task: DotNetCoreCLI@2
-    inputs:
-      command: test
-      projects: '**/*Test/*.csproj'
-      testRunTitle: Linux
-      arguments: '--configuration $(buildConfiguration)'
+  - job: "netcore_linux"
+    pool:
+      vmImage: "Ubuntu 16.04"
+    container:
+      image: mcr.microsoft.com/dotnet/core/sdk:3.0
+    steps:
+      - script: dotnet build --configuration $(buildConfiguration)
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: test
+          projects: "**/*Test/*.csproj"
+          testRunTitle: Linux
+          arguments: "--configuration $(buildConfiguration)"
 
-- job: 'netcore_net471_win'
-  pool: 
-    vmImage: win1803
-  container:
-    image: mcr.microsoft.com/dotnet/core/sdk:3.0
-  steps:
-  - task: DotNetCoreCLI@2
-    inputs:
-      command: test
-      projects: '**/*Test/*.csproj'
-      testRunTitle: Windows
-      arguments: '--configuration $(buildConfiguration)'
+  - job: "netcore_win"
+    pool:
+      vmImage: win1803
+    container:
+      image: mcr.microsoft.com/dotnet/core/sdk:3.0
+    steps:
+      - script: dotnet build --configuration $(buildConfiguration)
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: test
+          projects: "**/*Test/*.csproj"
+          testRunTitle: Windows
+          arguments: "--configuration $(buildConfiguration)"
