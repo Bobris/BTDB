@@ -13,8 +13,6 @@ namespace BTDBTest
         {
             Debug,
             Release,
-            NetCore,
-            NetFramework,
         }
 
         public SkipWhenAttribute(Is cond, string skip = DefaultSkipReason)

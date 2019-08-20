@@ -1700,8 +1700,7 @@ namespace BTDBTest
             }
         }
 
-        [SkipWhenAny(SkipWhenAttribute.Is.Release, SkipWhenAttribute.Is.NetCore)]
-        public void ProgrammerIsWarnedWhenWorkingWithDerivedType()
+        void ProgrammerIsWarnedWhenWorkingWithDerivedType()
         {
             var failCountingListener = new TraceListenerCountingFails();
             var listenersBackup = new TraceListener[Trace.Listeners.Count];

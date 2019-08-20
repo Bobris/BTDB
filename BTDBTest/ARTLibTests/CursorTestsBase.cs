@@ -41,7 +41,6 @@ namespace ARTLibTest
             }
         }
 
-        [SkipWhen(SkipWhenAttribute.Is.NetFramework, "ArtLib is supported only in .netcore")]
         public void InvalidCursorBehaviour()
         {
             Assert.Equal(-1, _cursor.CalcIndex());
