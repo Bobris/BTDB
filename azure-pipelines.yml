@@ -4,10 +4,14 @@ variables:
 jobs:
   - job: "netcore_linux"
     pool:
-      vmImage: "Ubuntu 16.04"
-    container:
-      image: mcr.microsoft.com/dotnet/core/sdk:3.0
+      vmImage: "ubuntu-latest"
     steps:
+      - task: UseDotNet@2
+        displayName: "Use .NET Core sdk 3.0"
+        inputs:
+          packageType: sdk
+          version: 3.0.x
+          includePreviewVersions: true
       - task: DotNetCoreCLI@2
         inputs:
           command: build
@@ -21,10 +25,14 @@ jobs:
 
   - job: "netcore_win"
     pool:
-      vmImage: win1803
-    container:
-      image: mcr.microsoft.com/dotnet/core/sdk:3.0
+      vmImage: "windows-latest"
     steps:
+      - task: UseDotNet@2
+        displayName: "Use .NET Core sdk 3.0"
+        inputs:
+          packageType: sdk
+          version: 3.0.x
+          includePreviewVersions: true
       - task: DotNetCoreCLI@2
         inputs:
           command: build
