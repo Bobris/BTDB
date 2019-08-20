@@ -1008,6 +1008,23 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        internal void CommitFromCompactor(IRootNode root)
+        {
+            lock (_writeLock)
+            {
+                _writingTransaction = null;
+                if (_lastCommited.Dereference())
+                {
+                    _lastCommited.Dispose();
+                }
+
+                _lastCommited = root;
+                root = null;
+                _lastCommited.Commit();
+                TryDequeWaiterForWritingTransaction();
+            }
+        }
+
         internal void CommitWritingTransaction(IRootNode root, bool temporaryCloseTransactionLog)
         {
             try
@@ -1136,6 +1153,7 @@ namespace BTDB.KVDBLayer
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Rollback);
                 _writerWithTransactionLog.FlushBuffer();
+                _fileWithTransactionLog.Flush();
                 lock (_writeLock)
                 {
                     _writingTransaction = null;
@@ -1486,14 +1504,14 @@ namespace BTDB.KVDBLayer
         internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
         {
             byte[] restartKey = null;
-            Span<byte> newValue = stackalloc byte[12];
+            Span<byte> newValue = new byte[12];
             while (true)
             {
                 var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
                 var interrupt = false;
                 using (var tr = StartWritingTransaction().Result)
                 {
-                    var newRoot = (tr as BTreeKeyValueDBTransaction).BTreeRoot;
+                    var newRoot = ((BTreeKeyValueDBTransaction)tr).BTreeRoot;
                     var cursor = newRoot.CreateCursor();
                     if (restartKey != null)
                     {
@@ -1506,7 +1524,7 @@ namespace BTDB.KVDBLayer
                     {
                         var value = cursor.GetValue();
                         if (newPositionMap.TryGetValue(
-                            (MemoryMarshal.Read<uint>(value) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
+                            (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
                             out var targetOfs))
                         {
                             var valueFileId = (uint)(targetOfs >> 32);
@@ -1531,7 +1549,7 @@ namespace BTDB.KVDBLayer
                     }
 
                     cancellation.ThrowIfCancellationRequested();
-                    tr.Commit();
+                    ((BTreeKeyValueDBTransaction)tr).CommitFromCompactor();
                     if (!interrupt)
                     {
                         return newRoot.TransactionId;

@@ -902,6 +902,7 @@ namespace BTDB.KVDBLayer
             if (!nothingWrittenToTransactionLog)
             {
                 _writerWithTransactionLog.WriteUInt8((byte) KVCommandType.Rollback);
+                _writerWithTransactionLog.FlushBuffer();
                 _fileWithTransactionLog.Flush();
                 var newRoot = _lastCommited.CloneRoot();
                 UpdateTransactionLogInBTreeRoot(newRoot);

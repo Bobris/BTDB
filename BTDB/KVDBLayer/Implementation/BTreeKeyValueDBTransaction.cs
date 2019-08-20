@@ -378,6 +378,15 @@ namespace BTDB.KVDBLayer
             _temporaryCloseTransactionLog = true;
         }
 
+        internal void CommitFromCompactor()
+        {
+            if (BTreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
+            var currentArtRoot = BTreeRoot;
+            BTreeRoot = null;
+            _preapprovedWriting = false;
+            _keyValueDB.CommitFromCompactor(currentArtRoot);
+        }
+
         public void Commit()
         {
             if (BTreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
