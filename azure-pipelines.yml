@@ -8,7 +8,10 @@ jobs:
     container:
       image: mcr.microsoft.com/dotnet/core/sdk:3.0
     steps:
-      - script: dotnet build --configuration $(buildConfiguration)
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: build
+          arguments: "--configuration $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test
@@ -22,7 +25,10 @@ jobs:
     container:
       image: mcr.microsoft.com/dotnet/core/sdk:3.0
     steps:
-      - script: dotnet build --configuration $(buildConfiguration)
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: build
+          arguments: "--configuration $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test

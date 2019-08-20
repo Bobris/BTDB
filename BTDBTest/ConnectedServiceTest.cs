@@ -201,6 +201,7 @@ namespace BTDBTest
             var weakAdder = new WeakReference(_second.QueryRemoteService<IAdder>());
             GC.Collect();
             GC.WaitForPendingFinalizers();
+            GC.Collect();
             Assert.False(weakAdder.IsAlive);
             var adder = _second.QueryRemoteService<IAdder>();
             Assert.Equal(2, adder.Add(1, 1));
