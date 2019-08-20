@@ -1002,6 +1002,14 @@ namespace BTDB.BTreeLib
                         stack.Add().Set(top, (byte)idx);
                         return true;
                     }
+                    if (idx == header._childCount)
+                    {
+                        stack.Add().Set(top, (byte)(idx - 1));
+                        if (MoveNext(ref stack) && IsKeyPrefix(stack[stack.Count - 1]._node, stack[stack.Count - 1]._posInNode, keyPrefix))
+                        {
+                            return true;
+                        }
+                    }
                     stack.Clear();
                     return false;
                 }
