@@ -239,7 +239,7 @@ namespace BTDB.BTreeLib
                 var newPrefixSize = TreeNodeUtils.CalcCommonPrefix(keys);
                 var newSufixSize = totalKeyLen - todo * newPrefixSize;
                 var newNode = AllocateLeaf((uint)todo, (uint)newPrefixSize, (ulong)newSufixSize, out var keyPusher);
-                for (var i = 0; 0 < todo; i++)
+                for (var i = 0; i < todo; i++)
                 {
                     keyPusher.AddKey(keys[i].AsSyncReadOnlySpan());
                 }

@@ -1008,12 +1008,12 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal void CommitWritingTransaction(IRootNode artRoot, bool temporaryCloseTransactionLog)
+        internal void CommitWritingTransaction(IRootNode root, bool temporaryCloseTransactionLog)
         {
             try
             {
-                WriteUlongsDiff(artRoot, _lastCommited);
-                var deltaUlong = unchecked(artRoot.CommitUlong - _lastCommited.CommitUlong);
+                WriteUlongsDiff(root, _lastCommited);
+                var deltaUlong = unchecked(root.CommitUlong - _lastCommited.CommitUlong);
                 if (deltaUlong != 0)
                 {
                     _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
@@ -1023,18 +1023,19 @@ namespace BTDB.KVDBLayer
                 {
                     _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.Commit);
                 }
-
-                if (DurableTransactions || !temporaryCloseTransactionLog)
-                    _writerWithTransactionLog.FlushBuffer();
-                UpdateTransactionLogInBTreeRoot(artRoot);
                 if (DurableTransactions)
+                {
                     _fileWithTransactionLog.HardFlush();
+                }
+                else
+                {
+                    _fileWithTransactionLog.Flush();
+                }
+                UpdateTransactionLogInBTreeRoot(root);
                 if (temporaryCloseTransactionLog)
                 {
                     _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                    _writerWithTransactionLog.FlushBuffer();
-                    if (DurableTransactions)
-                        _fileWithTransactionLog.HardFlush();
+                    _fileWithTransactionLog.Flush();
                     _fileWithTransactionLog.Truncate();
                 }
 
@@ -1046,15 +1047,15 @@ namespace BTDB.KVDBLayer
                         _lastCommited.Dispose();
                     }
 
-                    _lastCommited = artRoot;
-                    artRoot = null;
+                    _lastCommited = root;
+                    root = null;
                     _lastCommited.Commit();
                     TryDequeWaiterForWritingTransaction();
                 }
             }
             finally
             {
-                artRoot?.Dispose();
+                root?.Dispose();
             }
         }
 
@@ -1077,21 +1078,21 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void UpdateTransactionLogInBTreeRoot(IRootNode artRoot)
+        void UpdateTransactionLogInBTreeRoot(IRootNode root)
         {
-            if (artRoot.TrLogFileId != _fileIdWithTransactionLog && artRoot.TrLogFileId != 0)
+            if (root.TrLogFileId != _fileIdWithTransactionLog && root.TrLogFileId != 0)
             {
                 _compactorScheduler?.AdviceRunning(false);
             }
 
-            artRoot.TrLogFileId = _fileIdWithTransactionLog;
+            root.TrLogFileId = _fileIdWithTransactionLog;
             if (_writerWithTransactionLog != null)
             {
-                artRoot.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
+                root.TrLogOffset = (uint)_writerWithTransactionLog.GetCurrentPosition();
             }
             else
             {
-                artRoot.TrLogOffset = 0;
+                root.TrLogOffset = 0;
             }
         }
 

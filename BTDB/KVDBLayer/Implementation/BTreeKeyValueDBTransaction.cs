@@ -156,7 +156,6 @@ namespace BTDB.KVDBLayer
             _cursor2?.SetNewRoot(BTreeRoot);
             BTreeRoot.DescriptionForLeaks = _descriptionForLeaks;
             _writing = true;
-            InvalidateCurrentKey();
             _keyValueDB.WriteStartTransaction();
         }
 
