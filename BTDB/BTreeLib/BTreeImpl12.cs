@@ -901,7 +901,7 @@ namespace BTDB.BTreeLib
                 if (header._keyPrefixLength > 0)
                 {
                     var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
-                    var comp = key.Slice(0, header._keyPrefixLength).SequenceCompareTo(prefix);
+                    var comp = key.Slice(0, Math.Min(key.Length, header._keyPrefixLength)).SequenceCompareTo(prefix);
                     if (comp < 0)
                     {
                         stack.Add().Set(top, 0);
