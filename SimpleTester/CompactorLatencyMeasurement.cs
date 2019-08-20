@@ -109,7 +109,7 @@ namespace SimpleTester
                         if(!transactionCreationStarted.IsSet)
                             transactionCreationStarted.Set();
 
-                        task.Wait();
+                        task.AsTask().Wait();
 
                         var ms = watch.ElapsedMilliseconds;
                         average += ms;

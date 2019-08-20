@@ -226,7 +226,7 @@ namespace BTDBTest
                 return new KeyValueDBTransactionWithCount(_keyValueDB.StartReadOnlyTransaction());
             }
 
-            public Task<IKeyValueDBTransaction> StartWritingTransaction()
+            public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
             {
                 return _keyValueDB.StartWritingTransaction();
             }

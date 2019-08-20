@@ -658,20 +658,20 @@ namespace BTDB.KVDBLayer
             return new KeyValueDBTransaction(this, LastCommited, false, true);
         }
 
-        public Task<IKeyValueDBTransaction> StartWritingTransaction()
+        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
         {
             lock (_writeLock)
             {
-                var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
+                
                 if (_writingTransaction == null)
                 {
-                    NewWrittingTransactionUnsafe(tcs);
+                    return new ValueTask<IKeyValueDBTransaction>(NewWrittingTransactionUnsafe());
                 }
-                else
-                {
-                    _writeWaitingQueue.Enqueue(tcs);
-                }
-                return tcs.Task;
+                
+                var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
+                _writeWaitingQueue.Enqueue(tcs);
+                
+                return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
             }
         }
 
@@ -799,9 +799,15 @@ namespace BTDB.KVDBLayer
 
         void NewWrittingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
         {
+            tcs.SetResult(NewWrittingTransactionUnsafe());
+        }
+        
+        KeyValueDBTransaction NewWrittingTransactionUnsafe()
+        {
             var newTransactionRoot = LastCommited.NewTransactionRoot();
-            _writingTransaction = new KeyValueDBTransaction(this, newTransactionRoot, true, false);
-            tcs.SetResult(_writingTransaction);
+            var tr = new KeyValueDBTransaction(this, newTransactionRoot, true, false);
+            _writingTransaction = tr;
+            return tr;
         }
 
         internal void RevertWrittingTransaction(bool nothingWrittenToTransactionLog)
