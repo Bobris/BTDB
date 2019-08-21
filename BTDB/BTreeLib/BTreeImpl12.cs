@@ -408,8 +408,12 @@ namespace BTDB.BTreeLib
             }
             var leftPosKey = leftPos > 0 ? leftPos - 1 : 0;
             var rightPosKey = rightPos > 0 ? rightPos - 1 : 0;
+            if (leftPos == 0 && rightPos > 0 && leftChild == IntPtr.Zero && rightChild == IntPtr.Zero) rightPosKey++;
             var newPrefixLen = (leftChild == IntPtr.Zero && rightChild == IntPtr.Zero) ? CalcCommonPrefixExcept(node, leftPosKey, rightPosKey) : 0;
-            var newSufixLen = NodeUtils12.GetTotalSufixLenExcept(node, leftPosKey, rightPosKey) + header._keyPrefixLength * (header._childCount - 1 - (rightPosKey + 1 - leftPosKey));
+            var newSufixLen =
+                (leftChild != IntPtr.Zero && rightPos == 0) ?
+                NodeUtils12.GetTotalSufixLen(node) + header._keyPrefixLength * (header._childCount - 1):
+                NodeUtils12.GetTotalSufixLenExcept(node, leftPosKey, rightPosKey) + header._keyPrefixLength * (header._childCount - 1 - (rightPosKey + 1 - leftPosKey));
             newSufixLen -= newPrefixLen * (newCount - 1);
             if (leftChild != IntPtr.Zero)
             {
@@ -437,7 +441,8 @@ namespace BTDB.BTreeLib
                             keyPusher.AddKey(rightChildPrefix, rightChildSufix);
                         }
                         i = rightPosKey;
-                        continue;
+                        if (leftChild == IntPtr.Zero || rightPos > 0)
+                            continue;
                     }
                     keyPusher.AddKey(prefixBytes, NodeUtils12.LongKeyPtrToSpan(longKeys[i]));
                 }
@@ -458,7 +463,8 @@ namespace BTDB.BTreeLib
                             keyPusher.AddKey(rightChildPrefix, rightChildSufix);
                         }
                         i = rightPosKey;
-                        continue;
+                        if (leftChild == IntPtr.Zero || rightPos > 0)
+                            continue;
                     }
                     keyPusher.AddKey(prefixBytes, GetShortKey(keyOfs, keyData, i));
                 }
@@ -1550,6 +1556,10 @@ namespace BTDB.BTreeLib
         {
             var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
             ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
+            if (startIdx == 0 && endIdx + 1 == header.KeyCount)
+            {
+                return 0;
+            }
             var common = int.MaxValue;
             ReadOnlySpan<byte> first;
             if (header.HasLongKeys)

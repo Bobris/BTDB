@@ -1381,19 +1381,10 @@ namespace BTDB.KVDBLayer
                     var keyLength = cursor.GetKeyLength();
                     var key = new byte[keyLength].AsSpan();
                     cursor.FillByKey(key);
-                    var prefixLen = 0;
-                    var minLen = Math.Min(prevKey.Length, key.Length);
-                    for (var i = 0; i < minLen; i++)
-                    {
-                        if (prevKey[i] != key[i])
-                        {
-                            prefixLen = i;
-                            break;
-                        }
-                    }
+                    var prefixLen = TreeNodeUtils.FindFirstDifference(prevKey, key);
 
                     writer.WriteVUInt32((uint)prefixLen);
-                    writer.WriteVUInt32((uint)(key.Length - prefixLen));
+                    writer.WriteVUInt32((uint)(keyLength - prefixLen));
                     writer.WriteBlock(key.Slice(prefixLen));
                     var vFileId = MemoryMarshal.Read<uint>(memberValue);
                     if (vFileId > 0) usedFileIds.Add(vFileId);
