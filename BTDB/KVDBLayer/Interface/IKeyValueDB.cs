@@ -13,7 +13,7 @@ namespace BTDB.KVDBLayer
 
         IKeyValueDBTransaction StartReadOnlyTransaction();
 
-        Task<IKeyValueDBTransaction> StartWritingTransaction();
+        ValueTask<IKeyValueDBTransaction> StartWritingTransaction();
 
         string CalcStats();
 

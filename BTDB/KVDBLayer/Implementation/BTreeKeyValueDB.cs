@@ -920,21 +920,18 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public Task<IKeyValueDBTransaction> StartWritingTransaction()
+        public ValueTask<IKeyValueDBTransaction> StartWritingTransaction()
         {
             lock (_writeLock)
             {
-                var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
                 if (_writingTransaction == null)
                 {
-                    NewWritingTransactionUnsafe(tcs);
+                    return new ValueTask<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
                 }
-                else
-                {
-                    _writeWaitingQueue.Enqueue(tcs);
-                }
-
-                return tcs.Task;
+                
+                var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
+                _writeWaitingQueue.Enqueue(tcs);
+                return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
             }
         }
 
@@ -1118,16 +1115,18 @@ namespace BTDB.KVDBLayer
             FreeWaitingToDispose();
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            NewWritingTransactionUnsafe(tcs);
+            tcs.SetResult(NewWritingTransactionUnsafe());
         }
 
-        void NewWritingTransactionUnsafe(TaskCompletionSource<IKeyValueDBTransaction> tcs)
+        BTreeKeyValueDBTransaction NewWritingTransactionUnsafe()
         {
             FreeWaitingToDispose();
             var newTransactionRoot = _lastCommited.CreateWritableTransaction();
             try
             {
-                _writingTransaction = new BTreeKeyValueDBTransaction(this, newTransactionRoot, true, false);
+                var tr = new BTreeKeyValueDBTransaction(this, newTransactionRoot, true, false);
+                _writingTransaction = tr;
+                return tr;
             }
             catch
             {
@@ -1135,7 +1134,6 @@ namespace BTDB.KVDBLayer
                 throw;
             }
 
-            tcs.SetResult(_writingTransaction);
         }
 
         void FreeWaitingToDispose()
