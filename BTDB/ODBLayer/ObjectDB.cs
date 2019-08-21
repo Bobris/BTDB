@@ -142,10 +142,15 @@ namespace BTDB.ODBLayer
             return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction(), true);
         }
 
-        public Task<IObjectDBTransaction> StartWritingTransaction()
+        public ValueTask<IObjectDBTransaction> StartWritingTransaction()
         {
-            return _keyValueDB.StartWritingTransaction()
-                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            var tr = _keyValueDB.StartWritingTransaction();
+            if(tr.IsCompletedSuccessfully)
+                return new ValueTask<IObjectDBTransaction>(new ObjectDBTransaction(this, tr.Result, false));
+
+            return new ValueTask<IObjectDBTransaction>(tr.AsTask()
+                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         }
 
         public string RegisterType(Type type)

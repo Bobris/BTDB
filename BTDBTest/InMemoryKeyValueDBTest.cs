@@ -218,7 +218,7 @@ namespace BTDBTest
                 Task<IKeyValueDBTransaction> trOuter;
                 using (var tr = db.StartWritingTransaction().Result)
                 {
-                    trOuter = db.StartWritingTransaction();
+                    trOuter = db.StartWritingTransaction().AsTask();
                     tr.Commit();
                 }
                 using (var tr = trOuter.Result)
