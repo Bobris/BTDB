@@ -1194,7 +1194,7 @@ namespace BTDB.BTreeLib
 
                 if (!header.IsNodeLeaf)
                 {
-                    idx = idx / 2;
+                    idx = (idx + 1) / 2;
                     stack.Add().Set(top, (byte)idx);
                     top = NodeUtils12.GetBranchValuePtr(top, idx);
                     continue;
