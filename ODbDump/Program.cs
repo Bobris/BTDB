@@ -179,9 +179,13 @@ namespace ODbDump
                     }
                 case "stat":
                     {
+                        var sw = new Stopwatch();
+                        sw.Start();
                         using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new KeyValueDB(dfc))
+                        using (var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                         {
+                            sw.Stop();
+                            Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
                             Console.WriteLine(kdb.CalcStats());
                         }
 
@@ -230,7 +234,7 @@ namespace ODbDump
                         {
                             kdb.Logger = new ConsoleKvdbLogger();
                             sw.Stop();
-                            Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1} Taking {Process.GetCurrentProcess().WorkingSet64/1024}KB RAM");
+                            Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
                             sw.Restart();
                             while (kdb.Compact(new CancellationToken()))
                             {
