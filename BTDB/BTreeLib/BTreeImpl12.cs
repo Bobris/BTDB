@@ -412,7 +412,7 @@ namespace BTDB.BTreeLib
             var newPrefixLen = (leftChild == IntPtr.Zero && rightChild == IntPtr.Zero) ? CalcCommonPrefixExcept(node, leftPosKey, rightPosKey) : 0;
             var newSufixLen =
                 (leftChild != IntPtr.Zero && rightPos == 0) ?
-                NodeUtils12.GetTotalSufixLen(node) + header._keyPrefixLength * (header._childCount - 1):
+                NodeUtils12.GetTotalSufixLen(node) + header._keyPrefixLength * (header._childCount - 1) :
                 NodeUtils12.GetTotalSufixLenExcept(node, leftPosKey, rightPosKey) + header._keyPrefixLength * (header._childCount - 1 - (rightPosKey + 1 - leftPosKey));
             newSufixLen -= newPrefixLen * (newCount - 1);
             if (leftChild != IntPtr.Zero)
@@ -746,12 +746,27 @@ namespace BTDB.BTreeLib
                 ref var header = ref NodeUtils12.Ptr2NodeHeader(top);
                 if (header._keyPrefixLength > 0)
                 {
+                    var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
                     if (header._keyPrefixLength > key.Length)
                     {
-                        stack.Clear();
-                        return false;
+                        if (header.IsNodeLeaf)
+                        {
+                            stack.Clear();
+                            return false;
+                        }
+                        if (key.SequenceCompareTo(prefix) < 0)
+                        {
+                            stack.Add().Set(top, 0);
+                            top = NodeUtils12.GetBranchValuePtr(top, 0);
+                            continue;
+                        }
+                        else
+                        {
+                            stack.Add().Set(top, (byte)(header._childCount - 1));
+                            top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
+                            continue;
+                        }
                     }
-                    var prefix = new Span<byte>((top + (int)header.Size).ToPointer(), header._keyPrefixLength);
                     var comp = key.Slice(0, header._keyPrefixLength).SequenceCompareTo(prefix);
                     if (comp != 0 && header.IsNodeLeaf)
                     {
