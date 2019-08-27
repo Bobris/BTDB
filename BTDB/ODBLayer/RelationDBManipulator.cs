@@ -196,7 +196,7 @@ namespace BTDB.ODBLayer
 
             var oldValueBytes = _hasSecondaryIndexes
                 ? _transaction.KeyValueDBTransaction.GetValue()
-                : ByteBuffer.NewEmpty();
+                : EmptyBuffer;
 
             _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -270,6 +270,29 @@ namespace BTDB.ODBLayer
 
             _relationInfo.FreeContent(_transaction, valueBytes);
 
+            _modificationCounter.MarkModification();
+            return true;
+        }
+
+        public bool ShallowRemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
+        {
+            ResetKeyPrefix();
+            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            {
+                if (throwWhenNotFound)
+                    throw new BTDBException("Not found record to delete.");
+                return false;
+            }
+
+            var valueBytes = _hasSecondaryIndexes
+                ? _transaction.KeyValueDBTransaction.GetValue()
+                : EmptyBuffer;
+            
+            _transaction.KeyValueDBTransaction.EraseCurrent();
+
+            if (_hasSecondaryIndexes)
+                RemoveSecondaryIndexes(keyBytes, valueBytes);
+            
             _modificationCounter.MarkModification();
             return true;
         }

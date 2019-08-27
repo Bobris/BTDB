@@ -37,7 +37,7 @@ namespace BTDB.ODBLayer
                     continue;
                 var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(), MethodAttributes.Virtual | MethodAttributes.Public);
-                if (method.Name.StartsWith("RemoveBy"))
+                if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("ShallowRemoveBy"))
                 {
                     var methodParameters = method.GetParameters();
                     if (method.Name == "RemoveByIdPartial")
@@ -168,7 +168,7 @@ namespace BTDB.ODBLayer
             else
             {
                 reqMethod.Generator.LdcI4(ShouldThrowWhenKeyNotFound(method.Name, method.ReturnType) ? 1 : 0);
-                reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod("RemoveById"));
+                reqMethod.Generator.Callvirt(relationDBManipulatorType.GetMethod(method.Name));
                 if (method.ReturnType == typeof(void))
                     reqMethod.Generator.Pop();
             }

@@ -78,8 +78,10 @@ It is like `Upsert`, but it does not try to compare and free any nested content.
 ### Remove
 
     (void|bool) RemoveById(primaryKey1, ..., primaryKeyN);
+    (void|bool) ShallowRemoveById(primaryKey1, ..., primaryKeyN);
 
 Returns true if removed, void variant throw when does not exists. All primary keys fields are used as parameters, for example `void RemoveById(ulong tenantId, ulong userId);`
+ShallowRemoveById does not free content.
 
     int RemoveById(primaryKey1 [, primaryKey2, ...]);
 
