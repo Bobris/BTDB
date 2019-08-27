@@ -2438,5 +2438,61 @@ namespace BTDBTest
                 Assert.Equal(1, cnt);
             }
         }
+
+        public class SimpleJob
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            public IDictionary<int, string> Properties { get; set; }
+        }
+
+        public interface ISimpleJobTable : IReadOnlyCollection<SimpleJob>
+        {
+            void Insert(SimpleJob link);
+            SimpleJob FindById(ulong id);
+            void ShallowRemoveById(ulong id);
+        } 
+        
+        
+        [Fact]
+        public void CanEasilyCopyComplexObjectBetweenRelationsOfSameType()
+        {
+            Func<IObjectDBTransaction, ISimpleJobTable> creatorToProcess;   
+            Func<IObjectDBTransaction, ISimpleJobTable> creatorDone;
+
+            using (var tr = _db.StartTransaction())
+            {
+                creatorToProcess = tr.InitRelation<ISimpleJobTable>("JobsToProcess");
+                creatorDone = tr.InitRelation<ISimpleJobTable>("JobsDone");
+                var todo = creatorToProcess(tr);
+
+                todo.Insert(new SimpleJob
+                    {Id = 1, Properties = new Dictionary<int, string> {[1] = "one", [2] = "two"}});
+                tr.Commit();
+            }
+            
+            using (var tr = _db.StartTransaction())
+            {
+                var todo = creatorToProcess(tr);
+                var done = creatorDone(tr);
+
+                var job = todo.FindById(1);
+                todo.ShallowRemoveById(1);
+                
+                done.Insert(job);
+                tr.Commit();
+            }
+            
+            using (var tr = _db.StartTransaction())
+            {
+                var todo = creatorToProcess(tr);
+                var done = creatorDone(tr);
+
+                Assert.Equal(0, todo.Count);
+                var job = done.FindById(1);
+                Assert.Equal(2,job.Properties.Count);
+                Assert.Equal("two",job.Properties[2]);
+            }
+        }
     }
 }

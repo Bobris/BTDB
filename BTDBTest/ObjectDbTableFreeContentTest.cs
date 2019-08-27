@@ -38,7 +38,7 @@ namespace BTDBTest
             public IDictionary<ulong, ulong> Edges { get; set; }
         }
 
-        public interface ILinks
+        public interface ILinks : IReadOnlyCollection<Link>
         {
             void Insert(Link link);
             void Update(Link link);
@@ -46,6 +46,7 @@ namespace BTDBTest
             void ShallowUpdate(Link link);
             bool ShallowUpsert(Link link);
             bool RemoveById(ulong id);
+            bool ShallowRemoveById(ulong id);
             Link FindById(ulong id);
         }
 
@@ -116,6 +117,37 @@ namespace BTDBTest
             Assert.NotEmpty(FindLeaks());
         }
 
+        [Fact]
+        public void LeakingIDictionaryInShallowRemove()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                Assert.True(links.ShallowRemoveById(1)); //remove without free
+                Assert.Equal(0, links.Count);
+                tr.Commit();
+            }
+            Assert.NotEmpty(FindLeaks());
+        }
+        
+        [Fact]
+        public void ReuseIDictionaryAfterShallowRemove()
+        {
+            var creator = InitILinks();
+            using (var tr = _db.StartTransaction())
+            {
+                var links = creator(tr);
+                var value = links.FindById(1);
+                links.ShallowRemoveById(1); //remove without free
+                Assert.Equal(0, links.Count);
+                links.Insert(value);
+                Assert.Equal(3, value.Edges.Count);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+        
         [Fact]
         public void FreeIDictionaryInUpsert()
         {
