@@ -2,11 +2,16 @@
 
 ## [unreleased]
 
+### Added
+
+New method in relations: ShallowRemoveById
+StartWritingTransaction returns ValueTask and optimized allocations.
+
 ## 17.9.0
 
 ### Added
 
-ODBIterator extented to be able to seek and display only what is needed.
+ODBIterator extended to be able to seek and display only what is needed.
 
 ## 17.8.0
 
