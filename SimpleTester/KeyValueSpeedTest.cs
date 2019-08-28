@@ -10,7 +10,6 @@ namespace SimpleTester
     enum KVType
     {
         Managed,
-        Art,
         BTree
     }
 
@@ -114,8 +113,6 @@ namespace SimpleTester
                 {
                     case KVType.Managed:
                         return new InMemoryKeyValueDB();
-                    case KVType.Art:
-                        return new ArtInMemoryKeyValueDB(new HGlobalAllocator());
                     default:
                         throw new NotImplementedException();
                 }
@@ -126,10 +123,6 @@ namespace SimpleTester
                     if (compressionStrategy == null)
                         return new KeyValueDB(fileCollection);
                     return new KeyValueDB(fileCollection, compressionStrategy);
-                case KVType.Art:
-                    if (compressionStrategy == null)
-                        return new ArtKeyValueDB(fileCollection);
-                    return new ArtKeyValueDB(fileCollection, compressionStrategy);
                 case KVType.BTree:
                     if (compressionStrategy == null)
                         return new BTreeKeyValueDB(fileCollection);

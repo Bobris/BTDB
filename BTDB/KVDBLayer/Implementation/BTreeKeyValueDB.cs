@@ -46,6 +46,8 @@ namespace BTDB.KVDBLayer
         public long MaxTrLogFileSize { get; }
         public ulong CompactorReadBytesPerSecondLimit { get; }
         public ulong CompactorWriteBytesPerSecondLimit { get; }
+
+        private IOffHeapAllocator _allocator;
         readonly ICompressionStrategy _compression;
         readonly ICompactorScheduler _compactorScheduler;
 
@@ -91,6 +93,7 @@ namespace BTDB.KVDBLayer
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
             CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
+            _allocator = options.Allocator;
             _lastCommited = BTreeImpl12.CreateEmptyRoot(options.Allocator);
             _lastCommited.Commit();
             _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
@@ -249,7 +252,11 @@ namespace BTDB.KVDBLayer
                         UpdateTransactionLogInBTreeRoot(_lastCommited);
                     }
 
-                    CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
+                    // When not openning history commit KVI file will be created by compaction
+                    if (openUpToCommitUlong.HasValue)
+                    {
+                        CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
+                    }
                 }
 
                 if (_fileIdWithTransactionLog != 0)
@@ -844,15 +851,24 @@ namespace BTDB.KVDBLayer
             if (_writerWithTransactionLog != null)
             {
                 _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.TemporaryEndOfFile);
-                _writerWithTransactionLog.FlushBuffer();
-                _fileWithTransactionLog.HardFlush();
-                _fileWithTransactionLog.Truncate();
+                _fileWithTransactionLog.HardFlushTruncateSwitchToDisposedMode();
             }
         }
 
         public bool DurableTransactions { get; set; }
 
-        public IRootNodeInternal LastCommited => _lastCommited;
+        public IRootNodeInternal ReferenceAndGetLastCommited()
+        {
+            while (true)
+            {
+                var node = _lastCommited;
+                // Memory barrier inside next statement
+                if (!node.Reference())
+                {
+                    return node;
+                }
+            }
+        }
 
         void IKeyValueDBInternal.MarkAsUnknown(IEnumerable<uint> fileIds)
         {
@@ -873,9 +889,9 @@ namespace BTDB.KVDBLayer
             return AreAllTransactionsBeforeFinished(transactionId);
         }
 
-        public IRootNodeInternal OldestRoot
+        public IRootNodeInternal ReferenceAndGetOldestRoot()
         {
-            get
+            while (true)
             {
                 var oldestRoot = _lastCommited;
                 foreach (var usedTransaction in _usedNodesInReadonlyTransactions.Keys)
@@ -887,8 +903,11 @@ namespace BTDB.KVDBLayer
                         oldestRoot = usedTransaction;
                     }
                 }
-
-                return oldestRoot;
+                // Memory barrier inside next statement
+                if (!oldestRoot.Reference())
+                {
+                    return oldestRoot;
+                }
             }
         }
 
@@ -928,7 +947,7 @@ namespace BTDB.KVDBLayer
                 {
                     return new ValueTask<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
                 }
-                
+
                 var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
                 _writeWaitingQueue.Enqueue(tcs);
                 return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
@@ -1630,13 +1649,18 @@ namespace BTDB.KVDBLayer
             return (T)subDB;
         }
 
-        public void DereferenceRoot(IRootNode currentArtRoot)
+        public void DereferenceRoot(IRootNode currentRoot)
         {
-            if (currentArtRoot.Dereference())
+            if (currentRoot.Dereference())
             {
-                _usedNodesInReadonlyTransactions.TryRemove(currentArtRoot);
-                _waitingToDispose.Add(currentArtRoot);
+                _usedNodesInReadonlyTransactions.TryRemove(currentRoot);
+                _waitingToDispose.Add(currentRoot);
             }
+        }
+
+        public void DereferenceRootNodeInternal(IRootNodeInternal root)
+        {
+            DereferenceRoot((IRootNode)root);
         }
     }
 }

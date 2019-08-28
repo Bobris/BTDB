@@ -13,8 +13,11 @@ namespace BTDB.KVDBLayer
         bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
         long MaxTrLogFileSize { get; }
         bool AreAllTransactionsBeforeFinished(long transactionId);
-        IRootNodeInternal OldestRoot { get; }
-        IRootNodeInternal LastCommited { get; }
+        // This will reference that root, after use you need to call DereferenceRootNodeInternal
+        IRootNodeInternal ReferenceAndGetOldestRoot();
+        // This will reference that root, after use you need to call DereferenceRootNodeInternal
+        IRootNodeInternal ReferenceAndGetLastCommited();
+        void DereferenceRootNodeInternal(IRootNodeInternal root);
         ulong CompactorWriteBytesPerSecondLimit { get; }
         ulong CompactorReadBytesPerSecondLimit { get; }
         long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);

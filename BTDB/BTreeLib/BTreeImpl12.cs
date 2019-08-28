@@ -163,6 +163,7 @@ namespace BTDB.BTreeLib
         internal unsafe IntPtr AllocateBranch(uint childCount, uint keyPrefixLength, ulong totalSuffixLength, out KeyPusher keyPusher)
         {
             Debug.Assert(keyPrefixLength <= MaxPrefixSize);
+            Debug.Assert(childCount > 0);
             IntPtr node;
             keyPusher = new KeyPusher();
             var nodeType = NodeType12.IsBranch;
@@ -314,8 +315,8 @@ namespace BTDB.BTreeLib
         {
             Debug.Assert(left.Count == right.Count);
             var idx = 0u;
-            var node = IntPtr.Zero;
-            long count = 0;
+            IntPtr node;
+            long count;
             while (true)
             {
                 ref var leftItem = ref left[idx];

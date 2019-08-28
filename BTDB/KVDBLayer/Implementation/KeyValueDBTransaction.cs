@@ -249,8 +249,9 @@ namespace BTDB.KVDBLayer
             }
             catch (BTDBException ex)
             {
-                var oldestRoot = (IBTreeRootNode)_keyValueDB.OldestRoot;
-                var lastCommited = (IBTreeRootNode)_keyValueDB.LastCommited;
+                var oldestRoot = (IBTreeRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
+                var lastCommited = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommited();
+                // no need to dereference roots because we know it is managed
                 throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
             }
         }

@@ -101,67 +101,82 @@ namespace BTDB.KVDBLayer
         internal bool Run()
         {
             if (_keyValueDB.FileCollection.GetCount() == 0) return false;
-            _root = _keyValueDB.OldestRoot;
-            var dontTouchGeneration = _keyValueDB.GetGeneration(_keyValueDB.GetTrLogFileId(_root));
-            var preserveKeyIndexKey =
-                _keyValueDB.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(_keyValueDB.BuildKeyIndexInfos());
-            var preserveKeyIndexGeneration = _keyValueDB.CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
-            InitFileStats(dontTouchGeneration);
-            long[] usedFilesFromOldGenerations = null;
-            if (preserveKeyIndexKey < uint.MaxValue)
+            _root = _keyValueDB.ReferenceAndGetOldestRoot();
+            try
             {
-                var dontTouchGenerationDueToPreserve = -1L;
-                if (_keyValueDB.FileCollection.FileInfoByIdx(preserveKeyIndexKey) is IKeyIndex fileInfo)
+                var dontTouchGeneration = _keyValueDB.GetGeneration(_keyValueDB.GetTrLogFileId(_root));
+                var preserveKeyIndexKey =
+                    _keyValueDB.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(_keyValueDB.BuildKeyIndexInfos());
+                var preserveKeyIndexGeneration = _keyValueDB.CalculatePreserveKeyIndexGeneration(preserveKeyIndexKey);
+                InitFileStats(dontTouchGeneration);
+                long[] usedFilesFromOldGenerations = null;
+                if (preserveKeyIndexKey < uint.MaxValue)
                 {
-                    dontTouchGenerationDueToPreserve = fileInfo.Generation;
-                    dontTouchGenerationDueToPreserve = Math.Min(dontTouchGenerationDueToPreserve,
-                        _keyValueDB.GetGeneration(fileInfo.TrLogFileId));
-                    if (fileInfo.UsedFilesInOlderGenerations == null)
-                        _keyValueDB.LoadUsedFilesFromKeyIndex(preserveKeyIndexKey, fileInfo);
-                    usedFilesFromOldGenerations = fileInfo.UsedFilesInOlderGenerations;
+                    var dontTouchGenerationDueToPreserve = -1L;
+                    if (_keyValueDB.FileCollection.FileInfoByIdx(preserveKeyIndexKey) is IKeyIndex fileInfo)
+                    {
+                        dontTouchGenerationDueToPreserve = fileInfo.Generation;
+                        dontTouchGenerationDueToPreserve = Math.Min(dontTouchGenerationDueToPreserve,
+                            _keyValueDB.GetGeneration(fileInfo.TrLogFileId));
+                        if (fileInfo.UsedFilesInOlderGenerations == null)
+                            _keyValueDB.LoadUsedFilesFromKeyIndex(preserveKeyIndexKey, fileInfo);
+                        usedFilesFromOldGenerations = fileInfo.UsedFilesInOlderGenerations;
+                    }
+
+                    dontTouchGeneration = Math.Min(dontTouchGeneration, dontTouchGenerationDueToPreserve);
                 }
 
-                dontTouchGeneration = Math.Min(dontTouchGeneration, dontTouchGenerationDueToPreserve);
-            }
+                var lastCommited = _keyValueDB.ReferenceAndGetLastCommited();
+                try
+                {
+                    if (_root != lastCommited) ForbidDeleteOfFilesUsedByStillRunningOldTransaction();
+                    ForbidDeletePreservingHistory(dontTouchGeneration, usedFilesFromOldGenerations);
+                    CalculateFileUsefullness(lastCommited);
+                }
+                finally
+                {
+                    _keyValueDB.DereferenceRootNodeInternal(lastCommited);
+                }
+                MarkTotallyUselessFilesAsUnknown();
+                var totalWaste = CalcTotalWaste();
+                _keyValueDB.Logger?.CompactionStart(totalWaste);
+                if (IsWasteSmall(totalWaste))
+                {
+                    if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
+                        _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                    _keyValueDB.FileCollection.DeleteAllUnknownFiles();
+                    return false;
+                }
 
-            var lastCommited = _keyValueDB.LastCommited;
-            if (_root != lastCommited) ForbidDeleteOfFilesUsedByStillRunningOldTransaction();
-            ForbidDeletePreservingHistory(dontTouchGeneration, usedFilesFromOldGenerations);
-            CalculateFileUsefullness(lastCommited);
-            MarkTotallyUselessFilesAsUnknown();
-            var totalWaste = CalcTotalWaste();
-            _keyValueDB.Logger?.CompactionStart(totalWaste);
-            if (IsWasteSmall(totalWaste))
-            {
-                if (_keyValueDB.DistanceFromLastKeyIndex(_root) > (ulong)(_keyValueDB.MaxTrLogFileSize / 4))
-                    _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
-                _keyValueDB.FileCollection.DeleteAllUnknownFiles();
-                return false;
-            }
-
-            long btreesCorrectInTransactionId;
-            var toRemoveFileIds = new List<uint>();
-            do
-            {
-                _newPositionMap = new Dictionary<ulong, ulong>();
+                long btreesCorrectInTransactionId;
+                var toRemoveFileIds = new List<uint>();
                 do
                 {
-                    CompactOnePureValueFileIteration(toRemoveFileIds);
-                    totalWaste = CalcTotalWaste();
-                } while (_newPositionMap.Count * 50 / (1024 * 1024) < _keyValueDB.CompactorRamLimitInMb &&
-                         !IsWasteSmall(totalWaste));
+                    _newPositionMap = new Dictionary<ulong, ulong>();
+                    do
+                    {
+                        CompactOnePureValueFileIteration(toRemoveFileIds);
+                        totalWaste = CalcTotalWaste();
+                    } while (_newPositionMap.Count * 50 / (1024 * 1024) < _keyValueDB.CompactorRamLimitInMb &&
+                             !IsWasteSmall(totalWaste));
 
-                btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap);
-            } while (!IsWasteSmall(totalWaste));
+                    btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap);
+                } while (!IsWasteSmall(totalWaste));
 
-            _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
-            if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
-            {
-                _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+                _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
+                {
+                    _keyValueDB.MarkAsUnknown(toRemoveFileIds);
+                }
+
+                _keyValueDB.FileCollection.DeleteAllUnknownFiles();
+                return true;
             }
-
-            _keyValueDB.FileCollection.DeleteAllUnknownFiles();
-            return true;
+            finally
+            {
+                _keyValueDB.DereferenceRootNodeInternal(_root);
+                _root = null;
+            }
         }
 
         void CompactOnePureValueFileIteration(List<uint> toRemoveFileIds)

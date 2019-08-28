@@ -1049,7 +1049,7 @@ namespace BTDBTest
                     }
                     Console.WriteLine(db.CalcStats());
                 }
-                Assert.Equal(2u, fileCollection.GetCount()); // Log + Index
+                Assert.Equal(1u, fileCollection.GetCount()); // Log
             }
         }
 
@@ -1105,7 +1105,7 @@ namespace BTDBTest
                         tr.Commit();
                     }
                 }
-                Assert.Equal(4u, fileCollection.GetCount());
+                Assert.Equal(3u, fileCollection.GetCount());
                 using (IKeyValueDB db = NewKeyValueDB(fileCollection, new NoCompressionStrategy(), 1024))
                 {
                     using (var tr = db.StartTransaction())
@@ -1114,7 +1114,7 @@ namespace BTDBTest
                         tr.Commit();
                     }
                 }
-                Assert.Equal(4u, fileCollection.GetCount());
+                Assert.Equal(3u, fileCollection.GetCount());
             }
         }
 
