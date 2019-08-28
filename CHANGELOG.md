@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 17.10.0
+
 ### Added
 
 New method in relations: ShallowRemoveById
