@@ -1,5 +1,6 @@
 ﻿using System;
 using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.BTreeLib
 {
@@ -26,5 +27,7 @@ namespace BTDB.BTreeLib
         void SetUlong(uint idx, ulong value);
         uint GetUlongCount();
         ulong[] UlongsArray { get; }
+
+        void ValuesIterate(ValuesIterateAction visit);
     }
 }

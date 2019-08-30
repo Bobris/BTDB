@@ -1,5 +1,6 @@
 ﻿using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.BTree;
 using System;
 
 namespace BTDB.BTreeLib

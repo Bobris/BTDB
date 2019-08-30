@@ -124,20 +124,7 @@ namespace BTDB.KVDBLayer
 
         public void IterateRoot(IRootNodeInternal root, ValuesIterateAction visit)
         {
-            var cursor = ((IRootNode)root).CreateCursor();
-            while (cursor.MoveNext())
-            {
-                var trueValue = cursor.GetValue();
-                var valueFileId = MemoryMarshal.Read<uint>(trueValue);
-                if (valueFileId == 0)
-                {
-                    continue;
-                }
-
-                var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
-                var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
-                visit(valueFileId, valueOfs, valueSize);
-            }
+            ((IRootNode)root).ValuesIterate(visit);
         }
 
         internal List<KeyIndexInfo> BuildKeyIndexInfos()

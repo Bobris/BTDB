@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.BTreeLib
 {
@@ -135,6 +136,13 @@ namespace BTDB.BTreeLib
         public bool Dereference()
         {
             return Interlocked.Decrement(ref _referenceCount) == 0;
+        }
+
+        public void ValuesIterate(ValuesIterateAction visit)
+        {
+            if (_root == IntPtr.Zero)
+                return;
+            _impl.ValuesIterate(_root, visit);
         }
 
         public bool ShouldBeDisposed => _referenceCount == 0;

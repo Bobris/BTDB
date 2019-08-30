@@ -2,6 +2,7 @@ using BTDB.Allocators;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
+using BTDB.KVDBLayer.BTree;
 using System;
 using System.Diagnostics;
 using System.Numerics;
@@ -1944,6 +1945,34 @@ namespace BTDB.BTreeLib
                     }
                     stackIdx--;
                     goto again;
+                }
+            }
+        }
+
+        internal void ValuesIterate(IntPtr node, ValuesIterateAction visit)
+        {
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(node);
+            if (header.IsNodeLeaf)
+            {
+                var values = NodeUtils12.GetLeafValues(node);
+                while (values.Length >= 12)
+                {
+                    var valueFileId = MemoryMarshal.Read<uint>(values);
+                    if (valueFileId != 0)
+                    {
+                        var valueOfs = MemoryMarshal.Read<uint>(values.Slice(4));
+                        var valueSize = MemoryMarshal.Read<int>(values.Slice(8));
+                        visit(valueFileId, valueOfs, valueSize);
+                    }
+                    values = values.Slice(12);
+                }
+            }
+            else
+            {
+                var children = NodeUtils12.GetBranchValuePtrs(node);
+                for (var i = 0; i < children.Length; i++)
+                {
+                    ValuesIterate(children[i], visit);
                 }
             }
         }
