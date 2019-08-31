@@ -33,5 +33,6 @@ namespace BTDB.BTreeLib
         void Erase();
         long EraseTo(ICursor to);
         void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator);
+        void ValueReplacer(ref ValueReplacerCtx ctx);
     }
 }

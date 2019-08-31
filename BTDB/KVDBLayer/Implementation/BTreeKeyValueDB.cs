@@ -1499,11 +1499,9 @@ namespace BTDB.KVDBLayer
         internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)
         {
             byte[] restartKey = null;
-            Span<byte> newValue = new byte[12];
             while (true)
             {
                 var iterationTimeOut = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
-                var interrupt = false;
                 using (var tr = StartWritingTransaction().Result)
                 {
                     var newRoot = ((BTreeKeyValueDBTransaction)tr).BTreeRoot;
@@ -1512,40 +1510,22 @@ namespace BTDB.KVDBLayer
                     {
                         cursor.Find(restartKey);
                         cursor.MovePrevious();
-                    }
-
-                    var timeOutCounter = 16;
-                    while (cursor.MoveNext())
+                    } else
                     {
-                        var value = cursor.GetValue();
-                        if (newPositionMap.TryGetValue(
-                            (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
-                            out var targetOfs))
-                        {
-                            var valueFileId = (uint)(targetOfs >> 32);
-                            var valueFileOfs = (uint)targetOfs;
-                            MemoryMarshal.Write(newValue, ref valueFileId);
-                            MemoryMarshal.Write(newValue.Slice(4), ref valueFileOfs);
-                            value.Slice(8).CopyTo(newValue.Slice(8));
-                            cursor.WriteValue(newValue);
-                        }
-
-                        if (--timeOutCounter == 0)
-                        {
-                            timeOutCounter = 16;
-                            cancellation.ThrowIfCancellationRequested();
-                            if (DateTime.UtcNow > iterationTimeOut)
-                            {
-                                interrupt = true;
-                                restartKey = cursor.GetKeyAsByteArray();
-                                break;
-                            }
-                        }
+                        cursor.MoveNext();
                     }
+
+                    var ctx = default(ValueReplacerCtx);
+                    ctx._operationTimeout = iterationTimeOut;
+                    ctx._interrupted = false;
+                    ctx._positionMap = newPositionMap;
+                    ctx._cancellation = cancellation;
+                    cursor.ValueReplacer(ref ctx);
+                    restartKey = ctx._interruptedKey;
 
                     cancellation.ThrowIfCancellationRequested();
                     ((BTreeKeyValueDBTransaction)tr).CommitFromCompactor();
-                    if (!interrupt)
+                    if (!ctx._interrupted)
                     {
                         return newRoot.TransactionId;
                     }

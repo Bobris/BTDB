@@ -243,5 +243,20 @@ namespace BTDB.BTreeLib
             Invalidate();
             _rootNode._impl.BuildTree(_rootNode, keyCount, generator);
         }
+
+        public void ValueReplacer(ref ValueReplacerCtx ctx)
+        {
+            AssertWrittable();
+            if (_rootNode._root == IntPtr.Zero)
+                return;
+            AssertValid();
+            var newRoot = _rootNode._impl.ValueReplacer(ref ctx, _stack.AsSpan(), 0);
+            if (_rootNode._root != newRoot)
+            {
+                _rootNode._impl.Dereference(_rootNode._root);
+                _rootNode._root = newRoot;
+            }
+            _stack.Clear();
+        }
     }
 }

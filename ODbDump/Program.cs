@@ -244,7 +244,7 @@ namespace ODbDump
                         var sw = new Stopwatch();
                         sw.Start();
                         using (var dfc = new OnDiskFileCollection(args[0]))
-                        using (var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                        using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
                         {
                             kdb.Logger = new ConsoleKvdbLogger();
                             sw.Stop();
@@ -258,7 +258,7 @@ namespace ODbDump
                             }
 
                             sw.Stop();
-                            Console.WriteLine($"Final compaction in {sw.Elapsed.TotalSeconds:F1}");
+                            Console.WriteLine($"Final compaction in {sw.Elapsed.TotalSeconds:F1} Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
                             Console.WriteLine(kdb.CalcStats());
                         }
 

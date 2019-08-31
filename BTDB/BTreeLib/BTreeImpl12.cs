@@ -217,6 +217,89 @@ namespace BTDB.BTreeLib
             rootNode._root = BuildTreeNode(keyCount, generator);
         }
 
+        internal IntPtr ValueReplacer(ref ValueReplacerCtx ctx, in Span<CursorItem> stack, int stackIdx)
+        {
+            ref var stackItem = ref stack[stackIdx];
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+            if (header.IsNodeLeaf)
+            {
+                if (ctx._afterFirst)
+                {
+                    if (ctx._cancellation.IsCancellationRequested || DateTime.UtcNow > ctx._operationTimeout)
+                    {
+                        ctx._interrupted = true;
+                        if (header.HasLongKeys)
+                        {
+                            var keyPtr = NodeUtils12.GetLongKeyPtrs(stackItem._node)[0];
+                            var sufix = NodeUtils12.LongKeyPtrToSpan(keyPtr);
+                            var len = header._keyPrefixLength + sufix.Length;
+                            ctx._interruptedKey = new byte[len];
+                            NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(ctx._interruptedKey);
+                            sufix.CopyTo(ctx._interruptedKey.AsSpan(header._keyPrefixLength));
+                        }
+                        else
+                        {
+                            var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var keySufixes);
+                            var lenSufix = keyOffsets[1];
+                            var len = header._keyPrefixLength + lenSufix;
+                            ctx._interruptedKey = new byte[len];
+                            NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(ctx._interruptedKey);
+                            keySufixes.Slice(0, lenSufix).CopyTo(ctx._interruptedKey.AsSpan(header._keyPrefixLength));
+                        }
+                        return stackItem._node;
+                    }
+                }
+                ctx._afterFirst = true;
+                var cloned = false;
+                var values = NodeUtils12.GetLeafValues(stackItem._node);
+                for (int i = 0; i < values.Length; i += 12)
+                {
+                    var value = values.Slice(i, 12);
+                    if (ctx._positionMap.TryGetValue(
+                        (((ulong)MemoryMarshal.Read<uint>(value)) << 32) + MemoryMarshal.Read<uint>(value.Slice(4)),
+                        out var targetOfs))
+                    {
+                        if (!cloned)
+                        {
+                            stackItem._node = CloneNode(stackItem._node);
+                            values = NodeUtils12.GetLeafValues(stackItem._node);
+                            value = values.Slice(i, 12);
+                            cloned = true;
+                        }
+                        var valueFileId = (uint)(targetOfs >> 32);
+                        var valueFileOfs = (uint)targetOfs;
+                        MemoryMarshal.Write(value, ref valueFileId);
+                        MemoryMarshal.Write(value.Slice(4), ref valueFileOfs);
+                    }
+                }
+            }
+            else
+            {
+                var children = NodeUtils12.GetBranchValuePtrs(stackItem._node);
+                var cloned = false;
+                var stackIdx1 = stackIdx + 1;
+                ref var stackItem1 = ref stack[stackIdx1];
+                for (int i = ctx._afterFirst ? 0 : stackItem._posInNode; i < children.Length; i++)
+                {
+                    stackItem1._node = children[i];
+                    var newChildPtr = ValueReplacer(ref ctx, stack, stackIdx1);
+                    if (newChildPtr != children[i])
+                    {
+                        if (!cloned)
+                        {
+                            stackItem._node = CloneNode(stackItem._node);
+                            children = NodeUtils12.GetBranchValuePtrs(stackItem._node);
+                            cloned = true;
+                        }
+                        Dereference(children[i]);
+                        children[i] = newChildPtr;
+                    }
+                    if (ctx._interrupted) break;
+                }
+            }
+            return stackItem._node;
+        }
+
         IntPtr BuildTreeNode(long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
         {
             var leafs = (keyCount + MaxChildren - 1) / MaxChildren;

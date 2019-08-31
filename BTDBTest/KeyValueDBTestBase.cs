@@ -1332,6 +1332,54 @@ namespace BTDBTest
             }
         }
 
+        [Fact]
+        public void BigCompaction()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            {
+                using (IKeyValueDB db = NewKeyValueDB(new KeyValueDBOptions
+                {
+                    FileCollection = fileCollection,
+                    Compression = new NoCompressionStrategy(),
+                    CompactorScheduler = null,
+                    FileSplitSize = 10000
+                }))
+                {
+                    using (var tr = db.StartTransaction())
+                    {
+                        var key = new byte[100];
+                        var value = new byte[2000];
+                        for (var i = 0; i < 2000; i++)
+                        {
+                            PackUnpack.PackInt32BE(key,0,i);
+                            tr.CreateOrUpdateKeyValue(key, value);
+                        }
+                        tr.Commit();
+                    }
+                    using (var tr = db.StartTransaction())
+                    {
+                        var key = new byte[100];
+                        for (var i = 0; i < 2000; i+=2)
+                        {
+                            PackUnpack.PackInt32BE(key,0,i);
+                            tr.FindExactKey(key);
+                            tr.EraseCurrent();
+                        }
+                        for (var i = 0; i < 2000; i+=3)
+                        {
+                            PackUnpack.PackInt32BE(key,0,i);
+                            if (tr.FindExactKey(key))
+                                tr.EraseCurrent();
+                        }
+
+                        Assert.Equal(667, tr.GetKeyValueCount());
+                        tr.Commit();
+                    }
+                    db.Compact(CancellationToken.None);
+                }
+            }
+        }
+
         readonly byte[] _key1 = { 1, 2, 3 };
         // ReSharper disable once MemberCanBePrivate.Global
         public byte[] Key2 { get; } = { 1, 3, 2 };
