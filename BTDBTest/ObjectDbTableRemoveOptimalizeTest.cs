@@ -241,6 +241,11 @@ namespace BTDBTest
                 return _keyValueDB.Compact(cancellation);
             }
 
+            public void CreateKvi(CancellationToken cancellation)
+            {
+                _keyValueDB.CreateKvi(cancellation);
+            }
+
             public ulong? PreserveHistoryUpToCommitUlong
             {
                 get { return _keyValueDB.PreserveHistoryUpToCommitUlong; }

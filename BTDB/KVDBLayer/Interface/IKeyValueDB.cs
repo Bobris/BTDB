@@ -20,6 +20,8 @@ namespace BTDB.KVDBLayer
         // Returns true if there was big compaction (probably will need another one)
         bool Compact(CancellationToken cancellation);
 
+        void CreateKvi(CancellationToken cancellation);
+
         ulong? PreserveHistoryUpToCommitUlong { get; set; }
 
         IKeyValueDBLogger Logger { get; set; }

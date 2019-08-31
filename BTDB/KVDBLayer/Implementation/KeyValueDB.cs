@@ -785,6 +785,11 @@ namespace BTDB.KVDBLayer
             return new Compactor(this, cancellation).Run();
         }
 
+        public void CreateKvi(CancellationToken cancellation)
+        {
+            CreateIndexFile(cancellation, 0);
+        }
+
         public IKeyValueDBLogger Logger { get; set; }
 
         public ulong? PreserveHistoryUpToCommitUlong

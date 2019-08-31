@@ -90,6 +90,10 @@ namespace BTDB.KVDBLayer
             return false;
         }
 
+        public void CreateKvi(CancellationToken cancellation)
+        {
+        }
+
         public IKeyValueDBLogger Logger { get; set; }
 
         public uint CompactorRamLimitInMb { get; set; }

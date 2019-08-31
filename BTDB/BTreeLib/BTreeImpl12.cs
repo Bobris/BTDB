@@ -1520,7 +1520,7 @@ namespace BTDB.BTreeLib
         int CalcCommonPrefix(IntPtr nodePtr, in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySuffix)
         {
             var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
-            return TreeNodeUtils.FindFirstDifference(prefix, keyPrefix, keySuffix);
+            return ClampPrefixSize(TreeNodeUtils.FindFirstDifference(prefix, keyPrefix, keySuffix));
         }
 
         int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> key)
@@ -1560,7 +1560,7 @@ namespace BTDB.BTreeLib
                     }
                 }
             }
-            return prefix.Length + common;
+            return ClampPrefixSize(prefix.Length + common);
         }
 
         int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx, in ReadOnlySpan<byte> keyPrefix, in ReadOnlySpan<byte> keySuffix)
@@ -1568,7 +1568,7 @@ namespace BTDB.BTreeLib
             var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
             var common = TreeNodeUtils.FindFirstDifference(prefix, keyPrefix, keySuffix);
             if (common < prefix.Length || keyPrefix.Length + keySuffix.Length == common)
-                return common;
+                return ClampPrefixSize(common);
             ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
             var keyPrefixWithoutPrefix = keyPrefix;
             var keySuffixWithoutPrefix = keySuffix;
@@ -1610,14 +1610,14 @@ namespace BTDB.BTreeLib
                     }
                 }
             }
-            return prefix.Length + common;
+            return ClampPrefixSize(prefix.Length + common);
         }
 
         int CalcCommonPrefix(IntPtr nodePtr, int startIdx, int endIdx)
         {
             var prefix = NodeUtils12.GetPrefixSpan(nodePtr);
             ref var header = ref NodeUtils12.Ptr2NodeHeader(nodePtr);
-            var common = int.MaxValue;
+            var common = MaxPrefixSize;
             ReadOnlySpan<byte> first;
             if (header.HasLongKeys)
             {
@@ -1649,7 +1649,12 @@ namespace BTDB.BTreeLib
                     }
                 }
             }
-            return prefix.Length + common;
+            return ClampPrefixSize(prefix.Length + common);
+        }
+
+        static int ClampPrefixSize(int prefixSize)
+        {
+            return Math.Min(prefixSize, MaxPrefixSize);
         }
 
         int CalcCommonPrefixExcept(IntPtr nodePtr, int startIdx, int endIdx)
@@ -1702,7 +1707,7 @@ namespace BTDB.BTreeLib
                     }
                 }
             }
-            return prefix.Length + common;
+            return ClampPrefixSize(prefix.Length + common);
         }
 
         int BinarySearch(IntPtr nodePtr, in ReadOnlySpan<byte> keyWhole)

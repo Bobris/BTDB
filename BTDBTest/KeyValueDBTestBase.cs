@@ -915,6 +915,35 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void VeryLongKeys()
+        {
+            using (var fileCollection = new InMemoryFileCollection())
+            using (IKeyValueDB db = NewKeyValueDB(fileCollection))
+            {
+                var key = new byte[200000];
+                var value = new byte[100];
+                using (var tr = db.StartTransaction())
+                {
+                    for (byte i = 0; i < 250; i++)
+                    {
+                        key[100000] = i;
+                        tr.CreateOrUpdateKeyValue(key, value);
+                    }
+                    tr.Commit();
+                }
+                using (var tr = db.StartTransaction())
+                {
+                    for (byte i = 0; i < 250; i++)
+                    {
+                        key[100000] = i;
+                        Assert.True(tr.FindExactKey(key));
+                        tr.EraseCurrent();
+                    }
+                }
+            }
+        }
+
+        [Fact]
         public void StartWritingTransactionWorks()
         {
             using (var fileCollection = new InMemoryFileCollection())
