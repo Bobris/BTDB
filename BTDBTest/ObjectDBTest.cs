@@ -1210,7 +1210,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 tr.Singleton<ComplexDictionary>();
-                Assert.False(((IInternalObjectDBTransaction)tr).KeyValueDBTransaction.IsWritting());
+                Assert.False(((IInternalObjectDBTransaction)tr).KeyValueDBTransaction.IsWriting());
             }
         }
 

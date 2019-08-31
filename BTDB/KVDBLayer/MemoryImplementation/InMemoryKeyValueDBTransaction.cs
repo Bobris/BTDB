@@ -101,7 +101,7 @@ namespace BTDB.KVDBLayer
 
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
-            MakeWrittable();
+            MakeWritable();
             var ctx = new CreateOrUpdateCtx
                 {
                     KeyPrefix = _prefix,
@@ -115,7 +115,7 @@ namespace BTDB.KVDBLayer
             return ctx.Created;
         }
 
-        void MakeWrittable()
+        void MakeWritable()
         {
             if (_writing) return;
             if (_preapprovedWriting)
@@ -129,7 +129,7 @@ namespace BTDB.KVDBLayer
                 throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
             }
             var oldBTreeRoot = BtreeRoot;
-            _btreeRoot = _keyValueDB.MakeWrittableTransaction(this, oldBTreeRoot);
+            _btreeRoot = _keyValueDB.MakeWritableTransaction(this, oldBTreeRoot);
             _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
             _writing = true;
             InvalidateCurrentKey();
@@ -248,7 +248,7 @@ namespace BTDB.KVDBLayer
         {
             EnsureValidKey();
             var keyIndexBackup = _keyIndex;
-            MakeWrittable();
+            MakeWritable();
             if (_keyIndex != keyIndexBackup)
             {
                 _keyIndex = keyIndexBackup;
@@ -262,7 +262,7 @@ namespace BTDB.KVDBLayer
         {
             EnsureValidKey();
             var keyIndex = _keyIndex;
-            MakeWrittable();
+            MakeWritable();
             InvalidateCurrentKey();
             _prefixKeyCount--;
             BtreeRoot.EraseRange(keyIndex, keyIndex);
@@ -278,7 +278,7 @@ namespace BTDB.KVDBLayer
             if (firstKeyIndex < 0) firstKeyIndex = 0;
             if (lastKeyIndex >= GetKeyValueCount()) lastKeyIndex = _prefixKeyCount - 1;
             if (lastKeyIndex < firstKeyIndex) return;
-            MakeWrittable();
+            MakeWritable();
             firstKeyIndex += _prefixKeyStart;
             lastKeyIndex += _prefixKeyStart;
             InvalidateCurrentKey();
@@ -286,7 +286,7 @@ namespace BTDB.KVDBLayer
             BtreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);
         }
 
-        public bool IsWritting()
+        public bool IsWriting()
         {
             return _writing;
         }
@@ -300,7 +300,7 @@ namespace BTDB.KVDBLayer
         {
             if (BtreeRoot.CommitUlong != value)
             {
-                MakeWrittable();
+                MakeWritable();
                 BtreeRoot.CommitUlong = value;
             }
         }
@@ -319,11 +319,11 @@ namespace BTDB.KVDBLayer
             if (_preapprovedWriting)
             {
                 _preapprovedWriting = false;
-                _keyValueDB.RevertWrittingTransaction();
+                _keyValueDB.RevertWritingTransaction();
             }
             else if (_writing)
             {
-                _keyValueDB.CommitWrittingTransaction(currentBtreeRoot);
+                _keyValueDB.CommitWritingTransaction(currentBtreeRoot);
                 _writing = false;
             }
         }
@@ -332,7 +332,7 @@ namespace BTDB.KVDBLayer
         {
             if (_writing || _preapprovedWriting)
             {
-                _keyValueDB.RevertWrittingTransaction();
+                _keyValueDB.RevertWritingTransaction();
                 _writing = false;
                 _preapprovedWriting = false;
             }
@@ -366,7 +366,7 @@ namespace BTDB.KVDBLayer
         {
             if (BtreeRoot.GetUlong(idx) != value)
             {
-                MakeWrittable();
+                MakeWritable();
                 BtreeRoot.SetUlong(idx, value);
             }
         }

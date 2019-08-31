@@ -16,7 +16,7 @@ namespace BTDB.KVDBLayer
         // This will reference that root, after use you need to call DereferenceRootNodeInternal
         IRootNodeInternal ReferenceAndGetOldestRoot();
         // This will reference that root, after use you need to call DereferenceRootNodeInternal
-        IRootNodeInternal ReferenceAndGetLastCommited();
+        IRootNodeInternal ReferenceAndGetLastCommitted();
         void DereferenceRootNodeInternal(IRootNodeInternal root);
         ulong CompactorWriteBytesPerSecondLimit { get; }
         ulong CompactorReadBytesPerSecondLimit { get; }

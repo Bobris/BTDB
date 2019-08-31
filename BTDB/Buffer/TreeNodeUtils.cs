@@ -12,9 +12,9 @@ namespace BTDB.Buffer
             throw new InvalidOperationException("Cursor must be valid for this operation");
         }
 
-        internal static void ThrowCursorNotWrittable()
+        internal static void ThrowCursorNotWritable()
         {
-            throw new InvalidOperationException("Cursor not writtable");
+            throw new InvalidOperationException("Cursor not writable");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

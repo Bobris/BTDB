@@ -125,10 +125,10 @@ namespace BTDB.KVDBLayer
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
 
         /// <summary>
-        /// Check writting status of this transaction.
+        /// Check writing status of this transaction.
         /// </summary>
-        /// <returns>true when this transaction is writting one</returns>
-        bool IsWritting();
+        /// <returns>true when this transaction is writing one</returns>
+        bool IsWriting();
 
         /// <summary>
         /// Each KeyValueDB has special ulong value which could be modified - it is much faster than regular key

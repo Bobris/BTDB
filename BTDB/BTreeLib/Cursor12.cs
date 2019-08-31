@@ -27,7 +27,7 @@ namespace BTDB.BTreeLib
         {
             var newRoot = (RootNode12)artRoot;
             if (newRoot._root != _rootNode._root)
-                throw new ArgumentException("SetNewRoot allows only upgrades to writtable identical root");
+                throw new ArgumentException("SetNewRoot allows only upgrades to writable identical root");
             _rootNode = (RootNode12)artRoot;
         }
 
@@ -50,23 +50,23 @@ namespace BTDB.BTreeLib
 
         public void Erase()
         {
-            AssertWrittable();
+            AssertWritable();
             AssertValid();
             _rootNode._impl.EraseRange(_rootNode, ref _stack, ref _stack);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void AssertWrittable()
+        void AssertWritable()
         {
-            if (!_rootNode._writtable)
+            if (!_rootNode._writable)
             {
-                TreeNodeUtils.ThrowCursorNotWrittable();
+                TreeNodeUtils.ThrowCursorNotWritable();
             }
         }
 
         public long EraseTo(ICursor to)
         {
-            AssertWrittable();
+            AssertWritable();
             if (_rootNode != ((Cursor12)to)._rootNode)
                 throw new ArgumentException("Both cursors must be from same transaction", nameof(to));
             if (!to.IsValid())
@@ -138,22 +138,22 @@ namespace BTDB.BTreeLib
             {
                 var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
                 var keyPtr = keys[stackItem._posInNode];
-                var lenSufix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
-                var len = header._keyPrefixLength + lenSufix;
+                var lenSuffix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
+                var len = header._keyPrefixLength + lenSuffix;
                 var res = buffer.Slice(0, len);
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
-                new Span<byte>((keyPtr + 4).ToPointer(), lenSufix).CopyTo(res.Slice(header._keyPrefixLength));
+                new Span<byte>((keyPtr + 4).ToPointer(), lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
             }
             else
             {
-                var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var keySufixes);
+                var keyOffsets = NodeUtils12.GetKeySpans(stackItem._node, out var keySuffixes);
                 var ofs = keyOffsets[stackItem._posInNode];
-                var lenSufix = keyOffsets[stackItem._posInNode + 1] - ofs;
-                var len = header._keyPrefixLength + lenSufix;
+                var lenSuffix = keyOffsets[stackItem._posInNode + 1] - ofs;
+                var len = header._keyPrefixLength + lenSuffix;
                 var res = buffer.Slice(0, len);
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
-                keySufixes.Slice(ofs, lenSufix).CopyTo(res.Slice(header._keyPrefixLength));
+                keySuffixes.Slice(ofs, lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
             }
         }
@@ -221,13 +221,13 @@ namespace BTDB.BTreeLib
 
         public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content)
         {
-            AssertWrittable();
+            AssertWritable();
             return _rootNode._impl.Upsert(_rootNode, ref _stack, key, content);
         }
 
         public void WriteValue(ReadOnlySpan<byte> content)
         {
-            AssertWrittable();
+            AssertWritable();
             AssertValid();
             _rootNode._impl.WriteValue(_rootNode, ref _stack, content);
         }
@@ -239,14 +239,14 @@ namespace BTDB.BTreeLib
 
         public void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
         {
-            AssertWrittable();
+            AssertWritable();
             Invalidate();
             _rootNode._impl.BuildTree(_rootNode, keyCount, generator);
         }
 
         public void ValueReplacer(ref ValueReplacerCtx ctx)
         {
-            AssertWrittable();
+            AssertWritable();
             if (_rootNode._root == IntPtr.Zero)
                 return;
             AssertValid();

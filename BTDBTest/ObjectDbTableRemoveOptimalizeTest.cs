@@ -384,9 +384,9 @@ namespace BTDBTest
                 _keyValueDBTransaction.EraseRange(firstKeyIndex, lastKeyIndex);
             }
 
-            public bool IsWritting()
+            public bool IsWriting()
             {
-                return _keyValueDBTransaction.IsWritting();
+                return _keyValueDBTransaction.IsWriting();
             }
 
             public ulong GetCommitUlong()

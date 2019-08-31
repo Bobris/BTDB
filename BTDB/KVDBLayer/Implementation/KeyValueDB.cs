@@ -692,7 +692,7 @@ namespace BTDB.KVDBLayer
             lock (_writeLock)
             {
                 if (_writingTransaction != null)
-                    throw new BTDBException("Cannot dispose KeyValueDB when writting transaction still running");
+                    throw new BTDBException("Cannot dispose KeyValueDB when writing transaction still running");
                 while (_writeWaitingQueue.Count > 0)
                 {
                     _writeWaitingQueue.Dequeue().TrySetCanceled();
@@ -708,7 +708,7 @@ namespace BTDB.KVDBLayer
 
         public bool DurableTransactions { get; set; }
 
-        public IRootNodeInternal ReferenceAndGetLastCommited()
+        public IRootNodeInternal ReferenceAndGetLastCommitted()
         {
             return _lastCommited;
         }
@@ -756,7 +756,7 @@ namespace BTDB.KVDBLayer
 
                 if (_writingTransaction == null)
                 {
-                    return new ValueTask<IKeyValueDBTransaction>(NewWrittingTransactionUnsafe());
+                    return new ValueTask<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
                 }
 
                 var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
@@ -799,21 +799,21 @@ namespace BTDB.KVDBLayer
             set => Interlocked.Exchange(ref _preserveHistoryUpToCommitUlong, (long)(value ?? ulong.MaxValue));
         }
 
-        internal IBTreeRootNode MakeWrittableTransaction(KeyValueDBTransaction keyValueDBTransaction,
+        internal IBTreeRootNode MakeWritableTransaction(KeyValueDBTransaction keyValueDBTransaction,
             IBTreeRootNode btreeRoot)
         {
             lock (_writeLock)
             {
                 if (_writingTransaction != null)
-                    throw new BTDBTransactionRetryException("Another writting transaction already running");
+                    throw new BTDBTransactionRetryException("Another writing transaction already running");
                 if (_lastCommited != btreeRoot)
-                    throw new BTDBTransactionRetryException("Another writting transaction already finished");
+                    throw new BTDBTransactionRetryException("Another writing transaction already finished");
                 _writingTransaction = keyValueDBTransaction;
                 return btreeRoot.NewTransactionRoot();
             }
         }
 
-        internal void CommitWrittingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
+        internal void CommitWritingTransaction(IBTreeRootNode btreeRoot, bool temporaryCloseTransactionLog)
         {
             WriteUlongsDiff(btreeRoot.UlongsArray, _lastCommited.UlongsArray);
             var deltaUlong = unchecked(btreeRoot.CommitUlong - _lastCommited.CommitUlong);
@@ -846,7 +846,7 @@ namespace BTDB.KVDBLayer
             {
                 _writingTransaction = null;
                 _lastCommited = btreeRoot;
-                TryDequeWaiterForWrittingTransaction();
+                TryDequeWaiterForWritingTransaction();
             }
         }
 
@@ -888,14 +888,14 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void TryDequeWaiterForWrittingTransaction()
+        void TryDequeWaiterForWritingTransaction()
         {
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            tcs.SetResult(NewWrittingTransactionUnsafe());
+            tcs.SetResult(NewWritingTransactionUnsafe());
         }
 
-        KeyValueDBTransaction NewWrittingTransactionUnsafe()
+        KeyValueDBTransaction NewWritingTransactionUnsafe()
         {
             var newTransactionRoot = _lastCommited.NewTransactionRoot();
             var tr = new KeyValueDBTransaction(this, newTransactionRoot, true, false);
@@ -903,7 +903,7 @@ namespace BTDB.KVDBLayer
             return tr;
         }
 
-        internal void RevertWrittingTransaction(bool nothingWrittenToTransactionLog)
+        internal void RevertWritingTransaction(bool nothingWrittenToTransactionLog)
         {
             if (!nothingWrittenToTransactionLog)
             {
@@ -916,7 +916,7 @@ namespace BTDB.KVDBLayer
                 {
                     _writingTransaction = null;
                     _lastCommited = newRoot;
-                    TryDequeWaiterForWrittingTransaction();
+                    TryDequeWaiterForWritingTransaction();
                 }
             }
             else
@@ -924,7 +924,7 @@ namespace BTDB.KVDBLayer
                 lock (_writeLock)
                 {
                     _writingTransaction = null;
-                    TryDequeWaiterForWrittingTransaction();
+                    TryDequeWaiterForWritingTransaction();
                 }
             }
         }

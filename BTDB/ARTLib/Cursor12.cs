@@ -28,7 +28,7 @@ namespace BTDB.ARTLib
         {
             var newRoot = (RootNode12)artRoot;
             if (newRoot._root != _rootNode._root)
-                throw new ArgumentException("SetNewRoot allows only upgrades to writtable identical root");
+                throw new ArgumentException("SetNewRoot allows only upgrades to writable identical root");
             _rootNode = (RootNode12)artRoot;
         }
 
@@ -51,23 +51,23 @@ namespace BTDB.ARTLib
 
         public void Erase()
         {
-            AssertWrittable();
+            AssertWritable();
             AssertValid();
             _rootNode._impl.EraseRange(_rootNode, ref _stack, ref _stack);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void AssertWrittable()
+        void AssertWritable()
         {
-            if (!_rootNode._writtable)
+            if (!_rootNode._writable)
             {
-                TreeNodeUtils.ThrowCursorNotWrittable();
+                TreeNodeUtils.ThrowCursorNotWritable();
             }
         }
 
         public long EraseTo(ICursor to)
         {
-            AssertWrittable();
+            AssertWritable();
             if (_rootNode != ((Cursor12)to)._rootNode)
                 throw new ArgumentException("Both cursors must be from same transaction", nameof(to));
             if (!to.IsValid())
@@ -278,13 +278,13 @@ namespace BTDB.ARTLib
 
         public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content)
         {
-            AssertWrittable();
+            AssertWritable();
             return _rootNode._impl.Upsert(_rootNode, ref _stack, key, content);
         }
 
         public void WriteValue(ReadOnlySpan<byte> content)
         {
-            AssertWrittable();
+            AssertWritable();
             AssertValid();
             _rootNode._impl.WriteValue(_rootNode, ref _stack, content);
         }

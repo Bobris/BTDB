@@ -177,7 +177,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void OnlyOneWrittingTransactionPossible()
+        public void OnlyOneWritingTransactionPossible()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {
@@ -194,7 +194,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void OnlyOneWrittingTransactionPossible2()
+        public void OnlyOneWritingTransactionPossible2()
         {
             using (IKeyValueDB db = new InMemoryKeyValueDB())
             {

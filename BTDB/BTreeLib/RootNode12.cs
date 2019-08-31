@@ -10,14 +10,14 @@ namespace BTDB.BTreeLib
         {
             _impl = impl;
             _root = IntPtr.Zero;
-            _writtable = true;
+            _writable = true;
             _referenceCount = 1;
         }
 
         int _referenceCount;
         internal IntPtr _root;
         internal BTreeImpl12 _impl;
-        internal bool _writtable;
+        internal bool _writable;
 
         public ulong CommitUlong { get; set; }
         public long TransactionId { get; set; }
@@ -33,14 +33,14 @@ namespace BTDB.BTreeLib
         public IRootNode Snapshot()
         {
             var snapshot = new RootNode12(_impl);
-            snapshot._writtable = false;
+            snapshot._writable = false;
             snapshot._root = _root;
             snapshot.CommitUlong = CommitUlong;
             snapshot.TransactionId = TransactionId;
             snapshot.TrLogFileId = TrLogFileId;
             snapshot.TrLogOffset = TrLogOffset;
             snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            if (_writtable)
+            if (_writable)
                 TransactionId++;
             NodeUtils12.Reference(_root);
             return snapshot;
@@ -48,9 +48,9 @@ namespace BTDB.BTreeLib
 
         public IRootNode CreateWritableTransaction()
         {
-            if (_writtable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
+            if (_writable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
             var node = new RootNode12(_impl);
-            node._writtable = true;
+            node._writable = true;
             node._root = _root;
             node.CommitUlong = CommitUlong;
             node.TransactionId = TransactionId + 1;
@@ -63,7 +63,7 @@ namespace BTDB.BTreeLib
 
         public void Commit()
         {
-            _writtable = false;
+            _writable = false;
         }
 
         public ICursor CreateCursor()
@@ -80,8 +80,8 @@ namespace BTDB.BTreeLib
 
         public void RevertTo(IRootNode snapshot)
         {
-            if (!_writtable)
-                throw new InvalidOperationException("Only writtable root node could be reverted");
+            if (!_writable)
+                throw new InvalidOperationException("Only writable root node could be reverted");
             var oldRoot = _root;
             _root = ((RootNode12)snapshot)._root;
             _ulongs = ((RootNode12)snapshot)._ulongs == null ? null : (ulong[])((RootNode12)snapshot)._ulongs.Clone();

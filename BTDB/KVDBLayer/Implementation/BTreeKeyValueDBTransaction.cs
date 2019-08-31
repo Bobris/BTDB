@@ -269,8 +269,8 @@ namespace BTDB.KVDBLayer
             catch (BTDBException ex)
             {
                 var oldestRoot = (IRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
-                var lastCommited = _keyValueDB._lastCommited;
-                throw new BTDBException($"GetValue failed in TrId:{BTreeRoot.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                var lastCommitted = _keyValueDB._lastCommitted;
+                throw new BTDBException($"GetValue failed in TrId:{BTreeRoot.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
             }
         }
 
@@ -285,15 +285,15 @@ namespace BTDB.KVDBLayer
             catch (BTDBException ex)
             {
                 var oldestRoot = (IRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
-                var lastCommited = (IRootNode)_keyValueDB.ReferenceAndGetLastCommited();
+                var lastCommitted = (IRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
                 try
                 {
-                    throw new BTDBException($"GetValue failed in TrId:{BTreeRoot.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                    throw new BTDBException($"GetValue failed in TrId:{BTreeRoot.TransactionId},TRL:{BTreeRoot.TrLogFileId},Ofs:{BTreeRoot.TrLogOffset},ComUlong:{BTreeRoot.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
                 }
                 finally
                 {
                     _keyValueDB.DereferenceRootNodeInternal(oldestRoot);
-                    _keyValueDB.DereferenceRootNodeInternal(lastCommited);
+                    _keyValueDB.DereferenceRootNodeInternal(lastCommitted);
                 }
             }
         }
@@ -361,7 +361,7 @@ namespace BTDB.KVDBLayer
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
         }
 
-        public bool IsWritting()
+        public bool IsWriting()
         {
             return _writing;
         }
@@ -397,7 +397,7 @@ namespace BTDB.KVDBLayer
 
         public void Commit()
         {
-            if (BTreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
+            if (BTreeRoot == null) throw new BTDBException("Transaction already committed or disposed");
             InvalidateCurrentKey();
             var currentArtRoot = BTreeRoot;
             BTreeRoot = null;

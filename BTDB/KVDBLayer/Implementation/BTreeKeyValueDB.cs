@@ -22,7 +22,7 @@ namespace BTDB.KVDBLayer
     {
         const int MaxValueSizeInlineInMemory = 7;
         const int EndOfIndexFileMarker = 0x1234DEAD;
-        internal IRootNode _lastCommited;
+        internal IRootNode _lastCommitted;
         readonly ConcurrentBag<IRootNode> _waitingToDispose = new ConcurrentBag<IRootNode>();
 
         readonly ConcurrentDictionary<IRootNode, bool> _usedNodesInReadonlyTransactions =
@@ -94,8 +94,8 @@ namespace BTDB.KVDBLayer
             CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
             CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
             _allocator = options.Allocator;
-            _lastCommited = BTreeImpl12.CreateEmptyRoot(options.Allocator);
-            _lastCommited.Commit();
+            _lastCommitted = BTreeImpl12.CreateEmptyRoot(options.Allocator);
+            _lastCommitted.Commit();
             _preserveHistoryUpToCommitUlong = (long)(options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);
             _compactFunc = _compactorScheduler?.AddCompactAction(Compact);
@@ -190,14 +190,14 @@ namespace BTDB.KVDBLayer
                     var keyIndex = keyIndexes[nearKeyIndex];
                     keyIndexes.RemoveAt(nearKeyIndex);
                     var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
-                    _nextRoot = _lastCommited.CreateWritableTransaction();
+                    _nextRoot = _lastCommitted.CreateWritableTransaction();
                     try
                     {
                         if (LoadKeyIndex(keyIndex.Key, info) && firstTrLogId <= info.TrLogFileId)
                         {
-                            _lastCommited.Dispose();
-                            _lastCommited = _nextRoot;
-                            _lastCommited.Commit();
+                            _lastCommitted.Dispose();
+                            _lastCommitted = _nextRoot;
+                            _lastCommitted.Commit();
                             _nextRoot = null;
                             firstTrLogId = info.TrLogFileId;
                             firstTrLogOffset = info.TrLogOffset;
@@ -236,10 +236,10 @@ namespace BTDB.KVDBLayer
                         WriteStartOfNewTransactionLogFile();
                         _fileWithTransactionLog.HardFlush();
                         _fileWithTransactionLog.Truncate();
-                        UpdateTransactionLogInBTreeRoot(_lastCommited);
+                        UpdateTransactionLogInBTreeRoot(_lastCommitted);
                     }
 
-                    // When not openning history commit KVI file will be created by compaction
+                    // When not opening history commit KVI file will be created by compaction
                     if (openUpToCommitUlong.HasValue)
                     {
                         CreateIndexFile(CancellationToken.None, preserveKeyIndexGeneration, true);
@@ -296,14 +296,7 @@ namespace BTDB.KVDBLayer
         public long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey)
         {
             if (preserveKeyIndexKey <= 0) return -1;
-            if (preserveKeyIndexKey < uint.MaxValue)
-            {
-                return GetGeneration(preserveKeyIndexKey);
-            }
-            else
-            {
-                return long.MaxValue;
-            }
+            return preserveKeyIndexKey < uint.MaxValue ? GetGeneration(preserveKeyIndexKey) : long.MaxValue;
         }
 
         internal uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
@@ -350,7 +343,7 @@ namespace BTDB.KVDBLayer
         internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
             bool fullSpeed = false)
         {
-            var idxFileId = CreateKeyIndexFile(_lastCommited, cancellation, fullSpeed);
+            var idxFileId = CreateKeyIndexFile(_lastCommitted, cancellation, fullSpeed);
             MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
                 p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
                 p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
@@ -583,7 +576,7 @@ namespace BTDB.KVDBLayer
         // Return true if it is suitable for continuing writing new transactions
         bool LoadTransactionLog(uint fileId, uint logOffset, ulong? openUpToCommitUlong)
         {
-            if (openUpToCommitUlong.HasValue && _lastCommited.CommitUlong >= openUpToCommitUlong)
+            if (openUpToCommitUlong.HasValue && _lastCommitted.CommitUlong >= openUpToCommitUlong)
             {
                 return false;
             }
@@ -614,8 +607,8 @@ namespace BTDB.KVDBLayer
                 }
                 else
                 {
-                    cursor = _lastCommited.CreateCursor();
-                    cursor2 = _lastCommited.CreateCursor();
+                    cursor = _lastCommitted.CreateCursor();
+                    cursor2 = _lastCommitted.CreateCursor();
                 }
 
 
@@ -735,7 +728,7 @@ namespace BTDB.KVDBLayer
                                 return false;
                             }
 
-                            _nextRoot = _lastCommited.CreateWritableTransaction();
+                            _nextRoot = _lastCommitted.CreateWritableTransaction();
                             cursor.SetNewRoot(_nextRoot);
                             cursor2.SetNewRoot(_nextRoot);
                             break;
@@ -751,11 +744,11 @@ namespace BTDB.KVDBLayer
                             if (_nextRoot == null) return false;
                             _nextRoot.TrLogFileId = fileId;
                             _nextRoot.TrLogOffset = (uint)reader.GetCurrentPosition();
-                            _lastCommited.Dispose();
+                            _lastCommitted.Dispose();
                             _nextRoot.Commit();
-                            _lastCommited = _nextRoot;
+                            _lastCommitted = _nextRoot;
                             _nextRoot = null;
-                            if (openUpToCommitUlong.HasValue && _lastCommited.CommitUlong >= openUpToCommitUlong)
+                            if (openUpToCommitUlong.HasValue && _lastCommitted.CommitUlong >= openUpToCommitUlong)
                             {
                                 finishReading = true;
                             }
@@ -768,8 +761,8 @@ namespace BTDB.KVDBLayer
                         case KVCommandType.EndOfFile:
                             return false;
                         case KVCommandType.TemporaryEndOfFile:
-                            _lastCommited.TrLogFileId = fileId;
-                            _lastCommited.TrLogOffset = (uint)reader.GetCurrentPosition();
+                            _lastCommitted.TrLogFileId = fileId;
+                            _lastCommitted.TrLogOffset = (uint)reader.GetCurrentPosition();
                             afterTemporaryEnd = true;
                             break;
                         default:
@@ -831,7 +824,7 @@ namespace BTDB.KVDBLayer
                     _writeWaitingQueue.Dequeue().TrySetCanceled();
                 }
 
-                DereferenceRoot(_lastCommited);
+                DereferenceRoot(_lastCommitted);
                 FreeWaitingToDispose();
             }
 
@@ -844,11 +837,11 @@ namespace BTDB.KVDBLayer
 
         public bool DurableTransactions { get; set; }
 
-        public IRootNodeInternal ReferenceAndGetLastCommited()
+        public IRootNodeInternal ReferenceAndGetLastCommitted()
         {
             while (true)
             {
-                var node = _lastCommited;
+                var node = _lastCommitted;
                 // Memory barrier inside next statement
                 if (!node.Reference())
                 {
@@ -880,7 +873,7 @@ namespace BTDB.KVDBLayer
         {
             while (true)
             {
-                var oldestRoot = _lastCommited;
+                var oldestRoot = _lastCommitted;
                 foreach (var usedTransaction in _usedNodesInReadonlyTransactions.Keys)
                 {
                     if (usedTransaction.ShouldBeDisposed)
@@ -902,7 +895,7 @@ namespace BTDB.KVDBLayer
         {
             while (true)
             {
-                var node = _lastCommited;
+                var node = _lastCommitted;
                 // Memory barrier inside next statement
                 if (!node.Reference())
                 {
@@ -916,7 +909,7 @@ namespace BTDB.KVDBLayer
         {
             while (true)
             {
-                var node = _lastCommited;
+                var node = _lastCommitted;
                 // Memory barrier inside next statement
                 if (!node.Reference())
                 {
@@ -964,7 +957,7 @@ namespace BTDB.KVDBLayer
 
         public string CalcStats()
         {
-            var sb = new StringBuilder("KeyValueCount:" + _lastCommited.GetCount() + '\n'
+            var sb = new StringBuilder("KeyValueCount:" + _lastCommitted.GetCount() + '\n'
                                        + "FileCount:" + FileCollection.GetCount() + '\n'
                                        + "FileGeneration:" + FileCollection.LastFileGeneration + '\n');
             foreach (var file in _fileCollection.FileInfos)
@@ -1002,10 +995,10 @@ namespace BTDB.KVDBLayer
             {
                 if (_writingTransaction != null)
                     throw new BTDBTransactionRetryException("Another writing transaction already running");
-                if (_lastCommited != btreeRoot)
+                if (_lastCommitted != btreeRoot)
                     throw new BTDBTransactionRetryException("Another writing transaction already finished");
                 _writingTransaction = keyValueDBTransaction;
-                var result = _lastCommited.CreateWritableTransaction();
+                var result = _lastCommitted.CreateWritableTransaction();
                 DereferenceRoot(btreeRoot);
                 return result;
             }
@@ -1016,14 +1009,14 @@ namespace BTDB.KVDBLayer
             lock (_writeLock)
             {
                 _writingTransaction = null;
-                if (_lastCommited.Dereference())
+                if (_lastCommitted.Dereference())
                 {
-                    _lastCommited.Dispose();
+                    _lastCommitted.Dispose();
                 }
 
-                _lastCommited = root;
+                _lastCommitted = root;
                 root = null;
-                _lastCommited.Commit();
+                _lastCommitted.Commit();
                 TryDequeWaiterForWritingTransaction();
             }
         }
@@ -1032,8 +1025,8 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                WriteUlongsDiff(root, _lastCommited);
-                var deltaUlong = unchecked(root.CommitUlong - _lastCommited.CommitUlong);
+                WriteUlongsDiff(root, _lastCommitted);
+                var deltaUlong = unchecked(root.CommitUlong - _lastCommitted.CommitUlong);
                 if (deltaUlong != 0)
                 {
                     _writerWithTransactionLog.WriteUInt8((byte)KVCommandType.CommitWithDeltaUlong);
@@ -1062,14 +1055,14 @@ namespace BTDB.KVDBLayer
                 lock (_writeLock)
                 {
                     _writingTransaction = null;
-                    if (_lastCommited.Dereference())
+                    if (_lastCommitted.Dereference())
                     {
-                        _lastCommited.Dispose();
+                        _lastCommitted.Dispose();
                     }
 
-                    _lastCommited = root;
+                    _lastCommitted = root;
                     root = null;
-                    _lastCommited.Commit();
+                    _lastCommitted.Commit();
                     TryDequeWaiterForWritingTransaction();
                 }
             }
@@ -1127,7 +1120,7 @@ namespace BTDB.KVDBLayer
         BTreeKeyValueDBTransaction NewWritingTransactionUnsafe()
         {
             FreeWaitingToDispose();
-            var newTransactionRoot = _lastCommited.CreateWritableTransaction();
+            var newTransactionRoot = _lastCommitted.CreateWritableTransaction();
             try
             {
                 var tr = new BTreeKeyValueDBTransaction(this, newTransactionRoot, true, false);
@@ -1161,7 +1154,7 @@ namespace BTDB.KVDBLayer
                 lock (_writeLock)
                 {
                     _writingTransaction = null;
-                    UpdateTransactionLogInBTreeRoot(_lastCommited);
+                    UpdateTransactionLogInBTreeRoot(_lastCommitted);
                     TryDequeWaiterForWritingTransaction();
                 }
             }

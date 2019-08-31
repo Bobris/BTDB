@@ -9,14 +9,14 @@ namespace BTDB.ARTLib
         {
             _impl = impl;
             _root = IntPtr.Zero;
-            _writtable = true;
+            _writable = true;
             _referenceCount = 1;
         }
 
         int _referenceCount;
         internal IntPtr _root;
         internal ARTImplV _impl;
-        internal bool _writtable;
+        internal bool _writable;
 
         public ulong CommitUlong { get; set; }
         public long TransactionId { get; set; }
@@ -32,14 +32,14 @@ namespace BTDB.ARTLib
         public IRootNode Snapshot()
         {
             var snapshot = new RootNodeV(_impl);
-            snapshot._writtable = false;
+            snapshot._writable = false;
             snapshot._root = _root;
             snapshot.CommitUlong = CommitUlong;
             snapshot.TransactionId = TransactionId;
             snapshot.TrLogFileId = TrLogFileId;
             snapshot.TrLogOffset = TrLogOffset;
             snapshot._ulongs = _ulongs == null ? null : (ulong[])_ulongs.Clone();
-            if (_writtable)
+            if (_writable)
                 TransactionId++;
             NodeUtilsV.Reference(_root);
             return snapshot;
@@ -47,9 +47,9 @@ namespace BTDB.ARTLib
 
         public IRootNode CreateWritableTransaction()
         {
-            if (_writtable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
+            if (_writable) throw new InvalidOperationException("Only readonly root node could be CreateWritableTransaction");
             var node = new RootNodeV(_impl);
-            node._writtable = true;
+            node._writable = true;
             node._root = _root;
             node.CommitUlong = CommitUlong;
             node.TransactionId = TransactionId + 1;
@@ -62,7 +62,7 @@ namespace BTDB.ARTLib
 
         public void Commit()
         {
-            _writtable = false;
+            _writable = false;
         }
 
         public ICursor CreateCursor()
@@ -79,8 +79,8 @@ namespace BTDB.ARTLib
 
         public void RevertTo(IRootNode snapshot)
         {
-            if (!_writtable)
-                throw new InvalidOperationException("Only writtable root node could be reverted");
+            if (!_writable)
+                throw new InvalidOperationException("Only writable root node could be reverted");
             var oldRoot = _root;
             _root = ((RootNodeV)snapshot)._root;
             _ulongs = ((RootNodeV)snapshot)._ulongs == null ? null : (ulong[])((RootNodeV)snapshot)._ulongs.Clone();

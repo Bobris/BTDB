@@ -247,7 +247,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void OnlyOneWrittingTransactionPossible()
+        public void OnlyOneWritingTransactionPossible()
         {
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = NewKeyValueDB(fileCollection))
@@ -265,7 +265,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void OnlyOneWrittingTransactionPossible2()
+        public void OnlyOneWritingTransactionPossible2()
         {
             using (var fileCollection = new InMemoryFileCollection())
             using (IKeyValueDB db = NewKeyValueDB(fileCollection))

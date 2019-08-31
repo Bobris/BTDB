@@ -52,7 +52,7 @@ namespace BTDB.BTreeLib
             return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
         }
 
-        internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, uint totalSufixLength, out Span<byte> keySufixes)
+        internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, uint totalSuffixLength, out Span<byte> keySuffixes)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             var ptr = nodePtr + (int)header.Size;
@@ -62,7 +62,7 @@ namespace BTDB.BTreeLib
             var offsetsPtr = ptr;
             var offsetsCount = header._childCount + (header.IsNodeLeaf ? 1 : 0);
             ptr += 2 * offsetsCount;
-            keySufixes = new Span<byte>(ptr.ToPointer(), (int)totalSufixLength);
+            keySuffixes = new Span<byte>(ptr.ToPointer(), (int)totalSuffixLength);
             return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
         }
 
@@ -154,7 +154,7 @@ namespace BTDB.BTreeLib
                 return (int)(ptr.ToInt64() - nodePtr.ToInt64() + 8 * header._childCount);
         }
 
-        internal static unsafe long GetTotalSufixLen(IntPtr nodePtr)
+        internal static unsafe long GetTotalSuffixLen(IntPtr nodePtr)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
@@ -179,7 +179,7 @@ namespace BTDB.BTreeLib
             return len;
         }
 
-        internal static unsafe long GetTotalSufixLen(IntPtr nodePtr, int start, int end)
+        internal static unsafe long GetTotalSuffixLen(IntPtr nodePtr, int start, int end)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
@@ -202,7 +202,7 @@ namespace BTDB.BTreeLib
             return len;
         }
 
-        internal static unsafe long GetTotalSufixLenExcept(IntPtr nodePtr, int start, int end)
+        internal static unsafe long GetTotalSuffixLenExcept(IntPtr nodePtr, int start, int end)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
@@ -236,7 +236,7 @@ namespace BTDB.BTreeLib
             return new Span<byte>((ptr + 4).ToPointer(), size);
         }
 
-        internal static Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySufix)
+        internal static Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySuffix)
         {
             ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
             while (!header.IsNodeLeaf)
@@ -246,12 +246,12 @@ namespace BTDB.BTreeLib
             }
             if (header.HasLongKeys)
             {
-                keySufix = LongKeyPtrToSpan(GetLongKeyPtrs(nodePtr)[0]);
+                keySuffix = LongKeyPtrToSpan(GetLongKeyPtrs(nodePtr)[0]);
             }
             else
             {
-                var keyOfs = GetKeySpans(nodePtr, out var keySufixes);
-                keySufix = keySufixes.Slice(0, keyOfs[1]);
+                var keyOfs = GetKeySpans(nodePtr, out var keySuffixes);
+                keySuffix = keySuffixes.Slice(0, keyOfs[1]);
             }
             return GetPrefixSpan(nodePtr);
         }

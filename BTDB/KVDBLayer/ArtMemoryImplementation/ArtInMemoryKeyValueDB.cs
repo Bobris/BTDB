@@ -71,9 +71,9 @@ namespace BTDB.KVDBLayer
             {
                 if (_writingTransaction == null)
                 {
-                    return new ValueTask<IKeyValueDBTransaction>(NewWrittingTransactionUnsafe());
+                    return new ValueTask<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
                 }
-                
+
                 var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
                 _writeWaitingQueue.Enqueue(tcs);
                 return new ValueTask<IKeyValueDBTransaction>(tcs.Task);
@@ -140,10 +140,10 @@ namespace BTDB.KVDBLayer
             FreeWaitingToDispose();
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            tcs.SetResult(NewWrittingTransactionUnsafe());
+            tcs.SetResult(NewWritingTransactionUnsafe());
         }
 
-        ArtInMemoryKeyValueDBTransaction NewWrittingTransactionUnsafe()
+        ArtInMemoryKeyValueDBTransaction NewWritingTransactionUnsafe()
         {
             FreeWaitingToDispose();
             var newTransactionRoot = _lastCommited.CreateWritableTransaction();

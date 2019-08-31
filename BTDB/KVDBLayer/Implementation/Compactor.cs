@@ -126,7 +126,7 @@ namespace BTDB.KVDBLayer
                     dontTouchGeneration = Math.Min(dontTouchGeneration, dontTouchGenerationDueToPreserve);
                 }
 
-                var lastCommited = _keyValueDB.ReferenceAndGetLastCommited();
+                var lastCommited = _keyValueDB.ReferenceAndGetLastCommitted();
                 try
                 {
                     if (_root != lastCommited) ForbidDeleteOfFilesUsedByStillRunningOldTransaction();
