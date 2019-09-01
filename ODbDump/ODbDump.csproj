@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>netcoreapp3.0</TargetFrameworks>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
-    <Version>17.8.0</Version>
+    <Version>18.0.0</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
   </PropertyGroup>
   <ItemGroup>

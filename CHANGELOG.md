@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 18.0.0
+
 ### Changed
 
 Supports only .Net Core 3.0 or better.
