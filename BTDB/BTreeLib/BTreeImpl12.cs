@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using BTDB.IL.Caching;
 
 namespace BTDB.BTreeLib
 {
@@ -218,7 +219,7 @@ namespace BTDB.BTreeLib
             return node;
         }
 
-        internal void BuildTree(RootNode12 rootNode, long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
+        internal void BuildTree(RootNode12 rootNode, long keyCount, BuildTreeCallback generator)
         {
             Dereference(rootNode._root);
             if (keyCount == 0)
@@ -319,29 +320,27 @@ namespace BTDB.BTreeLib
             return stackItem._node;
         }
 
-        IntPtr BuildTreeNode(long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
+        IntPtr BuildTreeNode(long keyCount, BuildTreeCallback generator)
         {
             var leafs = (keyCount + MaxChildren - 1) / MaxChildren;
             var order = 0L;
             var done = 0L;
+            var values = new byte[MaxChildren * 12];
+            var keys = new ByteBuffer[MaxChildren];
             return BuildBranchNode(leafs, () =>
             {
                 order++;
                 var reach = keyCount * order / leafs;
                 var todo = (int) (reach - done);
                 done = reach;
-                var values = new byte[todo * 12];
-                var keys = new ByteBuffer[todo];
                 long totalKeyLen = 0;
                 for (int i = 0; i < todo; i++)
                 {
-                    var (key, value) = generator();
-                    keys[i] = key;
-                    totalKeyLen += key.Length;
-                    value.AsSpan().CopyTo(values.AsSpan(i * 12, 12));
+                    generator(ref keys[i], values.AsSpan(i * 12, 12));
+                    totalKeyLen += keys[i].Length;
                 }
 
-                var newPrefixSize = TreeNodeUtils.CalcCommonPrefix(keys);
+                var newPrefixSize = TreeNodeUtils.CalcCommonPrefix(keys.AsSpan(0, todo));
                 var newSuffixSize = totalKeyLen - todo * newPrefixSize;
                 var newNode = AllocateLeaf((uint) todo, (uint) newPrefixSize, (ulong) newSuffixSize, out var keyPusher);
                 for (var i = 0; i < todo; i++)
@@ -350,7 +349,7 @@ namespace BTDB.BTreeLib
                 }
 
                 keyPusher.Finish();
-                values.CopyTo(NodeUtils12.GetLeafValues(newNode));
+                values.AsSpan(0,todo*12).CopyTo(NodeUtils12.GetLeafValues(newNode));
                 return newNode;
             });
         }
@@ -361,17 +360,20 @@ namespace BTDB.BTreeLib
             var children = (count + MaxChildren - 1) / MaxChildren;
             var order = 0L;
             var done = 0L;
+            var nodes = new IntPtr[MaxChildren];
             return BuildBranchNode(children, () =>
             {
                 order++;
                 var reach = count * order / children;
                 var todo = (int) (reach - done);
                 done = reach;
-                var nodes = new IntPtr[todo];
                 var totalSuffixLength = 0UL;
+                var recursiveChildCount = 0UL;
                 for (var i = 0; i < todo; i++)
                 {
-                    nodes[i] = generator();
+                    var child = generator();
+                    nodes[i] = child;
+                    recursiveChildCount += NodeUtils12.Ptr2NodeHeader(child).RecursiveChildCount;
                 }
 
                 for (var i = 1; i < todo; i++)
@@ -381,15 +383,14 @@ namespace BTDB.BTreeLib
                 }
 
                 var newNode = AllocateBranch((uint) todo, 0, totalSuffixLength, out var keyPusher);
+                NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = recursiveChildCount;
                 for (var i = 1; i < todo; i++)
                 {
                     var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
                     keyPusher.AddKey(prefix, suffix);
                 }
-
                 keyPusher.Finish();
-                nodes.CopyTo(NodeUtils12.GetBranchValuePtrs(newNode));
-                NodeUtils12.RecalcRecursiveChildrenCount(newNode);
+                nodes.AsSpan(0,todo).CopyTo(NodeUtils12.GetBranchValuePtrs(newNode));
                 return newNode;
             });
         }

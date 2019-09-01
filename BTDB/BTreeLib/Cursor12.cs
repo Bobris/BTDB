@@ -237,7 +237,7 @@ namespace BTDB.BTreeLib
             _stack.Clear();
         }
 
-        public void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator)
+        public void BuildTree(long keyCount, BuildTreeCallback generator)
         {
             AssertWritable();
             Invalidate();

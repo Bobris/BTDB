@@ -32,7 +32,9 @@ namespace BTDB.BTreeLib
         bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content);
         void Erase();
         long EraseTo(ICursor to);
-        void BuildTree(long keyCount, Func<(ByteBuffer key, byte[] value)> generator);
+        void BuildTree(long keyCount, BuildTreeCallback generator);
         void ValueReplacer(ref ValueReplacerCtx ctx);
     }
+
+    public delegate void BuildTreeCallback(ref ByteBuffer key, Span<byte> value);
 }

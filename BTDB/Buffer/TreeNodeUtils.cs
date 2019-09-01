@@ -188,7 +188,7 @@ namespace BTDB.Buffer
             return pos + FindFirstDifference(buf1b, buf2b.Slice(pos - buf2a.Length));
         }
 
-        internal static uint CalcCommonPrefix(ByteBuffer[] keys)
+        internal static uint CalcCommonPrefix(Span<ByteBuffer> keys)
         {
             var first = keys[0].AsSyncReadOnlySpan();
             var res = first.Length;

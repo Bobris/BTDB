@@ -238,7 +238,7 @@ namespace BTDB.BTreeLib
 
         internal static Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySuffix)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             while (!header.IsNodeLeaf)
             {
                 nodePtr = GetBranchValuePtr(nodePtr, 0);
