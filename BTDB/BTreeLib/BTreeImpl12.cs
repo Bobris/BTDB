@@ -376,13 +376,16 @@ namespace BTDB.BTreeLib
                     recursiveChildCount += NodeUtils12.Ptr2NodeHeader(child).RecursiveChildCount;
                 }
 
+                var commonPrefix = new Span<byte>();
                 for (var i = 1; i < todo; i++)
                 {
                     var prefix = NodeUtils12.GetLeftestKey(nodes[i], out var suffix);
                     totalSuffixLength += (uint) prefix.Length + (uint) suffix.Length;
+                    commonPrefix = i == 1 ? prefix : prefix.Slice(0, TreeNodeUtils.FindFirstDifference(commonPrefix, prefix));
                 }
 
-                var newNode = AllocateBranch((uint) todo, 0, totalSuffixLength, out var keyPusher);
+                totalSuffixLength -= (ulong)((todo - 1) * commonPrefix.Length);
+                var newNode = AllocateBranch((uint) todo, (uint)commonPrefix.Length, totalSuffixLength, out var keyPusher);
                 NodeUtils12.Ptr2NodeHeader(newNode)._recursiveChildCount = recursiveChildCount;
                 for (var i = 1; i < todo; i++)
                 {
