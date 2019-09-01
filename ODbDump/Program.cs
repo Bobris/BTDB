@@ -205,6 +205,34 @@ namespace ODbDump
 
                         break;
                     }
+                case "kvi":
+                {
+                    var sw = Stopwatch.StartNew();
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                    {
+                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                        sw.Restart();
+                        kdb.CreateKvi(CancellationToken.None);
+                        Console.WriteLine($"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    }
+
+                    break;
+                }
+                case "kvim": // Kvi but by old managed implementation
+                {
+                    var sw = Stopwatch.StartNew();
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null))
+                    {
+                        Console.WriteLine($"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                        sw.Restart();
+                        kdb.CreateKvi(CancellationToken.None);
+                        Console.WriteLine($"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    }
+
+                    break;
+                }
                 case "fileheaders":
                     {
                         using (var dfc = new OnDiskFileCollection(args[0]))

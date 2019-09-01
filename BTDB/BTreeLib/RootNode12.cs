@@ -142,7 +142,14 @@ namespace BTDB.BTreeLib
         {
             if (_root == IntPtr.Zero)
                 return;
-            _impl.ValuesIterate(_root, visit);
+            BTreeImpl12.ValuesIterate(_root, visit);
+        }
+
+        public void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback)
+        {
+            if (_root == IntPtr.Zero)
+                return;
+            BTreeImpl12.KeyValueIterate(_root, ref keyValueIterateCtx, callback);
         }
 
         public bool ShouldBeDisposed => _referenceCount == 0;

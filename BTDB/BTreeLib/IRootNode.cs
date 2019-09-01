@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Threading;
+using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.BTreeLib
 {
-    public interface IRootNode: IRootNodeInternal, IDisposable
+    public interface IRootNode : IRootNodeInternal, IDisposable
     {
         // Return true if it should be disposed
         bool Reference();
@@ -29,5 +31,31 @@ namespace BTDB.BTreeLib
         ulong[] UlongsArray { get; }
 
         void ValuesIterate(ValuesIterateAction visit);
+        void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback);
     }
+
+    public ref struct KeyValueIterateCtx
+    {
+        public CancellationToken CancellationToken;
+        public Span<byte> PreviousPrefix;
+        public Span<byte> PreviousSuffix;
+        public Span<byte> CurrentPrefix;
+        public Span<byte> CurrentSuffix;
+        public Span<byte> CurrentValue;
+        public uint PreviousCurrentCommonLength;
+
+        public void CalcCommonLength()
+        {
+            PreviousCurrentCommonLength = (uint)
+                TreeNodeUtils.FindFirstDifference(PreviousPrefix, PreviousSuffix, CurrentPrefix, CurrentSuffix);
+        }
+
+        public void CalcCommonLengthWithIdenticalPrefixes()
+        {
+            PreviousCurrentCommonLength =
+                (uint) (CurrentPrefix.Length + TreeNodeUtils.FindFirstDifference(PreviousSuffix, CurrentSuffix));
+        }
+    }
+
+    public delegate void KeyValueIterateCallback(ref KeyValueIterateCtx keyValueIterateCtx);
 }

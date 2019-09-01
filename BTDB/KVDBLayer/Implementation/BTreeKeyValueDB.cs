@@ -1408,20 +1408,21 @@ namespace BTDB.KVDBLayer
             var usedFileIds = new HashSet<uint>();
             if (keyCount > 0)
             {
-                var cursor = root.CreateCursor();
-                var prevKey = new Span<byte>();
-                while (cursor.MoveNext())
+                var keyValueIterateCtx = new KeyValueIterateCtx {CancellationToken = cancellation};
+                root.KeyValueIterate(ref keyValueIterateCtx, (ref KeyValueIterateCtx ctx) =>
                 {
-                    cancellation.ThrowIfCancellationRequested();
-                    var memberValue = cursor.GetValue();
-                    var keyLength = cursor.GetKeyLength();
-                    var key = new byte[keyLength].AsSpan();
-                    cursor.FillByKey(key);
-                    var prefixLen = TreeNodeUtils.FindFirstDifference(prevKey, key);
-
-                    writer.WriteVUInt32((uint) prefixLen);
-                    writer.WriteVUInt32((uint) (keyLength - prefixLen));
-                    writer.WriteBlock(key.Slice(prefixLen));
+                    var memberValue = ctx.CurrentValue;
+                    writer.WriteVUInt32(ctx.PreviousCurrentCommonLength);
+                    writer.WriteVUInt32((uint) (ctx.CurrentPrefix.Length+ctx.CurrentSuffix.Length-ctx.PreviousCurrentCommonLength));
+                    if (ctx.CurrentPrefix.Length <= ctx.PreviousCurrentCommonLength)
+                    {
+                        writer.WriteBlock(ctx.CurrentSuffix.Slice((int)ctx.PreviousCurrentCommonLength-ctx.CurrentPrefix.Length));
+                    }
+                    else
+                    {
+                        writer.WriteBlock(ctx.CurrentPrefix.Slice((int)ctx.PreviousCurrentCommonLength));
+                        writer.WriteBlock(ctx.CurrentSuffix);
+                    }
                     var vFileId = MemoryMarshal.Read<uint>(memberValue);
                     if (vFileId > 0) usedFileIds.Add(vFileId);
                     writer.WriteVUInt32(vFileId);
@@ -1486,10 +1487,8 @@ namespace BTDB.KVDBLayer
                         writer.WriteVUInt32(valueOfs);
                         writer.WriteVInt32(valueSize);
                     }
-
-                    prevKey = key;
                     bytesPerSecondLimiter.Limit((ulong) writer.GetCurrentPosition());
-                }
+                });
             }
 
             writer.FlushBuffer();
