@@ -13,7 +13,7 @@ Currently this project these parts:
 - Snappy Compression
 - Event Storage
 
-All code written in C# and licenced under very permissive [MIT licence](http://www.opensource.org/licenses/mit-license.html). Currently multitargeting .NetCore 2.1 and .Net 4.7.1 (soon to be deprecated), main code has just one dependency (Mono.Posix.NETStandard). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
+All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting only .NetCore 3.0 or better, main code has just one dependency (Mono.Posix.NETStandard). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
 
@@ -23,7 +23,7 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops
 
 ### Features:
 
-- This is Key Value store written in C# without using any native code.
+- This is Key Value store written in C# with 2 implementation old on managed heap and new on native heap (has also prefix compression).
 - It is easily embeddable.
 - One storage is just one directory.
 - It has [ACID] properties with [MVCC].
@@ -55,7 +55,6 @@ It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops
 ### Roadmap:
 
 - Everything is there just use it
-- Try prefix/postfix key compression in memory BTree
 
 ---
 
@@ -135,7 +134,7 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 
 ### Features:
 
-- TCP/IP comunication, service types negotiation
+- TCP/IP communication, service types negotiation
 - Automatic serialization with dynamically generated optimal IL code.
 - Both Client and Server can register services
 - Async calls, OneWay calls, Exception propagation
