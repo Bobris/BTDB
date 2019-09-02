@@ -62,6 +62,8 @@ namespace BTDB.BTreeLib
                 return _childCount - 1;
             }
         }
+
+        public bool IsDegenerated => !IsNodeLeaf && _childCount == 1;
     }
 }
 

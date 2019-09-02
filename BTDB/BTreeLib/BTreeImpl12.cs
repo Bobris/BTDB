@@ -473,6 +473,13 @@ namespace BTDB.BTreeLib
             finish:
             left.Clear();
             right.Clear();
+            while (rootNode._root != IntPtr.Zero && NodeUtils12.Ptr2NodeHeader(rootNode._root).IsDegenerated)
+            {
+                var newRoot = NodeUtils12.GetBranchValuePtr(rootNode._root, 0);
+                NodeUtils12.Reference(newRoot);
+                Dereference(rootNode._root);
+                rootNode._root = newRoot;
+            }
             return count;
         }
 
