@@ -100,6 +100,30 @@ namespace BTDB.KVDBLayer
         {
             var result = _cursor.Find(_prefix, key.AsSyncReadOnlySpan());
             _keyIndex = -1;
+            if (_prefix.Length > 0)
+            {
+                if (result == FindResult.Previous && !_cursor.KeyHasPrefix(_prefix))
+                {
+                    if (!_cursor.MoveNext())
+                    {
+                        return FindResult.NotFound;
+                    }
+
+                    if (_cursor.KeyHasPrefix(_prefix))
+                    {
+                        return FindResult.Next;
+                    }
+
+                    _cursor.Invalidate();
+                    return FindResult.NotFound;
+                }
+                if (result == FindResult.Next && !_cursor.KeyHasPrefix(_prefix))
+                {
+                    // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
+                    _cursor.Invalidate();
+                    return FindResult.NotFound;
+                }
+            }
             return result;
         }
 

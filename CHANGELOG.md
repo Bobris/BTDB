@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+Find with prefix sometimes found records not matching prefix.
+
+### Added
+
+Some small speed optimizations.
+
 ## 18.0.0
 
 ### Changed

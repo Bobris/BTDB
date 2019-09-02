@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Assent;
+using BTDB.Allocators;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -18,6 +19,7 @@ namespace BTDBTest
     {
         IKeyValueDB _lowDb;
         IObjectDB _db;
+        LeakDetectorWrapperAllocator _allocator;
 
         public class Person : IEquatable<Person>
         {
@@ -67,7 +69,14 @@ namespace BTDBTest
 
         public ObjectDbTest()
         {
-            _lowDb = new InMemoryKeyValueDB();
+            _allocator = new LeakDetectorWrapperAllocator(new MallocAllocator());
+            _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
+            {
+                Allocator = _allocator,
+                CompactorScheduler = CompactorScheduler.Instance,
+                Compression = new NoCompressionStrategy(),
+                FileCollection = new InMemoryFileCollection()
+            });
             OpenDb();
         }
 
@@ -75,6 +84,7 @@ namespace BTDBTest
         {
             _db.Dispose();
             _lowDb.Dispose();
+            _allocator.Dispose();
         }
 
         void ReopenDb()
