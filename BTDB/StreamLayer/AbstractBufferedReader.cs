@@ -18,7 +18,6 @@ namespace BTDB.StreamLayer
         protected int Pos; // -1 for eof
         protected int End; // -1 for eof
         protected char[] CharBuf;
-        protected byte[] Bytes16;
 
         protected abstract void FillBuffer();
 
@@ -560,14 +559,9 @@ namespace BTDB.StreamLayer
             ReadBlock(buffer.AsSyncSpan());
         }
 
-        protected byte[] Get16Bytes()
-        {
-            return Bytes16 ?? (Bytes16 = new byte[16]);
-        }
-
         public Guid ReadGuid()
         {
-            var res = Get16Bytes();
+            Span<byte> res = stackalloc byte[16];
             ReadBlock(res);
             return new Guid(res);
         }
@@ -712,13 +706,13 @@ namespace BTDB.StreamLayer
                     return new IPAddress((uint) ReadInt32LE());
                 case 1:
                 {
-                    var ip6Bytes = Get16Bytes();
+                    Span<byte> ip6Bytes = stackalloc byte[16];
                     ReadBlock(ip6Bytes);
                     return new IPAddress(ip6Bytes);
                 }
                 case 2:
                 {
-                    var ip6Bytes = Get16Bytes();
+                    Span<byte> ip6Bytes = stackalloc byte[16];
                     ReadBlock(ip6Bytes);
                     var scopeid = (long) ReadVUInt64();
                     return new IPAddress(ip6Bytes, scopeid);
