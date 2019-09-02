@@ -436,16 +436,18 @@ namespace BTDB.StreamLayer
 
             if (value.AddressFamily == AddressFamily.InterNetworkV6)
             {
+                Span<byte> buf = stackalloc byte[16];
+                value.TryWriteBytes(buf, out _);
                 if (value.ScopeId != 0)
                 {
                     WriteUInt8(2);
-                    WriteBlock(value.GetAddressBytes());
+                    WriteBlock(buf);
                     WriteVUInt64((ulong) value.ScopeId);
                 }
                 else
                 {
                     WriteUInt8(1);
-                    WriteBlock(value.GetAddressBytes());
+                    WriteBlock(buf);
                 }
             }
             else
