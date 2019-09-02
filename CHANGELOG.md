@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 18.1.0
+
 ### Fixed
 
 Find with prefix sometimes found records not matching prefix.
