@@ -963,16 +963,27 @@ namespace BTDB.KVDBLayer
 
         public string CalcStats()
         {
-            var sb = new StringBuilder("KeyValueCount:" + _lastCommitted.GetCount() + '\n'
-                                       + "FileCount:" + FileCollection.GetCount() + '\n'
-                                       + "FileGeneration:" + FileCollection.LastFileGeneration + '\n');
-            foreach (var file in _fileCollection.FileInfos)
+            var oldestRoot = (IRootNode)ReferenceAndGetOldestRoot();
+            var lastCommitted = (IRootNode)ReferenceAndGetLastCommitted();
+            try
             {
-                sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}\n", file.Key, FileCollection.GetSize(file.Key),
-                    file.Value.FileType, file.Value.Generation);
-            }
+                var sb = new StringBuilder(
+                    $"KeyValueCount:{lastCommitted.GetCount()}\nFileCount:{FileCollection.GetCount()}\nFileGeneration:{FileCollection.LastFileGeneration}\n");
+                sb.Append($"LastTrId:{lastCommitted.TransactionId},TRL:{lastCommitted.TrLogFileId},ComUlong:{lastCommitted.CommitUlong}\n");
+                sb.Append($"OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong}\n");
+                foreach (var file in _fileCollection.FileInfos)
+                {
+                    sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}\n", file.Key, FileCollection.GetSize(file.Key),
+                        file.Value.FileType, file.Value.Generation);
+                }
 
-            return sb.ToString();
+                return sb.ToString();
+            }
+            finally
+            {
+                DereferenceRootNodeInternal(oldestRoot);
+                DereferenceRootNodeInternal(lastCommitted);
+            }
         }
 
         public bool Compact(CancellationToken cancellation)

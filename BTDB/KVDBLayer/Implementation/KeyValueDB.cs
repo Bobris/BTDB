@@ -768,16 +768,27 @@ namespace BTDB.KVDBLayer
 
         public string CalcStats()
         {
-            var sb = new StringBuilder("KeyValueCount:" + _lastCommited.CalcKeyCount() + Environment.NewLine
-                                       + "FileCount:" + FileCollection.GetCount() + Environment.NewLine
-                                       + "FileGeneration:" + FileCollection.LastFileGeneration + Environment.NewLine);
-            foreach (var file in _fileCollection.FileInfos)
+            var oldestRoot = (IBTreeRootNode)ReferenceAndGetOldestRoot();
+            var lastCommitted = (IBTreeRootNode)ReferenceAndGetLastCommitted();
+            try
             {
-                sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}{4}", file.Key, FileCollection.GetSize(file.Key),
-                    file.Value.FileType, file.Value.Generation, Environment.NewLine);
-            }
+                var sb = new StringBuilder(
+                    $"KeyValueCount:{lastCommitted.CalcKeyCount()}\nFileCount:{FileCollection.GetCount()}\nFileGeneration:{FileCollection.LastFileGeneration}\n");
+                sb.Append($"LastTrId:{lastCommitted.TransactionId},TRL:{lastCommitted.TrLogFileId},ComUlong:{lastCommitted.CommitUlong}\n");
+                sb.Append($"OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong}\n");
+                foreach (var file in _fileCollection.FileInfos)
+                {
+                    sb.AppendFormat("{0} Size:{1} Type:{2} Gen:{3}\n", file.Key, FileCollection.GetSize(file.Key),
+                        file.Value.FileType, file.Value.Generation);
+                }
 
-            return sb.ToString();
+                return sb.ToString();
+            }
+            finally
+            {
+                DereferenceRootNodeInternal(oldestRoot);
+                DereferenceRootNodeInternal(lastCommitted);
+            }
         }
 
         public bool Compact(CancellationToken cancellation)

@@ -8,6 +8,7 @@ Find with prefix sometimes found records not matching prefix.
 
 ### Added
 
+Improved CalcStats information.
 Some small speed optimizations.
 
 ## 18.0.0
