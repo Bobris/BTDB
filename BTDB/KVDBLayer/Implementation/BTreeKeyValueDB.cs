@@ -85,7 +85,6 @@ namespace BTDB.KVDBLayer
             if (options.FileCollection == null) throw new ArgumentNullException(nameof(options.FileCollection));
             if (options.FileSplitSize < 1024 || options.FileSplitSize > int.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(options.FileSplitSize), "Allowed range 1024 - 2G");
-            if (options.Allocator == null) throw new ArgumentNullException(nameof(options.Allocator));
             _compactorScheduler = options.CompactorScheduler;
             MaxTrLogFileSize = options.FileSplitSize;
             _compression = options.Compression ?? throw new ArgumentNullException(nameof(options.Compression));
@@ -93,8 +92,8 @@ namespace BTDB.KVDBLayer
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
             CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
-            _allocator = options.Allocator;
-            _lastCommitted = BTreeImpl12.CreateEmptyRoot(options.Allocator);
+            _allocator = options.Allocator ?? new MallocAllocator();
+            _lastCommitted = BTreeImpl12.CreateEmptyRoot(_allocator);
             _lastCommitted.Commit();
             _preserveHistoryUpToCommitUlong = (long) (options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
             LoadInfoAboutFiles(options.OpenUpToCommitUlong);

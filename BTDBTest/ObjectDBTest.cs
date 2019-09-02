@@ -73,7 +73,7 @@ namespace BTDBTest
             _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
             {
                 Allocator = _allocator,
-                CompactorScheduler = CompactorScheduler.Instance,
+                CompactorScheduler = null,
                 Compression = new NoCompressionStrategy(),
                 FileCollection = new InMemoryFileCollection()
             });

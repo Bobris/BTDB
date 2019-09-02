@@ -20,7 +20,12 @@ namespace BTDBTest
         public ObjectDbTableTest(ITestOutputHelper output)
         {
             _output = output;
-            _lowDb = new InMemoryKeyValueDB();
+            _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
+            {
+                CompactorScheduler = null,
+                Compression = new NoCompressionStrategy(),
+                FileCollection = new InMemoryFileCollection()
+            });
             OpenDb();
         }
 
@@ -2075,7 +2080,7 @@ namespace BTDBTest
             [PrimaryKey(3)]
             public ulong Id { get; set; }
             public string Name { get; set; }
-            
+
         }
 
 
@@ -2084,7 +2089,7 @@ namespace BTDBTest
             [PersistedName("BusinessId")]
             uint CompanyId { get; set; }
             string Code { get; set; }
-            
+
             void Insert(CompanyName room);
 
             CompanyName FindById(ulong Id);
@@ -2099,7 +2104,7 @@ namespace BTDBTest
                 var table = creator(tr);
                 table.CompanyId = 10;
                 table.Code = "X";
-                
+
                 table.Insert(new CompanyName { Name = "Q", Id = 11 });
                 Assert.Single(table);
                 foreach (var c in table)
@@ -2381,7 +2386,7 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
-        
+
         public class ItemTask
         {
             [PrimaryKey(1)]
@@ -2405,7 +2410,7 @@ namespace BTDBTest
         {
             Func<IObjectDBTransaction, IItemTaskTable> creator;
             var date = new DateTime(2019, 1, 24, 1, 0, 0, DateTimeKind.Utc);
-            
+
             using (var tr = _db.StartTransaction())
             {
                 creator = tr.InitRelation<IItemTaskTable>("ItemTask");
@@ -2451,13 +2456,13 @@ namespace BTDBTest
             void Insert(SimpleJob link);
             SimpleJob FindById(ulong id);
             void ShallowRemoveById(ulong id);
-        } 
-        
-        
+        }
+
+
         [Fact]
         public void CanEasilyCopyComplexObjectBetweenRelationsOfSameType()
         {
-            Func<IObjectDBTransaction, ISimpleJobTable> creatorToProcess;   
+            Func<IObjectDBTransaction, ISimpleJobTable> creatorToProcess;
             Func<IObjectDBTransaction, ISimpleJobTable> creatorDone;
 
             using (var tr = _db.StartTransaction())
@@ -2470,7 +2475,7 @@ namespace BTDBTest
                     {Id = 1, Properties = new Dictionary<int, string> {[1] = "one", [2] = "two"}});
                 tr.Commit();
             }
-            
+
             using (var tr = _db.StartTransaction())
             {
                 var todo = creatorToProcess(tr);
@@ -2478,11 +2483,11 @@ namespace BTDBTest
 
                 var job = todo.FindById(1);
                 todo.ShallowRemoveById(1);
-                
+
                 done.Insert(job);
                 tr.Commit();
             }
-            
+
             using (var tr = _db.StartTransaction())
             {
                 var todo = creatorToProcess(tr);
