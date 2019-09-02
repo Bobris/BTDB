@@ -24,7 +24,7 @@ namespace BTDB.ODBLayer
         protected ByteBuffer KeyBytes;
         int _prevModificationCounter;
 
-        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes, 
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
                                   IRelationModificationCounter modificationCounter)
         {
             RelationInfo = relationInfo;
@@ -191,7 +191,7 @@ namespace BTDB.ODBLayer
         {
             _prefixFieldCount = prefixFieldCount;
             _manipulator = manipulator;
-            
+
             _ascending = order == EnumerationOrder.Ascending;
 
             _tr = manipulator.Transaction;
@@ -339,11 +339,10 @@ namespace BTDB.ODBLayer
 
             return (T)_manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(), false);
         }
-        
+
         public ByteBuffer GetKeyBytes()
         {
-            var key = ByteBuffer.NewEmpty();
-            return key.ResizingAppend(ByteBuffer.NewSync(_keyValueTr.GetKeyPrefix())).ResizingAppend(_keyValueTr.GetKey());
+            return _keyValueTr.GetKeyIncludingPrefix();
         }
 
         void Seek()
@@ -496,7 +495,7 @@ namespace BTDB.ODBLayer
 
                 _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
             }
-            
+
         }
 
         public uint Count => _count;

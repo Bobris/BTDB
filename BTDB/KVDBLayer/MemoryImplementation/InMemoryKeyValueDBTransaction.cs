@@ -224,6 +224,12 @@ namespace BTDB.KVDBLayer
             return ByteBuffer.NewAsync(wholeKey.Buffer, wholeKey.Offset + _prefix.Length, wholeKey.Length - _prefix.Length);
         }
 
+        public ByteBuffer GetKeyIncludingPrefix()
+        {
+            if (!IsValidKey()) return ByteBuffer.NewEmpty();
+            return GetCurrentKeyFromStack();
+        }
+
         public ByteBuffer GetValue()
         {
             if (!IsValidKey()) return ByteBuffer.NewEmpty();

@@ -91,6 +91,11 @@ namespace BTDB.KVDBLayer
         ByteBuffer GetKey();
 
         /// <summary>
+        /// Return current key and it includes current prefix
+        /// </summary>
+        ByteBuffer GetKeyIncludingPrefix();
+
+        /// <summary>
         /// Return current value.
         /// </summary>
         ByteBuffer GetValue();

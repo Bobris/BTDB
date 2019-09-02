@@ -356,6 +356,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetKey();
             }
 
+            public ByteBuffer GetKeyIncludingPrefix()
+            {
+                return _keyValueDBTransaction.GetKeyIncludingPrefix();
+            }
+
             public ByteBuffer GetValue()
             {
                 return _keyValueDBTransaction.GetValue();
