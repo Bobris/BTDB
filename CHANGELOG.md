@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 18.2.0
+
 ### Added
 
 EventLayers Deserialization now supports classes without parameter-less constructor.
