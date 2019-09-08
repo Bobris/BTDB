@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -14,7 +15,10 @@ namespace BTDB.EventStoreLayer
     public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         Type _type;
-        readonly List<KeyValuePair<string, ITypeDescriptor>> _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
+
+        readonly List<KeyValuePair<string, ITypeDescriptor>>
+            _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
+
         readonly ITypeDescriptorCallbacks _typeSerializers;
 
         public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
@@ -25,7 +29,8 @@ namespace BTDB.EventStoreLayer
             Name = typeSerializers.TypeNameMapper.ToName(type);
         }
 
-        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader,
+            Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
         {
             _typeSerializers = typeSerializers;
             Sealed = false;
@@ -33,11 +38,13 @@ namespace BTDB.EventStoreLayer
             var fieldCount = reader.ReadVUInt32();
             while (fieldCount-- > 0)
             {
-                _fields.Add(new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
+                _fields.Add(
+                    new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
             }
         }
 
-        ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed, List<KeyValuePair<string, ITypeDescriptor>> nfs)
+        ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, string name, bool @sealed,
+            List<KeyValuePair<string, ITypeDescriptor>> nfs)
         {
             _typeSerializers = typeSerializers;
             Sealed = @sealed;
@@ -60,15 +67,24 @@ namespace BTDB.EventStoreLayer
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
                 if (ShouldNotBeStored(propertyInfo)) continue;
                 if (propertyInfo.GetGetMethod(true) == null)
-                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
+                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
+                                                        " and property " + propertyInfo.Name +
+                                                        " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
                 if (!isInterface && propertyInfo.GetSetMethod(true) == null)
-                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() + " and property " + propertyInfo.Name + " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
+                    throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
+                                                        " and property " + propertyInfo.Name +
+                                                        " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
             }
-            foreach (var fieldInfo in _type.GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+
+            foreach (var fieldInfo in _type.GetFields(System.Reflection.BindingFlags.NonPublic |
+                                                      System.Reflection.BindingFlags.Public |
+                                                      System.Reflection.BindingFlags.Instance))
             {
                 if (fieldInfo.IsPrivate) continue;
                 if (ShouldNotBeStored(fieldInfo)) continue;
-                throw new InvalidOperationException("Serialize type " + type.ToSimpleName() + " with nonprivate field " + fieldInfo.Name + " is forbidden without marking it with [NotStored] attribute");
+                throw new InvalidOperationException("Serialize type " + type.ToSimpleName() +
+                                                    " with nonprivate field " + fieldInfo.Name +
+                                                    " is forbidden without marking it with [NotStored] attribute");
             }
         }
 
@@ -93,13 +109,15 @@ namespace BTDB.EventStoreLayer
                     _fields.Add(new KeyValuePair<string, ITypeDescriptor>(GetPersitentName(propertyInfo), descriptor));
                 }
             }
+
             _fields.Sort((l, r) => string.Compare(l.Key, r.Key));
             return true;
         }
 
         static string GetPersitentName(System.Reflection.PropertyInfo propertyInfo)
         {
-            var a = propertyInfo.GetCustomAttributes(typeof(PersistedNameAttribute), false).Cast<PersistedNameAttribute>().FirstOrDefault();
+            var a = propertyInfo.GetCustomAttributes(typeof(PersistedNameAttribute), false)
+                .Cast<PersistedNameAttribute>().FirstOrDefault();
             return a != null ? a.Name : propertyInfo.Name;
         }
 
@@ -110,6 +128,7 @@ namespace BTDB.EventStoreLayer
                 text.Append(Name);
                 return;
             }
+
             stack.Add(this);
             text.AppendLine(Name);
             AppendIndent(text, indent);
@@ -123,6 +142,7 @@ namespace BTDB.EventStoreLayer
                 pair.Value.BuildHumanReadableFullName(text, stack, indent);
                 text.AppendLine();
             }
+
             indent--;
             AppendIndent(text, indent);
             text.Append("}");
@@ -131,7 +151,7 @@ namespace BTDB.EventStoreLayer
 
         static void AppendIndent(StringBuilder text, uint indent)
         {
-            text.Append(' ', (int)(indent * 4));
+            text.Append(' ', (int) (indent * 4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
@@ -154,6 +174,7 @@ namespace BTDB.EventStoreLayer
             {
                 stack.Remove(this);
             }
+
             return true;
         }
 
@@ -174,7 +195,8 @@ namespace BTDB.EventStoreLayer
             return !_fields.All(p => p.Value.StoredInline) || _fields.Any(p => p.Value.AnyOpNeedsCtx());
         }
 
-        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
+        public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx,
+            Action<IILGen> pushDescriptor, Type targetType)
         {
             if (targetType == typeof(object))
             {
@@ -183,7 +205,7 @@ namespace BTDB.EventStoreLayer
                 ilGenerator
                     .Do(pushDescriptor)
                     .Castclass(typeof(ObjectTypeDescriptor))
-                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) }))
+                    .Newobj(typeof(DynamicObject).GetConstructor(new[] {typeof(ObjectTypeDescriptor)}))
                     .Stloc(resultLoc)
                     .Do(pushCtx)
                     .BrfalseS(labelNoCtx)
@@ -201,10 +223,12 @@ namespace BTDB.EventStoreLayer
                         il =>
                             il.Do(pushDescriptor)
                                 .LdcI4(idxForCapture)
-                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _typeSerializers.ConvertorGenerator);
+                                .Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object),
+                        _typeSerializers.ConvertorGenerator);
                     ilGenerator.Callvirt(() => default(DynamicObject).SetFieldByIdxFast(0, null));
                     idx++;
                 }
+
                 ilGenerator
                     .Ldloc(resultLoc)
                     .Castclass(typeof(object));
@@ -213,8 +237,22 @@ namespace BTDB.EventStoreLayer
             {
                 var resultLoc = ilGenerator.DeclareLocal(targetType, "result");
                 var labelNoCtx = ilGenerator.DefineLabel();
+                var defaultConstructor = targetType.GetConstructor(Type.EmptyTypes);
+                if (defaultConstructor == null)
+                {
+                    ilGenerator
+                        .Ldtoken(targetType)
+                        .Call(() => Type.GetTypeFromHandle(new RuntimeTypeHandle()))
+                        .Call(() => RuntimeHelpers.GetUninitializedObject(null))
+                        .Castclass(targetType);
+                }
+                else
+                {
+                    ilGenerator
+                        .Newobj(defaultConstructor);
+                }
+
                 ilGenerator
-                    .Newobj(targetType.GetConstructor(Type.EmptyTypes))
                     .Stloc(resultLoc)
                     .Do(pushCtx)
                     .BrfalseS(labelNoCtx)
@@ -233,12 +271,15 @@ namespace BTDB.EventStoreLayer
                         pair.Value.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
                         continue;
                     }
+
                     ilGenerator.Ldloc(resultLoc);
                     pair.Value.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
-                                            il => il.Do(pushDescriptor).LdcI4(idxForCapture).Callvirt(() => default(ITypeDescriptor).NestedType(0)),
-                                            prop.PropertyType, _typeSerializers.ConvertorGenerator);
+                        il => il.Do(pushDescriptor).LdcI4(idxForCapture)
+                            .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
+                        prop.PropertyType, _typeSerializers.ConvertorGenerator);
                     ilGenerator.Callvirt(prop.GetSetMethod(true));
                 }
+
                 ilGenerator.Ldloc(resultLoc);
             }
         }
@@ -294,6 +335,7 @@ namespace BTDB.EventStoreLayer
                     _fieldValues[idx] = value;
                     return;
                 }
+
                 var realidx = _ownerDescriptor.FindFieldIndexWithThrow(fieldName);
                 _fieldValues[realidx] = value;
             }
@@ -306,6 +348,7 @@ namespace BTDB.EventStoreLayer
                         ThrowMemberAccessException(fieldName);
                     return _fieldValues[idx];
                 }
+
                 var realidx = _ownerDescriptor.FindFieldIndexWithThrow(fieldName);
                 return _fieldValues[realidx];
             }
@@ -327,11 +370,11 @@ namespace BTDB.EventStoreLayer
                     var descriptor = (Value as DynamicObject)._ownerDescriptor;
                     var idx = descriptor._fields.FindIndex(p => p.Key == binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
-                        typeof(DynamicObject).GetMethod("SetFieldByIdx"),
-                        Expression.Constant(idx),
-                        Expression.Constant(binder.Name),
-                        Expression.Constant(descriptor),
-                        Expression.Convert(value.Expression, typeof(object))),
+                            typeof(DynamicObject).GetMethod("SetFieldByIdx"),
+                            Expression.Constant(idx),
+                            Expression.Constant(binder.Name),
+                            Expression.Constant(descriptor),
+                            Expression.Convert(value.Expression, typeof(object))),
                         BindingRestrictions.GetTypeRestriction(Expression, LimitType));
                 }
 
@@ -340,10 +383,10 @@ namespace BTDB.EventStoreLayer
                     var descriptor = (Value as DynamicObject)._ownerDescriptor;
                     var idx = descriptor._fields.FindIndex(p => p.Key == binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
-                        typeof(DynamicObject).GetMethod("GetFieldByIdx"),
-                        Expression.Constant(idx),
-                        Expression.Constant(binder.Name),
-                        Expression.Constant(descriptor)),
+                            typeof(DynamicObject).GetMethod("GetFieldByIdx"),
+                            Expression.Constant(idx),
+                            Expression.Constant(binder.Name),
+                            Expression.Constant(descriptor)),
                         BindingRestrictions.GetTypeRestriction(Expression, LimitType));
                 }
 
@@ -365,6 +408,7 @@ namespace BTDB.EventStoreLayer
                     sb.Append($"\"{item.Key}\"").Append(": ").AppendJsonLike(_fieldValues[idx]);
                     idx++;
                 }
+
                 sb.Append(" }");
                 return sb.ToString();
             }
@@ -390,7 +434,8 @@ namespace BTDB.EventStoreLayer
                 _objectTypeDescriptor = objectTypeDescriptor;
             }
 
-            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
+            public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx,
+                Type type)
             {
                 var allProps = _objectTypeDescriptor.GetPreferedType().GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)
@@ -441,13 +486,15 @@ namespace BTDB.EventStoreLayer
             {
                 if (pair.Key == name) return true;
             }
+
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        public void Persist(AbstractBufferedWriter writer,
+            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
         {
             writer.WriteString(Name);
-            writer.WriteVUInt32((uint)_fields.Count);
+            writer.WriteVUInt32((uint) _fields.Count);
             foreach (var pair in _fields)
             {
                 writer.WriteString(pair.Key);
@@ -455,7 +502,8 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
+        public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue, Type valueType)
         {
             if (GetPreferedType() != valueType)
                 throw new ArgumentException("value type does not match my type");
@@ -467,17 +515,20 @@ namespace BTDB.EventStoreLayer
             {
                 var pair = pairi;
                 var methodInfo = _type.GetProperties().First(p => GetPersitentName(p) == pair.Key).GetGetMethod(true);
-                pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
+                pair.Value.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo.ReturnType);
             }
         }
 
-        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map)
+        public ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers,
+            Func<ITypeDescriptor, ITypeDescriptor> map)
         {
             var tds = new ITypeDescriptor[_fields.Count];
             for (var i = 0; i < _fields.Count; i++)
             {
                 tds[i] = map(_fields[i].Value);
             }
+
             if (typeSerializers == _typeSerializers && tds.SequenceEqual(_fields.Select(i => i.Value)))
                 return this;
             var nfs = new List<KeyValuePair<string, ITypeDescriptor>>(tds.Length);
@@ -485,6 +536,7 @@ namespace BTDB.EventStoreLayer
             {
                 nfs.Add(new KeyValuePair<string, ITypeDescriptor>(_fields[i].Key, tds[i]));
             }
+
             return new ObjectTypeDescriptor(typeSerializers, Name, Sealed, nfs);
         }
     }

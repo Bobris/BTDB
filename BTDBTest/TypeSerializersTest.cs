@@ -80,6 +80,17 @@ namespace BTDBTest
             public int IntField { get; set; }
         }
 
+        public class SimpleDtoWithoutDefaultConstructor
+        {
+            public SimpleDtoWithoutDefaultConstructor(string a)
+            {
+                StringField = a;
+            }
+            public string StringField { get; set; }
+            public int IntField { get; set; }
+        }
+
+
         [Fact]
         public void CanSerializeSimpleDto()
         {
@@ -92,6 +103,22 @@ namespace BTDBTest
             var reader = new ByteBufferReader(writer.Data);
             _mapping.LoadTypeDescriptors(reader);
             var obj = (SimpleDto)_mapping.LoadObject(reader);
+            Assert.Equal(value.IntField, obj.IntField);
+            Assert.Equal(value.StringField, obj.StringField);
+        }
+
+        [Fact]
+        public void CanSerializeSimpleDtoWithoutDefaultConstructor()
+        {
+            var writer = new ByteBufferWriter();
+            var value = new SimpleDtoWithoutDefaultConstructor("Hello") { IntField = 42 };
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
+            storedDescriptorCtx.FinishNewDescriptors(writer);
+            storedDescriptorCtx.StoreObject(writer, value);
+            storedDescriptorCtx.CommitNewDescriptors();
+            var reader = new ByteBufferReader(writer.Data);
+            _mapping.LoadTypeDescriptors(reader);
+            var obj = (SimpleDtoWithoutDefaultConstructor)_mapping.LoadObject(reader);
             Assert.Equal(value.IntField, obj.IntField);
             Assert.Equal(value.StringField, obj.StringField);
         }
