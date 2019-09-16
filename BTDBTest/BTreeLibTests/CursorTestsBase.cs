@@ -563,6 +563,23 @@ namespace BTreeLibTest
         }
 
         [Fact]
+        public void FindLastPrefixBugFixed()
+        {
+            var val = GetSampleValue().ToArray();
+            var key = new byte[10];
+            key[0] = 2;
+            for (int i = 0; i < 4; i++)
+            {
+                key[1] = (byte)i;
+                _cursor.Upsert(key, val);
+            }
+
+            key[1] = 1;
+            Assert.True(_cursor.FindLast(key.AsSpan(0, 2)));
+            Assert.Equal(1,_cursor.CalcIndex());
+        }
+
+        [Fact]
         public void FindExactSpecialCases()
         {
             var val = GetSampleValue().ToArray();

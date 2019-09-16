@@ -1350,7 +1350,7 @@ namespace BTDB.BTreeLib
                         else if (idx > 0)
                         {
                             var k = NodeUtils12.LongKeyPtrToSpan(keys[idx]);
-                            if (k.Slice(0, Math.Min(k.Length, keyPrefix.Length)).SequenceCompareTo(keyPrefix) > 0)
+                            if (k.Slice(0, Math.Min(k.Length, keyRest.Length)).SequenceCompareTo(keyRest) > 0)
                                 idx--;
                         }
 
@@ -1377,7 +1377,7 @@ namespace BTDB.BTreeLib
                         else if (idx > 0)
                         {
                             var k = GetShortKey(offsets, keys, idx);
-                            if (k.Slice(0, Math.Min(k.Length, keyPrefix.Length)).SequenceCompareTo(keyPrefix) > 0)
+                            if (k.Slice(0, Math.Min(k.Length, keyRest.Length)).SequenceCompareTo(keyRest) > 0)
                                 idx--;
                         }
 
