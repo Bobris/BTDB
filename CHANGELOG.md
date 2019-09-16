@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 18.2.1
+
 ### Fixed
 
 Bug in FindLast in native heap KVDB.
