@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 18.2.2
+
 ### Fixed
 
 Another bug in FindLast made me to delete it and rewrite again from managed heap implementation.
