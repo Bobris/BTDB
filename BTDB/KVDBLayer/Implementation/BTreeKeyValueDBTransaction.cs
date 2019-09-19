@@ -201,8 +201,7 @@ namespace BTDB.KVDBLayer
             {
                 _cursor2 = BTreeRoot.CreateCursor();
             }
-            _cursor2.FindLast(_prefix);
-            _prefixKeyCount = _cursor2.CalcIndex() - _prefixKeyStart + 1;
+            _prefixKeyCount = _cursor2.FindLastWithPrefix(_prefix) - _prefixKeyStart + 1;
             return _prefixKeyCount;
         }
 

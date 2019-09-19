@@ -26,8 +26,8 @@ namespace BTDB.BTreeLib
         public void SetNewRoot(IRootNode artRoot)
         {
             var newRoot = (RootNode12)artRoot;
-            if (newRoot._root != _rootNode._root)
-                throw new ArgumentException("SetNewRoot allows only upgrades to writable identical root");
+            if (newRoot._impl != _rootNode._impl)
+                throw new ArgumentException("SetNewRoot allows only same db instance");
             _rootNode = (RootNode12)artRoot;
         }
 
@@ -83,7 +83,7 @@ namespace BTDB.BTreeLib
 
         public FindResult Find(ReadOnlySpan<byte> key)
         {
-            return _rootNode._impl.Find(_rootNode, ref _stack, key);
+            return BTreeImpl12.Find(_rootNode, ref _stack, key);
         }
 
         public FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key)
@@ -96,16 +96,16 @@ namespace BTDB.BTreeLib
             return _rootNode._impl.FindFirst(_rootNode, ref _stack, keyPrefix);
         }
 
-        public bool FindLast(ReadOnlySpan<byte> keyPrefix)
+        public long FindLastWithPrefix(ReadOnlySpan<byte> keyPrefix)
         {
-            return _rootNode._impl.FindLast(_rootNode, ref _stack, keyPrefix);
+            return BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
         }
 
         public int GetKeyLength()
         {
             if (_stack.Count == 0) return -1;
             ref var stackItem = ref _stack[_stack.Count - 1];
-            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
             if (header.HasLongKeys)
             {
                 var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
@@ -133,7 +133,7 @@ namespace BTDB.BTreeLib
         {
             AssertValid();
             ref var stackItem = ref _stack[_stack.Count - 1];
-            ref NodeHeader12 header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
+            ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
             if (header.HasLongKeys)
             {
                 var keys = NodeUtils12.GetLongKeyPtrs(stackItem._node);
@@ -171,7 +171,7 @@ namespace BTDB.BTreeLib
             if (_stack.Count == 0)
                 return false;
             ref var stackItem = ref _stack[_stack.Count - 1];
-            return _rootNode._impl.IsKeyPrefix(stackItem._node, stackItem._posInNode, prefix);
+            return BTreeImpl12.IsKeyPrefix(stackItem._node, stackItem._posInNode, prefix);
         }
 
         public int GetValueLength()
@@ -202,7 +202,7 @@ namespace BTDB.BTreeLib
         {
             if (_stack.Count == 0)
             {
-                return FindLast(new ReadOnlySpan<byte>());
+                return BTreeImpl12.MoveToLast(_rootNode._root, ref _stack);
             }
 
             return _rootNode._impl.MovePrevious(ref _stack);

@@ -12,7 +12,7 @@ namespace BTDB.BTreeLib
         ICursor Clone();
         bool FindExact(ReadOnlySpan<byte> key);
         bool FindFirst(ReadOnlySpan<byte> keyPrefix);
-        bool FindLast(ReadOnlySpan<byte> keyPrefix);
+        long FindLastWithPrefix(ReadOnlySpan<byte> keyPrefix);
         FindResult Find(ReadOnlySpan<byte> key);
         FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key);
         bool SeekIndex(long index);
