@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.0.0
+
 ### Breaking change
 
 Needs to be compiled with in csproj:
