@@ -988,7 +988,7 @@ namespace BTDB.ARTLib
                 {
                     if (index == 0)
                     {
-                        stack.Add().Set(top, keyOffset, -1, 0);
+                        stack.AddRef().Set(top, keyOffset, -1, 0);
                         return true;
                     }
 
@@ -1007,7 +1007,7 @@ namespace BTDB.ARTLib
                                 var rcc = (long)NodeUtilsV.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                 if (index < rcc)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
+                                    stack.AddRef().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
                                     top = ptr;
                                     break;
                                 }
@@ -1018,7 +1018,7 @@ namespace BTDB.ARTLib
                             {
                                 if (index == 0)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
+                                    stack.AddRef().Set(top, keyOffset, (short)j, TreeNodeUtils.ReadByte(top + 16 + j));
                                     return true;
                                 }
 
@@ -1040,7 +1040,7 @@ namespace BTDB.ARTLib
                                     var rcc = (long)NodeUtilsV.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                     if (index < rcc)
                                     {
-                                        stack.Add().Set(top, keyOffset, span[j], (byte)j);
+                                        stack.AddRef().Set(top, keyOffset, span[j], (byte)j);
                                         top = ptr;
                                         break;
                                     }
@@ -1051,7 +1051,7 @@ namespace BTDB.ARTLib
                                 {
                                     if (index == 0)
                                     {
-                                        stack.Add().Set(top, keyOffset, span[j], (byte)j);
+                                        stack.AddRef().Set(top, keyOffset, span[j], (byte)j);
                                         return true;
                                     }
 
@@ -1071,7 +1071,7 @@ namespace BTDB.ARTLib
                                 var rcc = (long)NodeUtilsV.Ptr2NodeHeader(ptr)._recursiveChildCount;
                                 if (index < rcc)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, (byte)j);
+                                    stack.AddRef().Set(top, keyOffset, (short)j, (byte)j);
                                     top = ptr;
                                     break;
                                 }
@@ -1082,7 +1082,7 @@ namespace BTDB.ARTLib
                             {
                                 if (index == 0)
                                 {
-                                    stack.Add().Set(top, keyOffset, (short)j, (byte)j);
+                                    stack.AddRef().Set(top, keyOffset, (short)j, (byte)j);
                                     return true;
                                 }
 
@@ -1599,7 +1599,7 @@ namespace BTDB.ARTLib
                 }
                 else
                 {
-                    stackItem = ref stack.Add();
+                    stackItem = ref stack.AddRef();
                     stackItem.Set(AllocateNode(NodeTypeV.NodeLeaf | NodeTypeV.IsLeaf, 0, (uint)content.Length),
                         stack[stack.Count - 1]._keyOffset, -1, 0);
                     WritePtrInNode(stack[stack.Count - 2], stackItem._node);
@@ -1773,7 +1773,7 @@ namespace BTDB.ARTLib
                         return false;
                     }
 
-                    stack.Add().Set(top, (uint)key.Length, -1, 0);
+                    stack.AddRef().Set(top, (uint)key.Length, -1, 0);
                     return true;
                 }
 
@@ -1788,7 +1788,7 @@ namespace BTDB.ARTLib
                 if (pos >= 0)
                 {
                     keyOffset += newKeyPrefixSize + 1;
-                    stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                    stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
@@ -1852,7 +1852,7 @@ namespace BTDB.ARTLib
                         return FindResult.Next;
                     }
 
-                    stack.Add().Set(top, (uint)key.Length, -1, 0);
+                    stack.AddRef().Set(top, (uint)key.Length, -1, 0);
                     return FindResult.Exact;
                 }
 
@@ -1861,7 +1861,7 @@ namespace BTDB.ARTLib
                     keyOffset += diffPos;
                     if (keyOffset >= keyPrefix.Length)
                     {
-                        stack.Add().Set(top, (uint)keyOffset, -1, 0);
+                        stack.AddRef().Set(top, (uint)keyOffset, -1, 0);
                         return FindResult.Previous;
                     }
 
@@ -1874,7 +1874,7 @@ namespace BTDB.ARTLib
                 keyOffset += diffPos + 1;
                 if (pos >= 0)
                 {
-                    stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                    stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
@@ -1904,7 +1904,7 @@ namespace BTDB.ARTLib
                 // scope
                 {
                     var (nearPos, nearByte) = FindNearPosAndByte(top, pos, b);
-                    stack.Add().Set(top, (uint)keyOffset, nearPos, nearByte);
+                    stack.AddRef().Set(top, (uint)keyOffset, nearPos, nearByte);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, nearPos), out var newTop))
                     {
                         if (nearByte < b)
@@ -2051,7 +2051,7 @@ namespace BTDB.ARTLib
                         return true;
                     }
 
-                    stack.Add().Set(top, (uint)keyOffset + keyPrefixSize, -1, 0);
+                    stack.AddRef().Set(top, (uint)keyOffset + keyPrefixSize, -1, 0);
                     return true;
                 }
 
@@ -2066,7 +2066,7 @@ namespace BTDB.ARTLib
                 if (pos >= 0)
                 {
                     keyOffset += newKeyPrefixSize + 1;
-                    stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                    stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
@@ -2127,7 +2127,7 @@ namespace BTDB.ARTLib
                 if (pos >= 0)
                 {
                     keyOffset += newKeyPrefixSize + 1;
-                    stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                    stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var newTop))
                     {
                         top = newTop;
@@ -2153,7 +2153,7 @@ namespace BTDB.ARTLib
                 keyOffset += (int)NodeUtilsV.GetPrefixSize(top);
                 if (header._nodeType.HasFlag(NodeTypeV.IsLeaf))
                 {
-                    stack.Add().Set(top, (uint)keyOffset, -1, 0);
+                    stack.AddRef().Set(top, (uint)keyOffset, -1, 0);
                     return;
                 }
 
@@ -2162,7 +2162,7 @@ namespace BTDB.ARTLib
                 {
                     case NodeTypeV.Node4:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
+                            stack.AddRef().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
                             var child = NodeUtilsV.ReadPtr(top + 16 + 4);
                             if (NodeUtilsV.IsPtrPtr(child))
                             {
@@ -2176,7 +2176,7 @@ namespace BTDB.ARTLib
                         }
                     case NodeTypeV.Node16:
                         {
-                            stack.Add().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
+                            stack.AddRef().Set(top, (uint)keyOffset, 0, TreeNodeUtils.ReadByte(top + 16));
                             var child = NodeUtilsV.ReadPtr(top + 16 + 16);
                             if (NodeUtilsV.IsPtrPtr(child))
                             {
@@ -2197,7 +2197,7 @@ namespace BTDB.ARTLib
                                 var pos = span[j];
                                 if (pos == 255)
                                     continue;
-                                stack.Add().Set(top, (uint)keyOffset, pos, (byte)j);
+                                stack.AddRef().Set(top, (uint)keyOffset, pos, (byte)j);
                                 var child = NodeUtilsV.ReadPtr(top + 16 + 256 + pos * 8);
                                 if (NodeUtilsV.IsPtrPtr(child))
                                 {
@@ -2220,7 +2220,7 @@ namespace BTDB.ARTLib
                                 {
                                     if (child != IntPtr.Zero)
                                     {
-                                        stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                        stack.AddRef().Set(top, (uint)keyOffset, (short)j, (byte)j);
                                         top = child;
                                         break;
                                     }
@@ -2229,7 +2229,7 @@ namespace BTDB.ARTLib
                                 }
                                 else
                                 {
-                                    stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                    stack.AddRef().Set(top, (uint)keyOffset, (short)j, (byte)j);
                                     return;
                                 }
                             }
@@ -2247,7 +2247,7 @@ namespace BTDB.ARTLib
                 keyOffset += (int)NodeUtilsV.GetPrefixSize(top);
                 if ((header._nodeType & NodeTypeV.NodeSizeMask) == NodeTypeV.NodeLeaf)
                 {
-                    stack.Add().Set(top, (uint)keyOffset, -1, 0);
+                    stack.AddRef().Set(top, (uint)keyOffset, -1, 0);
                     return;
                 }
 
@@ -2258,7 +2258,7 @@ namespace BTDB.ARTLib
                     case NodeTypeV.Node16:
                         {
                             var pos = header._childCount - 1;
-                            stack.Add().Set(top, (uint)keyOffset, (short)pos, TreeNodeUtils.ReadByte(top + 16 + pos));
+                            stack.AddRef().Set(top, (uint)keyOffset, (short)pos, TreeNodeUtils.ReadByte(top + 16 + pos));
                             if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var ptr))
                             {
                                 top = ptr;
@@ -2277,7 +2277,7 @@ namespace BTDB.ARTLib
                             {
                                 if (span[j] == 255)
                                     continue;
-                                stack.Add().Set(top, (uint)keyOffset, span[j], (byte)j);
+                                stack.AddRef().Set(top, (uint)keyOffset, span[j], (byte)j);
                                 if (IsPtr(NodeUtilsV.PtrInNode(top, span[j]), out var ptr))
                                 {
                                     top = ptr;
@@ -2296,7 +2296,7 @@ namespace BTDB.ARTLib
                             {
                                 if (ptr != IntPtr.Zero)
                                 {
-                                    stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                    stack.AddRef().Set(top, (uint)keyOffset, (short)j, (byte)j);
                                     top = ptr;
                                     break;
                                 }
@@ -2305,7 +2305,7 @@ namespace BTDB.ARTLib
                             }
                             else
                             {
-                                stack.Add().Set(top, (uint)keyOffset, (short)j, (byte)j);
+                                stack.AddRef().Set(top, (uint)keyOffset, (short)j, (byte)j);
                                 return;
                             }
                         }
@@ -2334,7 +2334,7 @@ namespace BTDB.ARTLib
                         return true;
                     }
 
-                    ref var stackItem = ref stack.Add();
+                    ref var stackItem = ref stack.AddRef();
                     stackItem.Set(
                         AllocateNode(NodeTypeV.NodeLeaf | NodeTypeV.IsLeaf, (uint)keyRest, (uint)content.Length),
                         (uint)key.Length, -1, 0);
@@ -2385,7 +2385,7 @@ namespace BTDB.ARTLib
 
                         if (nodeType.HasFlag(NodeTypeV.IsLeaf))
                         {
-                            stack.Add().Set(newNode, (uint)key.Length, -1, 0);
+                            stack.AddRef().Set(newNode, (uint)key.Length, -1, 0);
                             (size, ptr) = NodeUtilsV.GetValueSizeAndPtr(newNode);
                             unsafe
                             {
@@ -2403,7 +2403,7 @@ namespace BTDB.ARTLib
                             keyOffset += newKeyPrefixSize + 1;
                             var b2 = key[keyOffset - 1];
                             var pos2 = InsertChildIntoNode4(newNode, b2);
-                            stack.Add().Set(newNode, (uint)keyOffset, pos2, b2);
+                            stack.AddRef().Set(newNode, (uint)keyOffset, pos2, b2);
                             top = IntPtr.Zero;
                             OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
                             newNode = IntPtr.Zero;
@@ -2418,7 +2418,7 @@ namespace BTDB.ARTLib
 
                 if (keyPrefixSize == keyRest)
                 {
-                    stack.Add().Set(top, (uint)key.Length, -1, 0);
+                    stack.AddRef().Set(top, (uint)key.Length, -1, 0);
                     var hadIsLeaf = header._nodeType.HasFlag(NodeTypeV.IsLeaf);
                     if (header._nodeType.HasFlag(NodeTypeV.IsLeaf) &&
                         (NodeUtilsV.GetValueSizeAndPtr(top).Size == content.Length))
@@ -2473,7 +2473,7 @@ namespace BTDB.ARTLib
 
                         keyOffset += newKeyPrefixSize + 1;
                         TreeNodeUtils.WriteByte(newNode, 16, b);
-                        stack.Add().Set(newNode, (uint)keyOffset, 0, b);
+                        stack.AddRef().Set(newNode, (uint)keyOffset, 0, b);
                         top = IntPtr.Zero;
                         OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
                         newNode = IntPtr.Zero;
@@ -2489,7 +2489,7 @@ namespace BTDB.ARTLib
                 if (pos >= 0)
                 {
                     keyOffset += newKeyPrefixSize + 1;
-                    stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                    stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                     if (IsPtr(NodeUtilsV.PtrInNode(top, pos), out var newTop))
                     {
                         if (key.Length == keyOffset && IsValueInlineable(content) &&
@@ -2513,7 +2513,7 @@ namespace BTDB.ARTLib
                         }
                         else
                         {
-                            ref var stackItem = ref stack.Add();
+                            ref var stackItem = ref stack.AddRef();
                             stackItem.Set(AllocateNode(NodeTypeV.NodeLeaf | NodeTypeV.IsLeaf, 0, (uint)content.Length),
                                 (uint)key.Length, -1, 0);
                             var (size, ptr) = NodeUtilsV.GetValueSizeAndPtr(stackItem._node);
@@ -2544,7 +2544,7 @@ namespace BTDB.ARTLib
                         }
 
                         b = key[keyOffset++];
-                        stack.Add().Set(newNode, (uint)keyOffset, 0, b);
+                        stack.AddRef().Set(newNode, (uint)keyOffset, 0, b);
                         top = IntPtr.Zero;
                         OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, newNode);
                         newNode = IntPtr.Zero;
@@ -2572,7 +2572,7 @@ namespace BTDB.ARTLib
 
                 InsertChildRaw(top, ref pos, b);
                 keyOffset += newKeyPrefixSize + 1;
-                stack.Add().Set(top, (uint)keyOffset, (short)pos, b);
+                stack.AddRef().Set(top, (uint)keyOffset, (short)pos, b);
                 if (topChanged)
                 {
                     OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int)stack.Count - 1, top);

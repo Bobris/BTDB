@@ -13,7 +13,7 @@ namespace BTDB.Buffer
         {
             if (MemoryMarshal.TryGetArray(buffer, out var segment))
             {
-                return NewAsync(segment.Array, segment.Offset, segment.Count);
+                return NewAsync(segment.Array!, segment.Offset, segment.Count);
             }
 
             return NewAsync(buffer.ToArray());
@@ -113,7 +113,7 @@ namespace BTDB.Buffer
             }
 
             var copy = new byte[safeSelf.Length];
-            Array.Copy(safeSelf.Buffer, safeSelf.Offset, copy, 0, safeSelf.Length);
+            Array.Copy(buf, safeSelf.Offset, copy, 0, safeSelf.Length);
             return copy;
         }
 

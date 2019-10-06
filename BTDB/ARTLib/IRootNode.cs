@@ -14,7 +14,7 @@ namespace BTDB.ARTLib
         long TransactionId { get; set; }
         uint TrLogFileId { get; set; }
         uint TrLogOffset { get; set; }
-        string DescriptionForLeaks { get; set; }
+        string? DescriptionForLeaks { get; set; }
 
         IRootNode Snapshot();
         IRootNode CreateWritableTransaction();
@@ -25,6 +25,6 @@ namespace BTDB.ARTLib
         ulong GetUlong(uint idx);
         void SetUlong(uint idx, ulong value);
         uint GetUlongCount();
-        ulong[] UlongsArray { get; }
+        ulong[]? UlongsArray { get; }
     }
 }

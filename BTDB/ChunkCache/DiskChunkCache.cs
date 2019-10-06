@@ -22,12 +22,12 @@ namespace BTDB.ChunkCache
         readonly ConcurrentDictionary<ByteStructs.Key20, CacheValue> _cache = new ConcurrentDictionary<ByteStructs.Key20, CacheValue>(new ByteStructs.Key20EqualityComparer());
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         uint _cacheValueFileId;
-        IFileCollectionFile _cacheValueFile;
-        AbstractBufferedWriter _cacheValueWriter;
+        IFileCollectionFile? _cacheValueFile;
+        AbstractBufferedWriter? _cacheValueWriter;
         long _fileGeneration;
-        Task _compactionTask;
-        internal Task CurrentCompactionTask() => _compactionTask;
-        CancellationTokenSource _compactionCts;
+        Task? _compactionTask;
+        internal Task? CurrentCompactionTask() => _compactionTask;
+        CancellationTokenSource? _compactionCts;
         readonly object _startNewValueFileLocker = new object();
 
         internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'C', (byte)'h', (byte)'u', (byte)'n', (byte)'k', (byte)'C', (byte)'a', (byte)'c', (byte)'h', (byte)'e', (byte)'1' };
@@ -146,7 +146,7 @@ namespace BTDB.ChunkCache
                 cacheValue.FileId = _cacheValueFileId;
                 cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
                 _cacheValueWriter.WriteBlock(content);
-                _cacheValueFile.Flush();
+                _cacheValueFile!.Flush();
             }
             cacheValue.ContentLength = (uint)content.Length;
             _cache.TryAdd(k, cacheValue);
@@ -162,7 +162,7 @@ namespace BTDB.ChunkCache
                 {
                     lock (_cacheValueWriter)
                     {
-                        _cacheValueFile.HardFlush();
+                        _cacheValueFile!.HardFlush();
                         SetNewValueFile();
                     }
                 }
@@ -170,7 +170,7 @@ namespace BTDB.ChunkCache
                 {
                     SetNewValueFile();
                 }
-                fileInfo.WriteHeader(_cacheValueWriter);
+                fileInfo.WriteHeader(_cacheValueWriter!);
                 _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
                 _compactionCts = new CancellationTokenSource();
                 _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts.Token,
@@ -199,7 +199,7 @@ namespace BTDB.ChunkCache
 
         void CompactionCore()
         {
-            var token = _compactionCts.Token;
+            var token = _compactionCts!.Token;
             var usage = new Dictionary<uint, ulong>();
             var finishedUsageStats = true;
             uint maxAccessRate = 0;
@@ -257,7 +257,7 @@ namespace BTDB.ChunkCache
             if (writer != null)
                 lock (writer)
                 {
-                    _cacheValueFile.HardFlush();
+                    _cacheValueFile!.HardFlush();
                 }
         }
 
@@ -371,8 +371,7 @@ namespace BTDB.ChunkCache
             var totalControledSize = 0UL;
             foreach (var fileCollectionFile in _fileCollection.Enumerate())
             {
-                IFileInfo fileInfo;
-                _fileInfos.TryGetValue(fileCollectionFile.Index, out fileInfo);
+                _fileInfos.TryGetValue(fileCollectionFile.Index, out var fileInfo);
                 var size = fileCollectionFile.GetSize();
                 totalSize += size;
                 if (fileInfo == null)

@@ -16,14 +16,14 @@ namespace BTDB.EventStore2Layer
     {
         public const int ReservedBuildinTypes = 50;
         readonly Dictionary<object, DeserializerTypeInfo> _typeOrDescriptor2Info = new Dictionary<object, DeserializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
-        readonly List<DeserializerTypeInfo> _id2Info = new List<DeserializerTypeInfo>();
-        readonly List<DeserializerTypeInfo> _id2InfoNew = new List<DeserializerTypeInfo>();
+        readonly List<DeserializerTypeInfo?> _id2Info = new List<DeserializerTypeInfo>();
+        readonly List<DeserializerTypeInfo?> _id2InfoNew = new List<DeserializerTypeInfo>();
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld = new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
         readonly List<object> _visited = new List<object>();
         readonly ByteBufferReader _reader = new ByteBufferReader(ByteBuffer.NewEmpty());
         readonly object _lock = new object();
 
-        public EventDeserializer(ITypeNameMapper typeNameMapper = null, ITypeConvertorGenerator typeConvertorGenerator = null)
+        public EventDeserializer(ITypeNameMapper? typeNameMapper = null, ITypeConvertorGenerator? typeConvertorGenerator = null)
         {
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? new DefaultTypeConvertorGenerator();
@@ -49,7 +49,7 @@ namespace BTDB.EventStore2Layer
             while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
         }
 
-        public ITypeDescriptor DescriptorOf(object obj)
+        public ITypeDescriptor? DescriptorOf(object obj)
         {
             if (obj == null) return null;
             var knowDescriptor = obj as IKnowDescriptor;
@@ -60,7 +60,7 @@ namespace BTDB.EventStore2Layer
             return info.Descriptor;
         }
 
-        public ITypeDescriptor DescriptorOf(Type type)
+        public ITypeDescriptor? DescriptorOf(Type type)
         {
             DeserializerTypeInfo info;
             if (!_typeOrDescriptor2Info.TryGetValue(type, out info))

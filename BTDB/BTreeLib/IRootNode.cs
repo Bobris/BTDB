@@ -17,7 +17,7 @@ namespace BTDB.BTreeLib
         long TransactionId { get; set; }
         uint TrLogFileId { get; set; }
         uint TrLogOffset { get; set; }
-        string DescriptionForLeaks { get; set; }
+        string? DescriptionForLeaks { get; set; }
 
         IRootNode Snapshot();
         IRootNode CreateWritableTransaction();
@@ -28,7 +28,7 @@ namespace BTDB.BTreeLib
         ulong GetUlong(uint idx);
         void SetUlong(uint idx, ulong value);
         uint GetUlongCount();
-        ulong[] UlongsArray { get; }
+        ulong[]? UlongsArray { get; }
 
         void ValuesIterate(ValuesIterateAction visit);
         void KeyValueIterate(ref KeyValueIterateCtx keyValueIterateCtx, KeyValueIterateCallback callback);

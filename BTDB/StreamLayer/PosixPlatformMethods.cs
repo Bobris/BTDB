@@ -50,7 +50,7 @@ namespace BTDB.StreamLayer
         [DllImport("libc", EntryPoint = "free", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
         static extern void UnixFree(IntPtr ptr);
 
-        public string RealPath(string path)
+        public string? RealPath(string path)
         {
             var ptr = UnixRealPath(path, IntPtr.Zero);
             if (ptr == IntPtr.Zero)

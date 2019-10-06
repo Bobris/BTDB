@@ -23,7 +23,7 @@ namespace BTDB.BTreeLib
         public long TransactionId { get; set; }
         public uint TrLogFileId { get; set; }
         public uint TrLogOffset { get; set; }
-        public string DescriptionForLeaks { get; set; }
+        public string? DescriptionForLeaks { get; set; }
 
         public void Dispose()
         {
@@ -96,7 +96,7 @@ namespace BTDB.BTreeLib
             }
         }
 
-        ulong[] _ulongs;
+        ulong[]? _ulongs;
 
         public ulong GetUlong(uint idx)
         {
@@ -117,7 +117,7 @@ namespace BTDB.BTreeLib
             return _ulongs == null ? 0U : (uint)_ulongs.Length;
         }
 
-        public ulong[] UlongsArray => _ulongs;
+        public ulong[]? UlongsArray => _ulongs;
 
         public bool Reference()
         {

@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Breaking change
+
+Needs to be compiled with in csproj:
+
+    <LangVersion>8</LangVersion>
+    <Nullable>annotations</Nullable>
+
+`StructList.Add()` renamed to `AddRef()`.
+
 ### Added
 
 IOC: IAsyncDisposable is not registered by AsImplementedInterfaces (same behavior as IDisposable).

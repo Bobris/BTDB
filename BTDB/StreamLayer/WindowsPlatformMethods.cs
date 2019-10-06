@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -32,7 +33,7 @@ namespace BTDB.StreamLayer
                 var lastError = Marshal.GetLastWin32Error();
                 if (lastError == 38) //ERROR_HANDLE_EOF
                     return 0;
-                throw Marshal.GetExceptionForHR(lastError & ushort.MaxValue | -2147024896); //GetHRForLastWin32Error
+                throw Marshal.GetExceptionForHR(lastError & ushort.MaxValue | -2147024896) ?? new IOException(); //GetHRForLastWin32Error
             }
         }
 
@@ -46,7 +47,7 @@ namespace BTDB.StreamLayer
                 uint bwrite = 0;
                 var result = WriteFile(handle, dataptr, data.Length, (IntPtr)(&bwrite), &overlapped);
                 if (result == 0)
-                    throw Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error());
+                    throw Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error()) ?? new IOException();
                 if (bwrite != data.Length)
                     throw new BTDBException($"Out of disk space written {bwrite} out of {data.Length} at {position}");
             }
@@ -63,7 +64,7 @@ namespace BTDB.StreamLayer
         private static extern SafeFileHandle CreateFile(string lpFileName, int dwDesiredAccess, int dwShareMode,
         IntPtr SecurityAttributes, int dwCreationDisposition, int dwFlagsAndAttributes, IntPtr hTemplateFile);
 
-        public string RealPath(string opath)
+        public string? RealPath(string opath)
         {
             using (var directoryHandle = CreateFile(opath, 0, 2, IntPtr.Zero, CREATION_DISPOSITION_OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero))
             {

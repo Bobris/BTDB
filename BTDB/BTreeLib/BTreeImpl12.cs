@@ -719,7 +719,7 @@ namespace BTDB.BTreeLib
             {
                 if (header.IsNodeLeaf)
                 {
-                    stack.Add().Set(top, (byte) index);
+                    stack.AddRef().Set(top, (byte) index);
                     return true;
                 }
 
@@ -729,7 +729,7 @@ namespace BTDB.BTreeLib
                     var recursiveChildCount = NodeUtils12.Ptr2NodeHeader(ptrs[i]).RecursiveChildCount;
                     if ((ulong) index < recursiveChildCount)
                     {
-                        stack.Add().Set(top, (byte) i);
+                        stack.AddRef().Set(top, (byte) i);
                         top = ptrs[i];
                         header = ref NodeUtils12.Ptr2NodeHeader(top);
                         break;
@@ -751,7 +751,7 @@ namespace BTDB.BTreeLib
                 {
                     while (!header.IsNodeLeaf)
                     {
-                        stack.Add().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
+                        stack.AddRef().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
                         stackItem = ref stack[stack.Count - 1];
                         header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                     }
@@ -776,7 +776,7 @@ namespace BTDB.BTreeLib
                     stackItem._posInNode--;
                     while (!header.IsNodeLeaf)
                     {
-                        stack.Add().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
+                        stack.AddRef().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
                         stackItem = ref stack[stack.Count - 1];
                         header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                         stackItem._posInNode = (byte) (header._childCount - 1);
@@ -797,11 +797,11 @@ namespace BTDB.BTreeLib
             if (root == IntPtr.Zero)
                 return false;
             ref var header = ref NodeUtils12.Ptr2NodeHeader(root);
-            stack.Add().Set(root, (byte) (header._childCount - 1));
+            stack.AddRef().Set(root, (byte) (header._childCount - 1));
             while (!header.IsNodeLeaf)
             {
                 ref var stackItem = ref stack[stack.Count - 1];
-                stack.Add().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
+                stack.AddRef().Set(NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode), 0);
                 header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
                 stackItem._posInNode = (byte) (header._childCount - 1);
             }
@@ -952,13 +952,13 @@ namespace BTDB.BTreeLib
 
                         if (key.SequenceCompareTo(prefix) < 0)
                         {
-                            stack.Add().Set(top, 0);
+                            stack.AddRef().Set(top, 0);
                             top = NodeUtils12.GetBranchValuePtr(top, 0);
                             continue;
                         }
                         else
                         {
-                            stack.Add().Set(top, (byte) (header._childCount - 1));
+                            stack.AddRef().Set(top, (byte) (header._childCount - 1));
                             top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
                             continue;
                         }
@@ -973,14 +973,14 @@ namespace BTDB.BTreeLib
 
                     if (comp < 0)
                     {
-                        stack.Add().Set(top, 0);
+                        stack.AddRef().Set(top, 0);
                         top = NodeUtils12.GetBranchValuePtr(top, 0);
                         continue;
                     }
 
                     if (comp > 0)
                     {
-                        stack.Add().Set(top, (byte) (header._childCount - 1));
+                        stack.AddRef().Set(top, (byte) (header._childCount - 1));
                         top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);
                         continue;
                     }
@@ -1003,7 +1003,7 @@ namespace BTDB.BTreeLib
                 {
                     if ((idx & 1) != 0)
                     {
-                        stack.Add().Set(top, (byte) (idx >> 1));
+                        stack.AddRef().Set(top, (byte) (idx >> 1));
                         return true;
                     }
 
@@ -1012,7 +1012,7 @@ namespace BTDB.BTreeLib
                 }
 
                 idx = (idx + 1) >> 1;
-                stack.Add().Set(top, (byte) idx);
+                stack.AddRef().Set(top, (byte) idx);
                 top = NodeUtils12.GetBranchValuePtr(top, idx);
             }
         }
@@ -1194,7 +1194,7 @@ namespace BTDB.BTreeLib
                     var comp = key.Slice(0, Math.Min(key.Length, header._keyPrefixLength)).SequenceCompareTo(prefix);
                     if (comp < 0)
                     {
-                        stack.Add().Set(top, 0);
+                        stack.AddRef().Set(top, 0);
                         if (header.IsNodeLeaf)
                         {
                             return FindResult.Next;
@@ -1206,7 +1206,7 @@ namespace BTDB.BTreeLib
 
                     if (comp > 0)
                     {
-                        stack.Add().Set(top, (byte) (header._childCount - 1));
+                        stack.AddRef().Set(top, (byte) (header._childCount - 1));
                         if (header.IsNodeLeaf)
                         {
                             return FindResult.Previous;
@@ -1234,22 +1234,22 @@ namespace BTDB.BTreeLib
                 {
                     if ((idx & 1) != 0)
                     {
-                        stack.Add().Set(top, (byte) (idx >> 1));
+                        stack.AddRef().Set(top, (byte) (idx >> 1));
                         return FindResult.Exact;
                     }
 
                     if (idx == 0)
                     {
-                        stack.Add().Set(top, 0);
+                        stack.AddRef().Set(top, 0);
                         return FindResult.Next;
                     }
 
-                    stack.Add().Set(top, (byte) ((idx - 1) >> 1));
+                    stack.AddRef().Set(top, (byte) ((idx - 1) >> 1));
                     return FindResult.Previous;
                 }
 
                 idx = (idx + 1) >> 1;
-                stack.Add().Set(top, (byte) idx);
+                stack.AddRef().Set(top, (byte) idx);
                 top = NodeUtils12.GetBranchValuePtr(top, idx);
             }
         }
@@ -1294,20 +1294,20 @@ namespace BTDB.BTreeLib
                 {
                     if ((idx & 1) == 1)
                     {
-                        stack.Add().Set(top, (byte) (idx / 2));
+                        stack.AddRef().Set(top, (byte) (idx / 2));
                         return true;
                     }
 
                     idx = idx / 2;
                     if (idx < header._childCount && IsKeyPrefix(top, idx, keyPrefix))
                     {
-                        stack.Add().Set(top, (byte) idx);
+                        stack.AddRef().Set(top, (byte) idx);
                         return true;
                     }
 
                     if (idx == header._childCount)
                     {
-                        stack.Add().Set(top, (byte) (idx - 1));
+                        stack.AddRef().Set(top, (byte) (idx - 1));
                         if (MoveNext(ref stack) && IsKeyPrefix(stack[stack.Count - 1]._node,
                                 stack[stack.Count - 1]._posInNode, keyPrefix))
                         {
@@ -1325,7 +1325,7 @@ namespace BTDB.BTreeLib
                 }
 
                 idx = idx / 2;
-                stack.Add().Set(top, (byte) idx);
+                stack.AddRef().Set(top, (byte) idx);
                 top = NodeUtils12.GetBranchValuePtr(top, idx);
             }
         }
@@ -1456,7 +1456,7 @@ namespace BTDB.BTreeLib
                 keyPusher.AddKey(key);
                 keyPusher.Finish();
                 content.CopyTo(NodeUtils12.GetLeafValues(top));
-                stack.Add().Set(top, 0);
+                stack.AddRef().Set(top, 0);
                 rootNode._root = top;
                 return true;
             }
@@ -1469,7 +1469,7 @@ namespace BTDB.BTreeLib
                 if (!header.IsNodeLeaf)
                 {
                     idx = (idx + 1) / 2;
-                    stack.Add().Set(top, (byte) idx);
+                    stack.AddRef().Set(top, (byte) idx);
                     top = NodeUtils12.GetBranchValuePtr(top, idx);
                     continue;
                 }
@@ -1477,7 +1477,7 @@ namespace BTDB.BTreeLib
                 if ((idx & 1) != 0)
                 {
                     // Key found => Update
-                    stack.Add().Set(top, (byte) (idx / 2));
+                    stack.AddRef().Set(top, (byte) (idx / 2));
                     WriteValue(rootNode, ref stack, content);
                     return false;
                 }
@@ -1531,7 +1531,7 @@ namespace BTDB.BTreeLib
                     oldValues.Slice(12 * idx).CopyTo(newValues);
                     MakeUnique(rootNode, stack.AsSpan());
                     AdjustRecursiveChildCount(stack.AsSpan(), 1);
-                    stack.Add().Set(top, (byte) idx);
+                    stack.AddRef().Set(top, (byte) idx);
                     OverwriteNodePtrInStack(rootNode, stack.AsSpan(), (int) stack.Count - 1, newNode);
                     return true;
                 }
@@ -1613,7 +1613,7 @@ namespace BTDB.BTreeLib
                         keyPusher.Finish();
                         newValues = NodeUtils12.GetLeafValues(newNode2);
                         oldValues.CopyTo(newValues);
-                        stack.Add().Set(newNode, (byte) idx);
+                        stack.AddRef().Set(newNode, (byte) idx);
                         var splitInserter = new SplitInserter(this, rootNode, newNode, newNode2);
                         splitInserter.Run(ref stack, false);
                     }
@@ -1693,7 +1693,7 @@ namespace BTDB.BTreeLib
                         content.CopyTo(newValues);
                         newValues = newValues.Slice(12);
                         oldValues.Slice(12 * (idx - MaxChildren / 2)).CopyTo(newValues);
-                        stack.Add().Set(newNode2, (byte) (idx - MaxChildren / 2));
+                        stack.AddRef().Set(newNode2, (byte) (idx - MaxChildren / 2));
                         var splitInserter = new SplitInserter(this, rootNode, newNode, newNode2);
                         splitInserter.Run(ref stack, true);
                     }
