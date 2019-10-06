@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace BTDBTest
@@ -966,5 +967,40 @@ namespace BTDBTest
             Assert.True(dateTimeParameter.HasDefaultValue);
             Assert.Null(dateTimeParameter.RawDefaultValue);
         }
+
+        class ClassWithDispose : ILogger, IAsyncDisposable, IDisposable
+        {
+            public async ValueTask DisposeAsync()
+            {
+                await Task.Delay(0);
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+
+        [Fact]
+        public void DisposableInterfacesAreNotRegisteredAutomatically()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance(new ClassWithDispose()).AsImplementedInterfaces();
+            var container = containerBuilder.Build();
+            Assert.NotNull(container.Resolve<ILogger>());
+            Assert.Throws<ArgumentException>(() => container.Resolve<IDisposable>());
+            Assert.Throws<ArgumentException>(() => container.Resolve<IAsyncDisposable>());
+        }
+        
+        [Fact]
+        public void DisposableInterfacesCanBeRegisteredManually()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance(new ClassWithDispose()).AsImplementedInterfaces().As<IDisposable>()
+                .As<IAsyncDisposable>();
+            var container = containerBuilder.Build();
+            Assert.NotNull(container.Resolve<IDisposable>());
+            Assert.NotNull(container.Resolve<IAsyncDisposable>());
+        }        
+        
     }
 }

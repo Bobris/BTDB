@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+IOC: IAsyncDisposable is not registered by AsImplementedInterfaces (same behavior as IDisposable).
+
 ## 18.2.2
 
 ### Fixed
