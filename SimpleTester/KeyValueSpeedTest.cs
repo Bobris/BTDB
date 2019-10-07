@@ -1,19 +1,20 @@
-﻿using BTDB.Allocators;
-using BTDB.Buffer;
+﻿using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using BTDB.ODBLayer;
 
 namespace SimpleTester
 {
-    enum KVType
+    public enum KVType
     {
         Managed,
         BTree
     }
 
-    class KeyValueSpeedTest
+    public class KeyValueSpeedTest
     {
         readonly Stopwatch _sw = new Stopwatch();
         readonly bool _inMemory;
@@ -44,6 +45,7 @@ namespace SimpleTester
                 _fileCollection = new InMemoryFileCollection();
                 return _fileCollection;
             }
+
             const string dbfilename = "data";
             if (Directory.Exists(dbfilename))
                 Directory.Delete(dbfilename, true);
@@ -61,6 +63,7 @@ namespace SimpleTester
             {
                 return _fileCollection;
             }
+
             const string dbfilename = "data";
             if (_memoryMapped)
                 return new OnDiskMemoryMappedFileCollection(dbfilename);
@@ -81,25 +84,31 @@ namespace SimpleTester
                     {
                         for (int j = 0; j < 200; j++)
                         {
-                            tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
+                            tr.CreateOrUpdateKeyValue(new[] {(byte) j, (byte) i}, new byte[1 + i * j]);
                             pureDataLength += 2 + 1 + i * j;
                         }
-                        if (alsoDoReads) using (var trCheck = db.StartTransaction())
+
+                        if (alsoDoReads)
+                            using (var trCheck = db.StartTransaction())
                             {
                                 long pureDataLengthCheck = 0;
                                 while (trCheck.FindNextKey())
                                 {
-                                    pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValueAsReadOnlySpan().Length;
+                                    pureDataLengthCheck +=
+                                        trCheck.GetKey().Length + trCheck.GetValueAsReadOnlySpan().Length;
                                 }
+
                                 if (pureDataLengthCheck != pureDataLengthPrevTr)
                                 {
                                     throw new Exception("Transactions are not in serializable mode");
                                 }
                             }
+
                         tr.Commit();
                     }
                 }
             }
+
             _sw.Stop();
             Console.WriteLine("Pure data length: {0}", pureDataLength);
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
@@ -117,6 +126,7 @@ namespace SimpleTester
                         throw new NotImplementedException();
                 }
             }
+
             switch (_kvType)
             {
                 case KVType.Managed:
@@ -145,12 +155,14 @@ namespace SimpleTester
                     {
                         pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
                     }
+
                     if (pureDataLengthCheck != 396130000)
                     {
                         throw new Exception("Bug");
                     }
                 }
             }
+
             _sw.Stop();
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
@@ -169,15 +181,16 @@ namespace SimpleTester
                     {
                         using (var tr = db.StartTransaction())
                         {
-                            key[0] = (byte)(i / 100);
-                            key[1] = (byte)(i % 100);
-                            value[100] = (byte)(i / 100);
-                            value[200] = (byte)(i % 100);
+                            key[0] = (byte) (i / 100);
+                            key[1] = (byte) (i % 100);
+                            value[100] = (byte) (i / 100);
+                            value[200] = (byte) (i % 100);
                             tr.CreateOrUpdateKeyValue(key, value);
                             tr.Commit();
                         }
                     }
                 }
+
                 _sw.Stop();
                 Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 _sw.Restart();
@@ -191,18 +204,20 @@ namespace SimpleTester
                     {
                         using (var tr = db.StartTransaction())
                         {
-                            key[0] = (byte)(i / 100);
-                            key[1] = (byte)(i % 100);
+                            key[0] = (byte) (i / 100);
+                            key[1] = (byte) (i % 100);
                             tr.FindExactKey(key);
                             var value = tr.GetValueAsByteArray();
-                            if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
-                            if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
+                            if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
+                            if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
                         }
                     }
+
                     _sw.Stop();
                     Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                     Console.WriteLine(db.CalcStats());
                 }
+
                 _sw.Restart();
                 using (var db = CreateKeyValueDB(fileCollection))
                 {
@@ -214,14 +229,15 @@ namespace SimpleTester
                     {
                         using (var tr = db.StartTransaction())
                         {
-                            key[0] = (byte)(i / 100);
-                            key[1] = (byte)(i % 100);
+                            key[0] = (byte) (i / 100);
+                            key[1] = (byte) (i % 100);
                             tr.FindExactKey(key);
                             var value = tr.GetValueAsByteArray();
-                            if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
-                            if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
+                            if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
+                            if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
                         }
                     }
+
                     _sw.Stop();
                     Console.WriteLine("Time to read2 all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                     Console.WriteLine(db.CalcStats());
@@ -246,9 +262,11 @@ namespace SimpleTester
                             rnd.NextBytes(value);
                             tr.CreateOrUpdateKeyValueUnsafe(key, value);
                         }
+
                         tr.Commit();
                     }
                 }
+
                 using (var db = CreateKeyValueDB(fileCollection))
                 {
                 }
@@ -257,7 +275,9 @@ namespace SimpleTester
 
         void OpenDBSpeedTest()
         {
-            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
             var memStart = GC.GetTotalMemory(false);
             _sw.Start();
             using (var fileCollection = OpenTestFileCollection())
@@ -265,13 +285,17 @@ namespace SimpleTester
                 using (IKeyValueDB db = CreateKeyValueDB(fileCollection))
                 {
                     _sw.Stop();
-                    GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
                     var memFinish = GC.GetTotalMemory(false);
-                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB {2}KB", _sw.Elapsed.TotalMilliseconds, (memFinish - memStart) / 1024, Process.GetCurrentProcess().WorkingSet64 / 1024);
+                    Console.WriteLine("Time to open DB : {0,15}ms Memory: {1}KB {2}KB", _sw.Elapsed.TotalMilliseconds,
+                        (memFinish - memStart) / 1024, Process.GetCurrentProcess().WorkingSet64 / 1024);
                     Console.WriteLine(db.CalcStats());
                     _sw.Restart();
                 }
             }
+
             _sw.Stop();
             Console.WriteLine("Time to close DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
@@ -320,13 +344,15 @@ namespace SimpleTester
                         for (int i = 0; i < keys; i++)
                         {
                             int o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            PackUnpack.PackVUInt(key, ref o, (uint) i);
                             tr.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, o), ByteBuffer.NewSync(value));
                         }
+
                         tr.Commit();
                     }
                 }
             }
+
             Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds);
         }
 
@@ -344,13 +370,15 @@ namespace SimpleTester
                         for (int i = 0; i < keys; i++)
                         {
                             int o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            PackUnpack.PackVUInt(key, ref o, (uint) i);
                             tr.Find(ByteBuffer.NewSync(key, 0, o));
                         }
+
                         tr.Commit();
                     }
                 }
             }
+
             Console.WriteLine("CheckSequence:" + sw.Elapsed.TotalMilliseconds);
         }
 
@@ -374,27 +402,78 @@ namespace SimpleTester
                             rnd.NextBytes(value.AsSpan(0, valueLen));
                             tr.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
                         }
+
                         tr.Commit();
                     }
-                    Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" + Process.GetCurrentProcess().WorkingSet64 / 1024);
+
+                    Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" +
+                                      Process.GetCurrentProcess().WorkingSet64 / 1024);
                 }
             }
         }
 
+        public class BtdbTest
+        {
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong TestId { get; set; }
+
+            [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
+            public string TestName { get; set; }
+
+            public string Data1 { get; set; }
+            public string Data2 { get; set; }
+            public string Data3 { get; set; }
+        }
+
+        public interface IBtdbTestTable
+        {
+            bool Upsert(BtdbTest btdbTest);
+            IEnumerator<BtdbTest> FindByName(ulong companyId, string testName);
+        }
+
+        void CreateBtdbTestInserts(int count)
+        {
+            var sw = Stopwatch.StartNew();
+            var rnd = new Random(1234);
+            using var fileCollection = CreateTestFileCollection();
+            using var db = CreateKeyValueDB(fileCollection);
+            using var odb = new ObjectDB();
+            odb.Open(db,false);
+            Func<IObjectDBTransaction, IBtdbTestTable> table;
+            using (var tr = odb.StartTransaction())
+            {
+                 table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
+                 tr.Commit();
+            }
+            for (var i = 0; i < count; i++)
+            {
+                using var tr = odb.StartTransaction();
+                var tbl = table(tr);
+                tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name "+i, Data1 = "data1 "+i, Data2 = "data2 "+i, Data3="data3 "+i});
+                tr.Commit();
+            }
+
+            Console.WriteLine("CreateBtdbTestInserts:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" +
+                              Process.GetCurrentProcess().WorkingSet64 / 1024);
+        }
+
+
         public void Run()
         {
-            Console.WriteLine("Type: {3} InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory, _memoryMapped, _kvType);
+            Console.WriteLine("Type: {3} InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory,
+                _memoryMapped, _kvType);
             //CreateTestDB(9999999);
             //CreateRandomKeySequence(10000000);
             //DoWork5(true);
             //CheckKeySequence(10000000);
-            CreateTestDB(9999999);
-            OpenDBSpeedTest();
+            //CreateTestDB(9999999);
+            //OpenDBSpeedTest();
             //CheckDBTest(9999999);
             //HugeTest();
             //DoWork5(false);
             //DoWork5(true);
             //DoWork5ReadCheck();
+            CreateBtdbTestInserts(10000000);
         }
     }
 }
