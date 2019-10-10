@@ -588,8 +588,7 @@ namespace BTDBTest
                 var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 Assert.Equal(2u, orderedEnumerator.Count);
 
-                uint age;
-                Assert.True(orderedEnumerator.NextKey(out age));
+                Assert.True(orderedEnumerator.NextKey(out var age));
                 Assert.Equal(128u, age);
                 Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
                 Assert.True(orderedEnumerator.NextKey(out age));
@@ -609,7 +608,15 @@ namespace BTDBTest
                 Assert.True(orderedById.NextKey(out id));
                 Assert.Equal(3ul, id);
                 Assert.False(orderedById.NextKey(out id));
-
+                
+                personTable.TenantId = 1;
+                var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 28,
+                    KeyProposition.Included,
+                    28, KeyProposition.Included));
+                Assert.True(ena.NextKey(out age));
+                Assert.Equal(28u, age);
+                Assert.False(ena.NextKey(out _));
+                
                 tr.Commit();
             }
         }
@@ -2419,6 +2426,8 @@ namespace BTDBTest
                 items.Insert(new ItemTask {CompanyId = 1, Expiration = date + TimeSpan.FromDays(1), Name = "2"});
                 items.Insert(new ItemTask {CompanyId = 2, Expiration = date, Name = "1"});
                 items.Insert(new ItemTask {CompanyId = 2, Expiration = date + TimeSpan.FromDays(1), Name = "3"});
+                items.Insert(new ItemTask {CompanyId = 3, Expiration = date, Name = "1"});
+                items.Insert(new ItemTask {CompanyId = 3, Expiration = date + TimeSpan.FromDays(1), Name = "4"});
                 tr.Commit();
             }
 
@@ -2427,9 +2436,20 @@ namespace BTDBTest
                 var items = creator(tr);
                 var cnt = items.RemoveById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
                     1, KeyProposition.Included,
-                    1 + 1, KeyProposition.Excluded));
+                    2, KeyProposition.Excluded));
 
                 Assert.Equal(2, cnt);
+                Assert.Equal(4, items.Count);
+            }
+            
+            using (var tr = _db.StartTransaction())
+            {
+                var items = creator(tr);
+                var cnt = items.RemoveById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                    1, KeyProposition.Included,
+                    2, KeyProposition.Included));
+
+                Assert.Equal(4, cnt);
                 Assert.Equal(2, items.Count);
             }
 

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Changed
+
+Range defined by EndKey s KeyProposition.Included now contains all keys with passed prefix, used in methods: `RemoveById` `ListById` `ListBy{SecKeyName}` 
+
 ## 19.0.0
 
 ### Breaking change

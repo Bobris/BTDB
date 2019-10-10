@@ -200,6 +200,9 @@ namespace BTDB.ODBLayer
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
             _keyBytes = prefixBytes;
+            if (endKeyProposition == KeyProposition.Included)
+                endKeyBytes = FindLastKeyWithPrefix(_keyBytes, endKeyBytes, _keyValueTr, _keyValueTrProtector);
+
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
@@ -268,6 +271,19 @@ namespace BTDB.ODBLayer
             _pos = 0;
             _seekNeeded = true;
             _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
+        }
+
+        static internal ByteBuffer FindLastKeyWithPrefix(ByteBuffer keyBytes, ByteBuffer endKeyBytes,
+            IKeyValueDBTransaction keyValueTr, KeyValueDBTransactionProtector keyValueTrProtector)
+        {
+            var buffer = ByteBuffer.NewEmpty();
+            buffer = buffer.ResizingAppend(keyBytes).ResizingAppend(endKeyBytes);
+            keyValueTrProtector.Start();
+            keyValueTr.SetKeyPrefix(buffer);
+            if (!keyValueTr.FindLastKey())
+                return endKeyBytes;
+            var key = keyValueTr.GetKeyIncludingPrefix();
+            return key.Slice(keyBytes.Length);
         }
 
         public bool MoveNext()
@@ -418,6 +434,9 @@ namespace BTDB.ODBLayer
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
 
             _keyBytes = prefixBytes;
+            if (endKeyProposition == KeyProposition.Included)
+                endKeyBytes = RelationAdvancedEnumerator<TValue>.FindLastKeyWithPrefix(_keyBytes, endKeyBytes, _keyValueTr, _keyValueTrProtector);
+            
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_keyBytes);
 
