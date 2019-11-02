@@ -596,6 +596,7 @@ namespace BTDB.IL.Caching
 
         public void Emit(OpCode opCode, MethodInfo param)
         {
+            if (param == null) throw new ArgumentNullException(nameof(param));
             _instructions.Add(new EmitMethodInfoInst(opCode, param));
         }
 

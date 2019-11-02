@@ -2,11 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+Relations: New methods `CountById` and `CountBy{SecKeyName}` supported.
+
 ## 19.1.0
 
 ### Changed
 
-Range defined by EndKey s KeyProposition.Included now contains all keys with passed prefix, used in methods: `RemoveById` `ListById` `ListBy{SecKeyName}` 
+Range defined by EndKey s KeyProposition.Included now contains all keys with passed prefix, used in methods: `RemoveById` `ListById` `ListBy{SecKeyName}`
 
 ## 19.0.0
 

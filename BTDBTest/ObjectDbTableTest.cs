@@ -567,6 +567,10 @@ namespace BTDBTest
             IEnumerator<Person> GetEnumerator();
             //ListBy{SecondaryKeyName}
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
+
+            // You can replace List by Count and it will work return count of list faster if all you need is count
+            int CountById(AdvancedEnumeratorParam<ulong> param);
+            uint CountByAge(AdvancedEnumeratorParam<uint> param);
         }
 
         [Fact]
@@ -588,6 +592,8 @@ namespace BTDBTest
                 var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
                 Assert.Equal(2u, orderedEnumerator.Count);
 
+                Assert.Equal(2u, personTable.CountByAge(new AdvancedEnumeratorParam<uint>()));
+
                 Assert.True(orderedEnumerator.NextKey(out var age));
                 Assert.Equal(128u, age);
                 Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
@@ -608,7 +614,9 @@ namespace BTDBTest
                 Assert.True(orderedById.NextKey(out id));
                 Assert.Equal(3ul, id);
                 Assert.False(orderedById.NextKey(out id));
-                
+
+                Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
+
                 personTable.TenantId = 1;
                 var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 28,
                     KeyProposition.Included,
@@ -616,7 +624,7 @@ namespace BTDBTest
                 Assert.True(ena.NextKey(out age));
                 Assert.Equal(28u, age);
                 Assert.False(ena.NextKey(out _));
-                
+
                 tr.Commit();
             }
         }
@@ -2441,7 +2449,7 @@ namespace BTDBTest
                 Assert.Equal(2, cnt);
                 Assert.Equal(4, items.Count);
             }
-            
+
             using (var tr = _db.StartTransaction())
             {
                 var items = creator(tr);

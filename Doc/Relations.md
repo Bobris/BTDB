@@ -98,7 +98,6 @@ advanced enumeration param can be used same way as in ListById
 
     `int RemoveById(primaryKey1 , primaryKey2, ..., primaryKey_N-1, AdvancedEnumeratorParam<typeof(primaryKeyField(N))>);`
 
-
 ### Contains
 
     bool Contains(primaryKey1, ..., primaryKeyN);
@@ -148,6 +147,12 @@ List by ascending/descending order and specified range. Apart fields are taken i
         IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
         IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
     }
+
+### Count
+
+    uint|int|ulong|long CountById(AdvancedEnumeratorParam<uint> param);
+
+`Count` is like `List` just returns total count of items and much faster.
 
 ### Enumerate
 
@@ -199,7 +204,7 @@ and then use for all operations:
 
 ## Secondary Key
 
-Secondary keys are usefull for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`. Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from several fields. Each field can be part of more than one secondary key. for example:
+Secondary keys are useful for fast access by other fields then primary key. Declared are as attribute `SecondaryKey`. Each secondary index has it's name (may be different then existing fields names). Secondary index may be compound from several fields. Each field can be part of more than one secondary key. for example:
 
     public class Person
     {
@@ -227,6 +232,12 @@ It is always possible to insert duplicate items for secondary key (it would caus
 
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 `ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
+
+### Count (by secondary index)
+
+    uint|int|long|ulong CountByAge(AdvancedEnumeratorParam<uint> param);
+
+Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
 
 ### Upgrade
 
