@@ -36,8 +36,8 @@ namespace BTDB.ODBLayer
             _valueIDictFinders = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>();
 
         //SK
-        readonly ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>  //secondary key idx => sk key saver
-            _secondaryKeysSavers = new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>>();
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>[]  //secondary key idx => sk key saver
+            _secondaryKeysSavers;
 
         readonly ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, AbstractBufferedReader, AbstractBufferedReader, object>>
             _secondaryKeysConvertSavers = new ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter, AbstractBufferedReader, AbstractBufferedReader, object>>();
@@ -94,6 +94,7 @@ namespace BTDB.ODBLayer
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
                 ClientTypeVersion = LastPersistedVersion;
+                CreateCreatorLoadersAndSavers();
                 CheckSecondaryKeys(tr, ClientRelationVersionInfo);
             }
             else
@@ -109,6 +110,7 @@ namespace BTDB.ODBLayer
                 tr.KeyValueDBTransaction.SetKeyPrefix(ByteBuffer.NewEmpty());
                 tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerKey.Data, writerValue.Data);
 
+                CreateCreatorLoadersAndSavers();
                 if (LastPersistedVersion > 0)
                 {
                     CheckThatPrimaryKeyHasNotChanged(tr, name, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
@@ -361,18 +363,11 @@ namespace BTDB.ODBLayer
 
         internal uint ClientTypeVersion { get; }
 
-        internal Func<object> Creator
-        {
-            get
-            {
-                if (_creator == null) CreateCreator();
-                return _creator;
-            }
-        }
+        internal Func<object> Creator => _creator;
 
         internal IDictionary<string, MethodInfo> ApartFields { get; }
 
-        void CreateCreator()
+        void CreateCreatorLoadersAndSavers()
         {
             var method = ILBuilder.Instance.NewMethod<Func<object>>(
                 $"RelationCreator_{Name}");
@@ -380,43 +375,27 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Newobj(_clientType.GetConstructor(Type.EmptyTypes))
                 .Ret();
-            var creator = method.Create();
-            Interlocked.CompareExchange(ref _creator, creator, null);
-        }
-
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> ValueSaver
-        {
-            get
+            _creator = method.Create();
+            _valueSaver = CreateSaver(ClientRelationVersionInfo.GetValueFields(), $"RelationValueSaver_{Name}");
+            _primaryKeysSaver = CreateSaverWithApartFields(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
+            _primaryKeysLoader = CreateLoader(ClientTypeVersion, ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}");
+            if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
             {
-                if (_valueSaver == null)
+                _secondaryKeysSavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>[ClientRelationVersionInfo.SecondaryKeys.Keys.Max()+1];
+                foreach (var (idx, secondaryKeyInfo) in ClientRelationVersionInfo.SecondaryKeys)
                 {
-                    var saver = CreateSaver(ClientRelationVersionInfo.GetValueFields(), $"RelationValueSaver_{Name}");
-                    Interlocked.CompareExchange(ref _valueSaver, saver, null);
+                    _secondaryKeysSavers[idx] = CreateSaverWithApartFields(ClientRelationVersionInfo.GetSecondaryKeyFields(idx),
+                        $"Relation_{Name}_SK_{secondaryKeyInfo.Name}_KeySaver");
                 }
-                return _valueSaver;
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> PrimaryKeysSaver
-        {
-            get
-            {
-                if (_primaryKeysSaver == null)
-                {
-                    var saver = CreateSaverWithApartFields(ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeySaver_{Name}");
-                    Interlocked.CompareExchange(ref _primaryKeysSaver, saver, null);
-                }
-                return _primaryKeysSaver;
-            }
-        }
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> ValueSaver => _valueSaver;
+
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> PrimaryKeysSaver => _primaryKeysSaver;
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetPrimaryKeysLoader()
         {
-            if (_primaryKeysLoader == null)
-            {
-                var loader = CreateLoader(ClientTypeVersion, ClientRelationVersionInfo.GetPrimaryKeyFields(), $"RelationKeyLoader_{Name}");
-                Interlocked.CompareExchange(ref _primaryKeysLoader, loader, null);
-            }
             return _primaryKeysLoader;
         }
 
@@ -797,9 +776,7 @@ namespace BTDB.ODBLayer
         internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> GetSecondaryKeysKeySaver
             (uint secondaryKeyIndex)
         {
-            return _secondaryKeysSavers.GetOrAdd(secondaryKeyIndex,
-                (secKeyIndex, relationInfo) => CreateSaverWithApartFields(relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secKeyIndex),
-                    $"Relation_{relationInfo.Name}_SK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_KeySaver"), this);
+            return _secondaryKeysSavers[secondaryKeyIndex];
         }
 
         internal Action<IInternalObjectDBTransaction, AbstractBufferedWriter, AbstractBufferedReader, AbstractBufferedReader, object> GetPKValToSKMerger
