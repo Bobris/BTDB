@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.2.0
+
 ### Added
 
 #### Relations
