@@ -24,7 +24,7 @@ namespace BTDB.ODBLayer
         readonly ITypeConvertorGenerator _typeConvertorGenerator;
 
         readonly IDictionary<uint, RelationVersionInfo> _relationVersions = new Dictionary<uint, RelationVersionInfo>();
-        Func<IInternalObjectDBTransaction, object> _creator;
+        Func<object> _creator;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> _primaryKeysLoader;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
@@ -361,7 +361,7 @@ namespace BTDB.ODBLayer
 
         internal uint ClientTypeVersion { get; }
 
-        internal Func<IInternalObjectDBTransaction, object> Creator
+        internal Func<object> Creator
         {
             get
             {
@@ -374,7 +374,7 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, object>>(
+            var method = ILBuilder.Instance.NewMethod<Func<object>>(
                 $"RelationCreator_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator
@@ -606,7 +606,7 @@ namespace BTDB.ODBLayer
             return writerOrCtx;
         }
 
-        static void InitializeBuffer(ushort bufferArgIdx, ref BufferInfo bufferInfo, IILGen ilGenerator, 
+        static void InitializeBuffer(ushort bufferArgIdx, ref BufferInfo bufferInfo, IILGen ilGenerator,
             List<TableFieldInfo> fields, bool skipAllRelationsPKPrefix)
         {
             if (bufferInfo.ReaderCreated) return;
@@ -1138,12 +1138,11 @@ namespace BTDB.ODBLayer
         public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes,
                                      bool keyContainsPrefix = true)
         {
-            var obj = Creator(tr);
+            var obj = Creator();
             var keyReader = new ByteBufferReader(keyBytes);
             if (keyContainsPrefix)
             {
-                keyReader.SkipBlock(ObjectDB.AllRelationsSKPrefix.Length);
-                keyReader.SkipVUInt32(); //index Relation
+                keyReader.SkipBlock(Prefix.Length);
             }
             GetPrimaryKeysLoader()(tr, keyReader, obj);
             var valueReader = new ByteBufferReader(valueBytes);
