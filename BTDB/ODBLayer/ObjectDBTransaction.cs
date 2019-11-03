@@ -876,8 +876,8 @@ namespace BTDB.ODBLayer
             var interfaceType = typeof(T);
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType);
             var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
-            var builder = new RelationBuilder<T>(relationInfo);
-            return builder.Build(relationName, relationDBManipulatorType);
+            var builder = new RelationBuilder<T>(relationInfo, relationDBManipulatorType);
+            return builder.Build(relationName);
         }
 
         Dictionary<uint, IRelationModificationCounter> _modificationCounters;

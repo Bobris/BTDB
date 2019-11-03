@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
         public ObjectDB()
         {
             FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
-            TypeConvertorGenerator = new DefaultTypeConvertorGenerator();
+            TypeConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
         }
 
         internal ulong LastDictId => _lastDictId;

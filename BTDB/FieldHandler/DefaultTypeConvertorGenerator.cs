@@ -9,6 +9,8 @@ namespace BTDB.FieldHandler
     {
         readonly Dictionary<Tuple<Type, Type>, Action<IILGen>> _conversions = new Dictionary<Tuple<Type, Type>, Action<IILGen>>();
 
+        public static ITypeConvertorGenerator Instance = new DefaultTypeConvertorGenerator();
+
         public DefaultTypeConvertorGenerator()
         {
             var convConvertibleTypes = new[]

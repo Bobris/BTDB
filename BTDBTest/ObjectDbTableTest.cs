@@ -571,6 +571,7 @@ namespace BTDBTest
             // You can replace List by Count and it will work return count of list faster if all you need is count
             int CountById(AdvancedEnumeratorParam<ulong> param);
             uint CountByAge(AdvancedEnumeratorParam<uint> param);
+            long CountByAge(uint age);
         }
 
         [Fact]
@@ -583,6 +584,7 @@ namespace BTDBTest
 
                 personTable.TenantId = 1;
                 personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 28 });
+                personTable.Insert(new Person { Id = 4, Name = "Vladislav", Age = 28 });
                 personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 29 });
 
                 personTable.TenantId = 2;
@@ -603,6 +605,7 @@ namespace BTDBTest
                 var en = personTable.GetEnumerator(); //enumerate for all tenants
                 Assert.Equal(28u, GetNext(en).Age);
                 Assert.Equal(29u, GetNext(en).Age);
+                Assert.Equal(28u, GetNext(en).Age);
                 Assert.Equal(128u, GetNext(en).Age);
                 Assert.Equal(129u, GetNext(en).Age);
                 Assert.False(en.MoveNext());
@@ -618,12 +621,15 @@ namespace BTDBTest
                 Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
 
                 personTable.TenantId = 1;
-                var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 28,
+                var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
                     KeyProposition.Included,
-                    28, KeyProposition.Included));
+                    29, KeyProposition.Included));
                 Assert.True(ena.NextKey(out age));
-                Assert.Equal(28u, age);
+                Assert.Equal(29u, age);
                 Assert.False(ena.NextKey(out _));
+
+                Assert.Equal(2, personTable.CountByAge(28));
+                Assert.Equal(1, personTable.CountByAge(29));
 
                 tr.Commit();
             }

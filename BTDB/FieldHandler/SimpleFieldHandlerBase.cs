@@ -105,7 +105,7 @@ namespace BTDB.FieldHandler
             public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
             {
                 _fieldHandler.Load(ilGenerator, pushReaderOrCtx);
-                new DefaultTypeConvertorGenerator().GenerateConversion(_fieldHandler.HandledType(), _type)(ilGenerator);
+                DefaultTypeConvertorGenerator.Instance.GenerateConversion(_fieldHandler.HandledType(), _type)(ilGenerator);
             }
 
             public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
@@ -115,7 +115,7 @@ namespace BTDB.FieldHandler
 
             public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
             {
-                _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(new DefaultTypeConvertorGenerator().GenerateConversion(_type, _fieldHandler.HandledType())));
+                _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())));
             }
 
             public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)

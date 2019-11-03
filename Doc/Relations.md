@@ -236,8 +236,9 @@ List by ascending/descending order and specified range, see `CanIterateBySeconda
 ### Count (by secondary index)
 
     uint|int|long|ulong CountByAge(AdvancedEnumeratorParam<uint> param);
+    uint|int|long|ulong CountByAge(uint age);
 
-Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
+Count records by specified range `CountBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] [AdvancedEnumeratorParam<typeof(secKeyField(N))>)]`
 
 ### Upgrade
 

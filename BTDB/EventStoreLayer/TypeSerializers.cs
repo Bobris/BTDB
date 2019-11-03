@@ -33,7 +33,7 @@ namespace BTDB.EventStoreLayer
 
         public TypeSerializers(ITypeNameMapper typeNameMapper = null, TypeSerializersOptions options = null)
         {
-            ConvertorGenerator = new DefaultTypeConvertorGenerator();
+            ConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
             SetTypeNameMapper(typeNameMapper);
             ForgotAllTypesAndSerializers();
             _newSimpleSaverAction = NewSimpleSaver;

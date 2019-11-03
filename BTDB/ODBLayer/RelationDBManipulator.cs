@@ -36,6 +36,7 @@ namespace BTDB.ODBLayer
     public class RelationDBManipulator<T> : IReadOnlyCollection<T>
     {
         readonly IInternalObjectDBTransaction _transaction;
+        readonly IKeyValueDBTransaction _kvtr;
         readonly RelationInfo _relationInfo;
 
         public IInternalObjectDBTransaction Transaction => _transaction;
@@ -43,13 +44,14 @@ namespace BTDB.ODBLayer
 
         const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
 
-        static ByteBuffer EmptyBuffer = ByteBuffer.NewEmpty();
+        static readonly ByteBuffer EmptyBuffer = ByteBuffer.NewEmpty();
 
         readonly IRelationModificationCounter _modificationCounter;
 
-        public RelationDBManipulator(IObjectDBTransaction transation, RelationInfo relationInfo)
+        public RelationDBManipulator(IObjectDBTransaction transaction, RelationInfo relationInfo)
         {
-            _transaction = (IInternalObjectDBTransaction)transation;
+            _transaction = (IInternalObjectDBTransaction)transaction;
+            _kvtr = _transaction.KeyValueDBTransaction;
             _relationInfo = relationInfo;
             _modificationCounter = _transaction.GetRelationModificationCounter(relationInfo.Id);
             _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
@@ -84,10 +86,10 @@ namespace BTDB.ODBLayer
 
             ResetKeyPrefix();
 
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+            if (_kvtr.Find(keyBytes) == FindResult.Exact)
                 return false;
 
-            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
                 AddIntoSecondaryIndexes(obj);
@@ -104,11 +106,11 @@ namespace BTDB.ODBLayer
             var valueBytes = ValueBytes(obj);
 
             ResetKeyPrefix();
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+            if (_kvtr.Find(keyBytes) == FindResult.Exact)
             {
-                var oldValueBytes = _transaction.KeyValueDBTransaction.GetValue();
+                var oldValueBytes = _kvtr.GetValue();
 
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                 if (_hasSecondaryIndexes)
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
@@ -117,7 +119,7 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             if (_hasSecondaryIndexes)
                 AddIntoSecondaryIndexes(obj);
             _modificationCounter.MarkModification();
@@ -135,23 +137,23 @@ namespace BTDB.ODBLayer
 
             if (_hasSecondaryIndexes)
             {
-                if (_transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact)
+                if (_kvtr.Find(keyBytes) == FindResult.Exact)
                 {
-                    var oldValueBytes = _transaction.KeyValueDBTransaction.GetValue();
+                    var oldValueBytes = _kvtr.GetValue();
 
-                    _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                    _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
 
                     return false;
                 }
 
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
                 AddIntoSecondaryIndexes(obj);
             }
             else
             {
-                if (!_transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes))
+                if (!_kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                 {
                     return false;
                 }
@@ -170,11 +172,11 @@ namespace BTDB.ODBLayer
 
             ResetKeyPrefix();
 
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
                 throw new BTDBException("Not found record to update.");
 
-            var oldValueBytes = _transaction.KeyValueDBTransaction.GetValue();
-            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            var oldValueBytes = _kvtr.GetValue();
+            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
                 UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
@@ -191,14 +193,14 @@ namespace BTDB.ODBLayer
 
             ResetKeyPrefix();
 
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
                 throw new BTDBException("Not found record to update.");
 
             var oldValueBytes = _hasSecondaryIndexes
-                ? _transaction.KeyValueDBTransaction.GetValue()
+                ? _kvtr.GetValue()
                 : EmptyBuffer;
 
-            _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
                 UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
@@ -207,7 +209,7 @@ namespace BTDB.ODBLayer
         public bool Contains(ByteBuffer keyBytes)
         {
             ResetKeyPrefix();
-            return _transaction.KeyValueDBTransaction.Find(keyBytes) == FindResult.Exact;
+            return _kvtr.Find(keyBytes) == FindResult.Exact;
         }
 
         void CompareAndRelease(List<ulong> oldItems, List<ulong> newItems, Action<IInternalObjectDBTransaction, ulong> freeAction)
@@ -256,14 +258,14 @@ namespace BTDB.ODBLayer
         public bool RemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
         {
             ResetKeyPrefix();
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
-            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
-            _transaction.KeyValueDBTransaction.EraseCurrent();
+            var valueBytes = _kvtr.GetValue();
+            _kvtr.EraseCurrent();
 
             if (_hasSecondaryIndexes)
                 RemoveSecondaryIndexes(keyBytes, valueBytes);
@@ -277,7 +279,7 @@ namespace BTDB.ODBLayer
         public bool ShallowRemoveById(ByteBuffer keyBytes, bool throwWhenNotFound)
         {
             ResetKeyPrefix();
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
@@ -285,14 +287,14 @@ namespace BTDB.ODBLayer
             }
 
             var valueBytes = _hasSecondaryIndexes
-                ? _transaction.KeyValueDBTransaction.GetValue()
+                ? _kvtr.GetValue()
                 : EmptyBuffer;
-            
-            _transaction.KeyValueDBTransaction.EraseCurrent();
+
+            _kvtr.EraseCurrent();
 
             if (_hasSecondaryIndexes)
                 RemoveSecondaryIndexes(keyBytes, valueBytes);
-            
+
             _modificationCounter.MarkModification();
             return true;
         }
@@ -309,10 +311,10 @@ namespace BTDB.ODBLayer
             foreach (var key in keysToDelete)
             {
                 ResetKeyPrefix();
-                if (_transaction.KeyValueDBTransaction.Find(key) != FindResult.Exact)
+                if (_kvtr.Find(key) != FindResult.Exact)
                     throw new BTDBException("Not found record to delete.");
 
-                var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+                var valueBytes = _kvtr.GetValue();
 
                 if (_hasSecondaryIndexes)
                     RemoveSecondaryIndexes(key, valueBytes);
@@ -355,8 +357,8 @@ namespace BTDB.ODBLayer
                     writer.WriteVUInt32(_relationInfo.Id);
                     writer.WriteVUInt32(secKey.Key);
                     writer.WriteBlock(keyBytesPrefix.Buffer, idBytesLength, keyBytesPrefix.Length - idBytesLength);
-                    _transaction.KeyValueDBTransaction.SetKeyPrefix(writer.Data);
-                    _transaction.KeyValueDBTransaction.EraseAll();
+                    _kvtr.SetKeyPrefix(writer.Data);
+                    _kvtr.EraseAll();
                     writer.Reset();
                 }
             }
@@ -367,15 +369,95 @@ namespace BTDB.ODBLayer
         int RemovePrimaryKeysByPrefix(ByteBuffer keyBytesPrefix)
         {
             _transaction.TransactionProtector.Start();
-            _transaction.KeyValueDBTransaction.SetKeyPrefix(keyBytesPrefix);
-            int removedCount = (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();
+            _kvtr.SetKeyPrefix(keyBytesPrefix);
+            int removedCount = (int)_kvtr.GetKeyValueCount();
 
             if (removedCount > 0)
             {
-                _transaction.KeyValueDBTransaction.EraseAll();
+                _kvtr.EraseAll();
                 _modificationCounter.MarkModification();
             }
             return removedCount;
+        }
+
+        public long CountWithPrefix(ByteBuffer keyBytesPrefix)
+        {
+            _transaction.TransactionProtector.Start();
+            _kvtr.SetKeyPrefix(keyBytesPrefix);
+            return _kvtr.GetKeyValueCount();
+        }
+
+        public long CountWithProposition(ByteBuffer prefixBytes,
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+        {
+            var keyValueTrProtector = _transaction.TransactionProtector;
+
+            if (endKeyProposition == KeyProposition.Included)
+                endKeyBytes = RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(prefixBytes, endKeyBytes, _kvtr, keyValueTrProtector);
+
+            keyValueTrProtector.Start();
+            _kvtr.SetKeyPrefix(prefixBytes);
+
+            long startIndex;
+            long endIndex;
+            if (endKeyProposition == KeyProposition.Ignored)
+            {
+                endIndex = _kvtr.GetKeyValueCount() - 1;
+            }
+            else
+            {
+                switch (_kvtr.Find(endKeyBytes))
+                {
+                    case FindResult.Exact:
+                        endIndex = _kvtr.GetKeyIndex();
+                        if (endKeyProposition == KeyProposition.Excluded)
+                        {
+                            endIndex--;
+                        }
+                        break;
+                    case FindResult.Previous:
+                        endIndex = _kvtr.GetKeyIndex();
+                        break;
+                    case FindResult.Next:
+                        endIndex = _kvtr.GetKeyIndex() - 1;
+                        break;
+                    case FindResult.NotFound:
+                        endIndex = -1;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            if (startKeyProposition == KeyProposition.Ignored)
+            {
+                startIndex = 0;
+            }
+            else
+            {
+                switch (_kvtr.Find(startKeyBytes))
+                {
+                    case FindResult.Exact:
+                        startIndex = _kvtr.GetKeyIndex();
+                        if (startKeyProposition == KeyProposition.Excluded)
+                        {
+                            startIndex++;
+                        }
+                        break;
+                    case FindResult.Previous:
+                        startIndex = _kvtr.GetKeyIndex() + 1;
+                        break;
+                    case FindResult.Next:
+                        startIndex = _kvtr.GetKeyIndex();
+                        break;
+                    case FindResult.NotFound:
+                        startIndex = 0;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            return Math.Max(0, endIndex - startIndex + 1);
         }
 
         public int RemoveByIdAdvancedParam(RelationDBManipulator<T> manipulator, ByteBuffer prefixBytes, uint prefixFieldCount,
@@ -409,13 +491,13 @@ namespace BTDB.ODBLayer
         public T FindByIdOrDefault(ByteBuffer keyBytes, bool throwWhenNotFound)
         {
             ResetKeyPrefix();
-            if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found.");
                 return default(T);
             }
-            var valueBytes = _transaction.KeyValueDBTransaction.GetValue();
+            var valueBytes = _kvtr.GetValue();
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
@@ -448,16 +530,16 @@ namespace BTDB.ODBLayer
                                              bool throwWhenNotFound)
         {
             _transaction.TransactionProtector.Start();
-            _transaction.KeyValueDBTransaction.SetKeyPrefix(secKeyBytes);
-            if (!_transaction.KeyValueDBTransaction.FindFirstKey())
+            _kvtr.SetKeyPrefix(secKeyBytes);
+            if (!_kvtr.FindFirstKey())
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found.");
                 return default(T);
             }
-            var keyBytes = _transaction.KeyValueDBTransaction.GetKey();
+            var keyBytes = _kvtr.GetKey();
 
-            if (_transaction.KeyValueDBTransaction.FindNextKey())
+            if (_kvtr.FindNextKey())
                 throw new BTDBException("Ambiguous result.");
 
             return CreateInstanceFromSK(secondaryKeyIndex, prefixParametersCount, secKeyBytes, keyBytes);
@@ -466,7 +548,7 @@ namespace BTDB.ODBLayer
         void ResetKeyPrefix()
         {
             _transaction.TransactionProtector.Start();
-            _transaction.KeyValueDBTransaction.SetKeyPrefix(EmptyBuffer);
+            _kvtr.SetKeyPrefix(EmptyBuffer);
         }
 
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
@@ -502,7 +584,7 @@ namespace BTDB.ODBLayer
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, EmptyBuffer);
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, EmptyBuffer);
             }
         }
 
@@ -530,11 +612,11 @@ namespace BTDB.ODBLayer
                 if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
                     continue;
                 //remove old index
-                if (_transaction.KeyValueDBTransaction.Find(oldKeyBytes) != FindResult.Exact)
+                if (_kvtr.Find(oldKeyBytes) != FindResult.Exact)
                     throw new BTDBException("Error in updating secondary indexes, previous index entry not found.");
-                _transaction.KeyValueDBTransaction.EraseCurrent();
+                _kvtr.EraseCurrent();
                 //insert new value
-                _transaction.KeyValueDBTransaction.CreateOrUpdateKeyValue(newKeyBytes, EmptyBuffer);
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, EmptyBuffer);
             }
         }
 
@@ -545,9 +627,9 @@ namespace BTDB.ODBLayer
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(sk.Key, oldKey, oldValue);
-                if (_transaction.KeyValueDBTransaction.Find(keyBytes) != FindResult.Exact)
+                if (_kvtr.Find(keyBytes) != FindResult.Exact)
                     throw new BTDBException("Error in removing secondary indexes, previous index entry not found.");
-                _transaction.KeyValueDBTransaction.EraseCurrent();
+                _kvtr.EraseCurrent();
             }
         }
 
@@ -561,8 +643,8 @@ namespace BTDB.ODBLayer
             get
             {
                 _transaction.TransactionProtector.Start();
-                _transaction.KeyValueDBTransaction.SetKeyPrefix(_relationInfo.Prefix);
-                return (int)_transaction.KeyValueDBTransaction.GetKeyValueCount();
+                _kvtr.SetKeyPrefix(_relationInfo.Prefix);
+                return (int)_kvtr.GetKeyValueCount();
             }
         }
 
@@ -570,11 +652,10 @@ namespace BTDB.ODBLayer
         {
             writer.WriteInt8(3); //ObjectDB.AllRelationsPKPrefix
         }
-        
+
         static void WriteSKPrefix(AbstractBufferedWriter writer)
         {
             writer.WriteInt8(4); //ObjectDB.AllRelationsSKPrefix
         }
-
     }
 }

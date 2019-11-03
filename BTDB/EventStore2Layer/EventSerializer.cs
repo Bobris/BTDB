@@ -43,7 +43,7 @@ namespace BTDB.EventStore2Layer
             ITypeConvertorGenerator typeConvertorGenerator = null)
         {
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
-            ConvertorGenerator = typeConvertorGenerator ?? new DefaultTypeConvertorGenerator();
+            ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
             _id2Info.Add(null); // 0 = null
             _id2Info.Add(null); // 1 = back reference
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)

@@ -234,7 +234,7 @@ namespace BTDB.FieldHandler
                 ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
                 typeRead = typeof(ulong);
             }
-            new DefaultTypeConvertorGenerator().GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
+            DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
         }
 
         public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
