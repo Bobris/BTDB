@@ -128,9 +128,11 @@ Find all items with given secondary key. **Note**: for advanced range enumeratin
 
 ### List
 
+    IOrderedDictionaryEnumerator<uint, Person> ListById(AdvancedEnumeratorParam<uint> param);
     IEnumerator<Person> ListById(AdvancedEnumeratorParam<uint> param);
+    IEnumerable<Person> ListById();
 
-List by ascending/descending order and specified range. Apart fields are taken into account for listing by primary key. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (Both `IOrderedDictionaryEnumerator` and `IEnumerator` can be used as return values.)
+List by ascending/descending order and specified range. Apart fields are taken into account for listing by primary key. Parts of primary key may be used for listing. In example below you can list all rooms or just rooms for specified company by two `ListById` method. (`IOrderedDictionaryEnumerator`, `IEnumerator`, `IEnumerable` can be used as return values if used without AdvancedEnumeratorParam only `IEnumerator` or `IEnumerable` could be used and it is ascending order only.)
 
     public class Room
     {

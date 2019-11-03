@@ -4,7 +4,11 @@
 
 ### Added
 
-Relations: New methods `CountById` and `CountBy{SecKeyName}` supported.
+#### Relations
+
+- New methods `CountById` and `CountBy{SecKeyName}` supported.
+- `IEnumerator` and `IEnumerable` could be freely exchanged as result types.
+- `ListById` and `ListBy{SecKeyName}` does not require `AdvancedEnumeratorParam`.
 
 ## 19.1.0
 
