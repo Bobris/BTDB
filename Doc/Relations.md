@@ -150,7 +150,8 @@ List by ascending/descending order and specified range. Apart fields are taken i
 
 ### Count
 
-    uint|int|ulong|long CountById(AdvancedEnumeratorParam<uint> param);
+    uint|int|ulong|long CountById(AdvancedEnumeratorParam<ulong> param);
+    uint|int|ulong|long CountById(ulong id);
 
 `Count` is like `List` just returns total count of items and much faster.
 

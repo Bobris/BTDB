@@ -542,7 +542,8 @@ namespace BTDBTest
         public interface IPersonTableComplexFuture
         {
             ulong TenantId { get; set; }
-            // Should Insert with different TenantId throw? Or it should set tenantId before writing?
+            // Should Insert with different TenantId throw? It does not.
+            // Or it should set tenantId before writing? It also does not.
             // Insert will throw if already exists
             void Insert(Person person);
             // Upsert = Insert or Update - return true if inserted
@@ -577,62 +578,62 @@ namespace BTDBTest
         [Fact]
         public void AdvancedIteratingWorks()
         {
-            using (var tr = _db.StartTransaction())
-            {
-                var creator = tr.InitRelation<IPersonTableComplexFuture>("PersonComplex");
-                var personTable = creator(tr);
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IPersonTableComplexFuture>("PersonComplex");
+            var personTable = creator(tr);
 
-                personTable.TenantId = 1;
-                personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 28 });
-                personTable.Insert(new Person { Id = 4, Name = "Vladislav", Age = 28 });
-                personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 29 });
+            personTable.TenantId = 1;
+            var firstPerson = new Person {TenantId = 42, Id = 2, Name = "Lubos", Age = 28};
+            personTable.Insert(firstPerson);
+            Assert.Equal(42ul, firstPerson.TenantId);
+            personTable.Insert(new Person { Id = 4, Name = "Vladislav", Age = 28 });
+            personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 29 });
 
-                personTable.TenantId = 2;
-                personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
-                personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
+            personTable.TenantId = 2;
+            personTable.Insert(new Person { Id = 2, Name = "Lubos", Age = 128 });
+            personTable.Insert(new Person { Id = 3, Name = "Boris", Age = 129 });
 
-                var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
-                Assert.Equal(2u, orderedEnumerator.Count);
+            var orderedEnumerator = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+            Assert.Equal(2u, orderedEnumerator.Count);
 
-                Assert.Equal(2u, personTable.CountByAge(new AdvancedEnumeratorParam<uint>()));
+            Assert.Equal(2u, personTable.CountByAge(new AdvancedEnumeratorParam<uint>()));
 
-                Assert.True(orderedEnumerator.NextKey(out var age));
-                Assert.Equal(128u, age);
-                Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
-                Assert.True(orderedEnumerator.NextKey(out age));
-                Assert.Equal(129u, age);
+            Assert.True(orderedEnumerator.NextKey(out var age));
+            Assert.Equal(128u, age);
+            Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
+            Assert.True(orderedEnumerator.NextKey(out age));
+            Assert.Equal(129u, age);
 
-                var en = personTable.GetEnumerator(); //enumerate for all tenants
-                Assert.Equal(28u, GetNext(en).Age);
-                Assert.Equal(29u, GetNext(en).Age);
-                Assert.Equal(28u, GetNext(en).Age);
-                Assert.Equal(128u, GetNext(en).Age);
-                Assert.Equal(129u, GetNext(en).Age);
-                Assert.False(en.MoveNext());
+            var en = personTable.GetEnumerator(); //enumerate for all tenants
+            Assert.Equal(28u, GetNext(en).Age);
+            Assert.Equal(29u, GetNext(en).Age);
+            Assert.Equal(28u, GetNext(en).Age);
+            Assert.Equal(128u, GetNext(en).Age);
+            Assert.Equal(129u, GetNext(en).Age);
+            Assert.False(en.MoveNext());
 
-                var orderedById = personTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
-                ulong id;
-                Assert.True(orderedById.NextKey(out id));
-                Assert.Equal(2ul, id);
-                Assert.True(orderedById.NextKey(out id));
-                Assert.Equal(3ul, id);
-                Assert.False(orderedById.NextKey(out id));
+            var orderedById = personTable.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending));
+            ulong id;
+            Assert.True(orderedById.NextKey(out id));
+            Assert.Equal(2ul, id);
+            Assert.True(orderedById.NextKey(out id));
+            Assert.Equal(3ul, id);
+            Assert.False(orderedById.NextKey(out id));
 
-                Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
+            Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
 
-                personTable.TenantId = 1;
-                var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
-                    KeyProposition.Included,
-                    29, KeyProposition.Included));
-                Assert.True(ena.NextKey(out age));
-                Assert.Equal(29u, age);
-                Assert.False(ena.NextKey(out _));
+            personTable.TenantId = 1;
+            var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+                KeyProposition.Included,
+                29, KeyProposition.Included));
+            Assert.True(ena.NextKey(out age));
+            Assert.Equal(29u, age);
+            Assert.False(ena.NextKey(out _));
 
-                Assert.Equal(2, personTable.CountByAge(28));
-                Assert.Equal(1, personTable.CountByAge(29));
+            Assert.Equal(2, personTable.CountByAge(28));
+            Assert.Equal(1, personTable.CountByAge(29));
 
-                tr.Commit();
-            }
+            tr.Commit();
         }
 
         public interface IPersonTable
@@ -2532,6 +2533,45 @@ namespace BTDBTest
                 Assert.Equal(2,job.Properties.Count);
                 Assert.Equal("two",job.Properties[2]);
             }
+        }
+
+        public class TreeInts
+        {
+            [PrimaryKey(1)]
+            public int A { get; set; }
+            [PrimaryKey(2)]
+            public int B { get; set; }
+            [PrimaryKey(3)]
+            public int C { get; set; }
+        }
+
+        public interface ITreeIntsTable
+        {
+            void Insert(TreeInts value);
+            int CountById();
+            int CountById(int a);
+            int CountById(int a, int b);
+            int CountById(int a, int b, int c);
+            int CountById(int a, AdvancedEnumeratorParam<int> b);
+        }
+
+        [Fact]
+        public void CanUseCountById()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<ITreeIntsTable>("TreeInts");
+            var table = creator(tr);
+            table.Insert(new TreeInts { A=1, B=1, C=1 });
+            table.Insert(new TreeInts { A=1, B=1, C=2 });
+            table.Insert(new TreeInts { A=1, B=2, C=1 });
+            table.Insert(new TreeInts { A=1, B=2, C=2 });
+            table.Insert(new TreeInts { A=1, B=2, C=3 });
+            table.Insert(new TreeInts { A=1, B=3, C=1 });
+            Assert.Equal(6, table.CountById());
+            Assert.Equal(6, table.CountById(1));
+            Assert.Equal(4, table.CountById(1, new AdvancedEnumeratorParam<int>(EnumerationOrder.Ascending, 2, KeyProposition.Included, 3, KeyProposition.Included)));
+            Assert.Equal(3, table.CountById(1, 2));
+            Assert.Equal(1, table.CountById(1, 2, 3));
         }
     }
 }
