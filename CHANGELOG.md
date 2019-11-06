@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.3.0
+
 ### Added
 
 Relations new methods `AnyById` and `AnyBy{SecKeyName}` supported.
