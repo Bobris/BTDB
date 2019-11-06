@@ -387,6 +387,21 @@ namespace BTDB.ODBLayer
             return _kvtr.GetKeyValueCount();
         }
 
+        public bool AnyWithPrefix(ByteBuffer keyBytesPrefix)
+        {
+            _transaction.TransactionProtector.Start();
+            _kvtr.SetKeyPrefix(keyBytesPrefix);
+            return _kvtr.FindFirstKey();
+        }
+
+        public bool AnyWithProposition(ByteBuffer prefixBytes,
+            KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
+            KeyProposition endKeyProposition, ByteBuffer endKeyBytes)
+        {
+            return 0 < CountWithProposition(prefixBytes, startKeyProposition, startKeyBytes, endKeyProposition,
+                       endKeyBytes);
+        }
+
         public long CountWithProposition(ByteBuffer prefixBytes,
             KeyProposition startKeyProposition, ByteBuffer startKeyBytes,
             KeyProposition endKeyProposition, ByteBuffer endKeyBytes)

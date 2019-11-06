@@ -69,6 +69,10 @@ namespace BTDB.ODBLayer
                 {
                     BuildCountByIdMethod(method, reqMethod);
                 }
+                else if (method.Name == "AnyById") //any by primary key
+                {
+                    BuildAnyByIdMethod(method, reqMethod);
+                }
                 else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal)
                 ) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
@@ -78,6 +82,11 @@ namespace BTDB.ODBLayer
                 ) //CountBy{Name}(tenantId, ..[, AdvancedEnumeratorParam])
                 {
                     BuildCountByMethod(method, reqMethod);
+                }
+                else if (method.Name.StartsWith("AnyBy", StringComparison.Ordinal)
+                ) //AnyBy{Name}(tenantId, ..[, AdvancedEnumeratorParam])
+                {
+                    BuildAnyByMethod(method, reqMethod);
                 }
                 else if (method.Name == "Insert")
                 {
@@ -405,19 +414,7 @@ namespace BTDB.ODBLayer
             var resultConversion = CheckLongLikeResult(method);
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
-                var advEnumParamOrder = (ushort) parameters.Length;
-                var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
-                var advEnumParamType = advEnumParam.GenericTypeArguments[0];
-
-                var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
-                var prefixParamCount = parameters.Length - 1;
-
-                var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-                var field = primaryKeyFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
-                ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
-
-                WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(method, parameters, reqMethod,
-                    advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
+                PrepareAnyCountByIdWithAep(method, reqMethod, parameters);
 
                 //return relationManipulator.CountWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
@@ -435,6 +432,47 @@ namespace BTDB.ODBLayer
             }
 
             resultConversion(reqMethod.Generator);
+        }
+
+        void BuildAnyByIdMethod(MethodInfo method, IILMethod reqMethod)
+        {
+            var parameters = method.GetParameters();
+            CheckReturnType(method.Name, typeof(bool), method.ReturnType);
+            if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
+            {
+                PrepareAnyCountByIdWithAep(method, reqMethod, parameters);
+
+                //return relationManipulator.AnyWithProposition(prefixBytes,
+                //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
+                var calcCountMethod = _relationDbManipulatorType.GetMethod("AnyWithProposition");
+                reqMethod.Generator.Call(calcCountMethod);
+            }
+            else
+            {
+                reqMethod.Generator.Ldarg(0);
+                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, _relationInfo.ApartFields);
+
+                //return relationManipulator.AnyWithPrefix(prefixBytes);
+                var calcCountMethod = _relationDbManipulatorType.GetMethod("AnyWithPrefix");
+                reqMethod.Generator.Call(calcCountMethod);
+            }
+        }
+
+        void PrepareAnyCountByIdWithAep(MethodInfo method, IILMethod reqMethod, ParameterInfo[] parameters)
+        {
+            var advEnumParamOrder = (ushort) parameters.Length;
+            var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
+            var advEnumParamType = advEnumParam.GenericTypeArguments[0];
+
+            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
+            var prefixParamCount = parameters.Length - 1;
+
+            var primaryKeyFields = _relationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
+            var field = primaryKeyFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
+
+            WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(method, parameters, reqMethod,
+                advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
         }
 
         void BuildListByMethod(MethodInfo method, IILMethod reqMethod)
@@ -544,29 +582,7 @@ namespace BTDB.ODBLayer
 
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
-                var advEnumParamOrder = (ushort) parameters.Length;
-                var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
-                var advEnumParamType = advEnumParam.GenericTypeArguments[0];
-
-                var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
-                var prefixParamCount = parameters.Length - 1;
-
-                var skFields = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
-                var field = skFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
-                ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
-
-                reqMethod.Generator
-                    .Ldarg(0);
-                SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                    parameters[..^1], _relationInfo.ApartFields);
-                reqMethod.Generator
-                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
-                FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
-                reqMethod.Generator
-                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
-                FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField("End"), reqMethod.Generator);
+                PrepareAnyCountByWithAep(method, reqMethod, parameters, secondaryKeyIndex);
 
                 //return relationManipulator.CountWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
@@ -586,6 +602,63 @@ namespace BTDB.ODBLayer
             }
 
             resultConversion(reqMethod.Generator);
+        }
+
+        void BuildAnyByMethod(MethodInfo method, IILMethod reqMethod)
+        {
+            var parameters = method.GetParameters();
+            var secondaryKeyIndex =
+                _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(method.Name.Substring(5));
+            CheckReturnType(method.Name, typeof(bool), method.ReturnType);
+
+            if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
+            {
+                PrepareAnyCountByWithAep(method, reqMethod, parameters, secondaryKeyIndex);
+
+                //return relationManipulator.AnyWithProposition(prefixBytes,
+                //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
+                var calcAnyMethod = _relationDbManipulatorType.GetMethod("AnyWithProposition");
+                reqMethod.Generator.Call(calcAnyMethod);
+            }
+            else
+            {
+                reqMethod.Generator
+                    .Ldarg(0);
+                SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
+                    parameters, _relationInfo.ApartFields);
+
+                //return relationManipulator.AnyWithPrefix(prefixBytes);
+                var calcAnyMethod = _relationDbManipulatorType.GetMethod("AnyWithPrefix");
+                reqMethod.Generator.Call(calcAnyMethod);
+            }
+        }
+
+        void PrepareAnyCountByWithAep(MethodInfo method, IILMethod reqMethod, ParameterInfo[] parameters,
+            uint secondaryKeyIndex)
+        {
+            var advEnumParamOrder = (ushort) parameters.Length;
+            var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
+            var advEnumParamType = advEnumParam.GenericTypeArguments[0];
+
+            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
+            var prefixParamCount = parameters.Length - 1;
+
+            var skFields = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
+            var field = skFields.Skip(_relationInfo.ApartFields.Count + prefixParamCount).First();
+            ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
+
+            reqMethod.Generator
+                .Ldarg(0);
+            SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
+                parameters[..^1], _relationInfo.ApartFields);
+            reqMethod.Generator
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                emptyBufferLoc, advEnumParam.GetField("Start"), reqMethod.Generator);
+            reqMethod.Generator
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition"));
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
+                emptyBufferLoc, advEnumParam.GetField("End"), reqMethod.Generator);
         }
 
         static Action<IILGen> CheckLongLikeResult(MethodInfo method)

@@ -600,10 +600,15 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
             IEnumerable<Person> ListByAge(uint age);
 
-            // You can replace List by Count and it will work return count of list faster if all you need is count
+            // You can replace List by Count and it will return count of list faster if all you need is count
             int CountById(AdvancedEnumeratorParam<ulong> param);
             uint CountByAge(AdvancedEnumeratorParam<uint> param);
             long CountByAge(uint age);
+
+            // You can replace Count by Any and it will return bool if there is any item matching range
+            bool AnyById(AdvancedEnumeratorParam<ulong> param);
+            bool AnyByAge(AdvancedEnumeratorParam<uint> param);
+            bool AnyByAge(uint age);
         }
 
         [Fact]
@@ -617,7 +622,7 @@ namespace BTDBTest
             var firstPerson = new Person {TenantId = 42, Id = 2, Name = "Lubos", Age = 28};
             personTable.Insert(firstPerson);
             Assert.Equal(42ul, firstPerson.TenantId);
-            personTable.Insert(new Person {Id = 4, Name = "Vladislav", Age = 28});
+            personTable.Insert(new Person {Id = 4, Name = "Vladimir", Age = 28});
             personTable.Insert(new Person {Id = 3, Name = "Boris", Age = 29});
 
             personTable.TenantId = 2;
@@ -629,6 +634,7 @@ namespace BTDBTest
             Assert.Equal(2u, orderedEnumerator.Count);
 
             Assert.Equal(2u, personTable.CountByAge(new AdvancedEnumeratorParam<uint>()));
+            Assert.True(personTable.AnyByAge(new AdvancedEnumeratorParam<uint>()));
 
             Assert.True(orderedEnumerator.NextKey(out var age));
             Assert.Equal(128u, age);
@@ -653,6 +659,8 @@ namespace BTDBTest
             Assert.False(orderedById.NextKey(out id));
 
             Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
+            Assert.True(personTable.AnyById(new AdvancedEnumeratorParam<ulong>()));
+            Assert.False(personTable.AnyById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,10,KeyProposition.Included,0,KeyProposition.Ignored)));
 
             personTable.TenantId = 1;
             var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
@@ -664,6 +672,9 @@ namespace BTDBTest
 
             Assert.Equal(2, personTable.CountByAge(28));
             Assert.Equal(1, personTable.CountByAge(29));
+            Assert.True(personTable.AnyByAge(28));
+            Assert.True(personTable.AnyByAge(29));
+            Assert.False(personTable.AnyByAge(18));
 
             Assert.Equal(new[] {2ul, 4ul}, personTable.ListByAge(28).Select(p => p.Id));
             tr.Commit();
