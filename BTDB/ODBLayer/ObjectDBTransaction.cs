@@ -348,17 +348,11 @@ namespace BTDB.ODBLayer
             {
                 var oid = tableInfo.LazySingletonOid;
                 if (oid == 0) continue;
-                try
+                // Ignore impossibility to create type
+                if (TryToEnsureClientTypeNotNull(tableInfo))
                 {
-                    EnsureClientTypeNotNull(tableInfo);
+                    yield return tableInfo.ClientType;
                 }
-                catch (BTDBException)
-                {
-                    // Ignore imposibility to create type
-                }
-                var type = tableInfo.ClientType;
-                if (type != null)
-                    yield return type;
             }
         }
 
@@ -599,6 +593,14 @@ namespace BTDB.ODBLayer
 
         void EnsureClientTypeNotNull(TableInfo tableInfo)
         {
+            if (!TryToEnsureClientTypeNotNull(tableInfo))
+            {
+                throw new BTDBException($"Type {tableInfo.Name} is not registered.");
+            }
+        }
+
+        bool TryToEnsureClientTypeNotNull(TableInfo tableInfo)
+        {
             if (tableInfo.ClientType == null)
             {
                 var typeByName = _owner.Type2NameRegistry.FindTypeByName(tableInfo.Name);
@@ -608,9 +610,11 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    throw new BTDBException($"Type {tableInfo.Name} is not registered.");
+                    return false;
                 }
             }
+
+            return true;
         }
 
         ulong ReadOidFromCurrentKeyInTransaction()

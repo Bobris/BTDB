@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Removed control flow by exceptions from `EnumerateSingletonTypes`. Fixes #85.
+
 ## 19.3.0
 
 ### Added
