@@ -161,5 +161,33 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
+        public class EventWithInt
+        {
+            public int A { get; set; }
+        }
+
+        public class EventWithUlong
+        {
+            public ulong A { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateIntToUlong()
+        {
+            var parentMapper = new FullNameTypeMapper();
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithUlong), parentMapper.ToName(typeof(EventWithInt)),
+                    parentMapper
+                );
+            var obj = (EventWithUlong)PassThroughEventStorage(new EventWithInt
+            {
+                A = 42
+            }, mapper);
+            Assert.Equal(42ul, obj.A);
+            var obj2 = (EventWithUlong)PassThroughEventStorage(new EventWithInt
+            {
+                A = -1
+            }, mapper);
+            Assert.Equal(0xffffffff, obj2.A);
+        }
     }
 }
