@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.4.0
+
 ### Added
 
 - All serializations DB, Event now supports `System.Version` type. Default conversion allows to upgrade from `string` to `Version`. When `Version` is used in ordering, keys it behaves as expected.
