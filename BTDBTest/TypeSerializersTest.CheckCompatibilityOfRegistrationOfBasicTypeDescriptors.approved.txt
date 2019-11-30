@@ -16,3 +16,4 @@ TimeSpan
 Guid
 Byte[]
 IPAddress
+Version

@@ -742,5 +742,29 @@ namespace BTDB.StreamLayer
                 default: throw new InvalidDataException("Unknown type of IPAddress");
             }
         }
+
+        public Version ReadVersion()
+        {
+            var major = ReadVUInt32();
+            if (major == 0) return null;
+            var minor = ReadVUInt32();
+            if (minor == 0) return new Version((int) major - 1, 0);
+            var build = ReadVUInt32();
+            if (build == 0) return new Version((int) major - 1, (int) minor - 1);
+            var revision = ReadVUInt32();
+            if (revision == 0) return new Version((int) major - 1, (int) minor - 1, (int) build - 1);
+            return new Version((int) major - 1, (int) minor - 1, (int) build - 1, (int) revision - 1);
+        }
+
+        public void SkipVersion()
+        {
+            var major = ReadVUInt32();
+            if (major == 0) return;
+            var minor = ReadVUInt32();
+            if (minor == 0) return;
+            var build = ReadVUInt32();
+            if (build == 0) return;
+            SkipVUInt32();
+        }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net;
 using BTDB.Buffer;
 using BTDB.IL;
 
@@ -152,5 +153,15 @@ namespace BTDB.FieldHandler
             return ByteBuffer.NewAsync(bytes);
         }
 
+        public static string? Convert2String(Version? version)
+        {
+            return version?.ToString();
+        }
+
+        public static Version? Convert2Version(string? value)
+        {
+            Version.TryParse(value, out var result);
+            return result;
+        }
     }
 }

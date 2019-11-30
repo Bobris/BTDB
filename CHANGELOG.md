@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+- All serializations DB, Event now supports `System.Version` type. Default conversion allows to upgrade from `string` to `Version`. When `Version` is used in ordering, keys it behaves as expected.
+
 ### Fixed
 
 Removed control flow by exceptions from `EnumerateSingletonTypes`. Fixes #85.

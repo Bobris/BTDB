@@ -60,6 +60,7 @@ namespace BTDBTest
             CanSerializeSimpleValue((uint)123456789);
             CanSerializeSimpleValue(-123456789012L);
             CanSerializeSimpleValue(123456789012UL);
+            CanSerializeSimpleValue(new Version(4,3,2,1));
         }
 
         void CanSerializeSimpleValue(object value)

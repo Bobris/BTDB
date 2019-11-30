@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
@@ -188,6 +189,35 @@ namespace BTDBTest
                 A = -1
             }, mapper);
             Assert.Equal(0xffffffff, obj2.A);
+        }
+
+        public class EventWithString
+        {
+            public string A { get; set; }
+        }
+
+        public class EventWithVersion
+        {
+            public Version A { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateStringToVersion()
+        {
+            var parentMapper = new FullNameTypeMapper();
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithVersion), parentMapper.ToName(typeof(EventWithString)),
+                parentMapper
+            );
+            var obj = (EventWithVersion)PassThroughEventStorage(new EventWithString
+            {
+                A = "1.2.3"
+            }, mapper);
+            Assert.Equal(new Version(1,2,3), obj.A);
+            var obj2 = (EventWithVersion)PassThroughEventStorage(new EventWithString
+            {
+                A = null
+            }, mapper);
+            Assert.Null(obj2.A);
         }
     }
 }

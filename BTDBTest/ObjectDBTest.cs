@@ -494,6 +494,7 @@ namespace BTDBTest
             public TestEnum EnumField { get; set; }
             public byte[] ByteArrayField { get; set; }
             public ByteBuffer ByteBufferField { get; set; }
+            public Version VersionField { get; set; }
         }
 
         [Fact]
@@ -523,6 +524,7 @@ namespace BTDBTest
                 Assert.Equal(TestEnum.Item1, o.EnumField);
                 Assert.Null(o.ByteArrayField);
                 Assert.Equal(ByteBuffer.NewEmpty().ToByteArray(), o.ByteBufferField.ToByteArray());
+                Assert.Null(o.VersionField);
 
                 o.StringField = "Text";
                 o.SByteField = -10;
@@ -545,6 +547,7 @@ namespace BTDBTest
                 o.EnumField = TestEnum.Item2;
                 o.ByteArrayField = new byte[] { 0, 1, 2 };
                 o.ByteBufferField = ByteBuffer.NewAsync(new byte[] { 0, 1, 2 }, 1, 1);
+                o.VersionField = new Version(1,2,3,4);
 
                 AssertContent(o);
                 tr.Commit();
@@ -579,6 +582,7 @@ namespace BTDBTest
             Assert.Equal(TestEnum.Item2, o.EnumField);
             Assert.Equal(new byte[] { 0, 1, 2 }, o.ByteArrayField);
             Assert.Equal(new byte[] { 1 }, o.ByteBufferField.ToByteArray());
+            Assert.Equal(new Version(1,2,3,4), o.VersionField);
         }
 
         public class Root

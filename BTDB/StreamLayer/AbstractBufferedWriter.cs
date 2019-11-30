@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -457,6 +458,22 @@ namespace BTDB.StreamLayer
                 WriteInt32LE((int) value.Address);
 #pragma warning restore 612,618
             }
+        }
+
+        public void WriteVersion(Version? value)
+        {
+            if (value == null)
+            {
+                WriteUInt8(0);
+                return;
+            }
+
+            WriteVUInt32((uint) value.Major + 1);
+            WriteVUInt32((uint) value.Minor + 1);
+            if (value.Minor == -1) return;
+            WriteVUInt32((uint) value.Build + 1);
+            if (value.Build == -1) return;
+            WriteVUInt32((uint) value.Revision + 1);
         }
     }
 }

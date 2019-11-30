@@ -99,6 +99,10 @@ namespace BTDB.FieldHandler
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadIPAddress()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipIPAddress()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteIPAddress(IPAddress.Any)));
+            Add(fh, des, "Version",
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVersion()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVersion()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVersion(null)));
             FieldHandlers = fh.ToArray();
             TypeDescriptors = des.ToArray();
         }
