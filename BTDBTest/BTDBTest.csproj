@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp3.0</TargetFrameworks>
+    <TargetFrameworks>netcoreapp3.1</TargetFrameworks>
     <LangVersion>8</LangVersion>
     <NoWarn>1701;1702;1720</NoWarn>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks> 
