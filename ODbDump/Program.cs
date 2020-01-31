@@ -7,6 +7,7 @@ using ODbDump.Visitor;
 using BTDB.StreamLayer;
 using System.Linq;
 using System.Threading;
+using BTDB.Buffer;
 
 namespace ODbDump
 {
@@ -17,7 +18,7 @@ namespace ODbDump
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
-                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, frequency, interactive");
+                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, frequency, interactive");
                 return;
             }
 
@@ -329,6 +330,17 @@ namespace ODbDump
                         }
                         break;
                     }
+                case "leakscode":
+                {
+                    using (var dfc = new OnDiskFileCollection(args[0]))
+                    using (var kdb = new KeyValueDB(dfc))
+                    using (var odb = new ObjectDB())
+                    {
+                        odb.Open(kdb, false);
+                        odb.DumpLeaksCode();
+                    }
+                    break;
+                }
                 case "frequency":
                     {
                         using (var dfc = new OnDiskFileCollection(args[0]))

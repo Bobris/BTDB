@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using ODbDump.Visitor;
@@ -61,6 +63,67 @@ namespace ODbDump
                 Console.Write(" Value len:");
                 Console.WriteLine(unseenKey.ValueSize);
             }
+        }
+        
+        public static void DumpLeaksCode(this IObjectDB db)
+        {
+            var leakedObjects = new Dictionary<ulong, bool>();
+            var leakedDictionaries = new Dictionary<ulong, bool>();
+            
+            using var tr = db.StartReadOnlyTransaction();
+            using var visitor = new FindUnusedKeysVisitor();
+            visitor.ImportAllKeys(tr);
+            visitor.Iterate(tr);
+            foreach (var unseenKey in visitor.UnseenKeys())
+            {
+                var isDict = unseenKey.Key[0] == 2;
+                var isObject = unseenKey.Key[0] == 1;
+
+                var r = new ByteArrayReader(unseenKey.Key);
+                r.SkipUInt8();
+                var oid = r.ReadVUInt64();
+
+                if (isDict)
+                    leakedDictionaries.TryAdd(oid, false);
+                else if (isObject)
+                    leakedObjects.TryAdd(oid, false);
+            }
+            
+            WriteSplitIdList(leakedDictionaries.Keys, "dicts", 1000);
+            WriteSplitIdList(leakedObjects.Keys, "objs", 1000);
+        }
+
+        static void WriteSplitIdList(IEnumerable<ulong> objIds, string name, int count)
+        {
+            var sb = InitStringBuilder(name);
+            int subIdx = 0;
+            foreach (var id in objIds)
+            {
+                if (subIdx++ > 0)
+                    sb.Append(",");
+                sb.Append(id);
+
+                if (subIdx >= count)
+                {
+                    sb.Append("};");
+                    Console.WriteLine(sb);
+                    subIdx = 0;
+                    sb = InitStringBuilder(name);
+                }
+            }
+
+            if (subIdx > 0)
+            {
+                sb.Append("};");
+                Console.WriteLine(sb);
+            }
+        }
+
+        static StringBuilder InitStringBuilder(string name)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"var {name} = new ulong[] {{");
+            return sb;
         }
     }
 }

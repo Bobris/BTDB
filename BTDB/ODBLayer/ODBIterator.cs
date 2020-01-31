@@ -98,7 +98,7 @@ namespace BTDB.ODBLayer
                     continue;
                 MarkRelationName(relation.Key);
                 IterateRelation(relation.Value);
-                if (_visitor != null) _visitor.EndRelation();
+                _visitor?.EndRelation();
             }
         }
 
