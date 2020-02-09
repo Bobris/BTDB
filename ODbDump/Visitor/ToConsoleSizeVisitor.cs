@@ -13,11 +13,13 @@ namespace ODbDump.Visitor
         string _currentSingleton;
         bool _headerWritten;
         readonly Stopwatch _stopWatch = new Stopwatch();
+
+        const int KeyOverhead = 20;
         
         public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
             var (memory, disk) = tr.GetStorageSizeOfCurrentKey();
-            _currentMemorySize += memory;
+            _currentMemorySize += memory + KeyOverhead;
             _currentOnDiskSize += disk;
         }
 
@@ -25,7 +27,7 @@ namespace ODbDump.Visitor
         {
             if (!_headerWritten)
             {
-                Console.WriteLine("name,memory,disc,type,iteration(s)");
+                Console.WriteLine("name,memory,disk,type,iteration(s)");
                 _headerWritten = true;
             }
             else
