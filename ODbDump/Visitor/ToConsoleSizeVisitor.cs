@@ -1,46 +1,52 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
+using System.Diagnostics;
+using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 
 namespace ODbDump.Visitor
 {
-    class FrequencyVisitor : ToConsoleFastVisitor, IODBVisitor
+    class ToConsoleSizeVisitor : IODBVisitor
     {
-        readonly Dictionary<string, int> _relationFrequency = new Dictionary<string, int>();
-        readonly Dictionary<string, int> _singletonFrequency = new Dictionary<string, int>();
-
+        long _currentMemorySize;
+        long _currentOnDiskSize;
         string _currentRelation;
         string _currentSingleton;
-        int _currentCount;
-
-        public void OutputStatistic()
+        bool _headerWritten;
+        readonly Stopwatch _stopWatch = new Stopwatch();
+        
+        public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            Console.WriteLine("name, count, type");
-            foreach (var kv in _relationFrequency)
-            {
-                Console.WriteLine($"{kv.Key},{kv.Value},relation");
-            }
-            foreach (var kv in _singletonFrequency)
-            {
-                Console.WriteLine($"{kv.Key},{kv.Value},singleton");
-            }
+            var (memory, disk) = tr.GetStorageSizeOfCurrentKey();
+            _currentMemorySize += memory;
+            _currentOnDiskSize += disk;
         }
 
         void Flush()
         {
+            if (!_headerWritten)
+            {
+                Console.WriteLine("name,memory,disc,type,iteration(s)");
+                _headerWritten = true;
+            }
+            else
+            {
+                _stopWatch.Stop();
+            }
+
+            var elapsed = _stopWatch.Elapsed.TotalSeconds;
             if (!string.IsNullOrEmpty(_currentRelation))
             {
-                _relationFrequency.Add(_currentRelation, _currentCount);
+                Console.WriteLine($"{_currentRelation},{_currentMemorySize},{_currentOnDiskSize},relation,{elapsed:F2}");
                 _currentRelation = null;
             } else if (!string.IsNullOrEmpty(_currentSingleton))
             {
-                _singletonFrequency.Add(_currentSingleton, _currentCount);
+                Console.WriteLine($"{_currentSingleton},{_currentMemorySize},{_currentOnDiskSize},singleton,{elapsed:F2}");
                 _currentSingleton = null;
             }
-
-            _currentCount = 0;
+            _currentMemorySize = 0;
+            _currentOnDiskSize = 0;
+            _stopWatch.Restart();
         }
-       
         
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
@@ -49,7 +55,6 @@ namespace ODbDump.Visitor
             return true;
         }
 
- 
         public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
             return true;
@@ -84,7 +89,7 @@ namespace ODbDump.Visitor
 
         public bool StartInlineObject(uint tableId, string tableName, uint version)
         {
-            return false;
+            return true;
         }
 
         public void EndInlineObject()
@@ -93,12 +98,12 @@ namespace ODbDump.Visitor
 
         public bool StartList()
         {
-            return false;
+            return true;
         }
 
         public bool StartItem()
         {
-            return false;
+            return true;
         }
 
         public void EndItem()
@@ -116,7 +121,6 @@ namespace ODbDump.Visitor
 
         public bool StartDictKey()
         {
-            _currentCount++;
             return false;
         }
 
@@ -126,7 +130,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictValue()
         {
-            return false;
+            return true;
         }
 
         public void EndDictValue()
@@ -154,7 +158,6 @@ namespace ODbDump.Visitor
 
         public bool StartRelationKey()
         {
-            _currentCount++;
             return false;
         }
 
@@ -164,7 +167,7 @@ namespace ODbDump.Visitor
 
         public bool StartRelationValue()
         {
-            return false;
+            return true;
         }
 
         public void EndRelationValue()

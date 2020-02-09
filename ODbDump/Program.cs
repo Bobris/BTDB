@@ -18,7 +18,7 @@ namespace ODbDump
             if (args.Length < 1)
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
-                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, frequency, interactive");
+                Console.WriteLine("Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive");
                 return;
             }
 
@@ -331,16 +331,16 @@ namespace ODbDump
                         break;
                     }
                 case "leakscode":
-                {
-                    using (var dfc = new OnDiskFileCollection(args[0]))
-                    using (var kdb = new KeyValueDB(dfc))
-                    using (var odb = new ObjectDB())
                     {
-                        odb.Open(kdb, false);
-                        odb.DumpLeaksCode();
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        using (var odb = new ObjectDB())
+                        {
+                            odb.Open(kdb, false);
+                            odb.DumpLeaksCode();
+                        }
+                        break;
                     }
-                    break;
-                }
                 case "frequency":
                     {
                         using (var dfc = new OnDiskFileCollection(args[0]))
@@ -350,10 +350,26 @@ namespace ODbDump
                             odb.Open(kdb, false);
                             using (var tr = odb.StartTransaction())
                             {
-                                var visitor = new FrequencyVisitor();
+                                var visitor = new ToConsoleFrequencyVisitor();
                                 var iterator = new ODBIterator(tr, visitor);
                                 iterator.Iterate();
                                 visitor.OutputStatistic();
+                            }
+                        }
+                    }
+                    break;
+                case "size":
+                    {
+                        using (var dfc = new OnDiskFileCollection(args[0]))
+                        using (var kdb = new KeyValueDB(dfc))
+                        using (var odb = new ObjectDB())
+                        {
+                            odb.Open(kdb, false);
+                            using (var tr = odb.StartTransaction())
+                            {
+                                var visitor = new ToConsoleSizeVisitor();
+                                var iterator = new ODBIterator(tr, visitor);
+                                iterator.Iterate();
                             }
                         }
                     }

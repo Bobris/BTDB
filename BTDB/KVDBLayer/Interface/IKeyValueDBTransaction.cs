@@ -182,7 +182,7 @@ namespace BTDB.KVDBLayer
         long GetTransactionNumber();
 
         /// <summary>
-        /// Usefull for finding what takes most storege in your DB
+        /// Useful for finding what takes most storage in your DB
         /// </summary>
         /// <returns>Size of key and value (possibly even compressed size)</returns>
         KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
