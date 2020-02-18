@@ -130,7 +130,7 @@ namespace BTDBTest
             }
             Assert.NotEmpty(FindLeaks());
         }
-        
+
         [Fact]
         public void ReuseIDictionaryAfterShallowRemove()
         {
@@ -147,7 +147,7 @@ namespace BTDBTest
             }
             AssertNoLeaksInDb();
         }
-        
+
         [Fact]
         public void FreeIDictionaryInUpsert()
         {
@@ -545,6 +545,39 @@ namespace BTDBTest
             Assert.NotEmpty(FindLeaks());
         }
 
+        [Fact]
+        public void IIndirectMustBeFreedManually()
+        {
+            Func<IObjectDBTransaction, IHddRelation> creator;
+            using (var tr = _db.StartTransaction())
+            {
+                creator = tr.InitRelation<IHddRelation>("HddRelation");
+                var files = creator(tr);
+                var file = new File
+                {
+                    Id = 1,
+                    Data = new DBIndirect<RawData>(new RawData
+                    {
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+                    })
+                };
+                files.Insert(file);
+                tr.Commit();
+            }
+            using (var tr = _db.StartTransaction())
+            {
+                var files = creator(tr);
+                var file = files.FindById(1);
+                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
+                file.Data.Value.Edges.Clear();
+                tr.Delete(file.Data);
+                files.RemoveById(1);
+                tr.Commit();
+            }
+            AssertNoLeaksInDb();
+        }
+
         public class Setting
         {
             [PrimaryKey]
@@ -882,7 +915,7 @@ namespace BTDBTest
                     Nodes = new NodesBase()
                 };
                 table.Insert(graph);
-                
+
                 Assert.True(table.FindById(1).Nodes is NodesOne);
                 Assert.True(table.FindById(2).Nodes is NodesTwo);
 
@@ -907,7 +940,7 @@ namespace BTDBTest
 
         public class BatchDb
         {
-            [PrimaryKey(1)] 
+            [PrimaryKey(1)]
             public Guid ItemId { get; set; }
             public IDictionary<Guid, EmailDb> MailPieces { get; set; }
         }
@@ -954,7 +987,7 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 var batch = table.FindByIdOrDefault(guid);
-                batch.MailPieces[mailGuid] = null;  //LEAK - removed immediately from db, in table.Update don't have previous value 
+                batch.MailPieces[mailGuid] = null;  //LEAK - removed immediately from db, in table.Update don't have previous value
                 table.Update(batch);
                 tr.Commit();
             }

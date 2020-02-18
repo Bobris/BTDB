@@ -250,8 +250,10 @@ When secondary definition is changed (for example new index is defined) then it 
 
 ## Free content
 
-During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks. You can see examples in
+During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks (Also works recursively IDicionaries are freed automatically if they are nested in another IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
+
+If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared before. So you need recursively load objects and delete them. See test named `IIndirectMustBeFreedManually` in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).
 
 ## Modification check during enumeration
 
