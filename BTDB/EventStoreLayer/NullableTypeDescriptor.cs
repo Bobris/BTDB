@@ -117,28 +117,52 @@ namespace BTDB.EventStoreLayer
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
-            var localResult = ilGenerator.DeclareLocal(targetType);
-            var finish = ilGenerator.DefineLabel();
-            var noValue = ilGenerator.DefineLabel();
-            var itemType = targetType.GetGenericArguments()[0];
-            var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
+            var genericArguments = targetType.GetGenericArguments();
+            var itemType = genericArguments.Length > 0 ? targetType.GetGenericArguments()[0] : typeof(object);
 
-            if (!targetType.IsAssignableFrom(nullableType))
-                throw new NotSupportedException();
-            ilGenerator
-                .Do(pushReader)
-                .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(noValue);
-            _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
-            ilGenerator
-                .Newobj(nullableType.GetConstructor(new[] { itemType }))
-                .Stloc(localResult)
-                .BrS(finish)
-                .Mark(noValue)
-                .Ldloca(localResult)
-                .InitObj(nullableType)
-                .Mark(finish)
-                .Ldloc(localResult);
+            if (itemType == typeof(object))
+            {
+                var noValue = ilGenerator.DefineLabel();
+                var finish = ilGenerator.DefineLabel();
+
+                ilGenerator
+                    .Do(pushReader)
+                    .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                    .Brfalse(noValue);
+                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                    il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
+                ilGenerator
+                    .Br(finish)
+                    .Mark(noValue)
+                    .Ldnull()
+                    .Mark(finish);
+            }
+            else
+            {
+                var localResult = ilGenerator.DeclareLocal(targetType);
+                var finish = ilGenerator.DefineLabel();
+                var noValue = ilGenerator.DefineLabel();
+                
+                var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
+
+                if (!targetType.IsAssignableFrom(nullableType))
+                    throw new NotSupportedException();
+                ilGenerator
+                    .Do(pushReader)
+                    .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                    .Brfalse(noValue);
+                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                    il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
+                ilGenerator
+                    .Newobj(nullableType.GetConstructor(new[] { itemType }))
+                    .Stloc(localResult)
+                    .BrS(finish)
+                    .Mark(noValue)
+                    .Ldloca(localResult)
+                    .InitObj(nullableType)
+                    .Mark(finish)
+                    .Ldloc(localResult);
+            }
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()

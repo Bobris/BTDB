@@ -398,6 +398,19 @@ namespace BTDBTest
             Assert.False(obj.Equals(AttributeTargets.Method));
         }
 
+        public class SimpleDtoWithNullable
+        {
+            public int? IntField { get; set; }
+        }
+        
+        [Fact]
+        public void CanDeserializeNullableToDynamic()
+        {
+            var value = new SimpleDtoWithNullable {IntField = 1};
+            var obj = ConvertToDynamicThroughSerialization(value);
+            Assert.Equal(1, obj.IntField);
+        }
+
         public class ClassWithIDict : IEquatable<ClassWithIDict>
         {
             public IDictionary<Guid, IList<SimpleDto>> Dict { get; set; }
