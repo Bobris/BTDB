@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.5.0
+
 - Added possibility to deserialize event with Nullable to dynamic (usable for dumping EventStore) 
 
 ## 19.4.0
