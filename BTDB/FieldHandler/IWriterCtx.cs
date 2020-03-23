@@ -1,3 +1,4 @@
+using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
@@ -9,5 +10,6 @@ namespace BTDB.FieldHandler
         void WriteNativeObject(object @object);
         void WriteNativeObjectPreventInline(object @object);
         AbstractBufferedWriter Writer();
+        void WriteEncryptedString(EncryptedString value);
     }
 }

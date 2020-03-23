@@ -9,6 +9,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using BTDB.Encrypted;
 using Xunit;
 
 namespace BTDBTest
@@ -245,7 +246,8 @@ namespace BTDBTest
                     Guid.Empty,
                     new byte[0],
                     ByteBuffer.NewEmpty(),
-                    false
+                    false,
+                    new EncryptedString()
                 }.Select(o => ts.DescriptorOf(o).Describe());
             this.Assent(string.Join("\n", res));
         }
@@ -402,7 +404,7 @@ namespace BTDBTest
         {
             public int? IntField { get; set; }
         }
-        
+
         [Fact]
         public void CanDeserializeNullableToDynamic()
         {

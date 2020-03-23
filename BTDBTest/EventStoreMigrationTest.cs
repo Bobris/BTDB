@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.Encrypted;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
 using Xunit;
@@ -23,7 +24,7 @@ namespace BTDBTest
         {
             var obj = PassThroughEventStorage(new EventRoot
             {
-                Items = new List<Item> { new Item { Field = "A" } }
+                Items = new List<Item> {new Item {Field = "A"}}
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
             bool hasMetadata;
@@ -40,15 +41,21 @@ namespace BTDBTest
 
         static object PassThroughEventStorage(object @event, ITypeNameMapper mapper)
         {
-            var manager = new EventStoreManager();
+            var options = TypeSerializersOptions.Default;
+            options.SymmetricCipher = new AesGcmSymmetricCipher(new byte[]
+            {
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                28, 29, 30, 31
+            });
+            var manager = new EventStoreManager(options);
             var storage = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(storage);
             var events = new[]
-                {
-                    @event
-                };
+            {
+                @event
+            };
             appender.Store(null, events);
-            manager = new EventStoreManager();
+            manager = new EventStoreManager(options);
             manager.SetNewTypeNameMapper(mapper);
             var eventObserver = new EventStoreTest.StoringEventObserver();
             manager.OpenReadOnlyStore(storage).ReadFromStartToEnd(eventObserver);
@@ -72,11 +79,11 @@ namespace BTDBTest
             var parentMapper = new FullNameTypeMapper();
             var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(Item2), parentMapper.ToName(typeof(Item)),
                 new EventStoreTest.OverloadableTypeMapper(typeof(EventRoot2), parentMapper.ToName(typeof(EventRoot)),
-                parentMapper
+                    parentMapper
                 ));
             var obj = PassThroughEventStorage(new EventRoot
             {
-                Items = new List<Item> { new Item { Field = "A" } }
+                Items = new List<Item> {new Item {Field = "A"}}
             }, mapper);
             var serializer = new EventSerializer(mapper);
             bool hasMetadata;
@@ -101,7 +108,7 @@ namespace BTDBTest
         {
             var obj = PassThroughEventStorage(new EventDictListRoot
             {
-                Items = new Dictionary<ulong, IList<Item>> { { 1, new List<Item> { new Item { Field = "A" } } } }
+                Items = new Dictionary<ulong, IList<Item>> {{1, new List<Item> {new Item {Field = "A"}}}}
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
             bool hasMetadata;
@@ -142,12 +149,13 @@ namespace BTDBTest
         {
             var parentMapper = new FullNameTypeMapper();
             var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(ItemEn2), parentMapper.ToName(typeof(ItemEn)),
-                new EventStoreTest.OverloadableTypeMapper(typeof(EventRootEn2), parentMapper.ToName(typeof(EventRootEn)),
-                parentMapper
+                new EventStoreTest.OverloadableTypeMapper(typeof(EventRootEn2),
+                    parentMapper.ToName(typeof(EventRootEn)),
+                    parentMapper
                 ));
             var obj = PassThroughEventStorage(new EventRootEn
             {
-                Items = new List<ItemEn> { ItemEn.One }
+                Items = new List<ItemEn> {ItemEn.One}
             }, mapper);
             var serializer = new EventSerializer(mapper);
             bool hasMetadata;
@@ -176,15 +184,16 @@ namespace BTDBTest
         public void CanMigrateIntToUlong()
         {
             var parentMapper = new FullNameTypeMapper();
-            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithUlong), parentMapper.ToName(typeof(EventWithInt)),
-                    parentMapper
-                );
-            var obj = (EventWithUlong)PassThroughEventStorage(new EventWithInt
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithUlong),
+                parentMapper.ToName(typeof(EventWithInt)),
+                parentMapper
+            );
+            var obj = (EventWithUlong) PassThroughEventStorage(new EventWithInt
             {
                 A = 42
             }, mapper);
             Assert.Equal(42ul, obj.A);
-            var obj2 = (EventWithUlong)PassThroughEventStorage(new EventWithInt
+            var obj2 = (EventWithUlong) PassThroughEventStorage(new EventWithInt
             {
                 A = -1
             }, mapper);
@@ -205,19 +214,45 @@ namespace BTDBTest
         public void CanMigrateStringToVersion()
         {
             var parentMapper = new FullNameTypeMapper();
-            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithVersion), parentMapper.ToName(typeof(EventWithString)),
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithVersion),
+                parentMapper.ToName(typeof(EventWithString)),
                 parentMapper
             );
-            var obj = (EventWithVersion)PassThroughEventStorage(new EventWithString
+            var obj = (EventWithVersion) PassThroughEventStorage(new EventWithString
             {
                 A = "1.2.3"
             }, mapper);
-            Assert.Equal(new Version(1,2,3), obj.A);
-            var obj2 = (EventWithVersion)PassThroughEventStorage(new EventWithString
+            Assert.Equal(new Version(1, 2, 3), obj.A);
+            var obj2 = (EventWithVersion) PassThroughEventStorage(new EventWithString
             {
                 A = null
             }, mapper);
             Assert.Null(obj2.A);
+        }
+
+        public class EventWithEncryptedString
+        {
+            public EncryptedString A { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateStringToEncryptedString()
+        {
+            var parentMapper = new FullNameTypeMapper();
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventWithEncryptedString),
+                parentMapper.ToName(typeof(EventWithString)),
+                parentMapper
+            );
+            var obj = (EventWithEncryptedString) PassThroughEventStorage(new EventWithString
+            {
+                A = "pass"
+            }, mapper);
+            Assert.Equal("pass", obj.A);
+            var obj2 = (EventWithEncryptedString) PassThroughEventStorage(new EventWithString
+            {
+                A = null
+            }, mapper);
+            Assert.Null(obj2.A.Secret);
         }
     }
 }

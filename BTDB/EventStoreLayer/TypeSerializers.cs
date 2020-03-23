@@ -7,6 +7,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using BTDB.Encrypted;
 
 namespace BTDB.EventStoreLayer
 {
@@ -30,8 +32,9 @@ namespace BTDB.EventStoreLayer
         readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
         Type _preciseType;
+        readonly ISymmetricCipher _symmetricCipher;
 
-        public TypeSerializers(ITypeNameMapper typeNameMapper = null, TypeSerializersOptions options = null)
+        public TypeSerializers(ITypeNameMapper? typeNameMapper = null, TypeSerializersOptions? options = null)
         {
             ConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
             SetTypeNameMapper(typeNameMapper);
@@ -42,9 +45,10 @@ namespace BTDB.EventStoreLayer
             _loaderFactoryAction = LoaderFactory;
             _buildFromTypeAction = BuildFromType;
             _options = options ?? TypeSerializersOptions.Default;
+            _symmetricCipher = _options.SymmetricCipher ?? new InvalidSymmetricCipher();
         }
 
-        public void SetTypeNameMapper(ITypeNameMapper typeNameMapper)
+        public void SetTypeNameMapper(ITypeNameMapper? typeNameMapper)
         {
             _typeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
         }
@@ -319,7 +323,7 @@ namespace BTDB.EventStoreLayer
                 _mapping = mapping;
             }
 
-            public object LoadObject()
+            public object? LoadObject()
             {
                 var typeId = _reader.ReadVUInt32();
                 if (typeId == 0)
@@ -353,6 +357,25 @@ namespace BTDB.EventStoreLayer
                     return;
                 }
                 _mapping.Load(typeId, _reader, this);
+            }
+
+            public EncryptedString LoadEncryptedString()
+            {
+                var cipher = _mapping.GetSymmetricCipher();
+                var enc = _reader.ReadByteArray();
+                var size = cipher!.CalcPlainSizeFor(enc);
+                var dec = new byte[size];
+                if (!cipher.Decrypt(enc, dec))
+                {
+                    throw new CryptographicException();
+                }
+                var r = new ByteArrayReader(dec);
+                return r.ReadString();
+            }
+
+            public void SkipEncryptedString()
+            {
+                _reader.SkipByteArray();
             }
         }
 
@@ -477,6 +500,11 @@ namespace BTDB.EventStoreLayer
         Type NameToType(string name)
         {
             return _typeNameMapper.ToType(name);
+        }
+
+        public ISymmetricCipher GetSymmetricCipher()
+        {
+            return _symmetricCipher;
         }
     }
 }

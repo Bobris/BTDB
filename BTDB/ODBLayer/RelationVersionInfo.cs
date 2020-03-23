@@ -302,7 +302,7 @@ namespace BTDB.ODBLayer
                 var skIndex = reader.ReadVUInt32();
                 var info = new SecondaryKeyInfo();
                 reader.SkipVUInt32(); //unused
-                info.Name = reader.ReadString();
+                info.Name = reader.ReadString()!;
                 var cnt = reader.ReadVUInt32();
                 info.Fields = new List<FieldId>((int)cnt);
                 for (var j = 0; j < cnt; j++)
@@ -317,7 +317,7 @@ namespace BTDB.ODBLayer
 
             var fieldCount = reader.ReadVUInt32();
             var fieldInfos = new TableFieldInfo[fieldCount];
-            for (int i = 0; i < fieldCount; i++)
+            for (var i = 0; i < fieldCount; i++)
             {
                 fieldInfos[i] = UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.None);
             }
@@ -343,7 +343,7 @@ namespace BTDB.ODBLayer
 
         internal bool NeedsCtx()
         {
-            return _fields.Any(tfi => tfi.Handler.NeedsCtx());
+            return _fields.Any(tfi => tfi.Handler!.NeedsCtx());
         }
 
         internal bool NeedsInit()

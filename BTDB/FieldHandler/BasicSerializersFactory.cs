@@ -103,6 +103,8 @@ namespace BTDB.FieldHandler
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVersion()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVersion()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVersion(null)));
+            fh.Add(new EncryptedStringHandler());
+            des.Add(new EncryptedStringDescriptor());
             FieldHandlers = fh.ToArray();
             TypeDescriptors = des.ToArray();
         }

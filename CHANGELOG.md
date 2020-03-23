@@ -2,9 +2,13 @@
 
 ## [unreleased]
 
+### Added
+
+- New `EncryptedString` type to be able to store string in its encrypted form. You need to pass `ISymmetricCipher` implementation to `DBOptions`, `TypeSerializersOptions`, `EventSerializer` and `EventDeserializer`. There is class `AesGcmSymmetricCipher` implementing `ISymmetricCipher`, which provides perfect security by just passing 32 bytes key to its constructor.
+
 ## 19.5.0
 
-- Added possibility to deserialize event with Nullable to dynamic (usable for dumping EventStore) 
+- Added possibility to deserialize event with Nullable to dynamic (usable for dumping EventStore)
 
 ## 19.4.0
 

@@ -8,6 +8,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using System.Diagnostics;
+using BTDB.Encrypted;
 
 namespace BTDB.EventStore2Layer
 {
@@ -22,8 +23,8 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew =
             new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
 
-        readonly List<SerializerTypeInfo> _id2Info = new List<SerializerTypeInfo>();
-        readonly List<SerializerTypeInfo> _id2InfoNew = new List<SerializerTypeInfo>();
+        readonly List<SerializerTypeInfo?> _id2Info = new List<SerializerTypeInfo?>();
+        readonly List<SerializerTypeInfo?> _id2InfoNew = new List<SerializerTypeInfo?>();
 
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
             new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -37,13 +38,16 @@ namespace BTDB.EventStore2Layer
             new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>
                 .Instance);
 
+        readonly ISymmetricCipher _symmetricCipher;
+
         bool _newTypeFound;
 
-        public EventSerializer(ITypeNameMapper typeNameMapper = null,
-            ITypeConvertorGenerator typeConvertorGenerator = null)
+        public EventSerializer(ITypeNameMapper? typeNameMapper = null,
+            ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null)
         {
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
+            _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
             _id2Info.Add(null); // 0 = null
             _id2Info.Add(null); // 1 = back reference
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
@@ -55,7 +59,7 @@ namespace BTDB.EventStore2Layer
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2Info.Add(infoForType);
-                _typeOrDescriptor2Info[predefinedType.GetPreferedType()] = infoForType;
+                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferedType()!, infoForType);
                 var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
                 if (descriptorMultipleNativeTypes == null) continue;
                 foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
@@ -216,11 +220,11 @@ namespace BTDB.EventStore2Layer
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d =>
                 {
                     var placeHolderDescriptor = d as PlaceHolderDescriptor;
                     return placeHolderDescriptor != null
-                        ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1].Descriptor
+                        ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
                         : d;
                 });
             }
@@ -228,12 +232,12 @@ namespace BTDB.EventStore2Layer
             // This additional cycle is needed to fill names of recursive structures
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d => d);
+                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d => d);
             }
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                var infoForType = _id2InfoNew[i];
+                var infoForType = _id2InfoNew[i]!;
                 for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
                 {
                     if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
@@ -255,7 +259,7 @@ namespace BTDB.EventStore2Layer
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i].Descriptor.MapNestedTypes(d =>
+                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d =>
                 {
                     ITypeDescriptor res;
                     return _remapToOld.TryGetValue(d, out res) ? res : d;
@@ -325,8 +329,7 @@ namespace BTDB.EventStore2Layer
 
         public ITypeDescriptor Create(Type type)
         {
-            SerializerTypeInfo result;
-            if (_typeOrDescriptor2Info.TryGetValue(type, out result)) return result.Descriptor;
+            if (_typeOrDescriptor2Info.TryGetValue(type, out var result)) return result.Descriptor;
             if (_typeOrDescriptor2InfoNew.TryGetValue(type, out result)) return result.Descriptor;
             ITypeDescriptor desc = null;
             Type typeAlternative = null;
@@ -523,8 +526,7 @@ namespace BTDB.EventStore2Layer
                 }
 
                 visited.Add(origDesc);
-                SerializerTypeInfo info;
-                if (_typeOrDescriptor2Info.TryGetValue(old, out info))
+                if (_typeOrDescriptor2Info.TryGetValue(old, out var info))
                 {
                     return info.Descriptor;
                 }
@@ -707,6 +709,17 @@ namespace BTDB.EventStore2Layer
             if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
             _writer.WriteVUInt32((uint) info.Id);
             info.ComplexSaver(_writer, this, obj);
+        }
+
+        public void StoreEncryptedString(EncryptedString value)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteString(value);
+            var plain = writer.Data.AsSyncReadOnlySpan();
+            var encSize = _symmetricCipher.CalcEncryptedSizeFor(plain);
+            var enc = new byte[encSize];
+            _symmetricCipher.Encrypt(plain, enc);
+            _writer.WriteByteArray(enc);
         }
     }
 }

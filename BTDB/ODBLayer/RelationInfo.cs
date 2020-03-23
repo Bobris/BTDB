@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;

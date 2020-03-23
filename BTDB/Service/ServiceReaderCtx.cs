@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
@@ -8,12 +10,13 @@ namespace BTDB.Service
 {
     public class ServiceReaderCtx : IReaderCtx
     {
-        readonly IServiceInternalServer _serviceServer;
-        readonly IServiceInternalClient _serviceClient;
+        readonly IServiceInternalServer? _serviceServer;
+        readonly IServiceInternalClient? _serviceClient;
         readonly AbstractBufferedReader _reader;
-        List<object> _objects;
-        Stack<IMemorizedPosition> _returningStack;
+        List<object>? _objects;
+        Stack<IMemorizedPosition?>? _returningStack;
         int _lastIdOfObj;
+        ISymmetricCipher? _cipher;
 
         public ServiceReaderCtx(IServiceInternalServer serviceServer, AbstractBufferedReader reader)
         {
@@ -31,7 +34,7 @@ namespace BTDB.Service
             _lastIdOfObj = 0;
         }
 
-        public bool ReadObject(out object @object)
+        public bool ReadObject(out object? @object)
         {
             var id = (int)_reader.ReadVUInt32();
             if (id == 0)
@@ -61,12 +64,12 @@ namespace BTDB.Service
             return true;
         }
 
-        void PushReturningPosition(IMemorizedPosition memorizedPosition)
+        void PushReturningPosition(IMemorizedPosition? memorizedPosition)
         {
             if (_returningStack == null)
             {
                 if (memorizedPosition == null) return;
-                _returningStack = new Stack<IMemorizedPosition>();
+                _returningStack = new Stack<IMemorizedPosition?>();
             }
             if (_returningStack.Count == 0 && memorizedPosition == null) return;
             _returningStack.Push(memorizedPosition);
@@ -119,7 +122,7 @@ namespace BTDB.Service
             ReadNativeObject(); // TODO: maybe optimize later
         }
 
-        object RetriveObj(int ido)
+        object? RetriveObj(int ido)
         {
             if (_objects == null) _objects = new List<object>();
             while (_objects.Count <= ido) _objects.Add(null);
@@ -129,6 +132,29 @@ namespace BTDB.Service
         public AbstractBufferedReader Reader()
         {
             return _reader;
+        }
+
+        public EncryptedString ReadEncryptedString()
+        {
+            if (_cipher == null)
+            {
+                _cipher = _serviceClient != null ? _serviceClient.GetSymmetricCipher() : _serviceServer!.GetSymmetricCipher();
+            }
+
+            var enc = Reader().ReadByteArray();
+            var size = _cipher!.CalcPlainSizeFor(enc);
+            var dec = new byte[size];
+            if (!_cipher.Decrypt(enc, dec))
+            {
+                throw new CryptographicException();
+            }
+            var r = new ByteArrayReader(dec);
+            return r.ReadString();
+        }
+
+        public void SkipEncryptedString()
+        {
+            Reader().SkipByteArray();
         }
 
         public void RegisterDict(ulong dictId)

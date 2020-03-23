@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
@@ -7,10 +9,10 @@ namespace BTDB.Service
     public class ServiceWriterCtx : IWriterCtx
     {
         readonly AbstractBufferedWriter _writer;
-        Dictionary<object, uint> _objectIdMap;
+        Dictionary<object, uint>? _objectIdMap;
         uint _lastId;
-        readonly IServiceInternalClient _serviceClient;
-        readonly IServiceInternalServer _serviceServer;
+        readonly IServiceInternalClient? _serviceClient;
+        readonly IServiceInternalServer? _serviceServer;
 
         public ServiceWriterCtx(IServiceInternalClient serviceClient, AbstractBufferedWriter writer)
         {
@@ -26,7 +28,7 @@ namespace BTDB.Service
             _writer = writer;
         }
 
-        public bool WriteObject(object @object)
+        public bool WriteObject([NotNullWhen(true)] object? @object)
         {
             if (@object == null)
             {
@@ -46,7 +48,7 @@ namespace BTDB.Service
             return true;
         }
 
-        public void WriteNativeObject(object @object)
+        public void WriteNativeObject(object? @object)
         {
             if (WriteObject(@object))
             {
@@ -56,7 +58,7 @@ namespace BTDB.Service
                 }
                 else
                 {
-                    _serviceServer.WriteObjectForClient(@object, this);
+                    _serviceServer!.WriteObjectForClient(@object, this);
                 }
             }
         }
@@ -69,6 +71,18 @@ namespace BTDB.Service
         public AbstractBufferedWriter Writer()
         {
             return _writer;
+        }
+
+        public void WriteEncryptedString(EncryptedString value)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteString(value);
+            var cipher = _serviceClient?.GetSymmetricCipher() ?? _serviceServer?.GetSymmetricCipher();
+            var plain = writer.Data.AsSyncReadOnlySpan();
+            var encSize = cipher!.CalcEncryptedSizeFor(plain);
+            var enc = new byte[encSize];
+            cipher.Encrypt(plain, enc);
+            _writer.WriteByteArray(enc);
         }
     }
 }

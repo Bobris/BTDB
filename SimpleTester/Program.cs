@@ -1,4 +1,4 @@
-﻿using BTDBTest;
+﻿
 //using JetBrains.Profiler.Windows.Api;
 
 namespace SimpleTester

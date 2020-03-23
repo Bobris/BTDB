@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -12,6 +13,7 @@ namespace BTDB.ODBLayer
     public class ObjectDB : IObjectDB, IInstanceRegistry
     {
         IKeyValueDB _keyValueDB;
+        internal ISymmetricCipher _symmetricCipher;
         IType2NameRegistry _type2Name;
         IPolymorphicTypesRegistry _polymorphicTypesRegistry;
         TablesInfo _tablesInfo;
@@ -65,6 +67,7 @@ namespace BTDB.ODBLayer
             _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
             AutoRegisterTypes = options.AutoRegisterType;
             ActualOptions = options;
+            _symmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
 
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
@@ -191,6 +194,8 @@ namespace BTDB.ODBLayer
         }
 
         public IObjectDBLogger Logger { get; set; }
+
+        public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
         public void Dispose()
         {

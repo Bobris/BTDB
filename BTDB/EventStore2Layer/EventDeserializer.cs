@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -22,11 +24,13 @@ namespace BTDB.EventStore2Layer
         readonly List<object> _visited = new List<object>();
         readonly ByteBufferReader _reader = new ByteBufferReader(ByteBuffer.NewEmpty());
         readonly object _lock = new object();
+        readonly ISymmetricCipher _symmetricCipher;
 
-        public EventDeserializer(ITypeNameMapper? typeNameMapper = null, ITypeConvertorGenerator? typeConvertorGenerator = null)
+        public EventDeserializer(ITypeNameMapper? typeNameMapper = null, ITypeConvertorGenerator? typeConvertorGenerator = null, ISymmetricCipher? symmetricCipher = null)
         {
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
+            _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
             _id2Info.Add(null); // 0 = null
             _id2Info.Add(null); // 1 = back reference
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
@@ -38,7 +42,8 @@ namespace BTDB.EventStore2Layer
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2Info.Add(infoForType);
-                _typeOrDescriptor2Info[predefinedType.GetPreferedType()] = infoForType;
+
+                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferedType(), infoForType);
                 var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
                 if (descriptorMultipleNativeTypes == null) continue;
                 foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
@@ -295,6 +300,24 @@ namespace BTDB.EventStore2Layer
                 infoForType.Loader = LoaderFactory(infoForType.Descriptor);
             }
             infoForType.Loader(_reader, this, infoForType.Descriptor);
+        }
+
+        public EncryptedString LoadEncryptedString()
+        {
+            var enc = _reader.ReadByteArray();
+            var size = _symmetricCipher.CalcPlainSizeFor(enc);
+            var dec = new byte[size];
+            if (!_symmetricCipher.Decrypt(enc, dec))
+            {
+                throw new CryptographicException();
+            }
+            var r = new ByteArrayReader(dec);
+            return r.ReadString();
+        }
+
+        public void SkipEncryptedString()
+        {
+            _reader.SkipByteArray();
         }
     }
 }

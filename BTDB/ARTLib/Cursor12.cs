@@ -3,7 +3,6 @@ using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace BTDB.ARTLib
 {

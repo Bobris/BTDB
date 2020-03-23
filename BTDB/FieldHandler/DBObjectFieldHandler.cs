@@ -8,15 +8,15 @@ namespace BTDB.FieldHandler
 {
     public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit
     {
-        readonly IObjectDB _objectDB;
+        readonly IObjectDB _objectDb;
         readonly byte[] _configuration;
-        readonly string _typeName;
+        readonly string? _typeName;
         readonly bool _indirect;
-        Type _type;
+        Type? _type;
 
-        public DBObjectFieldHandler(IObjectDB objectDB, Type type)
+        public DBObjectFieldHandler(IObjectDB objectDb, Type type)
         {
-            _objectDB = objectDB;
+            _objectDb = objectDb;
             _type = Unwrap(type);
             _indirect = _type != type;
             if (_type.IsInterface)
@@ -27,7 +27,7 @@ namespace BTDB.FieldHandler
             }
             else
             {
-                _typeName = (_objectDB as ObjectDB)?.RegisterType(_type, false);
+                _typeName = (_objectDb as ObjectDB)?.RegisterType(_type, false);
                 var writer = new ByteBufferWriter();
                 writer.WriteString(_typeName);
                 _configuration = writer.Data.ToByteArray();
@@ -50,9 +50,9 @@ namespace BTDB.FieldHandler
             return ti.IsGenericType && ti.GetGenericTypeDefinition() == typeof(IIndirect<>);
         }
 
-        public DBObjectFieldHandler(IObjectDB objectDB, byte[] configuration)
+        public DBObjectFieldHandler(IObjectDB objectDb, byte[] configuration)
         {
-            _objectDB = objectDB;
+            _objectDb = objectDb;
             _configuration = configuration;
             if (configuration.Length == 0)
             {
@@ -60,27 +60,27 @@ namespace BTDB.FieldHandler
             }
             else
             {
-                _typeName = string.Intern(new ByteArrayReader(configuration).ReadString());
+                _typeName = string.Intern(new ByteArrayReader(configuration).ReadString()!);
                 _indirect = false;
             }
             CreateType();
         }
 
-        public DBObjectFieldHandler(IObjectDB objectDB, Type type, bool indirect) : this(objectDB, type)
+        public DBObjectFieldHandler(IObjectDB objectDb, Type type, bool indirect) : this(objectDb, type)
         {
-            _objectDB = objectDB;
+            _objectDb = objectDb;
             _type = type;
             _typeName = null;
             _indirect = indirect;
         }
 
-        Type CreateType()
+        Type? CreateType()
         {
             if (_typeName == null)
             {
                 return _type = typeof(object);
             }
-            return _type = _objectDB.TypeByName(_typeName);
+            return _type = _objectDb.TypeByName(_typeName);
         }
 
         public static string HandlerName => "Object";
@@ -125,7 +125,7 @@ namespace BTDB.FieldHandler
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).ReadNativeObject());
             var type = HandledType();
-            ilGenerator.Do(_objectDB.TypeConvertorGenerator.GenerateConversion(typeof(object), type));
+            ilGenerator.Do(_objectDb.TypeConvertorGenerator.GenerateConversion(typeof(object), type)!);
         }
 
         public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
@@ -148,7 +148,7 @@ namespace BTDB.FieldHandler
             ilGenerator
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
-                .Do(_objectDB.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object)))
+                .Do(_objectDb.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object))!)
                 .Callvirt(() => default(IWriterCtx).WriteNativeObject(null));
         }
 
@@ -157,7 +157,7 @@ namespace BTDB.FieldHandler
             var needType = Unwrap(type);
             if (needType.IsInterface)
             {
-                return new DBObjectFieldHandler(_objectDB, needType, needType != type);
+                return new DBObjectFieldHandler(_objectDb, needType, needType != type);
             }
             if (this == typeHandler) return this;
             var myType = HandledType();
@@ -171,7 +171,7 @@ namespace BTDB.FieldHandler
             var needType = Unwrap(type);
             if (needType.IsInterface)
             {
-                return new DBObjectFieldHandler(_objectDB, needType, needType != type);
+                return new DBObjectFieldHandler(_objectDb, needType, needType != type);
             }
             return this;
         }
@@ -183,14 +183,14 @@ namespace BTDB.FieldHandler
 
         public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
         {
-            ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type).GetConstructor(Type.EmptyTypes));
+            ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetConstructor(Type.EmptyTypes)!);
         }
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var needsFreeContent = NeedsFreeContent.No;
             var type = HandledType();
-            foreach (var st in _objectDB.GetPolymorphicTypes(type))
+            foreach (var st in _objectDb.GetPolymorphicTypes(type))
             {
                 UpdateNeedsFreeContent(st, ref needsFreeContent);
             }
@@ -206,7 +206,7 @@ namespace BTDB.FieldHandler
         void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
         {
             //decides upon current version  (null for object types never stored in DB)
-            var tableInfo = ((ObjectDB)_objectDB).TablesInfo.FindByType(type);
+            var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
             var needsContentPartial = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
             Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
         }

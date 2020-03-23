@@ -1,4 +1,6 @@
-﻿namespace BTDB.EventStoreLayer
+﻿using BTDB.Encrypted;
+
+namespace BTDB.EventStoreLayer
 {
     public class TypeSerializersOptions
     {
@@ -11,5 +13,7 @@
         /// The value determines whether the <see cref="FieldHandler.IIndirect"/> is serialized or not.
         /// </summary>
         public bool IgnoreIIndirect { get; set; }
+
+        public ISymmetricCipher? SymmetricCipher { get; set; }
     }
 }

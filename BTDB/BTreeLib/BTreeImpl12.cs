@@ -5,10 +5,7 @@ using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
 using System;
 using System.Diagnostics;
-using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using BTDB.IL.Caching;
 
 namespace BTDB.BTreeLib
 {

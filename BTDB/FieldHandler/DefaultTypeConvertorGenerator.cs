@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Net;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.IL;
 
 namespace BTDB.FieldHandler
@@ -163,5 +163,8 @@ namespace BTDB.FieldHandler
             Version.TryParse(value, out var result);
             return result;
         }
+
+        public static EncryptedString Convert2EncryptedString(string? secret) => secret;
+        public static string? Convert2String(EncryptedString secret) => secret;
     }
 }

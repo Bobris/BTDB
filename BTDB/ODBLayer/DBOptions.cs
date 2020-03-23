@@ -1,4 +1,6 @@
-﻿namespace BTDB.ODBLayer
+﻿using BTDB.Encrypted;
+
+namespace BTDB.ODBLayer
 {
     public class DBOptions
     {
@@ -25,8 +27,16 @@
             return this;
         }
 
+        public DBOptions WithSymmetricCipher(ISymmetricCipher cipher)
+        {
+            SymmetricCipher = cipher;
+            return this;
+        }
+
         public bool AutoRegisterType { get; private set; }
         public IType2NameRegistry CustomType2NameRegistry { get; private set; }
         public bool SelfHealing { get; private set; }
+
+        public ISymmetricCipher SymmetricCipher { get; private set; }
     }
 }

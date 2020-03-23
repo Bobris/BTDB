@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -15,10 +16,12 @@ namespace BTDB.EventStoreLayer
         readonly List<InfoForType> _id2DescriptorMap = new List<InfoForType>();
         readonly Dictionary<object, InfoForType> _typeOrDescriptor2Info = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
         readonly TypeSerializers _typeSerializers;
+        readonly ISymmetricCipher _symmetricCipher;
 
         public TypeSerializersMapping(TypeSerializers typeSerializers)
         {
             _typeSerializers = typeSerializers;
+            _symmetricCipher = _typeSerializers.GetSymmetricCipher();
             AddBuildInTypes();
         }
 
@@ -236,6 +239,8 @@ namespace BTDB.EventStoreLayer
             }
             return infoForType.Loader(reader, context, this, infoForType.Descriptor);
         }
+
+        public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
         public bool SomeTypeStored => false;
 
@@ -479,6 +484,8 @@ namespace BTDB.EventStoreLayer
                 typeSerializers = _typeSerializers;
                 return infoForType;
             }
+
+            public ISymmetricCipher GetSymmetricCipher() => _typeSerializers.GetSymmetricCipher();
         }
 
         public void StoreObject(AbstractBufferedWriter writer, object obj)
@@ -566,6 +573,18 @@ namespace BTDB.EventStoreLayer
                 }
                 var complexSaver = infoForType.ComplexSaver;
                 complexSaver(_writer, this, obj);
+            }
+
+            public void StoreEncryptedString(EncryptedString value)
+            {
+                var writer = new ByteBufferWriter();
+                writer.WriteString(value);
+                var cipher = _mapping.GetSymmetricCipher();
+                var plain = writer.Data.AsSyncReadOnlySpan();
+                var encSize = cipher.CalcEncryptedSizeFor(plain);
+                var enc = new byte[encSize];
+                cipher.Encrypt(plain, enc);
+                _writer.WriteByteArray(enc);
             }
         }
 

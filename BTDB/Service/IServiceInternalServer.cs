@@ -1,4 +1,5 @@
 using System;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
@@ -12,5 +13,6 @@ namespace BTDB.Service
         void VoidResultMarshaling(uint resultId);
         object LoadObjectOnServer(IReaderCtx readerCtx);
         void WriteObjectForClient(object @object, IWriterCtx writerCtx);
+        ISymmetricCipher GetSymmetricCipher();
     }
 }

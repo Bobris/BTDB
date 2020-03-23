@@ -5,6 +5,6 @@ namespace BTDB.FieldHandler
 {
     public interface ITypeConvertorGenerator
     {
-        Action<IILGen> GenerateConversion(Type from, Type to);
+        Action<IILGen>? GenerateConversion(Type from, Type to);
     }
 }

@@ -2,12 +2,13 @@ namespace BTDB.EventStoreLayer
 {
     public class EventStoreManager : IEventStoreManager
     {
-        readonly TypeSerializers _typeSerializers = new TypeSerializers();
+        readonly TypeSerializers _typeSerializers;
 
         public ICompressionStrategy CompressionStrategy { get; set; }
 
-        public EventStoreManager()
+        public EventStoreManager(TypeSerializersOptions? options = null)
         {
+            _typeSerializers = new TypeSerializers(null, options);
             CompressionStrategy = new SnappyCompressionStrategy();
         }
 

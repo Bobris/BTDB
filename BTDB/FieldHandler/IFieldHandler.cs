@@ -6,7 +6,7 @@ namespace BTDB.FieldHandler
     public interface IFieldHandler
     {
         string Name { get; }
-        byte[] Configuration { get; }
+        byte[]? Configuration { get; }
         bool IsCompatibleWith(Type type, FieldHandlerOptions options);
         Type HandledType();
         bool NeedsCtx();

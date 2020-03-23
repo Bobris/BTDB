@@ -377,7 +377,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public string ReadString()
+        public string? ReadString()
         {
             var len = ReadVUInt64();
             if (len == 0) return null;

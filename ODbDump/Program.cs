@@ -7,7 +7,6 @@ using ODbDump.Visitor;
 using BTDB.StreamLayer;
 using System.Linq;
 using System.Threading;
-using BTDB.Buffer;
 
 namespace ODbDump
 {

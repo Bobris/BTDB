@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using BTDB.Reactive;
@@ -67,6 +68,7 @@ namespace BTDB.Service
         ITypeConvertorGenerator _typeConvertorGenerator;
         IFieldHandlerFactory _fieldHandlerFactory;
         readonly NewRemoteServiceObservable _onNewRemoteService;
+        ISymmetricCipher _cipher;
 
         class NewRemoteServiceObservable : IObservable<string>
         {
@@ -125,13 +127,14 @@ namespace BTDB.Service
             }
         }
 
-        public Service(IChannel channel)
+        public Service(IChannel channel, ISymmetricCipher? cipher = null)
         {
             _onNewRemoteService = new NewRemoteServiceObservable(this);
             _typeConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
             _fieldHandlerFactory = new DefaultServiceFieldHandlerFactory(this);
             _channel = channel;
             channel.OnReceive.Subscribe(new AnonymousObserver<ByteBuffer>(OnReceive, OnDisconnect));
+            _cipher = cipher ?? new InvalidSymmetricCipher();
         }
 
         void OnDisconnect()
@@ -1244,6 +1247,11 @@ namespace BTDB.Service
             saverAction(@object, writerCtx);
         }
 
+        ISymmetricCipher IServiceInternalServer.GetSymmetricCipher()
+        {
+            return _cipher;
+        }
+
         public object LoadObjectOnClient(IReaderCtx readerCtx)
         {
             var typeId = readerCtx.Reader().ReadVUInt32();
@@ -1283,7 +1291,7 @@ namespace BTDB.Service
                     propertyInf.FieldHandler.Skip(ilGenerator, pushReaderOrCtx);
                     continue;
                 }
-                Type inputType = prop.PropertyType;
+                var inputType = prop.PropertyType;
                 var fieldHandler = propertyInf.FieldHandler.SpecializeLoadForType(inputType, null);
                 ilGenerator.Ldloc(resultLocal);
                 fieldHandler.Load(ilGenerator, pushReaderOrCtx);
@@ -1297,6 +1305,11 @@ namespace BTDB.Service
             loaderAction = dm.Create();
             _clientTypeId2Loader.TryAdd(typeId, loaderAction);
             return loaderAction(readerCtx);
+        }
+
+        ISymmetricCipher IServiceInternalClient.GetSymmetricCipher()
+        {
+            return _cipher;
         }
     }
 }

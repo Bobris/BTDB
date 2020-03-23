@@ -1,3 +1,4 @@
+using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
@@ -19,5 +20,8 @@ namespace BTDB.FieldHandler
         void RegisterOid(ulong oid);
 
         AbstractBufferedReader Reader();
+
+        EncryptedString ReadEncryptedString();
+        void SkipEncryptedString();
     }
 }

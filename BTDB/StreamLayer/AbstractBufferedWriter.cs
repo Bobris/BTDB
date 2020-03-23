@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography.X509Certificates;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -210,7 +209,7 @@ namespace BTDB.StreamLayer
             WriteVInt64(value.Ticks);
         }
 
-        public unsafe void WriteString(string value)
+        public unsafe void WriteString(string? value)
         {
             if (value == null)
             {
@@ -398,7 +397,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public void WriteByteArray(byte[] value)
+        public void WriteByteArray(byte[]? value)
         {
             if (value == null)
             {

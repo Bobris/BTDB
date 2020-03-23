@@ -17,3 +17,4 @@ Guid
 Byte[]
 IPAddress
 Version
+EncryptedString

@@ -59,9 +59,9 @@ namespace BTDB.ODBLayer
     public class TableFieldInfo
     {
         protected readonly string _name;
-        readonly IFieldHandler _handler;
+        readonly IFieldHandler? _handler;
 
-        protected TableFieldInfo(string name, IFieldHandler handler)
+        protected TableFieldInfo(string name, IFieldHandler? handler)
         {
             _name = name;
             _handler = handler;
@@ -69,7 +69,7 @@ namespace BTDB.ODBLayer
 
         internal string Name => _name;
 
-        internal IFieldHandler Handler => _handler;
+        internal IFieldHandler? Handler => _handler;
 
         internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory,
             string tableName, FieldHandlerOptions handlerOptions)
@@ -77,10 +77,10 @@ namespace BTDB.ODBLayer
             var name = reader.ReadString();
             var handlerName = reader.ReadString();
             var configuration = reader.ReadByteArray();
-            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName, configuration, handlerOptions);
+            var fieldHandler = fieldHandlerFactory.CreateFromName(handlerName!, configuration, handlerOptions);
             if (fieldHandler == null) throw new BTDBException(
                 $"FieldHandlerFactory did not created handler {handlerName} in {tableName}.{name}");
-            return new TableFieldInfo(name, fieldHandler);
+            return new TableFieldInfo(name!, fieldHandler);
         }
 
         internal static TableFieldInfo Create(string name, IFieldHandler handler)
@@ -100,7 +100,7 @@ namespace BTDB.ODBLayer
         internal void Save(AbstractBufferedWriter writer)
         {
             writer.WriteString(_name);
-            writer.WriteString(_handler.Name);
+            writer.WriteString(_handler!.Name);
             writer.WriteByteArray(_handler.Configuration);
         }
 

@@ -19,7 +19,7 @@ namespace BTDB.ODBLayer
             _tableInfoResolver = tableInfoResolver;
         }
 
-        internal TableInfo FindByType(Type type)
+        internal TableInfo? FindByType(Type type)
         {
             TableInfo result;
             if (_clientType2Table.TryGetValue(type, out result)) return result;

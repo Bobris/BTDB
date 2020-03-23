@@ -11,8 +11,8 @@ namespace BTDB.EventStoreLayer
         bool FinishBuildFromType(ITypeDescriptorFactory factory);
         void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent);
         bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack);
-        Type GetPreferedType();
-        Type GetPreferedType(Type targetType);
+        Type? GetPreferedType();
+        Type? GetPreferedType(Type targetType);
         bool AnyOpNeedsCtx();
         // ctx is ITypeBinaryDeserializerContext
         void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType);

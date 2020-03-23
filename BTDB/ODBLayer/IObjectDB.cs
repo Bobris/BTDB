@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 
@@ -33,5 +34,7 @@ namespace BTDB.ODBLayer
         DBOptions ActualOptions { get; }
 
         IObjectDBLogger Logger { get; set; }
+
+        ISymmetricCipher GetSymmetricCipher();
     }
 }

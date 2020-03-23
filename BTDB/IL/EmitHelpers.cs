@@ -80,7 +80,7 @@ namespace BTDB.IL
             return parent;
         }
 
-        public static Type SpecializationOf(this Type impl, Type generic)
+        public static Type? SpecializationOf(this Type impl, Type generic)
         {
             var currentImpl = impl;
 
@@ -98,7 +98,7 @@ namespace BTDB.IL
             return null;
         }
 
-        static Type SpecificInterfaces(Type generic, Type impl)
+        static Type? SpecificInterfaces(Type generic, Type impl)
         {
             foreach (var childInterface in impl.GetInterfaces())
             {

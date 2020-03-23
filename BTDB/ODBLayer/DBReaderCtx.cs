@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
@@ -139,6 +141,25 @@ namespace BTDB.ODBLayer
         public AbstractBufferedReader Reader()
         {
             return _reader;
+        }
+
+        public EncryptedString ReadEncryptedString()
+        {
+            var cipher = _transaction.Owner.GetSymmetricCipher();
+            var enc = Reader().ReadByteArray();
+            var size = cipher.CalcPlainSizeFor(enc);
+            var dec = new byte[size];
+            if (!cipher.Decrypt(enc, dec))
+            {
+                throw new CryptographicException();
+            }
+            var r = new ByteArrayReader(dec);
+            return r.ReadString();
+        }
+
+        public void SkipEncryptedString()
+        {
+            Reader().SkipByteArray();
         }
 
         public int RegisterInstance(object content)
