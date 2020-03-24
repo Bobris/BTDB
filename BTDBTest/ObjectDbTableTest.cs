@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -44,7 +45,13 @@ namespace BTDBTest
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
+            _db.Open(_lowDb, false, new DBOptions()
+                .WithoutAutoRegistration()
+                .WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
+                {
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                    27, 28, 29, 30, 31
+                })));
         }
 
         public class PersonSimple : IEquatable<PersonSimple>
@@ -2616,6 +2623,36 @@ namespace BTDBTest
             Assert.Equal(3, table.CountById(1, 2));
             Assert.Equal(1, table.CountById(1, 2, 3));
             Assert.Equal(new[] {1, 2, 3}, table.ListById(1, 2).Select(o => o.C));
+        }
+        
+        public class EncryptedStringSecondaryKey
+        {
+            [PrimaryKey(1)] public ulong A { get; set; }
+            [SecondaryKey("B")] public EncryptedString B { get; set; }
+        }
+        
+        public interface IEncryptedStringSecondaryKey 
+        {
+            void Insert(EncryptedStringSecondaryKey value);
+            IEnumerator<EncryptedStringSecondaryKey> FindByB(EncryptedString b);
+        }
+
+        [Fact]
+        public void CanUseUseEncryptedStringForSecondaryKeyForFindBySecondaryKey()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IEncryptedStringSecondaryKey>("EncryptedStringSecondaryKey");
+            var table = creator(tr);
+
+            EncryptedString secondaryKey = "string";
+            table.Insert(new EncryptedStringSecondaryKey{ A = 1, B = secondaryKey});
+
+            using var en = table.FindByB(secondaryKey);
+            Assert.True(en.MoveNext());
+
+            var item = en.Current;
+            Assert.Equal(1ul, item.A);
+            Assert.Equal(secondaryKey, item.B);
         }
     }
 }
