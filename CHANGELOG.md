@@ -4,6 +4,10 @@
 
 ## 19.7.0
 
+### Added
+
+- Support `EncryptedString` in DB indexes (orderable).
+
 ## 19.6.0
 
 ### Added
