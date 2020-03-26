@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BTDB.Buffer;
+using BTDB.Encrypted;
+using BTDB.EventStoreLayer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -453,6 +455,13 @@ namespace BTDB.ODBLayer
                     var itemHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
                     IterateHandler(reader, itemHandler, skipping, null);
                 }
+            }
+            else if (handler is EncryptedStringHandler)
+            {
+                var length = reader.ReadVUInt32();
+                _visitor?.ScalarAsText($"Encrypted[{length}]");
+                if (length>0)
+                    reader.SkipBlock(length - 1);
             }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
             {

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Assent;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -32,7 +33,12 @@ namespace BTDBTest
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false);
+            _db.Open(_lowDb, false,
+                new DBOptions().WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
+                {
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                    27, 28, 29, 30, 31
+                })));
         }
 
         public class Duty
@@ -634,6 +640,40 @@ namespace BTDBTest
                 });
                 tr.Commit();
             }
+            IterateWithApprove();
+        }
+
+        public class WithSecretString
+        {
+            [PrimaryKey]
+            public ulong Id { get; set; }
+            [SecondaryKey("CoverName")]
+            public EncryptedString Name { get; set; }
+            public EncryptedString Code { get; set; }
+        }
+
+        public interface IRelationWithSecrets
+        {
+            void Insert(WithSecretString value);
+        }
+
+        [Fact]
+        public void IterateSecretString()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IRelationWithSecrets>("IRelationWithSecrets");
+                var table = creator(tr);
+                var blob = new Blob();
+                table.Insert(new WithSecretString
+                {
+                    Id = 1,
+                    Name = "James Bond",
+                    Code = "007"
+                });
+                tr.Commit();
+            }
+
             IterateWithApprove();
         }
     }
