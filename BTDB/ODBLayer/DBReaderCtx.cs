@@ -162,6 +162,25 @@ namespace BTDB.ODBLayer
             Reader().SkipByteArray();
         }
 
+        public EncryptedString ReadOrderedEncryptedString()
+        {
+            var cipher = _transaction.Owner.GetSymmetricCipher();
+            var enc = Reader().ReadByteArray();
+            var size = cipher.CalcOrderedPlainSizeFor(enc);
+            var dec = new byte[size];
+            if (!cipher.OrderedDecrypt(enc, dec))
+            {
+                throw new CryptographicException();
+            }
+            var r = new ByteArrayReader(dec);
+            return r.ReadString();
+        }
+
+        public void SkipOrderedEncryptedString()
+        {
+            Reader().SkipByteArray();
+        }
+
         public int RegisterInstance(object content)
         {
             return ((IInstanceRegistry) _transaction.Owner).RegisterInstance(content);

@@ -84,5 +84,17 @@ namespace BTDB.Service
             cipher.Encrypt(plain, enc);
             _writer.WriteByteArray(enc);
         }
+
+        public void WriteOrderedEncryptedString(EncryptedString value)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteString(value);
+            var cipher = _serviceClient?.GetSymmetricCipher() ?? _serviceServer?.GetSymmetricCipher();
+            var plain = writer.Data.AsSyncReadOnlySpan();
+            var encSize = cipher!.CalcOrderedEncryptedSizeFor(plain);
+            var enc = new byte[encSize];
+            cipher.OrderedEncrypt(plain, enc);
+            _writer.WriteByteArray(enc);
+        }
     }
 }

@@ -33,7 +33,12 @@ namespace BTDB.ODBLayer
         }
     }
 
-    public class RelationDBManipulator<T> : IReadOnlyCollection<T>
+    public interface ITransactionGetterFromRelationManipulator
+    {
+        public IInternalObjectDBTransaction Transaction { get; }
+    }
+
+    public class RelationDBManipulator<T> : IReadOnlyCollection<T>, ITransactionGetterFromRelationManipulator
     {
         readonly IInternalObjectDBTransaction _transaction;
         readonly IKeyValueDBTransaction _kvtr;

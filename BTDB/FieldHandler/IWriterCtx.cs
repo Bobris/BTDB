@@ -11,5 +11,6 @@ namespace BTDB.FieldHandler
         void WriteNativeObjectPreventInline(object @object);
         AbstractBufferedWriter Writer();
         void WriteEncryptedString(EncryptedString value);
+        void WriteOrderedEncryptedString(EncryptedString value);
     }
 }

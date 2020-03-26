@@ -2624,14 +2624,14 @@ namespace BTDBTest
             Assert.Equal(1, table.CountById(1, 2, 3));
             Assert.Equal(new[] {1, 2, 3}, table.ListById(1, 2).Select(o => o.C));
         }
-        
+
         public class EncryptedStringSecondaryKey
         {
             [PrimaryKey(1)] public ulong A { get; set; }
             [SecondaryKey("B")] public EncryptedString B { get; set; }
         }
-        
-        public interface IEncryptedStringSecondaryKey 
+
+        public interface IEncryptedStringSecondaryKey
         {
             void Insert(EncryptedStringSecondaryKey value);
             IEnumerator<EncryptedStringSecondaryKey> FindByB(EncryptedString b);

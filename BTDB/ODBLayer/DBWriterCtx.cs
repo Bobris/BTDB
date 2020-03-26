@@ -76,6 +76,18 @@ namespace BTDB.ODBLayer
             _writer.WriteByteArray(enc);
         }
 
+        public void WriteOrderedEncryptedString(EncryptedString value)
+        {
+            var writer = new ByteBufferWriter();
+            writer.WriteString(value);
+            var cipher = _transaction.Owner.GetSymmetricCipher();
+            var plain = writer.Data.AsSyncReadOnlySpan();
+            var encSize = cipher.CalcOrderedEncryptedSizeFor(plain);
+            var enc = new byte[encSize];
+            cipher.OrderedEncrypt(plain, enc);
+            _writer.WriteByteArray(enc);
+        }
+
         public int RegisterInstance(object content)
         {
             return ((IInstanceRegistry)_transaction.Owner).RegisterInstance(content);

@@ -23,5 +23,7 @@ namespace BTDB.FieldHandler
 
         EncryptedString ReadEncryptedString();
         void SkipEncryptedString();
+        EncryptedString ReadOrderedEncryptedString();
+        void SkipOrderedEncryptedString();
     }
 }

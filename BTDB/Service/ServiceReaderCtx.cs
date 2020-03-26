@@ -157,6 +157,29 @@ namespace BTDB.Service
             Reader().SkipByteArray();
         }
 
+        public EncryptedString ReadOrderedEncryptedString()
+        {
+            if (_cipher == null)
+            {
+                _cipher = _serviceClient != null ? _serviceClient.GetSymmetricCipher() : _serviceServer!.GetSymmetricCipher();
+            }
+
+            var enc = Reader().ReadByteArray();
+            var size = _cipher!.CalcOrderedPlainSizeFor(enc);
+            var dec = new byte[size];
+            if (!_cipher.OrderedDecrypt(enc, dec))
+            {
+                throw new CryptographicException();
+            }
+            var r = new ByteArrayReader(dec);
+            return r.ReadString();
+        }
+
+        public void SkipOrderedEncryptedString()
+        {
+            Reader().SkipByteArray();
+        }
+
         public void RegisterDict(ulong dictId)
         {
             throw new InvalidOperationException();

@@ -23,5 +23,25 @@ namespace BTDB.Encrypted
         {
             throw new NotSupportedException();
         }
+
+        public int CalcOrderedEncryptedSizeFor(ReadOnlySpan<byte> plainInput)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void OrderedEncrypt(ReadOnlySpan<byte> plainInput, Span<byte> outputBuffer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public int CalcOrderedPlainSizeFor(ReadOnlySpan<byte> encryptedInput)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool OrderedDecrypt(ReadOnlySpan<byte> encryptedInput, Span<byte> outputBuffer)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

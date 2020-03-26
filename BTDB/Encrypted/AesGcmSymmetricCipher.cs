@@ -9,15 +9,19 @@ namespace BTDB.Encrypted
         const int NonceSize = 12;
         const int TagSize = 16;
         readonly AesGcm _aes;
+        readonly ICryptoTransform _decryptor;
+        readonly ICryptoTransform _encryptor;
 
         public AesGcmSymmetricCipher(byte[] key)
         {
             _aes = new AesGcm(key);
-        }
-
-        public AesGcmSymmetricCipher(ReadOnlySpan<byte> key)
-        {
-            _aes = new AesGcm(key);
+            var aes = new AesManaged();
+            aes.Key = key;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.Zeros;
+            aes.IV = new byte[16];
+            _decryptor = aes.CreateDecryptor();
+            _encryptor = aes.CreateEncryptor();
         }
 
         [ThreadStatic] static Random? _random;
@@ -69,6 +73,32 @@ namespace BTDB.Encrypted
                 return false;
             }
 
+            return true;
+        }
+
+        public int CalcOrderedEncryptedSizeFor(ReadOnlySpan<byte> plainInput)
+        {
+            return (plainInput.Length + 15)&~15;
+        }
+
+        public void OrderedEncrypt(ReadOnlySpan<byte> plainInput, Span<byte> outputBuffer)
+        {
+            var input = plainInput.ToArray();
+            var output= _encryptor.TransformFinalBlock(input, 0, input.Length);
+            output.CopyTo(outputBuffer);
+        }
+
+        public int CalcOrderedPlainSizeFor(ReadOnlySpan<byte> encryptedInput)
+        {
+            return encryptedInput.Length;
+        }
+
+        public bool OrderedDecrypt(ReadOnlySpan<byte> encryptedInput, Span<byte> outputBuffer)
+        {
+            var input = encryptedInput.ToArray();
+            var output = new byte[input.Length];
+            _decryptor.TransformBlock(input, 0, input.Length, output, 0);
+            output.CopyTo(outputBuffer);
             return true;
         }
     }
