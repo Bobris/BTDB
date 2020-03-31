@@ -11,6 +11,7 @@ namespace BTDB.Encrypted
         readonly AesGcm _aes;
         readonly ICryptoTransform _decryptor;
         readonly ICryptoTransform _encryptor;
+        readonly object _lock = new object();
 
         public AesGcmSymmetricCipher(byte[] key)
         {
@@ -45,10 +46,13 @@ namespace BTDB.Encrypted
 
         public void Encrypt(ReadOnlySpan<byte> plainInput, Span<byte> outputBuffer)
         {
-            RandomInstance.NextBytes(outputBuffer.Slice(0, NonceSize));
-            outputBuffer[0] &= 0x0f; // 4 bits left for future algorithm type
-            _aes.Encrypt(outputBuffer.Slice(0, NonceSize), plainInput,
-                outputBuffer.Slice(NonceSize + TagSize, plainInput.Length), outputBuffer.Slice(NonceSize, TagSize));
+            lock (_lock)
+            {
+                RandomInstance.NextBytes(outputBuffer.Slice(0, NonceSize));
+                outputBuffer[0] &= 0x0f; // 4 bits left for future algorithm type
+                _aes.Encrypt(outputBuffer.Slice(0, NonceSize), plainInput,
+                    outputBuffer.Slice(NonceSize + TagSize, plainInput.Length), outputBuffer.Slice(NonceSize, TagSize));
+            }
         }
 
         public int CalcPlainSizeFor(ReadOnlySpan<byte> encryptedInput)
@@ -63,10 +67,13 @@ namespace BTDB.Encrypted
             if ((encryptedInput[0] & 0xf0) != 0) return false;
             try
             {
-                _aes.Decrypt(encryptedInput.Slice(0, NonceSize),
-                    encryptedInput.Slice(NonceSize + TagSize, outputBuffer.Length),
-                    encryptedInput.Slice(NonceSize, TagSize),
-                    outputBuffer);
+                lock (_lock)
+                {
+                    _aes.Decrypt(encryptedInput.Slice(0, NonceSize),
+                        encryptedInput.Slice(NonceSize + TagSize, outputBuffer.Length),
+                        encryptedInput.Slice(NonceSize, TagSize),
+                        outputBuffer);
+                }
             }
             catch (CryptographicException)
             {
@@ -78,13 +85,18 @@ namespace BTDB.Encrypted
 
         public int CalcOrderedEncryptedSizeFor(ReadOnlySpan<byte> plainInput)
         {
-            return (plainInput.Length + 15)&~15;
+            return (plainInput.Length + 15) & ~15;
         }
 
         public void OrderedEncrypt(ReadOnlySpan<byte> plainInput, Span<byte> outputBuffer)
         {
             var input = plainInput.ToArray();
-            var output= _encryptor.TransformFinalBlock(input, 0, input.Length);
+            byte[] output;
+            lock (_lock)
+            {
+                output = _encryptor.TransformFinalBlock(input, 0, input.Length);
+            }
+
             output.CopyTo(outputBuffer);
         }
 
@@ -97,7 +109,11 @@ namespace BTDB.Encrypted
         {
             var input = encryptedInput.ToArray();
             var output = new byte[input.Length];
-            _decryptor.TransformBlock(input, 0, input.Length, output, 0);
+            lock (_lock)
+            {
+                _decryptor.TransformBlock(input, 0, input.Length, output, 0);
+            }
+
             output.CopyTo(outputBuffer);
             return true;
         }
