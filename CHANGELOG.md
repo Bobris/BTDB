@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 19.7.1
+
 ### Fixed
 
 - Made AesGcmSymmetricCipher thread safe.
