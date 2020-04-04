@@ -518,6 +518,7 @@ namespace BTDB.ODBLayer
                 return default(T);
             }
             var valueBytes = _kvtr.GetValue();
+            keyBytes = keyBytes.Slice(_relationInfo.Prefix.Length);
             return (T)_relationInfo.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 

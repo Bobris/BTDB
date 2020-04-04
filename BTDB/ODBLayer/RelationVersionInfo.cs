@@ -175,7 +175,7 @@ namespace BTDB.ODBLayer
             _fields = fields;
         }
 
-        internal TableFieldInfo this[string name]
+        internal TableFieldInfo? this[string name]
         {
             get { return _fields.Concat(_primaryKeyFields).FirstOrDefault(tfi => tfi.Name == name); }
         }
@@ -204,15 +204,14 @@ namespace BTDB.ODBLayer
 
         internal IDictionary<uint, SecondaryKeyInfo> SecondaryKeys => _secondaryKeys;
 
-        internal IReadOnlyCollection<TableFieldInfo> GetSecondaryKeyFields(uint secondaryKeyIndex)
+        internal IReadOnlyList<TableFieldInfo> GetSecondaryKeyFields(uint secondaryKeyIndex)
         {
-            SecondaryKeyInfo info;
-            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out info))
+            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out var info))
                 throw new BTDBException($"Unknown secondary key {secondaryKeyIndex}.");
             return GetSecondaryKeyFields(info);
         }
 
-        IReadOnlyCollection<TableFieldInfo> GetSecondaryKeyFields(SecondaryKeyInfo info)
+        IReadOnlyList<TableFieldInfo> GetSecondaryKeyFields(SecondaryKeyInfo info)
         {
             var fields = new List<TableFieldInfo>();
             foreach (var field in info.Fields)
@@ -224,13 +223,12 @@ namespace BTDB.ODBLayer
             return fields;
         }
 
-        public IReadOnlyCollection<TableFieldInfo> GetSecondaryKeyValueKeys(uint secondaryKeyIndex)
+        public IReadOnlyList<TableFieldInfo> GetSecondaryKeyValueKeys(uint secondaryKeyIndex)
         {
-            SecondaryKeyInfo info;
-            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out info))
+            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out var info))
                 throw new BTDBException($"Unknown secondary key {secondaryKeyIndex}.");
             var fields = new List<TableFieldInfo>();
-            for (int i = 0; i < _primaryKeyFields.Count; i++)
+            for (var i = 0; i < _primaryKeyFields.Count; i++)
             {
                 if (info.Fields.Any(f => f.IsFromPrimaryKey && f.Index == i))
                     continue; //do not put again into value fields present in secondary key index
@@ -241,8 +239,7 @@ namespace BTDB.ODBLayer
 
         internal uint GetSecondaryKeyIndex(string name)
         {
-            uint index;
-            if (!_secondaryKeysNames.TryGetValue(name, out index))
+            if (!_secondaryKeysNames.TryGetValue(name, out var index))
                 throw new BTDBException($"Unknown secondary key {name}.");
             return index;
         }

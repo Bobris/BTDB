@@ -100,7 +100,7 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            return (T) RelationInfo.CreateInstance(Transaction, keyBytes, valueBytes, false);
+            return (T) RelationInfo.CreateInstance(Transaction, keyBytes, valueBytes);
         }
 
         object IEnumerator.Current => Current;
@@ -142,7 +142,7 @@ namespace BTDB.ODBLayer
             Array.Copy(KeyBytes.Buffer, KeyBytes.Offset + _skipBytes, keyData, 0, KeyBytes.Length - _skipBytes);
             Array.Copy(keyBytes.Buffer, keyBytes.Offset, keyData, KeyBytes.Length - _skipBytes, keyBytes.Length);
 
-            return (T) RelationInfo.CreateInstance(Transaction, ByteBuffer.NewAsync(keyData), valueBytes, false);
+            return (T) RelationInfo.CreateInstance(Transaction, ByteBuffer.NewAsync(keyData), valueBytes);
         }
 
         public override ByteBuffer GetKeyBytes()
@@ -396,8 +396,7 @@ namespace BTDB.ODBLayer
             Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix,
                 keyBytes.Length);
 
-            return (T) _manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue(),
-                false);
+            return (T) _manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data), _keyValueTr.GetValue());
         }
 
         public ByteBuffer GetKeyBytes()
@@ -574,7 +573,7 @@ namespace BTDB.ODBLayer
             if (initKeyReader)
             {
                 var primaryKeyFields = manipulator.RelationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-                var advancedEnumParamField = primaryKeyFields.ToList()[(int) _prefixFieldCount];
+                var advancedEnumParamField = primaryKeyFields[(int) _prefixFieldCount];
                 if (advancedEnumParamField.Handler.NeedsCtx())
                     throw new BTDBException("Not supported.");
                 _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>) manipulator.RelationInfo
@@ -595,7 +594,7 @@ namespace BTDB.ODBLayer
                 keyBytes.Length);
 
             return (TValue) _manipulator.RelationInfo.CreateInstance(_tr, ByteBuffer.NewAsync(data),
-                _keyValueTr.GetValue(), false);
+                _keyValueTr.GetValue());
         }
 
         public TValue CurrentValue
@@ -701,7 +700,7 @@ namespace BTDB.ODBLayer
             _secondaryKeyIndex = secondaryKeyIndex;
             var secKeyFields =
                 manipulator.RelationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
-            var advancedEnumParamField = secKeyFields.ToList()[(int) _prefixFieldCount];
+            var advancedEnumParamField = secKeyFields[(int) _prefixFieldCount];
             if (advancedEnumParamField.Handler.NeedsCtx())
                 throw new BTDBException("Not supported.");
             _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>) manipulator.RelationInfo
