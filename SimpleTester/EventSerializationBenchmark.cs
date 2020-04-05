@@ -4,6 +4,9 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.ConsoleArguments;
+using BenchmarkDotNet.Loggers;
+using BenchmarkDotNet.Order;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BTDB.Buffer;
@@ -24,7 +27,7 @@ namespace SimpleTester
             _parent = parent;
         }
 
-        public string GetValue(Summary summary, Benchmark benchmark)
+        public string GetValue(Summary summary, BenchmarkCase benchmark)
         {
             return _parent.GetValue(summary, benchmark);
         }
@@ -34,12 +37,12 @@ namespace SimpleTester
             return _parent.IsAvailable(summary);
         }
 
-        public bool IsDefault(Summary summary, Benchmark benchmark)
+        public bool IsDefault(Summary summary, BenchmarkCase benchmark)
         {
             return _parent.IsDefault(summary, benchmark);
         }
 
-        public string GetValue(Summary summary, Benchmark benchmark, ISummaryStyle style)
+        public string GetValue(Summary summary, BenchmarkCase benchmark, SummaryStyle style)
         {
             return _parent.GetValue(summary, benchmark, style);
         }
@@ -47,7 +50,7 @@ namespace SimpleTester
         public string ColumnName => _parent.ColumnName;
         public bool AlwaysShow => _parent.AlwaysShow;
         public ColumnCategory Category => ColumnCategory.Job;
-        
+
         public string Id => _parent.Id;
 
         public int PriorityInCategory => _parent.PriorityInCategory;
@@ -61,15 +64,14 @@ namespace SimpleTester
 
     public class ByteSizeColumn : IColumn
     {
-        public string GetValue(Summary summary, Benchmark benchmark)
+        public string GetValue(Summary summary, BenchmarkCase benchmark)
         {
-            var target = benchmark.Target;
-            var instance = Activator.CreateInstance(target.Type);
+            var target = benchmark.Descriptor.Type;
+            var instance = Activator.CreateInstance(benchmark.Descriptor.Type);
             var param = benchmark.Parameters[0];
-            target.Type.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
-            target.IterationSetupMethod.Invoke(instance, new object[0]);
-            var propName = target.MethodDisplayInfo.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
-            return target.Type.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
+            target.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
+            var propName = benchmark.DisplayInfo.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
+            return target.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
         }
 
         public bool IsAvailable(Summary summary)
@@ -77,12 +79,12 @@ namespace SimpleTester
             return true;
         }
 
-        public bool IsDefault(Summary summary, Benchmark benchmark)
+        public bool IsDefault(Summary summary, BenchmarkCase benchmark)
         {
             return true;
         }
 
-        public string GetValue(Summary summary, Benchmark benchmark, ISummaryStyle style)
+        public string GetValue(Summary summary, BenchmarkCase benchmark, SummaryStyle style)
         {
             return GetValue(summary, benchmark);
         }
@@ -109,7 +111,7 @@ namespace SimpleTester
         {
             public Config()
             {
-                Add(Parse(new[] { "diagnosers=Memory" }));
+                Add(ConfigParser.Parse(new[] { "diagnosers=Memory" }, new ConsoleLogger()).config);
                 UnionRule = ConfigUnionRule.AlwaysUseLocal;
                 Add(DefaultConfig.Instance.GetJobs().ToArray());
                 Add(DefaultConfig.Instance.GetAnalysers().ToArray());
@@ -117,7 +119,6 @@ namespace SimpleTester
                 Add(DefaultConfig.Instance.GetDiagnosers().ToArray());
                 Add(DefaultConfig.Instance.GetLoggers().ToArray());
                 Add(DefaultConfig.Instance.GetValidators().ToArray());
-                Set(DefaultConfig.Instance.GetOrderProvider());
 
                 Add(new ColumnOrderFirst(new TagColumn("Implementation", name => name.Replace("Serialization", "").Replace("Deserialization", ""))));
                 Add(new ColumnOrderFirst(new TagColumn("Direction", name => name.Contains("Serialization") ? "Serialization" : "Deserialization")));
