@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+- Relations now support returning only partial classes. For example it allows to speed up table scanning because you can deserialize only fields you need when enumerating relation.
+
 ## 19.7.1
 
 ### Fixed

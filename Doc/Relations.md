@@ -126,6 +126,15 @@ Find by secondary key, it will throw if it find multiple Persons with that age. 
 
 Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName}, multiple result possibility handles legal case when exists several records for one secondary index key.
 
+Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append `_Ignored` to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized.
+
+    public class Age
+    {
+        public uint Age { get; set; }
+    }
+
+    IEnumerator<Age> FindById_JustAge(ulong id);
+
 ### List
 
     IOrderedDictionaryEnumerator<uint, Person> ListById(AdvancedEnumeratorParam<uint> param);
@@ -149,6 +158,8 @@ List by ascending/descending order and specified range. Apart fields are taken i
         IOrderedDictionaryEnumerator<ulong, Room> ListById(AdvancedEnumeratorParam<ulong> param);
         IOrderedDictionaryEnumerator<ulong, Room> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
     }
+
+List also support variants with subset resulting types like `Find`.
 
 ### Count
 
@@ -235,6 +246,8 @@ It is always possible to insert duplicate items for secondary key (it would caus
 
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 `ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
+
+List by secondary key also support variants like `ListByAge_VariantName`.
 
 ### Count (by secondary index)
 

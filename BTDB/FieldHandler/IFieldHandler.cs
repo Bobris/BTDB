@@ -17,7 +17,7 @@ namespace BTDB.FieldHandler
         NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
 
         // typeHandler is preferred FieldHandler for type could be null if unknown
-        IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler);
+        IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler);
         IFieldHandler SpecializeSaveForType(Type type);
     }
 

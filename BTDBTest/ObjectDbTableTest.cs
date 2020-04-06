@@ -562,6 +562,11 @@ namespace BTDBTest
             public uint Age { get; set; }
         }
 
+        public class PersonWithOnlyAge
+        {
+            public uint Age { get; set; }
+        }
+
         //SK content
         //"Age": TenantId, Age, Name, Id => void
         //"Name": TenantId, Name, Id => void
@@ -607,6 +612,9 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
             IEnumerable<Person> ListByAge(uint age);
 
+            IOrderedDictionaryEnumerator<uint, PersonWithOnlyAge> ListByAge_AgeOnly(AdvancedEnumeratorParam<uint> param);
+            IEnumerable<PersonWithOnlyAge> ListByAge_AgeOnly(uint age);
+
             // You can replace List by Count and it will return count of list faster if all you need is count
             int CountById(AdvancedEnumeratorParam<ulong> param);
             uint CountByAge(AdvancedEnumeratorParam<uint> param);
@@ -649,6 +657,16 @@ namespace BTDBTest
             Assert.True(orderedEnumerator.NextKey(out age));
             Assert.Equal(129u, age);
 
+            var orderedEnumeratorAgeOnly =
+                personTable.ListByAge_AgeOnly(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+            Assert.Equal(2u, orderedEnumeratorAgeOnly.Count);
+
+            Assert.True(orderedEnumeratorAgeOnly.NextKey(out age));
+            Assert.Equal(128u, age);
+            Assert.Equal(128u, orderedEnumeratorAgeOnly.CurrentValue.Age);
+            Assert.True(orderedEnumeratorAgeOnly.NextKey(out age));
+            Assert.Equal(129u, age);
+
             var en = personTable.GetEnumerator(); //enumerate for all tenants
             Assert.Equal(28u, GetNext(en).Age);
             Assert.Equal(29u, GetNext(en).Age);
@@ -677,6 +695,13 @@ namespace BTDBTest
             Assert.Equal(29u, age);
             Assert.False(ena.NextKey(out _));
 
+            var ena2 = personTable.ListByAge_AgeOnly(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+                KeyProposition.Included,
+                29, KeyProposition.Included));
+            Assert.True(ena2.NextKey(out age));
+            Assert.Equal(29u, age);
+            Assert.False(ena2.NextKey(out _));
+
             Assert.Equal(2, personTable.CountByAge(28));
             Assert.Equal(1, personTable.CountByAge(29));
             Assert.True(personTable.AnyByAge(28));
@@ -684,6 +709,7 @@ namespace BTDBTest
             Assert.False(personTable.AnyByAge(18));
 
             Assert.Equal(new[] {2ul, 4ul}, personTable.ListByAge(28).Select(p => p.Id));
+            Assert.Equal(new[] {28u, 28u}, personTable.ListByAge_AgeOnly(28).Select(p => p.Age));
             tr.Commit();
         }
 

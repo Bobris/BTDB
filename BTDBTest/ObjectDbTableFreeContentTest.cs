@@ -883,7 +883,7 @@ namespace BTDBTest
         public interface IGraphTable
         {
             void Insert(NodesGraph license);
-            Graph FindById(ulong id);
+            NodesGraph FindById(ulong id);
             bool RemoveById(ulong id);
         }
 

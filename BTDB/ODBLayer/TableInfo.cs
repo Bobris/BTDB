@@ -8,7 +8,9 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Linq;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
+using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer
 {
@@ -250,7 +252,8 @@ namespace BTDB.ODBLayer
             if (ClientTypeVersion != 0) return;
             EnsureKnownLastPersistedVersion();
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var fields = new List<TableFieldInfo>(props.Length);
+            var fields = new StructList<TableFieldInfo>();
+            fields.Reserve((uint)props.Length);
             foreach (var pi in props)
             {
                 if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;

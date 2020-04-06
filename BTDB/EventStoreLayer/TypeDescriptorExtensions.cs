@@ -78,7 +78,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static StringBuilder AppendJsonLike(this StringBuilder sb, object obj)
+        public static StringBuilder AppendJsonLike(this StringBuilder sb, object? obj)
         {
             if (obj == null)
             {

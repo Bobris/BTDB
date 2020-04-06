@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -25,11 +26,274 @@ namespace BTDB.ODBLayer
 
         RelationVersionInfo?[] _relationVersions = Array.Empty<RelationVersionInfo?>();
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
-        Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> _primaryKeysLoader;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[]
-            _valueLoaders = Array.Empty<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?>();
+        internal StructList<ItemLoaderInfo> ItemLoaderInfos = new StructList<ItemLoaderInfo>();
+
+        internal int BuildIndexToItemLoaderInfos(Type itemType)
+        {
+            for (var i = 0; i < ItemLoaderInfos.Count; i++)
+            {
+                if (ItemLoaderInfos[i].ItemType == itemType)
+                {
+                    return i;
+                }
+            }
+            ItemLoaderInfos.Add(new ItemLoaderInfo(this, itemType));
+            return (int)ItemLoaderInfos.Count - 1;
+        }
+
+        public class ItemLoaderInfo
+        {
+            internal readonly RelationInfo Owner;
+            internal readonly Type ItemType;
+
+            public ItemLoaderInfo(RelationInfo owner, Type itemType)
+            {
+                Owner = owner;
+                ItemType = itemType;
+                _valueLoaders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[Owner._relationVersions.Length];
+                _primaryKeysLoader = CreatePkLoader(itemType, Owner.ClientRelationVersionInfo.GetPrimaryKeyFields(),
+                    $"RelationKeyLoader_{Owner.Name}_{itemType.ToSimpleName()}");
+            }
+
+            internal object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
+            {
+                var reader = new ByteBufferReader(keyBytes);
+                var obj = _primaryKeysLoader(tr, reader);
+                reader.Restart(valueBytes);
+                var version = reader.ReadVUInt32();
+                GetValueLoader(version)(tr, reader, obj);
+                return obj;
+            }
+
+            readonly Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> _primaryKeysLoader;
+            readonly Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[] _valueLoaders;
+
+            Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
+            {
+                Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>? res;
+                do
+                {
+                    res = _valueLoaders[version];
+                    if (res != null) return res;
+                    res = CreateLoader(ItemType,
+                        Owner._relationVersions[version]!.GetValueFields(), $"RelationValueLoader_{Owner.Name}_{version}_{ItemType.ToSimpleName()}");
+                } while (Interlocked.CompareExchange(ref _valueLoaders[version], res, null) != null);
+
+                return res;
+            }
+
+            Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreatePkLoader(Type instanceType,
+                IEnumerable<TableFieldInfo> fields, string loaderName)
+            {
+                var method =
+                    ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
+                        loaderName);
+                var ilGenerator = method.Generator;
+                ilGenerator.DeclareLocal(instanceType);
+                ilGenerator
+                    .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
+                    .Stloc(0);
+
+                var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
+                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                foreach (var srcFieldInfo in fields)
+                {
+                    var fieldInfo = props.FirstOrDefault(p => GetPersistentName(p) == srcFieldInfo.Name);
+                    if (fieldInfo != null)
+                    {
+                        var setterMethod = fieldInfo.GetSetMethod(true);
+                        var fieldType = setterMethod!.GetParameters()[0].ParameterType;
+                        var specializedSrcHandler =
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
+                        var willLoad = specializedSrcHandler.HandledType();
+                        var converterGenerator =
+                            Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
+                        if (converterGenerator != null)
+                        {
+                            loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod));
+                            continue;
+                        }
+                    }
+
+                    loadInstructions.Add((srcFieldInfo.Handler!, null, null));
+                }
+
+                // Remove useless skips from end
+                while (loadInstructions.Count > 0 && loadInstructions.Last.Item2 == null)
+                {
+                    loadInstructions.RemoveAt(^1);
+                }
+
+                var anyNeedsCtx = false;
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    if (!loadInstructions[i].Item1.NeedsCtx()) continue;
+                    anyNeedsCtx = true;
+                    break;
+                }
+
+                if (anyNeedsCtx)
+                {
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldarg(1)
+                        .Newobj(() => new DBReaderCtx(null, null))
+                        .Stloc(1);
+                }
+
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    ref var loadInstruction = ref loadInstructions[i];
+                    Action<IILGen> readerOrCtx;
+                    if (loadInstruction.Item1.NeedsCtx())
+                        readerOrCtx = il => il.Ldloc(1);
+                    else
+                        readerOrCtx = il => il.Ldarg(1);
+                    if (loadInstruction.Item2 != null)
+                    {
+                        ilGenerator.Ldloc(0);
+                        loadInstruction.Item1.Load(ilGenerator, readerOrCtx);
+                        loadInstruction.Item2(ilGenerator);
+                        ilGenerator.Call(loadInstruction.Item3!);
+                        continue;
+                    }
+
+                    loadInstruction.Item1.Skip(ilGenerator, readerOrCtx);
+                }
+
+                ilGenerator.Ldloc(0).Ret();
+                return method.Create();
+            }
+
+            Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(Type instanceType,
+                IEnumerable<TableFieldInfo> fields, string loaderName)
+            {
+                var method =
+                    ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
+                        loaderName);
+                var ilGenerator = method.Generator;
+                ilGenerator.DeclareLocal(instanceType);
+                ilGenerator
+                    .Ldarg(2)
+                    .Castclass(instanceType)
+                    .Stloc(0);
+
+                var instanceTableFieldInfos = new StructList<TableFieldInfo>();
+                var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init)>();
+                var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
+                foreach (var pi in props)
+                {
+                    if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                    if (pi.GetIndexParameters().Length != 0) continue;
+                    var tfi = TableFieldInfo.Build(Owner.Name, pi, Owner._relationInfoResolver.FieldHandlerFactory,
+                        FieldHandlerOptions.None);
+                    instanceTableFieldInfos.Add(tfi);
+                    persistentNameToPropertyInfo.GetOrAddValueRef(tfi.Name) = pi;
+                }
+
+                foreach (var srcFieldInfo in fields)
+                {
+                    var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
+                    if (fieldInfo != null)
+                    {
+                        var setterMethod = fieldInfo.GetSetMethod(true);
+                        var fieldType = setterMethod!.GetParameters()[0].ParameterType;
+                        var specializedSrcHandler =
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
+                        var willLoad = specializedSrcHandler.HandledType();
+                        var converterGenerator =
+                            Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
+                        if (converterGenerator != null)
+                        {
+                            for (var i = 0; i < instanceTableFieldInfos.Count; i++)
+                            {
+                                if (instanceTableFieldInfos[i].Name != srcFieldInfo.Name) continue;
+                                instanceTableFieldInfos.RemoveAt(i);
+                                break;
+                            }
+                            loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, false));
+                            continue;
+                        }
+                    }
+
+                    loadInstructions.Add((srcFieldInfo.Handler!, null, null, false));
+                }
+
+                // Remove useless skips from end
+                while (loadInstructions.Count > 0 && loadInstructions.Last.Item2 == null)
+                {
+                    loadInstructions.RemoveAt(^1);
+                }
+
+                foreach (var srcFieldInfo in instanceTableFieldInfos)
+                {
+                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
+                    if (iFieldHandlerWithInit == null) continue;
+                    var specializedSrcHandler = srcFieldInfo.Handler;
+                    var willLoad = specializedSrcHandler.HandledType();
+                    var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
+                    var setterMethod = fieldInfo.GetSetMethod(true);
+                    var converterGenerator =
+                        Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
+                            setterMethod!.GetParameters()[0].ParameterType);
+                    if (converterGenerator == null) continue;
+                    if (!iFieldHandlerWithInit.NeedInit()) continue;
+                    loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod, true));
+                }
+
+                var anyNeedsCtx = false;
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    if (!loadInstructions[i].Item1.NeedsCtx()) continue;
+                    anyNeedsCtx = true;
+                    break;
+                }
+
+                if (anyNeedsCtx)
+                {
+                    ilGenerator.DeclareLocal(typeof(IReaderCtx));
+                    ilGenerator
+                        .Ldarg(0)
+                        .Ldarg(1)
+                        .Newobj(() => new DBReaderCtx(null, null))
+                        .Stloc(1);
+                }
+
+                for (var i = 0; i < loadInstructions.Count; i++)
+                {
+                    ref var loadInstruction = ref loadInstructions[i];
+                    Action<IILGen> readerOrCtx;
+                    if (loadInstruction.Item1.NeedsCtx())
+                        readerOrCtx = il => il.Ldloc(1);
+                    else
+                        readerOrCtx = il => il.Ldarg(1);
+                    if (loadInstruction.Item2 != null)
+                    {
+                        ilGenerator.Ldloc(0);
+                        if (loadInstruction.Init)
+                        {
+                            ((IFieldHandlerWithInit)loadInstruction.Item1).Init(ilGenerator, readerOrCtx);
+                        }
+                        else
+                        {
+                            loadInstruction.Item1.Load(ilGenerator, readerOrCtx);
+                        }
+                        loadInstruction.Item2(ilGenerator);
+                        ilGenerator.Call(loadInstruction.Item3!);
+                        continue;
+                    }
+
+                    loadInstruction.Item1.Skip(ilGenerator, readerOrCtx);
+                }
+
+                ilGenerator.Ret();
+                return method.Create();
+            }
+        }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>?[]
             _valueIDictFinders =
@@ -310,7 +574,7 @@ namespace BTDB.ODBLayer
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
             keyWriter.WriteByteArrayRaw(Prefix);
             var enumerator = (IEnumerator) Activator.CreateInstance(enumeratorType, tr, this,
-                keyWriter.GetDataAndRewind().ToAsyncSafe(), new SimpleModificationCounter());
+                keyWriter.GetDataAndRewind().ToAsyncSafe(), new SimpleModificationCounter(), 0);
 
             var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
 
@@ -367,7 +631,6 @@ namespace BTDB.ODBLayer
             {
                 _relationVersions[key] = value;
             }
-            _valueLoaders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[_relationVersions.Length];
             _valueIDictFinders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>?[_relationVersions.Length];
         }
 
@@ -404,8 +667,7 @@ namespace BTDB.ODBLayer
             _valueSaver = CreateSaver(ClientRelationVersionInfo.GetValueFields(), $"RelationValueSaver_{Name}");
             _primaryKeysSaver = CreateSaverWithApartFields(ClientRelationVersionInfo.GetPrimaryKeyFields(),
                 $"RelationKeySaver_{Name}");
-            _primaryKeysLoader = CreatePkLoader(_clientType, ClientTypeVersion, ClientRelationVersionInfo.GetPrimaryKeyFields(),
-                $"RelationKeyLoader_{Name}");
+            BuildIndexToItemLoaderInfos(_clientType);
             if (ClientRelationVersionInfo.SecondaryKeys.Count > 0)
             {
                 _secondaryKeysSavers =
@@ -825,20 +1087,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
-        {
-            Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>? res;
-            do
-            {
-                res = _valueLoaders[version];
-                if (res != null) return res;
-                res = CreateLoader(version,
-                    _relationVersions[version]!.GetValueFields(), $"RelationValueLoader_{Name}_{version}");
-            } while (Interlocked.CompareExchange(ref _valueLoaders[version], res, null) != null);
-
-            return res;
-        }
-
         internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
         {
             Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? res;
@@ -1208,65 +1456,6 @@ namespace BTDB.ODBLayer
             return method.Create();
         }
 
-        Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreatePkLoader(Type instanceType, uint version,
-            IEnumerable<TableFieldInfo> fields, string loaderName)
-        {
-            var method =
-                ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
-                    loaderName);
-            var ilGenerator = method.Generator;
-            ilGenerator.DeclareLocal(instanceType);
-            ilGenerator
-                .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
-                .Stloc(0);
-            var relationVersionInfo = _relationVersions[version];
-            var clientRelationVersionInfo = ClientRelationVersionInfo;
-            var anyNeedsCtx = relationVersionInfo!.NeedsCtx() || clientRelationVersionInfo.NeedsCtx();
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Ldarg(1)
-                    .Newobj(() => new DBReaderCtx(null, null))
-                    .Stloc(1);
-            }
-
-            var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var srcFieldInfo in fields)
-            {
-                Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler.NeedsCtx())
-                    readerOrCtx = il => il.Ldloc(1);
-                else
-                    readerOrCtx = il => il.Ldarg(1);
-                var destFieldInfo = clientRelationVersionInfo[srcFieldInfo.Name];
-                if (destFieldInfo != null)
-                {
-                    var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetSetMethod(true);
-                    var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
-                    var specializedSrcHandler =
-                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler!);
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var converterGenerator =
-                        _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
-                    if (converterGenerator != null)
-                    {
-                        ilGenerator.Ldloc(0);
-                        specializedSrcHandler.Load(ilGenerator, readerOrCtx);
-                        converterGenerator(ilGenerator);
-                        ilGenerator.Call(fieldInfo);
-                        continue;
-                    }
-                }
-
-                srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
-            }
-
-            ilGenerator.Ldloc(0).Ret();
-            return method.Create();
-        }
-
         static string GetPersistentName(PropertyInfo p)
         {
             var a = p.GetCustomAttribute<PersistedNameAttribute>();
@@ -1282,16 +1471,6 @@ namespace BTDB.ODBLayer
             }
 
             return name;
-        }
-
-        public object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
-        {
-            var reader = new ByteBufferReader(keyBytes);
-            var obj = _primaryKeysLoader(tr, reader);
-            reader.Restart(valueBytes);
-            var version = reader.ReadVUInt32();
-            GetValueLoader(version)(tr, reader, obj);
-            return obj;
         }
 
         public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
