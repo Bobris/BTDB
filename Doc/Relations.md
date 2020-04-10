@@ -126,14 +126,14 @@ Find by secondary key, it will throw if it find multiple Persons with that age. 
 
 Find all items with given secondary key. **Note**: for advanced range enumerating use ListBy{SecondaryIndexName}, multiple result possibility handles legal case when exists several records for one secondary index key.
 
-Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append `_Ignored` to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized.
+Find support returning also not item type but any subset type, but because you cannot have same name of method which differs only by return type you can append any text to make it unique. This is useful for speed up deserialization because only fields with matching names and types will be deserialized.
 
     public class Age
     {
         public uint Age { get; set; }
     }
 
-    IEnumerator<Age> FindById_JustAge(ulong id);
+    IEnumerator<Age> FindByIdJustAge(ulong id);
 
 ### List
 
@@ -247,7 +247,7 @@ It is always possible to insert duplicate items for secondary key (it would caus
 List by ascending/descending order and specified range, see `CanIterateBySecondaryKey` in [ObjectDbTableTest](../BTDBTest/ObjectDbTableTest.cs)
 `ListBy{SecondaryIndexName}([secKeyField(1),... secKeyField(N-1),] AdvancedEnumeratorParam<typeof(secKeyField(N))>)`
 
-List by secondary key also support variants like `ListByAge_VariantName`.
+List by secondary key also support variants like `ListByAgeVariantName`.
 
 ### Count (by secondary index)
 
@@ -263,7 +263,7 @@ When secondary definition is changed (for example new index is defined) then it 
 
 ## Free content
 
-During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks (Also works recursively IDicionaries are freed automatically if they are nested in another IDictionary). You can see examples in
+During removing or updating of data, all IDictionaries present in removed data are automatically cleared to avoid data leaks (Also works recursively IDictionaries are freed automatically if they are nested in another IDictionary). You can see examples in
 [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs)
 
 If you have IIndirect property. You are on your own. And that's include any nested IDictionary which needs to be cleared before. So you need recursively load objects and delete them. See test named `IIndirectMustBeFreedManually` in [ObjectDbTableFreeContentTest](../BTDBTest/ObjectDbTableFreeContentTest.cs).

@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -73,7 +74,7 @@ namespace BTDB.ODBLayer
                 else if (method.Name.StartsWith("ListBy", StringComparison.Ordinal)
                 ) //ListBy{Name}(tenantId, .., AdvancedEnumeratorParam)
                 {
-                    if (StripVariant(method.Name.Substring(6)) == "Id")
+                    if (StripVariant(method.Name.Substring(6), false) == "Id")
                     {
                         // List by primary key
                         BuildListByIdMethod(method, reqMethod);
@@ -145,8 +146,8 @@ namespace BTDB.ODBLayer
         {
             var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
-            var nameWithoutVariants = StripVariant(method.Name);
-            if (nameWithoutVariants == "FindById" || nameWithoutVariants == "FindByIdOrDefault")
+            var nameWithoutVariants = StripVariant(method.Name.Substring(6), true);
+            if (nameWithoutVariants == "Id" || nameWithoutVariants == "IdOrDefault")
             {
                 CreateMethodFindById(reqMethod.Generator, method.Name,
                     method.GetParameters(), method.ReturnType, _relationInfo.ApartFields, pushWriter, writerLoc,
@@ -519,7 +520,7 @@ namespace BTDB.ODBLayer
                 var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                 var secondaryKeyIndex =
                     _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(
-                        StripVariant(method.Name.Substring(6)));
+                        StripVariant(method.Name.Substring(6), false));
                 var prefixParamCount = parameters.Length - 1;
 
                 var skFields = _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
@@ -582,7 +583,7 @@ namespace BTDB.ODBLayer
             {
                 var secondaryKeyIndex =
                     _relationInfo.ClientRelationVersionInfo.GetSecondaryKeyIndex(
-                        StripVariant(method.Name.Substring(6)));
+                        StripVariant(method.Name.Substring(6), false));
 
                 reqMethod.Generator
                     .Ldarg(0).Castclass(typeof(IRelationDbManipulator));
@@ -862,7 +863,7 @@ namespace BTDB.ODBLayer
             Func<IILLocal> ctxLocFactory)
         {
             var allowDefault = false;
-            var skName = StripVariant(methodName.Substring(6));
+            var skName = StripVariant(methodName.Substring(6), true);
             if (skName.EndsWith("OrDefault"))
             {
                 skName = skName.Substring(0, skName.Length - 9);
@@ -904,15 +905,38 @@ namespace BTDB.ODBLayer
             }
         }
 
-        static string StripVariant(string name)
+        string StripVariant(string name, bool withOrDefault)
         {
-            var ui = name.LastIndexOf('_');
-            if (ui > 0)
+            var result = "";
+
+            void Check(string id)
             {
-                name = name.Substring(0, ui);
+                if (!name.StartsWith(id)) return;
+                if (withOrDefault)
+                {
+                    if (name.Substring(id.Length).StartsWith("OrDefault"))
+                    {
+                        if (result.Length < id.Length + 9)
+                        {
+                            result = id + "OrDefault";
+                        }
+                    }
+                }
+
+                if (result.Length < id.Length)
+                {
+                    result = id;
+                }
             }
 
-            return name;
+            Check("Id");
+            foreach (var secondaryKeyName in _relationInfo.ClientRelationVersionInfo.SecondaryKeys.Values.Select(s =>
+                s.Name))
+            {
+                Check(secondaryKeyName);
+            }
+
+            return result.Length == 0 ? name : result;
         }
 
         static ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
@@ -959,11 +983,11 @@ namespace BTDB.ODBLayer
             return (ushort) (idx + usedApartFieldsCount);
         }
 
-        static bool ShouldThrowWhenKeyNotFound(string methodName, Type methodReturnType)
+        bool ShouldThrowWhenKeyNotFound(string methodName, Type methodReturnType)
         {
             if (methodName.StartsWith("RemoveBy"))
                 return methodReturnType == typeof(void);
-            if (StripVariant(methodName) == "FindByIdOrDefault")
+            if (StripVariant(methodName.Substring(6), true) == "IdOrDefault")
                 return false;
             return true;
         }

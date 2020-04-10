@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+- Suffixes for partial deserializations in methods (FindBy,ListBy) does not need to be separated by underscore anymore.
+
 ## 19.8.0
 
 ### Added

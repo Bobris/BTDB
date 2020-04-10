@@ -612,8 +612,8 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
             IEnumerable<Person> ListByAge(uint age);
 
-            IOrderedDictionaryEnumerator<uint, PersonWithOnlyAge> ListByAge_AgeOnly(AdvancedEnumeratorParam<uint> param);
-            IEnumerable<PersonWithOnlyAge> ListByAge_AgeOnly(uint age);
+            IOrderedDictionaryEnumerator<uint, PersonWithOnlyAge> ListByAgePartial(AdvancedEnumeratorParam<uint> param);
+            IEnumerable<PersonWithOnlyAge> ListByAgePartial(uint age);
 
             // You can replace List by Count and it will return count of list faster if all you need is count
             int CountById(AdvancedEnumeratorParam<ulong> param);
@@ -658,7 +658,7 @@ namespace BTDBTest
             Assert.Equal(129u, age);
 
             var orderedEnumeratorAgeOnly =
-                personTable.ListByAge_AgeOnly(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
+                personTable.ListByAgePartial(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending));
             Assert.Equal(2u, orderedEnumeratorAgeOnly.Count);
 
             Assert.True(orderedEnumeratorAgeOnly.NextKey(out age));
@@ -695,7 +695,7 @@ namespace BTDBTest
             Assert.Equal(29u, age);
             Assert.False(ena.NextKey(out _));
 
-            var ena2 = personTable.ListByAge_AgeOnly(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+            var ena2 = personTable.ListByAgePartial(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
                 KeyProposition.Included,
                 29, KeyProposition.Included));
             Assert.True(ena2.NextKey(out age));
@@ -709,7 +709,7 @@ namespace BTDBTest
             Assert.False(personTable.AnyByAge(18));
 
             Assert.Equal(new[] {2ul, 4ul}, personTable.ListByAge(28).Select(p => p.Id));
-            Assert.Equal(new[] {28u, 28u}, personTable.ListByAge_AgeOnly(28).Select(p => p.Age));
+            Assert.Equal(new[] {28u, 28u}, personTable.ListByAgePartial(28).Select(p => p.Age));
             tr.Commit();
         }
 
