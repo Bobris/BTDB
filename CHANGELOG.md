@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 19.9.1
+
+### Fixed
+
+- Regression from 19.8.0 with NullReferenceException in some special cases.
+
 ## 19.9.0
 
 ### Added
