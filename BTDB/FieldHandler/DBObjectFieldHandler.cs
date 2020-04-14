@@ -19,7 +19,7 @@ namespace BTDB.FieldHandler
             _objectDb = objectDb;
             _type = Unwrap(type);
             _indirect = _type != type;
-            if (_type.IsInterface)
+            if (_type.IsInterface || _type.IsAbstract)
             {
                 _type = typeof(object);
                 _typeName = null;
@@ -155,14 +155,10 @@ namespace BTDB.FieldHandler
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
         {
             var needType = Unwrap(type);
-            if (needType.IsInterface)
+            if (needType.IsInterface || needType.IsAbstract || type != needType && needType == HandledType())
             {
                 return new DBObjectFieldHandler(_objectDb, needType, needType != type);
             }
-            if (this == typeHandler) return this;
-            var myType = HandledType();
-            if (type != myType && Unwrap(type) == myType && typeHandler.HandledType() == type)
-                return typeHandler;
             return this;
         }
 
