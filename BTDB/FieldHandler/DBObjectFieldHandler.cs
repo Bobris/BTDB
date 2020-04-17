@@ -21,7 +21,6 @@ namespace BTDB.FieldHandler
             _indirect = _type != type;
             if (_type.IsInterface || _type.IsAbstract)
             {
-                _type = typeof(object);
                 _typeName = null;
                 _configuration = Array.Empty<byte>();
             }
@@ -103,8 +102,9 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            if (_indirect) return typeof(IIndirect<>).MakeGenericType(_type);
-            return _type ?? CreateType() ?? typeof(object);
+            var type = _type ?? CreateType() ?? typeof(object);
+            if (_indirect) return typeof(IIndirect<>).MakeGenericType(type);
+            return type;
         }
 
         public bool NeedsCtx()
