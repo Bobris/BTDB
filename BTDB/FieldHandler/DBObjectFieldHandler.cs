@@ -33,7 +33,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        static Type Unwrap(Type type)
+        public static Type Unwrap(Type type)
         {
             if (IsIIndirect(type))
             {

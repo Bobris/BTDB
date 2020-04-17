@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BTDB.Encrypted;
 using BTDB.EventStore2Layer;
 using BTDB.EventStoreLayer;
+using BTDB.FieldHandler;
 using Xunit;
 
 namespace BTDBTest
@@ -39,9 +40,10 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
 
-        static object PassThroughEventStorage(object @event, ITypeNameMapper mapper)
+        static object PassThroughEventStorage(object @event, ITypeNameMapper mapper, bool ignoreIndirect = true)
         {
             var options = TypeSerializersOptions.Default;
+            options.IgnoreIIndirect = ignoreIndirect;
             options.SymmetricCipher = new AesGcmSymmetricCipher(new byte[]
             {
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
@@ -253,6 +255,46 @@ namespace BTDBTest
                 A = null
             }, mapper);
             Assert.Null(obj2.A.Secret);
+        }
+
+
+        public abstract class ItemBase
+        {
+            public int A { get; set; }
+        }
+
+        public class ItemBase1 : ItemBase
+        {
+            public int B { get; set; }
+        }
+
+        public class EventDictIndirectAbstract
+        {
+            public IDictionary<ulong, IIndirect<ItemBase>> Items { get; set; }
+        }
+
+        public class EventDictAbstract
+        {
+            public IDictionary<ulong, ItemBase> Items { get; set; }
+        }
+
+        [Fact]
+        public void CanMigrateDictionaryValueOutOfIndirect()
+        {
+            var parentMapper = new FullNameTypeMapper();
+            var mapper = new EventStoreTest.OverloadableTypeMapper(typeof(EventDictAbstract),
+                parentMapper.ToName(typeof(EventDictIndirectAbstract)),
+                parentMapper
+            );
+            var obj = PassThroughEventStorage(new EventDictIndirectAbstract
+            {
+                Items = new Dictionary<ulong, IIndirect<ItemBase>>
+                    {{1, new DBIndirect<ItemBase>(new ItemBase1 {A = 1, B = 2})}}
+            }, mapper, false);
+            Assert.IsType<EventDictAbstract>(obj);
+            var res = (EventDictAbstract) obj;
+            Assert.Equal(1, res.Items[1].A);
+            Assert.Equal(2, ((ItemBase1) res.Items[1]).B);
         }
     }
 }

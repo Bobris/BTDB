@@ -13,11 +13,13 @@ namespace BTDB.EventStoreLayer
         public static string Describe(this ITypeDescriptor descriptor)
         {
             var sb = new StringBuilder();
-            descriptor.BuildHumanReadableFullName(sb, new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
+            descriptor.BuildHumanReadableFullName(sb,
+                new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance), 0);
             return sb.ToString();
         }
 
-        public static void GenerateSaveEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
+        public static void GenerateSaveEx(this ITypeDescriptor descriptor, IILGen ilGenerator,
+            Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushSubValue, Type subValueType)
         {
             if (descriptor.StoredInline)
             {
@@ -32,7 +34,8 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateSkipEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
+        public static void GenerateSkipEx(this ITypeDescriptor descriptor, IILGen ilGenerator,
+            Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             if (descriptor.StoredInline)
             {
@@ -46,11 +49,13 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public static void GenerateLoadEx(this ITypeDescriptor descriptor, IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType, ITypeConvertorGenerator convertorGenerator)
+        public static void GenerateLoadEx(this ITypeDescriptor descriptor, IILGen ilGenerator,
+            Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type asType,
+            ITypeConvertorGenerator convertorGenerator)
         {
             if (descriptor.StoredInline)
             {
-                if (descriptor.LoadNeedsHelpWithConversion && asType!=typeof(object))
+                if (descriptor.LoadNeedsHelpWithConversion && asType != typeof(object))
                 {
                     var origType = descriptor.GetPreferedType();
                     descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, origType);
@@ -74,8 +79,20 @@ namespace BTDB.EventStoreLayer
                     .Do(pushCtx)
                     .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject());
                 if (asType != typeof(object))
-                    ilGenerator.Castclass(asType);
+                    ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
+                        .MakeGenericMethod(asType));
             }
+        }
+
+        public static T? IntelligentCast<T>(object? obj) where T : class
+        {
+            if (obj is T res) return res;
+            if (obj == null) return null;
+            if (obj is IIndirect indirect)
+            {
+                return indirect.ValueAsObject as T;
+            }
+            return (T) obj; // This will throw
         }
 
         public static StringBuilder AppendJsonLike(this StringBuilder sb, object? obj)
@@ -86,7 +103,8 @@ namespace BTDB.EventStoreLayer
             }
 
             if (obj is string objString)
-                return sb.Append('"').Append(objString.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n")).Append('"');
+                return sb.Append('"').Append(objString.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r")
+                    .Replace("\n", "\\n")).Append('"');
 
             if (obj.GetType().IsEnum || obj is EnumTypeDescriptor.DynamicEnum || obj is bool ||
                 obj is DateTime || obj is Guid)

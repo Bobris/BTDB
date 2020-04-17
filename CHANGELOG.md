@@ -2,11 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+- EventLayers deserialization can now unwrap `IIndirect<T>`, making it compatible change (`IIndirect<T>` => `T`, or `IDictionary<TKey, IIndirect<T>>` => `IDictionary<TKey, T>`).
+
 ## 19.9.3
 
 ### Fixed
 
-- Regression with DB loading IDictionary<Key,IIndirect<SomeAbstractClass>>
+- Regression with DB loading `IDictionary<Key,IIndirect<SomeAbstractClass>>`
 
 ## 19.9.2
 

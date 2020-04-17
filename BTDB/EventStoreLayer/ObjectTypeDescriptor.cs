@@ -14,7 +14,7 @@ namespace BTDB.EventStoreLayer
 {
     public class ObjectTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
-        Type _type;
+        Type? _type;
 
         readonly List<KeyValuePair<string, ITypeDescriptor>>
             _fields = new List<KeyValuePair<string, ITypeDescriptor>>();
@@ -178,7 +178,7 @@ namespace BTDB.EventStoreLayer
             return true;
         }
 
-        public Type GetPreferedType()
+        public Type? GetPreferedType()
         {
             if (_type == null)
                 _type = _typeSerializers.TypeNameMapper.ToType(Name);
@@ -187,7 +187,11 @@ namespace BTDB.EventStoreLayer
 
         public Type GetPreferedType(Type targetType)
         {
-            return GetPreferedType();
+            var res = GetPreferedType();
+            if (res == targetType || res == null) return res;
+            res = DBObjectFieldHandler.Unwrap(res);
+            if (res == DBObjectFieldHandler.Unwrap(targetType)) return targetType;
+            return res;
         }
 
         public bool AnyOpNeedsCtx()

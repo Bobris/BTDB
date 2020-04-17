@@ -42,8 +42,10 @@ namespace BTDB.FieldHandler
             }
         }
 
+        [NotStored]
         public ulong Oid => _oid;
 
+        [NotStored]
         public object ValueAsObject => _value;
 
         public static void SaveImpl(IWriterCtx writerCtx, object obj)
