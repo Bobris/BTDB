@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Regression with DB loading IDictionary<Key,IIndirect<SomeAbstractClass>>
+
 ## 19.9.2
 
 ## 19.9.1
