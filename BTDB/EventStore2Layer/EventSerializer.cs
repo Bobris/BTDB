@@ -59,7 +59,7 @@ namespace BTDB.EventStore2Layer
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2Info.Add(infoForType);
-                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferedType()!, infoForType);
+                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferredType()!, infoForType);
                 var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
                 if (descriptorMultipleNativeTypes == null) continue;
                 foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
@@ -81,12 +81,12 @@ namespace BTDB.EventStore2Layer
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
                 ilgen.Ldarg(2);
-                var type = descriptor.GetPreferedType();
+                var type = descriptor.GetPreferredType();
                 if (type != typeof(object))
                 {
                     ilgen.UnboxAny(type);
                 }
-            }, descriptor.GetPreferedType());
+            }, descriptor.GetPreferredType());
             il.Ret();
             return method.Create();
         }
@@ -150,12 +150,12 @@ namespace BTDB.EventStore2Layer
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferedType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
         public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
         {
-            return descriptor.GetPreferedType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
         ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
@@ -327,7 +327,7 @@ namespace BTDB.EventStore2Layer
             }
         }
 
-        public ITypeDescriptor Create(Type type)
+        public ITypeDescriptor? Create(Type type)
         {
             if (_typeOrDescriptor2Info.TryGetValue(type, out var result)) return result.Descriptor;
             if (_typeOrDescriptor2InfoNew.TryGetValue(type, out result)) return result.Descriptor;
@@ -337,7 +337,7 @@ namespace BTDB.EventStore2Layer
             {
                 if (type.IsGenericType)
                 {
-                    typeAlternative = type.SpecializationOf(typeof(IList<>));
+                    typeAlternative = type.SpecializationOf(typeof(IList<>)) ?? type.SpecializationOf(typeof(ISet<>));
                     if (typeAlternative != null)
                     {
                         if (type != typeAlternative)

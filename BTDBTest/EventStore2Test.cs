@@ -670,8 +670,7 @@ namespace BTDBTest
             var testEvent = new EventWithNotStoredPublicField();
 
             var serializer = new EventSerializer();
-            bool hasMetadata;
-            serializer.Serialize(out hasMetadata, testEvent);
+            serializer.Serialize(out _, testEvent);
         }
 
         public enum WorkStatus
@@ -977,14 +976,13 @@ namespace BTDBTest
         void SerializeOdbDict(IDictionary<ulong, string> dictItems)
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithIDictionary
             {
                 Items = dictItems
             };
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
-            var data = serializer.Serialize(out hasMetadata, obj);
+            var data = serializer.Serialize(out _, obj);
 
             var deserializer = new EventDeserializer();
             object obj2;
@@ -993,6 +991,32 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
 
             Assert.Equal(obj.Items, ((ObjectWithIDictionary) obj2).Items);
+        }
+
+        public class SomeSets
+        {
+            public ISet<string> A { get; set; }
+            public HashSet<int> B { get; set; }
+        }
+
+        [Fact]
+        public void SupportSets()
+        {
+            var serializer = new EventSerializer();
+            var obj = new object[] {new SomeSets {A = new HashSet<string> {"A", "B"}, B = new HashSet<int> {42, 7}}};
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, obj);
+
+            var deserializer = new EventDeserializer();
+            object obj2;
+            Assert.False(deserializer.Deserialize(out obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+
+            var ev = obj2 as SomeSets;
+            Assert.Equal(new[] {"A", "B"}, ev!.A.OrderBy(a => a));
+            Assert.Equal(new[] {7, 42}, ev.B.OrderBy(b => b));
         }
     }
 }

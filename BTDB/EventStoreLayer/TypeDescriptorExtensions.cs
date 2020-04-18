@@ -57,7 +57,7 @@ namespace BTDB.EventStoreLayer
             {
                 if (descriptor.LoadNeedsHelpWithConversion && asType != typeof(object))
                 {
-                    var origType = descriptor.GetPreferedType();
+                    var origType = descriptor.GetPreferredType();
                     descriptor.GenerateLoad(ilGenerator, pushReader, pushCtx, pushDescriptor, origType);
                     if (origType != asType)
                     {

@@ -3,11 +3,11 @@ using System.Text;
 
 namespace BTDB.EventStoreLayer
 {
-    public class ListWithDescriptor<T> : List<T>, IKnowDescriptor
+    public class HashSetWithDescriptor<T> : HashSet<T>, IKnowDescriptor
     {
         readonly ITypeDescriptor _descriptor;
 
-        public ListWithDescriptor(int capacity, ITypeDescriptor descriptor)
+        public HashSetWithDescriptor(int capacity, ITypeDescriptor descriptor)
             : base(capacity)
         {
             _descriptor = descriptor;

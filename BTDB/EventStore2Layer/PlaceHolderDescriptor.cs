@@ -43,12 +43,12 @@ namespace BTDB.EventStore2Layer
             throw new InvalidOperationException();
         }
 
-        Type ITypeDescriptor.GetPreferedType()
+        Type ITypeDescriptor.GetPreferredType()
         {
             return null;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
             return null;
         }

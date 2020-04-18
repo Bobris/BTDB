@@ -38,14 +38,14 @@ namespace BTDB.EventStoreLayer
             return ReferenceEquals(this, other);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             return _loader.ReturnType;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
-            return GetPreferedType();
+            return GetPreferredType();
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
@@ -88,13 +88,13 @@ namespace BTDB.EventStoreLayer
             ilGenerator.Call(_loader);
             if (targetType != typeof(object))
             {
-                if (targetType != GetPreferedType())
+                if (targetType != GetPreferredType())
                     throw new ArgumentOutOfRangeException(nameof(targetType));
                 return;
             }
-            if (GetPreferedType().IsValueType)
+            if (GetPreferredType().IsValueType)
             {
-                ilGenerator.Box(GetPreferedType());
+                ilGenerator.Box(GetPreferredType());
             }
             else
             {

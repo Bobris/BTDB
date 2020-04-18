@@ -13,12 +13,12 @@ namespace BTDB.EventStoreLayer
     class DictionaryTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly ITypeDescriptorCallbacks _typeSerializers;
-        Type _type;
-        Type _keyType;
-        Type _valueType;
-        ITypeDescriptor _keyDescriptor;
-        ITypeDescriptor _valueDescriptor;
-        string _name;
+        Type? _type;
+        Type? _keyType;
+        Type? _valueType;
+        ITypeDescriptor? _keyDescriptor;
+        ITypeDescriptor? _valueDescriptor;
+        string? _name;
         readonly ITypeConvertorGenerator _convertorGenerator;
 
         public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
@@ -62,17 +62,17 @@ namespace BTDB.EventStoreLayer
         {
             get
             {
-                if (_name == null) InitFromKeyValueDescriptors(_keyDescriptor, _valueDescriptor);
-                return _name;
+                if (_name == null) InitFromKeyValueDescriptors(_keyDescriptor!, _valueDescriptor!);
+                return _name!;
             }
-            private set { _name = value; }
+            private set => _name = value;
         }
 
         public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
-            var keyDescriptor = factory.Create(_keyType);
+            var keyDescriptor = factory.Create(_keyType!);
             if (keyDescriptor == null) return false;
-            var valueDescriptor = factory.Create(_valueType);
+            var valueDescriptor = factory.Create(_valueType!);
             if (valueDescriptor == null) return false;
             InitFromKeyValueDescriptors(keyDescriptor, valueDescriptor);
             return true;
@@ -81,9 +81,9 @@ namespace BTDB.EventStoreLayer
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append("Dictionary<");
-            _keyDescriptor.BuildHumanReadableFullName(text, stack, indent);
+            _keyDescriptor!.BuildHumanReadableFullName(text, stack, indent);
             text.Append(", ");
-            _valueDescriptor.BuildHumanReadableFullName(text, stack, indent);
+            _valueDescriptor!.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 
@@ -91,35 +91,35 @@ namespace BTDB.EventStoreLayer
         {
             var o = other as DictionaryTypeDescriptor;
             if (o == null) return false;
-            return _keyDescriptor.Equals(o._keyDescriptor, stack) && _valueDescriptor.Equals(o._valueDescriptor, stack);
+            return _keyDescriptor!.Equals(o._keyDescriptor!, stack) && _valueDescriptor!.Equals(o._valueDescriptor!, stack);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             if (_type == null)
             {
-                _keyType = _typeSerializers.LoadAsType(_keyDescriptor);
-                _valueType = _typeSerializers.LoadAsType(_valueDescriptor);
+                _keyType = _typeSerializers.LoadAsType(_keyDescriptor!);
+                _valueType = _typeSerializers.LoadAsType(_valueDescriptor!);
                 _type = typeof(IDictionary<,>).MakeGenericType(_keyType, _valueType);
             }
             return _type;
         }
 
-        Type GetInterface(Type type) => type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
+        static Type GetInterface(Type type) => type.GetInterface("IOrderedDictionary`2") ?? type.GetInterface("IDictionary`2") ?? type;
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
             if (_type == targetType) return _type;
             var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
-            var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
-            var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
+            var keyType = _typeSerializers.LoadAsType(_keyDescriptor!, targetTypeArguments[0]);
+            var valueType = _typeSerializers.LoadAsType(_valueDescriptor!, targetTypeArguments[1]);
             return targetType.GetGenericTypeDefinition().MakeGenericType(keyType, valueType);
         }
 
         public bool AnyOpNeedsCtx()
         {
-            return !_keyDescriptor.StoredInline || !_valueDescriptor.StoredInline
+            return !_keyDescriptor!.StoredInline || !_valueDescriptor!.StoredInline
                 || _keyDescriptor.AnyOpNeedsCtx()
                 || _valueDescriptor.AnyOpNeedsCtx();
         }
@@ -127,12 +127,12 @@ namespace BTDB.EventStoreLayer
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             if (targetType == typeof(object))
-                targetType = GetPreferedType();
+                targetType = GetPreferredType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
             var targetIDictionary = GetInterface(targetType);
             var targetTypeArguments = targetIDictionary.GetGenericArguments();
-            var keyType = _typeSerializers.LoadAsType(_keyDescriptor, targetTypeArguments[0]);
-            var valueType = _typeSerializers.LoadAsType(_valueDescriptor, targetTypeArguments[1]);
+            var keyType = _typeSerializers.LoadAsType(_keyDescriptor!, targetTypeArguments[0]);
+            var valueType = _typeSerializers.LoadAsType(_valueDescriptor!, targetTypeArguments[1]);
             var dictionaryTypeGenericDefinition = targetType.InheritsOrImplements(typeof(IOrderedDictionary<,>)) ? typeof(OrderedDictionaryWithDescriptor<,>) : typeof(DictionaryWithDescriptor<,>);
             var dictionaryType = dictionaryTypeGenericDefinition.MakeGenericType(keyType, valueType);
             if (!targetType.IsAssignableFrom(dictionaryType)) throw new InvalidOperationException();
@@ -150,7 +150,7 @@ namespace BTDB.EventStoreLayer
                 .Brfalse(loadFinished)
                 .Ldloc(localCount)
                 .Do(pushDescriptor)
-                .Newobj(dictionaryType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
+                .Newobj(dictionaryType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) })!)
                 .Stloc(localDict)
                 .Mark(next)
                 .Ldloc(localCount)
@@ -163,7 +163,7 @@ namespace BTDB.EventStoreLayer
             _keyDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), keyType, _convertorGenerator);
             _valueDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(1).Callvirt(() => default(ITypeDescriptor).NestedType(0)), valueType, _convertorGenerator);
             ilGenerator
-                .Callvirt(dictionaryType.GetMethod(nameof(IDictionary.Add)))
+                .Callvirt(dictionaryType.GetMethod(nameof(IDictionary.Add))!)
                 .Br(next)
                 .Mark(loadFinished)
                 .Ldloc(localDict)
@@ -191,11 +191,11 @@ namespace BTDB.EventStoreLayer
                 var next = ilGenerator.DefineLabel();
 
                 if (type == typeof(object))
-                    type = _owner.GetPreferedType();
-                var targetIDictionary = _owner.GetInterface(type);
+                    type = _owner.GetPreferredType();
+                var targetIDictionary = GetInterface(type);
                 var targetTypeArguments = targetIDictionary.GetGenericArguments();
-                var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor, targetTypeArguments[0]);
-                var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor, targetTypeArguments[1]);
+                var keyType = _owner._typeSerializers.LoadAsType(_owner._keyDescriptor!, targetTypeArguments[0]);
+                var valueType = _owner._typeSerializers.LoadAsType(_owner._valueDescriptor!, targetTypeArguments[1]);
                 if (_owner._type == null) _owner._type = type;
                 var isDict = type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
                 var typeAsIDictionary = isDict ? type : typeof(IDictionary<,>).MakeGenericType(keyType, valueType);
@@ -203,10 +203,10 @@ namespace BTDB.EventStoreLayer
                     ? typeAsIDictionary.GetMethods()
                         .Single(
                             m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
-                    : typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod(nameof(IEnumerable.GetEnumerator));
-                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
-                var typeKeyValuePair = currentGetter.ReturnType;
+                    : typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+                var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var typeKeyValuePair = currentGetter!.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
                 ilGenerator
@@ -222,7 +222,7 @@ namespace BTDB.EventStoreLayer
                         {
                             il
                                 .Ldloca(localEnumerator)
-                                .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext)));
+                                .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!);
                         }
                         else
                         {
@@ -253,7 +253,7 @@ namespace BTDB.EventStoreLayer
                     ilGenerator
                         .Do(pushCtx)
                         .Ldloca(localPair)
-                        .Call(typeKeyValuePair.GetProperty("Key").GetGetMethod())
+                        .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
                         .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
                 }
                 if (!_owner._valueDescriptor.Sealed)
@@ -261,7 +261,7 @@ namespace BTDB.EventStoreLayer
                     ilGenerator
                         .Do(pushCtx)
                         .Ldloca(localPair)
-                        .Call(typeKeyValuePair.GetProperty("Value").GetGetMethod())
+                        .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
                         .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
                 }
                 ilGenerator
@@ -286,11 +286,14 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public ITypeDescriptor NestedType(int index)
+        public ITypeDescriptor? NestedType(int index)
         {
-            if (index == 0) return _keyDescriptor;
-            if (index == 1) return _valueDescriptor;
-            return null;
+            return index switch
+            {
+                0 => _keyDescriptor,
+                1 => _valueDescriptor,
+                _ => null
+            };
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
@@ -314,10 +317,10 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
         {
-            nestedDescriptorPersistor(writer, _keyDescriptor);
-            nestedDescriptorPersistor(writer, _valueDescriptor);
+            nestedDescriptorWriter(writer, _keyDescriptor);
+            nestedDescriptorWriter(writer, _valueDescriptor);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
@@ -343,7 +346,7 @@ namespace BTDB.EventStoreLayer
                 .Mark(notnull)
                 .Do(pushWriter)
                 .Ldloc(localDict)
-                .Callvirt(typeAsICollection.GetProperty(nameof(ICollection.Count)).GetGetMethod())
+                .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
@@ -352,8 +355,8 @@ namespace BTDB.EventStoreLayer
                 var getEnumeratorMethod = typeAsDictionary.GetMethods()
                         .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
                 var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
-                var typeKeyValuePair = currentGetter.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var typeKeyValuePair = currentGetter!.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
                 var finish = ilGenerator.DefineLabel();
@@ -369,15 +372,15 @@ namespace BTDB.EventStoreLayer
                     .Try()
                     .Mark(next)
                     .Ldloca(localEnumerator)
-                    .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext)))
+                    .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!)
                     .Brfalse(finish)
                     .Ldloca(localEnumerator)
                     .Call(currentGetter)
                     .Stloc(localPair);
-                _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
-                _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
+                _keyDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!), keyType);
+                _valueDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!), valueType);
                 ilGenerator
                     .Br(next)
                     .Mark(finish)
@@ -389,10 +392,10 @@ namespace BTDB.EventStoreLayer
                     .Br(completeFinish);
             }
             {
-                var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1").GetMethod(nameof(IEnumerable.GetEnumerator));
-                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current)).GetGetMethod();
-                var typeKeyValuePair = currentGetter.ReturnType;
+                var getEnumeratorMethod = typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+                var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var typeKeyValuePair = currentGetter!.ReturnType;
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
                 var finish = ilGenerator.DefineLabel();
@@ -421,7 +424,6 @@ namespace BTDB.EventStoreLayer
                     .EndTry()
                     .Mark(completeFinish);
             }
-
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

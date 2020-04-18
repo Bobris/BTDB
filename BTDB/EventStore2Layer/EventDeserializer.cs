@@ -43,7 +43,7 @@ namespace BTDB.EventStore2Layer
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2Info.Add(infoForType);
 
-                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferedType(), infoForType);
+                _typeOrDescriptor2Info.TryAdd(predefinedType.GetPreferredType(), infoForType);
                 var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
                 if (descriptorMultipleNativeTypes == null) continue;
                 foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
@@ -87,12 +87,12 @@ namespace BTDB.EventStore2Layer
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferedType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
         public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
         {
-            return descriptor.GetPreferedType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
         ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)

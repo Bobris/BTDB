@@ -42,7 +42,7 @@ namespace BTDB.EventStoreLayer
             if (descriptor == _itemDescriptor && _name != null) return;
             _itemDescriptor = descriptor;
             if ((descriptor.Name?.Length ?? 0) == 0) return;
-            _itemType = _itemDescriptor.GetPreferedType();
+            _itemType = _itemDescriptor.GetPreferredType();
             Sealed = _itemDescriptor.Sealed;
             Name = $"Nullable<{_itemDescriptor.Name}>";
         }
@@ -92,7 +92,7 @@ namespace BTDB.EventStoreLayer
             return _itemDescriptor.Equals(o._itemDescriptor, stack);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             if (_type == null)
             {
@@ -102,7 +102,7 @@ namespace BTDB.EventStoreLayer
             return _type;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
             if (_type == targetType) return _type;
             var targetTypeArguments = targetType.GetGenericArguments();
@@ -183,7 +183,7 @@ namespace BTDB.EventStoreLayer
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx, Type type)
             {
                 var finish = ilGenerator.DefineLabel();
-                var itemType = _nullableTypeDescriptor.GetPreferedType(type).GetGenericArguments()[0];
+                var itemType = _nullableTypeDescriptor.GetPreferredType(type).GetGenericArguments()[0];
                 var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
                 var localValue = ilGenerator.DeclareLocal(nullableType);
 
@@ -226,9 +226,9 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
         {
-            nestedDescriptorPersistor(writer, _itemDescriptor);
+            nestedDescriptorWriter(writer, _itemDescriptor);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)

@@ -20,7 +20,7 @@ namespace BTDBTest
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(storage);
-            var metadata = new User { Name = "A", Age = 1 };
+            var metadata = new User {Name = "A", Age = 1};
             var events = new object[]
             {
                 new User {Name = "B", Age = 2},
@@ -49,6 +49,7 @@ namespace BTDBTest
                     baselineMemory = GC.GetTotalMemory(false);
                 }
             }
+
             GC.Collect(2);
             GC.WaitForPendingFinalizers();
             GC.Collect(2);
@@ -60,11 +61,11 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { 1 });
+            appender.Store(null, new object[] {1});
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { 1 } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {1}}, eventObserver.Events);
             Assert.True(appender.IsKnownAsAppendable());
             Assert.False(appender.IsKnownAsCorrupted());
             Assert.False(appender.IsKnownAsFinished());
@@ -89,8 +90,8 @@ namespace BTDBTest
             manager.CompressionStrategy = new NoCompressionStrategy();
             var file1 = new MemoryEventFileStorage(4096, 4096);
             var appender = manager.AppendToStore(file1);
-            appender.Store(null, new object[] { new byte[4000] });
-            appender.Store(null, new object[] { new byte[4000] });
+            appender.Store(null, new object[] {new byte[4000]});
+            appender.Store(null, new object[] {new byte[4000]});
             Assert.NotSame(file1, appender.CurrentFileStorage);
             var reader = manager.OpenReadOnlyStore(file1);
             reader.ReadFromStartToEnd(new SkippingEventObserver());
@@ -109,7 +110,7 @@ namespace BTDBTest
             manager.CompressionStrategy = new NoCompressionStrategy();
             var file1 = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file1);
-            appender.Store(null, new object[] { new byte[8000] });
+            appender.Store(null, new object[] {new byte[8000]});
             var file2 = new MemoryEventFileStorage();
             var buf = ByteBuffer.NewSync(new byte[4096]);
             file1.Read(buf, 0);
@@ -137,8 +138,8 @@ namespace BTDBTest
                 manager.CompressionStrategy = new NoCompressionStrategy();
                 var file1 = new MemoryEventFileStorage(4096, 8192);
                 var appender = manager.AppendToStore(file1);
-                appender.Store(null, new object[] { new byte[i] });
-                appender.Store(null, new object[] { new byte[7000] });
+                appender.Store(null, new object[] {new byte[i]});
+                appender.Store(null, new object[] {new byte[7000]});
             }
         }
 
@@ -149,8 +150,8 @@ namespace BTDBTest
             manager.CompressionStrategy = new NoCompressionStrategy();
             var file1 = new MemoryEventFileStorage(4096, 4096);
             var appender = manager.AppendToStore(file1);
-            appender.Store(null, new object[] { new byte[4080] });
-            appender.Store(null, new object[] { new byte[4000] });
+            appender.Store(null, new object[] {new byte[4080]});
+            appender.Store(null, new object[] {new byte[4000]});
             Assert.NotSame(file1, appender.CurrentFileStorage);
             var reader = manager.OpenReadOnlyStore(file1);
             reader.ReadFromStartToEnd(new SkippingEventObserver());
@@ -167,13 +168,12 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { 1 });
+            appender.Store(null, new object[] {1});
             appender.ReadFromStartToEnd(new SkippingEventObserver());
             appender.FinalizeStore();
             Assert.False(appender.IsKnownAsAppendable());
             Assert.False(appender.IsKnownAsCorrupted());
             Assert.True(appender.IsKnownAsFinished());
-
         }
 
         internal class StoringEventObserver : IEventStoreObserver
@@ -196,7 +196,7 @@ namespace BTDBTest
 
             public void ObservedEvents(object[] events)
             {
-                Assert.Equal((int)_lastEventCount, events.Length);
+                Assert.Equal((int) _lastEventCount, events.Length);
                 Events.Add(events);
             }
         }
@@ -235,17 +235,17 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            var metadata = new User { Name = "A", Age = 1 };
+            var metadata = new User {Name = "A", Age = 1};
             var events = new object[]
-                {
-                    new User {Name = "B", Age = 2},
-                    new User {Name = "C", Age = 3}
-                };
+            {
+                new User {Name = "B", Age = 2},
+                new User {Name = "C", Age = 3}
+            };
             appender.Store(metadata, events);
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { metadata }, eventObserver.Metadata);
-            Assert.Equal(new[] { events }, eventObserver.Events);
+            Assert.Equal(new object[] {metadata}, eventObserver.Metadata);
+            Assert.Equal(new[] {events}, eventObserver.Events);
         }
 
         [Fact]
@@ -255,16 +255,16 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "A", Age = 1 };
-            appender.Store(null, new object[] { user });
+            var user = new User {Name = "A", Age = 1};
+            appender.Store(null, new object[] {user});
 
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { user } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {user}}, eventObserver.Events);
         }
 
         [Fact]
@@ -275,9 +275,9 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new SimplePersonTypeMapper());
             var appender = manager.AppendToStore(new MemoryEventFileStorage(4096, 4096));
             var first = appender.CurrentFileStorage;
-            var user = new User { Name = "A", Age = 1 };
+            var user = new User {Name = "A", Age = 1};
             while (appender.CurrentFileStorage == first)
-                appender.Store(null, new object[] { user });
+                appender.Store(null, new object[] {user});
             var second = appender.CurrentFileStorage;
 
             manager = new EventStoreManager();
@@ -286,8 +286,8 @@ namespace BTDBTest
             var reader = manager.OpenReadOnlyStore(second);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { user } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {user}}, eventObserver.Events);
         }
 
 
@@ -333,15 +333,15 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var userEvent = new UserEvent { Id = 10, User1 = new User { Name = "A", Age = 1 } };
-            appender.Store(null, new object[] { userEvent });
+            var userEvent = new UserEvent {Id = 10, User1 = new User {Name = "A", Age = 1}};
+            appender.Store(null, new object[] {userEvent});
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { userEvent } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {userEvent}}, eventObserver.Events);
         }
 
         [Fact]
@@ -350,15 +350,15 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "A", Age = 1 };
-            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
-            appender.Store(null, new object[] { userEvent });
+            var user = new User {Name = "A", Age = 1};
+            var userEvent = new UserEvent {Id = 10, User1 = user, User2 = user};
+            appender.Store(null, new object[] {userEvent});
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
+            var readUserEvent = (UserEvent) eventObserver.Events[0][0];
             Assert.Same(readUserEvent.User1, readUserEvent.User2);
         }
 
@@ -411,21 +411,21 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "A", Age = 1 };
-            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
-            appender.Store(null, new object[] { userEvent, new User { Name = "B" } });
+            var user = new User {Name = "A", Age = 1};
+            var userEvent = new UserEvent {Id = 10, User1 = user, User2 = user};
+            appender.Store(null, new object[] {userEvent, new User {Name = "B"}});
 
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventMore), "UserEvent"));
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEventMore)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventMore) eventObserver.Events[0][0];
             Assert.Same(readUserEvent.User1, readUserEvent.User2);
             Assert.Equal("A", readUserEvent.User1.Name);
             Assert.Equal(10, readUserEvent.Id);
             Assert.Null(readUserEvent.User3);
-            Assert.Equal("B", ((User)eventObserver.Events[0][1]).Name);
+            Assert.Equal("B", ((User) eventObserver.Events[0][1]).Name);
         }
 
         public class UserEventLess : IEquatable<UserEventLess>
@@ -447,19 +447,19 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "A", Age = 1 };
-            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
-            appender.Store(null, new object[] { userEvent, new User { Name = "B" } });
+            var user = new User {Name = "A", Age = 1};
+            var userEvent = new UserEvent {Id = 10, User1 = user, User2 = user};
+            appender.Store(null, new object[] {userEvent, new User {Name = "B"}});
 
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventLess), "UserEvent"));
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEventLess)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventLess) eventObserver.Events[0][0];
             Assert.Equal("A", readUserEvent.User2.Name);
             Assert.Equal(10, readUserEvent.Id);
-            Assert.Equal("B", ((User)eventObserver.Events[0][1]).Name);
+            Assert.Equal("B", ((User) eventObserver.Events[0][1]).Name);
         }
 
         public enum ApplicationsType
@@ -491,15 +491,16 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ApplicationInfo), "ApplicationInfo"));
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var applicationInfo = new ApplicationInfo { Type = ApplicationsType.First };
-            appender.Store(null, new object[] { applicationInfo });
+            var applicationInfo = new ApplicationInfo {Type = ApplicationsType.First};
+            appender.Store(null, new object[] {applicationInfo});
 
             manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ApplicationInfoPropertyEnumTypeChanged), "ApplicationInfo"));
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ApplicationInfoPropertyEnumTypeChanged),
+                "ApplicationInfo"));
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readApplicationInfo = (ApplicationInfoPropertyEnumTypeChanged)eventObserver.Events[0][0];
+            var readApplicationInfo = (ApplicationInfoPropertyEnumTypeChanged) eventObserver.Events[0][0];
             Assert.Equal(ApplicationsRenamedType.First, readApplicationInfo.Type);
         }
 
@@ -524,16 +525,16 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var userA = new User { Name = "A", Age = 1 };
-            var userB = new User { Name = "B", Age = 2 };
-            var userEvent = new UserEventList { Id = 10, List = new List<User> { userA, userB, userA } };
-            appender.Store(null, new object[] { userEvent });
+            var userA = new User {Name = "A", Age = 1};
+            var userB = new User {Name = "B", Age = 2};
+            var userEvent = new UserEventList {Id = 10, List = new List<User> {userA, userB, userA}};
+            appender.Store(null, new object[] {userEvent});
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEventList)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventList) eventObserver.Events[0][0];
             Assert.Equal(readUserEvent, userEvent);
         }
 
@@ -544,17 +545,17 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEventList), "UserEvent"));
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var userA = new User { Name = "A", Age = 1 };
-            var userB = new User { Name = "B", Age = 2 };
-            var userEvent = new UserEventList { Id = 10, List = new List<User> { userA, userB, userA } };
-            appender.Store(null, new object[] { userEvent });
+            var userA = new User {Name = "A", Age = 1};
+            var userB = new User {Name = "B", Age = 2};
+            var userEvent = new UserEventList {Id = 10, List = new List<User> {userA, userB, userA}};
+            appender.Store(null, new object[] {userEvent});
 
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(UserEvent), "UserEvent"));
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEvent)eventObserver.Events[0][0];
+            var readUserEvent = (UserEvent) eventObserver.Events[0][0];
             Assert.Equal(10, readUserEvent.Id);
             Assert.Null(readUserEvent.User1);
         }
@@ -576,6 +577,7 @@ namespace BTDBTest
                     if (!other.Dict.TryGetValue(p.Key, out u)) return false;
                     if (p.Value != u && (p.Value == null || !p.Value.Equals(u))) return false;
                 }
+
                 return true;
             }
         }
@@ -586,16 +588,17 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var userA = new User { Name = "A", Age = 1 };
-            var userB = new User { Name = "B", Age = 2 };
-            var userEvent = new UserEventDictionary { Id = 10, Dict = new Dictionary<string, User> { { "A", userA }, { "B", userB } } };
-            appender.Store(null, new object[] { userEvent });
+            var userA = new User {Name = "A", Age = 1};
+            var userB = new User {Name = "B", Age = 2};
+            var userEvent = new UserEventDictionary
+                {Id = 10, Dict = new Dictionary<string, User> {{"A", userA}, {"B", userB}}};
+            appender.Store(null, new object[] {userEvent});
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (UserEventDictionary)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventDictionary) eventObserver.Events[0][0];
             Assert.Equal(readUserEvent, userEvent);
         }
 
@@ -613,14 +616,14 @@ namespace BTDBTest
             var obj = new ErrorInfo();
             obj.PropertyErrors = new Dictionary<string, IList<ErrorInfo>>();
             var items = obj.PropertyErrors;
-            items["a"] = new List<ErrorInfo> { new ErrorInfo() };
-            appender.Store(null, new object[] { obj });
+            items["a"] = new List<ErrorInfo> {new ErrorInfo()};
+            appender.Store(null, new object[] {obj});
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            var readUserEvent = (ErrorInfo)eventObserver.Events[0][0];
+            var readUserEvent = (ErrorInfo) eventObserver.Events[0][0];
             Assert.Equal(1, readUserEvent.PropertyErrors.Count);
         }
 
@@ -632,15 +635,15 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file);
             var randomData = new byte[20000];
             new Random().NextBytes(randomData);
-            appender.Store(null, new object[] { randomData });
+            appender.Store(null, new object[] {randomData});
             Assert.True(10000 < appender.KnownAppendablePosition());
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { randomData } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {randomData}}, eventObserver.Events);
         }
 
         [Fact]
@@ -650,15 +653,15 @@ namespace BTDBTest
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
             var compressibleData = new byte[20000];
-            appender.Store(null, new object[] { compressibleData });
+            appender.Store(null, new object[] {compressibleData});
             Assert.True(2000 > appender.KnownAppendablePosition());
 
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
-            Assert.Equal(new[] { new object[] { compressibleData } }, eventObserver.Events);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
+            Assert.Equal(new[] {new object[] {compressibleData}}, eventObserver.Events);
         }
 
         [Fact]
@@ -667,12 +670,12 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var metadata = new User { Name = "A", Age = 1 };
+            var metadata = new User {Name = "A", Age = 1};
             var events = new object[]
-                {
-                    new User {Name = "B", Age = 2},
-                    new User {Name = "C", Age = 3}
-                };
+            {
+                new User {Name = "B", Age = 2},
+                new User {Name = "C", Age = 3}
+            };
             appender.Store(metadata, events);
             appender.Store(metadata, events);
 
@@ -682,8 +685,8 @@ namespace BTDBTest
             Assert.False(reader.IsKnownAsCorrupted());
             Assert.False(reader.IsKnownAsFinished());
             Assert.False(reader.IsKnownAsAppendable());
-            Assert.Equal(new List<object> { metadata }, eventObserver.Metadata);
-            Assert.Equal(new[] { events }, eventObserver.Events);
+            Assert.Equal(new List<object> {metadata}, eventObserver.Metadata);
+            Assert.Equal(new[] {events}, eventObserver.Events);
         }
 
         [Fact]
@@ -694,10 +697,10 @@ namespace BTDBTest
             {
                 var file = new MemoryEventFileStorage();
                 var appender = manager.AppendToStore(file);
-                appender.Store(null, new object[] { new byte[i] });
+                appender.Store(null, new object[] {new byte[i]});
                 var eventObserver = new StoringEventObserver();
                 appender.ReadFromStartToEnd(eventObserver);
-                appender.Store(null, new object[] { new byte[i] });
+                appender.Store(null, new object[] {new byte[i]});
                 appender.ReadFromStartToEnd(eventObserver);
             }
         }
@@ -718,16 +721,16 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var e1 = new SpecificDictIList { Dict = new Dictionary<ulong, IList<ulong>>() };
-            var e2 = new SpecificList { Ulongs = new List<ulong>() };
-            appender.Store(null, new object[] { e2 });
-            appender.Store(null, new object[] { e1 });
+            var e1 = new SpecificDictIList {Dict = new Dictionary<ulong, IList<ulong>>()};
+            var e2 = new SpecificList {Ulongs = new List<ulong>()};
+            appender.Store(null, new object[] {e2});
+            appender.Store(null, new object[] {e1});
 
             manager = new EventStoreManager();
             appender = manager.AppendToStore(file);
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            appender.Store(null, new object[] { e1 });
+            appender.Store(null, new object[] {e1});
         }
 
         public class UsersIList
@@ -741,8 +744,8 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var e = new UsersIList { Users = new[] { new User { Name = "A" }, new User { Name = "B" } } };
-            appender.Store(null, new object[] { e });
+            var e = new UsersIList {Users = new[] {new User {Name = "A"}, new User {Name = "B"}}};
+            appender.Store(null, new object[] {e});
         }
 
         public class ClassWithChangedUINTtoULONG
@@ -757,13 +760,15 @@ namespace BTDBTest
         }
 
         // event stream generated with uint  (ClassWithChangedUINTtoULONG.A)
-        string base64EventFile = "J3uX1C1UAAAzAR9CVERCVGVzdC5FdmVudFN0b3JlVGVzdCtDcmVkaXQCAkEIAkIIMgEcQlREQlRlc3QuRXZlbnRTdG9yZVRlc3QrRXYxAQdDcmVkaXQzADIzAQIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        string base64EventFile =
+            "J3uX1C1UAAAzAR9CVERCVGVzdC5FdmVudFN0b3JlVGVzdCtDcmVkaXQCAkEIAkIIMgEcQlREQlRlc3QuRXZlbnRTdG9yZVRlc3QrRXYxAQdDcmVkaXQzADIzAQIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
         [Fact]
         public void Read()
         {
             var manager = new EventStoreManager();
-            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ClassWithChangedUINTtoULONG), "BTDBTest.EventStoreTest+Credit"));
+            manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(ClassWithChangedUINTtoULONG),
+                "BTDBTest.EventStoreTest+Credit"));
 
             using (var file = new StreamEventFileStorage(new MemoryStream(Convert.FromBase64String(base64EventFile))))
             {
@@ -776,7 +781,6 @@ namespace BTDBTest
                 var e = observer.Events[0][0] as Ev1;
                 Assert.Equal(1u, e.Credit.A);
                 Assert.Equal(2u, e.Credit.B);
-
             }
         }
 
@@ -799,7 +803,7 @@ namespace BTDBTest
                     {"level-A", new Dictionary<string, string> {{"level-B", "level-C"}}}
                 }
             };
-            appender.Store(null, new object[] { dictInDictEvent });
+            appender.Store(null, new object[] {dictInDictEvent});
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
@@ -826,7 +830,7 @@ namespace BTDBTest
                 Ind1 = new DBIndirect<User>(),
                 Ind2 = new List<IIndirect<User>>()
             };
-            appender.Store(null, new object[] { ev });
+            appender.Store(null, new object[] {ev});
             manager = new EventStoreManager();
             var reader = manager.OpenReadOnlyStore(file);
             var eventObserver = new StoringEventObserver();
@@ -857,14 +861,14 @@ namespace BTDBTest
             var appender = manager.AppendToStore(file);
 
             var ev = new SomethingWithList();
-            appender.Store(null, new object[] { ev });
+            appender.Store(null, new object[] {ev});
             var ev2 = new SomethingWithNestedIList
             {
-                B = new Dictionary<ulong, IList<string>> { { 1, new List<string> { "a1" } } }
+                B = new Dictionary<ulong, IList<string>> {{1, new List<string> {"a1"}}}
             };
-            appender.Store(null, new object[] { ev2 });
+            appender.Store(null, new object[] {ev2});
             var appender2 = manager.AppendToStore(file);
-            appender2.Store(null, new object[] { ev2 });
+            appender2.Store(null, new object[] {ev2});
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new OverloadableTypeMapper(typeof(SomethingWithList), "Some"));
             var reader = manager.OpenReadOnlyStore(file);
@@ -886,10 +890,10 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { new SimpleWithIndexer { EvenName = "e", OddName = "o" } });
+            appender.Store(null, new object[] {new SimpleWithIndexer {EvenName = "e", OddName = "o"}});
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as SimpleWithIndexer;
             Assert.Equal("o", ev[11]);
         }
@@ -907,10 +911,10 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { new StrangeVisibilities { A = "a", C = "c", D = "d" } });
+            appender.Store(null, new object[] {new StrangeVisibilities {A = "a", C = "c", D = "d"}});
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as StrangeVisibilities;
             Assert.Equal("a", ev.A);
             Assert.Null(ev.B);
@@ -928,13 +932,13 @@ namespace BTDBTest
         {
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { new PureArray { A = new[] { "A", "B" }, B = new[] { 42, 7 } } });
+            appender.Store(null, new object[] {new PureArray {A = new[] {"A", "B"}, B = new[] {42, 7}}});
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as PureArray;
-            Assert.Equal(ev.A, new[] { "A", "B" });
-            Assert.Equal(ev.B, new[] { 42, 7 });
+            Assert.Equal(ev.A, new[] {"A", "B"});
+            Assert.Equal(ev.B, new[] {42, 7});
         }
 
         public struct Structure
@@ -959,7 +963,7 @@ namespace BTDBTest
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
 
-            var e = Assert.Throws<BTDBException>(() => appender.Store(null, new object[] { testEvent }));
+            var e = Assert.Throws<BTDBException>(() => appender.Store(null, new object[] {testEvent}));
             Assert.Contains("Unsupported", e.Message);
         }
 
@@ -980,17 +984,17 @@ namespace BTDBTest
             {
                 EventId = 1,
                 NullableInt = 42,
-                ListWithNullables = new List<int?> { 4, new int?() },
-                DictionaryWithNullables = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } }
+                ListWithNullables = new List<int?> {4, new int?()},
+                DictionaryWithNullables = new Dictionary<int?, bool?> {{1, true}, {2, new bool?()}}
             };
 
             var manager = new EventStoreManager();
             var appender = manager.AppendToStore(new MemoryEventFileStorage());
-            appender.Store(null, new object[] { testEvent });
+            appender.Store(null, new object[] {testEvent});
 
             var eventObserver = new StoringEventObserver();
             appender.ReadFromStartToEnd(eventObserver);
-            Assert.Equal(new object[] { null }, eventObserver.Metadata);
+            Assert.Equal(new object[] {null}, eventObserver.Metadata);
             var ev = eventObserver.Events[0][0] as EventWithNullable;
             Assert.Equal(42, ev.NullableInt.Value);
             Assert.False(ev.NullableEmpty.HasValue);
@@ -1052,11 +1056,11 @@ namespace BTDBTest
             manager.SetNewTypeNameMapper(new FullNameTypeMapper());
             var file = new MemoryEventFileStorage();
             var appender = manager.AppendToStore(file);
-            var user = new User { Name = "ABC", Age = 88 };
-            var userEvent = new UserEvent { Id = 10, User1 = user, User2 = user };
-            var userEventMore = new UserEventMore { Id = 11, User1 = user, User2 = user };
+            var user = new User {Name = "ABC", Age = 88};
+            var userEvent = new UserEvent {Id = 10, User1 = user, User2 = user};
+            var userEventMore = new UserEventMore {Id = 11, User1 = user, User2 = user};
 
-            appender.Store(null, new object[] { userEvent, userEventMore });
+            appender.Store(null, new object[] {userEvent, userEventMore});
 
             manager = new EventStoreManager();
             manager.SetNewTypeNameMapper(new SelectiveTypeMapper("BTDBTest.EventStoreTest+UserEvent"));
@@ -1064,8 +1068,28 @@ namespace BTDBTest
             var eventObserver = new SimpleEventObserver();
             reader.ReadFromStartToEnd(eventObserver);
             Assert.Single(eventObserver.Events[0]);
-            var readUserEvent = (UserEventMore)eventObserver.Events[0][0];
+            var readUserEvent = (UserEventMore) eventObserver.Events[0][0];
             Assert.Same(readUserEvent.User1, readUserEvent.User2);
+        }
+
+        public class SomeSets
+        {
+            public ISet<string> A { get; set; }
+            public HashSet<int> B { get; set; }
+        }
+
+        [Fact]
+        public void SupportSets()
+        {
+            var manager = new EventStoreManager();
+            var appender = manager.AppendToStore(new MemoryEventFileStorage());
+            appender.Store(null,
+                new object[] {new SomeSets {A = new HashSet<string> {"A", "B"}, B = new HashSet<int> {42, 7}}});
+            var eventObserver = new StoringEventObserver();
+            appender.ReadFromStartToEnd(eventObserver);
+            var ev = eventObserver.Events[0][0] as SomeSets;
+            Assert.Equal(new[] {"A", "B"}, ev!.A.OrderBy(a => a));
+            Assert.Equal(new[] {7, 42}, ev.B.OrderBy(b => b));
         }
     }
 }

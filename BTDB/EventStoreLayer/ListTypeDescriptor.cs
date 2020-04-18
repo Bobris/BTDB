@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -11,15 +13,15 @@ namespace BTDB.EventStoreLayer
     class ListTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly ITypeDescriptorCallbacks _typeSerializers;
-        Type _type;
-        Type _itemType;
-        ITypeDescriptor _itemDescriptor;
-        string _name;
-        readonly ITypeConvertorGenerator _convertorGenerator;
+        Type? _type;
+        Type? _itemType;
+        ITypeDescriptor? _itemDescriptor;
+        string? _name;
+        readonly ITypeConvertorGenerator _convertGenerator;
 
         public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
         {
-            _convertorGenerator = typeSerializers.ConvertorGenerator;
+            _convertGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             _type = type;
             _itemType = GetItemType(type);
@@ -32,7 +34,7 @@ namespace BTDB.EventStoreLayer
 
         ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ITypeDescriptor itemDesc)
         {
-            _convertorGenerator = typeSerializers.ConvertorGenerator;
+            _convertGenerator = typeSerializers.ConvertorGenerator;
             _typeSerializers = typeSerializers;
             InitFromItemDescriptor(itemDesc);
         }
@@ -55,7 +57,7 @@ namespace BTDB.EventStoreLayer
         {
 #pragma warning disable RECS0025 // Non-readonly field referenced in 'GetHashCode()'
             // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return 33 *_itemDescriptor.GetHashCode();
+            return 33 *_itemDescriptor!.GetHashCode();
 #pragma warning restore RECS0025 // Non-readonly field referenced in 'GetHashCode()'
         }
 
@@ -63,15 +65,15 @@ namespace BTDB.EventStoreLayer
         {
             get
             {
-                if (_name == null) InitFromItemDescriptor(_itemDescriptor);
-                return _name;
+                if (_name == null) InitFromItemDescriptor(_itemDescriptor!);
+                return _name!;
             }
-            private set { _name = value; }
+            private set => _name = value;
         }
 
         public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
-            var descriptor = factory.Create(_itemType);
+            var descriptor = factory.Create(_itemType!);
             if (descriptor == null) return false;
             InitFromItemDescriptor(descriptor);
             return true;
@@ -80,49 +82,50 @@ namespace BTDB.EventStoreLayer
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append("List<");
-            _itemDescriptor.BuildHumanReadableFullName(text, stack, indent);
+            _itemDescriptor!.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
         {
-            var o = other as ListTypeDescriptor;
-            if (o == null) return false;
-            return _itemDescriptor.Equals(o._itemDescriptor, stack);
+            if (!(other is ListTypeDescriptor o)) return false;
+            return _itemDescriptor!.Equals(o._itemDescriptor!, stack);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             if (_type == null)
             {
-                _itemType = _typeSerializers.LoadAsType(_itemDescriptor);
+                _itemType = _typeSerializers.LoadAsType(_itemDescriptor!);
                 _type = typeof(IList<>).MakeGenericType(_itemType);
             }
             return _type;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
             if (_type == targetType) return _type;
-            var targetIList = targetType.GetInterface("IList`1") ?? targetType;
+            var targetIList = targetType.GetInterface("IList`1") ?? targetType.GetInterface("ISet`1") ?? targetType;
             var targetTypeArguments = targetIList.GetGenericArguments();
-            var itemType = _typeSerializers.LoadAsType(_itemDescriptor, targetTypeArguments[0]);
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor!, targetTypeArguments[0]);
             return targetType.GetGenericTypeDefinition().MakeGenericType(itemType);
         }
 
         public bool AnyOpNeedsCtx()
         {
-            return !_itemDescriptor.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
+            return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
         }
+
+        static Type GetInterface(Type type) => type.GetInterface("IList`1") ?? type.GetInterface("ISet`1") ?? type;
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             if (targetType == typeof(object))
-                targetType = GetPreferedType();
+                targetType = GetPreferredType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var targetIList = targetType.GetInterface("IList`1") ?? targetType;
+            var targetIList = targetType.GetInterface("IList`1") ?? targetType.GetInterface("ISet`1") ?? targetType;
             var targetTypeArguments = targetIList.GetGenericArguments();
-            var itemType = _typeSerializers.LoadAsType(_itemDescriptor, targetTypeArguments[0]);
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor!, targetTypeArguments[0]);
             if (targetType.IsArray)
             {
                 var localArray = ilGenerator.DeclareLocal(targetType);
@@ -152,7 +155,7 @@ namespace BTDB.EventStoreLayer
                     .Brfalse(loadFinished)
                     .Ldloc(localArray)
                     .Ldloc(localIndex);
-                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
+                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertGenerator);
                 ilGenerator
                     .Stelem(itemType)
                     .Ldloc(localIndex)
@@ -166,7 +169,8 @@ namespace BTDB.EventStoreLayer
             }
             else
             {
-                var listType = typeof(ListWithDescriptor<>).MakeGenericType(itemType);
+                var isSet = targetIList.GetGenericTypeDefinition() == typeof(ISet<>);
+                var listType = (isSet?typeof(HashSetWithDescriptor<>):typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
 
                 if (!targetType.IsAssignableFrom(listType))
                     throw new NotSupportedException($"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");
@@ -186,7 +190,7 @@ namespace BTDB.EventStoreLayer
                     .Dup()
                     .Stloc(localCount)
                     .Do(pushDescriptor)
-                    .Newobj(listType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) }))
+                    .Newobj(listType.GetConstructor(new[] { typeof(int), typeof(ITypeDescriptor) })!)
                     .Stloc(localList)
                     .Mark(next)
                     .Ldloc(localCount)
@@ -196,9 +200,9 @@ namespace BTDB.EventStoreLayer
                     .Sub()
                     .Stloc(localCount)
                     .Ldloc(localList);
-                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
+                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx, il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertGenerator);
                 ilGenerator
-                    .Callvirt(listType.GetInterface("ICollection`1").GetMethod("Add"))
+                    .Callvirt(listType.GetInterface("ICollection`1")!.GetMethod("Add")!)
                     .Br(next)
                     .Mark(loadFinished)
                     .Ldloc(localList)
@@ -206,9 +210,9 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
+        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
         {
-            if (_itemDescriptor.Sealed) return null;
+            if (_itemDescriptor!.Sealed) return null;
             return new TypeNewDescriptorGenerator(this);
         }
 
@@ -227,45 +231,86 @@ namespace BTDB.EventStoreLayer
                 var next = ilGenerator.DefineLabel();
 
                 if (type == typeof(object))
-                    type = _listTypeDescriptor.GetPreferedType();
-                var targetIList = type.GetInterface("IList`1") ?? type;
-                var targetTypeArguments = targetIList.GetGenericArguments();
-                var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor, targetTypeArguments[0]);
-
-                var localList = ilGenerator.DeclareLocal(typeof(IList<>).MakeGenericType(itemType));
-                var localIndex = ilGenerator.DeclareLocal(typeof(int));
-                var localCount = ilGenerator.DeclareLocal(typeof(int));
+                    type = _listTypeDescriptor.GetPreferredType();
+                var targetInterface = GetInterface(type);
+                var isSet = targetInterface.GetGenericTypeDefinition() == typeof(ISet<>);
+                var targetTypeArguments = targetInterface.GetGenericArguments();
+                var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor!, targetTypeArguments[0]);
+                if (_listTypeDescriptor._type == null) _listTypeDescriptor._type = type;
+                var isConcreteImplementation = type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(List<>) || type.GetGenericTypeDefinition() == typeof(HashSet<>));
+                var typeAsIDictionary = isConcreteImplementation ? type : (isSet?typeof(ISet<>):typeof(IList<>)).MakeGenericType(itemType);
+                var getEnumeratorMethod = isConcreteImplementation
+                    ? typeAsIDictionary.GetMethods()
+                        .Single(
+                            m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
+                    : typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+                var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 ilGenerator
                     .Do(pushObj)
-                    .Castclass(localList.LocalType)
-                    .Stloc(localList)
-                    .Ldloc(localList)
-                    .Callvirt(localList.LocalType.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
-                    .Stloc(localCount)
-                    .LdcI4(0)
-                    .Stloc(localIndex)
+                    .Castclass(typeAsIDictionary)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
                     .Mark(next)
-                    .Ldloc(localIndex)
-                    .Ldloc(localCount)
-                    .BgeUn(finish)
+                    .Do(il =>
+                    {
+                        if (isConcreteImplementation)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!);
+                        }
+                        else
+                        {
+                            il
+                                .Ldloc(localEnumerator)
+                                .Callvirt(() => default(IEnumerator).MoveNext());
+                        }
+                    })
+                    .Brfalse(finish)
                     .Do(pushCtx)
-                    .Ldloc(localList)
-                    .Ldloc(localIndex)
-                    .Callvirt(localList.LocalType.GetMethod("get_Item"))
+                    .Do(il =>
+                    {
+                        if (isConcreteImplementation)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Call(currentGetter!);
+                        }
+                        else
+                        {
+                            il
+                                .Ldloc(localEnumerator)
+                                .Callvirt(currentGetter!);
+                        }
+                    })
                     .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null))
-                    .Ldloc(localIndex)
-                    .LdcI4(1)
-                    .Add()
-                    .Stloc(localIndex)
                     .Br(next)
-                    .Mark(finish);
+                    .Mark(finish)
+                    .Finally()
+                    .Do(il =>
+                    {
+                        if (isConcreteImplementation)
+                        {
+                            il
+                                .Ldloca(localEnumerator)
+                                .Constrained(typeAsIEnumerator);
+                        }
+                        else
+                        {
+                            il.Ldloc(localEnumerator);
+                        }
+                    })
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry();
             }
         }
 
-        public ITypeDescriptor NestedType(int index)
+        public ITypeDescriptor? NestedType(int index)
         {
-            if (index == 0) return _itemDescriptor;
-            return null;
+            return index == 0 ? _itemDescriptor : null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)
@@ -288,63 +333,141 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
         {
-            nestedDescriptorPersistor(writer, _itemDescriptor);
+            nestedDescriptorWriter(writer, _itemDescriptor);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
         {
-            var finish = ilGenerator.DefineLabel();
-            var next = ilGenerator.DefineLabel();
             var notnull = ilGenerator.DefineLabel();
+            var completeFinish = ilGenerator.DefineLabel();
+            var notList = ilGenerator.DefineLabel();
+            var notHashSet = ilGenerator.DefineLabel();
             var itemType = GetItemType(valueType);
-            var localList = ilGenerator.DeclareLocal(
-                typeof(IList<>).MakeGenericType(itemType));
-            var localIndex = ilGenerator.DeclareLocal(typeof(int));
-            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            var typeAsICollection = typeof(ICollection<>).MakeGenericType(itemType);
+            var localCollection = ilGenerator.DeclareLocal(typeAsICollection);
             ilGenerator
                 .Do(pushValue)
-                .Castclass(localList.LocalType)
-                .Stloc(localList)
-                .Ldloc(localList)
-                .BrtrueS(notnull)
+                .Castclass(typeAsICollection)
+                .Stloc(localCollection)
+                .Ldloc(localCollection)
+                .Brtrue(notnull)
                 .Do(pushWriter)
                 .Callvirt(() => default(AbstractBufferedWriter).WriteByteZero())
-                .Br(finish)
+                .Br(completeFinish)
                 .Mark(notnull)
-                .Ldloc(localList)
-                .Callvirt(localList.LocalType.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
-                .Stloc(localCount)
                 .Do(pushWriter)
-                .Ldloc(localCount)
+                .Ldloc(localCollection)
+                .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
-                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
-                .LdcI4(0)
-                .Stloc(localIndex)
-                .Mark(next)
-                .Ldloc(localIndex)
-                .Ldloc(localCount)
-                .BgeUn(finish);
-            _itemDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                il => il.Ldloc(localList)
-                        .Ldloc(localIndex)
-                        .Callvirt(localList.LocalType.GetMethod("get_Item")), itemType);
-            ilGenerator
-                .Ldloc(localIndex)
-                .LdcI4(1)
-                .Add()
-                .Stloc(localIndex)
-                .Br(next)
-                .Mark(finish);
+                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+            {
+                var typeAsList = typeof(List<>).MakeGenericType(itemType);
+                var getEnumeratorMethod = typeAsList.GetMethods()
+                        .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                var finish = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Ldloc(localCollection)
+                    .Isinst(typeAsList)
+                    .Brfalse(notList)
+                    .Ldloc(localCollection)
+                    .Castclass(typeAsList)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
+                    .Mark(next)
+                    .Ldloca(localEnumerator)
+                    .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!)
+                    .Brfalse(finish);
+                _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                        il => il.Ldloca(localEnumerator).Callvirt(currentGetter!), itemType);
+                ilGenerator
+                    .Br(next)
+                    .Mark(finish)
+                    .Finally()
+                    .Ldloca(localEnumerator)
+                    .Constrained(typeAsIEnumerator)
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry()
+                    .Br(completeFinish);
+            }
+            {
+                var typeAsHashSet = typeof(HashSet<>).MakeGenericType(itemType);
+                var getEnumeratorMethod = typeAsHashSet.GetMethods()
+                    .Single(m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0);
+                var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                var finish = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Mark(notList)
+                    .Ldloc(localCollection)
+                    .Isinst(typeAsHashSet)
+                    .Brfalse(notHashSet)
+                    .Ldloc(localCollection)
+                    .Castclass(typeAsHashSet)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
+                    .Mark(next)
+                    .Ldloca(localEnumerator)
+                    .Call(typeAsIEnumerator.GetMethod(nameof(IEnumerator.MoveNext))!)
+                    .Brfalse(finish);
+                _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                    il => il.Ldloca(localEnumerator).Callvirt(currentGetter!), itemType);
+                ilGenerator
+                    .Br(next)
+                    .Mark(finish)
+                    .Finally()
+                    .Ldloca(localEnumerator)
+                    .Constrained(typeAsIEnumerator)
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry()
+                    .Br(completeFinish);
+            }
+            {
+                var getEnumeratorMethod = typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+                var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+                var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
+                var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
+                var finish = ilGenerator.DefineLabel();
+                var next = ilGenerator.DefineLabel();
+                ilGenerator
+                    .Mark(notHashSet)
+                    .Ldloc(localCollection)
+                    .Callvirt(getEnumeratorMethod)
+                    .Stloc(localEnumerator)
+                    .Try()
+                    .Mark(next)
+                    .Ldloc(localEnumerator)
+                    .Callvirt(() => default(IEnumerator).MoveNext())
+                    .Brfalse(finish);
+                _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                        il => il.Ldloc(localEnumerator)
+                            .Callvirt(currentGetter!), itemType);
+                ilGenerator
+                    .Br(next)
+                    .Mark(finish)
+                    .Finally()
+                    .Ldloc(localEnumerator)
+                    .Callvirt(() => default(IDisposable).Dispose())
+                    .EndTry()
+                    .Mark(completeFinish);
+            }
         }
 
         static Type GetItemType(Type valueType)
         {
             if (valueType.IsArray)
             {
-                return valueType.GetElementType();
+                return valueType.GetElementType()!;
             }
             return valueType.GetGenericArguments()[0];
         }
@@ -372,7 +495,7 @@ namespace BTDB.EventStoreLayer
                 .LdcI4(1)
                 .Sub()
                 .Stloc(localCount);
-            _itemDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            _itemDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);

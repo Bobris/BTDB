@@ -26,14 +26,14 @@ namespace BTDB.EventStoreLayer
             return ReferenceEquals(this, other);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             return typeof(byte[]);
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
-            return GetPreferedType();
+            return GetPreferredType();
         }
 
         public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()

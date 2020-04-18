@@ -178,16 +178,16 @@ namespace BTDB.EventStoreLayer
             return true;
         }
 
-        public Type? GetPreferedType()
+        public Type? GetPreferredType()
         {
             if (_type == null)
                 _type = _typeSerializers.TypeNameMapper.ToType(Name);
             return _type;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
-            var res = GetPreferedType();
+            var res = GetPreferredType();
             if (res == targetType || res == null) return res;
             res = DBObjectFieldHandler.Unwrap(res);
             if (res == DBObjectFieldHandler.Unwrap(targetType)) return targetType;
@@ -441,7 +441,7 @@ namespace BTDB.EventStoreLayer
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx,
                 Type type)
             {
-                var allProps = _objectTypeDescriptor.GetPreferedType().GetProperties();
+                var allProps = _objectTypeDescriptor.GetPreferredType().GetProperties();
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
                     if (pair.Value.Sealed) continue;
@@ -495,21 +495,21 @@ namespace BTDB.EventStoreLayer
         }
 
         public void Persist(AbstractBufferedWriter writer,
-            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
         {
             writer.WriteString(Name);
             writer.WriteVUInt32((uint) _fields.Count);
             foreach (var pair in _fields)
             {
                 writer.WriteString(pair.Key);
-                nestedDescriptorPersistor(writer, pair.Value);
+                nestedDescriptorWriter(writer, pair.Value);
             }
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
             Action<IILGen> pushValue, Type valueType)
         {
-            if (GetPreferedType() != valueType)
+            if (GetPreferredType() != valueType)
                 throw new ArgumentException("value type does not match my type");
             var locValue = ilGenerator.DeclareLocal(_type, "value");
             ilGenerator

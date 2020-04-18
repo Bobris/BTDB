@@ -25,11 +25,11 @@ namespace BTDB.EventStoreLayer
             return ReferenceEquals(this, other);
         }
 
-        public Type GetPreferedType() => typeof(EncryptedString);
+        public Type GetPreferredType() => typeof(EncryptedString);
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
-            return GetPreferedType();
+            return GetPreferredType();
         }
 
         public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
@@ -70,12 +70,12 @@ namespace BTDB.EventStoreLayer
             ilGenerator.Callvirt(() => ((ITypeBinaryDeserializerContext) null).LoadEncryptedString());
             if (targetType != typeof(object))
             {
-                if (targetType != GetPreferedType())
+                if (targetType != GetPreferredType())
                     throw new ArgumentOutOfRangeException(nameof(targetType));
                 return;
             }
 
-            ilGenerator.Box(GetPreferedType());
+            ilGenerator.Box(GetPreferredType());
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)

@@ -7,12 +7,12 @@ namespace BTDB.EventStoreLayer
 {
     public interface ITypeDescriptor : IEquatable<ITypeDescriptor>
     {
-        string Name { get; }
+        string? Name { get; }
         bool FinishBuildFromType(ITypeDescriptorFactory factory);
         void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent);
         bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack);
-        Type? GetPreferedType();
-        Type? GetPreferedType(Type targetType);
+        Type? GetPreferredType();
+        Type? GetPreferredType(Type targetType);
         bool AnyOpNeedsCtx();
         // ctx is ITypeBinaryDeserializerContext
         void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType);

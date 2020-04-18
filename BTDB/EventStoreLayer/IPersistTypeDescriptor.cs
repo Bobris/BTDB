@@ -5,6 +5,6 @@ namespace BTDB.EventStoreLayer
 {
     public interface IPersistTypeDescriptor
     {
-        void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor);
+        void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter);
     }
 }

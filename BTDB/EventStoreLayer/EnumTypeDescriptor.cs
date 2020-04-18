@@ -130,12 +130,12 @@ namespace BTDB.EventStoreLayer
             return _pairs.SequenceEqual(o._pairs);
         }
 
-        public Type GetPreferedType()
+        public Type GetPreferredType()
         {
             return _type;
         }
 
-        public Type GetPreferedType(Type targetType)
+        public Type GetPreferredType(Type targetType)
         {
             return _type;
         }
@@ -322,7 +322,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorPersistor)
+        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
         {
             writer.WriteString(_name);
             writer.WriteVUInt32((_signed ? 1u : 0) + (_flags ? 2u : 0) + 4u * (uint)_pairs.Count);

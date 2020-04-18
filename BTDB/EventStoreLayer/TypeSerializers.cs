@@ -104,25 +104,24 @@ namespace BTDB.EventStoreLayer
                 _type2DescriptorMap = type2DescriptorMap;
             }
 
-            public ITypeDescriptor Create(Type type)
+            public ITypeDescriptor? Create(Type type)
             {
-                ITypeDescriptor result;
-                if (_type2DescriptorMap.TryGetValue(type, out result)) return result;
+                if (_type2DescriptorMap.TryGetValue(type, out var result)) return result;
                 if (_temporaryMap.TryGetValue(type, out result)) return result;
                 if (!type.IsSubclassOf(typeof(Delegate)))
                 {
                     if (type.IsGenericType)
                     {
-                        if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IList<>)))
+                        if (type.InheritsOrImplements(typeof(IList<>)) || type.InheritsOrImplements(typeof(ISet<>)))
                         {
                             result = new ListTypeDescriptor(_typeSerializers, type);
                         }
-                        else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IDictionary<,>)))
+                        else if (type.InheritsOrImplements(typeof(IDictionary<,>)))
                         {
                             result = new DictionaryTypeDescriptor(_typeSerializers, type);
                         }
                         else if (_typeSerializers._options.IgnoreIIndirect &&
-                            type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
+                            type.InheritsOrImplements(typeof(IIndirect<>)))
                         {
                             return null;
                         }
@@ -210,7 +209,7 @@ namespace BTDB.EventStoreLayer
                     var d = typeDescriptor.Value;
                     ITypeDescriptor result;
                     if (_remap.TryGetValue(d, out result)) continue;
-                    _type2DescriptorMap.TryAdd(d.GetPreferedType(), d);
+                    _type2DescriptorMap.TryAdd(d.GetPreferredType(), d);
                 }
             }
         }
@@ -231,7 +230,7 @@ namespace BTDB.EventStoreLayer
         {
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
-                yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferedType(), predefinedType);
+                yield return new KeyValuePair<Type, ITypeDescriptor>(predefinedType.GetPreferredType(), predefinedType);
                 var descriptorMultipleNativeTypes = predefinedType as ITypeDescriptorMultipleNativeTypes;
                 if (descriptorMultipleNativeTypes == null) continue;
                 foreach (var type in descriptorMultipleNativeTypes.GetNativeTypes())
@@ -303,12 +302,12 @@ namespace BTDB.EventStoreLayer
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferedType() ?? NameToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType() ?? NameToType(descriptor.Name) ?? typeof(object);
         }
 
         public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
         {
-            return descriptor.GetPreferedType(targetType) ?? NameToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType(targetType) ?? NameToType(descriptor.Name) ?? typeof(object);
         }
 
         class DeserializerCtx : ITypeBinaryDeserializerContext
@@ -392,12 +391,12 @@ namespace BTDB.EventStoreLayer
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
                 {
                     ilgen.Ldarg(1);
-                    var type = descriptor.GetPreferedType();
+                    var type = descriptor.GetPreferredType();
                     if (type != typeof(object))
                     {
                         ilgen.UnboxAny(type);
                     }
-                }, descriptor.GetPreferedType());
+                }, descriptor.GetPreferredType());
             il.Ret();
             return method.Create();
         }
@@ -414,12 +413,12 @@ namespace BTDB.EventStoreLayer
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
                 ilgen.Ldarg(2);
-                var type = descriptor.GetPreferedType();
+                var type = descriptor.GetPreferredType();
                 if (type != typeof(object))
                 {
                     ilgen.UnboxAny(type);
                 }
-            }, descriptor.GetPreferedType());
+            }, descriptor.GetPreferredType());
             il.Ret();
             return method.Create();
         }

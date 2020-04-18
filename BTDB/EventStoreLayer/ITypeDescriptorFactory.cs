@@ -4,6 +4,6 @@ namespace BTDB.EventStoreLayer
 {
     public interface ITypeDescriptorFactory
     {
-        ITypeDescriptor Create(Type type);
+        ITypeDescriptor? Create(Type type);
     }
 }
