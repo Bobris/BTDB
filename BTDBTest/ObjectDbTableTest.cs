@@ -685,7 +685,8 @@ namespace BTDBTest
 
             Assert.Equal(2, personTable.CountById(new AdvancedEnumeratorParam<ulong>()));
             Assert.True(personTable.AnyById(new AdvancedEnumeratorParam<ulong>()));
-            Assert.False(personTable.AnyById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,10,KeyProposition.Included,0,KeyProposition.Ignored)));
+            Assert.False(personTable.AnyById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending, 10,
+                KeyProposition.Included, 0, KeyProposition.Ignored)));
 
             personTable.TenantId = 1;
             var ena = personTable.ListByAge(new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
@@ -2671,7 +2672,7 @@ namespace BTDBTest
             var table = creator(tr);
 
             EncryptedString secondaryKey = "string";
-            table.Insert(new EncryptedStringSecondaryKey{ A = 1, B = secondaryKey});
+            table.Insert(new EncryptedStringSecondaryKey {A = 1, B = secondaryKey});
 
             using var en = table.FindByB(secondaryKey);
             Assert.True(en.MoveNext());
@@ -2679,6 +2680,38 @@ namespace BTDBTest
             var item = en.Current;
             Assert.Equal(1ul, item.A);
             Assert.Equal(secondaryKey, item.B);
+        }
+
+        public class ItemWithList
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public IList<string> Parts { get; set; }
+        }
+
+        public class PartWithSet
+        {
+            public ISet<string> Parts { get; set; }
+        }
+
+        public interface ITableWithListAsSet : IReadOnlyCollection<ItemWithList>
+        {
+            bool Upsert(ItemWithList item);
+
+            PartWithSet FindById(ulong id);
+        }
+
+        [Fact]
+        public void SetDeserializationDeduplicatesList()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<ITableWithListAsSet>("TableWithListAsSet");
+            var table = creator(tr);
+
+            table.Upsert(new ItemWithList {Id = 1, Parts = new List<string> {"A", "B", "C", "A", "C"}});
+
+            var set = table.FindById(1);
+            Assert.Equal(new[] {"A", "B", "C"}, set.Parts.OrderBy(a => a));
         }
     }
 }

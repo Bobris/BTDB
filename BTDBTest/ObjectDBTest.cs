@@ -652,6 +652,7 @@ namespace BTDBTest
             public IList<byte> ByteList { get; set; }
             public IList<ByteBuffer> ByteBufferList { get; set; }
             public IList<int?> NullableIntList { get; set; }
+            public ISet<int> IntSet { get; set; }
         }
 
         [Fact]
@@ -665,6 +666,7 @@ namespace BTDBTest
                 root.ByteList = new List<byte> {0, 255};
                 root.ByteBufferList = new List<ByteBuffer> {ByteBuffer.NewAsync(new byte[] {1, 2})};
                 root.NullableIntList = new List<int?> {1, 2};
+                root.IntSet = new HashSet<int> { 1,2 };
                 tr.Commit();
             }
 
@@ -677,6 +679,7 @@ namespace BTDBTest
                 Assert.Equal(1, root.ByteBufferList.Count);
                 Assert.Equal(new byte[] {1, 2}, root.ByteBufferList[0].ToByteArray());
                 Assert.Equal(new List<int?> {1, 2}, root.NullableIntList);
+                Assert.Equal(new HashSet<int> {1, 2}, root.IntSet);
                 root.IntList = null;
                 root.StringList = null;
                 root.ByteList = null;
@@ -695,6 +698,7 @@ namespace BTDBTest
                 root.ByteList = new List<byte>();
                 root.ByteBufferList = new List<ByteBuffer>();
                 root.NullableIntList = new List<int?>();
+                root.IntSet = new HashSet<int>();
                 tr.Store(root);
                 tr.Commit();
             }
@@ -707,6 +711,7 @@ namespace BTDBTest
                 Assert.Equal(new List<byte>(), root.ByteList);
                 Assert.Equal(new List<ByteBuffer>(), root.ByteBufferList);
                 Assert.Equal(new List<int?>(), root.NullableIntList);
+                Assert.Equal(new HashSet<int>(), root.IntSet);
             }
         }
 
@@ -721,6 +726,7 @@ namespace BTDBTest
                 root.ByteList = null;
                 root.ByteBufferList = new List<ByteBuffer> {ByteBuffer.NewAsync(new byte[] {1, 2})};
                 root.NullableIntList = new List<int?> {1, 2};
+                 root.IntSet = new HashSet<int> { 1, 2 };
                 tr.Commit();
             }
 

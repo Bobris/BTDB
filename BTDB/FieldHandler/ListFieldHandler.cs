@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.IL;
@@ -9,49 +10,52 @@ namespace BTDB.FieldHandler
     public class ListFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
-        readonly ITypeConvertorGenerator _typeConvertorGenerator;
-        readonly byte[] _configuration;
+        readonly ITypeConvertorGenerator _typeConvertGenerator;
         readonly IFieldHandler _itemsHandler;
-        Type _type;
+        Type? _type;
+        readonly bool _isSet;
 
-        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type)
+        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
+            _typeConvertGenerator = typeConvertGenerator;
             _type = type;
+            _isSet = type.InheritsOrImplements(typeof(ISet<>));
             _itemsHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_itemsHandler);
-            _configuration = writer.Data.ToByteArray();
+            Configuration = writer.Data.ToByteArray();
         }
 
-        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
+        public ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
-            _configuration = configuration;
+            _typeConvertGenerator = typeConvertGenerator;
+            Configuration = configuration;
             var reader = new ByteArrayReader(configuration);
             _itemsHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
         }
 
-        ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler itemSpecialized)
+        ListFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type, IFieldHandler itemSpecialized)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
+            _typeConvertGenerator = typeConvertGenerator;
             _type = type;
+            _isSet = type.InheritsOrImplements(typeof(ISet<>));
             _itemsHandler = itemSpecialized;
+            Configuration = Array.Empty<byte>();
         }
 
         public static string HandlerName => "List";
 
         public string Name => HandlerName;
 
-        public byte[] Configuration => _configuration;
+        public byte[] Configuration { get; }
 
         public static bool IsCompatibleWith(Type type)
         {
             if (!type.IsGenericType) return false;
-            return type.GetGenericTypeDefinition() == typeof(IList<>) || type.GetGenericTypeDefinition() == typeof(List<>);
+            return type.InheritsOrImplements(typeof(IList<>)) || type.InheritsOrImplements( typeof(ISet<>));
         }
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -61,7 +65,9 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _type ?? (_type = typeof(IList<>).MakeGenericType(_itemsHandler.HandledType()));
+            if (_isSet)
+                return _type ??= typeof(ISet<>).MakeGenericType(_itemsHandler.HandledType());
+            return _type ??= typeof(IList<>).MakeGenericType(_itemsHandler.HandledType());
         }
 
         public bool NeedsCtx()
@@ -78,6 +84,8 @@ namespace BTDB.FieldHandler
             var loadFinished = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
+            var collectionInterface = _type!.SpecializationOf(typeof(ICollection<>));
+            var itemType = collectionInterface!.GetGenericArguments()[0];
             object fake;
             ilGenerator
                 .Do(pushReaderOrCtx)
@@ -88,7 +96,7 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                 .Stloc(localCount)
                 .Ldloc(localCount)
-                .Newobj(typeof(List<>).MakeGenericType(_type.GetGenericArguments()[0]).GetConstructor(new[] { typeof(int) }))
+                .Newobj((_isSet?typeof(HashSet<>):typeof(List<>)).MakeGenericType(itemType).GetConstructor(new[] { typeof(int) })!)
                 .Stloc(localResult)
                 .Do(pushReaderOrCtx)
                 .Ldloc(localResult)
@@ -103,8 +111,8 @@ namespace BTDB.FieldHandler
                 .ConvU4()
                 .Stloc(localCount)
                 .Ldloc(localResult)
-                .GenerateLoad(_itemsHandler, _type.GetGenericArguments()[0], pushReaderOrCtx, _typeConvertorGenerator)
-                .Callvirt(_type.GetInterface("ICollection`1").GetMethod("Add"))
+                .GenerateLoad(_itemsHandler, itemType, pushReaderOrCtx, _typeConvertGenerator)
+                .Callvirt(collectionInterface!.GetMethod("Add")!)
                 .Br(next)
                 .Mark(loadFinished)
                 .Do(pushReaderOrCtx)
@@ -145,47 +153,51 @@ namespace BTDB.FieldHandler
 
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
+            var realFinish = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
-            var localValue = ilGenerator.DeclareLocal(_type);
-            var localIndex = ilGenerator.DeclareLocal(typeof(int));
-            var localCount = ilGenerator.DeclareLocal(typeof(int));
+            var localValue = ilGenerator.DeclareLocal(_type!);
+            var typeAsICollection = _type.GetInterface("ICollection`1");
+            var typeAsIEnumerable = _type.GetInterface("IEnumerable`1");
+            var getEnumeratorMethod = typeAsIEnumerable!.GetMethod("GetEnumerator");
+            var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+            var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
             ilGenerator
-                .LdcI4(0)
-                .Stloc(localIndex)
                 .Do(pushValue)
                 .Stloc(localValue)
                 .Do(pushWriterOrCtx)
                 .Ldloc(localValue)
                 .Castclass(typeof(object))
                 .Callvirt(() => default(IWriterCtx).WriteObject(null))
-                .Brfalse(finish)
-                .Ldloc(localValue)
-                .Callvirt(_type.GetInterface("ICollection`1").GetProperty("Count").GetGetMethod())
-                .Stloc(localCount)
+                .Brfalse(realFinish)
                 .Do(Extensions.PushWriterFromCtx(pushWriterOrCtx))
-                .Ldloc(localCount)
+                .Ldloc(localValue)
+                .Callvirt(typeAsICollection!.GetProperty("Count")!.GetGetMethod()!)
                 .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
-                .Mark(next)
-                .Ldloc(localIndex)
-                .Ldloc(localCount)
-                .BgeUn(finish);
-            _itemsHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _itemsHandler.NeedsCtx()), il => il
                 .Ldloc(localValue)
-                .Ldloc(localIndex)
-                .Callvirt(_type.GetMethod("get_Item"))
-                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemsHandler.HandledType())));
+                .Callvirt(getEnumeratorMethod)
+                .Stloc(localEnumerator)
+                .Try()
+                .Mark(next)
+                .Ldloc(localEnumerator)
+                .Callvirt(() => default(IEnumerator).MoveNext())
+                .Brfalse(finish);
+            _itemsHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _itemsHandler.NeedsCtx()), il => il
+                .Ldloc(localEnumerator)
+                .Callvirt(typeAsIEnumerator.GetProperty("Current")!.GetGetMethod()!)
+                .Do(_typeConvertGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemsHandler.HandledType())!));
             ilGenerator
-                .Ldloc(localIndex)
-                .LdcI4(1)
-                .Add()
-                .Stloc(localIndex)
                 .Br(next)
-                .Mark(finish);
+                .Mark(finish)
+                .Finally()
+                .Ldloc(localEnumerator)
+                .Callvirt(() => default(IDisposable).Dispose())
+                .EndTry()
+                .Mark(realFinish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
@@ -195,8 +207,7 @@ namespace BTDB.FieldHandler
             }
             var wantedItemType = type.GetGenericArguments()[0];
             var wantedItemHandler = default(IFieldHandler);
-            var listFieldHandler = typeHandler as ListFieldHandler;
-            if (listFieldHandler != null)
+            if (typeHandler is ListFieldHandler listFieldHandler)
             {
                 wantedItemHandler = listFieldHandler._itemsHandler;
             }
@@ -205,12 +216,12 @@ namespace BTDB.FieldHandler
             {
                 return typeHandler;
             }
-            if (_typeConvertorGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
+            if (_typeConvertGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
             {
                 Debug.Fail("even more strange");
                 return this;
             }
-            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
+            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
@@ -223,12 +234,12 @@ namespace BTDB.FieldHandler
             }
             var wantedItemType = type.GetGenericArguments()[0];
             var itemSpecialized = _itemsHandler.SpecializeSaveForType(wantedItemType);
-            if (_typeConvertorGenerator.GenerateConversion(wantedItemType, itemSpecialized.HandledType()) == null)
+            if (_typeConvertGenerator.GenerateConversion(wantedItemType, itemSpecialized.HandledType()) == null)
             {
                 Debug.Fail("even more strange");
                 return this;
             }
-            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, itemSpecialized);
+            return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);
         }
 
         public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()

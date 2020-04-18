@@ -10,49 +10,49 @@ namespace BTDB.FieldHandler
     public class DictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
-        readonly ITypeConvertorGenerator _typeConvertorGenerator;
-        readonly byte[] _configuration;
+        readonly ITypeConvertorGenerator _typeConvertGenerator;
         readonly IFieldHandler _keysHandler;
         readonly IFieldHandler _valuesHandler;
-        Type _type;
+        Type? _type;
 
-        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type)
+        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
+            _typeConvertGenerator = typeConvertGenerator;
             _type = type;
             _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
             _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
-            _configuration = writer.Data.ToByteArray();
+            Configuration = writer.Data.ToByteArray();
         }
 
-        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
+        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
-            _configuration = configuration;
+            _typeConvertGenerator = typeConvertGenerator;
+            Configuration = configuration;
             var reader = new ByteArrayReader(configuration);
             _keysHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
             _valuesHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
         }
 
-        DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler keySpecialized, IFieldHandler valueSpecialized)
+        DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type, IFieldHandler keySpecialized, IFieldHandler valueSpecialized)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
-            _typeConvertorGenerator = typeConvertorGenerator;
+            _typeConvertGenerator = typeConvertGenerator;
             _type = type;
             _keysHandler = keySpecialized;
             _valuesHandler = valueSpecialized;
+            Configuration = Array.Empty<byte>();
         }
 
         public static string HandlerName => "Dictionary";
 
         public string Name => HandlerName;
 
-        public byte[] Configuration => _configuration;
+        public byte[] Configuration { get; }
 
         public static bool IsCompatibleWith(Type type)
         {
@@ -67,7 +67,7 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _type ?? (_type = typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType()));
+            return _type ??= typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
         }
 
         public bool NeedsCtx()
@@ -82,9 +82,9 @@ namespace BTDB.FieldHandler
             var localResult = ilGenerator.DeclareLocal(HandledType());
             var loadSkipped = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
-            var readfinish = ilGenerator.DefineLabel();
+            var readFinish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
-            var genericArguments = _type.GetGenericArguments();
+            var genericArguments = _type!.GetGenericArguments();
             object fake;
             ilGenerator
                 .Do(pushReaderOrCtx)
@@ -95,7 +95,7 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                 .Stloc(localCount)
                 .Ldloc(localCount)
-                .Newobj(typeof(Dictionary<,>).MakeGenericType(genericArguments).GetConstructor(new[] { typeof(int) }))
+                .Newobj(typeof(Dictionary<,>).MakeGenericType(genericArguments).GetConstructor(new[] { typeof(int) })!)
                 .Stloc(localResult)
                 .Do(pushReaderOrCtx)
                 .Ldloc(localResult)
@@ -103,18 +103,18 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(IReaderCtx).RegisterObject(null))
                 .Mark(next)
                 .Ldloc(localCount)
-                .Brfalse(readfinish)
+                .Brfalse(readFinish)
                 .Ldloc(localCount)
                 .LdcI4(1)
                 .Sub()
                 .ConvU4()
                 .Stloc(localCount)
                 .Ldloc(localResult)
-                .GenerateLoad(_keysHandler, genericArguments[0], pushReaderOrCtx, _typeConvertorGenerator)
-                .GenerateLoad(_valuesHandler, genericArguments[1], pushReaderOrCtx, _typeConvertorGenerator)
-                .Callvirt(_type.GetMethod("Add"))
+                .GenerateLoad(_keysHandler, genericArguments[0], pushReaderOrCtx, _typeConvertGenerator)
+                .GenerateLoad(_valuesHandler, genericArguments[1], pushReaderOrCtx, _typeConvertGenerator)
+                .Callvirt(_type.GetMethod("Add")!)
                 .Br(next)
-                .Mark(readfinish)
+                .Mark(readFinish)
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).ReadObjectDone())
                 .Br(finish)
@@ -154,15 +154,15 @@ namespace BTDB.FieldHandler
 
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
-            var realfinish = ilGenerator.DefineLabel();
+            var realFinish = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
-            var localValue = ilGenerator.DeclareLocal(_type);
+            var localValue = ilGenerator.DeclareLocal(_type!);
             var typeAsICollection = _type.GetInterface("ICollection`1");
             var typeAsIEnumerable = _type.GetInterface("IEnumerable`1");
-            var getEnumeratorMethod = typeAsIEnumerable.GetMethod("GetEnumerator");
-            var typeAsIEnumerator = getEnumeratorMethod.ReturnType;
-            var typeKeyValuePair = typeAsICollection.GetGenericArguments()[0];
+            var getEnumeratorMethod = typeAsIEnumerable!.GetMethod("GetEnumerator");
+            var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
+            var typeKeyValuePair = typeAsICollection!.GetGenericArguments()[0];
             var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
             var localPair = ilGenerator.DeclareLocal(typeKeyValuePair);
             ilGenerator
@@ -172,10 +172,10 @@ namespace BTDB.FieldHandler
                 .Ldloc(localValue)
                 .Castclass(typeof(object))
                 .Callvirt(() => default(IWriterCtx).WriteObject(null))
-                .Brfalse(realfinish)
+                .Brfalse(realFinish)
                 .Do(Extensions.PushWriterFromCtx(pushWriterOrCtx))
                 .Ldloc(localValue)
-                .Callvirt(typeAsICollection.GetProperty("Count").GetGetMethod())
+                .Callvirt(typeAsICollection.GetProperty("Count")!.GetGetMethod()!)
                 .ConvU4()
                 .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0))
                 .Ldloc(localValue)
@@ -187,16 +187,17 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(IEnumerator).MoveNext())
                 .Brfalse(finish)
                 .Ldloc(localEnumerator)
-                .Callvirt(typeAsIEnumerator.GetProperty("Current").GetGetMethod())
+                .Callvirt(typeAsIEnumerator.GetProperty("Current")!.GetGetMethod()!)
                 .Stloc(localPair);
+            var keyAndValueTypes = _type.GetGenericArguments();
             _keysHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _keysHandler.NeedsCtx()), il => il
                 .Ldloca(localPair)
-                .Call(typeKeyValuePair.GetProperty("Key").GetGetMethod())
-                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _keysHandler.HandledType())));
+                .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
+                .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[0], _keysHandler.HandledType())!));
             _valuesHandler.Save(ilGenerator, Extensions.PushWriterOrCtxAsNeeded(pushWriterOrCtx, _valuesHandler.NeedsCtx()), il => il
                 .Ldloca(localPair)
-                .Call(typeKeyValuePair.GetProperty("Value").GetGetMethod())
-                .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[1], _valuesHandler.HandledType())));
+                .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
+                .Do(_typeConvertGenerator.GenerateConversion(keyAndValueTypes[1], _valuesHandler.HandledType())!));
             ilGenerator
                 .Br(next)
                 .Mark(finish)
@@ -204,7 +205,7 @@ namespace BTDB.FieldHandler
                 .Ldloc(localEnumerator)
                 .Callvirt(() => default(IDisposable).Dispose())
                 .EndTry()
-                .Mark(realfinish);
+                .Mark(realFinish);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
@@ -219,20 +220,19 @@ namespace BTDB.FieldHandler
             var wantedValueType = type.GetGenericArguments()[1];
             var wantedKeyHandler = default(IFieldHandler);
             var wantedValueHandler = default(IFieldHandler);
-            var dictTypeHandler = typeHandler as DictionaryFieldHandler;
-            if (dictTypeHandler != null)
+            if (typeHandler is DictionaryFieldHandler dictTypeHandler)
             {
                 wantedKeyHandler = dictTypeHandler._keysHandler;
                 wantedValueHandler = dictTypeHandler._valuesHandler;
             }
             var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType, wantedKeyHandler);
-            if (_typeConvertorGenerator.GenerateConversion(keySpecialized.HandledType(), wantedKeyType) == null)
+            if (_typeConvertGenerator.GenerateConversion(keySpecialized.HandledType(), wantedKeyType) == null)
             {
                 Debug.Fail("even more strange key");
                 return this;
             }
             var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType, wantedValueHandler);
-            if (_typeConvertorGenerator.GenerateConversion(valueSpecialized.HandledType(), wantedValueType) == null)
+            if (_typeConvertGenerator.GenerateConversion(valueSpecialized.HandledType(), wantedValueType) == null)
             {
                 Debug.Fail("even more strange value");
                 return this;
@@ -241,7 +241,7 @@ namespace BTDB.FieldHandler
             {
                 return typeHandler;
             }
-            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized, valueSpecialized);
+            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized, valueSpecialized);
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
@@ -255,18 +255,18 @@ namespace BTDB.FieldHandler
             var wantedKeyType = type.GetGenericArguments()[0];
             var wantedValueType = type.GetGenericArguments()[1];
             var keySpecialized = _keysHandler.SpecializeSaveForType(wantedKeyType);
-            if (_typeConvertorGenerator.GenerateConversion(wantedKeyType, keySpecialized.HandledType()) == null)
+            if (_typeConvertGenerator.GenerateConversion(wantedKeyType, keySpecialized.HandledType()) == null)
             {
                 Debug.Fail("even more strange key");
                 return this;
             }
             var valueSpecialized = _valuesHandler.SpecializeSaveForType(wantedValueType);
-            if (_typeConvertorGenerator.GenerateConversion(wantedValueType, valueSpecialized.HandledType()) == null)
+            if (_typeConvertGenerator.GenerateConversion(wantedValueType, valueSpecialized.HandledType()) == null)
             {
                 Debug.Fail("even more strange value");
                 return this;
             }
-            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertorGenerator, type, keySpecialized, valueSpecialized);
+            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized, valueSpecialized);
         }
 
         public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
