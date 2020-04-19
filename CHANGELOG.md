@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 20.0.0
+
 ### Added
 
 - Added support for `IOrderedSet<T>` lazily stored set.
