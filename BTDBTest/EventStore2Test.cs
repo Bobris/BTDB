@@ -1003,7 +1003,7 @@ namespace BTDBTest
         public void SupportSets()
         {
             var serializer = new EventSerializer();
-            var obj = new object[] {new SomeSets {A = new HashSet<string> {"A", "B"}, B = new HashSet<int> {42, 7}}};
+            var obj = new SomeSets {A = new HashSet<string> {"A", "B"}, B = new HashSet<int> {42, 7}};
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out _, obj);
