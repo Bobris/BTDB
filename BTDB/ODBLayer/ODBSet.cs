@@ -46,7 +46,7 @@ namespace BTDB.ODBLayer
         }
 
         // ReSharper disable once UnusedMember.Global
-        public static void DoSave(IWriterCtx ctx, ISet<TKey>? dictionary, int cfgId)
+        public static void DoSave(IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
         {
             var writerCtx = (IDBWriterCtx)ctx;
             if (!(dictionary is ODBSet<TKey> goodDict))
@@ -141,7 +141,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(item);
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_prefix);
-            return _keyValueTr.FindExactKey(keyBytes);
+            return _keyValueTr.Find(keyBytes) == FindResult.Exact;
         }
 
         public void CopyTo(TKey[] array, int arrayIndex)
@@ -177,18 +177,18 @@ namespace BTDB.ODBLayer
 
         public bool IsReadOnly => false;
 
-        byte[] KeyToByteArray(TKey key)
+        ByteBuffer KeyToByteArray(TKey key)
         {
             var writer = new ByteBufferWriter();
             IWriterCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
             _keyWriter(key, writer, ctx);
-            return writer.Data.ToByteArray();
+            return writer.Data;
         }
 
-        TKey ByteArrayToKey(byte[] data)
+        TKey ByteArrayToKey(ByteBuffer data)
         {
-            var reader = new ByteArrayReader(data);
+            var reader = new ByteBufferReader(data);
             IReaderCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr, reader);
             return _keyReader(reader, ctx);
@@ -200,7 +200,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             _modificationCounter++;
             _keyValueTr.SetKeyPrefix(_prefix);
-            var created = _keyValueTr.CreateOrUpdateKeyValueUnsafe(keyBytes, Array.Empty<byte>());
+            var created = _keyValueTr.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty());
             if (created) NotifyAdded();
             return created;
         }
@@ -211,7 +211,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             _modificationCounter++;
             _keyValueTr.SetKeyPrefix(_prefix);
-            if (!_keyValueTr.FindExactKey(keyBytes)) return false;
+            if (_keyValueTr.Find(keyBytes) != FindResult.Exact) return false;
             _keyValueTr.EraseCurrent();
             NotifyRemoved();
             return true;
@@ -269,7 +269,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -306,7 +306,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -327,7 +327,7 @@ namespace BTDB.ODBLayer
                     prevModificationCounter = _modificationCounter;
                     _keyValueTr.SetKeyPrefix(_prefix);
                     bool startOk;
-                    switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
+                    switch (_keyValueTr.Find(startKeyBytes))
                     {
                         case FindResult.Exact:
                         case FindResult.Next:
@@ -360,7 +360,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -381,7 +381,7 @@ namespace BTDB.ODBLayer
                     prevModificationCounter = _modificationCounter;
                     _keyValueTr.SetKeyPrefix(_prefix);
                     bool startOk;
-                    switch (_keyValueTr.Find(ByteBuffer.NewSync(startKeyBytes)))
+                    switch (_keyValueTr.Find(startKeyBytes))
                     {
                         case FindResult.Exact:
                         case FindResult.Previous:
@@ -414,7 +414,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKeyAsByteArray();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -435,7 +435,7 @@ namespace BTDB.ODBLayer
             else
             {
                 var keyBytes = KeyToByteArray(param.End);
-                switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                switch (_keyValueTr.Find(keyBytes))
                 {
                     case FindResult.Exact:
                         endIndex = _keyValueTr.GetKeyIndex();
@@ -464,7 +464,7 @@ namespace BTDB.ODBLayer
             else
             {
                 var keyBytes = KeyToByteArray(param.Start);
-                switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                switch (_keyValueTr.Find(keyBytes))
                 {
                     case FindResult.Exact:
                         startIndex = _keyValueTr.GetKeyIndex();
@@ -531,7 +531,7 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             _keyValueTrProtector.Start();
             _keyValueTr.SetKeyPrefix(_prefix);
-            var found = _keyValueTr.FindExactKey(keyBytes);
+            var found = _keyValueTr.Find(keyBytes) == FindResult.Exact;
             if (!found)
             {
                 throw new ArgumentException("Key not found in Set");
@@ -572,7 +572,7 @@ namespace BTDB.ODBLayer
                 else
                 {
                     var keyBytes = _owner.KeyToByteArray(param.End);
-                    switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                    switch (_keyValueTr.Find(keyBytes))
                     {
                         case FindResult.Exact:
                             endIndex = _keyValueTr.GetKeyIndex();
@@ -601,7 +601,7 @@ namespace BTDB.ODBLayer
                 else
                 {
                     var keyBytes = _owner.KeyToByteArray(param.Start);
-                    switch (_keyValueTr.Find(ByteBuffer.NewSync(keyBytes)))
+                    switch (_keyValueTr.Find(keyBytes))
                     {
                         case FindResult.Exact:
                             startIndex = _keyValueTr.GetKeyIndex();
@@ -681,7 +681,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                Current = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsByteArray());
+                Current = _owner.ByteArrayToKey(_keyValueTr.GetKey());
                 return true;
             }
 

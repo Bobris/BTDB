@@ -8,6 +8,7 @@
 - EventLayers deserialization can now unwrap `IIndirect<T>`, making it compatible change (`IIndirect<T>` => `T`, or `IDictionary<TKey, IIndirect<T>>` => `IDictionary<TKey, T>`).
 - New documentation for [supported types](Doc/SupportedTypes.md)
 - Added support for `ISet<T>`, `HashSet<T>` with identical serialization as `IList<T>`.
+- Removed some allocations from `IOrderedDictionary`
 
 ## 19.9.3
 
