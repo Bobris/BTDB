@@ -127,6 +127,32 @@ namespace ODbDump.Visitor
             _indent--;
         }
 
+        public bool StartSet()
+        {
+            Print($"{_currentFieldName}: Set");
+            _listItemIndexStack.Push(_itemIndex);
+            _itemIndex = 0;
+            _indent++;
+            return true;
+        }
+
+        public bool StartSetKey()
+        {
+            _currentFieldName = "Key";
+            return true;
+        }
+
+        public void EndSetKey()
+        {
+            _itemIndex++;
+        }
+
+        public void EndSet()
+        {
+            _itemIndex = _listItemIndexStack.Pop();
+            _indent--;
+        }
+
         public void EndField()
         {
         }

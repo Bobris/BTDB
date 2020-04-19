@@ -991,6 +991,69 @@ namespace BTDBTest
             }
         }
 
+        public class SimpleOrderedSet
+        {
+            public IOrderedSet<int> IntSet { get; set; }
+        }
+
+        [Fact]
+        public void OrderedSetEnumeration()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedSet>();
+                root.IntSet.Add(3);
+                root.IntSet.Add(1);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedSet>();
+                Assert.Equal("13", root.IntSet.Aggregate("", (current, p) => current + p));
+                Assert.Equal("31",
+                    root.IntSet.GetReverseEnumerator().Aggregate("", (current, p) => current + p));
+                Assert.Equal("13",
+                    root.IntSet.GetIncreasingEnumerator(0).Aggregate("", (current, p) => current + p));
+                Assert.Equal("13",
+                    root.IntSet.GetIncreasingEnumerator(1).Aggregate("", (current, p) => current + p));
+                Assert.Equal("3",
+                    root.IntSet.GetIncreasingEnumerator(2).Aggregate("", (current, p) => current + p));
+                Assert.Equal("3",
+                    root.IntSet.GetIncreasingEnumerator(3).Aggregate("", (current, p) => current + p));
+                Assert.Equal("",
+                    root.IntSet.GetIncreasingEnumerator(4).Aggregate("", (current, p) => current + p));
+                Assert.Equal("",
+                    root.IntSet.GetDecreasingEnumerator(0).Aggregate("", (current, p) => current + p));
+                Assert.Equal("1",
+                    root.IntSet.GetDecreasingEnumerator(1).Aggregate("", (current, p) => current + p));
+                Assert.Equal("1",
+                    root.IntSet.GetDecreasingEnumerator(2).Aggregate("", (current, p) => current + p));
+                Assert.Equal("31",
+                    root.IntSet.GetDecreasingEnumerator(3).Aggregate("", (current, p) => current + p));
+                Assert.Equal("31",
+                    root.IntSet.GetDecreasingEnumerator(4).Aggregate("", (current, p) => current + p));
+            }
+        }
+
+        [Fact]
+        public void CanQuerySizeOfKeyInOrderedSet()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var root = tr.Singleton<SimpleOrderedSet>();
+                root.IntSet.Add(3);
+                var qs = (IQuerySizeDictionary<int>) root.IntSet;
+                var size = qs.QuerySizeByKey(3);
+                Assert.Equal(3u, size.Key);
+                Assert.Equal(0u, size.Value);
+                root.IntSet.Add(1);
+                size = qs.QuerySizeEnumerator().First();
+                Assert.Equal(3u, size.Key);
+                Assert.Equal(0u, size.Value);
+            }
+        }
+
         public class ComplexDictionary
         {
             public IDictionary<string, Person> String2Person { get; set; }

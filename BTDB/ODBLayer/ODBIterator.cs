@@ -16,7 +16,7 @@ namespace BTDB.ODBLayer
     {
         readonly IInternalObjectDBTransaction _tr;
         IODBFastVisitor _fastVisitor;
-        IODBVisitor _visitor;
+        IODBVisitor? _visitor;
         Dictionary<uint, string> _tableId2Name;
         readonly IKeyValueDBTransaction _trkv;
         Dictionary<uint, ulong> _singletons;
@@ -81,10 +81,9 @@ namespace BTDB.ODBLayer
             LoadGlobalInfo(sortTableByNameAsc);
             foreach (var singleton in _singletons)
             {
-                string name;
                 if (_visitor != null &&
                     !_visitor.VisitSingleton(singleton.Key,
-                        _tableId2Name.TryGetValue(singleton.Key, out name) ? name : null, singleton.Value))
+                        _tableId2Name.TryGetValue(singleton.Key, out var name) ? name : null, singleton.Value))
                     continue;
                 MarkTableName(singleton.Key);
                 _trkv.SetKeyPrefixUnsafe(ObjectDB.TableSingletonsPrefix);
@@ -120,7 +119,7 @@ namespace BTDB.ODBLayer
                 _fastVisitor = fastVisitorBackup;
             }
         }
-   
+
         public void IterateOid(ulong oid)
         {
             if (!SkipAlreadyVisitedOidChecks && !_visitedOids.Add(oid))
@@ -348,7 +347,52 @@ namespace BTDB.ODBLayer
             _visitor?.EndDictionary();
         }
 
-        void IterateHandler(AbstractBufferedReader reader, IFieldHandler handler, bool skipping, HashSet<int> knownInlineRefs)
+        void IterateSet(ulong dictId, IFieldHandler keyHandler)
+        {
+            if (_visitor != null && !_visitor.StartSet())
+                return;
+            var o = ObjectDB.AllDictionariesPrefix.Length;
+            var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
+            Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, dictId);
+            _trkv.SetKeyPrefix(prefix);
+            var protector = _tr.TransactionProtector;
+            long prevProtectionCounter = 0;
+            long pos = 0;
+            while (true)
+            {
+                protector.Start();
+                if (pos == 0)
+                {
+                    _trkv.SetKeyPrefix(prefix);
+                    if (!_trkv.FindFirstKey()) break;
+                }
+                else
+                {
+                    if (protector.WasInterupted(prevProtectionCounter))
+                    {
+                        _trkv.SetKeyPrefix(prefix);
+                        if (!_trkv.SetKeyIndex(pos)) break;
+                    }
+                    else
+                    {
+                        if (!_trkv.FindNextKey()) break;
+                    }
+                }
+                _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
+                prevProtectionCounter = protector.ProtectionCounter;
+                if (_visitor == null || _visitor.StartSetKey())
+                {
+                    var keyReader = new KeyValueDBKeyReader(_trkv);
+                    IterateHandler(keyReader, keyHandler, false, null);
+                    _visitor?.EndSetKey();
+                }
+                pos++;
+            }
+            _visitor?.EndSet();
+        }
+
+        void IterateHandler(AbstractBufferedReader reader, IFieldHandler handler, bool skipping, HashSet<int>? knownInlineRefs)
         {
             if (handler is ODBDictionaryFieldHandler)
             {
@@ -357,6 +401,15 @@ namespace BTDB.ODBLayer
                 {
                     var kvHandlers = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().ToArray();
                     IterateDict(dictId, kvHandlers[0], kvHandlers[1]);
+                }
+            }
+            else if (handler is ODBSetFieldHandler)
+            {
+                var dictId = reader.ReadVUInt64();
+                if (!skipping)
+                {
+                    var keyHandler = ((IFieldHandlerWithNestedFieldHandlers)handler).EnumerateNestedFieldHandlers().First();
+                    IterateSet(dictId, keyHandler);
                 }
             }
             else if (handler is DBObjectFieldHandler)

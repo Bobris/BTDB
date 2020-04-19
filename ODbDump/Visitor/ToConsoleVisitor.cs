@@ -116,6 +116,28 @@ namespace ODbDump.Visitor
             Console.WriteLine("EndDictionary");
         }
 
+        public bool StartSet()
+        {
+            Console.WriteLine("StartSet");
+            return true;
+        }
+
+        public bool StartSetKey()
+        {
+            Console.WriteLine("StartSetKey");
+            return true;
+        }
+
+        public void EndSetKey()
+        {
+            Console.WriteLine("EndSetKey");
+        }
+
+        public void EndSet()
+        {
+            Console.WriteLine("EndSet");
+        }
+
         public void EndField()
         {
             Console.WriteLine("EndField");

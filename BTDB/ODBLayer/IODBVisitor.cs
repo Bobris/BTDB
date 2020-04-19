@@ -9,7 +9,7 @@ namespace BTDB.ODBLayer
 
     public interface IODBVisitor: IODBFastVisitor
     {
-        bool VisitSingleton(uint tableId, string tableName, ulong oid);
+        bool VisitSingleton(uint tableId, string? tableName, ulong oid);
         bool StartObject(ulong oid, uint tableId, string tableName, uint version);
         bool StartField(string name);
         bool NeedScalarAsObject(); // return true if needed as object
@@ -23,12 +23,16 @@ namespace BTDB.ODBLayer
         bool StartItem();
         void EndItem();
         void EndList();
-        bool StartDictionary(); // false to skip iteration of this Dict 
+        bool StartDictionary(); // false to skip iteration of this Dict
         bool StartDictKey(); // false to skip iteration of key
         void EndDictKey();
         bool StartDictValue(); // false to skip iteration of value
         void EndDictValue();
         void EndDictionary();
+        bool StartSet(); // false to skip iteration of this Set
+        bool StartSetKey(); // false to skip iteration of key
+        void EndSetKey();
+        void EndSet();
         void EndField();
         void EndObject();
 

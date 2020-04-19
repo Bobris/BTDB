@@ -7,31 +7,28 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ODBDictionaryFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers, IFieldHandlerWithInit
+    public class ODBSetFieldHandler : IFieldHandler, IFieldHandlerWithNestedFieldHandlers, IFieldHandlerWithInit
     {
         readonly IObjectDB _odb;
         readonly ITypeConvertorGenerator _typeConvertGenerator;
         readonly byte[] _configuration;
         readonly IFieldHandler _keysHandler;
-        readonly IFieldHandler _valuesHandler;
         int _configurationId;
         Type? _type;
 
-        public ODBDictionaryFieldHandler(IObjectDB odb, Type type, IFieldHandlerFactory fieldHandlerFactory)
+        public ODBSetFieldHandler(IObjectDB odb, Type type, IFieldHandlerFactory fieldHandlerFactory)
         {
             _odb = odb;
             _typeConvertGenerator = odb.TypeConvertorGenerator;
             _type = type;
             _keysHandler = fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
-            _valuesHandler = fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
-            writer.WriteFieldHandler(_valuesHandler);
             _configuration = writer.Data.ToByteArray();
             CreateConfiguration();
         }
 
-        public ODBDictionaryFieldHandler(IObjectDB odb, byte[] configuration)
+        public ODBSetFieldHandler(IObjectDB odb, byte[] configuration)
         {
             _odb = odb;
             var fieldHandlerFactory = odb.FieldHandlerFactory;
@@ -39,17 +36,15 @@ namespace BTDB.ODBLayer
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
             _keysHandler = fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
-            _valuesHandler = fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
             CreateConfiguration();
         }
 
-        ODBDictionaryFieldHandler(IObjectDB odb, byte[] configuration, IFieldHandler specializedKeyHandler, IFieldHandler specializedValueHandler)
+        ODBSetFieldHandler(IObjectDB odb, byte[] configuration, IFieldHandler specializedKeyHandler)
         {
             _odb = odb;
             _typeConvertGenerator = odb.TypeConvertorGenerator;
             _configuration = configuration;
             _keysHandler = specializedKeyHandler;
-            _valuesHandler = specializedValueHandler;
             CreateConfiguration();
         }
 
@@ -57,13 +52,11 @@ namespace BTDB.ODBLayer
         {
             HandledType();
             var keyAndValueTypes = _type!.GetGenericArguments();
-            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, _valuesHandler)
-                {
-                    KeyReader = CreateReader(_keysHandler, keyAndValueTypes[0]),
-                    KeyWriter = CreateWriter(_keysHandler, keyAndValueTypes[0]),
-                    ValueReader = CreateReader(_valuesHandler, keyAndValueTypes[1]),
-                    ValueWriter = CreateWriter(_valuesHandler, keyAndValueTypes[1])
-                };
+            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, null)
+            {
+                KeyReader = CreateReader(_keysHandler, keyAndValueTypes[0]),
+                KeyWriter = CreateWriter(_keysHandler, keyAndValueTypes[0]),
+            };
             _configurationId = ((IInstanceRegistry)_odb).RegisterInstance(cfg);
         }
 
@@ -84,7 +77,7 @@ namespace BTDB.ODBLayer
         {
             //Func<AbstractBufferedReader, IReaderCtx, T>
             var delegateType = typeof(Func<,,>).MakeGenericType(typeof(AbstractBufferedReader), typeof(IReaderCtx),
-                                                                 realType);
+                realType);
             var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
             var ilGenerator = dm.Generator;
             void PushReaderOrCtx(IILGen il) => il.Ldarg((ushort) (fieldHandler.NeedsCtx() ? 1 : 0));
@@ -95,7 +88,7 @@ namespace BTDB.ODBLayer
             return dm.Create();
         }
 
-        public static string HandlerName => "ODBDictionary";
+        public static string HandlerName => "ODBSet";
 
         public string Name => HandlerName;
 
@@ -110,7 +103,7 @@ namespace BTDB.ODBLayer
         static bool IsCompatibleWithCore(Type type)
         {
             var genericTypeDefinition = type.GetGenericTypeDefinition();
-            return genericTypeDefinition == typeof(IDictionary<,>) || genericTypeDefinition == typeof(IOrderedDictionary<,>);
+            return genericTypeDefinition == typeof(IOrderedSet<>);
         }
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -131,7 +124,7 @@ namespace BTDB.ODBLayer
         public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
         {
             var genericArguments = _type!.GetGenericArguments();
-            var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+            var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
                 new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration), typeof(ulong) });
             ilGenerator
@@ -157,7 +150,7 @@ namespace BTDB.ODBLayer
         public void Init(IILGen ilGenerator, Action<IILGen> pushReaderCtx)
         {
             var genericArguments = _type!.GetGenericArguments();
-            var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+            var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
                 new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration) });
             ilGenerator
@@ -183,7 +176,7 @@ namespace BTDB.ODBLayer
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
         {
             var genericArguments = _type!.GetGenericArguments();
-            var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
+            var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             ilGenerator
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
@@ -199,30 +192,27 @@ namespace BTDB.ODBLayer
             if (!IsCompatibleWithCore(type)) return this;
             var arguments = type.GetGenericArguments();
             var wantedKeyHandler = default(IFieldHandler);
-            var wantedValueHandler = default(IFieldHandler);
-            if (typeHandler is ODBDictionaryFieldHandler dictTypeHandler)
+            if (typeHandler is ODBSetFieldHandler dictTypeHandler)
             {
                 wantedKeyHandler = dictTypeHandler._keysHandler;
-                wantedValueHandler = dictTypeHandler._valuesHandler;
             }
             var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
-            var specializedValueHandler = _valuesHandler.SpecializeLoadForType(arguments[1], wantedValueHandler);
-            if (wantedKeyHandler == specializedKeyHandler && (wantedValueHandler == specializedValueHandler || wantedValueHandler.HandledType() == specializedValueHandler.HandledType()))
+            if (wantedKeyHandler == specializedKeyHandler)
             {
                 return typeHandler;
             }
-            var res = new ODBDictionaryFieldHandler(_odb, _configuration, specializedKeyHandler, specializedValueHandler);
+            var res = new ODBSetFieldHandler(_odb, _configuration, specializedKeyHandler);
             res.GenerateType(type);
             return res;
         }
 
         Type GenerateType(Type? compatibleWith)
         {
-            if (compatibleWith != null && compatibleWith.GetGenericTypeDefinition() == typeof(IOrderedDictionary<,>))
+            if (compatibleWith != null && compatibleWith.GetGenericTypeDefinition() == typeof(IOrderedSet<>))
             {
-                return _type = typeof(IOrderedDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
+                return _type = typeof(IOrderedSet<>).MakeGenericType(_keysHandler.HandledType());
             }
-            return _type = typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
+            return _type = typeof(ISet<>).MakeGenericType(_keysHandler.HandledType());
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
@@ -235,7 +225,6 @@ namespace BTDB.ODBLayer
         public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
         {
             yield return _keysHandler;
-            yield return _valuesHandler;
         }
 
         public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
@@ -243,36 +232,13 @@ namespace BTDB.ODBLayer
             var fakeMethod = ILBuilder.Instance.NewMethod<Action>("Relation_fake");
             var fakeGenerator = fakeMethod.Generator;
             if (_keysHandler.FreeContent(fakeGenerator, _ => { }) == NeedsFreeContent.Yes)
-                throw new BTDBException("Not supported 'free content' in IDictionary key");
-            if (_valuesHandler.FreeContent(fakeGenerator, _ => { }) == NeedsFreeContent.No)
-            {
-                ilGenerator
-                    .Do(pushReaderOrCtx)
-                    .Castclass(typeof(IDBReaderCtx))
-                    .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
-                    .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
-            }
-            else
-            {
-                var genericArguments = _type!.GetGenericArguments();
-                var instanceType = typeof(ODBDictionary<,>).MakeGenericType(genericArguments);
-
-                var dictId = ilGenerator.DeclareLocal(typeof(ulong));
-                ilGenerator
-                    .Do(pushReaderOrCtx)
-                    .Castclass(typeof(IDBReaderCtx))
-                    .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
-                    .Stloc(dictId)
-                    .Ldloc(dictId)
-                    .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul))
-                    .Do(pushReaderOrCtx)
-                    .Ldloc(dictId)
-                    .LdcI4(_configurationId)
-                    //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
-                    .Call(instanceType.GetMethod("DoFreeContent")!);
-            }
+                throw new BTDBException("Not supported 'free content' in IOrderedSet");
+            ilGenerator
+                .Do(pushReaderOrCtx)
+                .Castclass(typeof(IDBReaderCtx))
+                .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
+                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
+                .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
             return NeedsFreeContent.Yes;
         }
     }

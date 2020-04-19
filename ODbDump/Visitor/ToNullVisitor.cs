@@ -95,6 +95,24 @@ namespace ODbDump.Visitor
         {
         }
 
+        public bool StartSet()
+        {
+            return true;
+        }
+
+        public bool StartSetKey()
+        {
+            return true;
+        }
+
+        public void EndSetKey()
+        {
+        }
+
+        public void EndSet()
+        {
+        }
+
         public void EndField()
         {
         }

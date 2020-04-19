@@ -931,6 +931,7 @@ namespace BTDBTest
             public IDictionary<string, string> Bcc { get; set; }
             public IDictionary<string, string> Cc { get; set; }
             public IDictionary<string, string> To { get; set; }
+            public IOrderedSet<string> Tags { get; set; }
         }
 
         public class EmailDb
@@ -980,6 +981,8 @@ namespace BTDBTest
                     }
                 };
                 table.Insert(batch);
+                batch = table.FindByIdOrDefault(guid);
+                batch.MailPieces[mailGuid].Content.Tags.Add("Important");
                 tr.Commit();
             }
 

@@ -40,8 +40,8 @@ namespace ODbDump.Visitor
 
             _currentCount = 0;
         }
-       
-        
+
+
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
             Flush();
@@ -49,7 +49,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
- 
+
         public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
         {
             return true;
@@ -134,6 +134,25 @@ namespace ODbDump.Visitor
         }
 
         public void EndDictionary()
+        {
+        }
+
+        public bool StartSet()
+        {
+            return true;
+        }
+
+        public bool StartSetKey()
+        {
+            _currentCount++;
+            return false;
+        }
+
+        public void EndSetKey()
+        {
+        }
+
+        public void EndSet()
         {
         }
 

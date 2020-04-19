@@ -15,7 +15,7 @@ namespace ODbDump.Visitor
         readonly Stopwatch _stopWatch = new Stopwatch();
 
         const int KeyOverhead = 20;
-        
+
         public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
         {
             var (memory, disk) = tr.GetStorageSizeOfCurrentKey();
@@ -49,7 +49,7 @@ namespace ODbDump.Visitor
             _currentOnDiskSize = 0;
             _stopWatch.Restart();
         }
-        
+
         public bool VisitSingleton(uint tableId, string tableName, ulong oid)
         {
             Flush();
@@ -140,6 +140,24 @@ namespace ODbDump.Visitor
         }
 
         public void EndDictionary()
+        {
+        }
+
+        public bool StartSet()
+        {
+            return true;
+        }
+
+        public bool StartSetKey()
+        {
+            return true;
+        }
+
+        public void EndSetKey()
+        {
+        }
+
+        public void EndSet()
         {
         }
 

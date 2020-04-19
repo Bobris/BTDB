@@ -24,7 +24,7 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        public virtual IFieldHandler CreateFromType(Type type, FieldHandlerOptions options)
+        public virtual IFieldHandler? CreateFromType(Type type, FieldHandlerOptions options)
         {
             if (EnumFieldHandler.IsCompatibleWith(type)) return new EnumFieldHandler(type);
             foreach (var fieldHandler in BasicSerializersFactory.FieldHandlers)
@@ -37,7 +37,7 @@ namespace BTDB.FieldHandler
             return null;
         }
 
-        public virtual IFieldHandler CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
+        public virtual IFieldHandler? CreateFromName(string handlerName, byte[] configuration, FieldHandlerOptions options)
         {
             IFieldHandler fallbackFieldHandler = null;
             foreach (var fieldHandler in BasicSerializersFactory.FieldHandlers)

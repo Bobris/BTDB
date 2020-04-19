@@ -22,11 +22,11 @@ namespace BTDB.ODBLayer
         readonly IKeyValueDBTransaction _keyValueTr;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly ulong _id;
-        byte[] _prefix;
+        readonly byte[] _prefix;
         int _count;
         int _modificationCounter;
-        KeysCollection _keysCollection;
-        ValuesCollection _valuesCollection;
+        KeysCollection? _keysCollection;
+        ValuesCollection? _valuesCollection;
 
         public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
         {
@@ -34,16 +34,20 @@ namespace BTDB.ODBLayer
             _keyHandler = config.KeyHandler;
             _valueHandler = config.ValueHandler;
             _id = id;
-            GeneratePrefix();
-            _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader;
-            _keyWriter = (Action<TKey, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter;
-            _valueReader = (Func<AbstractBufferedReader, IReaderCtx, TValue>)config.ValueReader;
-            _valueWriter = (Action<TValue, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter;
+            var o = ObjectDB.AllDictionariesPrefix.Length;
+            _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
+            Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
+            PackUnpack.PackVUInt(_prefix, ref o, _id);
+            _keyReader = ((Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader)!;
+            _keyWriter = ((Action<TKey, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter)!;
+            _valueReader = ((Func<AbstractBufferedReader, IReaderCtx, TValue>)config.ValueReader)!;
+            _valueWriter = ((Action<TValue, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _count = -1;
         }
 
+        // ReSharper disable once UnusedMember.Global
         public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config) : this(tr, config, tr.AllocateDictionaryId()) { }
 
         static void ThrowModifiedDuringEnum()
@@ -51,15 +55,15 @@ namespace BTDB.ODBLayer
             throw new InvalidOperationException("DB modified during iteration");
         }
 
-        public static void DoSave(IWriterCtx ctx, IDictionary<TKey, TValue> dictionary, int cfgId)
+        // ReSharper disable once UnusedMember.Global
+        public static void DoSave(IWriterCtx ctx, IDictionary<TKey, TValue>? dictionary, int cfgId)
         {
-            var dbctx = (IDBWriterCtx)ctx;
-            var goodDict = dictionary as ODBDictionary<TKey, TValue>;
-            if (goodDict == null)
+            var writerCtx = (IDBWriterCtx)ctx;
+            if (!(dictionary is ODBDictionary<TKey, TValue> goodDict))
             {
-                var tr = dbctx.GetTransaction();
+                var tr = writerCtx.GetTransaction();
                 var id = tr.AllocateDictionaryId();
-                goodDict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)dbctx.FindInstance(cfgId), id);
+                goodDict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)writerCtx.FindInstance(cfgId), id);
                 if (dictionary != null)
                     foreach (var pair in dictionary)
                         goodDict.Add(pair.Key, pair.Value);
@@ -67,11 +71,12 @@ namespace BTDB.ODBLayer
             ctx.Writer().WriteVUInt64(goodDict._id);
         }
 
+        // ReSharper disable once UnusedMember.Global
         public static void DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
         {
-            var dbctx = (DBReaderCtx)ctx;
-            var tr = dbctx.GetTransaction();
-            var dict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)dbctx.FindInstance(cfgId), id);
+            var readerCtx = (DBReaderCtx)ctx;
+            var tr = readerCtx.GetTransaction();
+            var dict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)readerCtx.FindInstance(cfgId), id);
             dict.FreeContent(ctx, cfgId);
         }
 
@@ -92,6 +97,7 @@ namespace BTDB.ODBLayer
                     .Ldarg(0)
                     .Ldarg(1)
                     .Ldarg(2)
+                    // ReSharper disable once ObjectCreationAsStatement
                     .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
                     .Stloc(readerLoc);
 
@@ -139,14 +145,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void GeneratePrefix()
-        {
-            var o = ObjectDB.AllDictionariesPrefix.Length;
-            _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
-            Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
-            PackUnpack.PackVUInt(_prefix, ref o, _id);
-        }
-
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
@@ -168,8 +166,7 @@ namespace BTDB.ODBLayer
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
         {
-            TValue value;
-            if (!TryGetValue(item.Key, out value)) return false;
+            if (!TryGetValue(item.Key, out var value)) return false;
             return EqualityComparer<TValue>.Default.Equals(value, item.Value);
         }
 
@@ -296,7 +293,7 @@ namespace BTDB.ODBLayer
             var found = _keyValueTr.FindExactKey(keyBytes);
             if (!found)
             {
-                value = default(TValue);
+                value = default;
                 return false;
             }
             var valueBytes = _keyValueTr.GetValueAsByteArray();
@@ -405,7 +402,7 @@ namespace BTDB.ODBLayer
 
             public void Add(TKey item)
             {
-                _parent.Add(item, default(TValue));
+                _parent.Add(item!, default);
             }
 
             public void Clear()
@@ -413,7 +410,7 @@ namespace BTDB.ODBLayer
                 _parent.Clear();
             }
 
-            public bool Contains(TKey item) => _parent.ContainsKey(item);
+            public bool Contains(TKey item) => _parent.ContainsKey(item!);
 
             public void CopyTo(TKey[] array, int arrayIndex)
             {
@@ -432,14 +429,14 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            public bool Remove(TKey item) => _parent.Remove(item);
+            public bool Remove(TKey item) => _parent.Remove(item!);
 
             public int Count => _parent.Count;
 
             public bool IsReadOnly => false;
         }
 
-        public ICollection<TKey> Keys => _keysCollection ?? (_keysCollection = new KeysCollection(this));
+        public ICollection<TKey> Keys => _keysCollection ??= new KeysCollection(this);
 
         class ValuesCollection : ICollection<TValue>
         {
@@ -530,7 +527,7 @@ namespace BTDB.ODBLayer
             public bool IsReadOnly => true;
         }
 
-        public ICollection<TValue> Values => _valuesCollection ?? (_valuesCollection = new ValuesCollection(this));
+        public ICollection<TValue> Values => _valuesCollection ??= new ValuesCollection(this);
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
@@ -750,6 +747,7 @@ namespace BTDB.ODBLayer
                 endIndex--;
             }
             _keyValueTr.EraseRange(startIndex, endIndex);
+            _count = -1;
             return Math.Max(0, endIndex - startIndex + 1);
         }
 
@@ -811,8 +809,8 @@ namespace BTDB.ODBLayer
             readonly IKeyValueDBTransaction _keyValueTr;
             long _prevProtectionCounter;
             readonly int _prevModificationCounter;
-            readonly uint _startPos = 0;
-            readonly uint _count = 0;
+            readonly uint _startPos;
+            readonly uint _count;
             uint _pos;
             SeekState _seekState;
             readonly bool _ascending;
@@ -922,7 +920,7 @@ namespace BTDB.ODBLayer
                 set
                 {
                     if (_pos >= _count) throw new IndexOutOfRangeException();
-                    if (_seekState == SeekState.Undefined) throw new BTDBException("Invalid access to uninitailzed CurrentValue.");
+                    if (_seekState == SeekState.Undefined) throw new BTDBException("Invalid access to uninitialized CurrentValue.");
                     _keyValueTrProtector.Start();
                     if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                     {
@@ -952,7 +950,7 @@ namespace BTDB.ODBLayer
 
             public uint Position
             {
-                get { return _pos; }
+                get => _pos;
 
                 set
                 {
@@ -967,7 +965,7 @@ namespace BTDB.ODBLayer
                     _pos++;
                 if (_pos >= _count)
                 {
-                    key = default(TKey);
+                    key = default;
                     return false;
                 }
                 _keyValueTrProtector.Start();
@@ -993,7 +991,7 @@ namespace BTDB.ODBLayer
                         _keyValueTr.FindPreviousKey();
                     }
                 }
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter; 
+                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 key = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsByteArray());
                 return true;
             }

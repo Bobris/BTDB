@@ -2713,5 +2713,39 @@ namespace BTDBTest
             var set = table.FindById(1);
             Assert.Equal(new[] {"A", "B", "C"}, set.Parts.OrderBy(a => a));
         }
+
+
+        public class ItemWithOrderedSet
+        {
+            [PrimaryKey(1)] public long Id { get; set; }
+            public IOrderedSet<string> Parts { get; set; }
+        }
+
+        public interface ITableWithOrderedSet : IReadOnlyCollection<ItemWithOrderedSet>
+        {
+            bool Upsert(ItemWithOrderedSet item);
+            bool RemoveById(long id);
+
+            ItemWithOrderedSet FindById(long id);
+        }
+
+        [Fact]
+        public void BasicOrderedSet()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<ITableWithOrderedSet>("TableWithOrderedSet");
+            var table = creator(tr);
+
+            var i = new ItemWithOrderedSet {Id = 1, Parts = new OrderedSet<string> {"A", "B", "C"}};
+            table.Upsert(i);
+            i = table.FindById(1);
+            Assert.Equal(3, i.Parts.Count);
+            Assert.True(i.Parts.Add("D"));
+            Assert.False(i.Parts.Add("D"));
+            Assert.Equal(2,
+                i.Parts.RemoveRange(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending, "B",
+                    KeyProposition.Included, "D", KeyProposition.Excluded)));
+            Assert.Equal(2, i.Parts.Count);
+        }
     }
 }
