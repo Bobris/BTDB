@@ -4,7 +4,7 @@ namespace BTDB.IOC
 {
     public static class BuilderExtensions
     {
-        public static IRegistration<IAsLiveScopeConstructorTrait> RegisterType<T>(this ContainerBuilder builder)
+        public static IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType<T>(this ContainerBuilder builder)
         {
             return builder.RegisterType(typeof (T));
         }
@@ -60,6 +60,12 @@ namespace BTDB.IOC
         public static IRegistration<TTraits> Where<TTraits>(this IRegistration<TTraits> registration, Predicate<Type> filter) where TTraits : IScanTrait
         {
             ((IScanTrait)registration.InternalTraits(typeof(IScanTrait))).Where(filter);
+            return registration;
+        }
+
+        public static IRegistration<TTraits> PropertiesAutowired<TTraits>(this IRegistration<TTraits> registration) where TTraits : IPropertiesTrait
+        {
+            ((IPropertiesTrait)registration.InternalTraits(typeof(IPropertiesTrait))).PropertiesAutowired();
             return registration;
         }
     }

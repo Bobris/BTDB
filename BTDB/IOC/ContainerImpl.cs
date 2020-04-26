@@ -14,7 +14,7 @@ namespace BTDB.IOC
         internal readonly Dictionary<KeyAndType, ICReg> Registrations = new Dictionary<KeyAndType, ICReg>();
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
-        public readonly object[] Singletons;
+        public readonly object?[] Singletons;
         public object[] Instances;
         // ReSharper restore MemberCanBePrivate.Global
 
@@ -69,7 +69,7 @@ namespace BTDB.IOC
             throw new ArgumentException($"Type {type.ToSimpleName()} with key {key} cannot be resolved");
         }
 
-        Func<object> TryBuild(object key, Type type)
+        Func<object>? TryBuild(object key, Type type)
         {
             Func<object> worker;
             if (!_workers.TryGetValue(new KeyAndType(key, type), out worker))
@@ -96,7 +96,7 @@ namespace BTDB.IOC
             return (Func<object>)context.GenerateFunc(typeof(Func<object>));
         }
 
-        Func<object> Build(object key, Type type)
+        Func<object>? Build(object key, Type type)
         {
             var buildContext = new BuildContext(this);
             var registration = buildContext.ResolveNeedBy(type, key);

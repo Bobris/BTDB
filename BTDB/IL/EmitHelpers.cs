@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Linq.Expressions;
@@ -13,7 +14,7 @@ namespace BTDB.IL
 
         public static MethodInfo GetMethodInfo(Expression<Action> expression)
         {
-            return (expression.Body as MethodCallExpression).Method;
+            return ((MethodCallExpression) expression.Body).Method;
         }
 
         public static T CreateDelegate<T>(this MethodInfo mi) where T : class
@@ -275,6 +276,44 @@ namespace BTDB.IL
                 return;
             }
             throw new ArgumentOutOfRangeException(nameof(type), $"Don't know how to compare type {type}");
+        }
+
+        // Mostly taken from https://stackoverflow.com/questions/58453972/how-to-use-net-reflection-to-check-for-nullable-reference-type
+        public static bool IsNullable(Type enclosingType, PropertyInfo property)
+        {
+#if DEBUG
+            if (!enclosingType.GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Contains(property))
+                throw new ArgumentException("enclosingType must be the type which defines property");
+#endif
+            var nullable = property.CustomAttributes
+                .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
+            if (nullable != null && nullable.ConstructorArguments.Count == 1)
+            {
+                var attributeArgument = nullable.ConstructorArguments[0];
+                if (attributeArgument.ArgumentType == typeof(byte[]))
+                {
+                    var args = (ReadOnlyCollection<CustomAttributeTypedArgument>)attributeArgument.Value;
+                    if (args!.Count > 0 && args[0].ArgumentType == typeof(byte))
+                    {
+                        return (byte)args[0].Value! == 2;
+                    }
+                }
+                else if (attributeArgument.ArgumentType == typeof(byte))
+                {
+                    return (byte)attributeArgument.Value! == 2;
+                }
+            }
+
+            var context = enclosingType.CustomAttributes
+                .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute");
+            if (context != null &&
+                context.ConstructorArguments.Count == 1 &&
+                context.ConstructorArguments[0].ArgumentType == typeof(byte))
+            {
+                return (byte)context.ConstructorArguments[0].Value! == 2;
+            }
+
+            return false;
         }
     }
 }

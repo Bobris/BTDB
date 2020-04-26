@@ -7,13 +7,13 @@ namespace BTDB.IOC
     {
         static readonly IEqualityComparer<object> KeyComparer = EqualityComparer<object>.Default;
 
-        public KeyAndType(object key, Type type)
+        public KeyAndType(object? key, Type type)
         {
             Key = key;
             Type = type;
         }
 
-        public readonly object Key;
+        public readonly object? Key;
         public readonly Type Type;
 
         public bool Equals(KeyAndType other)

@@ -10,9 +10,9 @@ namespace BTDB.IOC
     {
         readonly ContainerImpl _container;
         readonly ICRegILGen _registration;
-        IBuildContext _buildContext;
+        IBuildContext? _buildContext;
         readonly Dictionary<Type, object> _specifics = new Dictionary<Type, object>();
-        readonly ParameterInfo[] _parameterInfos;
+        readonly ParameterInfo[]? _parameterInfos;
         readonly List<Tuple<object, Type>> _constants = new List<Tuple<object, Type>>();
         readonly Stack<Tuple<ICReg, string>> _cycleDetectionStack = new Stack<Tuple<ICReg, string>>();
 
@@ -24,7 +24,8 @@ namespace BTDB.IOC
             _parameterInfos = null;
         }
 
-        public GenerationContext(ContainerImpl container, ICRegILGen registration, IBuildContext buildContext, ParameterInfo[] parameterInfos)
+        public GenerationContext(ContainerImpl container, ICRegILGen registration, IBuildContext buildContext,
+            ParameterInfo[] parameterInfos)
         {
             _container = container;
             _registration = registration;
@@ -32,34 +33,27 @@ namespace BTDB.IOC
             _parameterInfos = parameterInfos;
         }
 
-        public IILGen IL { get; private set; }
+        public IILGen? IL { get; private set; }
 
         public ContainerImpl Container => _container;
 
-        public IBuildContext BuildContext
+        public IBuildContext? BuildContext
         {
-            get
-            {
-                return _buildContext;
-            }
-            set
-            {
-                _buildContext = value;
-            }
+            get => _buildContext;
+            set => _buildContext = value;
         }
 
         public T GetSpecific<T>() where T : class, new()
         {
-            object specific;
-            if (!_specifics.TryGetValue(typeof(T), out specific))
+            if (!_specifics.TryGetValue(typeof(T), out var specific))
             {
                 specific = new T();
-                var contextSetter = specific as IGenerationContextSetter;
-                if (contextSetter != null)
+                if (specific is IGenerationContextSetter contextSetter)
                     contextSetter.Set(this);
                 _specifics.Add(typeof(T), specific);
             }
-            return (T)specific;
+
+            return (T) specific;
         }
 
         public IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor)
@@ -74,7 +68,24 @@ namespace BTDB.IOC
                     Optional = parameter.IsOptional,
                     OptionalValue = parameter.RawDefaultValue,
                     ForcedKey = false,
-                    Key = string.Intern(parameter.Name)
+                    Key = string.Intern(parameter.Name!)
+                };
+            }
+        }
+
+        public IEnumerable<INeed> NeedsForAutowiredProperties(Type type)
+        {
+            foreach (var propertyInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (propertyInfo.GetSetMethod(true) == null) continue;
+                yield return new Need
+                {
+                    Kind = NeedKind.Property,
+                    ParentType = type,
+                    ClrType = propertyInfo.PropertyType,
+                    Optional = EmitHelpers.IsNullable(type, propertyInfo),
+                    ForcedKey = false,
+                    Key = string.Intern(propertyInfo.Name)
                 };
             }
         }
@@ -102,18 +113,21 @@ namespace BTDB.IOC
                     var local = reg.GenMain(this);
                     if (local == null)
                     {
-                        local = IL.DeclareLocal(needs[index].ClrType);
+                        local = IL!.DeclareLocal(needs[index].ClrType);
                         IL.Stloc(local);
                     }
+
                     parsLocals.Add(local);
                 }
                 else
                 {
                     parsLocals.Add(null);
                 }
+
                 index++;
             }
-            for (int i = 0; i < regs.Length; i++)
+
+            for (var i = 0; i < regs.Length; i++)
             {
                 var local = parsLocals[i];
                 if (local != null)
@@ -128,6 +142,7 @@ namespace BTDB.IOC
                         IL.Ldloc(local);
                     }
                 }
+
                 if (local == null) continue;
                 if (local.LocalType != needs[i].ClrType && local.LocalType.IsClass)
                 {
@@ -142,7 +157,13 @@ namespace BTDB.IOC
             {
                 if (regILGen.IsCorruptingILStack(this)) return true;
             }
+
             return false;
+        }
+
+        public bool IsResolvableNeed(INeed need)
+        {
+            return _resolvers.ContainsKey(new Tuple<IBuildContext, INeed>(_buildContext, need));
         }
 
         public ICRegILGen ResolveNeed(INeed need)
@@ -154,8 +175,11 @@ namespace BTDB.IOC
         {
             if (_cycleDetectionStack.Any(t => t.Item1 == reg))
             {
-                throw new InvalidOperationException("Cycle detected in registrations: " + string.Join(", ", _cycleDetectionStack.Select(t => t.Item2)) + ". Consider using Lazy<> to break cycle.");
+                throw new InvalidOperationException("Cycle detected in registrations: " +
+                                                    string.Join(", ", _cycleDetectionStack.Select(t => t.Item2)) +
+                                                    ". Consider using Lazy<> to break cycle.");
             }
+
             _cycleDetectionStack.Push(new Tuple<ICReg, string>(reg, name));
         }
 
@@ -164,7 +188,8 @@ namespace BTDB.IOC
             _cycleDetectionStack.Pop();
         }
 
-        readonly Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen> _resolvers = new Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen>(Comparer.Instance);
+        readonly Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen> _resolvers =
+            new Dictionary<Tuple<IBuildContext, INeed>, ICRegILGen>(Comparer.Instance);
 
         class Comparer : IEqualityComparer<Tuple<IBuildContext, INeed>>
         {
@@ -228,9 +253,10 @@ namespace BTDB.IOC
             {
                 if (need.Kind == NeedKind.CReg)
                 {
-                    GatherNeeds((ICRegILGen)need.Key, processed);
+                    GatherNeeds((ICRegILGen) need.Key, processed);
                     continue;
                 }
+
                 var k = new Tuple<IBuildContext, INeed>(_buildContext, need);
                 if (_resolvers.ContainsKey(k))
                     continue;
@@ -239,11 +265,13 @@ namespace BTDB.IOC
                     _resolvers.Add(k, AddConstant(_container, need.ClrType));
                     continue;
                 }
+
                 if (need.Kind == NeedKind.Constant)
                 {
                     _resolvers.Add(k, AddConstant(need.Key, need.ClrType));
                     continue;
                 }
+
                 if (need.Kind == NeedKind.ConstructorParameter)
                 {
                     var reg = ResolveNeedBy(need.ClrType, need.Key);
@@ -253,8 +281,27 @@ namespace BTDB.IOC
                         reg = new OptionalImpl(need.OptionalValue, need.ClrType);
                     if (reg == null)
                     {
-                        throw new ArgumentException($"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
+                        throw new ArgumentException(
+                            $"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
                     }
+
+                    _resolvers.Add(new Tuple<IBuildContext, INeed>(_buildContext, need), reg);
+                    GatherNeeds(reg, processed);
+                }
+
+                if (need.Kind == NeedKind.Property)
+                {
+                    var reg = ResolveNeedBy(need.ClrType, need.Key);
+                    if (reg == null && !need.ForcedKey)
+                        reg = ResolveNeedBy(need.ClrType, null);
+                    if (reg == null)
+                    {
+                        if (!need.Optional)
+                            throw new ArgumentException(
+                                $"Cannot resolve {need.ClrType.ToSimpleName()} with key {need.Key}");
+                        return;
+                    }
+
                     _resolvers.Add(new Tuple<IBuildContext, INeed>(_buildContext, need), reg);
                     GatherNeeds(reg, processed);
                 }
@@ -263,13 +310,13 @@ namespace BTDB.IOC
 
         class OptionalImpl : ICRegILGen
         {
-            readonly object value;
-            readonly Type type;
+            readonly object? _value;
+            readonly Type _type;
 
             public OptionalImpl(object value, Type type)
             {
-                this.type = type;
-                this.value = value;
+                _type = type;
+                _value = value;
             }
 
             public string GenFuncName(IGenerationContext context)
@@ -286,28 +333,29 @@ namespace BTDB.IOC
                 return false;
             }
 
-            public IILLocal GenMain(IGenerationContext context)
+            public IILLocal? GenMain(IGenerationContext context)
             {
                 // For some reason struct's RawDefaultValue is null
                 // Partial explanation is that structs are not really compile time constants
                 // so they are nullable during compilation and then assigned at runtime
-                if (type.IsValueType && value == null)
+                if (_type.IsValueType && _value == null)
                 {
-                    var local = context.IL.DeclareLocal(type);
+                    var local = context.IL.DeclareLocal(_type);
                     context.IL
                         .Ldloca(local)
-                        .InitObj(type)
+                        .InitObj(_type)
                         .Ldloc(local);
                 }
-                else if (type.IsValueType && value != null && !type.IsPrimitive && !type.IsEnum)
+                else if (_type.IsValueType && _value != null && !_type.IsPrimitive && !_type.IsEnum)
                 {
-                    var ctor = type.GetConstructors()[0];
+                    var ctor = _type.GetConstructors()[0];
                     context.IL
-                        .Ld(value)
+                        .Ld(_value)
                         .Newobj(ctor);
                 }
                 else
-                    context.IL.Ld(value);
+                    context.IL.Ld(_value);
+
                 return null;
             }
 
@@ -334,6 +382,7 @@ namespace BTDB.IOC
                     goto found;
                 }
             }
+
             _constants.Add(tuple);
             found:
             return new ConstantImpl(tuple);
@@ -362,14 +411,15 @@ namespace BTDB.IOC
                 return false;
             }
 
-            public IILLocal GenMain(IGenerationContext context)
+            public IILLocal? GenMain(IGenerationContext context)
             {
-                var consts = ((GenerationContext)context)._constants;
+                var consts = ((GenerationContext) context)._constants;
                 if (consts.Count == 1)
                 {
                     context.IL.Ldarg(0);
                     return null;
                 }
+
                 var idx = consts.FindIndex(t => ReferenceEquals(t, _tuple));
                 context.IL.Ldarg(0).LdcI4(idx).LdelemRef().Castclass(_tuple.Item2);
                 return null;
@@ -409,10 +459,10 @@ namespace BTDB.IOC
                 return false;
             }
 
-            public IILLocal GenMain(IGenerationContext context)
+            public IILLocal? GenMain(IGenerationContext context)
             {
-                var consts = ((GenerationContext)context)._constants;
-                context.IL.Ldarg((ushort)(_idx + (consts.Count > 0 ? 1 : 0)));
+                var consts = ((GenerationContext) context)._constants;
+                context.IL.Ldarg((ushort) (_idx + (consts.Count > 0 ? 1 : 0)));
                 return null;
             }
 
@@ -427,7 +477,7 @@ namespace BTDB.IOC
             }
         }
 
-        ICRegILGen ResolveNeedBy(Type clrType, object key)
+        ICRegILGen? ResolveNeedBy(Type clrType, object? key)
         {
             if (_parameterInfos != null)
             {
@@ -439,12 +489,14 @@ namespace BTDB.IOC
                     }
                 }
             }
-            return _buildContext.ResolveNeedBy(clrType, key);
+
+            return _buildContext!.ResolveNeedBy(clrType, key);
         }
 
         public object GenerateFunc(Type funcType)
         {
-            GatherNeeds(_registration, new HashSet<Tuple<IBuildContext, ICRegILGen>>(ComparerProcessingContext.Instance));
+            GatherNeeds(_registration,
+                new HashSet<Tuple<IBuildContext, ICRegILGen>>(ComparerProcessingContext.Instance));
             if (_constants.Count == 0)
             {
                 var method = ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType);
@@ -452,9 +504,11 @@ namespace BTDB.IOC
                 GenerateBody();
                 return method.Create();
             }
+
             if (_constants.Count == 1)
             {
-                var method = ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType, _constants[0].Item2);
+                var method =
+                    ILBuilder.Instance.NewMethod(_registration.GenFuncName(this), funcType, _constants[0].Item2);
                 IL = method.Generator;
                 GenerateBody();
                 return method.Create(_constants[0].Item1);
@@ -474,9 +528,10 @@ namespace BTDB.IOC
             var local = _registration.GenMain(this);
             if (local != null)
             {
-                IL.Ldloc(local);
+                IL!.Ldloc(local);
             }
-            IL.Ret();
+
+            IL!.Ret();
         }
     }
 }

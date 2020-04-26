@@ -332,11 +332,12 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfaces()
+        public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfaces()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
-                AsImplementedInterfaces();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
+                .AsImplementedInterfaces();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -345,11 +346,37 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void RegisterAssemlyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
+        public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfaces2()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain").
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces().PropertiesAutowired();
+            var container = builder.Build();
+            var root = container.Resolve<IWebService>();
+            Assert.NotNull(root);
+            Assert.NotNull(root.Authenticator.Database.Logger);
+            Assert.NotSame(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+        }
+
+        [Fact]
+        public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps")).
                 AsImplementedInterfaces().SingleInstance();
+            var container = builder.Build();
+            var root = container.Resolve<IWebService>();
+            Assert.NotNull(root);
+            Assert.NotNull(root.Authenticator.Database.Logger);
+            Assert.Same(root.StockQuote.ErrorHandler.Logger, root.Authenticator.Database.Logger);
+        }
+
+        [Fact]
+        public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton2()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").
+                AsImplementedInterfaces().SingleInstance().PropertiesAutowired();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -443,6 +470,46 @@ namespace BTDBTest
             var container = builder.Build();
             var factory = container.Resolve<Func<IErrorHandler, ILogger, IDatabase>>();
             var obj = factory(null, null);
+            Assert.NotNull(obj);
+        }
+
+        [Fact]
+        public void FuncWithTwoObjectParametersWithProps()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<DatabaseWithProps>().As<IDatabase>().PropertiesAutowired();
+            var container = builder.Build();
+            var factory = container.Resolve<Func<IErrorHandler, ILogger, IDatabase>>();
+            var logger = new Logger();
+            var obj = factory(null, logger);
+            Assert.NotNull(obj);
+            Assert.Same(logger, obj.Logger);
+        }
+
+        [Fact]
+        public void FuncWithTwoObjectParametersWithPropsAreRequired()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<DatabaseWithProps>().As<IDatabase>().PropertiesAutowired();
+            var container = builder.Build();
+            Assert.Throws<ArgumentException>(() => container.Resolve<Func<IErrorHandler, IDatabase>>());
+            Assert.Throws<ArgumentException>(() => container.Resolve<Func<ILogger, IDatabase>>());
+        }
+
+        public class DatabaseWithOptionalProps : IDatabase
+        {
+            public ILogger? Logger { get; private set; }
+            public IErrorHandler? ErrorHandler { get; private set; }
+        }
+
+        [Fact]
+        public void FuncWithTwoObjectParametersWithOptionalProps()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<DatabaseWithOptionalProps>().As<IDatabase>().PropertiesAutowired();
+            var container = builder.Build();
+            var factory = container.Resolve<Func<IDatabase>>();
+            var obj = factory();
             Assert.NotNull(obj);
         }
 
@@ -990,7 +1057,7 @@ namespace BTDBTest
             Assert.Throws<ArgumentException>(() => container.Resolve<IDisposable>());
             Assert.Throws<ArgumentException>(() => container.Resolve<IAsyncDisposable>());
         }
-        
+
         [Fact]
         public void DisposableInterfacesCanBeRegisteredManually()
         {
@@ -1000,7 +1067,7 @@ namespace BTDBTest
             var container = containerBuilder.Build();
             Assert.NotNull(container.Resolve<IDisposable>());
             Assert.NotNull(container.Resolve<IAsyncDisposable>());
-        }        
-        
+        }
+
     }
 }

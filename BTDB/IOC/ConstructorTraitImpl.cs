@@ -7,18 +7,19 @@ namespace BTDB.IOC
 {
     class ConstructorTraitImpl : IConstructorTrait, IConstructorTraitImpl
     {
-        Type[] _parameterTypes;
+        Type[]? _parameterTypes;
 
         public IEnumerable<ConstructorInfo> ReturnPossibleConstructors(Type forType)
         {
             return forType.GetConstructors();
         }
 
-        public ConstructorInfo ChooseConstructor(Type forType, IEnumerable<ConstructorInfo> candidates)
+        public ConstructorInfo? ChooseConstructor(Type forType, IEnumerable<ConstructorInfo> candidates)
         {
-            if (_parameterTypes != null)
+            var parameterTypes = _parameterTypes;
+            if (parameterTypes != null)
             {
-                return candidates.FirstOrDefault(ci => ci.GetParameters().Select(pi => pi.ParameterType).SequenceEqual(_parameterTypes));
+                return candidates.FirstOrDefault(ci => ci.GetParameters().Select(pi => pi.ParameterType).SequenceEqual(parameterTypes));
             }
             return candidates.OrderByDescending(ci => ci.GetParameters().Length).FirstOrDefault();
         }

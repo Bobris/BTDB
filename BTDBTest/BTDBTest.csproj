@@ -1,9 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp3.1</TargetFrameworks>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <LangVersion>8</LangVersion>
     <NoWarn>1701;1702;1720</NoWarn>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks> 
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable> 
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Assent" Version="1.5.0" />

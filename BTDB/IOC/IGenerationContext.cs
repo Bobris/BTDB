@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using BTDB.IL;
@@ -11,9 +12,11 @@ namespace BTDB.IOC
         IBuildContext BuildContext { get; set; }
         T GetSpecific<T>() where T : class, new();
         IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor);
+        IEnumerable<INeed> NeedsForAutowiredProperties(Type type);
         void PushToILStack(INeed need);
         void PushToILStack(IEnumerable<INeed> needs);
         bool AnyCorruptingStack(IEnumerable<INeed> needs);
+        bool IsResolvableNeed(INeed need);
         ICRegILGen ResolveNeed(INeed need);
         void PushToCycleDetector(ICReg reg, string name);
         void PopFromCycleDetector();

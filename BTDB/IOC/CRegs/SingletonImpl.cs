@@ -11,7 +11,7 @@ namespace BTDB.IOC.CRegs
         readonly Type _implementationType;
         readonly ICRegILGen _wrapping;
         readonly int _singletonIndex;
-        IBuildContext _buildCtx;
+        IBuildContext? _buildCtx;
 
         public SingletonImpl(Type implementationType, ICRegILGen wrapping, int singletonIndex)
         {
@@ -20,7 +20,7 @@ namespace BTDB.IOC.CRegs
             _singletonIndex = singletonIndex;
         }
 
-        public object BuildFuncOfT(ContainerImpl container, Type funcType)
+        public object? BuildFuncOfT(ContainerImpl container, Type funcType)
         {
             var obj = container.Singletons[_singletonIndex];
             return obj == null ? null : ClosureOfObjBuilder.Build(funcType, obj);
@@ -34,7 +34,7 @@ namespace BTDB.IOC.CRegs
         public void GenInitialization(IGenerationContext context)
         {
             var backupCtx = context.BuildContext;
-            context.BuildContext = _buildCtx;
+            context.BuildContext = _buildCtx!;
             _wrapping.GenInitialization(context);
             context.GetSpecific<SingletonsLocal>().Prepare();
             context.BuildContext = backupCtx;
@@ -56,10 +56,9 @@ namespace BTDB.IOC.CRegs
                 _map = _stack.Pop();
             }
 
-            internal IILLocal Get(ICReg key)
+            internal IILLocal? Get(ICReg key)
             {
-                IILLocal result;
-                return _map.TryGetValue(key, out result) ? result : null;
+                return _map.TryGetValue(key, out var result) ? result : null;
             }
 
             public void Add(ICReg key, IILLocal local)
@@ -70,7 +69,7 @@ namespace BTDB.IOC.CRegs
 
         class SingletonsLocal : IGenerationContextSetter
         {
-            IGenerationContext _context;
+            IGenerationContext? _context;
 
             public void Set(IGenerationContext context)
             {
@@ -80,7 +79,7 @@ namespace BTDB.IOC.CRegs
             internal void Prepare()
             {
                 if (MainLocal != null) return;
-                MainLocal = _context.IL.DeclareLocal(typeof(object[]), "singletons");
+                MainLocal = _context!.IL.DeclareLocal(typeof(object[]), "singletons");
                 _context.PushToILStack(Need.ContainerNeed);
                 _context.IL
                     .Castclass(typeof(ContainerImpl))
@@ -88,7 +87,7 @@ namespace BTDB.IOC.CRegs
                     .Stloc(MainLocal);
             }
 
-            internal IILLocal MainLocal { get; private set; }
+            internal IILLocal? MainLocal { get; private set; }
         }
 
         public bool IsCorruptingILStack(IGenerationContext context)
@@ -104,7 +103,7 @@ namespace BTDB.IOC.CRegs
         public IILLocal GenMain(IGenerationContext context)
         {
             var backupCtx = context.BuildContext;
-            context.BuildContext = _buildCtx;
+            context.BuildContext = _buildCtx!;
             var il = context.IL;
             var buildCRegLocals = context.GetSpecific<BuildCRegLocals>();
             var localSingleton = buildCRegLocals.Get(this);
@@ -119,7 +118,7 @@ namespace BTDB.IOC.CRegs
             if (obj != null)
             {
                 il
-                    .Ldloc(localSingletons)
+                    .Ldloc(localSingletons!)
                     .LdcI4(_singletonIndex)
                     .LdelemRef()
                     .Castclass(_implementationType)
@@ -133,7 +132,7 @@ namespace BTDB.IOC.CRegs
             var labelNotTaken = il.DefineLabel();
             bool boolPlaceholder = false;
             il
-                .Ldloc(localSingletons)
+                .Ldloc(localSingletons!)
                 .LdcI4(_singletonIndex)
                 .LdelemRef()
                 .Dup()

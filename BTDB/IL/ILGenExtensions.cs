@@ -649,7 +649,7 @@ namespace BTDB.IL
             return il;
         }
 
-        public static IILGen Ld(this IILGen il, object value)
+        public static IILGen Ld(this IILGen il, object? value)
         {
             switch (value)
             {

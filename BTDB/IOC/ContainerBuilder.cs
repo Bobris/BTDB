@@ -8,7 +8,7 @@ namespace BTDB.IOC
     {
         readonly List<IRegistration> _registrations = new List<IRegistration>();
 
-        public IRegistration<IAsLiveScopeConstructorTrait> RegisterType(Type type)
+        public IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType(Type type)
         {
             var registration = new SingleRegistration(type);
             _registrations.Add(registration);
@@ -38,12 +38,12 @@ namespace BTDB.IOC
             return registration;
         }
 
-        public IRegistration<IAsLiveScopeConstructorScanTrait> RegisterAssemblyTypes(Assembly from)
+        public IRegistration<IAsLiveScopeConstructorPropertiesScanTrait> RegisterAssemblyTypes(Assembly from)
         {
             return RegisterAssemblyTypes(new[] { from });
         }
 
-        public IRegistration<IAsLiveScopeConstructorScanTrait> RegisterAssemblyTypes(params Assembly[] froms)
+        public IRegistration<IAsLiveScopeConstructorPropertiesScanTrait> RegisterAssemblyTypes(params Assembly[] froms)
         {
             var registration = new MultiRegistration(froms);
             _registrations.Add(registration);

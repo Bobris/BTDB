@@ -7,12 +7,12 @@ namespace BTDB.IOC.CRegs
 {
     class EnumerableImpl : ICReg, ICRegILGen
     {
-        readonly object _key;
+        readonly object? _key;
         readonly Type _type;
         readonly Type _resultType;
         readonly List<KeyValuePair<IBuildContext, ICRegILGen>> _list = new List<KeyValuePair<IBuildContext, ICRegILGen>>();
 
-        public EnumerableImpl(object key, Type type, Type resultType, IBuildContext firstBuildCtx, ICRegILGen firstReg)
+        public EnumerableImpl(object? key, Type type, Type resultType, IBuildContext firstBuildCtx, ICRegILGen firstReg)
         {
             _key = key;
             _type = type;

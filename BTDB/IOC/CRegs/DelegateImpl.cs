@@ -6,12 +6,12 @@ namespace BTDB.IOC.CRegs
 {
     class DelegateImpl : ICReg, ICRegILGen
     {
-        readonly object _key;
+        readonly object? _key;
         readonly Type _type;
         readonly ICRegILGen _nestedRegistration;
         readonly Need _myNeed;
 
-        public DelegateImpl(object key, Type type, ICRegILGen nestedRegistration)
+        public DelegateImpl(object? key, Type type, ICRegILGen nestedRegistration)
         {
             _key = key;
             _type = type;
