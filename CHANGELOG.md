@@ -4,6 +4,10 @@
 
 ## 20.1.0
 
+### Added
+
+- IOC now supports public properties injection. Registration needs to be done with `PropertiesAutowired()`. Setters does not need to be public. Nullable reference types are optional dependencies, all other properties are required.
+
 ## 20.0.0
 
 ### Added
