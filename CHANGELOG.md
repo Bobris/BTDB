@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 20.2.0
+
 ### Added
 
 - IOC now support `Dependency` attribute for properties injection. Also it could be used for renaming dependency resolved name. Nullable reference types are optional dependencies.
