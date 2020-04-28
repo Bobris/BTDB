@@ -487,7 +487,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FuncWithTwoObjectParametersWithPropsAreRequired()
+        public void AutowiredWithPropsRequired()
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<DatabaseWithProps>().As<IDatabase>().PropertiesAutowired();
@@ -503,7 +503,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void FuncWithTwoObjectParametersWithOptionalProps()
+        public void FuncWithOptionalProps()
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<DatabaseWithOptionalProps>().As<IDatabase>().PropertiesAutowired();
@@ -511,6 +511,50 @@ namespace BTDBTest
             var factory = container.Resolve<Func<IDatabase>>();
             var obj = factory();
             Assert.NotNull(obj);
+        }
+
+        public class DatabaseWithDependencyProps : IDatabase
+        {
+            [Dependency]
+            public ILogger Logger { get; private set; }
+            [Dependency]
+            public IErrorHandler? ErrorHandler { get; private set; }
+        }
+
+        [Fact]
+        public void FuncWithDependencyProps()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<DatabaseWithDependencyProps>().As<IDatabase>();
+            var container = builder.Build();
+            var factory = container.Resolve<Func<ILogger, IDatabase>>();
+            var logger = new Logger();
+            var obj = factory(logger);
+            Assert.NotNull(obj);
+            Assert.Same(logger, obj.Logger);
+        }
+
+        public class ClassWithRenamedDependencyProps
+        {
+            [Dependency]
+            public ILogger Logger { get; set; }
+            [Dependency("SuperLogger")]
+            public ILogger Logger2 { get; set; }
+        }
+
+        [Fact]
+        public void RenamingDependencies()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<ClassWithRenamedDependencyProps>().AsSelf();
+            builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
+            builder.RegisterType<Logger>().Named<ILogger>("SuperLogger").SingleInstance();
+            var container = builder.Build();
+            var obj = container.Resolve<ClassWithRenamedDependencyProps>();
+            Assert.NotNull(obj);
+            Assert.Same(container.Resolve<ILogger>(), obj.Logger);
+            Assert.Same(container.ResolveNamed<ILogger>("SuperLogger"), obj.Logger2);
+            Assert.NotSame(obj.Logger,obj.Logger2);
         }
 
         public class KlassWith2IntParams

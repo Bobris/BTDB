@@ -12,7 +12,7 @@ namespace BTDB.IOC
         IBuildContext BuildContext { get; set; }
         T GetSpecific<T>() where T : class, new();
         IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor);
-        IEnumerable<INeed> NeedsForAutowiredProperties(Type type);
+        IEnumerable<INeed> NeedsForProperties(Type type, bool autowired);
         void PushToILStack(INeed need);
         void PushToILStack(IEnumerable<INeed> needs);
         bool AnyCorruptingStack(IEnumerable<INeed> needs);

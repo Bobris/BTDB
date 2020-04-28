@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 namespace BTDB.IOC
 {
@@ -11,6 +12,7 @@ namespace BTDB.IOC
         public object? Key { get; set; }
         public Type? ParentType { get; set; }
         public object? OptionalValue { get; set; }
+        public PropertyInfo? PropertyInfo { get; set; }
 
         public static readonly INeed ContainerNeed;
 

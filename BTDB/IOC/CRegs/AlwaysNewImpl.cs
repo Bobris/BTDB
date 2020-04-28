@@ -27,9 +27,9 @@ namespace BTDB.IOC.CRegs
         public void GenInitialization(IGenerationContext context)
         {
             context.PushToCycleDetector(this, _implementationType.ToSimpleName());
-            foreach (var regILGen in GetNeeds(context).Where(context.IsResolvableNeed).Select(context.ResolveNeed))
+            foreach (var regIlGen in GetNeeds(context).Where(context.IsResolvableNeed).Select(context.ResolveNeed))
             {
-                regILGen.GenInitialization(context);
+                regIlGen.GenInitialization(context);
             }
 
             context.PopFromCycleDetector();
@@ -43,12 +43,13 @@ namespace BTDB.IOC.CRegs
         public IILLocal? GenMain(IGenerationContext context)
         {
             var il = context.IL;
-            if (_arePropertiesAutowired)
+            var needsForProps = context.NeedsForProperties(_implementationType, _arePropertiesAutowired).ToList();
+            if (needsForProps.Count>0)
             {
                 var result = il.DeclareLocal(_implementationType);
                 context.PushToILStack(context.NeedsForConstructor(_constructorInfo));
                 il.Newobj(_constructorInfo).Stloc(result);
-                foreach (var need in context.NeedsForAutowiredProperties(_implementationType))
+                foreach (var need in needsForProps)
                 {
                     if (!context.IsResolvableNeed(need)) continue;
                     var resolvedNeed = context.ResolveNeed(need);
@@ -74,7 +75,7 @@ namespace BTDB.IOC.CRegs
                         }
                     }
 
-                    il.Call(_implementationType.GetProperty((string) need.Key)!.GetSetMethod(true)!);
+                    il.Call(need.PropertyInfo!.GetSetMethod(true)!);
                 }
 
                 return result;
@@ -87,9 +88,7 @@ namespace BTDB.IOC.CRegs
 
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
-            return context.NeedsForConstructor(_constructorInfo).Concat(_arePropertiesAutowired
-                ? context.NeedsForAutowiredProperties(_implementationType)
-                : Enumerable.Empty<INeed>());
+            return context.NeedsForConstructor(_constructorInfo).Concat(context.NeedsForProperties(_implementationType, _arePropertiesAutowired));
         }
     }
 }

@@ -73,11 +73,13 @@ namespace BTDB.IOC
             }
         }
 
-        public IEnumerable<INeed> NeedsForAutowiredProperties(Type type)
+        public IEnumerable<INeed> NeedsForProperties(Type type, bool autowired)
         {
             foreach (var propertyInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (propertyInfo.GetSetMethod(true) == null) continue;
+                var dependencyAttribute = propertyInfo.GetCustomAttribute<DependencyAttribute>();
+                if (dependencyAttribute == null && !autowired) continue;
                 yield return new Need
                 {
                     Kind = NeedKind.Property,
@@ -85,7 +87,8 @@ namespace BTDB.IOC
                     ClrType = propertyInfo.PropertyType,
                     Optional = EmitHelpers.IsNullable(type, propertyInfo),
                     ForcedKey = false,
-                    Key = string.Intern(propertyInfo.Name)
+                    Key = string.Intern(dependencyAttribute?.Name ?? propertyInfo.Name),
+                    PropertyInfo = propertyInfo
                 };
             }
         }
