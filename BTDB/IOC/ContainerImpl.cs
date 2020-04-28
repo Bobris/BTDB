@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BTDB.IL;
 using BTDB.IOC.CRegs;
@@ -45,10 +46,10 @@ namespace BTDB.IOC
             return ResolveKeyed(name, type);
         }
 
-        public object ResolveKeyed(object key, Type type)
+        public object ResolveKeyed(object? key, Type type)
         {
-            Func<object> worker;
-            if (_workers.TryGetValue(new KeyAndType(key, type), out worker))
+            // ReSharper disable once InconsistentlySynchronizedField
+            if (_workers.TryGetValue(new KeyAndType(key, type), out var worker))
             {
                 return worker();
             }
@@ -56,11 +57,12 @@ namespace BTDB.IOC
             {
                 worker = TryBuild(key, type);
             }
-            if (worker == null) throwNotResolvable(key, type);
+            if (worker == null) ThrowNotResolvable(key, type);
             return worker();
         }
 
-        void throwNotResolvable(object key, Type type)
+        [DoesNotReturn]
+        static void ThrowNotResolvable(object? key, Type type)
         {
             if (key == null)
             {
@@ -69,10 +71,9 @@ namespace BTDB.IOC
             throw new ArgumentException($"Type {type.ToSimpleName()} with key {key} cannot be resolved");
         }
 
-        Func<object>? TryBuild(object key, Type type)
+        Func<object>? TryBuild(object? key, Type type)
         {
-            Func<object> worker;
-            if (!_workers.TryGetValue(new KeyAndType(key, type), out worker))
+            if (!_workers.TryGetValue(new KeyAndType(key, type), out var worker))
             {
                 worker = Build(key, type);
                 if (worker == null) return null;
@@ -83,8 +84,7 @@ namespace BTDB.IOC
 
         internal Func<object> BuildFromRegistration(ICRegILGen registration, IBuildContext buildContext)
         {
-            var regOpt = registration as ICRegFuncOptimized;
-            if (regOpt != null)
+            if (registration is ICRegFuncOptimized regOpt)
             {
                 var result = (Func<object>)regOpt.BuildFuncOfT(this, typeof(Func<object>));
                 if (result != null)
@@ -96,15 +96,11 @@ namespace BTDB.IOC
             return (Func<object>)context.GenerateFunc(typeof(Func<object>));
         }
 
-        Func<object>? Build(object key, Type type)
+        Func<object>? Build(object? key, Type type)
         {
             var buildContext = new BuildContext(this);
             var registration = buildContext.ResolveNeedBy(type, key);
-            if (registration != null)
-            {
-                return BuildFromRegistration(registration, buildContext);
-            }
-            return null;
+            return registration != null ? BuildFromRegistration(registration, buildContext) : null;
         }
 
         public int AddInstance(object instance)

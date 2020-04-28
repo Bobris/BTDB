@@ -409,7 +409,7 @@ namespace BTDBTest
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<Logger>().As<ILogger>();
-            builder.RegisterInstance<ILogger>(default(ILogger)).As<ILogger>();
+            builder.RegisterInstance<ILogger>(null!).As<ILogger>();
             var container = builder.Build();
             Assert.Null(container.Resolve<ILogger>());
         }
