@@ -113,10 +113,9 @@ namespace BTDBTest
                 Items = new Dictionary<ulong, IList<Item>> {{1, new List<Item> {new Item {Field = "A"}}}}
             }, new FullNameTypeMapper());
             var serializer = new EventSerializer();
-            bool hasMetadata;
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
-            var data = serializer.Serialize(out hasMetadata, obj);
+            var data = serializer.Serialize(out _, obj);
 
             var deserializer = new EventDeserializer();
             object obj2;

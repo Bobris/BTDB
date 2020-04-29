@@ -1091,5 +1091,15 @@ namespace BTDBTest
             Assert.Equal(new[] {"A", "B"}, ev!.A.OrderBy(a => a));
             Assert.Equal(new[] {7, 42}, ev.B.OrderBy(b => b));
         }
+
+        [Fact]
+        public void StoreListThenArray()
+        {
+            var a = new EventStoreManager().AppendToStore(
+                new MemoryEventFileStorage());
+            a.Store(null, new[] { new List<bool>() });
+            a.Store(null, new[] { new[] { true } });
+            a.Store(null, new[] { new HashSet<bool>() });
+        }
     }
 }

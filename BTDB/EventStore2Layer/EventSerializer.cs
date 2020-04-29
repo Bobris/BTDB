@@ -337,7 +337,7 @@ namespace BTDB.EventStore2Layer
             {
                 if (type.IsGenericType)
                 {
-                    typeAlternative = type.SpecializationOf(typeof(IList<>)) ?? type.SpecializationOf(typeof(ISet<>));
+                    typeAlternative = type.SpecializationOf(typeof(IDictionary<,>));
                     if (typeAlternative != null)
                     {
                         if (type != typeAlternative)
@@ -355,11 +355,11 @@ namespace BTDB.EventStore2Layer
                             }
                         }
 
-                        desc = new ListTypeDescriptor(this, typeAlternative);
+                        desc = new DictionaryTypeDescriptor(this, typeAlternative);
                     }
                     else
                     {
-                        typeAlternative = type.SpecializationOf(typeof(IDictionary<,>));
+                        typeAlternative = type.SpecializationOf(typeof(IList<>)) ?? type.SpecializationOf(typeof(ISet<>));
                         if (typeAlternative != null)
                         {
                             if (type != typeAlternative)
@@ -377,7 +377,7 @@ namespace BTDB.EventStore2Layer
                                 }
                             }
 
-                            desc = new DictionaryTypeDescriptor(this, typeAlternative);
+                            desc = new ListTypeDescriptor(this, typeAlternative);
                         }
                         else if (type.GetGenericTypeDefinition().InheritsOrImplements(typeof(IIndirect<>)))
                         {
@@ -467,6 +467,7 @@ namespace BTDB.EventStore2Layer
             _visited.Add(obj, _visited.Count);
             SerializerTypeInfo info;
             var knowDescriptor = obj as IKnowDescriptor;
+            var type = obj.GetType();
             if (knowDescriptor != null)
             {
                 var origDesc = knowDescriptor.GetDescriptor();
@@ -487,9 +488,9 @@ namespace BTDB.EventStore2Layer
             }
             else
             {
-                if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+                if (!_typeOrDescriptor2Info.TryGetValue(type, out info))
                 {
-                    var desc = Create(obj.GetType());
+                    var desc = Create(type);
                     if (!_typeOrDescriptor2InfoNew.TryGetValue(desc, out info))
                     {
                         // It could be already existing descriptor just unknown type
@@ -503,13 +504,13 @@ namespace BTDB.EventStore2Layer
                 }
             }
 
-            if (info.NestedObjGatherer == null)
+            if (!info.NestedObjGatherers.TryGetValue(type, out var gatherer))
             {
-                info.NestedObjGatherer = BuildNestedObjGatherer(info.Descriptor,
-                    knowDescriptor == null ? obj.GetType() : typeof(object));
+                gatherer = BuildNestedObjGatherer(info.Descriptor!, obj.GetType());
+                info.NestedObjGatherers[type] = gatherer;
             }
 
-            info.NestedObjGatherer(obj, this);
+            gatherer(obj, this);
         }
 
         ITypeDescriptor MergeDescriptor(ITypeDescriptor origDesc)
@@ -668,7 +669,7 @@ namespace BTDB.EventStore2Layer
             });
         }
 
-        public void StoreObject(object obj)
+        public void StoreObject(object? obj)
         {
             if (_newTypeFound) return;
             if (obj == null)
@@ -678,8 +679,7 @@ namespace BTDB.EventStore2Layer
             }
 
             var visited = _visited;
-            int index;
-            if (visited.TryGetValue(obj, out index))
+            if (visited.TryGetValue(obj, out var index))
             {
                 _writer.WriteUInt8(1); // backreference
                 _writer.WriteVUInt32((uint) index);
@@ -687,11 +687,9 @@ namespace BTDB.EventStore2Layer
             }
 
             visited.Add(obj, visited.Count);
-            SerializerTypeInfo info;
-            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
             {
-                var knowDescriptor = obj as IKnowDescriptor;
-                if (knowDescriptor != null)
+                if (obj is IKnowDescriptor knowDescriptor)
                 {
                     if (!_typeOrDescriptor2Info.TryGetValue(knowDescriptor.GetDescriptor(), out info))
                     {
@@ -706,7 +704,7 @@ namespace BTDB.EventStore2Layer
                 }
             }
 
-            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor);
+            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor!);
             _writer.WriteVUInt32((uint) info.Id);
             info.ComplexSaver(_writer, this, obj);
         }

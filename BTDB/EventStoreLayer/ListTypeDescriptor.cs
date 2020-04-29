@@ -97,7 +97,7 @@ namespace BTDB.EventStoreLayer
             if (_type == null)
             {
                 _itemType = _typeSerializers.LoadAsType(_itemDescriptor!);
-                _type = typeof(IList<>).MakeGenericType(_itemType);
+                _type = typeof(ICollection<>).MakeGenericType(_itemType);
             }
             return _type;
         }
@@ -105,8 +105,8 @@ namespace BTDB.EventStoreLayer
         public Type GetPreferredType(Type targetType)
         {
             if (_type == targetType) return _type;
-            var targetIList = targetType.GetInterface("IList`1") ?? targetType.GetInterface("ISet`1") ?? targetType;
-            var targetTypeArguments = targetIList.GetGenericArguments();
+            var targetICollection = targetType.GetInterface("ICollection`1") ?? targetType;
+            var targetTypeArguments = targetICollection.GetGenericArguments();
             var itemType = _typeSerializers.LoadAsType(_itemDescriptor!, targetTypeArguments[0]);
             return targetType.GetGenericTypeDefinition().MakeGenericType(itemType);
         }
@@ -116,15 +116,15 @@ namespace BTDB.EventStoreLayer
             return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
         }
 
-        static Type GetInterface(Type type) => type.GetInterface("IList`1") ?? type.GetInterface("ISet`1") ?? type;
+        static Type GetInterface(Type type) => type.GetInterface("ICollection`1") ?? type;
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             if (targetType == typeof(object))
                 targetType = GetPreferredType();
             var localCount = ilGenerator.DeclareLocal(typeof(int));
-            var targetIList = targetType.GetInterface("IList`1") ?? targetType.GetInterface("ISet`1") ?? targetType;
-            var targetTypeArguments = targetIList.GetGenericArguments();
+            var targetICollection = GetInterface(targetType);
+            var targetTypeArguments = targetICollection.GetGenericArguments();
             var itemType = _typeSerializers.LoadAsType(_itemDescriptor!, targetTypeArguments[0]);
             if (targetType.IsArray)
             {
@@ -169,7 +169,7 @@ namespace BTDB.EventStoreLayer
             }
             else
             {
-                var isSet = targetIList.GetGenericTypeDefinition() == typeof(ISet<>);
+                var isSet = targetType.InheritsOrImplements( typeof(ISet<>));
                 var listType = (isSet?typeof(HashSetWithDescriptor<>):typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
 
                 if (!targetType.IsAssignableFrom(listType))
@@ -233,23 +233,22 @@ namespace BTDB.EventStoreLayer
                 if (type == typeof(object))
                     type = _listTypeDescriptor.GetPreferredType();
                 var targetInterface = GetInterface(type);
-                var isSet = targetInterface.GetGenericTypeDefinition() == typeof(ISet<>);
                 var targetTypeArguments = targetInterface.GetGenericArguments();
                 var itemType = _listTypeDescriptor._typeSerializers.LoadAsType(_listTypeDescriptor._itemDescriptor!, targetTypeArguments[0]);
                 if (_listTypeDescriptor._type == null) _listTypeDescriptor._type = type;
                 var isConcreteImplementation = type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(List<>) || type.GetGenericTypeDefinition() == typeof(HashSet<>));
-                var typeAsIDictionary = isConcreteImplementation ? type : (isSet?typeof(ISet<>):typeof(IList<>)).MakeGenericType(itemType);
+                var typeAsICollection = isConcreteImplementation ? type : typeof(ICollection<>).MakeGenericType(itemType);
                 var getEnumeratorMethod = isConcreteImplementation
-                    ? typeAsIDictionary.GetMethods()
+                    ? typeAsICollection.GetMethods()
                         .Single(
                             m => m.Name == nameof(IEnumerable.GetEnumerator) && m.ReturnType.IsValueType && m.GetParameters().Length == 0)
-                    : typeAsIDictionary.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
+                    : typeAsICollection.GetInterface("IEnumerable`1")!.GetMethod(nameof(IEnumerable.GetEnumerator));
                 var typeAsIEnumerator = getEnumeratorMethod!.ReturnType;
                 var currentGetter = typeAsIEnumerator.GetProperty(nameof(IEnumerator.Current))!.GetGetMethod();
                 var localEnumerator = ilGenerator.DeclareLocal(typeAsIEnumerator);
                 ilGenerator
                     .Do(pushObj)
-                    .Castclass(typeAsIDictionary)
+                    .Castclass(typeAsICollection)
                     .Callvirt(getEnumeratorMethod)
                     .Stloc(localEnumerator)
                     .Try()

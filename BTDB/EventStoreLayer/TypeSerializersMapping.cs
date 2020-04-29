@@ -420,15 +420,15 @@ namespace BTDB.EventStoreLayer
                 }
             }
 
-            public void StoreObject(AbstractBufferedWriter writer, object obj)
+            public void StoreObject(AbstractBufferedWriter writer, object? obj)
             {
                 if (obj == null)
                 {
                     writer.WriteUInt8(0);
                     return;
                 }
-                TypeSerializers typeSerializers;
-                var infoForType = GetInfoFromObject(obj, out typeSerializers);
+
+                var infoForType = GetInfoFromObject(obj, out _);
                 StoreObjectCore(_typeSerializers, writer, obj, infoForType, this);
             }
 
@@ -488,15 +488,15 @@ namespace BTDB.EventStoreLayer
             public ISymmetricCipher GetSymmetricCipher() => _typeSerializers.GetSymmetricCipher();
         }
 
-        public void StoreObject(AbstractBufferedWriter writer, object obj)
+        public void StoreObject(AbstractBufferedWriter writer, object? obj)
         {
             if (obj == null)
             {
                 writer.WriteUInt8(0);
                 return;
             }
-            TypeSerializers typeSerializers;
-            var infoForType = GetInfoFromObject(obj, out typeSerializers);
+
+            var infoForType = GetInfoFromObject(obj, out var typeSerializers);
             StoreObjectCore(typeSerializers, writer, obj, infoForType, this);
         }
 

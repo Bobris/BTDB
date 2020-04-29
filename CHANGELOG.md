@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+- Mixing Lists, Sets and Arrays in EventLayers
+
 ## 20.2.0
 
 ### Added

@@ -170,9 +170,9 @@ namespace BTDB.EventStoreLayer
                 .Castclass(targetType);
         }
 
-        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
+        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
         {
-            if (_keyDescriptor.Sealed && _valueDescriptor.Sealed) return null;
+            if (_keyDescriptor!.Sealed && _valueDescriptor!.Sealed) return null;
             return new TypeNewDescriptorGenerator(this);
         }
 
