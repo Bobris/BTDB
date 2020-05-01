@@ -8,10 +8,10 @@ namespace BTDB.KVDBLayer
         IEnumerable<KeyValuePair<uint, IFileInfo>> FileInfos { get; }
         long LastFileGeneration { get; }
         Guid? Guid { get; }
-        IFileInfo FileInfoByIdx(uint idx);
+        IFileInfo? FileInfoByIdx(uint idx);
         void MakeIdxUnknown(uint key);
         void DeleteAllUnknownFiles();
-        IFileCollectionFile GetFile(uint fileId);
+        IFileCollectionFile? GetFile(uint fileId);
         uint GetCount();
         ulong GetSize(uint key);
         IFileCollectionFile AddFile(string humanHint);

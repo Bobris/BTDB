@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BTDB.KVDBLayer
 {
-    class FileKeyIndex : IFileInfo, IKeyIndex
+    class FileKeyIndex : IKeyIndex
     {
         readonly long _generation;
         readonly Guid? _guid;
@@ -12,7 +12,7 @@ namespace BTDB.KVDBLayer
         readonly uint _trLogOffset;
         readonly long _keyValueCount;
         readonly ulong _commitUlong;
-        readonly ulong[] _ulongs;
+        readonly ulong[]? _ulongs;
         readonly KeyIndexCompression _compressionType;
 
         public KVFileType FileType => KVFileType.KeyIndex;
@@ -31,11 +31,11 @@ namespace BTDB.KVDBLayer
 
         public ulong CommitUlong => _commitUlong;
 
-        public ulong[] Ulongs => _ulongs;
+        public ulong[]? Ulongs => _ulongs;
 
         public KeyIndexCompression Compression => _compressionType;
 
-        public long[] UsedFilesInOlderGenerations { get; set; }
+        public long[]? UsedFilesInOlderGenerations { get; set; }
 
         public FileKeyIndex(AbstractBufferedReader reader, Guid? guid, bool withCommitUlong, bool modern, bool withUlongs)
         {
@@ -57,7 +57,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong, KeyIndexCompression compression, ulong[] ulongs)
+        public FileKeyIndex(long generation, Guid? guid, uint trLogFileId, uint trLogOffset, long keyCount, ulong commitUlong, KeyIndexCompression compression, ulong[]? ulongs)
         {
             _guid = guid;
             _generation = generation;
@@ -97,13 +97,13 @@ namespace BTDB.KVDBLayer
             writer.WriteVUInt64((ulong)_keyValueCount);
             writer.WriteVUInt64(_commitUlong);
             writer.WriteUInt8((byte)_compressionType);
-            var ulongCount = _ulongs != null ? (uint)_ulongs.Length : 0;
+            var ulongCount = (uint)(_ulongs?.Length ?? 0);
             writer.WriteVUInt32(ulongCount);
             if (ulongCount > 0)
             {
                 for (var i = 0; i < ulongCount; i++)
                 {
-                    writer.WriteVUInt64(_ulongs[i]);
+                    writer.WriteVUInt64(_ulongs![i]);
                 }
             }
         }

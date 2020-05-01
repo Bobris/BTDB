@@ -405,7 +405,7 @@ namespace BTDB.KVDBLayer
 
             return new KeyValuePair<uint, uint>(
                 (uint)((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).Length,
-                _keyValueDB.CalcValueSize(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize));
+                KeyValueDB.CalcValueSize(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize));
         }
 
         public byte[] GetKeyPrefix()

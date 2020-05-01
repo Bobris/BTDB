@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+- ReadOnly option to opening DB. ODbDump using it and allows to pass ulongcommit as third parameter to open DB in historical moment.
+
 ### Fixed
 
 - Mixing Lists, Sets and Arrays in EventLayers
