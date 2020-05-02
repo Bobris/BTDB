@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 20.3.0
+
 ### Added
 
 - ReadOnly option to opening DB. ODbDump using it and allows to pass ulongcommit as third parameter to open DB in historical moment.
