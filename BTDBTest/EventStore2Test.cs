@@ -23,8 +23,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
 
-            bool hasMetadata;
-            var data = serializer.Serialize(out hasMetadata, new User());
+            var data = serializer.Serialize(out var hasMetadata, new User());
             Assert.True(hasMetadata);
             Assert.InRange(data.Length, 1, 100);
         }
@@ -34,9 +33,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
 
-            bool hasMetadata;
-
-            var meta = serializer.Serialize(out hasMetadata, new User());
+            var meta = serializer.Serialize(out var hasMetadata, new User());
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, new User());
             Assert.False(hasMetadata);
@@ -48,12 +45,10 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
 
-            bool hasMetadata;
-
-            var meta = serializer.Serialize(out hasMetadata, new User());
+            var meta = serializer.Serialize(out var hasMetadata, new User());
             serializer.ProcessMetadataLog(meta);
             long baselineMemory = 0;
-            for (int i = 0; i < 100; i++)
+            for (var i = 0; i < 100; i++)
             {
                 serializer.Serialize(out hasMetadata, new User());
                 Assert.False(hasMetadata);
@@ -62,6 +57,7 @@ namespace BTDBTest
                     GC.Collect(2);
                     GC.WaitForPendingFinalizers();
                     GC.Collect(2);
+                    GC.GetTotalAllocatedBytes(true);
                     baselineMemory = GC.GetTotalMemory(false);
                 }
             }
@@ -76,15 +72,13 @@ namespace BTDBTest
         public void DeserializeSimpleClass()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new User {Name = "Boris", Age = 40};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -118,15 +112,13 @@ namespace BTDBTest
         public void DeserializesClassWithEnum()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithEnum {State = StateEnum.Alive};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
-            var data = serializer.Serialize(out hasMetadata, obj);
+            var data = serializer.Serialize(out _, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -148,7 +140,7 @@ namespace BTDBTest
                 if (Items != null && other.Items == null)
                     return false;
 
-                for (int i = 0; i < Items.Count; i++)
+                for (var i = 0; i < Items.Count; i++)
                 {
                     if (Items[i] != other.Items[i])
                         return false;
@@ -181,7 +173,7 @@ namespace BTDBTest
                 if (Items != null && other.Items == null)
                     return false;
 
-                for (int i = 0; i < Items.Count; i++)
+                for (var i = 0; i < Items.Count; i++)
                 {
                     if (Items[i] != other.Items[i])
                         return false;
@@ -214,7 +206,7 @@ namespace BTDBTest
                 if (Items != null && other.Items == null)
                     return false;
 
-                for (int i = 0; i < Items.Count; i++)
+                for (var i = 0; i < Items.Count; i++)
                 {
                     if (!Items[i].Equals(other.Items[i]))
                         return false;
@@ -235,15 +227,13 @@ namespace BTDBTest
         public void DeserializesClassWithList()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithList {Items = new List<int> {1}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -253,15 +243,13 @@ namespace BTDBTest
         public void DeserializesAsObjectClassWithList()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithList {Items = new List<int> {1}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
-            dynamic obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out dynamic obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(1, obj2.Items[0]);
@@ -271,15 +259,13 @@ namespace BTDBTest
         public void DeserializesClassWithIList()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithIList {Items = new List<int> {1}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -294,17 +280,15 @@ namespace BTDBTest
         public void DeserializesClassWithIList2()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithIList2
                 {Items = new List<ObjectDbTest.Person> {new ObjectDbTest.Person {Name = "A", Age = 1}}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             Assert.Equal(99, meta.Length);
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -319,10 +303,9 @@ namespace BTDBTest
         public void DeserializesClassWithIListArray()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithIList2
                 {Items = new ObjectDbTest.Person[] {new ObjectDbTest.Person {Name = "A", Age = 1}}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             Assert.Equal(99, meta.Length);
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -332,8 +315,7 @@ namespace BTDBTest
             var data2 = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -348,11 +330,10 @@ namespace BTDBTest
         public void DeserializesClassWithIListArrayFirstEmpty()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var objE = new ObjectWithIList2 {Items = null};
             var obj = new ObjectWithIList2
                 {Items = new ObjectDbTest.Person[] {new ObjectDbTest.Manager {Name = "A", Age = 1}}};
-            var meta = serializer.Serialize(out hasMetadata, objE).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, objE).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, objE);
             var data2 = serializer.Serialize(out hasMetadata, obj);
@@ -397,15 +378,13 @@ namespace BTDBTest
         public void DeserializesClassWithDictionaryOfSimpleTypes()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithDictionaryOfSimpleType {Items = new Dictionary<int, string>() {{1, "Ahoj"}}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(obj, obj2);
@@ -415,15 +394,13 @@ namespace BTDBTest
         public void DeserializesAsObjectClassWithDictionaryOfSimpleTypes()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new ObjectWithDictionaryOfSimpleType {Items = new Dictionary<int, string>() {{1, "Ahoj"}}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer(new TypeSerializersTest.ToDynamicMapper());
-            dynamic obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out dynamic obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal("Ahoj", obj2.Items[1].ToString());
@@ -440,20 +417,18 @@ namespace BTDBTest
         public void SkipsIIndirect()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new EventWithIIndirect
             {
                 Name = "A",
                 Ind1 = new DBIndirect<User>(),
                 Ind2 = new List<IIndirect<User>>()
             };
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
@@ -462,15 +437,13 @@ namespace BTDBTest
         public void SupportStrangeVisibilities()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new StrangeVisibilities {A = "a", C = "c", D = "d"};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             var ev = obj2 as StrangeVisibilities;
@@ -488,18 +461,16 @@ namespace BTDBTest
         public void SimpleNestedObjects()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new EventWithUser
             {
                 User = new User()
             };
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
         }
@@ -514,15 +485,13 @@ namespace BTDBTest
         public void SerializingSkipsNotStoredProperties()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new DtoWithNotStored {Name = "Boris", Skip = 1};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(0, ((DtoWithNotStored) obj2).Skip);
@@ -537,15 +506,13 @@ namespace BTDBTest
         public void SerializingBoxedDoubleDoesNotCrash()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new DtoWithObject {Something = 1.2};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             Assert.Equal(1.2, ((DtoWithObject) obj2).Something);
@@ -561,15 +528,13 @@ namespace BTDBTest
         public void SupportPureArray()
         {
             var serializer = new EventSerializer();
-            bool hasMetadata;
             var obj = new PureArray {A = new[] {"A", "B"}, B = new[] {42, 7}};
-            var meta = serializer.Serialize(out hasMetadata, obj).ToAsyncSafe();
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             var ev = obj2 as PureArray;
@@ -717,8 +682,7 @@ namespace BTDBTest
 
             var serializer = new EventSerializer(fullNameMapper);
             var original = new EventWithEnum {Status = WorkStatus.Employed};
-            bool hasMetadata;
-            var metadata = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            var metadata = serializer.Serialize(out var hasMetadata, original).ToAsyncSafe();
             Assert.True(hasMetadata);
 
             serializer.ProcessMetadataLog(metadata);
@@ -728,8 +692,7 @@ namespace BTDBTest
 
             var deserializer = new EventDeserializer(overridedMapper);
             deserializer.ProcessMetadataLog(metadata);
-            object readed;
-            Assert.True(deserializer.Deserialize(out readed, data));
+            Assert.True(deserializer.Deserialize(out var readed, data));
 
             var readedEvem = readed as EventWithInt;
             Assert.Equal(readedEvem.Status, (int) original.Status);
@@ -750,8 +713,7 @@ namespace BTDBTest
 
             var serializer = new EventSerializer(fullNameMapper);
             var original = new EventWithString {Status = "Test string"};
-            bool hasMetadata;
-            var metadata = serializer.Serialize(out hasMetadata, original).ToAsyncSafe();
+            var metadata = serializer.Serialize(out var hasMetadata, original).ToAsyncSafe();
             Assert.True(hasMetadata);
 
             serializer.ProcessMetadataLog(metadata);
@@ -985,8 +947,7 @@ namespace BTDBTest
             var data = serializer.Serialize(out _, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
 
@@ -1009,14 +970,53 @@ namespace BTDBTest
             var data = serializer.Serialize(out _, obj);
 
             var deserializer = new EventDeserializer();
-            object obj2;
-            Assert.False(deserializer.Deserialize(out obj2, data));
+            Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
 
             var ev = obj2 as SomeSets;
             Assert.Equal(new[] {"A", "B"}, ev!.A.OrderBy(a => a));
             Assert.Equal(new[] {7, 42}, ev.B.OrderBy(b => b));
+        }
+
+        [Fact]
+        public void StoreListThenArray()
+        {
+            var serializer = new EventSerializer();
+
+            void Store(object obj)
+            {
+                var meta = serializer.Serialize(out var hasMetaData, obj).ToAsyncSafe();
+                if (hasMetaData)
+                {
+                    serializer.ProcessMetadataLog(meta);
+                    serializer.Serialize(out _, obj);
+                }
+            }
+
+            Store(new List<bool>());
+            Store(new[] {true});
+            Store(new HashSet<bool>());
+        }
+
+        [Fact]
+        public void StoreVariousComplexCombinations()
+        {
+            var serializer = new EventSerializer();
+
+            void Store(object obj)
+            {
+                var meta = serializer.Serialize(out var hasMetaData, obj).ToAsyncSafe();
+                if (hasMetaData)
+                {
+                    serializer.ProcessMetadataLog(meta);
+                    serializer.Serialize(out _, obj);
+                }
+            }
+
+            Store(new Dictionary<int, List<bool>> {{1, new List<bool> {true}}});
+            Store(new Dictionary<int, IList<bool>> {{1, new List<bool> {true}}});
+            Store(new Dictionary<int, IList<bool>> {{1, new[] {true}}});
         }
     }
 }

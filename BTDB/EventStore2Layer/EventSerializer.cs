@@ -72,21 +72,20 @@ namespace BTDB.EventStore2Layer
         }
 
         Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> BuildComplexSaver(
-            ITypeDescriptor descriptor)
+            ITypeDescriptor descriptor, Type type)
         {
             var method =
                 ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(
-                    descriptor.Name + "Saver");
+                    descriptor.Name + "Saver" + type.ToSimpleName());
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
                 ilgen.Ldarg(2);
-                var type = descriptor.GetPreferredType();
                 if (type != typeof(object))
                 {
                     ilgen.UnboxAny(type);
                 }
-            }, descriptor.GetPreferredType());
+            }, type);
             il.Ret();
             return method.Create();
         }
@@ -94,7 +93,7 @@ namespace BTDB.EventStore2Layer
         Action<object, IDescriptorSerializerLiteContext> BuildNestedObjGatherer(ITypeDescriptor descriptor, Type type)
         {
             Action<object, IDescriptorSerializerLiteContext> res;
-            if (type != null && type != typeof(object))
+            if (type != typeof(object))
             {
                 if (_gathererCache.TryGetValue(type, out res))
                     return res;
@@ -109,32 +108,29 @@ namespace BTDB.EventStore2Layer
             {
                 var method =
                     ILBuilder.Instance.NewMethod<Action<object, IDescriptorSerializerLiteContext>>(
-                        "GatherAllObjectsForTypeExtraction_" + descriptor.Name);
+                        "GatherAllObjectsForTypeExtraction_" + descriptor.Name + "_For_" + type.ToSimpleName());
                 var il = method.Generator;
                 gen.GenerateTypeIterator(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), type);
                 il.Ret();
                 res = method.Create();
             }
 
-            if (type != null) _gathererCache[type] = res;
+            if (type != typeof(object)) _gathererCache[type] = res;
             return res;
         }
 
-        public ITypeDescriptor DescriptorOf(object obj)
+        public ITypeDescriptor? DescriptorOf(object? obj)
         {
             if (obj == null) return null;
-            var knowDescriptor = obj as IKnowDescriptor;
-            if (knowDescriptor != null) return knowDescriptor.GetDescriptor();
-            SerializerTypeInfo info;
-            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+            if (obj is IKnowDescriptor knowDescriptor) return knowDescriptor.GetDescriptor();
+            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
                 return null;
             return info.Descriptor;
         }
 
-        public ITypeDescriptor DescriptorOf(Type type)
+        public ITypeDescriptor? DescriptorOf(Type type)
         {
-            SerializerTypeInfo info;
-            if (!_typeOrDescriptor2Info.TryGetValue(type, out info))
+            if (!_typeOrDescriptor2Info.TryGetValue(type, out var info))
                 return null;
             return info.Descriptor;
         }
@@ -150,12 +146,12 @@ namespace BTDB.EventStore2Layer
 
         public Type LoadAsType(ITypeDescriptor descriptor)
         {
-            return descriptor.GetPreferredType() ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType() ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
         }
 
         public Type LoadAsType(ITypeDescriptor descriptor, Type targetType)
         {
-            return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
+            return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
         }
 
         ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
@@ -165,7 +161,7 @@ namespace BTDB.EventStore2Layer
             {
                 var infoForType = _id2InfoNew[-typeId - 1];
                 if (infoForType != null)
-                    return infoForType.Descriptor;
+                    return infoForType.Descriptor!;
             }
             else if (typeId > 0)
             {
@@ -174,7 +170,7 @@ namespace BTDB.EventStore2Layer
                 var infoForType = _id2Info[typeId];
                 if (infoForType == null)
                     throw new BTDBException("Metadata corrupted");
-                return infoForType.Descriptor;
+                return infoForType.Descriptor!;
             }
 
             return new PlaceHolderDescriptor(typeId);
@@ -220,19 +216,15 @@ namespace BTDB.EventStore2Layer
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d =>
-                {
-                    var placeHolderDescriptor = d as PlaceHolderDescriptor;
-                    return placeHolderDescriptor != null
-                        ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
-                        : d;
-                });
+                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d is PlaceHolderDescriptor placeHolderDescriptor
+                    ? _id2InfoNew[-placeHolderDescriptor.TypeId - 1]!.Descriptor
+                    : d);
             }
 
             // This additional cycle is needed to fill names of recursive structures
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d => d);
+                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => d);
             }
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
@@ -240,37 +232,33 @@ namespace BTDB.EventStore2Layer
                 var infoForType = _id2InfoNew[i]!;
                 for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
                 {
-                    if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
+                    if (infoForType!.Descriptor!.Equals(_id2Info[j]!.Descriptor))
                     {
-                        _remapToOld[infoForType.Descriptor] = _id2Info[j].Descriptor;
+                        _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
                         _id2InfoNew[i] = _id2Info[j];
                         infoForType = _id2InfoNew[i];
                         break;
                     }
                 }
 
-                if (infoForType.Id < 0)
+                if (infoForType!.Id < 0)
                 {
                     infoForType.Id = _id2Info.Count;
                     _id2Info.Add(infoForType);
-                    _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
+                    _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                 }
             }
 
             for (var i = 0; i < _id2InfoNew.Count; i++)
             {
-                _id2InfoNew[i]!.Descriptor.MapNestedTypes(d =>
-                {
-                    ITypeDescriptor res;
-                    return _remapToOld.TryGetValue(d, out res) ? res : d;
-                });
+                _id2InfoNew[i]!.Descriptor!.MapNestedTypes(d => _remapToOld.TryGetValue(d, out var res) ? res : d);
             }
 
             _id2InfoNew.Clear();
             _remapToOld.Clear();
         }
 
-        public ByteBuffer Serialize(out bool hasMetaData, object obj)
+        public ByteBuffer Serialize(out bool hasMetaData, object? obj)
         {
             if (obj == null)
             {
@@ -359,7 +347,8 @@ namespace BTDB.EventStore2Layer
                     }
                     else
                     {
-                        typeAlternative = type.SpecializationOf(typeof(IList<>)) ?? type.SpecializationOf(typeof(ISet<>));
+                        typeAlternative = type.SpecializationOf(typeof(IList<>)) ??
+                                          type.SpecializationOf(typeof(ISet<>));
                         if (typeAlternative != null)
                         {
                             if (type != typeAlternative)
@@ -460,7 +449,7 @@ namespace BTDB.EventStore2Layer
             return desc;
         }
 
-        public void StoreNewDescriptors(object obj)
+        public void StoreNewDescriptors(object? obj)
         {
             if (obj == null) return;
             if (_visited.ContainsKey(obj)) return;
@@ -491,7 +480,7 @@ namespace BTDB.EventStore2Layer
                 if (!_typeOrDescriptor2Info.TryGetValue(type, out info))
                 {
                     var desc = Create(type);
-                    if (!_typeOrDescriptor2InfoNew.TryGetValue(desc, out info))
+                    if (!_typeOrDescriptor2InfoNew.TryGetValue(desc!, out info))
                     {
                         // It could be already existing descriptor just unknown type
                         if (!_typeOrDescriptor2Info.TryGetValue(desc, out info))
@@ -504,11 +493,8 @@ namespace BTDB.EventStore2Layer
                 }
             }
 
-            if (!info.NestedObjGatherers.TryGetValue(type, out var gatherer))
-            {
-                gatherer = BuildNestedObjGatherer(info.Descriptor!, obj.GetType());
-                info.NestedObjGatherers[type] = gatherer;
-            }
+            ref var gatherer = ref info.NestedObjGatherers.GetOrAddValueRef(type);
+            gatherer ??= BuildNestedObjGatherer(info.Descriptor!, type);
 
             gatherer(obj, this);
         }
@@ -517,8 +503,8 @@ namespace BTDB.EventStore2Layer
         {
             var visited = new HashSet<ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
             var hasCycle = false;
-            Func<ITypeDescriptor, ITypeDescriptor> old2New = null;
-            old2New = old =>
+
+            ITypeDescriptor Old2New(ITypeDescriptor old)
             {
                 if (visited.Contains(old))
                 {
@@ -534,22 +520,23 @@ namespace BTDB.EventStore2Layer
 
                 if (old is ObjectTypeDescriptor || old is EnumTypeDescriptor)
                 {
-                    var type = TypeNameMapper.ToType(old.Name) ?? typeof(object);
+                    var type = TypeNameMapper.ToType(old.Name!) ?? typeof(object);
                     if (type != typeof(object))
                     {
                         return Create(type);
                     }
                 }
 
-                return old.CloneAndMapNestedTypes(this, old2New);
-            };
-            var res = old2New(origDesc);
+                return old.CloneAndMapNestedTypes(this, Old2New);
+            }
+
+            var res = Old2New(origDesc);
             if (hasCycle)
             {
                 visited.Clear();
                 visited.Add(res);
-                Func<ITypeDescriptor, ITypeDescriptor> deplaceholder = null;
-                deplaceholder = old =>
+
+                ITypeDescriptor FlattenPlaceHolder(ITypeDescriptor old)
                 {
                     if (old is PlaceHolderDescriptor)
                     {
@@ -558,17 +545,18 @@ namespace BTDB.EventStore2Layer
 
                     if (visited.Contains(old)) return old;
                     visited.Add(old);
-                    old.MapNestedTypes(deplaceholder);
+                    old.MapNestedTypes(FlattenPlaceHolder);
                     return old;
-                };
-                res.MapNestedTypes(deplaceholder);
+                }
+
+                res.MapNestedTypes(FlattenPlaceHolder);
             }
 
             foreach (var existingTypeDescriptor in _typeOrDescriptor2Info)
             {
                 if (res.Equals(existingTypeDescriptor.Value.Descriptor))
                 {
-                    return existingTypeDescriptor.Value.Descriptor;
+                    return existingTypeDescriptor.Value.Descriptor!;
                 }
             }
 
@@ -576,7 +564,7 @@ namespace BTDB.EventStore2Layer
             {
                 if (res.Equals(existingTypeDescriptor.Value.Descriptor))
                 {
-                    return existingTypeDescriptor.Value.Descriptor;
+                    return existingTypeDescriptor.Value.Descriptor!;
                 }
             }
 
@@ -594,7 +582,7 @@ namespace BTDB.EventStore2Layer
                     var d = info.Descriptor;
                     foreach (var existingTypeDescriptor in _typeOrDescriptor2Info)
                     {
-                        if (d.Equals(existingTypeDescriptor.Value.Descriptor))
+                        if (d!.Equals(existingTypeDescriptor.Value.Descriptor))
                         {
                             info.Id = existingTypeDescriptor.Value.Id;
                             break;
@@ -619,10 +607,10 @@ namespace BTDB.EventStore2Layer
 
             if (toStore != null)
             {
-                for (int i = toStore.Count - 1; i >= 0; i--)
+                for (var i = toStore.Count - 1; i >= 0; i--)
                 {
                     _writer.WriteVInt32(toStore[i].Id);
-                    StoreDescriptor(toStore[i].Descriptor, _writer);
+                    StoreDescriptor(toStore[i].Descriptor!, _writer);
                 }
 
                 _writer.WriteVInt32(0);
@@ -661,8 +649,7 @@ namespace BTDB.EventStore2Layer
 
             ((IPersistTypeDescriptor) descriptor).Persist(writer, (w, d) =>
             {
-                SerializerTypeInfo result;
-                if (!_typeOrDescriptor2Info.TryGetValue(d, out result))
+                if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
                     if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
                         throw new BTDBException("Invalid state unknown descriptor " + d.Name);
                 w.WriteVInt32(result.Id);
@@ -687,7 +674,8 @@ namespace BTDB.EventStore2Layer
             }
 
             visited.Add(obj, visited.Count);
-            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
+            var objType = obj.GetType();
+            if (!_typeOrDescriptor2Info.TryGetValue(objType, out var info))
             {
                 if (obj is IKnowDescriptor knowDescriptor)
                 {
@@ -704,9 +692,10 @@ namespace BTDB.EventStore2Layer
                 }
             }
 
-            if (info.ComplexSaver == null) info.ComplexSaver = BuildComplexSaver(info.Descriptor!);
+            ref var saver = ref info.ComplexSaver.GetOrAddValueRef(objType);
+            saver ??= BuildComplexSaver(info.Descriptor!, objType);
             _writer.WriteVUInt32((uint) info.Id);
-            info.ComplexSaver(_writer, this, obj);
+            saver(_writer, this, obj);
         }
 
         public void StoreEncryptedString(EncryptedString value)

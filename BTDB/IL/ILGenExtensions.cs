@@ -565,57 +565,54 @@ namespace BTDB.IL
 
         public static IILGen Callvirt(this IILGen il, Expression<Action> expression)
         {
-            var methodInfo = (expression.Body as MethodCallExpression).Method;
+            var methodInfo = ((MethodCallExpression) expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
         public static IILGen Callvirt<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            var newExpression = expression.Body as MemberExpression;
-            if (newExpression != null)
+            if (expression.Body is MemberExpression newExpression)
             {
-                return il.Callvirt(((PropertyInfo)newExpression.Member).GetGetMethod(true));
+                return il.Callvirt(((PropertyInfo)newExpression.Member).GetGetMethod(true)!);
             }
-            var methodInfo = (expression.Body as MethodCallExpression).Method;
+            var methodInfo = ((MethodCallExpression) expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
         public static IILGen Call(this IILGen il, Expression<Action> expression)
         {
-            var newExpression = expression.Body as NewExpression;
-            if (newExpression != null)
+            if (expression.Body is NewExpression newExpression)
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = (expression.Body as MethodCallExpression).Method;
+            var methodInfo = ((MethodCallExpression) expression.Body).Method;
             return il.Call(methodInfo);
         }
 
         public static IILGen Call<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            var memberExpression = expression.Body as MemberExpression;
-            if (memberExpression != null)
+            if (expression.Body is MemberExpression memberExpression)
             {
-                return il.Call(((PropertyInfo)memberExpression.Member).GetGetMethod(true));
+                return il.Call(((PropertyInfo)memberExpression.Member).GetGetMethod(true)!);
             }
-            var newExpression = expression.Body as NewExpression;
-            if (newExpression != null)
+
+            if (expression.Body is NewExpression newExpression)
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = (expression.Body as MethodCallExpression).Method;
+            var methodInfo = ((MethodCallExpression) expression.Body).Method;
             return il.Call(methodInfo);
         }
 
         public static IILGen Newobj(this IILGen il, Expression<Action> expression)
         {
-            var constructorInfo = (expression.Body as NewExpression).Constructor;
+            var constructorInfo = ((NewExpression) expression.Body).Constructor;
             return il.Newobj(constructorInfo);
         }
 
         public static IILGen Ldfld<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            return il.Ldfld((FieldInfo)(expression.Body as MemberExpression).Member);
+            return il.Ldfld((FieldInfo)((MemberExpression) expression.Body).Member);
         }
 
         public static IILGen Newarr(this IILGen il, Type arrayMemberType)

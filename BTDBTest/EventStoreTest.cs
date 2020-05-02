@@ -1097,9 +1097,19 @@ namespace BTDBTest
         {
             var a = new EventStoreManager().AppendToStore(
                 new MemoryEventFileStorage());
-            a.Store(null, new[] { new List<bool>() });
-            a.Store(null, new[] { new[] { true } });
-            a.Store(null, new[] { new HashSet<bool>() });
+            a.Store(null, new[] {new List<bool>()});
+            a.Store(null, new[] {new[] {true}});
+            a.Store(null, new[] {new HashSet<bool>()});
+        }
+
+        [Fact]
+        public void StoreVariousComplexCombinations()
+        {
+            var a = new EventStoreManager().AppendToStore(
+                new MemoryEventFileStorage());
+            a.Store(null, new[] {new Dictionary<int, List<bool>> {{1, new List<bool> {true}}}});
+            a.Store(null, new[] {new Dictionary<int, IList<bool>> {{1, new List<bool> {true}}}});
+            a.Store(null, new[] {new Dictionary<int, IList<bool>> {{1, new[] {true}}}});
         }
     }
 }

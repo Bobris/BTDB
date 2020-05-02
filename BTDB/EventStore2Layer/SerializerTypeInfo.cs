@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BTDB.Collections;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
 
@@ -12,7 +13,7 @@ namespace BTDB.EventStore2Layer
         /// </summary>
         public int Id;
         public ITypeDescriptor? Descriptor;
-        public readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> NestedObjGatherers = new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>();
-        public Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>? ComplexSaver;
+        public readonly RefDictionary<EquatableType, Action<object, IDescriptorSerializerLiteContext>> NestedObjGatherers = new RefDictionary<EquatableType, Action<object, IDescriptorSerializerLiteContext>>();
+        public readonly RefDictionary<EquatableType, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>?> ComplexSaver = new RefDictionary<EquatableType, Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>?>();
     }
 }
