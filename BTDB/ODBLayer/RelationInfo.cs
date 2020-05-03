@@ -351,17 +351,17 @@ namespace BTDB.ODBLayer
             _name = name;
             _relationInfoResolver = relationInfoResolver;
             _interfaceType = interfaceType;
-            var methods = GetMethods(interfaceType).ToArray();
-            _clientType = FindClientType(interfaceType.Name, methods);
-            _defaultClientObject = Activator.CreateInstance(_clientType);
+            _clientType = interfaceType.SpecializationOf(typeof(IRelation<>))!.GenericTypeArguments[0];
+            _defaultClientObject = Activator.CreateInstance(_clientType)!;
 
             CalculatePrefix();
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             ResolveVersionInfos();
+            var methods = GetMethods(interfaceType).ToArray();
             ApartFields = FindApartFields(methods, interfaceType.GetProperties(), ClientRelationVersionInfo);
             if (LastPersistedVersion > 0 &&
-                RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion], ClientRelationVersionInfo))
+                RelationVersionInfo.Equal(_relationVersions[LastPersistedVersion]!, ClientRelationVersionInfo))
             {
                 _relationVersions[LastPersistedVersion] = ClientRelationVersionInfo;
                 ClientTypeVersion = LastPersistedVersion;
@@ -391,22 +391,6 @@ namespace BTDB.ODBLayer
             }
 
             _typeConvertorGenerator = tr.Owner.TypeConvertorGenerator;
-        }
-
-        static Type FindClientType(string name, MethodInfo[] methods)
-        {
-            foreach (var method in methods)
-            {
-                if (method.Name != "Insert" && method.Name != "Update" && method.Name != "Upsert"
-                    && method.Name != "ShallowUpdate" && method.Name != "ShallowUpsert")
-                    continue;
-                var @params = method.GetParameters();
-                if (@params.Length != 1)
-                    continue;
-                return @params[0].ParameterType;
-            }
-
-            throw new BTDBException($"Cannot deduce client type from interface {name}");
         }
 
         void CheckThatPrimaryKeyHasNotChanged(IInternalObjectDBTransaction tr, string name,
@@ -697,9 +681,9 @@ namespace BTDB.ODBLayer
             {
                 var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
-                var handler = field.Handler.SpecializeSaveForType(getter.ReturnType);
+                var handler = field.Handler!.SpecializeSaveForType(getter.ReturnType);
                 if (handler.NeedsCtx())
-                    writerOrCtx = il => il.Ldloc(writerCtxLocal);
+                    writerOrCtx = il => il.Ldloc(writerCtxLocal!);
                 else
                     writerOrCtx = pushWriter;
                 MethodInfo apartFieldGetter = null;
@@ -719,12 +703,12 @@ namespace BTDB.ODBLayer
 
                     il.Callvirt(getter);
                     _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
-                        handler.HandledType())(il);
+                        handler.HandledType())!(il);
                 });
             }
         }
 
-        static IILLocal CreateWriterCtx(IILGen ilGenerator, IEnumerable<TableFieldInfo> fields,
+        static IILLocal? CreateWriterCtx(IILGen ilGenerator, IEnumerable<TableFieldInfo> fields,
             Action<IILGen> pushWriter, Action<IILGen> pushTransaction)
         {
             var anyNeedsCtx = fields.Any(tfi => tfi.Handler.NeedsCtx());
@@ -775,12 +759,11 @@ namespace BTDB.ODBLayer
             var pks = ClientRelationVersionInfo.GetPrimaryKeyFields().ToList();
             var skFieldIds = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields.ToList();
             var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex).ToList();
-            var valueFields = _relationVersions[version].GetValueFields().ToList();
+            var valueFields = _relationVersions[version]!.GetValueFields().ToList();
             var writerCtxLocal = CreateWriterCtx(ilGenerator, skFields, pushWriter, il => il.Ldarg(0));
             for (var skFieldIdx = 0; skFieldIdx < skFieldIds.Count; skFieldIdx++)
             {
-                LocalAndHandler saveLocalInfo;
-                if (outOfOrderSkParts.TryGetValue(skFieldIdx, out saveLocalInfo))
+                if (outOfOrderSkParts.TryGetValue(skFieldIdx, out var saveLocalInfo))
                 {
                     var writerOrCtx = WriterOrContextForHandler(saveLocalInfo.Handler, writerCtxLocal, pushWriter);
                     saveLocalInfo.Handler.Save(ilGenerator, writerOrCtx, il => il.Ldloc(saveLocalInfo.Local));

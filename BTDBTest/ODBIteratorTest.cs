@@ -300,7 +300,7 @@ namespace BTDBTest
             public string Name { get; set; }
         }
 
-        public interface ISimpleDutyRelation
+        public interface ISimpleDutyRelation : IRelation<DutyWithKey>
         {
             void Insert(DutyWithKey duty);
             bool RemoveById(ulong id);
@@ -506,7 +506,7 @@ namespace BTDBTest
             public Rule1 R2 { get; set; }
         }
 
-        public interface IDuoRefsRelation
+        public interface IDuoRefsRelation : IRelation<DuoRefs>
         {
             void Insert(DuoRefs value);
         }
@@ -544,7 +544,7 @@ namespace BTDBTest
             public DuoRule1 R2 { get; set; }
         }
 
-        public interface IDuoDuoRefsRelation
+        public interface IDuoDuoRefsRelation : IRelation<DuoDuoRefs>
         {
             void Insert(DuoDuoRefs value);
             DuoDuoRefs FindById(ulong Id);
@@ -589,7 +589,7 @@ namespace BTDBTest
             public int? FieldIntEmpty { get; set; }
         }
 
-        public interface IRelationWithNullable
+        public interface IRelationWithNullable : IRelation<WithNullable>
         {
             void Insert(WithNullable value);
         }
@@ -639,7 +639,7 @@ namespace BTDBTest
             public Dictionary<Blob, Blob> BlobsDict { get; set; }
         }
 
-        public interface IRelationWithReusedObjects
+        public interface IRelationWithReusedObjects : IRelation<WithReusedObjects>
         {
             void Insert(WithReusedObjects value);
         }
@@ -698,7 +698,7 @@ namespace BTDBTest
             public EncryptedString Code { get; set; }
         }
 
-        public interface IRelationWithSecrets
+        public interface IRelationWithSecrets : IRelation<WithSecretString>
         {
             void Insert(WithSecretString value);
         }

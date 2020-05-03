@@ -19,7 +19,7 @@ namespace SimpleTester
             public string Description { get; set; }
         }
 
-        public interface IPersonTable : IReadOnlyCollection<Person>
+        public interface IPersonTable : IRelation<Person>
         {
             bool Insert(Person person);
             void Update(Person person);

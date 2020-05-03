@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDBTest;
 
 namespace SimpleTester
 {
@@ -48,7 +49,7 @@ namespace SimpleTester
         }
 
         //definitions for relations
-        public interface IPersonTable
+        public interface IPersonTable : IRelation<Person>
         {
             void Insert(Person person);
             void Update(Person person);
@@ -130,7 +131,7 @@ namespace SimpleTester
                 }
             }
         }
-       
+
 
         //definitions for singletons
         public class PersonMap

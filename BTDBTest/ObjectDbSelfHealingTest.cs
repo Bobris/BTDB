@@ -43,32 +43,28 @@ namespace BTDBTest
         void OpenDb()
         {
             _logger = new LoggerMock();
-            _db = new ObjectDB { Logger = _logger };
+            _db = new ObjectDB {Logger = _logger};
             _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration().WithSelfHealing());
         }
 
         public class JobV1
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
-            [SecondaryKey("Name")]
-            public string Name { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
+            [SecondaryKey("Name")] public string Name { get; set; }
         }
 
-        public interface IJobTable1
+        public interface IJobTable1 : IRelation<JobV1>
         {
             void Insert(JobV1 job);
         }
 
         public class JobIncompatible
         {
-            [PrimaryKey(1)]
-            public Guid Id { get; set; }
-            [SecondaryKey("Name")]
-            public string Name { get; set; }
+            [PrimaryKey(1)] public Guid Id { get; set; }
+            [SecondaryKey("Name")] public string Name { get; set; }
         }
 
-        public interface IJobTableIncompatible : IReadOnlyCollection<JobIncompatible>
+        public interface IJobTableIncompatible : IRelation<JobIncompatible>
         {
             void Insert(JobIncompatible job);
             IEnumerator<JobIncompatible> ListByName(AdvancedEnumeratorParam<string> name);
@@ -81,10 +77,11 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 { Id = 11, Name = "Code" };
+                var job = new JobV1 {Id = 11, Name = "Code"};
                 jobTable.Insert(job);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -96,7 +93,7 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 Assert.Empty(jobTable);
 
-                var job = new JobIncompatible() { Id = Guid.NewGuid(), Name = "Code" };
+                var job = new JobIncompatible() {Id = Guid.NewGuid(), Name = "Code"};
                 jobTable.Insert(job);
 
                 var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));
@@ -119,6 +116,5 @@ namespace BTDBTest
                 }
             }
         }
-
     }
 }

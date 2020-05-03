@@ -39,7 +39,7 @@ namespace BTDBTest
             return kvtr;
         }
 
-        public interface IResourcesTable : IReadOnlyCollection<Resource>
+        public interface IResourcesTable : IRelation<Resource>
         {
             void Insert(Resource resources);
             int RemoveById(ulong companyId);
@@ -58,11 +58,9 @@ namespace BTDBTest
 
         public class Resource
         {
-            [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
 
-            [PrimaryKey(2)]
-            public string ResourceId { get; set; }
+            [PrimaryKey(2)] public string ResourceId { get; set; }
 
             public RangeLocation Location { get; set; }
         }
@@ -90,8 +88,10 @@ namespace BTDBTest
                         ResourceId = i.ToString()
                     });
                 }
+
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var table = creator(tr);
@@ -103,17 +103,14 @@ namespace BTDBTest
 
         public class DataDifferentPrefix
         {
-            [PrimaryKey(1)]
-            public int A { get; set; }
+            [PrimaryKey(1)] public int A { get; set; }
 
-            [PrimaryKey(2)]
-            [SecondaryKey("S")]
-            public int B { get; set; }
+            [PrimaryKey(2)] [SecondaryKey("S")] public int B { get; set; }
 
             public int C { get; set; }
         }
 
-        public interface ITableDataDifferentPrefix : IReadOnlyCollection<DataDifferentPrefix>
+        public interface ITableDataDifferentPrefix : IRelation<DataDifferentPrefix>
         {
             void Insert(DataDifferentPrefix data);
             int RemoveById(int a);
@@ -129,10 +126,12 @@ namespace BTDBTest
                 var table = creator(tr);
                 for (var i = 0; i < 10; i++)
                 {
-                    table.Insert(new DataDifferentPrefix { A = i % 2, B = i });
+                    table.Insert(new DataDifferentPrefix {A = i % 2, B = i});
                 }
+
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var table = creator(tr);
@@ -148,15 +147,14 @@ namespace BTDBTest
             [SecondaryKey("S", Order = 1)]
             public int A { get; set; }
 
-            [PrimaryKey(2)]
-            public int B { get; set; }
+            [PrimaryKey(2)] public int B { get; set; }
 
             [PrimaryKey(3)]
             [SecondaryKey("S", Order = 2)]
             public int C { get; set; }
         }
 
-        public interface ITableDataSamePrefix : IReadOnlyCollection<DataSamePrefix>
+        public interface ITableDataSamePrefix : IRelation<DataSamePrefix>
         {
             void Insert(DataSamePrefix data);
             int RemoveById(int a); //same prefix PK [A], SK("S") [A]
@@ -173,10 +171,12 @@ namespace BTDBTest
                 var table = creator(tr);
                 for (var i = 0; i < 10; i++)
                 {
-                    table.Insert(new DataSamePrefix { A = i % 2, B = i % 2, C = i });
+                    table.Insert(new DataSamePrefix {A = i % 2, B = i % 2, C = i});
                 }
+
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var table = creator(tr);
@@ -184,6 +184,7 @@ namespace BTDBTest
                 AssertCounts(tr, eraseAll: 2, eraseCurrent: 0);
                 Assert.Equal(5, table.Count);
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var table = creator(tr);
@@ -198,7 +199,6 @@ namespace BTDBTest
             var ctr = GetCountingTransaction(tr);
             Assert.Equal(eraseAll, ctr.EraseAllCount);
             Assert.Equal(eraseCurrent, ctr.EraseCurrentCount);
-
         }
 
         class InMemoryKeyValueDBWithCount : IKeyValueDB
@@ -284,7 +284,12 @@ namespace BTDBTest
             public int EraseAllCount { get; set; }
             public int EraseRangeCount { get; set; }
             public int EraseCurrentCount { get; set; }
-            public bool RollbackAdvised { get => _keyValueDBTransaction.RollbackAdvised; set => _keyValueDBTransaction.RollbackAdvised = value; }
+
+            public bool RollbackAdvised
+            {
+                get => _keyValueDBTransaction.RollbackAdvised;
+                set => _keyValueDBTransaction.RollbackAdvised = value;
+            }
 
             public void SetKeyPrefix(ByteBuffer prefix)
             {

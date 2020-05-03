@@ -875,7 +875,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName)
+        public Func<IObjectDBTransaction, T> InitRelation<T>(string relationName) where T : IRelation
         {
             var interfaceType = typeof(T);
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType);

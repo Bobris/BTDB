@@ -37,30 +37,27 @@ namespace BTDBTest
 
         public class JobV1
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
             public string Name { get; set; }
         }
 
-        public interface IJobTable1
+        public interface IJobTable1 : IRelation<JobV1>
         {
             void Insert(JobV1 job);
         }
 
         public class JobV2
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
-            [SecondaryKey("Name")]
-            public string Name { get; set; }
+            [SecondaryKey("Name")] public string Name { get; set; }
 
             [SecondaryKey("Cost", IncludePrimaryKeyOrder = 1)]
             public uint Cost { get; set; }
         }
 
-        public interface IJobTable2
+        public interface IJobTable2 : IRelation<JobV2>
         {
             void Insert(JobV2 job);
             JobV2 FindByNameOrDefault(string name);
@@ -70,11 +67,10 @@ namespace BTDBTest
 
         public class JobIncompatible
         {
-            [PrimaryKey(1)]
-            public Guid Id { get; set; }
+            [PrimaryKey(1)] public Guid Id { get; set; }
         }
 
-        public interface IJobTableIncompatible
+        public interface IJobTableIncompatible : IRelation<JobIncompatible>
         {
             void Insert(JobIncompatible job);
         }
@@ -86,10 +82,11 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 { Id = 11, Name = "Code" };
+                var job = new JobV1 {Id = 11, Name = "Code"};
                 jobTable.Insert(job);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -104,16 +101,17 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 { Id = 11, Name = "Code" };
+                var job = new JobV1 {Id = 11, Name = "Code"};
                 jobTable.Insert(job);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 { Id = 21, Name = "Build", Cost = 42 };
+                var job = new JobV2 {Id = 21, Name = "Build", Cost = 42};
                 jobTable.Insert(job);
                 var j = jobTable.FindByNameOrDefault("Code");
                 Assert.Equal("Code", j.Name);
@@ -131,21 +129,19 @@ namespace BTDBTest
 
         public class Car
         {
-            [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
-            [PrimaryKey(2)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong Id { get; set; }
             public string Name { get; set; }
         }
 
-        public interface ICarTableApart
+        public interface ICarTableApart : IRelation<Car>
         {
             ulong CompanyId { get; set; }
             void Insert(Car car);
             Car FindById(ulong id);
         }
 
-        public interface ICarTable
+        public interface ICarTable : IRelation<Car>
         {
             void Insert(Car car);
             Car FindById(ulong companyId, ulong id);
@@ -159,10 +155,11 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ICarTableApart>("Car");
                 var carTable = creator(tr);
                 carTable.CompanyId = 10;
-                var car = new Car { Id = 11, Name = "Ferrari" };
+                var car = new Car {Id = 11, Name = "Ferrari"};
                 carTable.Insert(car);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -179,10 +176,11 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ICarTable>("Car");
                 var carTable = creator(tr);
-                var car = new Car { CompanyId = 10, Id = 11, Name = "Ferrari" };
+                var car = new Car {CompanyId = 10, Id = 11, Name = "Ferrari"};
                 carTable.Insert(car);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -211,42 +209,37 @@ namespace BTDBTest
             Two = 2,
             Three = 3,
             Four = 4
-
         }
 
         public class ItemWithEnumInKey
         {
-            [PrimaryKey]
-            public SimpleEnum Key { get; set; }
+            [PrimaryKey] public SimpleEnum Key { get; set; }
             public string Value { get; set; }
         }
 
         public class ItemWithEnumInKeyV2
         {
-            [PrimaryKey]
-            public SimpleEnumV2 Key { get; set; }
+            [PrimaryKey] public SimpleEnumV2 Key { get; set; }
             public string Value { get; set; }
         }
 
         public class ItemWithEnumInKeyV3
         {
-            [PrimaryKey]
-            public SimpleEnumV3 Key { get; set; }
+            [PrimaryKey] public SimpleEnumV3 Key { get; set; }
             public string Value { get; set; }
         }
 
-        public interface ITableWithEnumInKey : IReadOnlyCollection<ItemWithEnumInKey>
+        public interface ITableWithEnumInKey : IRelation<ItemWithEnumInKey>
         {
             void Insert(ItemWithEnumInKey person);
         }
 
-        public interface ITableWithEnumInKeyV2 : IReadOnlyCollection<ItemWithEnumInKeyV2>
+        public interface ITableWithEnumInKeyV2 : IRelation<ItemWithEnumInKeyV2>
         {
-            bool Upsert(ItemWithEnumInKeyV2 person);
             ItemWithEnumInKeyV2 FindById(SimpleEnumV2 key);
         }
 
-        public interface ITableWithEnumInKeyV3 : IReadOnlyCollection<ItemWithEnumInKeyV3>
+        public interface ITableWithEnumInKeyV3 : IRelation<ItemWithEnumInKeyV3>
         {
             bool Upsert(ItemWithEnumInKeyV3 person);
         }
@@ -259,19 +252,20 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKey");
                 var table = creator(tr);
 
-                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
-                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.Two, Value = "B" });
+                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.One, Value = "A"});
+                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.Two, Value = "B"});
 
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<ITableWithEnumInKeyV2>("EnumWithItemInKey");
                 var table = creator(tr);
                 Assert.Equal("A", table.FindById(SimpleEnumV2.Eins).Value);
-                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Zwei, Value = "B2" }));
-                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Drei, Value = "C" }));
+                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 {Key = SimpleEnumV2.Zwei, Value = "B2"}));
+                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 {Key = SimpleEnumV2.Drei, Value = "C"}));
                 Assert.Equal(3, table.Count);
             }
         }
@@ -284,32 +278,32 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKeyIncompatible");
                 var table = creator(tr);
 
-                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
+                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.One, Value = "A"});
 
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
-                var ex = Assert.Throws<BTDBException>(() => tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
+                var ex = Assert.Throws<BTDBException>(() =>
+                    tr.InitRelation<ITableWithEnumInKeyV3>("EnumWithItemInKeyIncompatible"));
                 Assert.Contains("Field 'Key'", ex.Message);
             }
         }
 
         public class JobV21
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
-            [SecondaryKey("Name", Order = 2)]
-            public string Name { get; set; }
+            [SecondaryKey("Name", Order = 2)] public string Name { get; set; }
 
             [SecondaryKey("Name", Order = 1)]
             [SecondaryKey("Cost", IncludePrimaryKeyOrder = 1)]
             public uint Cost { get; set; }
         }
 
-        public interface IJobTable21
+        public interface IJobTable21 : IRelation<JobV21>
         {
             void Insert(JobV21 job);
             JobV21 FindByNameOrDefault(uint cost, string name);
@@ -322,10 +316,11 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 { Id = 11, Name = "Code", Cost = 1000 };
+                var job = new JobV2 {Id = 11, Name = "Code", Cost = 1000};
                 jobTable.Insert(job);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -345,14 +340,12 @@ namespace BTDBTest
                 Status = 100;
             }
 
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
-            [SecondaryKey("Status")]
-            public int Status { get; set; }
+            [SecondaryKey("Status")] public int Status { get; set; }
         }
 
-        public interface IJobTable3 : IReadOnlyCollection<JobV3>
+        public interface IJobTable3 : IRelation<JobV3>
         {
             void Insert(JobV3 job);
             void RemoveById(ulong id);
@@ -365,10 +358,11 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 { Id = 11, Name = "Code" };
+                var job = new JobV2 {Id = 11, Name = "Code"};
                 jobTable.Insert(job);
                 tr.Commit();
             }
+
             ReopenDb();
             using (var tr = _db.StartTransaction())
             {
@@ -386,18 +380,17 @@ namespace BTDBTest
                 Status = 100;
             }
 
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
 
             [SecondaryKey("Status")]
-            [SecondaryKey("ExpiredStatus", Order =  2)]
+            [SecondaryKey("ExpiredStatus", Order = 2)]
             public int Status { get; set; }
 
-            [SecondaryKey("ExpiredStatus", Order =  1)]
+            [SecondaryKey("ExpiredStatus", Order = 1)]
             public bool IsExpired { get; set; }
         }
 
-        public interface IJobTable31 : IReadOnlyCollection<JobV31>
+        public interface IJobTable31 : IRelation<JobV31>
         {
             void Insert(JobV31 job);
             void RemoveById(ulong id);
@@ -411,10 +404,10 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable3>("Job");
                 var jobTable = creator(tr);
-                var job1 = new JobV3 { Id = 11, Status = 300 };
+                var job1 = new JobV3 {Id = 11, Status = 300};
                 jobTable.Insert(job1);
 
-                var job2 = new JobV3 { Id = 12, Status = 200 };
+                var job2 = new JobV3 {Id = 12, Status = 200};
                 jobTable.Insert(job2);
 
                 tr.Commit();
@@ -438,6 +431,5 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
-
     }
 }

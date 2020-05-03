@@ -12,7 +12,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal class RelationBuilder<T>
+    class RelationBuilder<T>
     {
         readonly RelationInfo _relationInfo;
         readonly Type _relationDbManipulatorType;
@@ -34,7 +34,7 @@ namespace BTDB.ODBLayer
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2)
                 .Call(_relationDbManipulatorType.GetConstructor(new[]
-                    {typeof(IObjectDBTransaction), typeof(RelationInfo)}))
+                    {typeof(IObjectDBTransaction), typeof(RelationInfo)})!)
                 .Ret();
             GenerateApartFieldsProperties(classImpl, interfaceType);
             var methods = RelationInfo.GetMethods(interfaceType);

@@ -33,12 +33,11 @@ namespace BTDBTest
 
         public class Link
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public IDictionary<ulong, ulong> Edges { get; set; }
         }
 
-        public interface ILinks : IReadOnlyCollection<Link>
+        public interface ILinks : IRelation<Link>
         {
             void Insert(Link link);
             void Update(Link link);
@@ -60,6 +59,7 @@ namespace BTDBTest
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -70,10 +70,11 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILinks>("LinksRelation");
                 var links = creator(tr);
-                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } };
+                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}};
                 links.Insert(link);
                 tr.Commit();
             }
+
             return creator;
         }
 
@@ -84,8 +85,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
-                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.Insert(new Link {Id = 2, Edges = new Dictionary<ulong, ulong> {[10] = 20}});
+                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
                 links.Update(link); //replace dict
                 link = links.FindById(2);
                 link.Edges.Add(20, 30);
@@ -94,6 +95,7 @@ namespace BTDBTest
                 Assert.Equal(2, link.Edges.Count);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -104,8 +106,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
-                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                links.Insert(new Link {Id = 2, Edges = new Dictionary<ulong, ulong> {[10] = 20}});
+                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
                 links.ShallowUpdate(link); //replace dict
                 link = links.FindById(2);
                 link.Edges.Add(20, 30);
@@ -114,6 +116,7 @@ namespace BTDBTest
                 Assert.Equal(2, link.Edges.Count);
                 tr.Commit();
             }
+
             Assert.NotEmpty(FindLeaks());
         }
 
@@ -128,6 +131,7 @@ namespace BTDBTest
                 Assert.Equal(0, links.Count);
                 tr.Commit();
             }
+
             Assert.NotEmpty(FindLeaks());
         }
 
@@ -145,6 +149,7 @@ namespace BTDBTest
                 Assert.Equal(3, value.Edges.Count);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -155,10 +160,11 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
                 links.Upsert(link); //replace dict
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -169,21 +175,21 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
+                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
                 links.ShallowUpsert(link); //replace dict
                 tr.Commit();
             }
+
             Assert.NotEmpty(FindLeaks());
         }
 
         public class LinkInList
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public List<IDictionary<ulong, ulong>> EdgesList { get; set; }
         }
 
-        public interface ILinksInList
+        public interface ILinksInList : IRelation<LinkInList>
         {
             void Insert(LinkInList link);
             void Update(LinkInList link);
@@ -204,13 +210,14 @@ namespace BTDBTest
                     Id = 1,
                     EdgesList = new List<IDictionary<ulong, ulong>>
                     {
-                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } ,
-                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
+                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
                     }
                 };
                 links.Insert(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
@@ -219,6 +226,7 @@ namespace BTDBTest
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -235,35 +243,36 @@ namespace BTDBTest
                     Id = 1,
                     EdgesList = new List<IDictionary<ulong, ulong>>
                     {
-                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } ,
-                        new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
+                        new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
                     }
                 };
                 links.Insert(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
                 var link = links.FindById(1);
                 for (int i = 0; i < 20; i++)
-                    link.EdgesList.Add(new Dictionary<ulong, ulong> { [10] = 20 });
+                    link.EdgesList.Add(new Dictionary<ulong, ulong> {[10] = 20});
                 links.Update(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
         public class LinkInDict
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public Dictionary<int, IDictionary<ulong, ulong>> EdgesIDict { get; set; }
             public string Name { get; set; }
         }
 
-        public interface ILinksInDict
+        public interface ILinksInDict : IRelation<LinkInDict>
         {
             void Insert(LinkInDict link);
             bool RemoveById(ulong id);
@@ -282,13 +291,14 @@ namespace BTDBTest
                     Id = 1,
                     EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
                     {
-                        [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
-                        [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                        [0] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
+                        [1] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
                     }
                 };
                 links.Insert(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
@@ -296,17 +306,17 @@ namespace BTDBTest
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
         public class LinkInIDict
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public IDictionary<int, IDictionary<ulong, ulong>> EdgesIDict { get; set; }
         }
 
-        public interface ILinksInIDict
+        public interface ILinksInIDict : IRelation<LinkInIDict>
         {
             void Insert(LinkInIDict link);
             bool RemoveById(ulong id);
@@ -325,13 +335,14 @@ namespace BTDBTest
                     Id = 1,
                     EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
                     {
-                        [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
-                        [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
+                        [0] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
+                        [1] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
                     }
                 };
                 links.Insert(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
@@ -339,6 +350,7 @@ namespace BTDBTest
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -349,12 +361,11 @@ namespace BTDBTest
 
         public class Links
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public Nodes Nodes { get; set; }
         }
 
-        public interface ILinksWithNodes
+        public interface ILinksWithNodes : IRelation<Links>
         {
             void Insert(Links link);
             Links FindByIdOrDefault(ulong id);
@@ -372,11 +383,12 @@ namespace BTDBTest
                 var link = new Links
                 {
                     Id = 1,
-                    Nodes = new Nodes { Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } }
+                    Nodes = new Nodes {Edges = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}}
                 };
                 links.Insert(link);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             using (var tr = _db.StartTransaction())
             {
@@ -386,6 +398,7 @@ namespace BTDBTest
                 Assert.True(links.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -403,12 +416,11 @@ namespace BTDBTest
 
         public class LicenseDb
         {
-            [PrimaryKey(1)]
-            public ulong ItemId { get; set; }
+            [PrimaryKey(1)] public ulong ItemId { get; set; }
             public LicenseFileDb LicenseFile { get; set; }
         }
 
-        public interface ILicenseTable
+        public interface ILicenseTable : IRelation<LicenseDb>
         {
             void Insert(LicenseDb license);
             void Update(LicenseDb license);
@@ -422,28 +434,33 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILicenseTable>("LicRel");
                 var lics = creator(tr);
-                var license = new LicenseDb { ItemId = 1 }; //no LicenseFileDb inserted
+                var license = new LicenseDb {ItemId = 1}; //no LicenseFileDb inserted
                 lics.Insert(license);
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var lics = creator(tr);
-                var license = new LicenseDb { ItemId = 1 };
+                var license = new LicenseDb {ItemId = 1};
                 lics.Update(license);
 
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
         public class License
         {
-            [PrimaryKey(1)]
-            public ulong CompanyId { get; set; }
-            [PrimaryKey(2)]
-            public ulong UserId { get; set; }
-            public IDictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>> ConcurrentFeautureItemsSessions { get; set; }
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong UserId { get; set; }
+
+            public IDictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>> ConcurrentFeautureItemsSessions
+            {
+                get;
+                set;
+            }
         }
 
         public class ConcurrentFeatureItemInfo
@@ -451,7 +468,7 @@ namespace BTDBTest
             public DateTime UsedFrom { get; set; }
         }
 
-        public interface ILicenses
+        public interface ILicenses : IRelation<License>
         {
             void Insert(License license);
             bool RemoveById(ulong companyId, ulong userId);
@@ -471,14 +488,17 @@ namespace BTDBTest
                 {
                     CompanyId = 1,
                     UserId = 1,
-                    ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
-                    {
-                        [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
-                    }
+                    ConcurrentFeautureItemsSessions =
+                        new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                        {
+                            [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
+                                {[2] = new ConcurrentFeatureItemInfo()}
+                        }
                 };
                 lics.Insert(license);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             ReopenDb();
             using (var tr = _db.StartTransaction())
@@ -489,14 +509,14 @@ namespace BTDBTest
                 lics.RemoveById(1, 1);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
 
         public class File
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
 
             public IIndirect<RawData> Data { get; set; }
         }
@@ -507,7 +527,7 @@ namespace BTDBTest
             public IDictionary<ulong, ulong> Edges { get; set; }
         }
 
-        public interface IHddRelation
+        public interface IHddRelation : IRelation<File>
         {
             void Insert(File file);
             void RemoveById(ulong id);
@@ -527,21 +547,23 @@ namespace BTDBTest
                     Id = 1,
                     Data = new DBIndirect<RawData>(new RawData
                     {
-                        Data = new byte[] { 1, 2, 3 },
-                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+                        Data = new byte[] {1, 2, 3},
+                        Edges = new Dictionary<ulong, ulong> {[10] = 20}
                     })
                 };
                 files.Insert(file);
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var files = creator(tr);
                 var file = files.FindById(1);
-                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
+                Assert.Equal(file.Data.Value.Data, new byte[] {1, 2, 3});
                 files.RemoveById(1);
                 tr.Commit();
             }
+
             Assert.NotEmpty(FindLeaks());
         }
 
@@ -558,45 +580,46 @@ namespace BTDBTest
                     Id = 1,
                     Data = new DBIndirect<RawData>(new RawData
                     {
-                        Data = new byte[] { 1, 2, 3 },
-                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
+                        Data = new byte[] {1, 2, 3},
+                        Edges = new Dictionary<ulong, ulong> {[10] = 20}
                     })
                 };
                 files.Insert(file);
                 tr.Commit();
             }
+
             using (var tr = _db.StartTransaction())
             {
                 var files = creator(tr);
                 var file = files.FindById(1);
-                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
+                Assert.Equal(file.Data.Value.Data, new byte[] {1, 2, 3});
                 file.Data.Value.Edges.Clear();
                 tr.Delete(file.Data);
                 files.RemoveById(1);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
         public class Setting
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public License License { get; set; }
         }
 
-        public interface ISetings
+        public interface ISettings : IRelation<Setting>
         {
             void Insert(Setting license);
             bool RemoveById(ulong id);
         }
 
         [Fact]
-        public void PreferInlineIsTransferedThroughDBObject()
+        public void PreferInlineIsTransferredThroughDBObject()
         {
             using (var tr = _db.StartTransaction())
             {
-                var creator = tr.InitRelation<ISetings>("SettingRel");
+                var creator = tr.InitRelation<ISettings>("SettingRel");
                 var settings = creator(tr);
                 var setting = new Setting
                 {
@@ -604,16 +627,19 @@ namespace BTDBTest
                     License = new License
                     {
                         CompanyId = 1,
-                        ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
-                        {
-                            [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
-                        }
+                        ConcurrentFeautureItemsSessions =
+                            new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                            {
+                                [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
+                                    {[2] = new ConcurrentFeatureItemInfo()}
+                            }
                     }
                 };
                 settings.Insert(setting);
                 settings.RemoveById(1);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -635,12 +661,11 @@ namespace BTDBTest
 
         public class Graph
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public INodes Nodes { get; set; }
         }
 
-        public interface IGraph
+        public interface IGraph : IRelation<Graph>
         {
             void Insert(Graph license);
             Graph FindById(ulong id);
@@ -660,13 +685,13 @@ namespace BTDBTest
                 var graph = new Graph
                 {
                     Id = 1,
-                    Nodes = new NodesA { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
+                    Nodes = new NodesA {A = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, F = "f"}
                 };
                 table.Insert(graph);
                 graph = new Graph
                 {
                     Id = 2,
-                    Nodes = new NodesB { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
+                    Nodes = new NodesB {B = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, E = "e"}
                 };
                 table.Insert(graph);
 
@@ -677,6 +702,7 @@ namespace BTDBTest
                 table.RemoveById(2);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -688,12 +714,11 @@ namespace BTDBTest
 
         public class View
         {
-            [PrimaryKey(1)]
-            public ulong Id { get; set; }
+            [PrimaryKey(1)] public ulong Id { get; set; }
             public Component Component { get; set; }
         }
 
-        public interface IViewTable
+        public interface IViewTable : IRelation<View>
         {
             void Insert(View license);
             void RemoveById(ulong id);
@@ -713,8 +738,8 @@ namespace BTDBTest
                     {
                         Children = new List<Component>
                         {
-                            new Component { Props = new Dictionary<string, string> { ["a"] = "A" } },
-                            new Component { Props = new Dictionary<string, string> { ["b"] = "B" } }
+                            new Component {Props = new Dictionary<string, string> {["a"] = "A"}},
+                            new Component {Props = new Dictionary<string, string> {["b"] = "B"}}
                         }
                     }
                 });
@@ -736,14 +761,17 @@ namespace BTDBTest
                 {
                     CompanyId = 1,
                     UserId = 1,
-                    ConcurrentFeautureItemsSessions = new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
-                    {
-                        [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo> { [2] = new ConcurrentFeatureItemInfo() }
-                    }
+                    ConcurrentFeautureItemsSessions =
+                        new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
+                        {
+                            [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
+                                {[2] = new ConcurrentFeatureItemInfo()}
+                        }
                 };
                 lics.Insert(license);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
             ReopenDb();
             using (var tr = _db.StartTransaction())
@@ -753,6 +781,7 @@ namespace BTDBTest
                 Assert.Equal(1, lics.RemoveById(1));
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -768,8 +797,7 @@ namespace BTDBTest
             [SecondaryKey("CompanyId")]
             public ulong CompanyId { get; set; }
 
-            [PrimaryKey(2)]
-            public ulong Id { get; set; }
+            [PrimaryKey(2)] public ulong Id { get; set; }
 
             public new BlobLocation Location
             {
@@ -785,7 +813,7 @@ namespace BTDBTest
             public IDictionary<int, bool> Dict { get; set; }
         }
 
-        public interface IFileTable
+        public interface IFileTable : IRelation<SharedImageFile>
         {
             void Insert(SharedImageFile license);
             void RemoveById(ulong companyId, ulong id);
@@ -794,35 +822,33 @@ namespace BTDBTest
         [Fact]
         public void IterateWellObjectsWithSharedInstance()
         {
-            Func<IObjectDBTransaction, IFileTable> creator;
             using (var tr = _db.StartTransaction())
             {
-                creator = tr.InitRelation<IFileTable>("IFileTable");
+                var creator = tr.InitRelation<IFileTable>("IFileTable");
                 var files = creator(tr);
                 var loc = new BlobLocation();
                 files.Insert(new SharedImageFile
                 {
                     Location = loc,
                     TempLocation = loc,
-                    Dict = new Dictionary<int, bool> { [1] = true }
+                    Dict = new Dictionary<int, bool> {[1] = true}
                 });
                 files.RemoveById(0, 0);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
         public class ImportData
         {
-            [PrimaryKey]
-            public ulong CompanyId { get; set; }
-            [PrimaryKey(Order = 1)]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong CompanyId { get; set; }
+            [PrimaryKey(Order = 1)] public ulong Id { get; set; }
 
             public IDictionary<ObjectId, ObjectNode> Items { get; set; }
         }
 
-        public interface IImportDataTable
+        public interface IImportDataTable : IRelation<ImportData>
         {
             bool Insert(ImportData item);
             void Update(ImportData item);
@@ -875,12 +901,11 @@ namespace BTDBTest
 
         public class NodesGraph
         {
-            [PrimaryKey]
-            public ulong Id { get; set; }
+            [PrimaryKey] public ulong Id { get; set; }
             public NodesBase Nodes { get; set; }
         }
 
-        public interface IGraphTable
+        public interface IGraphTable : IRelation<NodesGraph>
         {
             void Insert(NodesGraph license);
             NodesGraph FindById(ulong id);
@@ -900,13 +925,13 @@ namespace BTDBTest
                 var graph = new NodesGraph
                 {
                     Id = 1,
-                    Nodes = new NodesOne { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
+                    Nodes = new NodesOne {A = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, F = "f"}
                 };
                 table.Insert(graph);
                 graph = new NodesGraph
                 {
                     Id = 2,
-                    Nodes = new NodesTwo { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
+                    Nodes = new NodesTwo {B = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, E = "e"}
                 };
                 table.Insert(graph);
                 graph = new NodesGraph
@@ -923,6 +948,7 @@ namespace BTDBTest
                 table.RemoveById(2);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -941,12 +967,11 @@ namespace BTDBTest
 
         public class BatchDb
         {
-            [PrimaryKey(1)]
-            public Guid ItemId { get; set; }
+            [PrimaryKey(1)] public Guid ItemId { get; set; }
             public IDictionary<Guid, EmailDb> MailPieces { get; set; }
         }
 
-        public interface IBatchTable : IReadOnlyCollection<BatchDb>
+        public interface IBatchTable : IRelation<BatchDb>
         {
             void Insert(BatchDb batch);
             void Update(BatchDb batch);
@@ -990,10 +1015,12 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 var batch = table.FindByIdOrDefault(guid);
-                batch.MailPieces[mailGuid] = null;  //LEAK - removed immediately from db, in table.Update don't have previous value
+                batch.MailPieces[mailGuid] =
+                    null; //LEAK - removed immediately from db, in table.Update don't have previous value
                 table.Update(batch);
                 tr.Commit();
             }
+
             AssertNoLeaksInDb();
         }
 
@@ -1028,6 +1055,7 @@ namespace BTDBTest
                 builder.Append(" Value len:");
                 builder.Append(unseenKey.ValueSize);
             }
+
             return builder.ToString();
         }
 

@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+### BREAKING CHANGE
+
+- Relations interfaces needs to be inherited from `IRelation<T>`
+
+### Added
+
+- `IRelation<T>` and `IRelation` interfaces. You will get `Upsert` method for free.
+
+```C#
+    public interface IRelation<T> : IReadOnlyCollection<T>, IRelation where T : class
+    {
+        bool Upsert(T item);
+    }
+
+    public interface IRelation
+    {
+    }
+```
+
 ## 20.3.0
 
 ### Added

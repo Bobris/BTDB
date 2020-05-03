@@ -425,9 +425,8 @@ namespace SimpleTester
             public string Data3 { get; set; }
         }
 
-        public interface IBtdbTestTable
+        public interface IBtdbTestTable : IRelation<BtdbTest>
         {
-            bool Upsert(BtdbTest btdbTest);
             IEnumerator<BtdbTest> FindByName(ulong companyId, string testName);
         }
 

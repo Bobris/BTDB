@@ -9,7 +9,7 @@ using BTDB.ODBLayer;
 
 namespace SimpleTester
 {
-    public interface ITestTable
+    public interface ITestTable : IRelation<Test>
     {
         void Insert(Test test);
         void Update(Test test);

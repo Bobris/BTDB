@@ -11,7 +11,7 @@ namespace BTDB.ODBLayer
         object Get(ulong oid);
         ulong GetOid(object @object);
         // return key and value byte size by object id
-        KeyValuePair<uint, uint> GetStorageSize(ulong oid); 
+        KeyValuePair<uint, uint> GetStorageSize(ulong oid);
 
         IEnumerable<Type> EnumerateSingletonTypes();
         object Singleton(Type type);
@@ -48,7 +48,7 @@ namespace BTDB.ODBLayer
         /// </summary>
         bool RollbackAdvised { get; set; }
 
-        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName);
+        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName) where T : IRelation;
 
         IEnumerable<Type> EnumerateRelationTypes();
     }
