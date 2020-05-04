@@ -44,7 +44,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Callvirt(()=>((IWriterCtx)null).WriteEncryptedString(default));
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(EncryptedString), type)==null)
             {
@@ -104,7 +104,7 @@ namespace BTDB.FieldHandler
                 _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())!));
             }
 
-            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
             {
                 throw new InvalidOperationException();
             }

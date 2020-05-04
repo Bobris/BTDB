@@ -82,7 +82,7 @@ namespace BTDB.Service
                 .Callvirt(() => default(IWriterCtx).WriteNativeObject(null));
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             return this;
         }

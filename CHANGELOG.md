@@ -21,6 +21,10 @@
     }
 ```
 
+### Fixed
+
+- regression in 20.x in compatibility of Enums in relations with `BinaryCompatibilityOnly` attribute.
+
 ## 20.3.0
 
 ### Added

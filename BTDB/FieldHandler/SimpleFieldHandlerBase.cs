@@ -58,7 +58,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Call(_saver);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (HandledType() == type || !IsCompatibleWith(type, FieldHandlerOptions.None))
             {
@@ -118,7 +118,7 @@ namespace BTDB.FieldHandler
                 _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())));
             }
 
-            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
             {
                 throw new InvalidOperationException();
             }

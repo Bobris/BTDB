@@ -132,7 +132,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Mark(finish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))

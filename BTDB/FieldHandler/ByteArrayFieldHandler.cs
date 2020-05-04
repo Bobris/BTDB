@@ -52,7 +52,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (typeof (ByteBuffer) == type)
             {
@@ -110,7 +110,7 @@ namespace BTDB.FieldHandler
                 _fieldHandler.SaveByteBuffer(ilGenerator, pushWriterOrCtx, pushValue);
             }
 
-            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
             {
                 throw new InvalidOperationException();
             }

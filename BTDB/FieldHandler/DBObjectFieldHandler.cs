@@ -152,7 +152,7 @@ namespace BTDB.FieldHandler
                 .Callvirt(() => default(IWriterCtx).WriteNativeObject(null));
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             var needType = Unwrap(type);
             if (needType.IsInterface || needType.IsAbstract || type != needType && needType == HandledType())

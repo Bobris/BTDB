@@ -268,10 +268,15 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
             if (typeHandler == this) return this;
             var enumTypeHandler = typeHandler as EnumFieldHandler;
+            if (typeHandler == null && type.IsEnum)
+            {
+                enumTypeHandler = new EnumFieldHandler(type);
+                typeHandler = enumTypeHandler;
+            }
             if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
             {
                 if (type.GetCustomAttributes(typeof (BinaryCompatibilityOnlyAttribute), false).Length != 0)
@@ -283,13 +288,6 @@ namespace BTDB.FieldHandler
                 {
                     if (new EnumConfiguration(Configuration).IsSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
                         return typeHandler;
-                }
-            }
-            if (_enumType == null && type.IsEnum)
-            {
-                if (_configuration.SequenceEqual(new EnumConfiguration(type).ToConfiguration()))
-                {
-                    _enumType = type;
                 }
             }
             return this;
