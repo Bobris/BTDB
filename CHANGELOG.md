@@ -18,8 +18,25 @@
 
     public interface IRelation
     {
+        Type BtdbInternalGetRelationInterfaceType();
+        IRelation? BtdbInternalNextInChain { get; set; }
     }
 ```
+
+- `IObjectDbTransaction` has new methods
+
+```C#
+    object GetRelation(Type type);
+
+    T GetRelation<T>() where T : class, IRelation
+    {
+        return (T)GetRelation(typeof(T));
+    }
+```
+
+These lazily creates instance of relation for current transaction. If it is for first time it will also create it (in current transaction if it is writable, or in new writable transaction). It automatically names relation by `T.ToSimpleName()` or uses `PersistentName` attribute on `T`.
+
+You can register your own custom relation factory by using `void IObjectDB.RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory);`.
 
 ### Fixed
 

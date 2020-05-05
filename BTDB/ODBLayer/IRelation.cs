@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace BTDB.ODBLayer
@@ -9,5 +10,7 @@ namespace BTDB.ODBLayer
 
     public interface IRelation
     {
+        Type BtdbInternalGetRelationInterfaceType();
+        IRelation? BtdbInternalNextInChain { get; set; }
     }
 }

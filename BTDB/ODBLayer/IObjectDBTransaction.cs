@@ -48,8 +48,16 @@ namespace BTDB.ODBLayer
         /// </summary>
         bool RollbackAdvised { get; set; }
 
-        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName) where T : IRelation;
+        Func<IObjectDBTransaction, T> InitRelation<T>(string relationName) where T : class, IRelation;
 
+        // Because you can register same type with different names it can return it more than once
         IEnumerable<Type> EnumerateRelationTypes();
+
+        object GetRelation(Type type);
+
+        T GetRelation<T>() where T : class, IRelation
+        {
+            return (T)GetRelation(typeof(T));
+        }
     }
 }

@@ -634,7 +634,7 @@ namespace BTDB.ODBLayer
 
         internal Type ClientType => _clientType;
 
-        internal Type InterfaceType => _interfaceType;
+        internal Type? InterfaceType => _interfaceType;
 
         internal object DefaultClientObject => _defaultClientObject;
 
@@ -1011,9 +1011,11 @@ namespace BTDB.ODBLayer
                 if (!method.Name.StartsWith("get_"))
                     continue;
                 var name = GetPersistentName(method.Name.Substring(4), properties);
+                if (name == nameof(IRelation.BtdbInternalNextInChain))
+                    continue;
                 if (!pks.TryGetValue(name, out var tfi))
                     throw new BTDBException($"Property {name} is not part of primary key.");
-                if (!tfi.Handler.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
+                if (!tfi.Handler!.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
                     throw new BTDBException(
                         $"Property {name} has incompatible return type with the member of primary key with the same name.");
                 result.Add(name, method);

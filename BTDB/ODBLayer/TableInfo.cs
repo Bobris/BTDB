@@ -438,7 +438,7 @@ namespace BTDB.ODBLayer
             return key;
         }
 
-        public byte[] SingletonContent(long transactionNumber)
+        public byte[]? SingletonContent(long transactionNumber)
         {
             lock (_cachedSingletonLock)
             {

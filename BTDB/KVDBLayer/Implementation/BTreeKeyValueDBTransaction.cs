@@ -400,7 +400,7 @@ namespace BTDB.KVDBLayer
 
         public bool IsWriting()
         {
-            return _writing;
+            return _writing || _preapprovedWriting;
         }
 
         public ulong GetCommitUlong()

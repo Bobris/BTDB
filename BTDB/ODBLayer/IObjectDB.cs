@@ -36,5 +36,7 @@ namespace BTDB.ODBLayer
         IObjectDBLogger Logger { get; set; }
 
         ISymmetricCipher GetSymmetricCipher();
+
+        void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory);
     }
 }

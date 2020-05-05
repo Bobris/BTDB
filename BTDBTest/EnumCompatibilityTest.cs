@@ -22,29 +22,19 @@ namespace BTDBTest
             return odb;
         }
 
-        static Func<IObjectDBTransaction, T> GetRelationCreator<T>(IObjectDB odb) where T: IRelation
-        {
-            using var tr = odb.StartTransaction();
-            var creator = tr.InitRelation<T>("TestRelation");
-            tr.Commit();
-            return creator;
-        }
-
         [Fact]
         public void EnumIsBinaryCompatible()
         {
             const ulong testId = 1ul;
             var odb = CreateObjectDB();
-            var itemCreator = GetRelationCreator<IItemTable>(odb);
-            var tr = odb.StartTransaction();
-            var itemRelation = itemCreator(tr);
+            var tr = odb.StartWritingTransaction().Result;
+            var itemRelation = tr.GetRelation<IItemTable>();
             itemRelation.Insert(new Item { Id = testId, Type = ItemType.B });
             tr.Commit();
             tr.Dispose();
             odb = CreateObjectDB();
-            var flagCreator = GetRelationCreator<IFlagTable>(odb);
             tr = odb.StartReadOnlyTransaction();
-            var flagRelation = flagCreator(tr);
+            var flagRelation = tr.GetRelation<IFlagTable>();
             var flag = flagRelation.FindById(testId);
             tr.Dispose();
             Assert.Equal(FlagType.B, flag.Type);
@@ -70,6 +60,7 @@ namespace BTDBTest
             public ItemType Type { get; set; }
         }
 
+        [PersistedName("Test")]
         public interface IItemTable: IRelation<Item>
         {
             void Insert(Item item);
@@ -93,6 +84,7 @@ namespace BTDBTest
             public FlagType Type { get; set; }
         }
 
+        [PersistedName("Test")]
         public interface IFlagTable: IRelation<Flag>
         {
             void Insert(Flag item);

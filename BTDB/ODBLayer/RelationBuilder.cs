@@ -12,7 +12,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    class RelationBuilder<T>
+    class RelationBuilder
     {
         readonly RelationInfo _relationInfo;
         readonly Type _relationDbManipulatorType;
@@ -23,9 +23,9 @@ namespace BTDB.ODBLayer
             _relationDbManipulatorType = relationDbManipulatorType;
         }
 
-        public Func<IObjectDBTransaction, T> Build(string relationName)
+        public Func<IObjectDBTransaction, object> Build(string relationName)
         {
-            var interfaceType = typeof(T);
+            var interfaceType = _relationInfo.InterfaceType!;
             var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, _relationDbManipulatorType,
                 new[] {interfaceType});
             var constructorMethod =
@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
                 .Call(_relationDbManipulatorType.GetConstructor(new[]
                     {typeof(IObjectDBTransaction), typeof(RelationInfo)})!)
                 .Ret();
-            GenerateApartFieldsProperties(classImpl, interfaceType);
+            GenerateApartFieldsProperties(classImpl, interfaceType!);
             var methods = RelationInfo.GetMethods(interfaceType);
             foreach (var method in methods)
             {
@@ -109,7 +109,7 @@ namespace BTDB.ODBLayer
 
             var classImplType = classImpl.CreateType();
 
-            return BuildRelationCreatorInstance<T>(classImplType, relationName, _relationInfo);
+            return BuildRelationCreatorInstance(classImplType, relationName, _relationInfo);
         }
 
         static bool ParametersEndsWithAdvancedEnumeratorParam(ParameterInfo[] methodParameters)
@@ -790,19 +790,19 @@ namespace BTDB.ODBLayer
                 throw new BTDBException($"Method {name} should be defined with {expectedReturnType.Name} return type.");
         }
 
-        static Func<IObjectDBTransaction, T1> BuildRelationCreatorInstance<T1>(Type classImplType, string relationName,
+        static Func<IObjectDBTransaction, object> BuildRelationCreatorInstance(Type classImplType, string relationName,
             RelationInfo relationInfo)
         {
             var methodBuilder = ILBuilder.Instance.NewMethod("RelationFactory" + relationName,
-                typeof(Func<IObjectDBTransaction, T1>), typeof(RelationInfo));
+                typeof(Func<IObjectDBTransaction, object>), typeof(RelationInfo));
             var ilGenerator = methodBuilder.Generator;
             ilGenerator
                 .Ldarg(1)
                 .Ldarg(0)
-                .Newobj(classImplType.GetConstructor(new[] {typeof(IObjectDBTransaction), typeof(RelationInfo)}))
-                .Castclass(typeof(T1))
+                .Newobj(classImplType.GetConstructor(new[] {typeof(IObjectDBTransaction), typeof(RelationInfo)})!)
+                .Castclass(typeof(object))
                 .Ret();
-            return (Func<IObjectDBTransaction, T1>) methodBuilder.Create(relationInfo);
+            return (Func<IObjectDBTransaction, object>) methodBuilder.Create(relationInfo);
         }
 
         void CreateMethodFindById(IILGen ilGenerator, string methodName,
@@ -1094,14 +1094,13 @@ namespace BTDB.ODBLayer
                 if (!name.StartsWith("get_") && !name.StartsWith("set_"))
                     continue;
 
-                IILField field;
-                IILField initCheckField;
                 var propName = RelationInfo.GetPersistentName(method.Name.Substring(4), properties);
-
+                if (propName == nameof(IRelation.BtdbInternalNextInChain)) continue;
                 if (!_relationInfo.ApartFields.ContainsKey(propName))
                     throw new BTDBException($"Invalid property name {propName}.");
 
-                if (!apartFields.TryGetValue(propName, out field))
+                IILField initCheckField;
+                if (!apartFields.TryGetValue(propName, out var field))
                 {
                     field = classImpl.DefineField("_" + propName, method.ReturnType, FieldAttributes.Private);
                     apartFields[propName] = field;

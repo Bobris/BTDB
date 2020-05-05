@@ -54,8 +54,6 @@ namespace BTDB.ODBLayer
 
         const string AssertNotDerivedTypesMsg = "Derived types are not supported.";
 
-        static readonly ByteBuffer EmptyBuffer = ByteBuffer.NewEmpty();
-
         readonly IRelationModificationCounter _modificationCounter;
 
         public RelationDBManipulator(IObjectDBTransaction transaction, RelationInfo relationInfo)
@@ -210,7 +208,7 @@ namespace BTDB.ODBLayer
 
             var oldValueBytes = _hasSecondaryIndexes
                 ? _kvtr.GetValue()
-                : EmptyBuffer;
+                : ByteBuffer.NewEmpty();
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -302,7 +300,7 @@ namespace BTDB.ODBLayer
 
             var valueBytes = _hasSecondaryIndexes
                 ? _kvtr.GetValue()
-                : EmptyBuffer;
+                : ByteBuffer.NewEmpty();
 
             _kvtr.EraseCurrent();
 
@@ -599,7 +597,7 @@ namespace BTDB.ODBLayer
         void ResetKeyPrefix()
         {
             _transaction.TransactionProtector.Start();
-            _kvtr.SetKeyPrefix(EmptyBuffer);
+            _kvtr.SetKeyPrefix(ByteBuffer.NewEmpty());
         }
 
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
@@ -636,7 +634,7 @@ namespace BTDB.ODBLayer
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
-                _kvtr.CreateOrUpdateKeyValue(keyBytes, EmptyBuffer);
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, ByteBuffer.NewEmpty());
             }
         }
 
@@ -669,7 +667,7 @@ namespace BTDB.ODBLayer
                     throw new BTDBException("Error in updating secondary indexes, previous index entry not found.");
                 _kvtr.EraseCurrent();
                 //insert new value
-                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, EmptyBuffer);
+                _kvtr.CreateOrUpdateKeyValue(newKeyBytes, ByteBuffer.NewEmpty());
             }
         }
 
@@ -710,5 +708,12 @@ namespace BTDB.ODBLayer
         {
             writer.WriteInt8(4); //ObjectDB.AllRelationsSKPrefix
         }
+
+        public Type BtdbInternalGetRelationInterfaceType()
+        {
+            return _relationInfo.InterfaceType!;
+        }
+
+        public IRelation? BtdbInternalNextInChain { get; set; }
     }
 }

@@ -12,7 +12,7 @@ namespace BTDB.KVDBLayer
         string DescriptionForLeaks { get; set; }
 
         /// <summary>
-        /// It sets automatic key prefix, all funtions then works relatively to this prefix, it also invalidates current key
+        /// It sets automatic key prefix, all functions then works relatively to this prefix, it also invalidates current key
         /// </summary>
         void SetKeyPrefix(ByteBuffer prefix);
 

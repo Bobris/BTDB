@@ -18,6 +18,7 @@ namespace BTDB.ODBLayer
         IPolymorphicTypesRegistry _polymorphicTypesRegistry;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
+        internal Dictionary<Type, Func<IObjectDBTransaction, object>> RelationFactories = new Dictionary<Type, Func<IObjectDBTransaction, object>>();
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
         internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
@@ -196,6 +197,23 @@ namespace BTDB.ODBLayer
         public IObjectDBLogger Logger { get; set; }
 
         public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
+
+        public void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory)
+        {
+            while (true)
+            {
+                var currentRelationFactories = Volatile.Read(ref RelationFactories);
+                if (currentRelationFactories!.ContainsKey(type)) return;
+                var newRelationFactories =
+                    new Dictionary<Type, Func<IObjectDBTransaction, object>>(currentRelationFactories)
+                    {
+                        {type, factory}
+                    };
+                if (Interlocked.CompareExchange(ref RelationFactories, newRelationFactories,
+                    currentRelationFactories) == currentRelationFactories)
+                    return;
+            }
+        }
 
         public void Dispose()
         {
