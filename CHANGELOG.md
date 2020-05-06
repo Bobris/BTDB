@@ -38,6 +38,8 @@ These lazily creates instance of relation for current transaction. If it is for 
 
 You can register your own custom relation factory by using `void IObjectDB.RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory);`.
 
+You can forbid automatic registration of relations by `IObjectDB.AllowAutoRegistrationOfRelations = false`. Good in production code to allow auto registration only during initial transaction.
+
 ### Fixed
 
 - regression in 20.x in compatibility of Enums in relations with `BinaryCompatibilityOnly` attribute.

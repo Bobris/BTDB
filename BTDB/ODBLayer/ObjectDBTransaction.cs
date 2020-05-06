@@ -350,7 +350,7 @@ namespace BTDB.ODBLayer
                 // Ignore impossibility to create type
                 if (TryToEnsureClientTypeNotNull(tableInfo))
                 {
-                    yield return tableInfo.ClientType;
+                    yield return tableInfo.ClientType!;
                 }
             }
         }
@@ -397,6 +397,9 @@ namespace BTDB.ODBLayer
 
         void CreateAndRegisterRelationFactory(Type type)
         {
+            if (!_owner.AllowAutoRegistrationOfRelations)
+                throw new BTDBException("AutoRegistration of "+type.ToSimpleName()+" is forbidden");
+
             if (!type.InheritsOrImplements(typeof(IRelation<>))) throw new BTDBException("Relation type "+type.ToSimpleName()+" must implement IRelation<>");
             var name = type.GetCustomAttribute<PersistedNameAttribute>() is {} persistedNameAttribute ? persistedNameAttribute.Name : type.ToSimpleName();
             if (_keyValueTr!.IsWriting())
@@ -519,7 +522,7 @@ namespace BTDB.ODBLayer
                     {
                         metadata.Id = _owner.AllocateNewOid();
                         CompactObjCacheIfNeeded();
-                        _objBigCache.Add(metadata.Id, new WeakReference(@object));
+                        _objBigCache!.Add(metadata.Id, new WeakReference(@object));
                     }
                     if (metadata.State != DBObjectState.Dirty)
                     {

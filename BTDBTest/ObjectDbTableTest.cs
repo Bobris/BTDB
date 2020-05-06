@@ -2651,5 +2651,63 @@ namespace BTDBTest
                     KeyProposition.Included, "D", KeyProposition.Excluded)));
             Assert.Equal(2, i.Parts.Count);
         }
+
+        [Fact]
+        public void AutoRegisterOfRelationWorks()
+        {
+            {
+                using var tr = _db.StartTransaction();
+                tr.GetRelation<IPersonTable>();
+            }
+            {
+                using var tr = _db.StartTransaction();
+                var table = tr.GetRelation<IPersonTable>();
+                table.Upsert(new Person());
+            }
+        }
+
+        [Fact]
+        public void AutoRegistrationCouldBeForbidden()
+        {
+            _db.AllowAutoRegistrationOfRelations = false;
+            using var tr = _db.StartTransaction();
+            Assert.Throws<BTDBException>(() => tr.GetRelation<IPersonTable>());
+        }
+
+        public interface ICustomRelation : IRelation
+        {
+            void Hello(int call);
+        }
+
+        public class CustomRelation : ICustomRelation
+        {
+            readonly IObjectDBTransaction _tr;
+
+            public CustomRelation(IObjectDBTransaction tr)
+            {
+                _tr = tr;
+            }
+
+            public Type BtdbInternalGetRelationInterfaceType() => typeof(ICustomRelation);
+
+            public IRelation? BtdbInternalNextInChain { get; set; }
+
+            int _index;
+
+            public void Hello(int call)
+            {
+                _index++;
+                Assert.Equal(call, (int) _tr.GetCommitUlong() + _index);
+            }
+        }
+
+        [Fact]
+        public void AllowsRegisteringOfCustomRelation()
+        {
+            _db.RegisterCustomRelation(typeof(ICustomRelation), tr => new CustomRelation(tr));
+            using var tr = _db.StartTransaction();
+            tr.GetRelation<ICustomRelation>().Hello(1);
+            tr.GetRelation<ICustomRelation>().Hello(2);
+        }
     }
 }

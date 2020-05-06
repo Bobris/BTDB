@@ -45,7 +45,7 @@ namespace BTDB.ODBLayer
 
         internal string Name => _name;
 
-        internal Type ClientType
+        internal Type? ClientType
         {
             get { return _clientType; }
             set

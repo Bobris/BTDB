@@ -215,6 +215,8 @@ namespace BTDB.ODBLayer
             }
         }
 
+        public bool AllowAutoRegistrationOfRelations { get; set; } = true;
+
         public void Dispose()
         {
             if (_dispose)
