@@ -195,7 +195,7 @@ namespace Releaser
                 File.Copy(fn, releaseSources + "/" + relfn);
             }
             System.IO.Compression.ZipFile.CreateFromDirectory(releaseSources, projDir + "/BTDB/bin/Release/BTDB.zip", System.IO.Compression.CompressionLevel.Optimal, false);
-            start = new ProcessStartInfo("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://www.nuget.org")
+            start = new ProcessStartInfo("dotnet", "nuget push BTDB." + newVersion + ".nupkg -s https://nuget.org")
             {
                 UseShellExecute = true,
                 WorkingDirectory = projDir + "/BTDB/bin/Release"
