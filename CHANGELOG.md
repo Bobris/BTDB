@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 21.0.0
+
 ### BREAKING CHANGE
 
 - Relations interfaces needs to be inherited from `IRelation<T>`
