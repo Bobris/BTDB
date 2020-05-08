@@ -18,7 +18,7 @@ namespace BTDB.ODBLayer
         IPolymorphicTypesRegistry _polymorphicTypesRegistry;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
-        internal Dictionary<Type, Func<IObjectDBTransaction, object>> RelationFactories = new Dictionary<Type, Func<IObjectDBTransaction, object>>();
+        internal Dictionary<Type, Func<IObjectDBTransaction, IRelation>> RelationFactories = new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>();
         bool _dispose;
         internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
         internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
@@ -189,7 +189,7 @@ namespace BTDB.ODBLayer
             return _polymorphicTypesRegistry.GetPolymorphicTypes(baseType);
         }
 
-        public Type TypeByName(string name)
+        public Type? TypeByName(string name)
         {
             return Type2NameRegistry.FindTypeByName(name);
         }
@@ -198,14 +198,14 @@ namespace BTDB.ODBLayer
 
         public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
-        public void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory)
+        public void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory)
         {
             while (true)
             {
                 var currentRelationFactories = Volatile.Read(ref RelationFactories);
                 if (currentRelationFactories!.ContainsKey(type)) return;
                 var newRelationFactories =
-                    new Dictionary<Type, Func<IObjectDBTransaction, object>>(currentRelationFactories)
+                    new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>(currentRelationFactories)
                     {
                         {type, factory}
                     };

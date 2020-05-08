@@ -8,7 +8,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    internal struct FieldId : IEquatable<FieldId>
+    struct FieldId : IEquatable<FieldId>
     {
         readonly bool _isFromPrimaryKey;
         readonly uint _index;
@@ -28,7 +28,7 @@ namespace BTDB.ODBLayer
         }
     }
 
-    internal class SecondaryKeyInfo
+    class SecondaryKeyInfo
     {
         public IList<FieldId> Fields { get; set; }
         public string Name { get; set; }
@@ -125,7 +125,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        uint SelectSecondaryKeyIndex(SecondaryKeyInfo info, RelationVersionInfo prevVersion)
+        uint SelectSecondaryKeyIndex(SecondaryKeyInfo info, RelationVersionInfo? prevVersion)
         {
             uint index = 0;
             if (prevVersion != null)

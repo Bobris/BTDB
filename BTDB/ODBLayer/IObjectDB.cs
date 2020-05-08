@@ -37,7 +37,7 @@ namespace BTDB.ODBLayer
 
         ISymmetricCipher GetSymmetricCipher();
 
-        void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, object> factory);
+        void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory);
 
         bool AllowAutoRegistrationOfRelations { get; set; }
     }

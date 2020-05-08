@@ -340,7 +340,8 @@ namespace BTDB.ODBLayer
 
         internal List<ulong> FreeContentOldDict { get; } = new List<ulong>();
         internal List<ulong> FreeContentNewDict { get; } = new List<ulong>();
-        internal byte[] Prefix { get; private set; }
+        internal byte[] Prefix;
+        internal byte[] PrefixSecondary;
 
         bool? _needImplementFreeContent;
 
@@ -955,7 +956,7 @@ namespace BTDB.ODBLayer
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
-                if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                if (pi.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
                 var pks = pi.GetCustomAttributes(typeof(PrimaryKeyAttribute), true);
                 PrimaryKeyAttribute actualPKAttribute = null;
@@ -964,7 +965,7 @@ namespace BTDB.ODBLayer
                     actualPKAttribute = (PrimaryKeyAttribute) pks[0];
                     var fieldInfo = TableFieldInfo.Build(Name, pi, _relationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.Orderable);
-                    if (fieldInfo.Handler.NeedsCtx())
+                    if (fieldInfo.Handler!.NeedsCtx())
                         throw new BTDBException($"Unsupported key field {fieldInfo.Name} type.");
                     primaryKeys.Add(actualPKAttribute.Order, fieldInfo);
                 }
@@ -987,7 +988,7 @@ namespace BTDB.ODBLayer
                     if (key.Name == "Id")
                         throw new BTDBException(
                             "'Id' is invalid name for secondary key, it is reserved for primary key identification.");
-                    currentList.Add(key);
+                    currentList!.Add(key);
                 }
 
                 if (actualPKAttribute == null)
@@ -997,7 +998,7 @@ namespace BTDB.ODBLayer
 
             var prevVersion = LastPersistedVersion > 0 ? _relationVersions[LastPersistedVersion] : null;
             return new RelationVersionInfo(primaryKeys, secondaryKeys, secondaryKeyFields.ToArray(), fields.ToArray(),
-                prevVersion);
+                prevVersion!);
         }
 
         static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, PropertyInfo[] properties,
@@ -1545,6 +1546,11 @@ namespace BTDB.ODBLayer
             Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, Id);
             Prefix = prefix;
+            o = ObjectDB.AllRelationsSKPrefix.Length;
+            prefix = new byte[o + PackUnpack.LengthVUInt(Id)];
+            Array.Copy(ObjectDB.AllRelationsSKPrefix, prefix, o);
+            PackUnpack.PackVUInt(prefix, ref o, Id);
+            PrefixSecondary = prefix;
         }
 
         public override string ToString()

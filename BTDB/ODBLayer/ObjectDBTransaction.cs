@@ -370,15 +370,39 @@ namespace BTDB.ODBLayer
         }
 
         IRelation? _relationInstances;
+        Dictionary<Type, IRelation>? _relationsInstanceCache;
+        const int LinearSearchLimit = 4;
 
-        public object GetRelation(Type type)
+        public IRelation GetRelation(Type type)
         {
-            var top = _relationInstances;
-            while (top != null)
+            if (_relationsInstanceCache != null)
             {
-                if (top.BtdbInternalGetRelationInterfaceType() == type)
-                    return top;
-                top = top.BtdbInternalNextInChain;
+                if (_relationsInstanceCache.TryGetValue(type, out var res))
+                    return res;
+            }
+            else
+            {
+                var top = _relationInstances;
+                var complexity = 0;
+                while (top != null)
+                {
+                    if (top.BtdbInternalGetRelationInterfaceType() == type)
+                    {
+                        if (complexity >= LinearSearchLimit)
+                        {
+                            var cache = _relationsInstanceCache = new Dictionary<Type, IRelation>(complexity);
+                            var t = _relationInstances;
+                            while (t != null)
+                            {
+                                cache.Add(t.BtdbInternalGetRelationInterfaceType(), t);
+                                t = t.BtdbInternalNextInChain;
+                            }
+                        }
+                        return top;
+                    }
+                    top = top.BtdbInternalNextInChain;
+                    complexity++;
+                }
             }
 
             while (true)
@@ -386,7 +410,7 @@ namespace BTDB.ODBLayer
                 if (_owner.RelationFactories.TryGetValue(type, out var factory))
                 {
                     var res = (IRelation)factory(this);
-                    res.BtdbInternalNextInChain = top;
+                    res.BtdbInternalNextInChain = _relationInstances;
                     _relationInstances = res;
                     return res;
                 }
@@ -922,12 +946,12 @@ namespace BTDB.ODBLayer
             return Unsafe.As<Func<IObjectDBTransaction, T>>(InitRelation(relationName, interfaceType));
         }
 
-        Func<IObjectDBTransaction, object> InitRelation(string relationName, Type interfaceType)
+        Func<IObjectDBTransaction, IRelation> InitRelation(string relationName, Type interfaceType)
         {
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType);
             var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
             var builder = new RelationBuilder(relationInfo, relationDBManipulatorType);
-            return builder.Build(relationName);
+            return (Func<IObjectDBTransaction, IRelation>)builder.Build().Create(relationInfo);
         }
 
         Dictionary<uint, IRelationModificationCounter>? _modificationCounters;

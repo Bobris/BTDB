@@ -2,7 +2,7 @@ using System;
 
 namespace BTDB.ODBLayer
 {
-    [AttributeUsage(AttributeTargets.Property, AllowMultiple = true, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
     public class SecondaryKeyAttribute : Attribute
     {
         public string Name { get; set; }

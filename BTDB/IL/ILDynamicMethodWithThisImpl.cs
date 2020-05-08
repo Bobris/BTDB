@@ -8,7 +8,7 @@ namespace BTDB.IL
     {
         readonly Type _delegateType;
         int _expectedLength;
-        IILGen _gen;
+        IILGen? _gen;
         readonly DynamicMethod _dynamicMethod;
 
         public ILDynamicMethodWithThisImpl(string name, Type delegateType, Type thisType)
@@ -25,7 +25,7 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers()));
+        public IILGen Generator => _gen ??= new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers());
 
         public void FinalizeCreation()
         {

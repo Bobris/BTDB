@@ -78,11 +78,21 @@ namespace BTDB.ODBLayer
         ByteBuffer KeyBytes(T obj)
         {
             var keyWriter = new ByteBufferWriter();
-            WritePKPrefix(keyWriter);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
+            WriteRelationPKPrefix(keyWriter);
             _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj,
                 this); //this for relation interface which is same with manipulator
             return keyWriter.Data;
+        }
+
+        public void WriteRelationPKPrefix(AbstractBufferedWriter writer)
+        {
+            writer.WriteBlock(_relationInfo.Prefix);
+        }
+
+        public void WriteRelationSKPrefix(AbstractBufferedWriter writer, int secondaryKeyIndex)
+        {
+            writer.WriteBlock(_relationInfo.PrefixSecondary);
+            writer.WriteUInt8((byte)secondaryKeyIndex);
         }
 
         readonly bool _hasSecondaryIndexes;
@@ -361,6 +371,10 @@ namespace BTDB.ODBLayer
 
         public int RemoveByKeyPrefixWithoutIterate(ByteBuffer keyBytesPrefix)
         {
+            if (_relationInfo.NeedImplementFreeContent())
+            {
+                return RemoveByPrimaryKeyPrefix(keyBytesPrefix);
+            }
             if (_hasSecondaryIndexes)
             {
                 //keyBytePrefix contains [Index Relation, Primary key prefix] we need
@@ -369,9 +383,7 @@ namespace BTDB.ODBLayer
                 var writer = new ByteBufferWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
-                    WriteSKPrefix(writer);
-                    writer.WriteVUInt32(_relationInfo.Id);
-                    writer.WriteVUInt32(secKey.Key);
+                    WriteRelationSKPrefix(writer, (int)secKey.Key);
                     writer.WriteBlock(keyBytesPrefix.Buffer, idBytesLength, keyBytesPrefix.Length - idBytesLength);
                     _kvtr.SetKeyPrefix(writer.Data);
                     _kvtr.EraseAll();
@@ -557,8 +569,7 @@ namespace BTDB.ODBLayer
             uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
         {
             var pkWriter = new ByteBufferWriter();
-            WritePKPrefix(pkWriter);
-            pkWriter.WriteVUInt32(_relationInfo.Id);
+            WriteRelationPKPrefix(pkWriter);
             _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
                 (new ByteBufferReader(firstPart), new ByteBufferReader(secondPart), pkWriter);
             return FindByIdOrDefaultInternal(itemLoader, pkWriter.Data, true);
@@ -604,9 +615,7 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new ByteBufferWriter();
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-            WriteSKPrefix(keyWriter);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
-            keyWriter.WriteVUInt32(secondaryKeyIndex); //secondary key index
+            WriteRelationSKPrefix(keyWriter, (int)secondaryKeyIndex);
             keySaver(_transaction, keyWriter, obj, this); //secondary key
             return keyWriter.Data;
         }
@@ -614,9 +623,7 @@ namespace BTDB.ODBLayer
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             var keyWriter = new ByteBufferWriter();
-            WriteSKPrefix(keyWriter);
-            keyWriter.WriteVUInt32(_relationInfo.Id);
-            keyWriter.WriteVUInt32(secondaryKeyIndex);
+            WriteRelationSKPrefix(keyWriter, (int)secondaryKeyIndex);
 
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
@@ -697,16 +704,6 @@ namespace BTDB.ODBLayer
                 _kvtr.SetKeyPrefix(_relationInfo.Prefix);
                 return (int) _kvtr.GetKeyValueCount();
             }
-        }
-
-        static void WritePKPrefix(AbstractBufferedWriter writer)
-        {
-            writer.WriteInt8(3); //ObjectDB.AllRelationsPKPrefix
-        }
-
-        static void WriteSKPrefix(AbstractBufferedWriter writer)
-        {
-            writer.WriteInt8(4); //ObjectDB.AllRelationsSKPrefix
         }
 
         public Type BtdbInternalGetRelationInterfaceType()

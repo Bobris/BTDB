@@ -1532,13 +1532,13 @@ namespace BTDBTest
                     tr.Commit();
                 }
 
-                Assert.Contains(AppDomain.CurrentDomain.GetAssemblies(), a => a.FullName.StartsWith("RelationTestGC"));
+                Assert.Contains(AppDomain.CurrentDomain.GetAssemblies(), a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
                 ReopenDb();
             }
 
             GC.Collect(GC.MaxGeneration);
             GC.WaitForPendingFinalizers();
-            int count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName.StartsWith("RelationTestGC"));
+            var count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
             _output.WriteLine($"Reused {createCount - count} out of {createCount} relation assemblies");
             Assert.True(count < createCount);
         }

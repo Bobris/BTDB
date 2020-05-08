@@ -604,7 +604,7 @@ namespace BTDB.IL
             return il.Call(methodInfo);
         }
 
-        public static IILGen Newobj(this IILGen il, Expression<Action> expression)
+        public static IILGen Newobj<T>(this IILGen il, Expression<Func<T>> expression)
         {
             var constructorInfo = ((NewExpression) expression.Body).Constructor;
             return il.Newobj(constructorInfo);

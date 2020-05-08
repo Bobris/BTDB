@@ -53,7 +53,7 @@ namespace BTDB.ODBLayer
         // Because you can register same type with different names it can return it more than once
         IEnumerable<Type> EnumerateRelationTypes();
 
-        object GetRelation(Type type);
+        IRelation GetRelation(Type type);
 
         T GetRelation<T>() where T : class, IRelation
         {
