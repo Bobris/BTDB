@@ -21,21 +21,23 @@ namespace BTDB.ODBLayer
         readonly IDictionary<string, MethodInfo> _apartFields;
         readonly RelationVersionInfo _clientRelationVersionInfo;
         readonly RelationInfo _relationInfo;
+        public IILDynamicMethodWithThis DelegateCreator { get; private set; }
 
         public static readonly MethodInfo ByteBufferWriterDataMethodInfo =
             typeof(ByteBufferWriter).GetProperty(nameof(ByteBufferWriter.Data))!.GetGetMethod(true)!;
 
-        public RelationBuilder(RelationInfo relationInfo, Type relationDbManipulatorType)
+        public RelationBuilder(RelationInfo relationInfo)
         {
             _relationInfo = relationInfo;
             _interfaceType = relationInfo.InterfaceType!;
             _apartFields = relationInfo.ApartFields;
             _clientRelationVersionInfo = relationInfo.ClientRelationVersionInfo;
             _itemType = relationInfo.ClientType;
-            _relationDbManipulatorType = relationDbManipulatorType;
+            _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
+            DelegateCreator = Build();
         }
 
-        public IILDynamicMethodWithThis Build()
+        IILDynamicMethodWithThis Build()
         {
             var interfaceType = _interfaceType;
             var relationName = interfaceType!.ToSimpleName();

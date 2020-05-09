@@ -1081,6 +1081,7 @@ namespace BTDBTest
             public ulong NoticeId { get; set; }
         }
 
+        [PersistedName("UserNotice")]
         public interface IUserNoticeTable : IRelation<UserNotice>
         {
             void Insert(UserNotice un);
@@ -1090,15 +1091,14 @@ namespace BTDBTest
         [Fact]
         public void UserNoticeWorks()
         {
-            using (var tr = _db.StartTransaction())
+            using (var tr = _db.StartWritingTransaction().Result)
             {
-                var creator = tr.InitRelation<IUserNoticeTable>("UserNotice");
-                var table = creator(tr);
+                var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice {UserId = 1, NoticeId = 2});
                 var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
                     1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
-                Assert.Equal(2u, en.Current.NoticeId);
+                Assert.Equal(2u, en.Current!.NoticeId);
                 tr.Commit();
             }
 
@@ -1106,8 +1106,7 @@ namespace BTDBTest
             var db = (ObjectDB) _db;
             using (var tr = _db.StartTransaction())
             {
-                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction) tr, "UserNotice",
-                    typeof(IUserNoticeTable));
+                var relationInfo = ((IRelationDbManipulator) tr.GetRelation<IUserNoticeTable>()).RelationInfo;
                 Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }
@@ -1337,8 +1336,9 @@ namespace BTDBTest
             var db = (ObjectDB) _db;
             using (var tr = _db.StartTransaction())
             {
-                var relationInfo = db.RelationsInfo.CreateByName((IInternalObjectDBTransaction) tr, "Permutation",
-                    typeof(IPermutationOfKeysTable));
+                var creator = tr.InitRelation<IPermutationOfKeysTable>("Permutation");
+                var table = creator(tr);
+                var relationInfo = ((IRelationDbManipulator) table).RelationInfo;
                 Assert.Equal(1u, relationInfo.ClientTypeVersion);
             }
         }

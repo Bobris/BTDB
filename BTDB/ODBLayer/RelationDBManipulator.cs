@@ -33,7 +33,7 @@ namespace BTDB.ODBLayer
         }
     }
 
-    public interface IRelationDbManipulator
+    public interface IRelationDbManipulator: IRelation
     {
         public IInternalObjectDBTransaction Transaction { get; }
         public RelationInfo RelationInfo { get; }

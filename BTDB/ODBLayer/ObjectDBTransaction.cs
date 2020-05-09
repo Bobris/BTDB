@@ -949,9 +949,8 @@ namespace BTDB.ODBLayer
         Func<IObjectDBTransaction, IRelation> InitRelation(string relationName, Type interfaceType)
         {
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType);
-            var relationDBManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(relationInfo.ClientType);
-            var builder = new RelationBuilder(relationInfo, relationDBManipulatorType);
-            return (Func<IObjectDBTransaction, IRelation>)builder.Build().Create(relationInfo);
+            var builder = new RelationBuilder(relationInfo);
+            return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
         }
 
         Dictionary<uint, IRelationModificationCounter>? _modificationCounters;
