@@ -570,7 +570,7 @@ namespace BTDB.ODBLayer
         {
             var pkWriter = new ByteBufferWriter();
             WriteRelationPKPrefix(pkWriter);
-            _relationInfo.GetSKKeyValuetoPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
+            _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
                 (new ByteBufferReader(firstPart), new ByteBufferReader(secondPart), pkWriter);
             return FindByIdOrDefaultInternal(itemLoader, pkWriter.Data, true);
         }

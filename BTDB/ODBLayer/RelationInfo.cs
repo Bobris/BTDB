@@ -386,8 +386,8 @@ namespace BTDB.ODBLayer
                 if (LastPersistedVersion > 0)
                 {
                     CheckThatPrimaryKeyHasNotChanged(tr, name, ClientRelationVersionInfo,
-                        _relationVersions[LastPersistedVersion]);
-                    UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]);
+                        _relationVersions[LastPersistedVersion]!);
+                    UpdateSecondaryKeys(tr, ClientRelationVersionInfo, _relationVersions[LastPersistedVersion]!);
                 }
             }
 
@@ -402,11 +402,11 @@ namespace BTDB.ODBLayer
             if (pkFields.Count != prevPkFields.Count)
                 throw new BTDBException(
                     $"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Count} != {prevPkFields.Count}.");
-            var en = pkFields.GetEnumerator();
-            var pen = prevPkFields.GetEnumerator();
+            using var en = pkFields.GetEnumerator();
+            using var pen = prevPkFields.GetEnumerator();
             while (en.MoveNext() && pen.MoveNext())
             {
-                if (ArePrimaryKeyFieldsCompatible(en.Current.Handler, pen.Current.Handler)) continue;
+                if (ArePrimaryKeyFieldsCompatible(en.Current!.Handler!, pen.Current!.Handler!)) continue;
                 var db = tr.Owner;
                 db.Logger?.ReportIncompatiblePrimaryKey(name, en.Current.Name);
                 if (db.ActualOptions.SelfHealing)
@@ -430,8 +430,8 @@ namespace BTDB.ODBLayer
             if (newHandledType.IsEnum && previousHandledType.IsEnum)
             {
                 var prevEnumCfg =
-                    new EnumFieldHandler.EnumConfiguration((previousHandler as EnumFieldHandler).Configuration);
-                var newEnumCfg = new EnumFieldHandler.EnumConfiguration((newHandler as EnumFieldHandler).Configuration);
+                    new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler) previousHandler).Configuration);
+                var newEnumCfg = new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler) newHandler).Configuration);
 
                 return prevEnumCfg.IsBinaryRepresentationSubsetOf(newEnumCfg);
             }
@@ -545,8 +545,7 @@ namespace BTDB.ODBLayer
         void SetPrefixToSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
         {
             var writer = new ByteBufferWriter();
-            writer.WriteBlock(ObjectDB.AllRelationsSKPrefix);
-            writer.WriteVUInt32(Id);
+            writer.WriteBlock(PrefixSecondary);
             writer.WriteVUInt32(index);
 
             keyValueTr.SetKeyPrefix(writer.Data);
@@ -563,7 +562,7 @@ namespace BTDB.ODBLayer
 
             var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
 
-            for (int i = 0; i < indexes.Count; i++)
+            for (var i = 0; i < indexes.Count; i++)
             {
                 keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
                     $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
@@ -574,11 +573,10 @@ namespace BTDB.ODBLayer
                 var obj = enumerator.Current;
 
                 tr.TransactionProtector.Start();
-                tr.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
+                tr.KeyValueDBTransaction.SetKeyPrefix(PrefixSecondary);
 
-                for (int i = 0; i < indexes.Count; i++)
+                for (var i = 0; i < indexes.Count; i++)
                 {
-                    keyWriter.WriteVUInt32(Id);
                     keyWriter.WriteVUInt32(indexes[i].Key);
                     keySavers[i](tr, keyWriter, obj);
                     var keyBytes = keyWriter.GetDataAndRewind();
@@ -1073,7 +1071,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? GetIDictFinder(uint version)
         {
             Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? res;
             do
@@ -1104,7 +1102,7 @@ namespace BTDB.ODBLayer
         }
 
         //takes secondaryKey key & value bytes and restores primary key bytes
-        public Action<AbstractBufferedReader, AbstractBufferedReader, AbstractBufferedWriter> GetSKKeyValuetoPKMerger
+        public Action<AbstractBufferedReader, AbstractBufferedReader, AbstractBufferedWriter> GetSKKeyValueToPKMerger
             (uint secondaryKeyIndex, uint paramFieldCountInFirstBuffer)
         {
             var h = 10000ul * secondaryKeyIndex + paramFieldCountInFirstBuffer;
@@ -1140,7 +1138,7 @@ namespace BTDB.ODBLayer
                         mergerName);
             var ilGenerator = method.Generator;
 
-            Action<IILGen> pushWriter = il => il.Ldarg(2);
+            void PushWriter(IILGen il) => il.Ldarg(2);
             var skFields = ClientRelationVersionInfo.SecondaryKeys[secondaryKeyIndex].Fields;
 
             var positionLoc = ilGenerator.DeclareLocal(typeof(ulong)); //stored position
@@ -1159,7 +1157,7 @@ namespace BTDB.ODBLayer
                     var memo = outOfOrderPKParts[pkIdx];
                     var pushReader = GetBufferPushAction(memo.BufferIndex, firstBuffer.PushReader,
                         secondBuffer.PushReader);
-                    CopyFromMemorizedPosition(ilGenerator, pushReader, pushWriter, memo, memoPositionLoc);
+                    CopyFromMemorizedPosition(ilGenerator, pushReader, PushWriter, memo, memoPositionLoc);
                     continue;
                 }
 
@@ -1169,14 +1167,14 @@ namespace BTDB.ODBLayer
                     MergerInitializeFirstBufferReader(ilGenerator, ref firstBuffer);
                     CopyFromBuffer(ilGenerator, bufferIdx, skFieldIdx, ref firstBuffer, outOfOrderPKParts, pks,
                         skFields, positionLoc,
-                        memoPositionLoc, pushWriter);
+                        memoPositionLoc, PushWriter);
                 }
                 else
                 {
                     MergerInitializeBufferReader(ref secondBuffer, 1);
                     CopyFromBuffer(ilGenerator, bufferIdx, skFieldIdx, ref secondBuffer, outOfOrderPKParts, pks,
                         skFields, positionLoc,
-                        memoPositionLoc, pushWriter);
+                        memoPositionLoc, PushWriter);
                 }
             }
 
@@ -1205,7 +1203,7 @@ namespace BTDB.ODBLayer
             }
 
             var skField = skFields[skFieldIdx];
-            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int) skField.Index].Handler, bi.PushReader,
+            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int) skField.Index].Handler!, bi.PushReader,
                 pushWriter, positionLoc, memoPositionLoc);
 
             bi.ActualFieldIdx = skFieldIdx + 1;
@@ -1525,7 +1523,7 @@ namespace BTDB.ODBLayer
                     .Stloc(0);
             }
 
-            for (int i = 0; i < needGenerateFreeFor; i++)
+            for (var i = 0; i < needGenerateFreeFor; i++)
             {
                 Action<IILGen> readerOrCtx;
                 if (valueFields[i].Handler.NeedsCtx())

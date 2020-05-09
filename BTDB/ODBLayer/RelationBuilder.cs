@@ -8,6 +8,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
+
 // ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 
 namespace BTDB.ODBLayer
@@ -20,6 +21,9 @@ namespace BTDB.ODBLayer
         readonly IDictionary<string, MethodInfo> _apartFields;
         readonly RelationVersionInfo _clientRelationVersionInfo;
         readonly RelationInfo _relationInfo;
+
+        public static readonly MethodInfo ByteBufferWriterDataMethodInfo =
+            typeof(ByteBufferWriter).GetProperty(nameof(ByteBufferWriter.Data))!.GetGetMethod(true)!;
 
         public RelationBuilder(RelationInfo relationInfo, Type relationDbManipulatorType)
         {
@@ -153,9 +157,10 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
+            var dataGetter = ByteBufferWriterDataMethodInfo;
             reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter!);
-            reqMethod.Generator.Callvirt(_relationDbManipulatorType.GetMethod("Contains")!);
+            reqMethod.Generator.Callvirt(
+                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
         }
 
         void BuildFindByMethod(MethodInfo method, IILMethod reqMethod)
@@ -196,8 +201,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter!);
+            reqMethod.Generator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
             if (isPrefixBased)
             {
                 reqMethod.Generator.Callvirt(
@@ -236,7 +240,9 @@ namespace BTDB.ODBLayer
 
             WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
                 advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
-            reqMethod.Generator.Call(_relationDbManipulatorType.GetMethod("RemoveByIdAdvancedParam")!);
+            reqMethod.Generator.Call(
+                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
+                    .RemoveByIdAdvancedParam))!);
         }
 
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(MethodInfo method,
@@ -249,14 +255,16 @@ namespace BTDB.ODBLayer
                 parameters[..^1], _apartFields);
             reqMethod.Generator
                 .LdcI4(prefixParamCount + _apartFields.Count)
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order")!)
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition")!);
+                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!)
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField("Start")!, reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
             reqMethod.Generator
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition")!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField("End")!, reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
         }
 
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(MethodInfo method,
@@ -268,13 +276,15 @@ namespace BTDB.ODBLayer
             SavePKListPrefixBytes(reqMethod.Generator, method.Name,
                 parameters[..^1], _apartFields);
             reqMethod.Generator
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition")!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField("Start")!, reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
             reqMethod.Generator
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition")!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField("End")!, reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
         }
 
         void BuildRemoveByIdPartialMethod(MethodInfo method, ParameterInfo[] methodParameters, IILMethod reqMethod)
@@ -298,12 +308,12 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(il, method.Name, methodParameters[..^1],
                 _apartFields, primaryKeyFields, writerLoc, ctxLocFactory);
 
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
             il
                 .Ldarg(0) //manipulator
-                .Ldloc(writerLoc).Callvirt(dataGetter!) //call byteBuffer.Data
+                .Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo) //call byteBuffer.Data
                 .Ldarg((ushort) methodParameters.Length)
-                .Callvirt(_relationDbManipulatorType.GetMethod("RemoveByPrimaryKeyPrefixPartial")!);
+                .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
+                    .RemoveByPrimaryKeyPrefixPartial))!);
         }
 
         static bool AllKeyPrefixesAreSame(RelationVersionInfo relationInfo, ushort count)
@@ -458,7 +468,8 @@ namespace BTDB.ODBLayer
 
                 //return relationManipulator.CountWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("CountWithProposition");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.CountWithProposition));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
             else
@@ -467,7 +478,8 @@ namespace BTDB.ODBLayer
                 SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, _apartFields);
 
                 //return relationManipulator.CountWithPrefix(prefixBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("CountWithPrefix");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.CountWithPrefix));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
 
@@ -484,7 +496,8 @@ namespace BTDB.ODBLayer
 
                 //return relationManipulator.AnyWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("AnyWithProposition");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.AnyWithProposition));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
             else
@@ -493,7 +506,8 @@ namespace BTDB.ODBLayer
                 SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, _apartFields);
 
                 //return relationManipulator.AnyWithPrefix(prefixBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("AnyWithPrefix");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.AnyWithPrefix));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
         }
@@ -540,14 +554,18 @@ namespace BTDB.ODBLayer
                     parameters[..^1], _apartFields);
                 reqMethod.Generator
                     .LdcI4(prefixParamCount + _apartFields.Count)
-                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("Order")!)
-                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition")!);
+                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!)
+                    .Ldarg(advEnumParamOrder)
+                    .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
                 FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField("Start")!, reqMethod.Generator);
+                    emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
+                    reqMethod.Generator);
                 reqMethod.Generator
-                    .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition")!);
+                    .Ldarg(advEnumParamOrder)
+                    .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
                 FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField("End")!, reqMethod.Generator);
+                    emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!,
+                    reqMethod.Generator);
                 reqMethod.Generator
                     .LdcI4((int) secondaryKeyIndex);
 
@@ -632,7 +650,8 @@ namespace BTDB.ODBLayer
 
                 //return relationManipulator.CountWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("CountWithProposition");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.CountWithProposition));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
             else
@@ -643,7 +662,8 @@ namespace BTDB.ODBLayer
                     parameters, _apartFields);
 
                 //return relationManipulator.CountWithPrefix(prefixBytes);
-                var calcCountMethod = _relationDbManipulatorType.GetMethod("CountWithPrefix");
+                var calcCountMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.CountWithPrefix));
                 reqMethod.Generator.Call(calcCountMethod!);
             }
 
@@ -663,7 +683,8 @@ namespace BTDB.ODBLayer
 
                 //return relationManipulator.AnyWithProposition(prefixBytes,
                 //    startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes);
-                var calcAnyMethod = _relationDbManipulatorType.GetMethod("AnyWithProposition");
+                var calcAnyMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.AnyWithProposition));
                 reqMethod.Generator.Call(calcAnyMethod!);
             }
             else
@@ -674,7 +695,8 @@ namespace BTDB.ODBLayer
                     parameters, _apartFields);
 
                 //return relationManipulator.AnyWithPrefix(prefixBytes);
-                var calcAnyMethod = _relationDbManipulatorType.GetMethod("AnyWithPrefix");
+                var calcAnyMethod =
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.AnyWithPrefix));
                 reqMethod.Generator.Call(calcAnyMethod!);
             }
         }
@@ -698,13 +720,16 @@ namespace BTDB.ODBLayer
             SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
                 parameters[..^1], _apartFields);
             reqMethod.Generator
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("StartProposition")!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                emptyBufferLoc, advEnumParam.GetField("Start")!, reqMethod.Generator);
+                emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
+                reqMethod.Generator);
             reqMethod.Generator
-                .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField("EndProposition")!);
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                emptyBufferLoc, advEnumParam.GetField("End")!, reqMethod.Generator);
+                emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
         }
 
         static Action<IILGen> CheckLongLikeResult(MethodInfo method)
@@ -818,13 +843,13 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Call(dataGetter!);
+            ilGenerator.Ldloc(writerLoc).Call(ByteBufferWriterDataMethodInfo);
             if (isPrefixBased)
             {
                 ilGenerator.LdcI4(_relationInfo.BuildIndexToItemLoaderInfos(itemType));
                 ilGenerator.Callvirt(
-                    _relationDbManipulatorType.GetMethod("FindByPrimaryKeyPrefix")!.MakeGenericMethod(itemType));
+                    _relationDbManipulatorType.GetMethod(
+                        nameof(RelationDBManipulator<IRelation>.FindByPrimaryKeyPrefix))!.MakeGenericMethod(itemType));
                 ilGenerator.Castclass(methodReturnType);
             }
             else
@@ -833,7 +858,8 @@ namespace BTDB.ODBLayer
                 ilGenerator.LdcI4(ShouldThrowWhenKeyNotFound(methodName, methodReturnType) ? 1 : 0);
                 ilGenerator.LdcI4(_relationInfo.BuildIndexToItemLoaderInfos(itemType));
                 ilGenerator.Callvirt(
-                    _relationDbManipulatorType.GetMethod("FindByIdOrDefault")!.MakeGenericMethod(itemType));
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.FindByIdOrDefault))!
+                        .MakeGenericMethod(itemType));
                 if (methodReturnType == typeof(void))
                     ilGenerator.Pop();
             }
@@ -865,13 +891,13 @@ namespace BTDB.ODBLayer
             ilGenerator.LdcI4((int) skIndex);
             ilGenerator.LdcI4(methodParameters.Length + apartFields.Count);
             //call byteBuffer.data
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter!);
+            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
             if (TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType))
             {
                 ilGenerator.LdcI4(_relationInfo.BuildIndexToItemLoaderInfos(itemType));
                 ilGenerator.Callvirt(
-                    _relationDbManipulatorType.GetMethod("FindBySecondaryKey")!.MakeGenericMethod(itemType));
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.FindBySecondaryKey))!
+                        .MakeGenericMethod(itemType));
                 ilGenerator.Castclass(methodReturnType);
             }
             else
@@ -879,7 +905,8 @@ namespace BTDB.ODBLayer
                 ilGenerator.LdcI4(allowDefault ? 0 : 1); //? should throw
                 ilGenerator.LdcI4(_relationInfo.BuildIndexToItemLoaderInfos(methodReturnType));
                 ilGenerator.Callvirt(
-                    _relationDbManipulatorType.GetMethod("FindBySecondaryKeyOrDefault")!.MakeGenericMethod(
+                    _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
+                        .FindBySecondaryKeyOrDefault))!.MakeGenericMethod(
                         methodReturnType));
             }
         }
@@ -988,9 +1015,10 @@ namespace BTDB.ODBLayer
             field.Handler!.SpecializeSaveForType(instField.FieldType).Save(ilGenerator,
                 il => il.Ldloc(writerLoc),
                 il => il.Ldarg(advEnumParamOrder).Ldfld(instField));
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Castclass(typeof(ByteBufferWriter)).Callvirt(dataGetter!);
             ilGenerator
+                .Ldloc(writerLoc)
+                .Castclass(typeof(ByteBufferWriter))
+                .Callvirt(ByteBufferWriterDataMethodInfo)
                 .Br(doneLabel)
                 .Mark(ignoreLabel)
                 .Ldloc(emptyBufferLoc)
@@ -1009,8 +1037,7 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 secondaryKeyFields, writerLoc, ctxLocFactory);
 
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter!);
+            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
         }
 
         static (IILLocal, Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
@@ -1053,8 +1080,7 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 keyFields, writerLoc, ctxLocFactory);
 
-            var dataGetter = typeof(ByteBufferWriter).GetProperty("Data")!.GetGetMethod(true);
-            ilGenerator.Ldloc(writerLoc).Callvirt(dataGetter!);
+            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
         }
 
         void GenerateApartFieldsProperties(IILDynamicType classImpl, Type interfaceType)
@@ -1140,7 +1166,8 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(0)
                 .Do(pushWriter)
-                .Call(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.WriteRelationPKPrefix))!);
+                .Call(_relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.WriteRelationPKPrefix))!);
         }
 
         void WriteRelationSKPrefix(IILGen ilGenerator, Action<IILGen> pushWriter, int secondaryKeyIndex)
@@ -1149,7 +1176,8 @@ namespace BTDB.ODBLayer
                 .Ldarg(0)
                 .Do(pushWriter)
                 .LdcI4(secondaryKeyIndex)
-                .Call(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.WriteRelationSKPrefix))!);
+                .Call(_relationDbManipulatorType.GetMethod(
+                    nameof(RelationDBManipulator<IRelation>.WriteRelationSKPrefix))!);
         }
     }
 }
