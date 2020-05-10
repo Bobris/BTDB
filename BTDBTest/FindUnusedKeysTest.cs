@@ -34,27 +34,12 @@ namespace BTDBTest
             OpenDb();
         }
 
-        public class Duty
-        {
-            public string Name { get; set; }
-        }
-
-        public class Job
-        {
-            public Duty Duty { get; set; }
-        }
-
-        public class JobMap
-        {
-            public IDictionary<ulong, Job> Jobs { get; set; }
-        }
-
         void StoreJob(ulong id, string name)
         {
             using (var tr = _db.StartTransaction())
             {
-                var jobs = tr.Singleton<JobMap>();
-                jobs.Jobs[id] = new Job { Duty = new Duty { Name = name } };
+                var jobs = tr.Singleton<ODBIteratorTest.JobMap>();
+                jobs.Jobs[id] = new ODBIteratorTest.Job { Duty = new ODBIteratorTest.Duty { Name = name } };
                 tr.Commit();
             }
         }
@@ -91,7 +76,7 @@ namespace BTDBTest
 
         public class IndirectDuty
         {
-            public IIndirect<Duty> Duty { get; set; }
+            public IIndirect<ODBIteratorTest.Duty> Duty { get; set; }
         }
 
         [Theory]
@@ -102,7 +87,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var duty = tr.Singleton<IndirectDuty>();
-                duty.Duty.Value = new Duty { Name = "Read" };
+                duty.Duty.Value = new ODBIteratorTest.Duty { Name = "Read" };
                 tr.Commit();
             }
             using (var tr = _db.StartTransaction())
@@ -110,7 +95,7 @@ namespace BTDBTest
                 var duty = tr.Singleton<IndirectDuty>();
                 if (deleteCorrectly)
                     tr.Delete(duty.Duty.Value);
-                duty.Duty.Value = new Duty { Name = "Write" };
+                duty.Duty.Value = new ODBIteratorTest.Duty { Name = "Write" };
                 tr.Store(duty);
                 tr.Commit();
             }
@@ -122,7 +107,7 @@ namespace BTDBTest
 
         public class Directory
         {
-            public IDictionary<string, JobMap> Dir { get; set; }
+            public IDictionary<string, ODBIteratorTest.JobMap> Dir { get; set; }
         }
 
         [Fact]
@@ -133,7 +118,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var sports = tr.Singleton<Directory>();
-                sports.Dir["programming"] = new JobMap();
+                sports.Dir["programming"] = new ODBIteratorTest.JobMap();
                 tr.Commit();
             }
 
@@ -169,7 +154,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var sports = tr.Singleton<Directory>();
-                sports.Dir[sport] = new JobMap { Jobs = new Dictionary<ulong, Job> { [0] = new Job { Duty = new Duty { Name = activity } } } };
+                sports.Dir[sport] = new ODBIteratorTest.JobMap { Jobs = new Dictionary<ulong, ODBIteratorTest.Job> { [0] = new ODBIteratorTest.Job { Duty = new ODBIteratorTest.Duty { Name = activity } } } };
                 tr.Commit();
             }
         }
@@ -180,7 +165,7 @@ namespace BTDBTest
             StoreJob(1, "Sleep");
             using (var tr = _db.StartTransaction())
             {
-                var jobs = tr.Singleton<JobMap>();
+                var jobs = tr.Singleton<ODBIteratorTest.JobMap>();
                 tr.Delete(jobs.Jobs[1].Duty);
                 tr.Delete(jobs.Jobs[1]);
                 jobs.Jobs.Remove(1);
