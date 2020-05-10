@@ -89,10 +89,15 @@ namespace BTDB.ODBLayer
             writer.WriteBlock(_relationInfo.Prefix);
         }
 
-        public void WriteRelationSKPrefix(AbstractBufferedWriter writer, int secondaryKeyIndex)
+        public void WriteRelationSKPrefix(AbstractBufferedWriter writer, uint secondaryKeyIndex)
         {
             writer.WriteBlock(_relationInfo.PrefixSecondary);
             writer.WriteUInt8((byte)secondaryKeyIndex);
+        }
+
+        public uint RemapPrimeSK(uint primeSecondaryKeyIndex)
+        {
+            return _relationInfo.PrimeSK2Real![primeSecondaryKeyIndex];
         }
 
         readonly bool _hasSecondaryIndexes;
@@ -383,7 +388,7 @@ namespace BTDB.ODBLayer
                 var writer = new ByteBufferWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
-                    WriteRelationSKPrefix(writer, (int)secKey.Key);
+                    WriteRelationSKPrefix(writer, secKey.Key);
                     writer.WriteBlock(keyBytesPrefix.Buffer, idBytesLength, keyBytesPrefix.Length - idBytesLength);
                     _kvtr.SetKeyPrefix(writer.Data);
                     _kvtr.EraseAll();
@@ -615,7 +620,7 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new ByteBufferWriter();
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-            WriteRelationSKPrefix(keyWriter, (int)secondaryKeyIndex);
+            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
             keySaver(_transaction, keyWriter, obj, this); //secondary key
             return keyWriter.Data;
         }
@@ -623,7 +628,7 @@ namespace BTDB.ODBLayer
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
             var keyWriter = new ByteBufferWriter();
-            WriteRelationSKPrefix(keyWriter, (int)secondaryKeyIndex);
+            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
 
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();

@@ -581,9 +581,9 @@ namespace BTDB.ODBLayer
 
             if (initKeyReader)
             {
-                var primaryKeyFields = manipulator.RelationInfo.ClientRelationVersionInfo.GetPrimaryKeyFields();
-                var advancedEnumParamField = primaryKeyFields[(int) _prefixFieldCount];
-                if (advancedEnumParamField.Handler.NeedsCtx())
+                var primaryKeyFields = manipulator.RelationInfo.ClientRelationVersionInfo.PrimaryKeyFields;
+                var advancedEnumParamField = primaryKeyFields.Span[(int) _prefixFieldCount];
+                if (advancedEnumParamField.Handler!.NeedsCtx())
                     throw new BTDBException("Not supported.");
                 _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>) manipulator.RelationInfo
                     .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));

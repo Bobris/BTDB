@@ -34,7 +34,8 @@ namespace BTDB.ODBLayer
             _relationInfoResolver = relationInfoResolver;
         }
 
-        internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType)
+        internal RelationInfo CreateByName(IInternalObjectDBTransaction tr, string name, Type interfaceType,
+            RelationBuilder builder)
         {
             name = string.Intern(name);
             if (!_name2Id.TryGetValue(name, out var id))
@@ -53,7 +54,7 @@ namespace BTDB.ODBLayer
             {
                 throw new BTDBException($"Relation with name '{name}' was already initialized");
             }
-            relation = new RelationInfo(id, name, _relationInfoResolver, interfaceType, tr);
+            relation = new RelationInfo(id, name, builder, tr);
             _id2Relation[id] = relation;
             return relation;
         }

@@ -948,8 +948,8 @@ namespace BTDB.ODBLayer
 
         Func<IObjectDBTransaction, IRelation> InitRelation(string relationName, Type interfaceType)
         {
-            var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType);
-            var builder = new RelationBuilder(relationInfo);
+            var builder = new RelationBuilder(interfaceType, _owner.RelationInfoResolver);
+            var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
             return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
         }
 

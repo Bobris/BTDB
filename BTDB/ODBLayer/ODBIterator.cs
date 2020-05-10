@@ -167,7 +167,7 @@ namespace BTDB.ODBLayer
             {
                 var keyReader = new KeyValueDBKeyReader(_trkv);
                 var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
-                IterateFields(keyReader, relationInfo.GetPrimaryKeyFields(), null);
+                IterateFields(keyReader, relationInfo.PrimaryKeyFields.Span, null);
                 _visitor?.EndRelationKey();
             }
             if (protector.WasInterupted(prevProtectionCounter))
@@ -180,7 +180,7 @@ namespace BTDB.ODBLayer
                 var valueReader = new KeyValueDBValueReader(_trkv);
                 var version = valueReader.ReadVUInt32();
                 var relationInfo = relation.VersionInfos[version];
-                IterateFields(valueReader, relationInfo.GetValueFields(), new HashSet<int>());
+                IterateFields(valueReader, relationInfo.Fields.Span, new HashSet<int>());
                 _visitor?.EndRelationValue();
             }
         }
@@ -218,7 +218,7 @@ namespace BTDB.ODBLayer
                 {
                     var keyReader = new KeyValueDBKeyReader(_trkv);
                     var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
-                    IterateFields(keyReader, relationInfo.GetPrimaryKeyFields(), null);
+                    IterateFields(keyReader, relationInfo.PrimaryKeyFields.Span, null);
                     _visitor?.EndRelationKey();
                 }
                 if (protector.WasInterupted(prevProtectionCounter))
@@ -231,7 +231,7 @@ namespace BTDB.ODBLayer
                     var valueReader = new KeyValueDBValueReader(_trkv);
                     var version = valueReader.ReadVUInt32();
                     var relationInfo = relation.VersionInfos[version];
-                    IterateFields(valueReader, relationInfo.GetValueFields(), new HashSet<int>());
+                    IterateFields(valueReader, relationInfo.Fields.Span, new HashSet<int>());
                     _visitor?.EndRelationValue();
                 }
                 pos++;
@@ -247,13 +247,13 @@ namespace BTDB.ODBLayer
             return prefix;
         }
 
-        void IterateFields(ByteBufferReader reader, IEnumerable<TableFieldInfo> fields, HashSet<int> knownInlineRefs)
+        void IterateFields(ByteBufferReader reader, ReadOnlySpan<TableFieldInfo> fields, HashSet<int>? knownInlineRefs)
         {
             foreach (var fi in fields)
             {
                 if (_visitor == null || _visitor.StartField(fi.Name))
                 {
-                    IterateHandler(reader, fi.Handler, false, knownInlineRefs);
+                    IterateHandler(reader, fi.Handler!, false, knownInlineRefs);
                     _visitor?.EndField();
                 }
                 else

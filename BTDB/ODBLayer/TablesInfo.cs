@@ -21,23 +21,20 @@ namespace BTDB.ODBLayer
 
         internal TableInfo? FindByType(Type type)
         {
-            TableInfo result;
-            if (_clientType2Table.TryGetValue(type, out result)) return result;
+            if (_clientType2Table.TryGetValue(type, out var result)) return result;
             return null;
         }
 
-        internal TableInfo FindById(uint id)
+        internal TableInfo? FindById(uint id)
         {
-            TableInfo result;
-            if (_id2Table.TryGetValue(id, out result)) return result;
+            if (_id2Table.TryGetValue(id, out var result)) return result;
             return null;
         }
 
-        internal TableInfo FindByName(string name)
+        internal TableInfo? FindByName(string name)
         {
             name = string.Intern(name);
-            TableInfo result;
-            if (_name2Table.TryGetValue(name, out result)) return result;
+            if (_name2Table.TryGetValue(name, out var result)) return result;
             return null;
         }
 
@@ -65,7 +62,7 @@ namespace BTDB.ODBLayer
             t.ClientType = type;
             if (!_clientType2Table.TryAdd(type, t))
             {
-                if (FindByType(type).Name != name)
+                if (FindByType(type)!.Name != name)
                 {
                     throw new BTDBException($"Type {type} is already linked");
                 }

@@ -50,28 +50,25 @@ namespace BTDB.ODBLayer
 
     public class RelationVersionInfo
     {
-        IReadOnlyList<TableFieldInfo> _primaryKeyFields;
-        IReadOnlyList<TableFieldInfo> _secondaryKeyFields;
+        public ReadOnlyMemory<TableFieldInfo> Fields;
+        public ReadOnlyMemory<TableFieldInfo> PrimaryKeyFields;
+        ReadOnlyMemory<TableFieldInfo> _secondaryKeyFields;
         IDictionary<string, uint> _secondaryKeysNames;
         IDictionary<uint, SecondaryKeyInfo> _secondaryKeys;
 
-        readonly TableFieldInfo[] _fields;
-
-
         public RelationVersionInfo(Dictionary<uint, TableFieldInfo> primaryKeyFields,  //order -> info
                                    List<Tuple<int, IList<SecondaryKeyAttribute>>> secondaryKeys,  //positive: sec key field idx, negative: pk order, attrs
-                                   TableFieldInfo[] secondaryKeyFields,
-                                   TableFieldInfo[] fields, RelationVersionInfo prevVersion)
+                                   ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
+                                   ReadOnlyMemory<TableFieldInfo> fields)
         {
-            _primaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
+            PrimaryKeyFields = primaryKeyFields.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
             _secondaryKeyFields = secondaryKeyFields;
-            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields, prevVersion);
-            _fields = fields;
+            CreateSecondaryKeyInfo(secondaryKeys, primaryKeyFields);
+            Fields = fields;
         }
 
         void CreateSecondaryKeyInfo(List<Tuple<int, IList<SecondaryKeyAttribute>>> attributes,
-                                    Dictionary<uint, TableFieldInfo> primaryKeyFields,
-                                    RelationVersionInfo prevVersion)
+                                    Dictionary<uint, TableFieldInfo> primaryKeyFields)
         {
             _secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>();
             _secondaryKeysNames = new Dictionary<string, uint>();
@@ -98,14 +95,14 @@ namespace BTDB.ODBLayer
                     for (uint i = 1; i <= attr.Item2.IncludePrimaryKeyOrder; i++)
                     {
                         usedPKFields.Add(i, null);
-                        var pi = _primaryKeyFields.IndexOf(primaryKeyFields[i]);
+                        var pi = PrimaryKeyFields.Span.IndexOf(primaryKeyFields[i]);
                         info.Fields.Add(new FieldId(true, (uint)pi));
                     }
                     if (attr.Item1 < 0)
                     {
                         var pkOrder = (uint)-attr.Item1;
                         usedPKFields.Add(pkOrder, null);
-                        var pi = _primaryKeyFields.IndexOf(primaryKeyFields[pkOrder]);
+                        var pi = PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pkOrder]);
                         info.Fields.Add(new FieldId(true, (uint)pi));
                     }
                     else
@@ -117,122 +114,99 @@ namespace BTDB.ODBLayer
                 foreach (var pk in primaryKeyFields)
                 {
                     if (!usedPKFields.ContainsKey(pk.Key))
-                        info.Fields.Add(new FieldId(true, (uint)_primaryKeyFields.IndexOf(primaryKeyFields[pk.Key])));
+                        info.Fields.Add(new FieldId(true, (uint)PrimaryKeyFields.Span.IndexOf(primaryKeyFields[pk.Key])));
                 }
-                var skIndex = SelectSecondaryKeyIndex(info, prevVersion);
+                var skIndex = SelectSecondaryKeyIndex(info);
                 _secondaryKeysNames[indexName] = skIndex;
                 _secondaryKeys[skIndex] = info;
             }
         }
 
-        uint SelectSecondaryKeyIndex(SecondaryKeyInfo info, RelationVersionInfo? prevVersion)
+        uint SelectSecondaryKeyIndex(SecondaryKeyInfo info)
         {
-            uint index = 0;
-            if (prevVersion != null)
-            {
-                if (prevVersion._secondaryKeysNames.TryGetValue(info.Name, out index))
-                {
-                    var prevFields = prevVersion.GetSecondaryKeyFields(index);
-                    var currFields = GetSecondaryKeyFields(info);
-                    if (SecondaryIndexHasSameDefinition(currFields, prevFields))
-                        return index; //existing
-                }
-                while (prevVersion._secondaryKeys.ContainsKey(index) || _secondaryKeys.ContainsKey(index))
-                    index++;
-            }
-            else
-            {
-                while (_secondaryKeys.ContainsKey(index))
-                    index++;
-            }
+            var index = 0u;
+            while (_secondaryKeys.ContainsKey(index))
+                index++;
             return index; //use fresh one
         }
 
-        bool SecondaryIndexHasSameDefinition(IReadOnlyCollection<TableFieldInfo> currFields, IReadOnlyCollection<TableFieldInfo> prevFields)
-        {
-            if (currFields.Count != prevFields.Count)
-                return false;
-            var curr = currFields.GetEnumerator();
-            var prev = prevFields.GetEnumerator();
-            while (curr.MoveNext() && prev.MoveNext())
-            {
-                if (!UnresolvedTableFieldInfo.Equal(curr.Current, prev.Current as UnresolvedTableFieldInfo))
-                    return false;
-            }
-            return true;
-        }
-
-        RelationVersionInfo(IReadOnlyList<TableFieldInfo> primaryKeyFields,
+        internal RelationVersionInfo(ReadOnlyMemory<TableFieldInfo> primaryKeyFields,
                             Dictionary<uint, SecondaryKeyInfo> secondaryKeys,
-                            Dictionary<string, uint> secondaryKeysNames,
-                            IReadOnlyList<TableFieldInfo> secondaryKeyFields,
-                            TableFieldInfo[] fields)
+                            ReadOnlyMemory<TableFieldInfo> secondaryKeyFields,
+                            ReadOnlyMemory<TableFieldInfo> fields)
         {
-            _primaryKeyFields = primaryKeyFields;
+            PrimaryKeyFields = primaryKeyFields;
             _secondaryKeys = secondaryKeys;
-            _secondaryKeysNames = secondaryKeysNames;
+            _secondaryKeysNames = new Dictionary<string, uint>(secondaryKeys.Count);
+            foreach (var secondaryKeyInfo in secondaryKeys)
+            {
+                _secondaryKeysNames.Add(secondaryKeyInfo.Value.Name, secondaryKeyInfo.Key);
+            }
             _secondaryKeyFields = secondaryKeyFields;
-            _fields = fields;
+            Fields = fields;
         }
 
         internal TableFieldInfo? this[string name]
         {
-            get { return _fields.Concat(_primaryKeyFields).FirstOrDefault(tfi => tfi.Name == name); }
+            get
+            {
+                foreach (var fieldInfo in Fields.Span)
+                {
+                    if (fieldInfo.Name == name) return fieldInfo;
+                }
+                foreach (var fieldInfo in PrimaryKeyFields.Span)
+                {
+                    if (fieldInfo.Name == name) return fieldInfo;
+                }
+
+                return null;
+            }
         }
 
-        public IReadOnlyList<TableFieldInfo> GetValueFields()
+        internal ReadOnlyMemory<TableFieldInfo> GetAllFields()
         {
-            return _fields;
-        }
-
-        public IReadOnlyList<TableFieldInfo> GetPrimaryKeyFields()
-        {
-            return _primaryKeyFields;
-        }
-
-        internal IReadOnlyCollection<TableFieldInfo> GetAllFields()
-        {
-            return _primaryKeyFields.Concat(_fields).ToList();
+            var res = new TableFieldInfo[PrimaryKeyFields.Length + Fields.Length];
+            PrimaryKeyFields.CopyTo(res);
+            Fields.CopyTo(res.AsMemory(PrimaryKeyFields.Length));
+            return res;
         }
 
         internal TableFieldInfo GetSecondaryKeyField(int index)
         {
-            return _secondaryKeyFields[index];
+            return _secondaryKeyFields.Span[index];
         }
 
         internal bool HasSecondaryIndexes => _secondaryKeys.Count > 0;
 
         internal IDictionary<uint, SecondaryKeyInfo> SecondaryKeys => _secondaryKeys;
 
-        internal IReadOnlyList<TableFieldInfo> GetSecondaryKeyFields(uint secondaryKeyIndex)
+        public ReadOnlyMemory<TableFieldInfo> SecondaryKeyFields
+        {
+            get => _secondaryKeyFields;
+            set => _secondaryKeyFields = value;
+        }
+
+        public IDictionary<string, uint> SecondaryKeysNames
+        {
+            get => _secondaryKeysNames;
+            set => _secondaryKeysNames = value;
+        }
+
+        internal ReadOnlySpan<TableFieldInfo> GetSecondaryKeyFields(uint secondaryKeyIndex)
         {
             if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out var info))
                 throw new BTDBException($"Unknown secondary key {secondaryKeyIndex}.");
             return GetSecondaryKeyFields(info);
         }
 
-        IReadOnlyList<TableFieldInfo> GetSecondaryKeyFields(SecondaryKeyInfo info)
+        ReadOnlySpan<TableFieldInfo> GetSecondaryKeyFields(SecondaryKeyInfo info)
         {
-            var fields = new List<TableFieldInfo>();
+            var fields = new StructList<TableFieldInfo>();
             foreach (var field in info.Fields)
             {
                 fields.Add(field.IsFromPrimaryKey
-                    ? _primaryKeyFields[(int)field.Index]
-                    : _secondaryKeyFields[(int)field.Index]);
-            }
-            return fields;
-        }
-
-        public IReadOnlyList<TableFieldInfo> GetSecondaryKeyValueKeys(uint secondaryKeyIndex)
-        {
-            if (!_secondaryKeys.TryGetValue(secondaryKeyIndex, out var info))
-                throw new BTDBException($"Unknown secondary key {secondaryKeyIndex}.");
-            var fields = new List<TableFieldInfo>();
-            for (var i = 0; i < _primaryKeyFields.Count; i++)
-            {
-                if (info.Fields.Any(f => f.IsFromPrimaryKey && f.Index == i))
-                    continue; //do not put again into value fields present in secondary key index
-                fields.Add(_primaryKeyFields[i]);
+                    ? PrimaryKeyFields.Span[(int)field.Index]
+                    : _secondaryKeyFields.Span[(int)field.Index]);
             }
             return fields;
         }
@@ -246,13 +220,13 @@ namespace BTDB.ODBLayer
 
         internal void Save(AbstractBufferedWriter writer)
         {
-            writer.WriteVUInt32((uint)_primaryKeyFields.Count);
-            foreach (var field in _primaryKeyFields)
+            writer.WriteVUInt32((uint)PrimaryKeyFields.Length);
+            foreach (var field in PrimaryKeyFields.Span)
             {
                 field.Save(writer);
             }
-            writer.WriteVUInt32((uint)_secondaryKeyFields.Count);
-            foreach (var field in _secondaryKeyFields)
+            writer.WriteVUInt32((uint)_secondaryKeyFields.Length);
+            foreach (var field in _secondaryKeyFields.Span)
             {
                 field.Save(writer);
             }
@@ -270,17 +244,20 @@ namespace BTDB.ODBLayer
                     writer.WriteVUInt32(fi.Index);
                 }
             }
-            writer.WriteVUInt32((uint)_fields.Length);
-            for (var i = 0; i < _fields.Length; i++)
+
+            var fields = Fields.Span;
+            writer.WriteVUInt32((uint)fields.Length);
+            foreach (var tfi in fields)
             {
-                _fields[i].Save(writer);
+                tfi.Save(writer);
             }
         }
 
         public static RelationVersionInfo LoadUnresolved(AbstractBufferedReader reader, string relationName)
         {
             var pkCount = reader.ReadVUInt32();
-            var primaryKeyFields = new List<TableFieldInfo>((int)pkCount);
+            var primaryKeyFields = new StructList<TableFieldInfo>();
+            primaryKeyFields.Reserve(pkCount);
             for (var i = 0u; i < pkCount; i++)
             {
                 primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.Orderable));
@@ -293,7 +270,6 @@ namespace BTDB.ODBLayer
             }
             var skCount = reader.ReadVUInt32();
             var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);
-            var secondaryKeysNames = new Dictionary<string, uint>((int)skCount);
             for (var i = 0; i < skCount; i++)
             {
                 var skIndex = reader.ReadVUInt32();
@@ -309,7 +285,6 @@ namespace BTDB.ODBLayer
                     info.Fields.Add(new FieldId(fromPrimary, index));
                 }
                 secondaryKeys.Add(skIndex, info);
-                secondaryKeysNames.Add(info.Name, skIndex);
             }
 
             var fieldCount = reader.ReadVUInt32();
@@ -319,56 +294,67 @@ namespace BTDB.ODBLayer
                 fieldInfos[i] = UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.None);
             }
 
-            return new RelationVersionInfo(primaryKeyFields, secondaryKeys, secondaryKeysNames, secondaryKeyFields, fieldInfos);
+            return new RelationVersionInfo(primaryKeyFields, secondaryKeys, secondaryKeyFields, fieldInfos);
         }
 
         public void ResolveFieldHandlers(IFieldHandlerFactory fieldHandlerFactory)
         {
-            var resolvedPrimaryKeyFields = new TableFieldInfo[_primaryKeyFields.Count];
-            for (var i = 0; i < _primaryKeyFields.Count; i++)
-                resolvedPrimaryKeyFields[i] = ((UnresolvedTableFieldInfo)_primaryKeyFields[i]).Resolve(fieldHandlerFactory);
-            _primaryKeyFields = resolvedPrimaryKeyFields;
+            var resolvedPrimaryKeyFields = new TableFieldInfo[PrimaryKeyFields.Length];
+            for (var i = 0; i < PrimaryKeyFields.Length; i++)
+                resolvedPrimaryKeyFields[i] = ((UnresolvedTableFieldInfo)PrimaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
+            PrimaryKeyFields = resolvedPrimaryKeyFields;
 
-            var resolvedSecondaryKeyFields = new TableFieldInfo[_secondaryKeyFields.Count];
-            for (var i = 0; i < _secondaryKeyFields.Count; i++)
-                resolvedSecondaryKeyFields[i] = ((UnresolvedTableFieldInfo)_secondaryKeyFields[i]).Resolve(fieldHandlerFactory);
+            var resolvedSecondaryKeyFields = new TableFieldInfo[_secondaryKeyFields.Length];
+            for (var i = 0; i < _secondaryKeyFields.Length; i++)
+                resolvedSecondaryKeyFields[i] = ((UnresolvedTableFieldInfo)_secondaryKeyFields.Span[i]).Resolve(fieldHandlerFactory);
             _secondaryKeyFields = resolvedSecondaryKeyFields;
 
-            for (var i = 0; i < _fields.Length; i++)
-                _fields[i] = ((UnresolvedTableFieldInfo)_fields[i]).Resolve(fieldHandlerFactory);
+            var resolvedFields = new TableFieldInfo[Fields.Length];
+            for (var i = 0; i < Fields.Length; i++)
+                resolvedFields[i] = ((UnresolvedTableFieldInfo)Fields.Span[i]).Resolve(fieldHandlerFactory);
+            Fields = resolvedFields;
         }
 
         internal bool NeedsCtx()
         {
-            return _fields.Any(tfi => tfi.Handler!.NeedsCtx());
+            foreach (var fieldInfo in Fields.Span)
+            {
+                if (fieldInfo.Handler!.NeedsCtx()) return true;
+            }
+
+            return false;
         }
 
         internal bool NeedsInit()
         {
-            return _fields.Any(tfi => tfi.Handler is IFieldHandlerWithInit);
+            foreach (var fieldInfo in Fields.Span)
+            {
+                if (fieldInfo.Handler is IFieldHandlerWithInit) return true;
+            }
+
+            return false;
         }
 
         internal static bool Equal(RelationVersionInfo a, RelationVersionInfo b)
         {
             //PKs
-            if (a._primaryKeyFields.Count != b._primaryKeyFields.Count) return false;
-            for (int i = 0; i < a._primaryKeyFields.Count; i++)
+            if (a.PrimaryKeyFields.Length != b.PrimaryKeyFields.Length) return false;
+            for (int i = 0; i < a.PrimaryKeyFields.Length; i++)
             {
-                if (!TableFieldInfo.Equal(a._primaryKeyFields[i], b._primaryKeyFields[i])) return false;
+                if (!TableFieldInfo.Equal(a.PrimaryKeyFields.Span[i], b.PrimaryKeyFields.Span[i])) return false;
             }
             //SKs
             if (a._secondaryKeys.Count != b._secondaryKeys.Count) return false;
             foreach (var key in a._secondaryKeys)
             {
-                SecondaryKeyInfo bInfo;
-                if (!b._secondaryKeys.TryGetValue(key.Key, out bInfo)) return false;
+                if (!b._secondaryKeys.TryGetValue(key.Key, out var bInfo)) return false;
                 if (!SecondaryKeyInfo.Equal(key.Value, bInfo)) return false;
             }
             //Fields
-            if (a._fields.Length != b._fields.Length) return false;
-            for (int i = 0; i < a._fields.Length; i++)
+            if (a.Fields.Length != b.Fields.Length) return false;
+            for (var i = 0; i < a.Fields.Length; i++)
             {
-                if (!TableFieldInfo.Equal(a._fields[i], b._fields[i])) return false;
+                if (!TableFieldInfo.Equal(a.Fields.Span[i], b.Fields.Span[i])) return false;
             }
             return true;
         }

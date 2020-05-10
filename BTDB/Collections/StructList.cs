@@ -247,6 +247,18 @@ namespace BTDB.Collections
             return _a.AsSpan(0, (int) _count);
         }
 
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [DebuggerStepThrough]
+        public static implicit operator ReadOnlyMemory<T>(in StructList<T> value) => value.AsReadOnlyMemory();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [DebuggerStepThrough]
+        public readonly ReadOnlyMemory<T> AsReadOnlyMemory()
+        {
+            return _a.AsMemory(0, (int) _count);
+        }
+
         [DebuggerStepThrough]
         public Span<T> AsSpan(int start)
         {

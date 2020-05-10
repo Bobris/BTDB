@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -36,40 +37,21 @@ namespace BTDB.ODBLayer
         {
             var fieldHandler = fieldHandlerFactory.CreateFromName(_handlerName, _configuration, _handlerOptions);
             if (fieldHandler == null) throw new BTDBException(
-                $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{_name}");
-            return Create(_name, fieldHandler);
+                $"FieldHandlerFactory did not created handler {_handlerName} in {_tableName}.{Name}");
+            return Create(Name, fieldHandler);
         }
-
-        internal static bool Equal(TableFieldInfo a, UnresolvedTableFieldInfo b)
-        {
-            if (a.Name != b.Name) return false;
-            var ha = a.Handler;
-            if (ha.Name != b._handlerName) return false;
-            var ca = ha.Configuration;
-            var cb = b._configuration;
-            if (ca == cb) return true;
-            if (ca == null || cb == null) return false;
-            if (ca.Length != cb.Length) return false;
-            if (BitArrayManipulation.CompareByteArray(ca, ca.Length, cb, cb.Length) != 0) return false;
-            return true;
-        }
-
     }
 
-    public class TableFieldInfo
+    public class TableFieldInfo : IEquatable<TableFieldInfo>
     {
-        protected readonly string _name;
-        readonly IFieldHandler? _handler;
+        internal readonly string Name;
+        internal readonly IFieldHandler? Handler;
 
         protected TableFieldInfo(string name, IFieldHandler? handler)
         {
-            _name = name;
-            _handler = handler;
+            Name = name;
+            Handler = handler;
         }
-
-        internal string Name => _name;
-
-        internal IFieldHandler? Handler => _handler;
 
         internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory,
             string tableName, FieldHandlerOptions handlerOptions)
@@ -99,9 +81,9 @@ namespace BTDB.ODBLayer
 
         internal void Save(AbstractBufferedWriter writer)
         {
-            writer.WriteString(_name);
-            writer.WriteString(_handler!.Name);
-            writer.WriteByteArray(_handler.Configuration);
+            writer.WriteString(Name);
+            writer.WriteString(Handler!.Name);
+            writer.WriteByteArray(Handler.Configuration);
         }
 
         internal static bool Equal(TableFieldInfo a, TableFieldInfo b)
@@ -110,7 +92,7 @@ namespace BTDB.ODBLayer
             var ha = a.Handler;
             var hb = b.Handler;
             if (ha == hb) return true;
-            if (ha.Name != hb.Name) return false;
+            if (ha!.Name != hb!.Name) return false;
             var ca = ha.Configuration;
             var cb = hb.Configuration;
             if (ca == cb) return true;
@@ -118,6 +100,11 @@ namespace BTDB.ODBLayer
             if (ca.Length != cb.Length) return false;
             if (BitArrayManipulation.CompareByteArray(ca, ca.Length, cb, cb.Length) != 0) return false;
             return true;
+        }
+
+        public bool Equals(TableFieldInfo other)
+        {
+            return Equal(this, other);
         }
     }
 

@@ -33,7 +33,7 @@ namespace BTDB.ODBLayer
 
         DBOptions ActualOptions { get; }
 
-        IObjectDBLogger Logger { get; set; }
+        IObjectDBLogger? Logger { get; set; }
 
         ISymmetricCipher GetSymmetricCipher();
 
