@@ -5,9 +5,9 @@ namespace BTDB.FieldHandler
 {
     public class DBIndirect<T> : IIndirect<T> where T : class
     {
-        IObjectDBTransaction _transaction;
+        IObjectDBTransaction? _transaction;
         readonly ulong _oid;
-        T _value;
+        T? _value;
 
         internal DBIndirect(IObjectDBTransaction transaction, ulong oid)
         {
@@ -24,7 +24,7 @@ namespace BTDB.FieldHandler
             _value = obj;
         }
 
-        public T Value
+        public T? Value
         {
             get
             {
@@ -46,12 +46,11 @@ namespace BTDB.FieldHandler
         public ulong Oid => _oid;
 
         [NotStored]
-        public object ValueAsObject => _value;
+        public object? ValueAsObject => _value;
 
         public static void SaveImpl(IWriterCtx writerCtx, object obj)
         {
-            var ind = obj as DBIndirect<T>;
-            if (ind != null)
+            if (obj is DBIndirect<T> ind)
             {
                 if (ind._transaction != null)
                 {
@@ -63,8 +62,8 @@ namespace BTDB.FieldHandler
                     return;
                 }
             }
-            var ind2 = obj as IIndirect<T>;
-            if (ind2 != null)
+
+            if (obj is IIndirect<T> ind2)
             {
                 writerCtx.WriteNativeObjectPreventInline(ind2.Value);
                 return;

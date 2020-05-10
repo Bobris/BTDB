@@ -2,6 +2,16 @@
 
 ## [unreleased]
 
+### BREAKING CHANGE
+
+- GetRelation(Type type) now returns IRelation type
+- RelationInfo public getters changed many types to ReadOnlyMemory.
+- Removed useless UniqueIndexAttribute
+
+### Added
+
+- big chunk of IL generated code for Relations and ODBDictionary/Set is now cached forever, making it faster to instantiate Relations repeatedly. It adds new limitation that instances of `ITypeConvertorGenerator` and `IFieldHandlerFactory` needs to be same over process runtime.
+
 ## 21.0.0
 
 ### BREAKING CHANGE

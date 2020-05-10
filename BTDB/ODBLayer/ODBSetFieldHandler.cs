@@ -21,7 +21,8 @@ namespace BTDB.ODBLayer
             _odb = odb;
             _typeConvertGenerator = odb.TypeConvertorGenerator;
             _type = type;
-            _keysHandler = fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+            _keysHandler = fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0],
+                FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
             var writer = new ByteBufferWriter();
             writer.WriteFieldHandler(_keysHandler);
             _configuration = writer.Data.ToByteArray();
@@ -35,7 +36,8 @@ namespace BTDB.ODBLayer
             _typeConvertGenerator = odb.TypeConvertorGenerator;
             _configuration = configuration;
             var reader = new ByteArrayReader(configuration);
-            _keysHandler = fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
+            _keysHandler = fieldHandlerFactory.CreateFromReader(reader,
+                FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
             CreateConfiguration();
         }
 
@@ -52,18 +54,20 @@ namespace BTDB.ODBLayer
         {
             HandledType();
             var keyAndValueTypes = _type!.GetGenericArguments();
-            var cfg = new ODBDictionaryConfiguration(_odb, _keysHandler, null)
+            _configurationId = ODBDictionaryConfiguration.Register(_keysHandler, null);
+            var cfg = ODBDictionaryConfiguration.Get(_configurationId);
+            lock (cfg)
             {
-                KeyReader = CreateReader(_keysHandler, keyAndValueTypes[0]),
-                KeyWriter = CreateWriter(_keysHandler, keyAndValueTypes[0]),
-            };
-            _configurationId = ((IInstanceRegistry)_odb).RegisterInstance(cfg);
+                cfg.KeyReader ??= CreateReader(_keysHandler, keyAndValueTypes[0]);
+                cfg.KeyWriter ??= CreateWriter(_keysHandler, keyAndValueTypes[0]);
+            }
         }
 
         object CreateWriter(IFieldHandler fieldHandler, Type realType)
         {
             //Action<T, AbstractBufferedWriter, IWriterCtx>
-            var delegateType = typeof(Action<,,>).MakeGenericType(realType, typeof(AbstractBufferedWriter), typeof(IWriterCtx));
+            var delegateType =
+                typeof(Action<,,>).MakeGenericType(realType, typeof(AbstractBufferedWriter), typeof(IWriterCtx));
             var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Writer", delegateType);
             var ilGenerator = dm.Generator;
             void PushWriterOrCtx(IILGen il) => il.Ldarg((ushort) (1 + (fieldHandler.NeedsCtx() ? 1 : 0)));
@@ -126,16 +130,13 @@ namespace BTDB.ODBLayer
             var genericArguments = _type!.GetGenericArguments();
             var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
-                new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration), typeof(ulong) });
+                new[] {typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration), typeof(ulong)});
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .Callvirt(() => default(IDBReaderCtx).GetTransaction())
-                .Do(pushReaderOrCtx)
-                .Castclass(typeof(IDBReaderCtx))
                 .LdcI4(_configurationId)
-                .Callvirt(() => default(IDBReaderCtx).FindInstance(0))
-                .Castclass(typeof(ODBDictionaryConfiguration))
+                .Call(() => ODBDictionaryConfiguration.Get(0))
                 .Do(Extensions.PushReaderFromCtx(pushReaderOrCtx))
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt64())
                 .Newobj(constructorInfo!)
@@ -152,16 +153,13 @@ namespace BTDB.ODBLayer
             var genericArguments = _type!.GetGenericArguments();
             var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
-                new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration) });
+                new[] {typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration)});
             ilGenerator
                 .Do(pushReaderCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .Callvirt(() => default(IDBReaderCtx).GetTransaction())
-                .Do(pushReaderCtx)
-                .Castclass(typeof(IDBReaderCtx))
                 .LdcI4(_configurationId)
-                .Callvirt(() => default(IDBReaderCtx).FindInstance(0))
-                .Castclass(typeof(ODBDictionaryConfiguration))
+                .Call(() => ODBDictionaryConfiguration.Get(0))
                 .Newobj(constructorInfo!)
                 .Castclass(_type);
         }
@@ -181,7 +179,7 @@ namespace BTDB.ODBLayer
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
                 .LdcI4(_configurationId)
-                .Call(instanceType.GetMethod("DoSave")!);
+                .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoSave))!);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -196,11 +194,13 @@ namespace BTDB.ODBLayer
             {
                 wantedKeyHandler = dictTypeHandler._keysHandler;
             }
+
             var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
             if (wantedKeyHandler == specializedKeyHandler)
             {
                 return typeHandler;
             }
+
             var res = new ODBSetFieldHandler(_odb, _configuration, specializedKeyHandler);
             res.GenerateType(type);
             return res;
@@ -212,6 +212,7 @@ namespace BTDB.ODBLayer
             {
                 return _type = typeof(IOrderedSet<>).MakeGenericType(_keysHandler.HandledType());
             }
+
             return _type = typeof(ISet<>).MakeGenericType(_keysHandler.HandledType());
         }
 

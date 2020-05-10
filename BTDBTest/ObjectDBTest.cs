@@ -87,9 +87,11 @@ namespace BTDBTest
             _allocator.Dispose();
         }
 
-        void ReopenDb()
+        void ReopenDb(bool resetMetadataCache = false)
         {
             _db.Dispose();
+            if (resetMetadataCache)
+                ObjectDB.ResetAllMetadataCaches();
             OpenDb();
         }
 
@@ -1693,7 +1695,7 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            ReopenDb();
+            ReopenDb(true);
             _db.RegisterType(typeof(CC1V2T1), t1Name);
             _db.RegisterType(typeof(CC1V2T2), t2Name);
             _db.RegisterType(typeof(CC1V2T3), t3Name);
@@ -2403,7 +2405,7 @@ namespace BTDBTest
                 tr.Commit();
             }
 
-            ReopenDb();
+            ReopenDb(true);
             _db.TypeConvertorGenerator = new EnumToStringTypeConvertorGenerator();
             _db.RegisterType(typeof(ConversionItemsNew), "ConversionItems");
             _db.RegisterType(typeof(ConversionItemNew), "ConversionItem");

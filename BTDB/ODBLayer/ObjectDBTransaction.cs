@@ -948,7 +948,7 @@ namespace BTDB.ODBLayer
 
         Func<IObjectDBTransaction, IRelation> InitRelation(string relationName, Type interfaceType)
         {
-            var builder = new RelationBuilder(interfaceType, _owner.RelationInfoResolver);
+            var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
             return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
         }
@@ -956,8 +956,7 @@ namespace BTDB.ODBLayer
         Dictionary<uint, IRelationModificationCounter>? _modificationCounters;
         public IRelationModificationCounter GetRelationModificationCounter(uint relationId)
         {
-            if (_modificationCounters == null)
-                _modificationCounters = new Dictionary<uint, IRelationModificationCounter>();
+            _modificationCounters ??= new Dictionary<uint, IRelationModificationCounter>();
             if (_modificationCounters.TryGetValue(relationId, out var result))
                 return result;
             result = new UnforgivingRelationModificationCounter();

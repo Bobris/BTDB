@@ -6,7 +6,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit
+    public class DBObjectFieldHandler : IFieldHandler, IFieldHandlerWithInit, IFieldHandlerWithRegister
     {
         readonly IObjectDB _objectDb;
         readonly byte[] _configuration;
@@ -39,6 +39,7 @@ namespace BTDB.FieldHandler
             {
                 return type.GetGenericArguments()[0];
             }
+
             var indType = type.GetInterfaces().FirstOrDefault(IsIIndirect);
             if (indType == null) return type;
             return indType.GetGenericArguments()[0];
@@ -62,6 +63,7 @@ namespace BTDB.FieldHandler
                 _typeName = string.Intern(new ByteArrayReader(configuration).ReadString()!);
                 _indirect = false;
             }
+
             CreateType();
         }
 
@@ -79,6 +81,7 @@ namespace BTDB.FieldHandler
             {
                 return _type = typeof(object);
             }
+
             return _type = _objectDb.TypeByName(_typeName);
         }
 
@@ -118,9 +121,10 @@ namespace BTDB.FieldHandler
             {
                 ilGenerator
                     .Do(pushReaderOrCtx)
-                    .Call(typeof(DBIndirect<>).MakeGenericType(_type).GetMethod("LoadImpl"));
+                    .Call(typeof(DBIndirect<>).MakeGenericType(_type!).GetMethod(nameof(DBIndirect<object>.LoadImpl))!);
                 return;
             }
+
             ilGenerator
                 .Do(pushReaderOrCtx)
                 .Callvirt(() => default(IReaderCtx).ReadNativeObject());
@@ -142,9 +146,10 @@ namespace BTDB.FieldHandler
                 ilGenerator
                     .Do(pushWriterOrCtx)
                     .Do(pushValue)
-                    .Call(typeof(DBIndirect<>).MakeGenericType(_type).GetMethod("SaveImpl"));
+                    .Call(typeof(DBIndirect<>).MakeGenericType(_type!).GetMethod(nameof(DBIndirect<object>.SaveImpl))!);
                 return;
             }
+
             ilGenerator
                 .Do(pushWriterOrCtx)
                 .Do(pushValue)
@@ -159,6 +164,7 @@ namespace BTDB.FieldHandler
             {
                 return new DBObjectFieldHandler(_objectDb, needType, needType != type);
             }
+
             return this;
         }
 
@@ -169,6 +175,7 @@ namespace BTDB.FieldHandler
             {
                 return new DBObjectFieldHandler(_objectDb, needType, needType != type);
             }
+
             return this;
         }
 
@@ -190,6 +197,7 @@ namespace BTDB.FieldHandler
             {
                 UpdateNeedsFreeContent(st, ref needsFreeContent);
             }
+
             if (!type.IsInterface && !type.IsAbstract)
                 UpdateNeedsFreeContent(type, ref needsFreeContent);
 
@@ -202,9 +210,16 @@ namespace BTDB.FieldHandler
         void UpdateNeedsFreeContent(Type type, ref NeedsFreeContent needsFreeContent)
         {
             //decides upon current version  (null for object types never stored in DB)
-            var tableInfo = ((ObjectDB)_objectDb).TablesInfo.FindByType(type);
-            var needsContentPartial = tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
+            var tableInfo = ((ObjectDB) _objectDb).TablesInfo.FindByType(type);
+            var needsContentPartial =
+                tableInfo?.IsFreeContentNeeded(tableInfo.ClientTypeVersion) ?? NeedsFreeContent.Unknown;
             Extensions.UpdateNeedsFreeContent(needsContentPartial, ref needsFreeContent);
+        }
+
+        public void Register(object owner)
+        {
+            if (_type != null)
+                (owner as ObjectDB)?.RegisterType(_type, false);
         }
     }
 }

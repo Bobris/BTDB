@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    public class ObjectDB : IObjectDB, IInstanceRegistry
+    public class ObjectDB : IObjectDB
     {
         IKeyValueDB _keyValueDB;
         internal ISymmetricCipher _symmetricCipher;
@@ -30,7 +30,6 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
         internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
         internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
-        readonly IInstanceRegistry _instanceRegistry = new InstanceRegistry();
         ITableInfoResolver _tableInfoResolver;
         IRelationInfoResolver _relationsInfoResolver;
         long _lastObjId;
@@ -40,6 +39,13 @@ namespace BTDB.ODBLayer
         {
             FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
             TypeConvertorGenerator = DefaultTypeConvertorGenerator.Instance;
+        }
+
+        /// Use only for tests of upgrade compatibility in same process, never use in production code
+        public static void ResetAllMetadataCaches()
+        {
+            RelationBuilder.Reset();
+            ODBDictionaryConfiguration.Reset();
         }
 
         internal ulong LastDictId => _lastDictId;
@@ -303,16 +309,6 @@ namespace BTDB.ODBLayer
         internal ulong GetLastAllocatedOid()
         {
             return (ulong)Interlocked.Read(ref _lastObjId);
-        }
-
-        public int RegisterInstance(object content)
-        {
-            return _instanceRegistry.RegisterInstance(content);
-        }
-
-        public object FindInstance(int id)
-        {
-            return _instanceRegistry.FindInstance(id);
         }
     }
 }

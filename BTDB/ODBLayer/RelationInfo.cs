@@ -11,6 +11,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
+using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer
 {
@@ -286,9 +287,8 @@ namespace BTDB.ODBLayer
                 Array.Empty<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>?>();
 
         //SK
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>
-            [] //secondary key idx => sk key saver
-            _secondaryKeysSavers;
+        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>[]
+            _secondaryKeysSavers; //secondary key idx => sk key saver
 
         readonly ConcurrentDictionary<ulong, Action<IInternalObjectDBTransaction, AbstractBufferedWriter,
                 AbstractBufferedReader, AbstractBufferedReader, object>>
@@ -298,7 +298,7 @@ namespace BTDB.ODBLayer
 
         readonly ConcurrentDictionary<ulong,
                 Action<AbstractBufferedReader, AbstractBufferedReader, AbstractBufferedWriter>>
-            _secondaryKeyValuetoPKLoader =
+            _secondaryKeyValueToPKLoader =
                 new ConcurrentDictionary<ulong,
                     Action<AbstractBufferedReader, AbstractBufferedReader, AbstractBufferedWriter>>();
 
@@ -345,6 +345,7 @@ namespace BTDB.ODBLayer
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ResolveVersionInfos();
             ClientRelationVersionInfo = CreateVersionInfoFromPrime(builder.ClientRelationVersionInfo);
+            Extensions.RegisterFieldHandlers(ClientRelationVersionInfo.GetAllFields().ToArray().Select(a=>a.Handler), tr.Owner);
             ApartFields = builder.ApartFields;
             foreach (var loadType in builder.LoadTypes)
             {
@@ -1115,7 +1116,7 @@ namespace BTDB.ODBLayer
             (uint secondaryKeyIndex, uint paramFieldCountInFirstBuffer)
         {
             var h = 10000ul * secondaryKeyIndex + paramFieldCountInFirstBuffer;
-            return _secondaryKeyValuetoPKLoader.GetOrAdd(h,
+            return _secondaryKeyValueToPKLoader.GetOrAdd(h,
                 (_, secKeyIndex, relationInfo, paramFieldCount) => relationInfo.CreatePrimaryKeyFromSKDataMerger(
                     secKeyIndex, paramFieldCount,
                     $"Relation_SK_to_PK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_p{paramFieldCount}"),

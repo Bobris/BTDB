@@ -972,8 +972,7 @@ namespace BTDB.Service
             var typeInf = new TypeInf(type, _fieldHandlerFactory);
             foreach (var fieldHandler in typeInf.EnumerateFieldHandlers().Flatten(fh =>
                 {
-                    var iFieldHandlerWithNestedFieldHandlers = fh as IFieldHandlerWithNestedFieldHandlers;
-                    if (iFieldHandlerWithNestedFieldHandlers != null)
+                    if (fh is IFieldHandlerWithNestedFieldHandlers iFieldHandlerWithNestedFieldHandlers)
                         return iFieldHandlerWithNestedFieldHandlers.EnumerateNestedFieldHandlers();
                     return null;
                 }).OfType<ServiceObjectFieldHandler>())

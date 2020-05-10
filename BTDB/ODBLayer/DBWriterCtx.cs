@@ -88,16 +88,6 @@ namespace BTDB.ODBLayer
             _writer.WriteByteArray(enc);
         }
 
-        public int RegisterInstance(object content)
-        {
-            return ((IInstanceRegistry)_transaction.Owner).RegisterInstance(content);
-        }
-
-        public object FindInstance(int id)
-        {
-            return ((IInstanceRegistry)_transaction.Owner).FindInstance(id);
-        }
-
         public IInternalObjectDBTransaction GetTransaction()
         {
             return _transaction;

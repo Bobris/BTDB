@@ -1152,7 +1152,7 @@ namespace BTDBTest
             }
 
             ReopenDb();
-
+            _db.RegisterType(typeof(RawData));
             using (var tr = _db.StartTransaction())
             {
                 var creator = tr.InitRelation<IHddRelation>("HddRelation");

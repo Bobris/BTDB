@@ -29,6 +29,35 @@ namespace BTDB.ODBLayer
         static readonly MethodInfo ByteBufferWriterDataMethodInfo =
             typeof(ByteBufferWriter).GetProperty(nameof(ByteBufferWriter.Data))!.GetGetMethod(true)!;
 
+        static Dictionary<Type, RelationBuilder> _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
+        static readonly object RelationBuilderCacheLock = new object();
+
+        internal static void Reset()
+        {
+            _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
+        }
+        internal static RelationBuilder GetFromCache(Type interfaceType, IRelationInfoResolver relationInfoResolver)
+        {
+            if (_relationBuilderCache.TryGetValue(interfaceType, out var res))
+            {
+                return res;
+            }
+
+            lock (RelationBuilderCacheLock)
+            {
+                if (_relationBuilderCache.TryGetValue(interfaceType, out res))
+                {
+                    return res;
+                }
+                _relationBuilderCache = new Dictionary<Type, RelationBuilder>(_relationBuilderCache)
+                {
+                    { interfaceType, res = new RelationBuilder(interfaceType, relationInfoResolver) }
+                };
+            }
+
+            return res;
+        }
+
         public RelationBuilder(Type interfaceType, IRelationInfoResolver relationInfoResolver)
         {
             RelationInfoResolver = relationInfoResolver;

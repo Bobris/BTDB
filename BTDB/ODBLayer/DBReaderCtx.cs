@@ -9,9 +9,9 @@ namespace BTDB.ODBLayer
     public class DBReaderCtx : IDBReaderCtx
     {
         protected readonly IInternalObjectDBTransaction _transaction;
-        protected readonly AbstractBufferedReader _reader;
-        List<object> _objects;
-        Stack<IMemorizedPosition> _returningStack;
+        protected readonly AbstractBufferedReader? _reader;
+        List<object>? _objects;
+        Stack<IMemorizedPosition?>? _returningStack;
         int _lastIdOfObj;
 
         public DBReaderCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader)
@@ -28,7 +28,7 @@ namespace BTDB.ODBLayer
             _lastIdOfObj = -1;
         }
 
-        public bool ReadObject(out object @object)
+        public bool ReadObject(out object? @object)
         {
             var id = _reader.ReadVInt64();
             if (id == 0)
@@ -45,8 +45,7 @@ namespace BTDB.ODBLayer
             var o = RetriveObj(ido);
             if (o != null)
             {
-                var mp = o as IMemorizedPosition;
-                if (mp == null)
+                if (!(o is IMemorizedPosition mp))
                 {
                     @object = o;
                     return false;
@@ -63,7 +62,7 @@ namespace BTDB.ODBLayer
             return true;
         }
 
-        void PushReturningPosition(IMemorizedPosition memorizedPosition)
+        void PushReturningPosition(IMemorizedPosition? memorizedPosition)
         {
             if (_returningStack == null)
             {
@@ -77,7 +76,7 @@ namespace BTDB.ODBLayer
         public void RegisterObject(object @object)
         {
             Debug.Assert(@object != null);
-            _objects[_lastIdOfObj] = @object;
+            _objects![_lastIdOfObj] = @object;
         }
 
         public void ReadObjectDone()
@@ -179,16 +178,6 @@ namespace BTDB.ODBLayer
         public void SkipOrderedEncryptedString()
         {
             Reader().SkipByteArray();
-        }
-
-        public int RegisterInstance(object content)
-        {
-            return ((IInstanceRegistry) _transaction.Owner).RegisterInstance(content);
-        }
-
-        public object FindInstance(int id)
-        {
-            return ((IInstanceRegistry) _transaction.Owner).FindInstance(id);
         }
 
         public IInternalObjectDBTransaction GetTransaction()

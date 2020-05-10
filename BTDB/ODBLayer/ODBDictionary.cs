@@ -38,58 +38,60 @@ namespace BTDB.ODBLayer
             _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
             PackUnpack.PackVUInt(_prefix, ref o, _id);
-            _keyReader = ((Func<AbstractBufferedReader, IReaderCtx, TKey>)config.KeyReader)!;
-            _keyWriter = ((Action<TKey, AbstractBufferedWriter, IWriterCtx>)config.KeyWriter)!;
-            _valueReader = ((Func<AbstractBufferedReader, IReaderCtx, TValue>)config.ValueReader)!;
-            _valueWriter = ((Action<TValue, AbstractBufferedWriter, IWriterCtx>)config.ValueWriter)!;
+            _keyReader = ((Func<AbstractBufferedReader, IReaderCtx, TKey>) config.KeyReader)!;
+            _keyWriter = ((Action<TKey, AbstractBufferedWriter, IWriterCtx>) config.KeyWriter)!;
+            _valueReader = ((Func<AbstractBufferedReader, IReaderCtx, TValue>) config.ValueReader)!;
+            _valueWriter = ((Action<TValue, AbstractBufferedWriter, IWriterCtx>) config.ValueWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _count = -1;
         }
 
         // ReSharper disable once UnusedMember.Global
-        public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config) : this(tr, config, tr.AllocateDictionaryId()) { }
+        public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config) : this(tr, config,
+            tr.AllocateDictionaryId())
+        {
+        }
 
         static void ThrowModifiedDuringEnum()
         {
             throw new InvalidOperationException("DB modified during iteration");
         }
 
-        // ReSharper disable once UnusedMember.Global
         public static void DoSave(IWriterCtx ctx, IDictionary<TKey, TValue>? dictionary, int cfgId)
         {
-            var writerCtx = (IDBWriterCtx)ctx;
+            var writerCtx = (IDBWriterCtx) ctx;
             if (!(dictionary is ODBDictionary<TKey, TValue> goodDict))
             {
                 var tr = writerCtx.GetTransaction();
                 var id = tr.AllocateDictionaryId();
-                goodDict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)writerCtx.FindInstance(cfgId), id);
+                goodDict = new ODBDictionary<TKey, TValue>(tr, ODBDictionaryConfiguration.Get(cfgId), id);
                 if (dictionary != null)
                     foreach (var pair in dictionary)
                         goodDict.Add(pair.Key, pair.Value);
             }
+
             ctx.Writer().WriteVUInt64(goodDict._id);
         }
 
-        // ReSharper disable once UnusedMember.Global
         public static void DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
         {
-            var readerCtx = (DBReaderCtx)ctx;
+            var readerCtx = (DBReaderCtx) ctx;
             var tr = readerCtx.GetTransaction();
-            var dict = new ODBDictionary<TKey, TValue>(tr, (ODBDictionaryConfiguration)readerCtx.FindInstance(cfgId), id);
+            var dict = new ODBDictionary<TKey, TValue>(tr, ODBDictionaryConfiguration.Get(cfgId), id);
             dict.FreeContent(ctx, cfgId);
         }
 
         void FreeContent(IReaderCtx readerCtx, int cfgId)
         {
-            var config = (ODBDictionaryConfiguration)((IInstanceRegistry)readerCtx).FindInstance(cfgId);
-            var ctx = (DBReaderWithFreeInfoCtx)readerCtx;
+            var config = ODBDictionaryConfiguration.Get(cfgId);
+            var ctx = (DBReaderWithFreeInfoCtx) readerCtx;
 
             if (config.FreeContent == null)
             {
                 var method = ILBuilder.Instance
-                .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
-                    $"IDictFinder_Cfg_{cfgId}");
+                    .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
+                        $"IDictFinder_Cfg_{cfgId}");
                 var ilGenerator = method.Generator;
 
                 var readerLoc = ilGenerator.DeclareLocal(typeof(IReaderCtx));
@@ -111,7 +113,8 @@ namespace BTDB.ODBLayer
                 config.FreeContent = method.Create();
             }
 
-            var findIDictAction = (Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>)config.FreeContent;
+            var findIDictAction =
+                (Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>) config.FreeContent;
 
             long prevProtectionCounter = 0;
             long pos = 0;
@@ -177,10 +180,12 @@ namespace BTDB.ODBLayer
             {
                 throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
             }
+
             if ((array.Length - arrayIndex) < Count)
             {
                 throw new ArgumentException("Array too small");
             }
+
             foreach (var item in this)
             {
                 array[arrayIndex++] = item;
@@ -194,6 +199,7 @@ namespace BTDB.ODBLayer
                 Remove(item.Key);
                 return true;
             }
+
             return false;
         }
 
@@ -205,8 +211,9 @@ namespace BTDB.ODBLayer
                 {
                     _keyValueTrProtector.Start();
                     _keyValueTr.SetKeyPrefix(_prefix);
-                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
+                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                 }
+
                 return _count;
             }
         }
@@ -266,6 +273,7 @@ namespace BTDB.ODBLayer
             {
                 throw new ArgumentException("Cannot Add duplicate key to Dictionary");
             }
+
             _keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             NotifyAdded();
         }
@@ -282,6 +290,7 @@ namespace BTDB.ODBLayer
                 _keyValueTr.EraseCurrent();
                 NotifyRemoved();
             }
+
             return found;
         }
 
@@ -296,6 +305,7 @@ namespace BTDB.ODBLayer
                 value = default;
                 return false;
             }
+
             var valueBytes = _keyValueTr.GetValue();
             value = ByteArrayToValue(valueBytes);
             return true;
@@ -313,6 +323,7 @@ namespace BTDB.ODBLayer
                 {
                     throw new ArgumentException("Key not found in Dictionary");
                 }
+
                 var valueBytes = _keyValueTr.GetValue();
                 return ByteArrayToValue(valueBytes);
             }
@@ -344,7 +355,7 @@ namespace BTDB.ODBLayer
             {
                 if (_count == int.MaxValue)
                 {
-                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
+                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                 }
                 else
                 {
@@ -390,6 +401,7 @@ namespace BTDB.ODBLayer
                             if (!_parent._keyValueTr.FindNextKey()) break;
                         }
                     }
+
                     prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
                     var keyBytes = _parent._keyValueTr.GetKey();
                     var key = _parent.ByteArrayToKey(keyBytes);
@@ -419,10 +431,12 @@ namespace BTDB.ODBLayer
                 {
                     throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
                 }
+
                 if ((array.Length - arrayIndex) < Count)
                 {
                     throw new ArgumentException("Array too small");
                 }
+
                 foreach (var item in this)
                 {
                     array[arrayIndex++] = item;
@@ -475,6 +489,7 @@ namespace BTDB.ODBLayer
                             if (!_parent._keyValueTr.FindNextKey()) break;
                         }
                     }
+
                     prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
                     var valueBytes = _parent._keyValueTr.GetValue();
                     var value = _parent.ByteArrayToValue(valueBytes);
@@ -507,10 +522,12 @@ namespace BTDB.ODBLayer
                 {
                     throw new ArgumentOutOfRangeException(nameof(arrayIndex), arrayIndex, "Needs to be nonnegative ");
                 }
+
                 if ((array.Length - arrayIndex) < Count)
                 {
                     throw new ArgumentException("Array too small");
                 }
+
                 foreach (var item in this)
                 {
                     array[arrayIndex++] = item;
@@ -557,6 +574,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr.FindNextKey()) break;
                     }
                 }
+
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
@@ -596,6 +614,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr.FindPreviousKey()) break;
                     }
                 }
+
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
@@ -635,6 +654,7 @@ namespace BTDB.ODBLayer
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
+
                     if (!startOk) break;
                     pos = _keyValueTr.GetKeyIndex();
                 }
@@ -652,6 +672,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr.FindNextKey()) break;
                     }
                 }
+
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
@@ -691,6 +712,7 @@ namespace BTDB.ODBLayer
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
+
                     if (!startOk) break;
                     pos = _keyValueTr.GetKeyIndex();
                 }
@@ -708,6 +730,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr.FindPreviousKey()) break;
                     }
                 }
+
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var keyBytes = _keyValueTr.GetKey();
                 var valueBytes = _keyValueTr.GetValue();
@@ -736,6 +759,7 @@ namespace BTDB.ODBLayer
             {
                 startIndex++;
             }
+
             result = _keyValueTr.Find(endKeyBytes);
             var endIndex = _keyValueTr.GetKeyIndex();
             if (result == FindResult.Exact)
@@ -746,6 +770,7 @@ namespace BTDB.ODBLayer
             {
                 endIndex--;
             }
+
             _keyValueTr.EraseRange(startIndex, endIndex);
             _count = -1;
             return Math.Max(0, endIndex - startIndex + 1);
@@ -779,6 +804,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr.FindNextKey()) break;
                     }
                 }
+
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 var size = _keyValueTr.GetStorageSizeOfCurrentKey();
                 yield return size;
@@ -796,6 +822,7 @@ namespace BTDB.ODBLayer
             {
                 throw new ArgumentException("Key not found in Dictionary");
             }
+
             var size = _keyValueTr.GetStorageSizeOfCurrentKey();
             return size;
         }
@@ -842,6 +869,7 @@ namespace BTDB.ODBLayer
                             {
                                 endIndex--;
                             }
+
                             break;
                         case FindResult.Previous:
                             endIndex = _keyValueTr.GetKeyIndex();
@@ -856,6 +884,7 @@ namespace BTDB.ODBLayer
                             throw new ArgumentOutOfRangeException();
                     }
                 }
+
                 if (param.StartProposition == KeyProposition.Ignored)
                 {
                     startIndex = 0;
@@ -871,6 +900,7 @@ namespace BTDB.ODBLayer
                             {
                                 startIndex++;
                             }
+
                             break;
                         case FindResult.Previous:
                             startIndex = _keyValueTr.GetKeyIndex() + 1;
@@ -885,8 +915,9 @@ namespace BTDB.ODBLayer
                             throw new ArgumentOutOfRangeException();
                     }
                 }
-                _count = (uint)Math.Max(0, endIndex - startIndex + 1);
-                _startPos = (uint)(_ascending ? startIndex : endIndex);
+
+                _count = (uint) Math.Max(0, endIndex - startIndex + 1);
+                _startPos = (uint) (_ascending ? startIndex : endIndex);
                 _pos = 0;
                 _seekState = SeekState.Undefined;
             }
@@ -898,7 +929,8 @@ namespace BTDB.ODBLayer
                 get
                 {
                     if (_pos >= _count) throw new IndexOutOfRangeException();
-                    if (_seekState == SeekState.Undefined) throw new BTDBException("Invalid access to uninitialized CurrentValue.");
+                    if (_seekState == SeekState.Undefined)
+                        throw new BTDBException("Invalid access to uninitialized CurrentValue.");
 
                     _keyValueTrProtector.Start();
                     if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
@@ -912,6 +944,7 @@ namespace BTDB.ODBLayer
                     {
                         Seek();
                     }
+
                     _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                     var valueBytes = _keyValueTr.GetValue();
                     return _owner.ByteArrayToValue(valueBytes);
@@ -920,7 +953,8 @@ namespace BTDB.ODBLayer
                 set
                 {
                     if (_pos >= _count) throw new IndexOutOfRangeException();
-                    if (_seekState == SeekState.Undefined) throw new BTDBException("Invalid access to uninitialized CurrentValue.");
+                    if (_seekState == SeekState.Undefined)
+                        throw new BTDBException("Invalid access to uninitialized CurrentValue.");
                     _keyValueTrProtector.Start();
                     if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                     {
@@ -933,6 +967,7 @@ namespace BTDB.ODBLayer
                     {
                         Seek();
                     }
+
                     _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                     var valueBytes = _owner.ValueToByteArray(value);
                     _keyValueTr.SetValue(valueBytes);
@@ -968,6 +1003,7 @@ namespace BTDB.ODBLayer
                     key = default;
                     return false;
                 }
+
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
@@ -991,6 +1027,7 @@ namespace BTDB.ODBLayer
                         _keyValueTr.FindPreviousKey();
                     }
                 }
+
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 key = _owner.ByteArrayToKey(_keyValueTr.GetKey());
                 return true;
