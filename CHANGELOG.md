@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 22.0.0
+
 ### BREAKING CHANGE
 
 - GetRelation(Type type) now returns IRelation type
