@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 22.1.0
+
 ### Added
 
 - `IsReadOnly()` on `IKeyValueDBTransaction` and used internally in auto registering Relations directly not just in writing transactions, but also in all non read only.
