@@ -174,8 +174,6 @@ namespace BTDBTest
             bool ShallowUpsert(PersonSimple person);
             void ShallowUpdate(PersonSimple person);
 
-            IEnumerator<PersonSimple> GetEnumerator();
-
             // Returns true if removed
             bool RemoveById(ulong tenantId, string email);
 
@@ -588,7 +586,7 @@ namespace BTDBTest
             IOrderedDictionaryEnumerator<ulong, Person> ListById(AdvancedEnumeratorParam<ulong> param);
 
             //enumerate all items - not using TenantId
-            IEnumerator<Person> GetEnumerator();
+            //IEnumerator<Person> GetEnumerator();
 
             //ListBy{SecondaryKeyName}
             IOrderedDictionaryEnumerator<uint, Person> ListByAge(AdvancedEnumeratorParam<uint> param);
@@ -1091,7 +1089,7 @@ namespace BTDBTest
         [Fact]
         public void UserNoticeWorks()
         {
-            using (var tr = _db.StartWritingTransaction().Result)
+            using (var tr = _db.StartTransaction())
             {
                 var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice {UserId = 1, NoticeId = 2});
@@ -1099,6 +1097,10 @@ namespace BTDBTest
                     1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current!.NoticeId);
+                foreach (var row in table)
+                {
+                    Assert.Equal(2u, row.NoticeId);
+                }
                 tr.Commit();
             }
 
@@ -1195,7 +1197,6 @@ namespace BTDBTest
             void Update(Room room);
             IEnumerator<Room> ListById(AdvancedEnumeratorParam<ulong> param);
             void RemoveById(ulong id);
-            IEnumerator<Room> GetEnumerator();
         }
 
         [Fact]
@@ -2369,7 +2370,6 @@ namespace BTDBTest
 
         public interface IApplicationV3Table : IRelation<ApplicationV3>
         {
-            bool Upsert(ApplicationV3 applicationV3);
             IEnumerator<ApplicationV3> ListById(ulong companyId, AdvancedEnumeratorParam<ulong> param);
         }
 
@@ -2600,8 +2600,6 @@ namespace BTDBTest
 
         public interface ITableWithListAsSet : IRelation<ItemWithList>
         {
-            bool Upsert(ItemWithList item);
-
             PartWithSet FindById(ulong id);
         }
 
@@ -2627,7 +2625,6 @@ namespace BTDBTest
 
         public interface ITableWithOrderedSet : IRelation<ItemWithOrderedSet>
         {
-            bool Upsert(ItemWithOrderedSet item);
             bool RemoveById(long id);
 
             ItemWithOrderedSet FindById(long id);

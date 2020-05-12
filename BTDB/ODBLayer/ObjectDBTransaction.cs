@@ -426,7 +426,7 @@ namespace BTDB.ODBLayer
 
             if (!type.InheritsOrImplements(typeof(IRelation<>))) throw new BTDBException("Relation type "+type.ToSimpleName()+" must implement IRelation<>");
             var name = type.GetCustomAttribute<PersistedNameAttribute>() is {} persistedNameAttribute ? persistedNameAttribute.Name : type.ToSimpleName();
-            if (_keyValueTr!.IsWriting())
+            if (!_keyValueTr!.IsReadOnly())
             {
                 _owner.RegisterCustomRelation(type, InitRelation(name, type));
             }

@@ -135,6 +135,8 @@ namespace BTDB.KVDBLayer
         /// <returns>true when this transaction is writing one</returns>
         bool IsWriting();
 
+        bool IsReadOnly();
+
         /// <summary>
         /// Each KeyValueDB has special ulong value which could be modified - it is much faster than regular key
         /// </summary>

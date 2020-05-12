@@ -41,7 +41,6 @@ namespace BTDBTest
         {
             void Insert(Link link);
             void Update(Link link);
-            bool Upsert(Link link);
             void ShallowUpdate(Link link);
             bool ShallowUpsert(Link link);
             bool RemoveById(ulong id);

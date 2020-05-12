@@ -404,6 +404,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.IsWriting();
             }
 
+            public bool IsReadOnly()
+            {
+                return _keyValueDBTransaction.IsReadOnly();
+            }
+
             public ulong GetCommitUlong()
             {
                 return _keyValueDBTransaction.GetCommitUlong();

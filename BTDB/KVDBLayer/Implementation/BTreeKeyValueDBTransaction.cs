@@ -403,6 +403,11 @@ namespace BTDB.KVDBLayer
             return _writing || _preapprovedWriting;
         }
 
+        public bool IsReadOnly()
+        {
+            return _readOnly;
+        }
+
         public ulong GetCommitUlong()
         {
             return BTreeRoot.CommitUlong;

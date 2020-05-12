@@ -241,7 +241,6 @@ namespace BTDBTest
 
         public interface ITableWithEnumInKeyV3 : IRelation<ItemWithEnumInKeyV3>
         {
-            bool Upsert(ItemWithEnumInKeyV3 person);
         }
 
         [Fact]
