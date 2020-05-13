@@ -62,7 +62,7 @@ namespace BTDB.ODBLayer
         {
             RelationInfoResolver = relationInfoResolver;
             InterfaceType = interfaceType;
-            ItemType = interfaceType.SpecializationOf(typeof(IRelation<>))!.GenericTypeArguments[0];
+            ItemType = interfaceType.SpecializationOf(typeof(ICovariantRelation<>))!.GenericTypeArguments[0];
             PristineItemInstance = Activator.CreateInstance(ItemType)!;
             _name = InterfaceType.ToSimpleName();
             ClientRelationVersionInfo = CreateVersionInfoByReflection();

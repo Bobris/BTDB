@@ -45,6 +45,7 @@ namespace BTDB.ODBLayer
             if (valueHandler != null && ValueHandler == null) return false;
             if (valueHandler == null && ValueHandler != null) return false;
             if (valueHandler!.Name != ValueHandler.Name) return false;
+            if (valueHandler!.HandledType() != ValueHandler!.HandledType()) return false;
             return (ValueHandler.Configuration ?? Array.Empty<byte>()).AsSpan()
                 .SequenceEqual((valueHandler!.Configuration ?? Array.Empty<byte>()).AsSpan());
         }

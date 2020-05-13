@@ -35,7 +35,7 @@ namespace BTDB.ODBLayer
             _owner = owner;
             _keyValueTr = keyValueTr;
             _readOnly = readOnly;
-            _lastDictId = (long)_owner.LastDictId;
+            _lastDictId = (long) _owner.LastDictId;
             _transactionNumber = keyValueTr.GetTransactionNumber();
         }
 
@@ -52,11 +52,15 @@ namespace BTDB.ODBLayer
 
         public KeyValueDBTransactionProtector TransactionProtector => _keyValueTrProtector;
 
-        public bool RollbackAdvised { get => _keyValueTr!.RollbackAdvised; set => _keyValueTr!.RollbackAdvised = value; }
+        public bool RollbackAdvised
+        {
+            get => _keyValueTr!.RollbackAdvised;
+            set => _keyValueTr!.RollbackAdvised = value;
+        }
 
         public ulong AllocateDictionaryId()
         {
-            return (ulong)(Interlocked.Increment(ref _lastDictId) - 1);
+            return (ulong) (Interlocked.Increment(ref _lastDictId) - 1);
         }
 
         public object ReadInlineObject(IReaderCtx readerCtx)
@@ -82,7 +86,7 @@ namespace BTDB.ODBLayer
             var tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-            var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
+            var readerWithFree = (DBReaderWithFreeInfoCtx) readerCtx;
             freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds);
         }
 
@@ -91,8 +95,10 @@ namespace BTDB.ODBLayer
             var ti = GetTableInfoFromType(@object.GetType());
             if (ti == null)
             {
-                throw new BTDBException($"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
+                throw new BTDBException(
+                    $"Object of type {@object.GetType().ToSimpleName()} is not known how to store as inline object.");
             }
+
             EnsureClientTypeNotNull(ti);
             IfNeededPersistTableInfo(ti);
             var writer = writerCtx.Writer();
@@ -150,6 +156,7 @@ namespace BTDB.ODBLayer
                                 result = FindResult.NotFound;
                             }
                         }
+
                         if (result == FindResult.NotFound)
                         {
                             oid--;
@@ -160,8 +167,10 @@ namespace BTDB.ODBLayer
                     {
                         if (!_keyValueTr!.FindNextKey()) break;
                     }
+
                     prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                 }
+
                 oid = ReadOidFromCurrentKeyInTransaction();
                 var o = GetObjFromObjCacheByOid(oid);
                 if (o != null)
@@ -170,6 +179,7 @@ namespace BTDB.ODBLayer
                     {
                         yield return o;
                     }
+
                     continue;
                 }
 
@@ -178,14 +188,15 @@ namespace BTDB.ODBLayer
                 var obj = ReadObjFinish(oid, tableInfo, reader);
                 yield return obj;
             }
+
             if (_dirtyObjSet == null) yield break;
             var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid && p.Key <= finalOid).ToList();
             dirtyObjsToEnum.Sort((p1, p2) =>
-                                     {
-                                         if (p1.Key < p2.Key) return -1;
-                                         if (p1.Key > p2.Key) return 1;
-                                         return 0;
-                                     });
+            {
+                if (p1.Key < p2.Key) return -1;
+                if (p1.Key > p2.Key) return 1;
+                return 0;
+            });
             foreach (var dObjPair in dirtyObjsToEnum)
             {
                 var obj = dObjPair.Value;
@@ -200,6 +211,7 @@ namespace BTDB.ODBLayer
             {
                 return !_objSmallCache.TryGetValue(oid, out var result) ? null : result;
             }
+
             if (_objBigCache != null)
             {
                 if (_objBigCache.TryGetValue(oid, out var weakObj))
@@ -207,6 +219,7 @@ namespace BTDB.ODBLayer
                     return weakObj.Target;
                 }
             }
+
             return null;
         }
 
@@ -229,10 +242,12 @@ namespace BTDB.ODBLayer
                 _objBigMetadata!.Add(obj, metadata);
                 return;
             }
+
             if (_objSmallCache == null)
             {
                 _objSmallCache = new Dictionary<ulong, object>();
-                _objSmallMetadata = new Dictionary<object, DBObjectMetadata>(ReferenceEqualityComparer<object>.Instance);
+                _objSmallMetadata =
+                    new Dictionary<object, DBObjectMetadata>(ReferenceEqualityComparer<object>.Instance);
             }
             else if (_objSmallCache.Count > 30)
             {
@@ -242,16 +257,19 @@ namespace BTDB.ODBLayer
                 {
                     _objBigCache.Add(pair.Key, new WeakReference(pair.Value));
                 }
+
                 _objSmallCache = null;
                 foreach (var pair in _objSmallMetadata!)
                 {
                     _objBigMetadata.Add(pair.Key, pair.Value);
                 }
+
                 _objSmallMetadata = null;
                 _objBigCache.Add(oid, new WeakReference(obj));
                 _objBigMetadata.Add(obj, metadata);
                 return;
             }
+
             _objSmallCache.Add(oid, obj);
             _objSmallMetadata!.Add(obj, metadata);
         }
@@ -275,6 +293,7 @@ namespace BTDB.ODBLayer
                     toRemove.Add(pair.Key);
                 }
             }
+
             foreach (var k in toRemove)
             {
                 _objBigCache.Remove(k);
@@ -298,6 +317,7 @@ namespace BTDB.ODBLayer
             {
                 return o;
             }
+
             return GetDirectlyFromStorage(oid);
         }
 
@@ -322,10 +342,12 @@ namespace BTDB.ODBLayer
             {
                 return !_objSmallMetadata.TryGetValue(obj, out meta) ? 0 : meta.Id;
             }
+
             if (_objBigMetadata != null)
             {
                 return !_objBigMetadata.TryGetValue(obj, out meta) ? 0 : meta.Id;
             }
+
             return 0;
         }
 
@@ -337,6 +359,7 @@ namespace BTDB.ODBLayer
             {
                 return new KeyValuePair<uint, uint>(0, 0);
             }
+
             var res = _keyValueTr.GetStorageSizeOfCurrentKey();
             return res;
         }
@@ -398,8 +421,10 @@ namespace BTDB.ODBLayer
                                 t = t.BtdbInternalNextInChain;
                             }
                         }
+
                         return top;
                     }
+
                     top = top.BtdbInternalNextInChain;
                     complexity++;
                 }
@@ -409,7 +434,7 @@ namespace BTDB.ODBLayer
             {
                 if (_owner.RelationFactories.TryGetValue(type, out var factory))
                 {
-                    var res = (IRelation)factory(this);
+                    var res = (IRelation) factory(this);
                     res.BtdbInternalNextInChain = _relationInstances;
                     _relationInstances = res;
                     return res;
@@ -422,10 +447,17 @@ namespace BTDB.ODBLayer
         void CreateAndRegisterRelationFactory(Type type)
         {
             if (!_owner.AllowAutoRegistrationOfRelations)
-                throw new BTDBException("AutoRegistration of "+type.ToSimpleName()+" is forbidden");
+                throw new BTDBException("AutoRegistration of " + type.ToSimpleName() + " is forbidden");
 
-            if (!type.InheritsOrImplements(typeof(IRelation<>))) throw new BTDBException("Relation type "+type.ToSimpleName()+" must implement IRelation<>");
-            var name = type.GetCustomAttribute<PersistedNameAttribute>() is {} persistedNameAttribute ? persistedNameAttribute.Name : type.ToSimpleName();
+            var spec = type.SpecializationOf(typeof(ICovariantRelation<>));
+            if (spec == null)
+                throw new BTDBException("Relation type " + type.ToSimpleName() +
+                                        " must implement ICovariantRelation<>");
+            if (!spec.GenericTypeArguments[0].IsClass)
+                throw new BTDBException("Relation type " + type.ToSimpleName() + " does not have item as class");
+            var name = type.GetCustomAttribute<PersistedNameAttribute>() is {} persistedNameAttribute
+                ? persistedNameAttribute.Name
+                : type.ToSimpleName();
             if (!_keyValueTr!.IsReadOnly())
             {
                 _owner.RegisterCustomRelation(type, InitRelation(name, type));
@@ -433,7 +465,7 @@ namespace BTDB.ODBLayer
             else
             {
                 using var tr = _owner.StartWritingTransaction().Result;
-                _owner.RegisterCustomRelation(type, ((ObjectDBTransaction)tr).InitRelation(name, type));
+                _owner.RegisterCustomRelation(type, ((ObjectDBTransaction) tr).InitRelation(name, type));
                 tr.Commit();
             }
         }
@@ -442,7 +474,7 @@ namespace BTDB.ODBLayer
         {
             var tableInfo = AutoRegisterType(type, true);
             tableInfo.EnsureClientTypeVersion();
-            var oid = (ulong)tableInfo.SingletonOid;
+            var oid = (ulong) tableInfo.SingletonOid;
             var obj = GetObjFromObjCacheByOid(oid);
             if (obj == null)
             {
@@ -457,6 +489,7 @@ namespace BTDB.ODBLayer
                         tableInfo.CacheSingletonContent(_transactionNumber, content);
                     }
                 }
+
                 if (content != null)
                 {
                     var reader = new ByteArrayReader(content);
@@ -464,12 +497,14 @@ namespace BTDB.ODBLayer
                     obj = ReadObjFinish(oid, tableInfo, reader);
                 }
             }
+
             if (obj != null)
             {
                 if (!type.IsInstanceOfType(obj))
                 {
                     throw new BTDBException($"Internal error oid {oid} does not belong to {tableInfo.Name}");
                 }
+
                 return obj;
             }
 
@@ -490,7 +525,7 @@ namespace BTDB.ODBLayer
 
         public T Singleton<T>() where T : class
         {
-            return (T)Singleton(typeof(T));
+            return (T) Singleton(typeof(T));
         }
 
         public object New(Type type)
@@ -506,7 +541,7 @@ namespace BTDB.ODBLayer
 
         public T New<T>() where T : class
         {
-            return (T)New(typeof(T));
+            return (T) New(typeof(T));
         }
 
         public ulong Store(object @object)
@@ -530,11 +565,13 @@ namespace BTDB.ODBLayer
                         metadata.Id = _owner.AllocateNewOid();
                         _objSmallCache!.Add(metadata.Id, @object);
                     }
+
                     if (metadata.State != DBObjectState.Dirty)
                     {
                         metadata.State = DBObjectState.Dirty;
                         AddToDirtySet(metadata.Id, @object);
                     }
+
                     return metadata.Id;
                 }
             }
@@ -548,14 +585,17 @@ namespace BTDB.ODBLayer
                         CompactObjCacheIfNeeded();
                         _objBigCache!.Add(metadata.Id, new WeakReference(@object));
                     }
+
                     if (metadata.State != DBObjectState.Dirty)
                     {
                         metadata.State = DBObjectState.Dirty;
                         AddToDirtySet(metadata.Id, @object);
                     }
+
                     return metadata.Id;
                 }
             }
+
             return RegisterNewObject(@object);
         }
 
@@ -580,6 +620,7 @@ namespace BTDB.ODBLayer
                         metadata.Id = _owner.AllocateNewOid();
                         _objSmallCache!.Add(metadata.Id, @object);
                     }
+
                     StoreObject(@object);
                     metadata.State = DBObjectState.Read;
                     return metadata.Id;
@@ -595,11 +636,13 @@ namespace BTDB.ODBLayer
                         CompactObjCacheIfNeeded();
                         _objBigCache!.Add(metadata.Id, new WeakReference(@object));
                     }
+
                     StoreObject(@object);
                     metadata.State = DBObjectState.Read;
                     return metadata.Id;
                 }
             }
+
             var id = _owner.AllocateNewOid();
             AddToObjCache(id, @object, new DBObjectMetadata(id, DBObjectState.Read));
             StoreObject(@object);
@@ -618,6 +661,7 @@ namespace BTDB.ODBLayer
                 ti = GetTableInfoFromType(@object.GetType());
                 if (ti == null) return ulong.MaxValue;
             }
+
             ti.EnsureClientTypeVersion();
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -630,6 +674,7 @@ namespace BTDB.ODBLayer
                         Delete(metadata.Id);
                         return ulong.MaxValue;
                     }
+
                     return metadata.Id;
                 }
             }
@@ -643,9 +688,11 @@ namespace BTDB.ODBLayer
                         Delete(metadata.Id);
                         return ulong.MaxValue;
                     }
+
                     return metadata.Id;
                 }
             }
+
             return forceInline ? ulong.MaxValue : RegisterNewObject(@object);
         }
 
@@ -706,8 +753,10 @@ namespace BTDB.ODBLayer
             {
                 if (type.InheritsOrImplements(typeof(IEnumerable<>)))
                 {
-                    throw new InvalidOperationException("Cannot store " + type.ToSimpleName() + " type to DB directly.");
+                    throw new InvalidOperationException("Cannot store " + type.ToSimpleName() +
+                                                        " type to DB directly.");
                 }
+
                 var name = _owner.Type2NameRegistry.FindNameByType(type);
                 if (name == null)
                 {
@@ -715,10 +764,13 @@ namespace BTDB.ODBLayer
                     {
                         throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
                     }
+
                     name = _owner.RegisterType(type, manualRegistration: false);
                 }
+
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
+
             return ti;
         }
 
@@ -731,6 +783,7 @@ namespace BTDB.ODBLayer
                 if (name == null) return null;
                 ti = _owner.TablesInfo.LinkType2Name(type, name);
             }
+
             return ti;
         }
 
@@ -744,9 +797,11 @@ namespace BTDB.ODBLayer
                     Delete(indirect.Oid);
                     return;
                 }
+
                 Delete(indirect.ValueAsObject);
                 return;
             }
+
             var tableInfo = AutoRegisterType(@object.GetType());
             DBObjectMetadata metadata;
             if (_objSmallMetadata != null)
@@ -766,6 +821,7 @@ namespace BTDB.ODBLayer
                 }
             }
             else return;
+
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             metadata.State = DBObjectState.Deleted;
             _keyValueTrProtector.Start();
@@ -781,6 +837,7 @@ namespace BTDB.ODBLayer
             {
                 _objBigCache?.Remove(metadata.Id);
             }
+
             _dirtyObjSet?.Remove(metadata.Id);
         }
 
@@ -802,6 +859,7 @@ namespace BTDB.ODBLayer
                     _objBigCache.Remove(oid);
                 }
             }
+
             _dirtyObjSet?.Remove(oid);
             _keyValueTrProtector.Start();
             _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
@@ -823,6 +881,7 @@ namespace BTDB.ODBLayer
                     return;
                 }
             }
+
             if (metadata == null) return;
             metadata.State = DBObjectState.Deleted;
         }
@@ -861,7 +920,8 @@ namespace BTDB.ODBLayer
                         StoreObject(o.Value);
                     }
                 }
-                _owner.CommitLastObjIdAndDictId((ulong)_lastDictId, _keyValueTr!);
+
+                _owner.CommitLastObjIdAndDictId((ulong) _lastDictId, _keyValueTr!);
                 _keyValueTr.Commit();
                 if (_updatedTables != null)
                     foreach (var updatedTable in _updatedTables)
@@ -902,6 +962,7 @@ namespace BTDB.ODBLayer
             {
                 tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             }
+
             _keyValueTrProtector.Start();
             _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
             _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data.ToByteArray());
@@ -923,8 +984,10 @@ namespace BTDB.ODBLayer
                         }
                     }
                 }
+
                 _keyValueTr.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
-                if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
+                if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion))
+                )
                 {
                     var tableVersionInfo = tableInfo.ClientTableVersionInfo;
                     using (var writer = new KeyValueDBValueWriter(_keyValueTr))
@@ -933,10 +996,12 @@ namespace BTDB.ODBLayer
                     }
                 }
             }
+
             if (tableInfo.NeedStoreSingletonOid)
             {
                 _keyValueTr!.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
-                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id), BuildKeyFromOid((ulong)tableInfo.SingletonOid));
+                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id),
+                    BuildKeyFromOid((ulong) tableInfo.SingletonOid));
             }
         }
 
@@ -950,10 +1015,11 @@ namespace BTDB.ODBLayer
         {
             var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
-            return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
+            return (Func<IObjectDBTransaction, IRelation>) builder.DelegateCreator.Create(relationInfo);
         }
 
         Dictionary<uint, IRelationModificationCounter>? _modificationCounters;
+
         public IRelationModificationCounter GetRelationModificationCounter(uint relationId)
         {
             _modificationCounters ??= new Dictionary<uint, IRelationModificationCounter>();

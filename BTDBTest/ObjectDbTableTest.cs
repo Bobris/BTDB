@@ -2706,5 +2706,42 @@ namespace BTDBTest
             tr.GetRelation<ICustomRelation>().Hello(1);
             tr.GetRelation<ICustomRelation>().Hello(2);
         }
+
+        public interface IAncestor
+        {
+            [PrimaryKey]
+            int A { get; set; }
+        }
+
+        public class AncestorItem1: IAncestor
+        {
+            public int A { get; set; }
+            public int B { get; set; }
+        }
+
+        public interface IAncestorTable1 : ICovariantRelation<AncestorItem1>
+        {
+            void Insert(AncestorItem1 item);
+        }
+
+        [Fact]
+        void SupportCovariantRelations()
+        {
+            {
+                using var tr = _db.StartTransaction();
+                var t = tr.GetRelation<IAncestorTable1>();
+                t.Insert(new AncestorItem1 { A=1, B=2 });
+                tr.Commit();
+            }
+            {
+                using var tr = _db.StartTransaction();
+                // ReSharper disable once SuspiciousTypeConversion.Global - All relations have Upsert even if you don't request it
+                var t = (IRelation<AncestorItem1>)tr.GetRelation<IAncestorTable1>();
+                Assert.Equal(2, t.First().B);
+                t.Upsert(new AncestorItem1 { A=1, B=3 });
+                Assert.Equal(3, t.First().B);
+                tr.Commit();
+            }
+        }
     }
 }

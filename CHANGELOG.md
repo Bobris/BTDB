@@ -2,6 +2,17 @@
 
 ## [unreleased]
 
+Important note: Don't forget to commit Transactions which calls GetRelation first time (auto registering them).
+
+### Added
+
+- `ICovariantRelation<out T>` cannot have upsert, but it will implement `IRelation<T>` anyway.
+- removed class constraint because it created strange problems. It is now enforced in runtime.
+
+### Fixed
+
+- IDictionaries now supports types with same name but different namespaces again.
+
 ## 22.1.0
 
 ### Added

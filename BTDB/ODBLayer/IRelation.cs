@@ -3,7 +3,11 @@ using System.Collections.Generic;
 
 namespace BTDB.ODBLayer
 {
-    public interface IRelation<T> : IReadOnlyCollection<T>, IRelation where T : class
+    public interface ICovariantRelation<out T> : IReadOnlyCollection<T>, IRelation
+    {
+    }
+
+    public interface IRelation<T> : ICovariantRelation<T>
     {
         bool Upsert(T item);
     }
