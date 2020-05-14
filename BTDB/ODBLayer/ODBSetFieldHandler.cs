@@ -54,7 +54,7 @@ namespace BTDB.ODBLayer
         {
             HandledType();
             var keyAndValueTypes = _type!.GetGenericArguments();
-            _configurationId = ODBDictionaryConfiguration.Register(_keysHandler, null);
+            _configurationId = ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], null, null);
             var cfg = ODBDictionaryConfiguration.Get(_configurationId);
             lock (cfg)
             {
