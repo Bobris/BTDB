@@ -4,6 +4,10 @@
 
 ## 22.2.2
 
+### Fixed
+
+- Final fix for IDictionaries
+
 ## 22.2.1
 
 ### Fixed
