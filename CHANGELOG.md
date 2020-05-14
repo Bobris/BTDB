@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 22.2.1
+
 ### Fixed
 
 - IDictionaries has uniqueness fix also for keys.
