@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Fixed
+
+- IDictionaries has uniqueness fix also for keys.
+- RelationInfo.GetProperties skips "NextInChain" IRelation property.
+
 ## 22.2.0
 
 Important note: Don't forget to commit Transactions which calls GetRelation first time (auto registering them).

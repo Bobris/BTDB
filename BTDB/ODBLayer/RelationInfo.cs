@@ -1003,36 +1003,6 @@ namespace BTDB.ODBLayer
             return new RelationVersionInfo(prime.PrimaryKeyFields, secondaryKeys, prime.SecondaryKeyFields, prime.Fields);
         }
 
-        internal static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, PropertyInfo[] properties,
-            RelationVersionInfo versionInfo)
-        {
-            var result = new Dictionary<string, MethodInfo>();
-            var pks = versionInfo.PrimaryKeyFields.Span;
-            foreach (var method in methods)
-            {
-                if (!method.Name.StartsWith("get_"))
-                    continue;
-                var name = GetPersistentName(method.Name.Substring(4), properties);
-                if (name == nameof(IRelation.BtdbInternalNextInChain))
-                    continue;
-                TableFieldInfo tfi = null;
-                foreach (var fieldInfo in pks)
-                {
-                    if (fieldInfo.Name != name) continue;
-                    tfi = fieldInfo;
-                    break;
-                }
-                if (tfi == null)
-                    throw new BTDBException($"Property {name} is not part of primary key.");
-                if (!tfi.Handler!.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
-                    throw new BTDBException(
-                        $"Property {name} has incompatible return type with the member of primary key with the same name.");
-                result.Add(name, method);
-            }
-
-            return result;
-        }
-
         static bool IsIgnoredType(Type type)
         {
             if (type.IsGenericType)
@@ -1071,13 +1041,19 @@ namespace BTDB.ODBLayer
             if (IsIgnoredType(interfaceType)) yield break;
             var properties = interfaceType.GetProperties();
             foreach (var property in properties)
+            {
+                if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
                 yield return property;
+            }
             foreach (var iface in interfaceType.GetInterfaces())
             {
                 if (IsIgnoredType(iface)) continue;
                 var inheritedProperties = iface.GetProperties();
                 foreach (var property in inheritedProperties)
+                {
+                    if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
                     yield return property;
+                }
             }
         }
 

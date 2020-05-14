@@ -41,6 +41,7 @@ namespace BTDB.ODBLayer
             if (KeyHandler.Name != keyHandler.Name) return false;
             if (!(KeyHandler.Configuration ?? Array.Empty<byte>()).AsSpan()
                 .SequenceEqual((keyHandler.Configuration ?? Array.Empty<byte>()).AsSpan())) return false;
+            if (keyHandler!.HandledType() != KeyHandler!.HandledType()) return false;
             if (valueHandler == ValueHandler) return true;
             if (valueHandler != null && ValueHandler == null) return false;
             if (valueHandler == null && ValueHandler != null) return false;

@@ -67,7 +67,7 @@ namespace BTDB.ODBLayer
             _name = InterfaceType.ToSimpleName();
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             var methods = RelationInfo.GetMethods(InterfaceType).ToArray();
-            ApartFields = RelationInfo.FindApartFields(methods, interfaceType.GetProperties(), ClientRelationVersionInfo);
+            ApartFields = FindApartFields(methods, interfaceType.GetProperties(), ClientRelationVersionInfo);
             _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
             LoadTypes.Add(ItemType);
             DelegateCreator = Build();
@@ -1072,7 +1072,7 @@ namespace BTDB.ODBLayer
                 }
 
                 var par = methodParameters[idx++];
-                if (string.Compare(field.Name, par.Name!.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
+                if (String.Compare(field.Name, par.Name!.ToLower(), StringComparison.OrdinalIgnoreCase) != 0)
                 {
                     throw new BTDBException($"Parameter and key mismatch in {methodName}, {field.Name}!={par.Name}.");
                 }
@@ -1297,6 +1297,36 @@ namespace BTDB.ODBLayer
                 .Ldloc(localRemapped)
                 .Call(_relationDbManipulatorType.GetMethod(
                     nameof(RelationDBManipulator<IRelation>.WriteRelationSKPrefix))!);
+        }
+
+        internal static IDictionary<string, MethodInfo> FindApartFields(MethodInfo[] methods, PropertyInfo[] properties,
+            RelationVersionInfo versionInfo)
+        {
+            var result = new Dictionary<string, MethodInfo>();
+            var pks = versionInfo.PrimaryKeyFields.Span;
+            foreach (var method in methods)
+            {
+                if (!method.Name.StartsWith("get_"))
+                    continue;
+                var name = RelationInfo.GetPersistentName(method.Name.Substring(4), properties);
+                if (name == nameof(IRelation.BtdbInternalNextInChain))
+                    continue;
+                TableFieldInfo tfi = null;
+                foreach (var fieldInfo in pks)
+                {
+                    if (fieldInfo.Name != name) continue;
+                    tfi = fieldInfo;
+                    break;
+                }
+                if (tfi == null)
+                    throw new BTDBException($"Property {name} is not part of primary key.");
+                if (!tfi.Handler!.IsCompatibleWith(method.ReturnType, FieldHandlerOptions.Orderable))
+                    throw new BTDBException(
+                        $"Property {name} has incompatible return type with the member of primary key with the same name.");
+                result.Add(name, method);
+            }
+
+            return result;
         }
     }
 }
