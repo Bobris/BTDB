@@ -236,7 +236,7 @@ namespace BTDBTest
 
             public bool StartRelation(ODBIteratorRelationInfo relationInfo)
             {
-                Builder.AppendLine($"Relation {relationInfo}");
+                Builder.AppendLine($"Relation {relationInfo.Name}");
                 return true;
             }
 

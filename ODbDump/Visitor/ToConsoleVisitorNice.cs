@@ -164,7 +164,7 @@ namespace ODbDump.Visitor
 
         public virtual bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            Print($"Relation {relationInfo}");
+            Print($"Relation {relationInfo.Name}");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;

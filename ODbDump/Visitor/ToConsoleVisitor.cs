@@ -150,7 +150,7 @@ namespace ODbDump.Visitor
 
         public bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            Console.WriteLine($"Relation {relationInfo}");
+            Console.WriteLine($"Relation {relationInfo.Name}");
             return true;
         }
 
