@@ -2,6 +2,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using BTDB.ODBLayer;
 using Force.Crc32;
 
 namespace ODbDump.Visitor
@@ -83,12 +84,12 @@ namespace ODbDump.Visitor
             return base.VisitSingleton(tableId, tableName, oid);
         }
 
-        public override bool StartRelation(string relationName)
+        public override bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
             _output?.Dispose();
-            _output = OpenOutputStream($"{ToValidFilename(relationName)}.txt");
+            _output = OpenOutputStream($"{ToValidFilename(relationInfo.Name)}.txt");
 
-            return base.StartRelation(relationName);
+            return base.StartRelation(relationInfo);
         }
 
         public override void EndRelation()

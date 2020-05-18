@@ -148,9 +148,9 @@ namespace ODbDump.Visitor
             Console.WriteLine("EndObject");
         }
 
-        public bool StartRelation(string relationName)
+        public bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
-            Console.WriteLine($"Relation {relationName}");
+            Console.WriteLine($"Relation {relationInfo.Name}");
             return true;
         }
 

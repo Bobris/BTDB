@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
         void EndField();
         void EndObject();
 
-        bool StartRelation(string relationName);
+        bool StartRelation(ODBIteratorRelationInfo relationInfo);
         bool StartRelationKey();
         void EndRelationKey();
         bool StartRelationValue();

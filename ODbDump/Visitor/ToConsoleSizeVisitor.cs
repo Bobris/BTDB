@@ -169,10 +169,10 @@ namespace ODbDump.Visitor
         {
         }
 
-        public bool StartRelation(string relationName)
+        public bool StartRelation(ODBIteratorRelationInfo relationInfo)
         {
             Flush();
-            _currentRelation = relationName;
+            _currentRelation = relationInfo.Name;
             return true;
         }
 
