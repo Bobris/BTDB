@@ -95,7 +95,7 @@ namespace BTDB.ODBLayer
             }
             foreach (var relation in _relationId2Info)
             {
-                if (_visitor != null && !_visitor.StartRelation(relation.Value.Name))
+                if (_visitor != null && !_visitor.StartRelation(relation.Value))
                     continue;
                 MarkRelationName(relation.Key);
                 IterateRelation(relation.Value);
