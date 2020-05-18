@@ -251,12 +251,20 @@ namespace BTDB.ODBLayer
         {
             if (ClientTypeVersion != 0) return;
             EnsureKnownLastPersistedVersion();
+
+            var publicFields = _clientType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            foreach (var field in publicFields)
+            {
+                if (field.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                throw new BTDBException($"Public field {_clientType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+            }
+
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var fields = new StructList<TableFieldInfo>();
             fields.Reserve((uint)props.Length);
             foreach (var pi in props)
             {
-                if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
+                if (pi.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
                 fields.Add(TableFieldInfo.Build(Name, pi, _tableInfoResolver.FieldHandlerFactory, FieldHandlerOptions.None));
             }

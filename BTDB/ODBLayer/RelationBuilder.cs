@@ -80,6 +80,13 @@ namespace BTDB.ODBLayer
             var secondaryKeyFields = new List<TableFieldInfo>();
             var secondaryKeys = new List<Tuple<int, IList<SecondaryKeyAttribute>>>(); //positive: sec key field idx, negative: pk order, attrs
 
+            var publicFields = ItemType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            foreach (var field in publicFields)
+            {
+                if (field.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                throw new BTDBException($"Public field {_name}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+            }
+
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {

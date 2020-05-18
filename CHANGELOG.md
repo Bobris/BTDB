@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Breaking changes
+
+- Visitor StartRelation gets whole info instead of just name of relation.
+- Public fields on Relation Rows and Database objects are forbidden unless they have `[NotStored]`. In next version they could became supported.
+
 ## 22.2.2
 
 ### Fixed

@@ -2743,5 +2743,44 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
+
+        public class WithPublicField
+        {
+            [PrimaryKey]
+            public int A { get; set; }
+            public int B;
+        }
+
+        public interface IWithPublicFieldTable : IRelation<WithPublicField>
+        {
+        }
+
+        [Fact]
+        void ThrowsOnPublicField()
+        {
+            using var tr = _db.StartTransaction();
+            Assert.Throws<BTDBException>(() => tr.GetRelation<IWithPublicFieldTable>());
+        }
+
+        public class WithPublicNotStoredField
+        {
+            [PrimaryKey]
+            public int A { get; set; }
+            [NotStored]
+            public int B;
+        }
+
+        public interface IWithPublicNotStoredFieldTable : IRelation<WithPublicNotStoredField>
+        {
+        }
+
+        [Fact]
+        void WorksWithPublicNotStoredField()
+        {
+            using var tr = _db.StartTransaction();
+            var t = tr.GetRelation<IWithPublicNotStoredFieldTable>();
+            t.Upsert(new WithPublicNotStoredField {A = 1, B = 2});
+            Assert.Equal(0, t.First().B);
+        }
     }
 }

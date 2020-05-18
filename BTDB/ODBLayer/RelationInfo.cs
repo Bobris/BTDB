@@ -172,6 +172,14 @@ namespace BTDB.ODBLayer
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?, bool Init)>();
                 var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 var persistentNameToPropertyInfo = new RefDictionary<string, PropertyInfo>();
+
+                var publicFields = instanceType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var field in publicFields)
+                {
+                    if (field.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                    throw new BTDBException($"Public field {instanceType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
+                }
+
                 foreach (var pi in props)
                 {
                     if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
