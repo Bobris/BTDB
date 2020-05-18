@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 23.0.0
+
 ### Breaking changes
 
 - Visitor StartRelation gets whole info instead of just name of relation.
