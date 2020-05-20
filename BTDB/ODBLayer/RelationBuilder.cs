@@ -174,10 +174,20 @@ namespace BTDB.ODBLayer
                     var methodParameters = method.GetParameters();
                     if (method.Name == "RemoveByIdPartial")
                         BuildRemoveByIdPartialMethod(method, methodParameters, reqMethod);
-                    else if (ParametersEndsWithAdvancedEnumeratorParam(methodParameters))
-                        BuildRemoveByIdAdvancedParamMethod(method, methodParameters, reqMethod);
                     else
-                        BuildRemoveByMethod(method, methodParameters, reqMethod);
+                    {
+                        if (StripVariant(SubstringAfterBy(method.Name), false) == "Id")
+                        {
+                            if (ParametersEndsWithAdvancedEnumeratorParam(methodParameters))
+                                BuildRemoveByIdAdvancedParamMethod(method, methodParameters, reqMethod);
+                            else
+                                BuildRemoveByMethod(method, methodParameters, reqMethod);
+                        }
+                        else
+                        {
+                            throw new BTDBException($"Remove by secondary key in {_name}.{method.Name} is unsupported. Instead use ListBy and remove enumerated.");
+                        }
+                    }
                 }
                 else if (method.Name.StartsWith("FindBy"))
                 {
@@ -243,6 +253,12 @@ namespace BTDB.ODBLayer
                 .Castclass(typeof(IRelation))
                 .Ret();
             return methodBuilder;
+        }
+
+        static string SubstringAfterBy(string name)
+        {
+            var byIndex = name.IndexOf("By", StringComparison.Ordinal);
+            return name.Substring(byIndex + 2);
         }
 
         static bool ParametersEndsWithAdvancedEnumeratorParam(ParameterInfo[] methodParameters)
@@ -1103,7 +1119,7 @@ namespace BTDB.ODBLayer
 
         bool ShouldThrowWhenKeyNotFound(string methodName, Type methodReturnType)
         {
-            if (methodName.StartsWith("RemoveBy"))
+            if (methodName.StartsWith("RemoveBy") || methodName.StartsWith("ShallowRemoveBy"))
                 return methodReturnType == typeof(void);
             if (StripVariant(methodName.Substring(6), true) == "IdOrDefault")
                 return false;

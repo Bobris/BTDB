@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Relations throws informative exception when trying to use unsupported RemoveBySecondaryKey.
+
 ## 23.0.0
 
 ### Breaking changes

@@ -1101,6 +1101,7 @@ namespace BTDBTest
                 {
                     Assert.Equal(2u, row.NoticeId);
                 }
+
                 tr.Commit();
             }
 
@@ -1533,13 +1534,15 @@ namespace BTDBTest
                     tr.Commit();
                 }
 
-                Assert.Contains(AppDomain.CurrentDomain.GetAssemblies(), a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
+                Assert.Contains(AppDomain.CurrentDomain.GetAssemblies(),
+                    a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
                 ReopenDb();
             }
 
             GC.Collect(GC.MaxGeneration);
             GC.WaitForPendingFinalizers();
-            var count = AppDomain.CurrentDomain.GetAssemblies().Count(a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
+            var count = AppDomain.CurrentDomain.GetAssemblies()
+                .Count(a => a.FullName!.StartsWith("RelationBTDBTest.IPersonSimpleListTable"));
             _output.WriteLine($"Reused {createCount - count} out of {createCount} relation assemblies");
             Assert.True(count < createCount);
         }
@@ -2709,11 +2712,10 @@ namespace BTDBTest
 
         public interface IAncestor
         {
-            [PrimaryKey]
-            int A { get; set; }
+            [PrimaryKey] int A { get; set; }
         }
 
-        public class AncestorItem1: IAncestor
+        public class AncestorItem1 : IAncestor
         {
             public int A { get; set; }
             public int B { get; set; }
@@ -2730,15 +2732,15 @@ namespace BTDBTest
             {
                 using var tr = _db.StartTransaction();
                 var t = tr.GetRelation<IAncestorTable1>();
-                t.Insert(new AncestorItem1 { A=1, B=2 });
+                t.Insert(new AncestorItem1 {A = 1, B = 2});
                 tr.Commit();
             }
             {
                 using var tr = _db.StartTransaction();
                 // ReSharper disable once SuspiciousTypeConversion.Global - All relations have Upsert even if you don't request it
-                var t = (IRelation<AncestorItem1>)tr.GetRelation<IAncestorTable1>();
+                var t = (IRelation<AncestorItem1>) tr.GetRelation<IAncestorTable1>();
                 Assert.Equal(2, t.First().B);
-                t.Upsert(new AncestorItem1 { A=1, B=3 });
+                t.Upsert(new AncestorItem1 {A = 1, B = 3});
                 Assert.Equal(3, t.First().B);
                 tr.Commit();
             }
@@ -2746,8 +2748,7 @@ namespace BTDBTest
 
         public class WithPublicField
         {
-            [PrimaryKey]
-            public int A { get; set; }
+            [PrimaryKey] public int A { get; set; }
             public int B;
         }
 
@@ -2764,10 +2765,8 @@ namespace BTDBTest
 
         public class WithPublicNotStoredField
         {
-            [PrimaryKey]
-            public int A { get; set; }
-            [NotStored]
-            public int B;
+            [PrimaryKey] public int A { get; set; }
+            [NotStored] public int B;
         }
 
         public interface IWithPublicNotStoredFieldTable : IRelation<WithPublicNotStoredField>
@@ -2781,6 +2780,34 @@ namespace BTDBTest
             var t = tr.GetRelation<IWithPublicNotStoredFieldTable>();
             t.Upsert(new WithPublicNotStoredField {A = 1, B = 2});
             Assert.Equal(0, t.First().B);
+        }
+
+        public class ContactGroupRelationDb
+        {
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] public ulong GroupId { get; set; }
+
+            [PrimaryKey(3)]
+            [SecondaryKey("ContactId", IncludePrimaryKeyOrder = 1)]
+            public ulong ContactId { get; set; }
+        }
+
+        public interface IContactGroupRelationTable : IRelation<ContactGroupRelationDb>
+        {
+            IEnumerable<ContactGroupRelationDb> FindById(ulong companyId, ulong groupId);
+            IEnumerable<ContactGroupRelationDb> FindByContactId(ulong companyId, ulong contactId);
+            int CountById(ulong companyId, ulong groupId);
+            int RemoveById(ulong companyId, ulong groupId);
+            int RemoveByContactId(ulong companyId, ulong contactId);
+            bool RemoveById(ulong companyId, ulong groupId, ulong contactId);
+        }
+
+        [Fact]
+        public void RemoveBySecondaryKeyThrowsUnsupported()
+        {
+            using var tr = _db.StartTransaction();
+            Assert.Contains("unsupported",
+                Assert.Throws<BTDBException>(() => tr.GetRelation<IContactGroupRelationTable>()).Message);
         }
     }
 }
