@@ -60,9 +60,14 @@ namespace BTDB.ODBLayer
         void CreateConfiguration()
         {
             HandledType();
-            var keyAndValueTypes = _type!.GetGenericArguments();
-            _configurationId = ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], _valuesHandler, keyAndValueTypes[1]);
-            var cfg = ODBDictionaryConfiguration.Get(_configurationId);
+            _configurationId = GetConfigurationId(_type!);
+        }
+
+        int GetConfigurationId(Type type)
+        {
+            var keyAndValueTypes = type.GetGenericArguments();
+            var configurationId = ODBDictionaryConfiguration.Register(_keysHandler, keyAndValueTypes[0], _valuesHandler, keyAndValueTypes[1]);
+            var cfg = ODBDictionaryConfiguration.Get(configurationId);
             lock (cfg)
             {
                 cfg.KeyReader ??= CreateReader(_keysHandler, keyAndValueTypes[0]);
@@ -70,6 +75,8 @@ namespace BTDB.ODBLayer
                 cfg.ValueReader ??= CreateReader(_valuesHandler, keyAndValueTypes[1]);
                 cfg.ValueWriter ??= CreateWriter(_valuesHandler, keyAndValueTypes[1]);
             }
+
+            return configurationId;
         }
 
         object CreateWriter(IFieldHandler fieldHandler, Type realType)
@@ -279,7 +286,7 @@ namespace BTDB.ODBLayer
                     .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul))
                     .Do(pushReaderOrCtx)
                     .Ldloc(dictId)
-                    .LdcI4(_configurationId)
+                    .LdcI4(GetConfigurationId(_type))
                     //ODBDictionary.DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
                     .Call(instanceType.GetMethod(nameof(ODBDictionary<int, int>.DoFreeContent))!);
             }

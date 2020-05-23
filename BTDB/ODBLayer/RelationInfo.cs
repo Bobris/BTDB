@@ -1065,7 +1065,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? GetIDictFinder(uint version)
+        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
         {
             Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? res;
             do
@@ -1478,10 +1478,10 @@ namespace BTDB.ODBLayer
         {
             var valueReader = new ByteBufferReader(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetIDictFinder(version)?.Invoke(tr, valueReader, dictionaries);
+            GetIDictFinder(version).Invoke(tr, valueReader, dictionaries);
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? CreateIDictFinder(uint version)
+        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> CreateIDictFinder(uint version)
         {
             var method = ILBuilder.Instance
                 .NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>>(
@@ -1502,7 +1502,7 @@ namespace BTDB.ODBLayer
 
             if (needGenerateFreeFor == 0)
             {
-                return null;
+                return (a, b, c) => { };
             }
 
             if (relationVersionInfo.NeedsCtx())

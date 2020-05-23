@@ -6,6 +6,11 @@
 
 Relations throws informative exception when trying to use unsupported RemoveBySecondaryKey.
 
+### Fixed
+
+Performance regression in RemoveById when type didn't contain any IDictionaries.
+Failure to cast in FreeContent in ODBDictionary.
+
 ## 23.0.0
 
 ### Breaking changes
