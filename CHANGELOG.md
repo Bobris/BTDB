@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 23.1.0
+
 ### Added
 
 Relations throws informative exception when trying to use unsupported RemoveBySecondaryKey.
