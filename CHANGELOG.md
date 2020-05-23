@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Some performance optimizations.
+
 ## 23.1.0
 
 ### Added

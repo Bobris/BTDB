@@ -5,6 +5,28 @@ namespace BTDB.Buffer
 {
     public struct ByteBuffer
     {
+        public bool Equals(ByteBuffer other)
+        {
+            return AsSyncReadOnlySpan().SequenceEqual(other.AsSyncReadOnlySpan());
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is ByteBuffer other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            var res = 0;
+            foreach (var b in AsSyncReadOnlySpan())
+            {
+                res += b + 1;
+                res *= 31;
+            }
+
+            return res;
+        }
+
         byte[] _buffer;
         uint _offset;
         readonly int _length;
@@ -58,15 +80,15 @@ namespace BTDB.Buffer
             _length = length;
         }
 
-        public byte[] Buffer => _buffer;
-        public int Offset => (int) (_offset & 0x7fffffffu);
-        public int Length => _length;
+        public readonly byte[] Buffer => _buffer;
+        public readonly int Offset => (int) (_offset & 0x7fffffffu);
+        public readonly int Length => _length;
         public bool AsyncSafe => (_offset & 0x80000000u) == 0u;
 
         public byte this[int index]
         {
-            get { return _buffer[Offset + index]; }
-            set { _buffer[Offset + index] = value; }
+            get => _buffer[Offset + index];
+            set => _buffer[Offset + index] = value;
         }
 
         public ByteBuffer Slice(int offset)
@@ -117,9 +139,19 @@ namespace BTDB.Buffer
             return copy;
         }
 
-        public ReadOnlySpan<byte> AsSyncReadOnlySpan()
+        public readonly ReadOnlySpan<byte> AsSyncReadOnlySpan()
         {
             return new ReadOnlySpan<byte>(Buffer, Offset, Length);
+        }
+
+        public static bool operator ==(in ByteBuffer a, in ByteBuffer b)
+        {
+            return a.AsSyncReadOnlySpan().SequenceEqual(b.AsSyncReadOnlySpan());
+        }
+
+        public static bool operator !=(ByteBuffer a, ByteBuffer b)
+        {
+            return !(a == b);
         }
 
         public Span<byte> AsSyncSpan()

@@ -258,12 +258,10 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var newItemsDictionary = new Dictionary<ulong, object>();
-                foreach (var id in newItems)
-                    newItemsDictionary[id] = null;
+                var newItemsDictionary = new HashSet<ulong>(newItems);
                 foreach (var id in oldItems)
                 {
-                    if (newItemsDictionary.ContainsKey(id))
+                    if (newItemsDictionary.Contains(id))
                         continue;
                     freeAction(_transaction, id);
                 }
@@ -652,19 +650,6 @@ namespace BTDB.ODBLayer
             }
         }
 
-        static bool ByteBuffersHasSameContent(ByteBuffer a, ByteBuffer b)
-        {
-            if (a.Length != b.Length)
-                return false;
-            for (var i = 0; i < a.Length; i++)
-            {
-                if (a[i] != b[i])
-                    return false;
-            }
-
-            return true;
-        }
-
         void UpdateSecondaryIndexes(T newValue, ByteBuffer oldKey, ByteBuffer oldValue)
         {
             ResetKeyPrefix();
@@ -673,7 +658,7 @@ namespace BTDB.ODBLayer
             {
                 var newKeyBytes = WriteSecondaryKeyKey(key, newValue);
                 var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
-                if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
+                if (oldKeyBytes == newKeyBytes)
                     continue;
                 //remove old index
                 EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
