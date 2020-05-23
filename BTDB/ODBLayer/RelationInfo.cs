@@ -437,23 +437,23 @@ namespace BTDB.ODBLayer
         {
             if (!_needImplementFreeContent.HasValue)
             {
-                _needImplementFreeContent = CalcNeedImplementFreeContent();
+                CalcNeedImplementFreeContent();
             }
 
-            return _needImplementFreeContent.Value;
+            return _needImplementFreeContent!.Value;
         }
 
-        bool CalcNeedImplementFreeContent()
+        void CalcNeedImplementFreeContent()
         {
             for (var i = 0; i < _relationVersions.Length; i++)
             {
                 if (_relationVersions[i] == null) continue;
-                var finder = GetIDictFinder((uint) i);
-                if (finder != null)
-                    return true;
+                GetIDictFinder((uint) i);
+                if (_needImplementFreeContent.HasValue)
+                    return;
             }
 
-            return false;
+            _needImplementFreeContent = false;
         }
 
         void CheckSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info)
@@ -1504,6 +1504,8 @@ namespace BTDB.ODBLayer
             {
                 return (a, b, c) => { };
             }
+
+            _needImplementFreeContent = true;
 
             if (relationVersionInfo.NeedsCtx())
             {

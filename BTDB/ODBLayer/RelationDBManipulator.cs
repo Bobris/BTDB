@@ -1,7 +1,9 @@
 using System;
+using System.Buffers.Text;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -382,9 +384,9 @@ namespace BTDB.ODBLayer
             }
             if (_hasSecondaryIndexes)
             {
-                //keyBytePrefix contains [Index Relation, Primary key prefix] we need
-                //                       [Index Relation, Secondary Key Index, Primary key prefix]
-                int idBytesLength = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(_relationInfo.Id);
+                //keyBytePrefix contains [3, Index Relation, Primary key prefix] we need
+                //                       [4, Index Relation, Secondary Key Index, Primary key prefix]
+                var idBytesLength = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(_relationInfo.Id);
                 var writer = new ByteBufferWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
@@ -403,7 +405,7 @@ namespace BTDB.ODBLayer
         {
             _transaction.TransactionProtector.Start();
             _kvtr.SetKeyPrefix(keyBytesPrefix);
-            int removedCount = (int) _kvtr.GetKeyValueCount();
+            var removedCount = (int) _kvtr.GetKeyValueCount();
 
             if (removedCount > 0)
             {
@@ -630,8 +632,8 @@ namespace BTDB.ODBLayer
             var keyWriter = new ByteBufferWriter();
             WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
 
-            var valueReader = new ByteBufferReader(valueBytes);
-            var version = valueReader.ReadVUInt32();
+            var o = valueBytes.Offset;
+            var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer, ref o);
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
             keySaver(_transaction, keyWriter, new ByteBufferReader(keyBytes), new ByteBufferReader(valueBytes),
@@ -654,7 +656,7 @@ namespace BTDB.ODBLayer
         {
             if (a.Length != b.Length)
                 return false;
-            for (int i = 0; i < a.Length; i++)
+            for (var i = 0; i < a.Length; i++)
             {
                 if (a[i] != b[i])
                     return false;
@@ -667,17 +669,14 @@ namespace BTDB.ODBLayer
         {
             ResetKeyPrefix();
 
-            var secKeys = _relationInfo.ClientRelationVersionInfo.SecondaryKeys;
-            foreach (var sk in secKeys)
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var newKeyBytes = WriteSecondaryKeyKey(sk.Key, newValue);
-                var oldKeyBytes = WriteSecondaryKeyKey(sk.Key, oldKey, oldValue);
+                var newKeyBytes = WriteSecondaryKeyKey(key, newValue);
+                var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
                 if (ByteBuffersHasSameContent(oldKeyBytes, newKeyBytes))
                     continue;
                 //remove old index
-                if (_kvtr.Find(oldKeyBytes) != FindResult.Exact)
-                    throw new BTDBException("Error in updating secondary indexes, previous index entry not found.");
-                _kvtr.EraseCurrent();
+                EraseOldSecondaryKey(oldKey, oldKeyBytes, key);
                 //insert new value
                 _kvtr.CreateOrUpdateKeyValue(newKeyBytes, ByteBuffer.NewEmpty());
             }
@@ -687,13 +686,22 @@ namespace BTDB.ODBLayer
         {
             ResetKeyPrefix();
 
-            foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
+            foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(sk.Key, oldKey, oldValue);
-                if (_kvtr.Find(keyBytes) != FindResult.Exact)
-                    throw new BTDBException("Error in removing secondary indexes, previous index entry not found.");
-                _kvtr.EraseCurrent();
+                var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
+                EraseOldSecondaryKey(oldKey, keyBytes, key);
             }
+        }
+
+        void EraseOldSecondaryKey(in ByteBuffer primaryKey, in ByteBuffer keyBytes, uint skKey)
+        {
+            if (_kvtr.Find(keyBytes) != FindResult.Exact)
+            {
+                var sk = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[skKey];
+                throw new BTDBException(
+                    $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToByteArray()).Replace("-", "")}");
+            }
+            _kvtr.EraseCurrent();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
