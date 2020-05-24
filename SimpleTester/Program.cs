@@ -1,6 +1,8 @@
 ﻿
 //using JetBrains.Profiler.Windows.Api;
 
+using BenchmarkDotNet.Running;
+
 namespace SimpleTester
 {
     static class Program
@@ -23,7 +25,7 @@ namespace SimpleTester
             //new RxSpeedTest().Run();
             //new ComplexServiceTest().Run();
             //new KeyValueSpeedTest(KVType.Managed, false, true).Run();
-            new KeyValueSpeedTest(KVType.BTree, false, true).Run();
+            //new KeyValueSpeedTest(KVType.BTree, false, true).Run();
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
@@ -33,7 +35,8 @@ namespace SimpleTester
             //new CompactorLatencyMeasurement().Run();
             //new ClassGenerator().Run();
             //new EventLayer2TestWithALotOfClasses().Run();
-            //BenchmarkRunner.Run<RelationFreeContentTest>();
+            //new BenchTest().Verify();
+            BenchmarkRunner.Run<BenchTest>();
             //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
         }
     }
