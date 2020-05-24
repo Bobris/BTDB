@@ -5,17 +5,17 @@ namespace BTDB.Buffer
 {
     public struct ByteBuffer
     {
-        public bool Equals(ByteBuffer other)
+        public readonly bool Equals(ByteBuffer other)
         {
             return AsSyncReadOnlySpan().SequenceEqual(other.AsSyncReadOnlySpan());
         }
 
-        public override bool Equals(object? obj)
+        public override readonly bool Equals(object? obj)
         {
             return obj is ByteBuffer other && Equals(other);
         }
 
-        public override int GetHashCode()
+        public override readonly int GetHashCode()
         {
             var res = 0;
             foreach (var b in AsSyncReadOnlySpan())
@@ -83,27 +83,27 @@ namespace BTDB.Buffer
         public readonly byte[] Buffer => _buffer;
         public readonly int Offset => (int) (_offset & 0x7fffffffu);
         public readonly int Length => _length;
-        public bool AsyncSafe => (_offset & 0x80000000u) == 0u;
+        public readonly bool AsyncSafe => (_offset & 0x80000000u) == 0u;
 
         public byte this[int index]
         {
-            get => _buffer[Offset + index];
+            readonly get => _buffer[Offset + index];
             set => _buffer[Offset + index] = value;
         }
 
-        public ByteBuffer Slice(int offset)
+        public readonly ByteBuffer Slice(int offset)
         {
             return AsyncSafe
                 ? NewAsync(Buffer, Offset + offset, Length - offset)
                 : NewSync(Buffer, Offset + offset, Length - offset);
         }
 
-        public ByteBuffer Slice(int offset, int length)
+        public readonly ByteBuffer Slice(int offset, int length)
         {
             return AsyncSafe ? NewAsync(Buffer, Offset + offset, length) : NewSync(Buffer, Offset + offset, length);
         }
 
-        public ByteBuffer ToAsyncSafe()
+        public readonly ByteBuffer ToAsyncSafe()
         {
             if (AsyncSafe) return this;
             var copy = new byte[_length];
@@ -120,15 +120,15 @@ namespace BTDB.Buffer
             _offset = 0;
         }
 
-        public ArraySegment<byte> ToArraySegment()
+        public readonly ArraySegment<byte> ToArraySegment()
         {
             return new ArraySegment<byte>(Buffer, Offset, Length);
         }
 
-        public byte[] ToByteArray()
+        public readonly byte[] ToByteArray()
         {
             var safeSelf = ToAsyncSafe();
-            var buf = safeSelf.Buffer ?? Array.Empty<byte>();
+            var buf = safeSelf.Buffer;
             if (safeSelf.Offset == 0 && safeSelf.Length == buf.Length)
             {
                 return buf;
@@ -154,7 +154,7 @@ namespace BTDB.Buffer
             return !(a == b);
         }
 
-        public Span<byte> AsSyncSpan()
+        public readonly Span<byte> AsSyncSpan()
         {
             return new Span<byte>(Buffer, Offset, Length);
         }
@@ -179,7 +179,7 @@ namespace BTDB.Buffer
 
         public void Expand(int size)
         {
-            if (Buffer == null || Buffer.Length < size)
+            if (Buffer.Length < size)
             {
                 this = NewAsync(new byte[Math.Min((long) size * 3 / 2, int.MaxValue)]);
             }
