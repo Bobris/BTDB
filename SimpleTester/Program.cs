@@ -35,7 +35,7 @@ namespace SimpleTester
             //new CompactorLatencyMeasurement().Run();
             //new ClassGenerator().Run();
             //new EventLayer2TestWithALotOfClasses().Run();
-            //new BenchTest().Verify();
+            new BenchTest().Verify();
             BenchmarkRunner.Run<BenchTest>();
             //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
         }
