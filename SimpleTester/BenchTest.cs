@@ -39,12 +39,17 @@ namespace SimpleTester
         {
             var n = N;
             if (System.Runtime.Intrinsics.X86.Lzcnt.IsSupported)
+            {
                 return ((byte *)LzcToVUintLen)[(int) System.Runtime.Intrinsics.X86.Lzcnt.LeadingZeroCount(n)];
-            if (n < 0x80) return 1;
-            if (n < 0x4000) return 2;
-            if (n < 0x200000) return 3;
-            if (n < 0x10000000) return 4;
-            return 5;
+            }
+            else
+            {
+                if (n < 0x80) return 1;
+                if (n < 0x4000) return 2;
+                if (n < 0x200000) return 3;
+                if (n < 0x10000000) return 4;
+                return 5;
+            }
         }
 
         public void Verify()
