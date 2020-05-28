@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
@@ -24,7 +25,6 @@ namespace BTDB.ODBLayer
 
         protected ByteBuffer KeyBytes;
         int _prevModificationCounter;
-
         public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, ByteBuffer keyBytes,
             IRelationModificationCounter modificationCounter, int loaderIndex)
         {
@@ -109,7 +109,8 @@ namespace BTDB.ODBLayer
 
         public void Reset()
         {
-            throw new NotSupportedException();
+            _pos = 0;
+            _seekNeeded = true;
         }
 
         public void Dispose()
@@ -118,6 +119,11 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
+            if (_pos > 0)
+            {
+                Reset();
+            }
+            
             return this;
         }
 
@@ -371,7 +377,8 @@ namespace BTDB.ODBLayer
 
         public void Reset()
         {
-            throw new NotSupportedException();
+            _pos = 0;
+            _seekNeeded = true;
         }
 
         public T Current
@@ -427,6 +434,11 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
+            if (_pos > 0)
+            {
+                Reset();
+            }
+            
             return this;
         }
 

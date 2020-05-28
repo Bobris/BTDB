@@ -12,48 +12,12 @@ using Xunit.Abstractions;
 
 namespace BTDBTest
 {
-    public class ObjectDbTableTest : IDisposable
+    public class ObjectDbTableTest : ObjectDbTestBase
     {
-        readonly ITestOutputHelper _output;
-        readonly IKeyValueDB _lowDb;
-        IObjectDB _db;
-
-        public ObjectDbTableTest(ITestOutputHelper output)
+        public ObjectDbTableTest(ITestOutputHelper output) : base(output)
         {
-            _output = output;
-            _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
-            {
-                CompactorScheduler = null,
-                Compression = new NoCompressionStrategy(),
-                FileCollection = new InMemoryFileCollection()
-            });
-            OpenDb();
         }
-
-        public void Dispose()
-        {
-            _db.Dispose();
-            _lowDb.Dispose();
-        }
-
-        void ReopenDb()
-        {
-            _db.Dispose();
-            OpenDb();
-        }
-
-        void OpenDb()
-        {
-            _db = new ObjectDB();
-            _db.Open(_lowDb, false, new DBOptions()
-                .WithoutAutoRegistration()
-                .WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
-                {
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-                    27, 28, 29, 30, 31
-                })));
-        }
-
+        
         public class PersonSimple : IEquatable<PersonSimple>
         {
             [PrimaryKey(1)] public ulong TenantId { get; set; }
@@ -1889,7 +1853,7 @@ namespace BTDBTest
 
             Assert.Equal("Relation modified during iteration.", exc.Message);
         }
-
+        
         [Fact]
         public void TransactionProtectionWorksForFindingBySecondaryKey()
         {
