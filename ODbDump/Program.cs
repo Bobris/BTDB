@@ -18,7 +18,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check");
                 return;
             }
 
@@ -183,6 +183,27 @@ namespace ODbDump
                     var visitor = new ToNullVisitor();
                     var iterator = new ODBIterator(tr, visitor);
                     iterator.Iterate();
+
+                    break;
+                }
+                case "check":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
+                    {
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?) ulong.Parse(args[2]) : null
+                    });
+                    using var transaction = kdb.StartReadOnlyTransaction();
+                    var keyValueCount = transaction.GetKeyValueCount();
+                    transaction.FindFirstKey();
+                    for (long kv = 0; kv < keyValueCount; kv++)
+                    {
+                        transaction.GetKey();
+                        transaction.GetValue();
+                        transaction.FindNextKey();
+                    }
 
                     break;
                 }
