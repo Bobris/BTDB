@@ -1,6 +1,8 @@
 ﻿
 //using JetBrains.Profiler.Windows.Api;
 
+using System;
+using System.Threading;
 using BenchmarkDotNet.Running;
 
 namespace SimpleTester
@@ -38,6 +40,10 @@ namespace SimpleTester
             new BenchTest().Verify();
             BenchmarkRunner.Run<BenchTest>();
             //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
+            //
+            //var cts = new CancellationTokenSource();
+            //Console.CancelKeyPress += delegate { cts.Cancel(); };
+            //new CompactionStressTest().Run("e:/testdb", cts.Token);
         }
     }
 }

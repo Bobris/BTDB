@@ -68,7 +68,7 @@ namespace BTDB.KVDBLayer
         }
 
         public BTreeKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize,
-            ICompactorScheduler compactorScheduler)
+            ICompactorScheduler? compactorScheduler)
             : this(new KeyValueDBOptions
             {
                 Allocator = new MallocAllocator(),

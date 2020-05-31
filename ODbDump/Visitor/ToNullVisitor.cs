@@ -4,7 +4,7 @@ namespace ODbDump.Visitor
 {
     class ToNullVisitor : ToConsoleFastVisitor, IODBVisitor
     {
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             return true;
         }

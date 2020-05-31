@@ -9,8 +9,8 @@ namespace ODbDump.Visitor
     {
         long _currentMemorySize;
         long _currentOnDiskSize;
-        string _currentRelation;
-        string _currentSingleton;
+        string? _currentRelation;
+        string? _currentSingleton;
         bool _headerWritten;
         readonly Stopwatch _stopWatch = new Stopwatch();
 
@@ -38,19 +38,23 @@ namespace ODbDump.Visitor
             var elapsed = _stopWatch.Elapsed.TotalSeconds;
             if (!string.IsNullOrEmpty(_currentRelation))
             {
-                Console.WriteLine($"{_currentRelation},{_currentMemorySize},{_currentOnDiskSize},relation,{elapsed:F2}");
+                Console.WriteLine(
+                    $"{_currentRelation},{_currentMemorySize},{_currentOnDiskSize},relation,{elapsed:F2}");
                 _currentRelation = null;
-            } else if (!string.IsNullOrEmpty(_currentSingleton))
+            }
+            else if (!string.IsNullOrEmpty(_currentSingleton))
             {
-                Console.WriteLine($"{_currentSingleton},{_currentMemorySize},{_currentOnDiskSize},singleton,{elapsed:F2}");
+                Console.WriteLine(
+                    $"{_currentSingleton},{_currentMemorySize},{_currentOnDiskSize},singleton,{elapsed:F2}");
                 _currentSingleton = null;
             }
+
             _currentMemorySize = 0;
             _currentOnDiskSize = 0;
             _stopWatch.Restart();
         }
 
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             Flush();
             _currentSingleton = tableName;

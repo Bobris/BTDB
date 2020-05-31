@@ -9,8 +9,8 @@ namespace ODbDump.Visitor
         readonly Dictionary<string, int> _relationFrequency = new Dictionary<string, int>();
         readonly Dictionary<string, int> _singletonFrequency = new Dictionary<string, int>();
 
-        string _currentRelation;
-        string _currentSingleton;
+        string? _currentRelation;
+        string? _currentSingleton;
         int _currentCount;
 
         public void OutputStatistic()
@@ -20,6 +20,7 @@ namespace ODbDump.Visitor
             {
                 Console.WriteLine($"{kv.Key},{kv.Value},relation");
             }
+
             foreach (var kv in _singletonFrequency)
             {
                 Console.WriteLine($"{kv.Key},{kv.Value},singleton");
@@ -30,11 +31,12 @@ namespace ODbDump.Visitor
         {
             if (!string.IsNullOrEmpty(_currentRelation))
             {
-                _relationFrequency.Add(_currentRelation, _currentCount);
+                _relationFrequency.Add(_currentRelation!, _currentCount);
                 _currentRelation = null;
-            } else if (!string.IsNullOrEmpty(_currentSingleton))
+            }
+            else if (!string.IsNullOrEmpty(_currentSingleton))
             {
-                _singletonFrequency.Add(_currentSingleton, _currentCount);
+                _singletonFrequency.Add(_currentSingleton!, _currentCount);
                 _currentSingleton = null;
             }
 
@@ -42,7 +44,7 @@ namespace ODbDump.Visitor
         }
 
 
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             Flush();
             _currentSingleton = tableName;

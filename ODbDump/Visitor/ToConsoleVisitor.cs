@@ -6,7 +6,7 @@ namespace ODbDump.Visitor
 {
     class ToConsoleVisitor : ToConsoleFastVisitor, IODBVisitor
     {
-        public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             Console.WriteLine("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
             return true;
