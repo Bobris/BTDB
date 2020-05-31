@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,12 +14,12 @@ namespace ODbDump.Visitor
         Sha256,
         Crc32
     }
-    
+
     class ToFilesVisitorForComparison : ToConsoleVisitorForComparison
     {
         readonly bool _hashStrings;
-        readonly HashAlgorithm _hashAlgorithm;
-        StreamWriter _output;
+        readonly HashAlgorithm? _hashAlgorithm;
+        StreamWriter? _output;
         readonly string _fileSuffix;
 
         public ToFilesVisitorForComparison(HashType hashType)
@@ -35,6 +36,8 @@ namespace ODbDump.Visitor
                 case HashType.Crc32:
                     (_hashAlgorithm, _fileSuffix) = (new Crc32Algorithm(), "-CRC32.txt");
                     break;
+                default:
+                    throw new NotSupportedException();
             }
         }
 
@@ -46,7 +49,7 @@ namespace ODbDump.Visitor
 
         public override void Print(string s)
         {
-            _output.WriteLine(new string(' ', _indent * 2) + s);
+            _output!.WriteLine(new string(' ', _indent * 2) + s);
         }
 
         public override bool NeedScalarAsText()
@@ -61,13 +64,13 @@ namespace ODbDump.Visitor
 
         public override void ScalarAsObject(object content)
         {
-            if (_hashStrings && content != null && content.GetType() == typeof(string))
+            if (_hashStrings && content is string str)
             {
-                var hash = _hashAlgorithm.ComputeHash(Encoding.UTF8.GetBytes(content as string));
+                var hash = _hashAlgorithm!.ComputeHash(Encoding.UTF8.GetBytes(str));
                 var sb = new StringBuilder();
                 foreach (var @byte in hash)
                     sb.Append(@byte.ToString("X2"));
-                
+
                 ScalarAsText(sb.ToString());
             }
             else
@@ -76,10 +79,10 @@ namespace ODbDump.Visitor
             }
         }
 
-        public override bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public override bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             _output?.Dispose();
-            _output = OpenOutputStream($"{ToValidFilename(tableName)}.txt");
+            _output = OpenOutputStream($"{ToValidFilename(tableName ?? $"Unknown_{tableId}_{oid}")}.txt");
 
             return base.VisitSingleton(tableId, tableName, oid);
         }
@@ -94,7 +97,7 @@ namespace ODbDump.Visitor
 
         public override void EndRelation()
         {
-            _output.Dispose();
+            _output?.Dispose();
 
             base.EndRelation();
         }

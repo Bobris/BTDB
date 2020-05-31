@@ -61,7 +61,7 @@ namespace BTDB.KVDBLayer
         }
 
         public KeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize,
-            ICompactorScheduler compactorScheduler)
+            ICompactorScheduler? compactorScheduler)
             : this(new KeyValueDBOptions
             {
                 FileCollection = fileCollection,

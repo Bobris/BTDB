@@ -5,12 +5,12 @@ namespace ODbDump.Visitor
 {
     class ToConsoleVisitorNice : ToConsoleFastVisitor, IODBVisitor
     {
-        protected string _currentFieldName;
+        protected string? CurrentFieldName;
         readonly Stack<int> _listItemIndexStack = new Stack<int>();
         int _itemIndex;
         protected int _iid;
 
-        public virtual bool VisitSingleton(uint tableId, string tableName, ulong oid)
+        public virtual bool VisitSingleton(uint tableId, string? tableName, ulong oid)
         {
             Print($"Singleton {tableId}-{tableName ?? "?Unknown?"} oid:{oid}");
             return true;
@@ -25,7 +25,7 @@ namespace ODbDump.Visitor
 
         public bool StartField(string name)
         {
-            _currentFieldName = name;
+            CurrentFieldName = name;
             return true;
         }
 
@@ -45,17 +45,17 @@ namespace ODbDump.Visitor
 
         public void ScalarAsText(string content)
         {
-            Print($"{_currentFieldName}: {content}");
+            Print($"{CurrentFieldName}: {content}");
         }
 
         public virtual void OidReference(ulong oid)
         {
-            Print($"{_currentFieldName}: Oid#{oid}");
+            Print($"{CurrentFieldName}: Oid#{oid}");
         }
 
         public virtual bool StartInlineObject(uint tableId, string tableName, uint version)
         {
-            Print($"{_currentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
+            Print($"{CurrentFieldName}: InlineObject {tableId}-{tableName}-{version} ref#{_iid}");
             _indent++;
             return true;
         }
@@ -67,7 +67,7 @@ namespace ODbDump.Visitor
 
         public bool StartList()
         {
-            Print($"{_currentFieldName}: Array");
+            Print($"{CurrentFieldName}: Array");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -76,7 +76,7 @@ namespace ODbDump.Visitor
 
         public bool StartItem()
         {
-            _currentFieldName = $"[{_itemIndex}]";
+            CurrentFieldName = $"[{_itemIndex}]";
             return true;
         }
 
@@ -93,7 +93,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictionary()
         {
-            Print($"{_currentFieldName}: Dictionary");
+            Print($"{CurrentFieldName}: Dictionary");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -102,7 +102,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictKey()
         {
-            _currentFieldName = "Key";
+            CurrentFieldName = "Key";
             return true;
         }
 
@@ -112,7 +112,7 @@ namespace ODbDump.Visitor
 
         public bool StartDictValue()
         {
-            _currentFieldName = "Value";
+            CurrentFieldName = "Value";
             return true;
         }
 
@@ -129,7 +129,7 @@ namespace ODbDump.Visitor
 
         public bool StartSet()
         {
-            Print($"{_currentFieldName}: Set");
+            Print($"{CurrentFieldName}: Set");
             _listItemIndexStack.Push(_itemIndex);
             _itemIndex = 0;
             _indent++;
@@ -138,7 +138,7 @@ namespace ODbDump.Visitor
 
         public bool StartSetKey()
         {
-            _currentFieldName = "Key";
+            CurrentFieldName = "Key";
             return true;
         }
 
@@ -204,7 +204,7 @@ namespace ODbDump.Visitor
 
         public void InlineBackRef(int iid)
         {
-            Print($"{_currentFieldName}: Inline back ref#{iid}");
+            Print($"{CurrentFieldName}: Inline back ref#{iid}");
         }
 
         public void InlineRef(int iid)
