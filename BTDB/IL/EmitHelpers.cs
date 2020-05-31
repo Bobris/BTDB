@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -11,7 +12,6 @@ namespace BTDB.IL
 {
     public static class EmitHelpers
     {
-
         public static MethodInfo GetMethodInfo(Expression<Action> expression)
         {
             return ((MethodCallExpression) expression.Body).Method;
@@ -19,10 +19,11 @@ namespace BTDB.IL
 
         public static T CreateDelegate<T>(this MethodInfo mi) where T : class
         {
-            return (T)(object)Delegate.CreateDelegate(typeof(T), mi);
+            return (T) (object) Delegate.CreateDelegate(typeof(T), mi);
         }
 
-        public static Type UnwrapTask(this Type type)
+        [return: NotNullIfNotNull("type")]
+        public static Type? UnwrapTask(this Type? type)
         {
             if (type == null) return null;
             if (type == typeof(Task)) return typeof(void);
@@ -41,8 +42,8 @@ namespace BTDB.IL
             parent = ResolveGenericTypeDefinition(parent);
 
             var currentChild = child.IsGenericType
-                                   ? child.GetGenericTypeDefinition()
-                                   : child;
+                ? child.GetGenericTypeDefinition()
+                : child;
 
             while (currentChild != typeof(object))
             {
@@ -51,12 +52,13 @@ namespace BTDB.IL
 
                 currentChild = currentChild.BaseType != null
                                && currentChild.BaseType.IsGenericType
-                                   ? currentChild.BaseType.GetGenericTypeDefinition()
-                                   : currentChild.BaseType;
+                    ? currentChild.BaseType.GetGenericTypeDefinition()
+                    : currentChild.BaseType;
 
                 if (currentChild == null)
                     return false;
             }
+
             return false;
         }
 
@@ -64,13 +66,13 @@ namespace BTDB.IL
         {
             return child.GetInterfaces()
                 .Any(childInterface =>
-                    {
-                        var currentInterface = childInterface.IsGenericType
-                                                   ? childInterface.GetGenericTypeDefinition()
-                                                   : childInterface;
+                {
+                    var currentInterface = childInterface.IsGenericType
+                        ? childInterface.GetGenericTypeDefinition()
+                        : childInterface;
 
-                        return currentInterface == parent;
-                    });
+                    return currentInterface == parent;
+                });
         }
 
         static Type ResolveGenericTypeDefinition(Type parent)
@@ -96,6 +98,7 @@ namespace BTDB.IL
                 if (currentImpl == null)
                     return null;
             }
+
             return null;
         }
 
@@ -108,14 +111,16 @@ namespace BTDB.IL
                     return childInterface;
                 }
             }
+
             return null;
         }
 
         public static string ToSimpleName(this Type type)
         {
             if (type == null) return "";
-            if (type.IsArray) return
-                $"{ToSimpleName(type.GetElementType())}[{new string(',', type.GetArrayRank() - 1)}]";
+            if (type.IsArray)
+                return
+                    $"{ToSimpleName(type.GetElementType())}[{new string(',', type.GetArrayRank() - 1)}]";
             if (type.IsGenericType)
             {
                 var simpleName = type.Name;
@@ -126,6 +131,7 @@ namespace BTDB.IL
                     simpleName,
                     String.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
             }
+
             if (type == typeof(byte)) return "byte";
             if (type == typeof(sbyte)) return "sbyte";
             if (type == typeof(ushort)) return "ushort";
@@ -148,11 +154,14 @@ namespace BTDB.IL
 
         public static IILMethod GenerateINotifyPropertyChangedImpl(IILDynamicType typeBuilder)
         {
-            var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler), FieldAttributes.Private);
-            var eventBuilder = typeBuilder.DefineEvent("PropertyChanged", EventAttributes.None, typeof(PropertyChangedEventHandler));
+            var fieldBuilder = typeBuilder.DefineField("_propertyChanged", typeof(PropertyChangedEventHandler),
+                FieldAttributes.Private);
+            var eventBuilder = typeBuilder.DefineEvent("PropertyChanged", EventAttributes.None,
+                typeof(PropertyChangedEventHandler));
             eventBuilder.SetAddOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, true));
             eventBuilder.SetRemoveOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, false));
-            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", null, new[] { typeof(string) }, MethodAttributes.Family);
+            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", null, new[] {typeof(string)},
+                MethodAttributes.Family);
             var ilGenerator = methodBuilder.Generator;
             ilGenerator.DeclareLocal(typeof(PropertyChangedEventHandler));
             var labelRet = ilGenerator.DefineLabel();
@@ -177,9 +186,9 @@ namespace BTDB.IL
             Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
             EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");
             var methodBuilder = typeBuilder.DefineMethod((add ? "add" : "remove") + "_PropertyChanged",
-                                                         typeof(void), new[] { typePropertyChangedEventHandler },
-                                                         MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
-                                                         MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final);
+                typeof(void), new[] {typePropertyChangedEventHandler},
+                MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
+                MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final);
             var ilGenerator = methodBuilder.Generator;
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
             ilGenerator.DeclareLocal(typePropertyChangedEventHandler);
@@ -195,8 +204,8 @@ namespace BTDB.IL
                 .Ldloc(1)
                 .Ldarg(1)
                 .Call(add
-                          ? GetMethodInfo(() => Delegate.Combine(null, null))
-                          : GetMethodInfo(() => Delegate.Remove(null, null)))
+                    ? GetMethodInfo(() => Delegate.Combine(null, null))
+                    : GetMethodInfo(() => Delegate.Remove(null, null)))
                 .Castclass(typePropertyChangedEventHandler)
                 .Stloc(2)
                 .Ldarg(0)
@@ -211,11 +220,13 @@ namespace BTDB.IL
                 .Ldloc(1)
                 .BneUnS(label)
                 .Ret();
-            typeBuilder.DefineMethodOverride(methodBuilder, add ? eventPropertyChanged.GetAddMethod() : eventPropertyChanged.GetRemoveMethod());
+            typeBuilder.DefineMethodOverride(methodBuilder,
+                add ? eventPropertyChanged.GetAddMethod() : eventPropertyChanged.GetRemoveMethod());
             return methodBuilder;
         }
 
-        public static void GenerateJumpIfEqual(IILGen ilGenerator, Type type, IILLabel jumpTo, Action<IILGen> loadLeft, Action<IILGen> loadRight)
+        public static void GenerateJumpIfEqual(IILGen ilGenerator, Type type, IILLabel jumpTo, Action<IILGen> loadLeft,
+            Action<IILGen> loadRight)
         {
             if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(short) || type == typeof(ushort)
                 || type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
@@ -227,6 +238,7 @@ namespace BTDB.IL
                     .BeqS(jumpTo);
                 return;
             }
+
             if (type.IsGenericType)
             {
                 var genType = type.GetGenericTypeDefinition();
@@ -264,8 +276,9 @@ namespace BTDB.IL
                     return;
                 }
             }
-            var equalsMethod = type.GetMethod("Equals", new[] { type, type })
-                ?? type.GetMethod("op_Equality", new[] { type, type });
+
+            var equalsMethod = type.GetMethod("Equals", new[] {type, type})
+                               ?? type.GetMethod("op_Equality", new[] {type, type});
             if (equalsMethod != null)
             {
                 loadLeft(ilGenerator);
@@ -275,6 +288,7 @@ namespace BTDB.IL
                     .BrtrueS(jumpTo);
                 return;
             }
+
             throw new ArgumentOutOfRangeException(nameof(type), $"Don't know how to compare type {type}");
         }
 
@@ -292,25 +306,26 @@ namespace BTDB.IL
                 var attributeArgument = nullable.ConstructorArguments[0];
                 if (attributeArgument.ArgumentType == typeof(byte[]))
                 {
-                    var args = (ReadOnlyCollection<CustomAttributeTypedArgument>)attributeArgument.Value;
+                    var args = (ReadOnlyCollection<CustomAttributeTypedArgument>) attributeArgument.Value;
                     if (args!.Count > 0 && args[0].ArgumentType == typeof(byte))
                     {
-                        return (byte)args[0].Value! == 2;
+                        return (byte) args[0].Value! == 2;
                     }
                 }
                 else if (attributeArgument.ArgumentType == typeof(byte))
                 {
-                    return (byte)attributeArgument.Value! == 2;
+                    return (byte) attributeArgument.Value! == 2;
                 }
             }
 
             var context = enclosingType.CustomAttributes
-                .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute");
+                .FirstOrDefault(x =>
+                    x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute");
             if (context != null &&
                 context.ConstructorArguments.Count == 1 &&
                 context.ConstructorArguments[0].ArgumentType == typeof(byte))
             {
-                return (byte)context.ConstructorArguments[0].Value! == 2;
+                return (byte) context.ConstructorArguments[0].Value! == 2;
             }
 
             return false;

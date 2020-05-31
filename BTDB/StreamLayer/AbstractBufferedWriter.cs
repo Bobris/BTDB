@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -100,7 +102,7 @@ namespace BTDB.StreamLayer
                 if (Pos + l > End)
                 {
                     var b = new byte[l];
-                    int i = 0;
+                    var i = 0;
                     PackUnpack.PackVInt(b, ref i, value);
                     WriteBlock(b);
                     return;
@@ -118,15 +120,15 @@ namespace BTDB.StreamLayer
                 FlushBuffer();
                 if (Pos + l > End)
                 {
-                    var b = new byte[l];
-                    int i = 0;
-                    PackUnpack.PackVUInt(b, ref i, value);
+                    Span<byte> b = stackalloc byte[l];
+                    PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(b), value, l);
                     WriteBlock(b);
                     return;
                 }
             }
 
-            PackUnpack.PackVUInt(Buf, ref Pos, value);
+            PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Buf.AsSpan()), (IntPtr)Pos), value, l);
+            Pos += l;
         }
 
         public void WriteInt64(long value)
@@ -236,7 +238,8 @@ namespace BTDB.StreamLayer
                 var toEncodeLen = PackUnpack.LengthVUInt(toEncode);
                 if (pos + toEncodeLen <= end)
                 {
-                    PackUnpack.PackVUInt(buf, ref pos, toEncode);
+                    PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(buf.AsSpan()), (IntPtr)pos), toEncode, toEncodeLen);
+                    pos += toEncodeLen;
                 }
                 else
                 {

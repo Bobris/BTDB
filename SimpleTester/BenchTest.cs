@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
@@ -10,46 +11,35 @@ namespace SimpleTester
     [SimpleJob(RuntimeMoniker.NetCoreApp31, warmupCount: 1, targetCount: 1, launchCount: 1)]
     public class BenchTest
     {
-        [Params(42, 420, 42000, 420000000)] public uint N;
+        [Params(42,0xf0,0xff)]
+        public uint N;
 
         [Benchmark(Baseline = true)]
         public int Branchy()
         {
-            var n = N;
-            if (n < 0x80) return 1;
-            if (n < 0x4000) return 2;
-            if (n < 0x200000) return 3;
-            if (n < 0x10000000) return 4;
-            return 5;
+            var first = N;
+            if (first < 0x80) return 1;
+            if (first < 0xC0) return 2;
+            if (first < 0xE0) return 3;
+            if (first < 0xF0) return 4;
+            if (first < 0xF8) return 5;
+            if (first < 0xFC) return 6;
+            if (first < 0xFE) return 7;
+            return first == 0xFE ? 8 : 9;
         }
 
-        static readonly IntPtr LzcToVUintLen;
-
-        static BenchTest()
+        static ReadOnlySpan<byte> LzcToVUintLen => new byte[65]
         {
-            LzcToVUintLen = Marshal.AllocHGlobal(33);
-            for (var i = 0; i < 33; i++)
-            {
-                Marshal.WriteByte(LzcToVUintLen, i, (byte) Math.Max(1, (32 + 6 - i) / 7));
-            }
-        }
+            9, 9, 9, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5,
+            4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
+        };
 
         [Benchmark]
-        public unsafe int Branchless()
+        public int Branchless()
         {
             var n = N;
-            if (System.Runtime.Intrinsics.X86.Lzcnt.IsSupported)
-            {
-                return ((byte *)LzcToVUintLen)[(int) System.Runtime.Intrinsics.X86.Lzcnt.LeadingZeroCount(n)];
-            }
-            else
-            {
-                if (n < 0x80) return 1;
-                if (n < 0x4000) return 2;
-                if (n < 0x200000) return 3;
-                if (n < 0x10000000) return 4;
-                return 5;
-            }
+            n = n ^ 0xff;
+            return BitOperations.LeadingZeroCount(n)+9-32;
         }
 
         public void Verify()
@@ -60,7 +50,7 @@ namespace SimpleTester
                 if (Branchy() != Branchless())
                     throw new Exception("Bad N=" + N + " " + Branchy() + "!=" + Branchless());
                 N++;
-            } while (N != 0);
+            } while (N!=256);
         }
     }
 }
