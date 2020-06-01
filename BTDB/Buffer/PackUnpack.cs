@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace BTDB.Buffer
 {
@@ -267,74 +268,80 @@ namespace BTDB.Buffer
             ofs += len;
         }
 
+        public static ushort FromBigEndian(ushort value)
+        {
+            if (BitConverter.IsLittleEndian)
+                return BinaryPrimitives.ReverseEndianness(value);
+            return value;
+        }
+
+        public static uint FromBigEndian(uint value)
+        {
+            if (BitConverter.IsLittleEndian)
+                return BinaryPrimitives.ReverseEndianness(value);
+            return value;
+        }
+
+        public static ulong FromBigEndian(ulong value)
+        {
+            if (BitConverter.IsLittleEndian)
+                return BinaryPrimitives.ReverseEndianness(value);
+            return value;
+        }
+
+        public static ulong UnsafeUnpackVUInt(ref byte data, int len)
+        {
+            switch (len)
+            {
+                case 1:
+                    return data;
+                case 2:
+                    return 0x3fffu & FromBigEndian(Unsafe.ReadUnaligned<ushort>(ref data));
+                case 3:
+                {
+                    var res = (data & 0x1Fu) << 16;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return res + FromBigEndian(Unsafe.ReadUnaligned<ushort>(ref data));
+                }
+                case 4:
+                    return 0x0fff_ffffu & FromBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
+                case 5:
+                {
+                    var res = (ulong) (data & 0x07u) << 32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return res + FromBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
+                }
+                case 6:
+                {
+                    var res = (0x03fful & FromBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))) << 32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
+                    return res + FromBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
+                }
+                case 7:
+                {
+                    var res = (ulong) (data & 0x01u) << 48;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    res += (ulong)FromBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))<<32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
+                    return res + FromBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
+                }
+                case 8:
+                    return 0x00ff_ffff_ffff_fffful & FromBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
+                default:
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return FromBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
+            }
+        }
+
         public static ulong UnpackVUInt(byte[] data, ref int ofs)
         {
-            uint first = data[ofs];
-            ofs++;
-            if (first < 0x80) return first;
-            ulong result;
-            if (first < 0xC0)
-            {
-                result = ((first & 0x3F) << 8) + data[ofs];
-                ofs++;
-                return result;
-            }
-
-            if (first < 0xE0)
-            {
-                result = ((first & 0x1Fu) << 16) + ((uint) data[ofs] << 8) + data[ofs + 1];
-                ofs += 2;
-                return result;
-            }
-
-            if (first < 0xF0)
-            {
-                result = ((first & 0x0Fu) << 24) + ((uint) data[ofs] << 16) + ((uint) data[ofs + 1] << 8) +
-                         data[ofs + 2];
-                ofs += 3;
-                return result;
-            }
-
-            if (first < 0xF8)
-            {
-                result = ((ulong) (first & 0x07u) << 32) + ((uint) data[ofs] << 24) + ((uint) data[ofs + 1] << 16)
-                         + ((uint) data[ofs + 2] << 8) + data[ofs + 3];
-                ofs += 4;
-                return result;
-            }
-
-            if (first < 0xFC)
-            {
-                result = ((ulong) (first & 0x03u) << 40) + ((ulong) data[ofs] << 32) + ((uint) data[ofs + 1] << 24)
-                         + ((uint) data[ofs + 2] << 16) + ((uint) data[ofs + 3] << 8) + data[ofs + 4];
-                ofs += 5;
-                return result;
-            }
-
-            if (first < 0xFE)
-            {
-                result = ((ulong) (first & 0x01u) << 48) + ((ulong) data[ofs] << 40) + ((ulong) data[ofs + 1] << 32)
-                         + ((uint) data[ofs + 2] << 24) + ((uint) data[ofs + 3] << 16) + ((uint) data[ofs + 4] << 8) +
-                         data[ofs + 5];
-                ofs += 6;
-                return result;
-            }
-
-            if (first == 0xFE)
-            {
-                result = ((ulong) data[ofs] << 48) + ((ulong) data[ofs + 1] << 40) + ((ulong) data[ofs + 2] << 32)
-                         + ((uint) data[ofs + 3] << 24) + ((uint) data[ofs + 4] << 16) + ((uint) data[ofs + 5] << 8) +
-                         data[ofs + 6];
-                ofs += 7;
-                return result;
-            }
-
-            result = ((ulong) data[ofs] << 56) + ((ulong) data[ofs + 1] << 48) + ((ulong) data[ofs + 2] << 40) +
-                     ((ulong) data[ofs + 3] << 32)
-                     + ((uint) data[ofs + 4] << 24) + ((uint) data[ofs + 5] << 16) + ((uint) data[ofs + 6] << 8) +
-                     data[ofs + 7];
-            ofs += 8;
-            return result;
+            var first = data[ofs];
+            var len = LengthVUIntByFirstByte(first);
+            if (data.Length < ofs + len) throw new AccessViolationException();
+            // All range checks were done already before, so now do it without them for speed
+            var res = UnsafeUnpackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr)ofs), len);
+            ofs += len;
+            return res;
         }
 
         public static int LengthVInt(int value)

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Net;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
@@ -196,48 +197,34 @@ namespace BTDB.StreamLayer
         public ulong ReadVUInt64()
         {
             NeedOneByteInBuffer();
-            var l = PackUnpack.LengthVUInt(Buf, Pos);
-            ulong res;
-            if (Pos + l <= End)
+            ref var byteRef = ref Buf[Pos];
+            var len = PackUnpack.LengthVUIntByFirstByte(byteRef);
+            if (Pos + len <= End)
             {
-                res = PackUnpack.UnpackVUInt(Buf, ref Pos);
+                Pos += len;
+                return PackUnpack.UnsafeUnpackVUInt(ref byteRef, len);
             }
             else
             {
-                res = (ulong) (Buf[Pos] & (0xff >> l));
-                do
-                {
-                    Pos++;
-                    res <<= 8;
-                    NeedOneByteInBuffer();
-                    res += Buf[Pos];
-                    l--;
-                } while (l > 1);
-
+                Span<byte> buf = stackalloc byte[len];
+                buf[0] = byteRef;
                 Pos++;
+                ReadBlock(buf.Slice(1));
+                return PackUnpack.UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(buf), len);
             }
-
-            return res;
         }
 
         public void SkipVUInt64()
         {
             NeedOneByteInBuffer();
-            var l = PackUnpack.LengthVUInt(Buf, Pos);
-            if (Pos + l <= End)
+            var len = PackUnpack.LengthVUIntByFirstByte(Buf[Pos]);
+            if (Pos + len <= End)
             {
-                Pos += l;
+                Pos += len;
             }
             else
             {
-                do
-                {
-                    Pos++;
-                    NeedOneByteInBuffer();
-                    l--;
-                } while (l > 1);
-
-                Pos++;
+                SkipBlock(len);
             }
         }
 
