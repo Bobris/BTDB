@@ -344,17 +344,29 @@ namespace BTDB.Buffer
             return res;
         }
 
+        static ReadOnlySpan<byte> LzcToVIntLen => new byte[65]
+        {
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5,
+            4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1
+        };
+
         public static int LengthVInt(int value)
         {
+            /* Logically doing commented code, but branch less => much faster
             if (-0x40 <= value && value < 0x40) return 1;
             if (-0x2000 <= value && value < 0x2000) return 2;
             if (-0x100000 <= value && value < 0x100000) return 3;
             if (-0x08000000 <= value && value < 0x08000000) return 4;
             return 5;
+            */
+            value ^= value >> 31; // Convert negative value to -value-1 and don't touch zero or positive
+            return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
+                (IntPtr) 32 + BitOperations.LeadingZeroCount((uint)value));
         }
 
         public static int LengthVInt(long value)
         {
+            /* Logically doing commented code, but branch less => 4x-10x faster
             if (-0x40 <= value && value < 0x40) return 1;
             if (-0x2000 <= value && value < 0x2000) return 2;
             if (-0x100000 <= value && value < 0x100000) return 3;
@@ -363,6 +375,10 @@ namespace BTDB.Buffer
             if (-0x020000000000 <= value && value < 0x020000000000) return 6;
             if (-0x01000000000000 <= value && value < 0x01000000000000) return 7;
             return 9;
+            */
+            value ^= value >> 63; // Convert negative value to -value-1 and don't touch zero or positive
+            return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
+                (IntPtr) BitOperations.LeadingZeroCount((ulong)value));
         }
 
         public static int LengthVInt(byte[] data, int ofs)
