@@ -383,7 +383,13 @@ namespace BTDB.Buffer
 
         public static int LengthVInt(byte[] data, int ofs)
         {
-            uint first = data[ofs];
+            var first = data[ofs];
+            return LengthVIntFromFirst(first);
+        }
+
+        public static int LengthVIntFromFirst(uint first)
+        {
+            /* Logically doing commented code, but branch less => much faster
             if (0x40 <= first && first < 0xC0) return 1;
             if (0x20 <= first && first < 0xE0) return 2;
             if (0x10 <= first && first < 0xF0) return 3;
@@ -392,6 +398,10 @@ namespace BTDB.Buffer
             if (0x02 <= first && first < 0xFE) return 6;
             if (0x01 <= first && first < 0xFF) return 7;
             return 9;
+            */
+            first ^= (uint) ((sbyte) first >> 7) & 0xff;
+            var res = BitOperations.LeadingZeroCount(first) + 8 - 32;
+            return (int) (0x976543211UL >> (res * 4)) & 0xf;
         }
 
         public static void PackVInt(byte[] data, ref int ofs, long value)
