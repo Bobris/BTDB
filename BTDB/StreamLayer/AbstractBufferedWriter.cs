@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -95,40 +96,40 @@ namespace BTDB.StreamLayer
 
         public void WriteVInt64(long value)
         {
-            var l = PackUnpack.LengthVInt(value);
-            if (Pos + l > End)
+            var len = PackUnpack.LengthVInt(value);
+            if (Pos + len > End)
             {
                 FlushBuffer();
-                if (Pos + l > End)
+                if (Pos + len > End)
                 {
-                    var b = new byte[l];
-                    var i = 0;
-                    PackUnpack.PackVInt(b, ref i, value);
-                    WriteBlock(b);
+                    Span<byte> buf = stackalloc byte[len];
+                    PackUnpack.UnsafePackVInt(ref MemoryMarshal.GetReference(buf), value, len);
+                    WriteBlock(buf);
                     return;
                 }
             }
 
-            PackUnpack.PackVInt(Buf, ref Pos, value);
+            PackUnpack.UnsafePackVInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Buf.AsSpan()), (IntPtr)Pos), value, len);
+            Pos += len;
         }
 
         public void WriteVUInt64(ulong value)
         {
-            var l = PackUnpack.LengthVUInt(value);
-            if (Pos + l > End)
+            var len = PackUnpack.LengthVUInt(value);
+            if (Pos + len > End)
             {
                 FlushBuffer();
-                if (Pos + l > End)
+                if (Pos + len > End)
                 {
-                    Span<byte> b = stackalloc byte[l];
-                    PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(b), value, l);
+                    Span<byte> b = stackalloc byte[len];
+                    PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(b), value, len);
                     WriteBlock(b);
                     return;
                 }
             }
 
-            PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Buf.AsSpan()), (IntPtr)Pos), value, l);
-            Pos += l;
+            PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Buf.AsSpan()), (IntPtr)Pos), value, len);
+            Pos += len;
         }
 
         public void WriteInt64(long value)
@@ -138,9 +139,9 @@ namespace BTDB.StreamLayer
                 FlushBuffer();
                 if (Pos + 8 > End)
                 {
-                    var b = new byte[8];
-                    PackUnpack.PackInt64BE(b, 0, value);
-                    WriteBlock(b);
+                    Span<byte> buf = stackalloc byte[8];
+                    BinaryPrimitives.WriteInt64BigEndian(buf, value);
+                    WriteBlock(buf);
                     return;
                 }
             }
@@ -156,9 +157,9 @@ namespace BTDB.StreamLayer
                 FlushBuffer();
                 if (Pos + 4 > End)
                 {
-                    var b = new byte[4];
-                    PackUnpack.PackInt32BE(b, 0, value);
-                    WriteBlock(b);
+                    Span<byte> buf = stackalloc byte[4];
+                    BinaryPrimitives.WriteInt32BigEndian(buf, value);
+                    WriteBlock(buf);
                     return;
                 }
             }
@@ -288,7 +289,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public void WriteStringOrdered(string value)
+        public void WriteStringOrdered(string? value)
         {
             if (value == null)
             {
@@ -297,7 +298,7 @@ namespace BTDB.StreamLayer
             }
 
             var l = value.Length;
-            int i = 0;
+            var i = 0;
             while (i < l)
             {
                 var c = value[i];
@@ -354,7 +355,7 @@ namespace BTDB.StreamLayer
 
         public void WriteSingle(float value)
         {
-            WriteInt32(new Int32SingleUnion(value).AsInt32);
+            WriteInt32(BitConverter.SingleToInt32Bits(value));
         }
 
         public void WriteDouble(double value)
@@ -418,7 +419,7 @@ namespace BTDB.StreamLayer
             WriteBlock(value);
         }
 
-        public void WriteByteArrayRaw(byte[] value)
+        public void WriteByteArrayRaw(byte[]? value)
         {
             if (value == null) return;
             WriteBlock(value);
@@ -429,7 +430,7 @@ namespace BTDB.StreamLayer
             WriteBlock(data.AsSyncReadOnlySpan());
         }
 
-        public void WriteIPAddress(IPAddress value)
+        public void WriteIPAddress(IPAddress? value)
         {
             if (value == null)
             {

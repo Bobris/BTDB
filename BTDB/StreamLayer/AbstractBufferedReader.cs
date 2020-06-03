@@ -560,7 +560,7 @@ namespace BTDB.StreamLayer
 
         public float ReadSingle()
         {
-            return new Int32SingleUnion(ReadInt32()).AsSingle;
+            return BitConverter.Int32BitsToSingle(ReadInt32());
         }
 
         public void SkipSingle()
