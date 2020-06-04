@@ -290,7 +290,7 @@ namespace BTDB.Buffer
                 {
                     var res = (ulong) (data & 0x01u) << 48;
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
-                    res += (ulong)AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))<<32;
+                    res += (ulong) AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) << 32;
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
                     return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data));
                 }
@@ -308,15 +308,16 @@ namespace BTDB.Buffer
             var len = LengthVUIntByFirstByte(first);
             if (data.Length < ofs + len) throw new IndexOutOfRangeException();
             // All range checks were done already before, so now do it without them for speed
-            var res = UnsafeUnpackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr)ofs), len);
+            var res = UnsafeUnpackVUInt(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr) ofs), len);
             ofs += len;
             return res;
         }
 
         static ReadOnlySpan<byte> LzcToVIntLen => new byte[65]
         {
-            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5,
-            4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5,
+            5, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1
         };
 
         public static int LengthVInt(int value)
@@ -330,7 +331,7 @@ namespace BTDB.Buffer
             */
             value ^= value >> 31; // Convert negative value to -value-1 and don't touch zero or positive
             return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
-                (IntPtr) 32 + BitOperations.LeadingZeroCount((uint)value));
+                (IntPtr) 32 + BitOperations.LeadingZeroCount((uint) value));
         }
 
         public static int LengthVInt(long value)
@@ -347,16 +348,16 @@ namespace BTDB.Buffer
             */
             value ^= value >> 63; // Convert negative value to -value-1 and don't touch zero or positive
             return Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(LzcToVIntLen),
-                (IntPtr) BitOperations.LeadingZeroCount((ulong)value));
+                (IntPtr) BitOperations.LeadingZeroCount((ulong) value));
         }
 
         public static int LengthVInt(byte[] data, int ofs)
         {
             var first = data[ofs];
-            return LengthVIntFromFirst(first);
+            return LengthVIntByFirstByte(first);
         }
 
-        public static int LengthVIntFromFirst(uint first)
+        public static int LengthVIntByFirstByte(uint first)
         {
             /* Logically doing commented code, but branch less => much faster
             if (0x40 <= first && first < 0xC0) return 1;
@@ -395,7 +396,7 @@ namespace BTDB.Buffer
                 {
                     value = 0xE00000u + value;
                     value ^= sign & 0xC00000u;
-                    data = (byte) ((ulong)value >> 16);
+                    data = (byte) ((ulong) value >> 16);
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort) value));
                     return;
@@ -411,7 +412,7 @@ namespace BTDB.Buffer
                 {
                     value = 0xF8_0000_0000L + value;
                     value ^= sign & 0xF0_0000_0000;
-                    data = (byte) ((ulong)value >> 32);
+                    data = (byte) ((ulong) value >> 32);
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint) value));
                     return;
@@ -420,7 +421,7 @@ namespace BTDB.Buffer
                 {
                     value = 0xFC00_0000_0000L + value;
                     value ^= sign & 0xF800_0000_0000;
-                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort) ((ulong)value >> 32)));
+                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort) ((ulong) value >> 32)));
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint) value));
                     return;
@@ -429,18 +430,18 @@ namespace BTDB.Buffer
                 {
                     value = 0xFE_0000_0000_0000L + value;
                     value ^= sign & 0xFC_0000_0000_0000;
-                    data = (byte) ((ulong)value >> 48);
+                    data = (byte) ((ulong) value >> 48);
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
-                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort) ((ulong)value >> 32)));
+                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ushort) ((ulong) value >> 32)));
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
                     Unsafe.WriteUnaligned(ref data, AsBigEndian((uint) value));
                     return;
                 }
                 default: // It always 9
                 {
-                    data = (byte)((sign & 0xFF) ^ 0xFF);
+                    data = (byte) ((sign & 0xFF) ^ 0xFF);
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
-                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ulong)value));
+                    Unsafe.WriteUnaligned(ref data, AsBigEndian((ulong) value));
                     return;
                 }
             }
@@ -454,116 +455,67 @@ namespace BTDB.Buffer
             ofs += len;
         }
 
+        public static long UnsafeUnpackVInt(ref byte data, int len)
+        {
+            switch (len)
+            {
+                case 1:
+                    return (long) data - 0x80;
+                case 2:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    return (0x1fffu & AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))) - (0x2000 & sign);
+                }
+                case 3:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    var res = (data & 0x0F) << 16;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return res + AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) - (0x10_0000 & sign);
+                }
+                case 4:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    return (0x07ff_ffff & AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data))) - (0x0800_0000 & sign);
+                }
+                case 5:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    var res = (long) (data & 0x03u) << 32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x04_0000_0000 & sign);
+                }
+                case 6:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    var res = (0x01ffL & AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data))) << 32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
+                    return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x0200_0000_0000 & sign);
+                }
+                case 7:
+                {
+                    var sign = (long) ((data & 0x80) >> 7) - 1; // -1 for negative, 0 for positive
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    var res = (long) AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data)) << 32;
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 2);
+                    return res + AsBigEndian(Unsafe.ReadUnaligned<uint>(ref data)) - (0x01_0000_0000_0000 & sign);
+                }
+                default:
+                    data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
+                    return (long) AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
+            }
+        }
+
         public static long UnpackVInt(byte[] data, ref int ofs)
         {
-            uint first = data[ofs];
-            ofs++;
-            if (0x40 <= first && first < 0xC0) return (long) first - 0x80;
-            long result;
-            if (first >= 0x80)
-            {
-                if (first < 0xE0)
-                {
-                    result = ((first & 0x1F) << 8) + data[ofs];
-                    ofs++;
-                    return result;
-                }
-
-                if (first < 0xF0)
-                {
-                    result = ((first & 0x0F) << 16) + (data[ofs] << 8) + data[ofs + 1];
-                    ofs += 2;
-                    return result;
-                }
-
-                if (first < 0xF8)
-                {
-                    result = ((first & 0x07) << 24) + (data[ofs] << 16) + (data[ofs + 1] << 8) + data[ofs + 2];
-                    ofs += 3;
-                    return result;
-                }
-
-                if (first < 0xFC)
-                {
-                    result = ((long) (first & 0x03) << 32) + ((long) data[ofs] << 24) + (data[ofs + 1] << 16) +
-                             (data[ofs + 2] << 8) + data[ofs + 3];
-                    ofs += 4;
-                    return result;
-                }
-
-                if (first < 0xFE)
-                {
-                    result = ((long) (first & 0x01) << 40) + ((long) data[ofs] << 32) + ((long) data[ofs + 1] << 24) +
-                             (data[ofs + 2] << 16) + (data[ofs + 3] << 8) + data[ofs + 4];
-                    ofs += 5;
-                    return result;
-                }
-
-                if (first < 0xFF)
-                {
-                    result = ((long) data[ofs] << 40) + ((long) data[ofs + 1] << 32) + ((long) data[ofs + 2] << 24) +
-                             (data[ofs + 3] << 16) + (data[ofs + 4] << 8) + data[ofs + 5];
-                    ofs += 6;
-                    return result;
-                }
-
-                result = ((long) data[ofs] << 56) + ((long) data[ofs + 1] << 48) + ((long) data[ofs + 2] << 40) +
-                         ((long) data[ofs + 3] << 32)
-                         + ((long) data[ofs + 4] << 24) + (data[ofs + 5] << 16) + (data[ofs + 6] << 8) + data[ofs + 7];
-                ofs += 8;
-                return result;
-            }
-
-            if (first >= 0x20)
-            {
-                result = ((int) (first - 0x40) << 8) + data[ofs];
-                ofs++;
-                return result;
-            }
-
-            if (first >= 0x10)
-            {
-                result = ((int) (first - 0x20) << 16) + (data[ofs] << 8) + data[ofs + 1];
-                ofs += 2;
-                return result;
-            }
-
-            if (first >= 0x08)
-            {
-                result = ((int) (first - 0x10) << 24) + (data[ofs] << 16) + (data[ofs + 1] << 8) + data[ofs + 2];
-                ofs += 3;
-                return result;
-            }
-
-            if (first >= 0x04)
-            {
-                result = ((long) (first - 0x08) << 32) + ((long) data[ofs] << 24) + (data[ofs + 1] << 16) +
-                         (data[ofs + 2] << 8) + data[ofs + 3];
-                ofs += 4;
-                return result;
-            }
-
-            if (first >= 0x02)
-            {
-                result = ((long) (first - 0x04) << 40) + ((long) data[ofs] << 32) + ((long) data[ofs + 1] << 24) +
-                         (data[ofs + 2] << 16) + (data[ofs + 3] << 8) + data[ofs + 4];
-                ofs += 5;
-                return result;
-            }
-
-            if (first >= 0x01)
-            {
-                result = (-1L << 48) + ((long) data[ofs] << 40) + ((long) data[ofs + 1] << 32) +
-                         ((long) data[ofs + 2] << 24) + (data[ofs + 3] << 16) + (data[ofs + 4] << 8) + data[ofs + 5];
-                ofs += 6;
-                return result;
-            }
-
-            result = ((long) data[ofs] << 56) + ((long) data[ofs + 1] << 48) + ((long) data[ofs + 2] << 40) +
-                     ((long) data[ofs + 3] << 32)
-                     + ((long) data[ofs + 4] << 24) + (data[ofs + 5] << 16) + (data[ofs + 6] << 8) + data[ofs + 7];
-            ofs += 8;
-            return result;
+            var first = data[ofs];
+            var len = LengthVIntByFirstByte(first);
+            if (data.Length < ofs + len) throw new IndexOutOfRangeException();
+            // All range checks were done already before, so now do it without them for speed
+            var res = UnsafeUnpackVInt(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr) ofs), len);
+            ofs += len;
+            return res;
         }
     }
 }

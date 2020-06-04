@@ -15,7 +15,7 @@ namespace BTDB.StreamLayer
             End = 0;
         }
 
-        protected byte[] Buf;
+        protected byte[]? Buf;
         protected int Pos; // -1 for eof
         protected int End; // -1 for eof
         protected char[] CharBuf;
@@ -147,30 +147,21 @@ namespace BTDB.StreamLayer
         public long ReadVInt64()
         {
             NeedOneByteInBuffer();
-            var l = PackUnpack.LengthVInt(Buf, Pos);
-            long res;
-            if (Pos + l <= End)
+            ref var byteRef = ref Buf[Pos];
+            var len = PackUnpack.LengthVIntByFirstByte(byteRef);
+            if (Pos + len <= End)
             {
-                res = PackUnpack.UnpackVInt(Buf, ref Pos);
+                Pos += len;
+                return PackUnpack.UnsafeUnpackVInt(ref byteRef, len);
             }
             else
             {
-                res = (Buf[Pos] >= 0x80) ? 0 : -1;
-                if (l < 8) res <<= 8 - l;
-                res += Buf[Pos] & (0xff >> l);
-                do
-                {
-                    Pos++;
-                    res <<= 8;
-                    NeedOneByteInBuffer();
-                    res += Buf[Pos];
-                    l--;
-                } while (l > 1);
-
+                Span<byte> buf = stackalloc byte[len];
+                buf[0] = byteRef;
                 Pos++;
+                ReadBlock(buf.Slice(1));
+                return PackUnpack.UnsafeUnpackVInt(ref MemoryMarshal.GetReference(buf), len);
             }
-
-            return res;
         }
 
         public void SkipVInt64()
@@ -183,14 +174,7 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                do
-                {
-                    Pos++;
-                    NeedOneByteInBuffer();
-                    l--;
-                } while (l > 1);
-
-                Pos++;
+                SkipBlock(l);
             }
         }
 
@@ -410,7 +394,7 @@ namespace BTDB.StreamLayer
             return new string(res, 0, l);
         }
 
-        public string ReadStringOrdered()
+        public string? ReadStringOrdered()
         {
             var len = 0;
             while (true)
@@ -626,7 +610,7 @@ namespace BTDB.StreamLayer
             }
         }
 
-        public byte[] ReadByteArray()
+        public byte[]? ReadByteArray()
         {
             var length = ReadVUInt32();
             if (length == 0) return null;
@@ -644,8 +628,8 @@ namespace BTDB.StreamLayer
 
         public byte[] ReadByteArrayRawTillEof()
         {
-            byte[] buffer = null;
-            int length = 0;
+            byte[]? buffer = null;
+            var length = 0;
             while (!Eof)
             {
                 var l = End - Pos;
