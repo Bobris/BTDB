@@ -239,30 +239,39 @@ namespace BTDB.Buffer
 
         public static ushort AsBigEndian(ushort value)
         {
-            if (BitConverter.IsLittleEndian)
-                return BinaryPrimitives.ReverseEndianness(value);
-            return value;
+            return BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
         }
 
         public static uint AsBigEndian(uint value)
         {
-            if (BitConverter.IsLittleEndian)
-                return BinaryPrimitives.ReverseEndianness(value);
-            return value;
+            return BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
         }
 
         public static ulong AsBigEndian(ulong value)
         {
-            if (BitConverter.IsLittleEndian)
-                return BinaryPrimitives.ReverseEndianness(value);
-            return value;
+            return BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        }
+
+        public static ushort AsLittleEndian(ushort value)
+        {
+            return !BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        }
+
+        public static uint AsLittleEndian(uint value)
+        {
+            return !BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        }
+
+        public static ulong AsLittleEndian(ulong value)
+        {
+            return !BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
         }
 
         public static ulong UnsafeUnpackVUInt(ref byte data, int len)
         {
             switch (len)
             {
-                case 1:
+                default:
                     return data;
                 case 2:
                     return 0x3fffu & AsBigEndian(Unsafe.ReadUnaligned<ushort>(ref data));
@@ -296,7 +305,7 @@ namespace BTDB.Buffer
                 }
                 case 8:
                     return 0x00ff_ffff_ffff_fffful & AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
-                default:
+                case 9:
                     data = ref Unsafe.AddByteOffset(ref data, (IntPtr) 1);
                     return AsBigEndian(Unsafe.ReadUnaligned<ulong>(ref data));
             }
