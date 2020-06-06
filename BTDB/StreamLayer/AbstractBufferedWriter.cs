@@ -17,7 +17,7 @@ namespace BTDB.StreamLayer
             End = 0;
         }
 
-        protected byte[] Buf;
+        protected byte[]? Buf;
         protected int Pos;
         protected int End;
 
