@@ -8,66 +8,32 @@ namespace BTDBTest
 {
     public class SpanReaderWriterTest
     {
-        class BufferedWriterStub : AbstractBufferedWriter
-        {
-            public BufferedWriterStub(int bufLength)
-            {
-                _bufLength = bufLength;
-            }
-
-            byte[] _output = new byte[0];
-            readonly int _bufLength;
-
-            public byte[] Output => _output;
-
-            public override void FlushBuffer()
-            {
-                if (Pos > 0)
-                {
-                    var oldLength = _output.Length;
-                    Array.Resize(ref _output, oldLength + Pos);
-                    Array.Copy(Buf, 0, _output, oldLength, Pos);
-                }
-                if (Buf == null) Buf = new byte[_bufLength];
-                Pos = 0;
-                End = Buf.Length;
-            }
-
-            public override long GetCurrentPosition()
-            {
-                throw new AssertionException("Should not be called");
-            }
-        }
-
         delegate void SpanReaderAction(ref SpanReader reader);
+        delegate void SpanWriterAction(ref SpanWriter writer);
 
-        static void TestWriteRead(Action<AbstractBufferedWriter> writeAction, byte[] checkResult,
+        static void TestWriteRead(SpanWriterAction writeAction, byte[] checkResult,
             SpanReaderAction readAction, SpanReaderAction? skipAction)
         {
-            var sw = new BufferedWriterStub(1);
-            writeAction(sw);
-            sw.FlushBuffer();
-            Assert.Equal(checkResult, sw.Output);
+            Span<byte> buf = stackalloc byte[1];
+            var sw = new SpanWriter(buf);
+            writeAction(ref sw);
+            Assert.Equal(checkResult, sw.GetSpan().ToArray());
             SpanReader sr;
             if (checkResult.Length > 1)
             {
-                sw = new BufferedWriterStub(checkResult.Length);
-                writeAction(sw);
-                sw.FlushBuffer();
-                Assert.Equal(checkResult, sw.Output);
-                sw = new BufferedWriterStub(checkResult.Length + 1);
-                writeAction(sw);
-                sw.FlushBuffer();
-                Assert.Equal(checkResult, sw.Output);
+                sw = new SpanWriter(new Span<byte>());
+                writeAction(ref sw);
+                Assert.Equal(checkResult, sw.GetSpanAndReset().ToArray());
+                writeAction(ref sw);
+                Assert.Equal(checkResult, sw.GetSpan().ToArray());
             }
             sr = new SpanReader(checkResult);
             readAction(ref sr);
             Assert.True(sr.Eof);
-            sw = new BufferedWriterStub(checkResult.Length * 2);
-            writeAction(sw);
-            writeAction(sw);
-            sw.FlushBuffer();
-            Assert.Equal(checkResult.Concat(checkResult).ToArray(), sw.Output);
+            sw = new SpanWriter();
+            writeAction(ref sw);
+            writeAction(ref sw);
+            Assert.Equal(checkResult.Concat(checkResult).ToArray(), sw.GetByteBufferAndReset().ToByteArray());
             sr = new SpanReader(checkResult.Concat(checkResult).ToArray());
             readAction(ref sr);
             readAction(ref sr);
@@ -95,7 +61,7 @@ namespace BTDBTest
 
         static void TestDateTime(DateTime value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDateTime(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDateTime()), (ref SpanReader s) => s.SkipDateTime());
+            TestWriteRead((ref SpanWriter w) => w.WriteDateTime(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDateTime()), (ref SpanReader s) => s.SkipDateTime());
         }
 
         [Fact]
@@ -107,7 +73,7 @@ namespace BTDBTest
 
         static void TestTimeSpan(TimeSpan value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteTimeSpan(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadTimeSpan()), (ref SpanReader s) => s.SkipTimeSpan());
+            TestWriteRead((ref SpanWriter w) => w.WriteTimeSpan(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadTimeSpan()), (ref SpanReader s) => s.SkipTimeSpan());
         }
 
         [Fact]
@@ -122,7 +88,7 @@ namespace BTDBTest
 
         static void TestString(string value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteString(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadString()), (ref SpanReader s) => s.SkipString());
+            TestWriteRead((ref SpanWriter w) => w.WriteString(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadString()), (ref SpanReader s) => s.SkipString());
         }
 
         [Fact]
@@ -137,34 +103,34 @@ namespace BTDBTest
 
         static void TestStringOrdered(string value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteStringOrdered(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadStringOrdered()), (ref SpanReader s) => s.SkipStringOrdered());
+            TestWriteRead((ref SpanWriter w) => w.WriteStringOrdered(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadStringOrdered()), (ref SpanReader s) => s.SkipStringOrdered());
         }
 
         [Fact]
         public void UInt8Test()
         {
-            TestWriteRead(w => w.WriteUInt8(42), new byte[] { 42 }, (ref SpanReader r) => Assert.Equal(42, r.ReadUInt8()), (ref SpanReader s) => s.SkipUInt8());
+            TestWriteRead((ref SpanWriter w) => w.WriteUInt8(42), new byte[] { 42 }, (ref SpanReader r) => Assert.Equal(42, r.ReadUInt8()), (ref SpanReader s) => s.SkipUInt8());
         }
 
         [Fact]
         public void Int8Test()
         {
-            TestWriteRead(w => w.WriteInt8(-42), new byte[] { 0xD6 }, (ref SpanReader r) => Assert.Equal(-42, r.ReadInt8()), (ref SpanReader s) => s.SkipInt8());
+            TestWriteRead((ref SpanWriter w) => w.WriteInt8(-42), new byte[] { 0xD6 }, (ref SpanReader r) => Assert.Equal(-42, r.ReadInt8()), (ref SpanReader s) => s.SkipInt8());
         }
 
         [Fact]
         public void GuidTest()
         {
-            TestWriteRead(w => w.WriteGuid(Guid.Empty), Guid.Empty.ToByteArray(), (ref SpanReader r) => Assert.Equal(Guid.Empty, r.ReadGuid()), (ref SpanReader s) => s.SkipGuid());
+            TestWriteRead((ref SpanWriter w) => w.WriteGuid(Guid.Empty), Guid.Empty.ToByteArray(), (ref SpanReader r) => Assert.Equal(Guid.Empty, r.ReadGuid()), (ref SpanReader s) => s.SkipGuid());
             var g = Guid.NewGuid();
-            TestWriteRead(w => w.WriteGuid(g), g.ToByteArray(), (ref SpanReader r) => Assert.Equal(g, r.ReadGuid()), (ref SpanReader s) => s.SkipGuid());
+            TestWriteRead((ref SpanWriter w) => w.WriteGuid(g), g.ToByteArray(), (ref SpanReader r) => Assert.Equal(g, r.ReadGuid()), (ref SpanReader s) => s.SkipGuid());
         }
 
         [Fact]
         public void BlockTest()
         {
             var b = new byte[] { 1, 2, 3, 4, 5, 6, 7 };
-            TestWriteRead(w => w.WriteBlock(b), b, (ref SpanReader r) =>
+            TestWriteRead((ref SpanWriter w) => w.WriteBlock(b), b, (ref SpanReader r) =>
             {
                 var b2 = new byte[b.Length];
                 r.ReadBlock(b2);
@@ -172,7 +138,7 @@ namespace BTDBTest
             }, (ref SpanReader s) => s.SkipBlock(b.Length));
             var bExpect = new byte[] { 2, 3, 4, 5, 6 };
             var b2Expect = new byte[] { 0, 2, 3, 4, 5, 6, 0 };
-            TestWriteRead(w => w.WriteBlock(b, 1, 5), bExpect, (ref SpanReader r) =>
+            TestWriteRead((ref SpanWriter w) => w.WriteBlock(b, 1, 5), bExpect, (ref SpanReader r) =>
             {
                 var b2 = new byte[b.Length];
                 r.ReadBlock(b2, 1, 5);
@@ -183,13 +149,13 @@ namespace BTDBTest
         [Fact]
         public void Int64Test()
         {
-            TestWriteRead(w => w.WriteInt64(0x1234567890ABCDEFL), new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }, (ref SpanReader r) => Assert.Equal(0x1234567890ABCDEFL, r.ReadInt64()), (ref SpanReader s) => s.SkipInt64());
+            TestWriteRead((ref SpanWriter w) => w.WriteInt64(0x1234567890ABCDEFL), new byte[] { 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF }, (ref SpanReader r) => Assert.Equal(0x1234567890ABCDEFL, r.ReadInt64()), (ref SpanReader s) => s.SkipInt64());
         }
 
         [Fact]
         public void Int32Test()
         {
-            TestWriteRead(w => w.WriteInt32(0x12345678), new byte[] { 0x12, 0x34, 0x56, 0x78 }, (ref SpanReader r) => Assert.Equal(0x12345678, r.ReadInt32()), (ref SpanReader s) => s.SkipInt32());
+            TestWriteRead((ref SpanWriter w) => w.WriteInt32(0x12345678), new byte[] { 0x12, 0x34, 0x56, 0x78 }, (ref SpanReader r) => Assert.Equal(0x12345678, r.ReadInt32()), (ref SpanReader s) => s.SkipInt32());
         }
 
         [Fact]
@@ -204,7 +170,7 @@ namespace BTDBTest
 
         static void TestVUInt32(uint value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVUInt32(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVUInt32()), (ref SpanReader s) => s.SkipVUInt32());
+            TestWriteRead((ref SpanWriter w) => w.WriteVUInt32(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVUInt32()), (ref SpanReader s) => s.SkipVUInt32());
         }
 
         [Fact]
@@ -219,7 +185,7 @@ namespace BTDBTest
 
         static void TestVUInt64(ulong value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVUInt64(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVUInt64()), (ref SpanReader s) => s.SkipVUInt64());
+            TestWriteRead((ref SpanWriter w) => w.WriteVUInt64(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVUInt64()), (ref SpanReader s) => s.SkipVUInt64());
         }
 
         [Fact]
@@ -234,7 +200,7 @@ namespace BTDBTest
 
         static void TestVInt32(int value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVInt32(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVInt32()), (ref SpanReader s) => s.SkipVInt64());
+            TestWriteRead((ref SpanWriter w) => w.WriteVInt32(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVInt32()), (ref SpanReader s) => s.SkipVInt64());
         }
 
         [Fact]
@@ -251,7 +217,7 @@ namespace BTDBTest
 
         static void TestVInt64(long value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteVInt64(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVInt64()), (ref SpanReader s) => s.SkipVInt64());
+            TestWriteRead((ref SpanWriter w) => w.WriteVInt64(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadVInt64()), (ref SpanReader s) => s.SkipVInt64());
         }
 
         [Fact]
@@ -271,7 +237,7 @@ namespace BTDBTest
 
         static void TestDecimal(decimal value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDecimal(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDecimal()), (ref SpanReader s) => s.SkipDecimal());
+            TestWriteRead((ref SpanWriter w) => w.WriteDecimal(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDecimal()), (ref SpanReader s) => s.SkipDecimal());
         }
 
         [Fact]
@@ -286,7 +252,7 @@ namespace BTDBTest
 
         static void TestSingle(float value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteSingle(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadSingle()), (ref SpanReader s) => s.SkipSingle());
+            TestWriteRead((ref SpanWriter w) => w.WriteSingle(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadSingle()), (ref SpanReader s) => s.SkipSingle());
         }
 
         [Fact]
@@ -301,7 +267,7 @@ namespace BTDBTest
 
         static void TestDouble(double value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteDouble(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDouble()), (ref SpanReader s) => s.SkipDouble());
+            TestWriteRead((ref SpanWriter w) => w.WriteDouble(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadDouble()), (ref SpanReader s) => s.SkipDouble());
         }
 
         [Fact]
@@ -312,14 +278,13 @@ namespace BTDBTest
             TestIPAddress(IPAddress.IPv6Loopback, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 });
             TestIPAddress(IPAddress.IPv6Any, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
             TestIPAddress(null, new byte[] { 3 });
-            var ip = IPAddress.IPv6Loopback;
-            ip.ScopeId = 1;
+            var ip = new IPAddress(IPAddress.IPv6Loopback.GetAddressBytes(), 1);
             TestIPAddress(ip, new byte[] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1 });
         }
 
-        static void TestIPAddress(IPAddress value, byte[] checkResult)
+        static void TestIPAddress(IPAddress? value, byte[] checkResult)
         {
-            TestWriteRead(w => w.WriteIPAddress(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadIPAddress()), (ref SpanReader s) => s.SkipIPAddress());
+            TestWriteRead((ref SpanWriter w) => w.WriteIPAddress(value), checkResult, (ref SpanReader r) => Assert.Equal(value, r.ReadIPAddress()), (ref SpanReader s) => s.SkipIPAddress());
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -525,6 +526,34 @@ namespace BTDB.Buffer
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr) ofs), len);
             ofs += len;
             return res;
+        }
+
+        public static void ThrowEndOfStreamException()
+        {
+            throw new EndOfStreamException();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref byte UnsafeGetAndAdvance(ref ReadOnlySpan<byte> p, int delta)
+        {
+            ref var res = ref MemoryMarshal.GetReference(p);
+            p = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AddByteOffset(ref res, (IntPtr) delta), p.Length - delta);
+            return ref res;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref byte UnsafeGetAndAdvance(ref Span<byte> p, int delta)
+        {
+            ref var res = ref MemoryMarshal.GetReference(p);
+            p = MemoryMarshal.CreateSpan(ref Unsafe.AddByteOffset(ref res, (IntPtr) delta), p.Length - delta);
+            return ref res;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void UnsafeAdvance(ref ReadOnlySpan<byte> p, int delta)
+        {
+            p = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr) delta), p.Length - delta);
         }
     }
 }

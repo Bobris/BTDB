@@ -348,12 +348,11 @@ namespace BTDBTest
             TestIPAddress(IPAddress.IPv6Loopback, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 });
             TestIPAddress(IPAddress.IPv6Any, new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
             TestIPAddress(null, new byte[] { 3 });
-            var ip = IPAddress.IPv6Loopback;
-            ip.ScopeId = 1;
+            var ip = new IPAddress(IPAddress.IPv6Loopback.GetAddressBytes(),1);
             TestIPAddress(ip, new byte[] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1 });
         }
 
-        static void TestIPAddress(IPAddress value, byte[] checkResult)
+        static void TestIPAddress(IPAddress? value, byte[] checkResult)
         {
             TestWriteRead(w => w.WriteIPAddress(value), checkResult, r => Assert.Equal(value, r.ReadIPAddress()), s => s.SkipIPAddress());
         }
