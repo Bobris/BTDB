@@ -1,11 +1,11 @@
 using System;
-using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.IOC
 {
     class ScanTraitImpl : IScanTrait, IScanTraitImpl
     {
-        readonly List<Predicate<Type>> _filters = new List<Predicate<Type>>();
+        StructList<Predicate<Type>> _filters;
 
         public void Where(Predicate<Type> filter)
         {

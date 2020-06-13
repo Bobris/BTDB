@@ -18,7 +18,7 @@ namespace BTDB.IOC
             _froms = froms;
         }
 
-        public void Register(ContanerRegistrationContext context)
+        public void Register(ContainerRegistrationContext context)
         {
             foreach (var assembly in _froms)
             {

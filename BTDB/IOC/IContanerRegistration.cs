@@ -2,6 +2,6 @@ namespace BTDB.IOC
 {
     interface IContanerRegistration
     {
-        void Register(ContanerRegistrationContext context);
+        void Register(ContainerRegistrationContext context);
     }
 }

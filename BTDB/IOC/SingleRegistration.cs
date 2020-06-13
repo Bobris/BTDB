@@ -30,7 +30,7 @@ namespace BTDB.IOC
             _propertiesTrait = propertiesTrait;
         }
 
-        public void Register(ContanerRegistrationContext context)
+        public void Register(ContainerRegistrationContext context)
         {
             ICReg reg;
             var possibleConstructors = _constructorTrait.ReturnPossibleConstructors(_implementationType).ToList();

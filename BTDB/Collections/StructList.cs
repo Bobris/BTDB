@@ -65,9 +65,10 @@ namespace BTDB.Collections
 
         public ref T Insert(uint index) => ref Insert((int) index);
         public ref T Insert(Index index) => ref Insert(index.GetOffset((int) _count));
+
         public ref T Insert(int index)
         {
-            if ((uint)index > _count) ThrowIndexOutOfRange(index);
+            if ((uint) index > _count) ThrowIndexOutOfRange(index);
             if (_a == null || _count == _a.Length)
             {
                 Expand();
@@ -86,8 +87,8 @@ namespace BTDB.Collections
 
         public void RemoveAt(Index index)
         {
-            var idx = index.GetOffset((int)_count);
-            if ((uint)idx >= _count) ThrowIndexOutOfRange(idx);
+            var idx = index.GetOffset((int) _count);
+            if ((uint) idx >= _count) ThrowIndexOutOfRange(idx);
             AsSpan(idx + 1).CopyTo(AsSpan(idx));
             _count--;
             _a![_count] = default!;
@@ -415,7 +416,7 @@ namespace BTDB.Collections
                 return;
             }
 
-            var totalCount = (uint)(_count + itemsToInsert - 1);
+            var totalCount = (uint) (_count + itemsToInsert - 1);
             if (totalCount > _a!.Length)
                 Expand(totalCount);
 
@@ -435,6 +436,12 @@ namespace BTDB.Collections
             _count = totalCount;
             AsSpan(idx, (int) _count - values.Length - idx).CopyTo(AsSpan(idx + values.Length));
             values.CopyTo(AsSpan(idx));
+        }
+
+        public void Sort(IComparer<T> comparer)
+        {
+            if (_count > 1)
+                Array.Sort(_a!, 0, (int) _count, comparer);
         }
     }
 }

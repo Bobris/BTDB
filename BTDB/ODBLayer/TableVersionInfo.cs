@@ -17,15 +17,23 @@ namespace BTDB.ODBLayer
 
         public TableFieldInfo this[int idx] => _tableFields[idx];
 
-        public TableFieldInfo this[string name]
+        public TableFieldInfo? this[string name]
         {
-            get { return _tableFields.FirstOrDefault(tfi => tfi.Name == name); }
+            get
+            {
+                foreach (var t in _tableFields)
+                {
+                    if (t.Name == name) return t;
+                }
+
+                return null;
+            }
         }
 
         internal void Save(AbstractBufferedWriter writer)
         {
             writer.WriteVUInt32((uint)FieldCount);
-            for (int i = 0; i < FieldCount; i++)
+            for (var i = 0; i < FieldCount; i++)
             {
                 this[i].Save(writer);
             }

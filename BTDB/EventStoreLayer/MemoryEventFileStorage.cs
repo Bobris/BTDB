@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTDB.Buffer;
+using BTDB.Collections;
 
 namespace BTDB.EventStoreLayer
 {
@@ -13,11 +14,11 @@ namespace BTDB.EventStoreLayer
         }
 
         const uint BlockSize = 4096;
-        readonly List<byte[]> _blocks = new List<byte[]>();
+        StructList<byte[]> _blocks;
 
-        public uint MaxBlockSize { get; private set; }
+        public uint MaxBlockSize { get; }
 
-        public ulong MaxFileSize { get; private set; }
+        public ulong MaxFileSize { get; }
 
         public uint Read(ByteBuffer buf, ulong position)
         {

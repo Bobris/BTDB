@@ -21,7 +21,7 @@ namespace BTDB.IOC
 
         internal ContainerImpl(ReadOnlySpan<IRegistration> registrations)
         {
-            var context = new ContanerRegistrationContext(this, Registrations);
+            var context = new ContainerRegistrationContext(this, Registrations);
             foreach (var registration in registrations)
             {
                 ((IContanerRegistration)registration).Register(context);
@@ -32,7 +32,7 @@ namespace BTDB.IOC
                 SingletonLocks[i] = new object();
             }
             Singletons = new object[context.SingletonCount];
-            Instances = context.Instances.ToArray();
+            Instances = context.Instances;
             context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true, new ContainerInjectImpl());
         }
 

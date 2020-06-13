@@ -149,13 +149,13 @@ namespace BTDB.KVDBLayer
                 }
 
                 long btreesCorrectInTransactionId;
-                var toRemoveFileIds = new List<uint>();
+                var toRemoveFileIds = new StructList<uint>();
                 do
                 {
                     _newPositionMap = new Dictionary<ulong, ulong>();
                     do
                     {
-                        CompactOnePureValueFileIteration(toRemoveFileIds);
+                        CompactOnePureValueFileIteration(ref toRemoveFileIds);
                         totalWaste = CalcTotalWaste();
                     } while (_newPositionMap.Count * 50 / (1024 * 1024) < _keyValueDB.CompactorRamLimitInMb &&
                              !IsWasteSmall(totalWaste));
@@ -179,7 +179,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void CompactOnePureValueFileIteration(List<uint> toRemoveFileIds)
+        void CompactOnePureValueFileIteration(ref StructList<uint> toRemoveFileIds)
         {
             _cancellation.ThrowIfCancellationRequested();
             _writerBytesPerSecondLimiter = new BytesPerSecondLimiter(_keyValueDB.CompactorWriteBytesPerSecondLimit);

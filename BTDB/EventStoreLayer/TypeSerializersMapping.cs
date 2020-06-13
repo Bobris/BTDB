@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -13,7 +14,7 @@ namespace BTDB.EventStoreLayer
     class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMapping, ITypeSerializersId2LoaderMapping
     {
         const int ReservedBuildinTypes = 50;
-        readonly List<InfoForType> _id2DescriptorMap = new List<InfoForType>();
+        StructList<InfoForType> _id2DescriptorMap;
         readonly Dictionary<object, InfoForType> _typeOrDescriptor2Info = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
         readonly TypeSerializers _typeSerializers;
         readonly ISymmetricCipher _symmetricCipher;
@@ -38,7 +39,7 @@ namespace BTDB.EventStoreLayer
             _id2DescriptorMap.Add(null); // 1 = back reference
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
-                var infoForType = new InfoForType { Id = _id2DescriptorMap.Count, Descriptor = predefinedType };
+                var infoForType = new InfoForType { Id = (int)_id2DescriptorMap.Count, Descriptor = predefinedType };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2DescriptorMap.Add(infoForType);
             }
@@ -307,7 +308,7 @@ namespace BTDB.EventStoreLayer
             readonly TypeSerializersMapping _typeSerializersMapping;
             readonly AbstractBufferedWriter _writer;
             readonly TypeSerializers _typeSerializers;
-            readonly List<InfoForType> _id2InfoMap = new List<InfoForType>();
+            StructList<InfoForType> _id2InfoMap;
             readonly Dictionary<object, InfoForType> _typeOrDescriptor2InfoMap = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
 
             public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping, AbstractBufferedWriter writer)
@@ -319,7 +320,7 @@ namespace BTDB.EventStoreLayer
 
             public void AddDescriptor(InfoForType infoForType)
             {
-                infoForType.Id = _typeSerializersMapping._id2DescriptorMap.Count + _id2InfoMap.Count;
+                infoForType.Id = (int)(_typeSerializersMapping._id2DescriptorMap.Count + _id2InfoMap.Count);
                 _typeOrDescriptor2InfoMap.Add(infoForType.Descriptor, infoForType);
                 _id2InfoMap.Add(infoForType);
                 var idx = 0;

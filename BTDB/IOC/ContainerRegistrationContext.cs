@@ -1,14 +1,15 @@
 using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.IOC
 {
-    class ContanerRegistrationContext
+    class ContainerRegistrationContext
     {
         readonly ContainerImpl _container;
         readonly Dictionary<KeyAndType, ICReg> _registrations;
-        readonly List<object> _instances = new List<object>();
+        StructList<object> _instances;
 
-        internal ContanerRegistrationContext(ContainerImpl container, Dictionary<KeyAndType, ICReg> registrations)
+        internal ContainerRegistrationContext(ContainerImpl container, Dictionary<KeyAndType, ICReg> registrations)
         {
             _container = container;
             _registrations = registrations;
@@ -16,12 +17,12 @@ namespace BTDB.IOC
 
         internal int SingletonCount { get; set; }
 
-        internal List<object> Instances => _instances;
+        internal object[] Instances => _instances.ToArray();
 
         internal int AddInstance(object instance)
         {
             _instances.Add(instance);
-            return _instances.Count - 1;
+            return (int)_instances.Count - 1;
         }
 
         public void AddCReg(IEnumerable<KeyAndType> asTypes, bool preserveExistingDefaults, ICReg registration)

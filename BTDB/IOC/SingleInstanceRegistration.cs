@@ -15,7 +15,7 @@ namespace BTDB.IOC
             _implementationType = type;
         }
 
-        public void Register(ContanerRegistrationContext context)
+        public void Register(ContainerRegistrationContext context)
         {
             var reg = new InstanceImpl(_instance, context.AddInstance(_instance));
             context.AddCReg(_asTrait.GetAsTypesFor(_implementationType), _asTrait.PreserveExistingDefaults, reg);

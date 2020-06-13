@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -285,7 +287,7 @@ namespace BTDB.ODBLayer
 
         void CompactObjCache()
         {
-            var toRemove = new List<ulong>();
+            var toRemove = new StructList<ulong>();
             foreach (var pair in _objBigCache!)
             {
                 if (!pair.Value.IsAlive)
@@ -304,8 +306,7 @@ namespace BTDB.ODBLayer
         {
             var reader = new ByteArrayReader(_keyValueTr!.GetValueAsByteArray());
             var tableId = reader.ReadVUInt32();
-            tableInfo = _owner.TablesInfo.FindById(tableId);
-            if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
+            tableInfo = _owner.TablesInfo.FindById(tableId) ?? throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
             EnsureClientTypeNotNull(tableInfo);
             return reader;
         }
@@ -321,7 +322,7 @@ namespace BTDB.ODBLayer
             return GetDirectlyFromStorage(oid);
         }
 
-        object GetDirectlyFromStorage(ulong oid)
+        object? GetDirectlyFromStorage(ulong oid)
         {
             _keyValueTrProtector.Start();
             _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
@@ -732,44 +733,42 @@ namespace BTDB.ODBLayer
 
         ulong ReadOidFromCurrentKeyInTransaction()
         {
-            var key = _keyValueTr.GetKey();
+            var key = _keyValueTr!.GetKey();
             var bufOfs = key.Offset;
-            var oid = PackUnpack.UnpackVUInt(key.Buffer, ref bufOfs);
+            var oid = PackUnpack.UnpackVUInt(key.Buffer!, ref bufOfs);
             return oid;
         }
 
         internal static byte[] BuildKeyFromOid(ulong oid)
         {
-            var key = new byte[PackUnpack.LengthVUInt(oid)];
-            int ofs = 0;
-            PackUnpack.PackVUInt(key, ref ofs, oid);
+            var len = PackUnpack.LengthVUInt(oid);
+            var key = new byte[len];
+            PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(key.AsSpan()), oid, len);
             return key;
         }
 
         TableInfo AutoRegisterType(Type type, bool forceAutoRegistration = false)
         {
             var ti = _owner.TablesInfo.FindByType(type);
-            if (ti == null)
+            if (ti != null) return ti;
+            if (type.InheritsOrImplements(typeof(IEnumerable<>)))
             {
-                if (type.InheritsOrImplements(typeof(IEnumerable<>)))
-                {
-                    throw new InvalidOperationException("Cannot store " + type.ToSimpleName() +
-                                                        " type to DB directly.");
-                }
-
-                var name = _owner.Type2NameRegistry.FindNameByType(type);
-                if (name == null)
-                {
-                    if (!_owner.AutoRegisterTypes && !forceAutoRegistration)
-                    {
-                        throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
-                    }
-
-                    name = _owner.RegisterType(type, manualRegistration: false);
-                }
-
-                ti = _owner.TablesInfo.LinkType2Name(type, name);
+                throw new InvalidOperationException("Cannot store " + type.ToSimpleName() +
+                                                    " type to DB directly.");
             }
+
+            var name = _owner.Type2NameRegistry.FindNameByType(type);
+            if (name == null)
+            {
+                if (!_owner.AutoRegisterTypes && !forceAutoRegistration)
+                {
+                    throw new BTDBException($"Type {type.ToSimpleName()} is not registered.");
+                }
+
+                name = _owner.RegisterType(type, manualRegistration: false);
+            }
+
+            ti = _owner.TablesInfo.LinkType2Name(type, name);
 
             return ti;
         }

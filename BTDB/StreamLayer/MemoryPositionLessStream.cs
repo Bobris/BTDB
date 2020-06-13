@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 
 namespace BTDB.StreamLayer
@@ -8,7 +9,7 @@ namespace BTDB.StreamLayer
     public class MemoryPositionLessStream : IPositionLessStream
     {
         long _size;
-        readonly List<byte[]> _data = new List<byte[]>();
+        StructList<byte[]> _data;
         readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         const uint OneBufSize = 128 * 1024;
 

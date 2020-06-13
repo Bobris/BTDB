@@ -332,8 +332,8 @@ namespace BTDB.ODBLayer
             ConcurrentDictionary<SimpleLoaderType, object> //object is of type Action<AbstractBufferedReader, IReaderCtx, (object or value type same as in conc. dic. key)>
             _simpleLoader = new ConcurrentDictionary<SimpleLoaderType, object>();
 
-        internal List<ulong> FreeContentOldDict { get; } = new List<ulong>();
-        internal List<ulong> FreeContentNewDict { get; } = new List<ulong>();
+        internal readonly List<ulong> FreeContentOldDict = new List<ulong>();
+        internal readonly List<ulong> FreeContentNewDict = new List<ulong>();
         internal byte[] Prefix;
         internal byte[] PrefixSecondary;
 
@@ -1563,7 +1563,7 @@ namespace BTDB.ODBLayer
     public class DBReaderWithFreeInfoCtx : DBReaderCtx
     {
         readonly IList<ulong> _freeDictionaries;
-        List<bool>? _seenObjects;
+        StructList<bool> _seenObjects;
 
         public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader,
             IList<ulong> freeDictionaries)
@@ -1613,7 +1613,6 @@ namespace BTDB.ODBLayer
 
         bool AlreadyProcessedInstance(int ido)
         {
-            if (_seenObjects == null) _seenObjects = new List<bool>();
             while (_seenObjects.Count <= ido) _seenObjects.Add(false);
             var res = _seenObjects[ido];
             _seenObjects[ido] = true;

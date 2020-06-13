@@ -8,6 +8,7 @@ using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using BTDB.StreamLayer;
 using System.Diagnostics;
+using BTDB.Collections;
 using BTDB.Encrypted;
 
 namespace BTDB.EventStore2Layer
@@ -23,8 +24,8 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<object, SerializerTypeInfo> _typeOrDescriptor2InfoNew =
             new Dictionary<object, SerializerTypeInfo>(ReferenceEqualityComparer<object>.Instance);
 
-        readonly List<SerializerTypeInfo?> _id2Info = new List<SerializerTypeInfo?>();
-        readonly List<SerializerTypeInfo?> _id2InfoNew = new List<SerializerTypeInfo?>();
+        StructList<SerializerTypeInfo?> _id2Info;
+        StructList<SerializerTypeInfo?> _id2InfoNew;
 
         readonly Dictionary<ITypeDescriptor, ITypeDescriptor> _remapToOld =
             new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
@@ -48,13 +49,14 @@ namespace BTDB.EventStore2Layer
             TypeNameMapper = typeNameMapper ?? new FullNameTypeMapper();
             ConvertorGenerator = typeConvertorGenerator ?? DefaultTypeConvertorGenerator.Instance;
             _symmetricCipher = symmetricCipher ?? new InvalidSymmetricCipher();
+            _id2Info.Reserve(ReservedBuildinTypes + 10);
             _id2Info.Add(null); // 0 = null
             _id2Info.Add(null); // 1 = back reference
             foreach (var predefinedType in BasicSerializersFactory.TypeDescriptors)
             {
                 var infoForType = new SerializerTypeInfo
                 {
-                    Id = _id2Info.Count,
+                    Id = (int) _id2Info.Count,
                     Descriptor = predefinedType
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
@@ -243,7 +245,7 @@ namespace BTDB.EventStore2Layer
 
                 if (infoForType!.Id < 0)
                 {
-                    infoForType.Id = _id2Info.Count;
+                    infoForType.Id = (int) _id2Info.Count;
                     _id2Info.Add(infoForType);
                     _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                 }

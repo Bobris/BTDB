@@ -20,7 +20,7 @@ namespace BTDB.EventStoreLayer
         // ctx is ITypeBinarySerializerContext
         void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue, Type valueType);
         ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator();
-        ITypeDescriptor NestedType(int index);
+        ITypeDescriptor? NestedType(int index);
         void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map);
         ITypeDescriptor CloneAndMapNestedTypes(ITypeDescriptorCallbacks typeSerializers, Func<ITypeDescriptor, ITypeDescriptor> map);
         bool Sealed { get; }
