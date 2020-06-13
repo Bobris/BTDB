@@ -393,25 +393,33 @@ namespace BTDB.ODBLayer
         void CheckThatPrimaryKeyHasNotChanged(IInternalObjectDBTransaction tr, string name,
             RelationVersionInfo info, RelationVersionInfo previousInfo)
         {
+            var db = tr.Owner;
             var pkFields = info.PrimaryKeyFields;
             var prevPkFields = previousInfo.PrimaryKeyFields;
             if (pkFields.Length != prevPkFields.Length)
+            {
+                if (db.ActualOptions.SelfHealing)
+                {
+                    db.Logger?.ReportIncompatiblePrimaryKey(name, $"{pkFields.Length}!={prevPkFields.Length}");
+                    ClearRelationData(tr, previousInfo);
+                    return;
+                }
                 throw new BTDBException(
                     $"Change of primary key in relation '{name}' is not allowed. Field count {pkFields.Length} != {prevPkFields.Length}.");
+
+            }
             for (var i = 0; i < pkFields.Length; i++)
             {
                 if (ArePrimaryKeyFieldsCompatible(pkFields.Span[i].Handler!, prevPkFields.Span[i].Handler!)) continue;
-                var db = tr.Owner;
                 db.Logger?.ReportIncompatiblePrimaryKey(name, pkFields.Span[i].Name);
                 if (db.ActualOptions.SelfHealing)
                 {
                     ClearRelationData(tr, previousInfo);
+                    return;
                 }
-                else
-                {
-                    throw new BTDBException(
-                        $"Change of primary key in relation '{name}' is not allowed. Field '{pkFields.Span[i].Name}' is not compatible.");
-                }
+
+                throw new BTDBException(
+                    $"Change of primary key in relation '{name}' is not allowed. Field '{pkFields.Span[i].Name}' is not compatible.");
             }
         }
 
