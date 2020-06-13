@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
@@ -14,17 +15,16 @@ namespace BTDB.Service
         readonly string _name;
         readonly MethodInf[] _methodInfs;
         readonly PropertyInf[] _propertyInfs;
-        readonly Type _type;
 
         public TypeInf(Type type, IFieldHandlerFactory fieldHandlerFactory)
         {
-            _type = type;
+            OriginalType = type;
             _name = type.Name;
-            var methodInfs = new List<MethodInf>();
-            var propertyInfs = new List<PropertyInf>();
+            var methodInfs = new StructList<MethodInf>();
+            var propertyInfs = new StructList<PropertyInf>();
             if (type.IsSubclassOf(typeof(Delegate)))
             {
-                var method = type.GetMethod("Invoke");
+                var method = type.GetMethod(nameof(Action.Invoke));
                 if (IsMethodSupported(method, fieldHandlerFactory))
                 {
                     methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
@@ -60,23 +60,23 @@ namespace BTDB.Service
 
         public TypeInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
-            _type = null;
-            _name = reader.ReadString();
+            OriginalType = null;
+            _name = reader.ReadString()!;
             var methodCount = reader.ReadVUInt32();
             _methodInfs = new MethodInf[methodCount];
-            for (int i = 0; i < methodCount; i++)
+            for (var i = 0; i < methodCount; i++)
             {
                 _methodInfs[i] = new MethodInf(reader, fieldHandlerFactory);
             }
-            var properyCount = reader.ReadVUInt32();
-            _propertyInfs = new PropertyInf[properyCount];
-            for (int i = 0; i < properyCount; i++)
+            var propertyCount = reader.ReadVUInt32();
+            _propertyInfs = new PropertyInf[propertyCount];
+            for (var i = 0; i < propertyCount; i++)
             {
                 PropertyInfs[i] = new PropertyInf(reader, fieldHandlerFactory);
             }
         }
 
-        public Type OriginalType => _type;
+        public Type? OriginalType { get; }
 
         public string Name => _name;
 
