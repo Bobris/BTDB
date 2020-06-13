@@ -6,8 +6,8 @@ namespace BTDB.IL
 {
     public interface IILGen
     {
-        IILLabel DefineLabel(string name = null);
-        IILLocal DeclareLocal(Type type, string name = null, bool pinned = false);
+        IILLabel DefineLabel(string? name = null);
+        IILLocal DeclareLocal(Type type, string? name = null, bool pinned = false);
         IILGen Comment(string text);
         IILGen Mark(IILLabel label);
         IILGen Ldftn(IILMethod method);

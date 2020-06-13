@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Reflection.Emit;
+using BTDB.Collections;
 
 namespace BTDB.IL.Caching
 {
@@ -15,7 +15,7 @@ namespace BTDB.IL.Caching
             bool Equals(IReplayILGen other);
         }
 
-        readonly List<IReplayILGen> _instructions = new List<IReplayILGen>();
+        StructList<IReplayILGen> _instructions;
         int _lastLocalIndex;
         int _lastLabelIndex;
 
@@ -29,10 +29,9 @@ namespace BTDB.IL.Caching
 
         public override bool Equals(object obj)
         {
-            var v = obj as CachingILGen;
-            if (v == null) return false;
+            if (!(obj is CachingILGen v)) return false;
             if (_instructions.Count != v._instructions.Count) return false;
-            for (int i = 0; i < _instructions.Count; i++)
+            for (var i = 0; i < _instructions.Count; i++)
             {
                 if (!_instructions[i].Equals(v._instructions[i])) return false;
             }
@@ -41,10 +40,11 @@ namespace BTDB.IL.Caching
 
         public override int GetHashCode()
         {
-            return _instructions.Count;
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
+            return (int)_instructions.Count;
         }
 
-        public IILLabel DefineLabel(string name = null)
+        public IILLabel DefineLabel(string? name = null)
         {
             var result = new ILLabel(name, _lastLabelIndex);
             _lastLabelIndex++;
@@ -54,11 +54,11 @@ namespace BTDB.IL.Caching
 
         class ILLabel : IILLabel, IReplayILGen
         {
-            readonly string _name;
+            readonly string? _name;
             internal readonly int Index;
-            internal IILLabel Label;
+            internal IILLabel? Label;
 
-            public ILLabel(string name, int index)
+            public ILLabel(string? name, int index)
             {
                 _name = name;
                 Index = index;
@@ -76,13 +76,12 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as ILLabel;
-                if (v==null) return false;
+                if (!(other is ILLabel v)) return false;
                 return _name == v._name;
             }
         }
 
-        public IILLocal DeclareLocal(Type type, string name = null, bool pinned = false)
+        public IILLocal DeclareLocal(Type type, string? name = null, bool pinned = false)
         {
             var result = new ILLocal(type, name, pinned, _lastLocalIndex);
             _lastLocalIndex++;
@@ -92,29 +91,26 @@ namespace BTDB.IL.Caching
 
         class ILLocal : IILLocal, IReplayILGen
         {
-            readonly Type _type;
-            readonly string _name;
-            readonly bool _pinned;
-            readonly int _index;
-            internal IILLocal Local;
+            readonly string? _name;
+            internal IILLocal? Local;
 
-            public ILLocal(Type type, string name, bool pinned, int index)
+            public ILLocal(Type type, string? name, bool pinned, int index)
             {
-                _type = type;
+                LocalType = type;
                 _name = name;
-                _pinned = pinned;
-                _index = index;
+                Pinned = pinned;
+                Index = index;
             }
 
-            public int Index => _index;
+            public int Index { get; }
 
-            public bool Pinned => _pinned;
+            public bool Pinned { get; }
 
-            public Type LocalType => _type;
+            public Type LocalType { get; }
 
             public void ReplayTo(IILGen target)
             {
-                Local = target.DeclareLocal(_type, _name, _pinned);
+                Local = target.DeclareLocal(LocalType, _name, Pinned);
                 Debug.Assert(Local.Index == Index);
             }
 
@@ -125,11 +121,10 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as ILLocal;
-                if (v == null) return false;
+                if (!(other is ILLocal v)) return false;
                 if (_name != v._name) return false;
-                if (_type != v._type) return false;
-                return _pinned == v._pinned;
+                if (LocalType != v.LocalType) return false;
+                return Pinned == v.Pinned;
             }
         }
 
@@ -159,8 +154,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as CommentInst;
-                if (v == null) return false;
+                if (!(other is CommentInst v)) return false;
                 return _text == v._text;
             }
         }
@@ -182,7 +176,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILGen target)
             {
-                target.Mark(((ILLabel)_label).Label);
+                target.Mark(((ILLabel)_label).Label!);
             }
 
             public void FreeTemps()
@@ -191,8 +185,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as MarkInst;
-                if (v == null) return false;
+                if (!(other is MarkInst v)) return false;
                 return ((ILLabel) _label).Index == ((ILLabel) v._label).Index;
             }
         }
@@ -223,9 +216,8 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as LdftnInst;
-                if (v == null) return false;
-                return _method == v._method;
+                if (!(other is LdftnInst v)) return false;
+                return ReferenceEquals(_method, v._method);
             }
         }
 
@@ -255,8 +247,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as LdstrInst;
-                if (v == null) return false;
+                if (!(other is LdstrInst v)) return false;
                 return _str == v._str;
             }
         }
@@ -280,8 +271,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as TryInst;
-                return v != null;
+                return other is TryInst;
             }
         }
 
@@ -311,8 +301,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as CatchInst;
-                if (v == null) return false;
+                if (!(other is CatchInst v)) return false;
                 return _exceptionType == v._exceptionType;
             }
         }
@@ -336,8 +325,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as FinallyInst;
-                return v != null;
+                return other is FinallyInst;
             }
         }
 
@@ -360,8 +348,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EndTryInst;
-                return v != null;
+                return other is EndTryInst;
             }
         }
 
@@ -390,8 +377,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitInst;
-                if (v == null) return false;
+                if (!(other is EmitInst v)) return false;
                 return _opCode == v._opCode;
             }
         }
@@ -423,8 +409,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitSbyteInst;
-                if (v == null) return false;
+                if (!(other is EmitSbyteInst v)) return false;
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -456,8 +441,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitByteInst;
-                if (v == null) return false;
+                if (!(other is EmitByteInst v)) return false;
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -489,8 +473,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitUshortInst;
-                if (v == null) return false;
+                if (!(other is EmitUshortInst v)) return false;
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -522,8 +505,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitIntInst;
-                if (v == null) return false;
+                if (!(other is EmitIntInst v)) return false;
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -555,8 +537,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitFieldInfoInst;
-                if (v == null) return false;
+                if (!(other is EmitFieldInfoInst v)) return false;
                 return _opCode == v._opCode && _fieldInfo == v._fieldInfo;
             }
         }
@@ -588,8 +569,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitConstructorInfoInst;
-                if (v == null) return false;
+                if (!(other is EmitConstructorInfoInst v)) return false;
                 return _opCode == v._opCode && _constructorInfo == v._constructorInfo;
             }
         }
@@ -622,8 +602,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitMethodInfoInst;
-                if (v == null) return false;
+                if (!(other is EmitMethodInfoInst v)) return false;
                 return _opCode == v._opCode && _methodInfo == v._methodInfo;
             }
         }
@@ -655,8 +634,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitTypeInst;
-                if (v == null) return false;
+                if (!(other is EmitTypeInst v)) return false;
                 return _opCode == v._opCode && _type == v._type;
             }
         }
@@ -679,7 +657,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILGen target)
             {
-                target.Emit(_opCode, ((ILLocal)_ilLocal).Local);
+                target.Emit(_opCode, ((ILLocal)_ilLocal).Local!);
             }
 
             public void FreeTemps()
@@ -688,8 +666,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitILLocal;
-                if (v == null) return false;
+                if (!(other is EmitILLocal v)) return false;
                 return _opCode == v._opCode && ((ILLocal)_ilLocal).Index == ((ILLocal)v._ilLocal).Index;
             }
         }
@@ -712,7 +689,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILGen target)
             {
-                target.Emit(_opCode, ((ILLabel)_ilLabel).Label);
+                target.Emit(_opCode, ((ILLabel)_ilLabel).Label!);
             }
 
             public void FreeTemps()
@@ -721,8 +698,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitILLabel;
-                if (v == null) return false;
+                if (!(other is EmitILLabel v)) return false;
                 return _opCode == v._opCode && ((ILLabel)_ilLabel).Index == ((ILLabel)v._ilLabel).Index;
             }
         }
@@ -763,8 +739,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitILField;
-                if (v == null) return false;
+                if (!(other is EmitILField v)) return false;
                 return _opCode == v._opCode && _ilField.Equals(v._ilField);
             }
         }
@@ -796,8 +771,7 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitLongInst;
-                if (v == null) return false;
+                if (!(other is EmitLongInst v)) return false;
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -829,8 +803,8 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitFloatInst;
-                if (v == null) return false;
+                if (!(other is EmitFloatInst v)) return false;
+                // ReSharper disable once CompareOfFloatsByEqualityOperator
                 return _opCode == v._opCode && _param == v._param;
             }
         }
@@ -862,8 +836,8 @@ namespace BTDB.IL.Caching
 
             public bool Equals(IReplayILGen other)
             {
-                var v = other as EmitDoubleInst;
-                if (v == null) return false;
+                if (!(other is EmitDoubleInst v)) return false;
+                // ReSharper disable once CompareOfFloatsByEqualityOperator
                 return _opCode == v._opCode && _param == v._param;
             }
         }
