@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BTDB.Collections;
 
 namespace BTDB.IOC
 {
@@ -107,8 +108,9 @@ namespace BTDB.IOC
         {
             var needs = needsEnumerable.ToArray();
             var regs = needs.Select(ResolveNeed).ToArray();
-            var parsLocals = new List<IILLocal>(regs.Length);
-            int index = 0;
+            var parsLocals = new StructList<IILLocal>();
+            parsLocals.Reserve((uint)regs.Length);
+            var index = 0;
             foreach (var reg in regs)
             {
                 if (reg.IsCorruptingILStack(this))
@@ -256,7 +258,7 @@ namespace BTDB.IOC
             {
                 if (need.Kind == NeedKind.CReg)
                 {
-                    GatherNeeds((ICRegILGen) need.Key, processed);
+                    GatherNeeds(((ICRegILGen) need.Key)!, processed);
                     continue;
                 }
 
@@ -373,7 +375,7 @@ namespace BTDB.IOC
             }
         }
 
-        ICRegILGen AddConstant(object obj, Type type)
+        ICRegILGen AddConstant(object? obj, Type type)
         {
             var tuple = new Tuple<object, Type>(obj, type);
             var comp = ComparerConst.Instance;

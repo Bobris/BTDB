@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
+using BTDB.Collections;
 
 namespace BTDB.IOC
 {
     class AsTraitImpl : IAsTrait, IAsTraitImpl
     {
-        readonly List<KeyAndType> _asTypes = new List<KeyAndType>();
+        StructList<KeyAndType> _asTypes;
         bool _asSelf;
         bool _asImplementedInterfaces;
         bool _preserveExistingDefaults;
