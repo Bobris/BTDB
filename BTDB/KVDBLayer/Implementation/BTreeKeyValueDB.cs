@@ -495,7 +495,7 @@ namespace BTDB.KVDBLayer
                         var keyLengthWithoutPrefix = (int) reader.ReadVUInt32();
                         var keyLen = prefixLen + keyLengthWithoutPrefix;
                         key.Expand(keyLen);
-                        Array.Copy(prevKey.Buffer, prevKey.Offset, key.Buffer, key.Offset, prefixLen);
+                        Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
                         reader.ReadBlock(key.Slice(prefixLen));
                         prevKey = key;
                         var vFileId = reader.ReadVUInt32();
@@ -1282,7 +1282,7 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog.WriteBlock(key);
             if (valueSize != 0)
             {
-                if (valueSize > 0 && valueSize < MaxValueSizeInlineInMemory)
+                if (valueSize > 0 && valueSize <= MaxValueSizeInlineInMemory)
                 {
                     var zero = 0;
                     MemoryMarshal.Write(trueValue, ref zero);

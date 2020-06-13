@@ -997,7 +997,7 @@ namespace BTDB.KVDBLayer
                 {
                     var fullKey = new byte[prefix.Length + key.Length];
                     Array.Copy(prefix, 0, fullKey, 0, prefix.Length);
-                    Array.Copy(key.Buffer, key.Offset, fullKey, prefix.Length, key.Length);
+                    Array.Copy(key.Buffer!, key.Offset, fullKey, prefix.Length, key.Length);
                     prefix = Array.Empty<byte>();
                     key = ByteBuffer.NewAsync(fullKey);
                 }
@@ -1028,7 +1028,7 @@ namespace BTDB.KVDBLayer
             _writerWithTransactionLog.WriteBlock(key);
             if (valueSize != 0)
             {
-                if (valueSize > 0 && valueSize < MaxValueSizeInlineInMemory)
+                if (valueSize > 0 && valueSize <= MaxValueSizeInlineInMemory)
                 {
                     StoreValueInlineInMemory(value, out valueOfs, out valueSize);
                     valueFileId = 0;

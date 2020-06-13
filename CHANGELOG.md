@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+KeyValueDB: Value of length exactly 7 bytes are in memory again.
+
 ## 24.0.0
 
 ### Fixed
