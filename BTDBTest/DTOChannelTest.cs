@@ -11,9 +11,9 @@ namespace BTDBTest
 {
     public class DtoChannelTest : IDisposable
     {
-        PipedTwoChannels _pipedTwoChannels;
-        IDtoChannel _first;
-        IDtoChannel _second;
+        readonly PipedTwoChannels _pipedTwoChannels;
+        readonly IDtoChannel _first;
+        readonly IDtoChannel _second;
 
         public DtoChannelTest()
         {
@@ -59,17 +59,17 @@ namespace BTDBTest
 
         class IdentityUserV2
         {
-            public IdentityUserMetadata Metadata { get; set; }
+            public IdentityUserMetadata? Metadata { get; set; }
         }
 
         public class IdentityUserMetadata
         {
-            public Dictionary<ulong, Dictionary<string, UserMetadataValue>> Application { get; set; }
+            public Dictionary<ulong, Dictionary<string, UserMetadataValue>>? Application { get; set; }
         }
 
         public class UserMetadataValue
         {
-            public string StringValue { get; set; }
+            public string? StringValue { get; set; }
             public bool IsReadOnly { get; set; }
         }
 
@@ -110,10 +110,10 @@ namespace BTDBTest
         [Fact]
         public void CanSendIIndirect()
         {
-            File o1 = new File
+            var o1 = new File
             {
                 Id = 1,
-                RawData = new IIndirectImpl<ByteData>(new ByteData { Data = 2 })
+                RawData = new IndirectImpl<ByteData>(new ByteData { Data = 2 })
             };
             File o2 = null;
             _second.OnReceive.Subscribe(o => o2 = (File)o);
@@ -137,9 +137,9 @@ namespace BTDBTest
             public int Data { get; set; }
         }
 
-        class IIndirectImpl<T> : IIndirect<T> where T : class
+        class IndirectImpl<T> : IIndirect<T> where T : class
         {
-            public T Value { get; set; }
+            public T? Value { get; set; }
 
             [NotStored]
             public ulong Oid => throw new NotSupportedException();
@@ -147,12 +147,12 @@ namespace BTDBTest
             [NotStored]
             public object ValueAsObject => throw new NotSupportedException();
 
-            // required for deserialization
-            public IIndirectImpl()
+            // ReSharper disable once UnusedMember.Local required for deserialization
+            public IndirectImpl()
             {
             }
 
-            public IIndirectImpl(T value)
+            public IndirectImpl(T value)
             {
                 Value = value;
             }

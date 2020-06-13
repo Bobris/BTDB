@@ -13,8 +13,8 @@ namespace BTDB.EventStoreLayer
 {
     class TypeSerializersMapping : ITypeSerializersMapping, ITypeSerializersLightMapping, ITypeSerializersId2LoaderMapping
     {
-        const int ReservedBuildinTypes = 50;
-        StructList<InfoForType> _id2DescriptorMap;
+        const int ReservedBuiltInTypes = 50;
+        StructList<InfoForType?> _id2DescriptorMap;
         readonly Dictionary<object, InfoForType> _typeOrDescriptor2Info = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
         readonly TypeSerializers _typeSerializers;
         readonly ISymmetricCipher _symmetricCipher;
@@ -43,7 +43,7 @@ namespace BTDB.EventStoreLayer
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
                 _id2DescriptorMap.Add(infoForType);
             }
-            while (_id2DescriptorMap.Count < ReservedBuildinTypes) _id2DescriptorMap.Add(null);
+            while (_id2DescriptorMap.Count < ReservedBuiltInTypes) _id2DescriptorMap.Add(null);
         }
 
         public void LoadTypeDescriptors(AbstractBufferedReader reader)
@@ -79,27 +79,22 @@ namespace BTDB.EventStoreLayer
                 }
                 while (typeId >= _id2DescriptorMap.Count)
                     _id2DescriptorMap.Add(null);
-                if (_id2DescriptorMap[(int)typeId] == null)
-                    _id2DescriptorMap[(int)typeId] = new InfoForType { Id = (int)typeId, Descriptor = descriptor };
+                _id2DescriptorMap[(int) typeId] ??= new InfoForType {Id = (int) typeId, Descriptor = descriptor};
                 typeId = reader.ReadVUInt32();
             }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
-                _id2DescriptorMap[(int)i].Descriptor.MapNestedTypes(d =>
-                    {
-                        var placeHolderDescriptor = d as PlaceHolderDescriptor;
-                        return placeHolderDescriptor != null ? _id2DescriptorMap[(int)placeHolderDescriptor.TypeId].Descriptor : d;
-                    });
+                _id2DescriptorMap[i]!.Descriptor.MapNestedTypes(d => d is PlaceHolderDescriptor placeHolderDescriptor ? _id2DescriptorMap[(int)placeHolderDescriptor.TypeId]!.Descriptor : d);
             }
             // This additional cycle is needed to fill names of recursive structures
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
-                _id2DescriptorMap[(int)i].Descriptor.MapNestedTypes(d => d);
+                _id2DescriptorMap[i]!.Descriptor.MapNestedTypes(d => d);
             }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
             {
                 var infoForType = _id2DescriptorMap[(int)i];
-                var descriptor = _typeSerializers.MergeDescriptor(infoForType.Descriptor);
+                var descriptor = _typeSerializers.MergeDescriptor(infoForType!.Descriptor);
                 infoForType.Descriptor = descriptor;
                 _typeOrDescriptor2Info[descriptor] = infoForType;
             }
@@ -119,13 +114,11 @@ namespace BTDB.EventStoreLayer
 
         class PlaceHolderDescriptor : ITypeDescriptor
         {
-            readonly uint _typeId;
-
-            internal uint TypeId => _typeId;
+            internal uint TypeId { get; }
 
             public PlaceHolderDescriptor(uint typeId)
             {
-                _typeId = typeId;
+                TypeId = typeId;
             }
 
             bool IEquatable<ITypeDescriptor>.Equals(ITypeDescriptor other)
@@ -150,12 +143,12 @@ namespace BTDB.EventStoreLayer
                 throw new InvalidOperationException();
             }
 
-            Type ITypeDescriptor.GetPreferredType()
+            Type? ITypeDescriptor.GetPreferredType()
             {
                 return null;
             }
 
-            public Type GetPreferredType(Type targetType)
+            public Type? GetPreferredType(Type targetType)
             {
                 return null;
             }
@@ -217,7 +210,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public object LoadObject(AbstractBufferedReader reader)
+        public object? LoadObject(AbstractBufferedReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
@@ -231,10 +224,10 @@ namespace BTDB.EventStoreLayer
             return Load(typeId, reader, null);
         }
 
-        public object Load(uint typeId, AbstractBufferedReader reader, ITypeBinaryDeserializerContext context)
+        public object Load(uint typeId, AbstractBufferedReader reader, ITypeBinaryDeserializerContext? context)
         {
-            var infoForType = _id2DescriptorMap[(int)typeId];
-            if (infoForType.Loader == null)
+            var infoForType = _id2DescriptorMap[typeId];
+            if (infoForType!.Loader == null)
             {
                 infoForType.Loader = _typeSerializers.GetLoader(infoForType.Descriptor);
             }
@@ -263,7 +256,7 @@ namespace BTDB.EventStoreLayer
                 if (!_typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                 {
                     var descriptor = _typeSerializers.DescriptorOf(objType);
-                    if (!_typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
+                    if (!_typeOrDescriptor2Info.TryGetValue(descriptor!, out infoForType))
                     {
                         infoForType = new InfoForType { Id = 0, Descriptor = descriptor };
                     }
@@ -327,18 +320,16 @@ namespace BTDB.EventStoreLayer
                 ITypeDescriptor nestedDescriptor;
                 while ((nestedDescriptor = infoForType.Descriptor.NestedType(idx)) != null)
                 {
-                    int _;
                     if (!TryDescriptor2Id(nestedDescriptor, out _))
                         AddDescriptor(new InfoForType { Descriptor = nestedDescriptor });
                     idx++;
                 }
             }
 
-            uint Descriptor2Id(ITypeDescriptor descriptor)
+            uint Descriptor2Id(ITypeDescriptor? descriptor)
             {
                 if (descriptor == null) return 0;
-                InfoForType infoForType;
-                if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType))
+                if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out var infoForType))
                     return (uint)infoForType.Id;
                 if (_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
                     return (uint)infoForType.Id;
@@ -347,8 +338,7 @@ namespace BTDB.EventStoreLayer
 
             bool TryDescriptor2Id(ITypeDescriptor descriptor, out int typeId)
             {
-                InfoForType infoForType;
-                if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType) ||
+                if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out var infoForType) ||
                     _typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
                 {
                     typeId = infoForType.Id;
@@ -380,7 +370,7 @@ namespace BTDB.EventStoreLayer
                         !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                     {
                         var descriptor = _typeSerializers.DescriptorOf(objType);
-                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType))
+                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor!, out infoForType))
                         {
                             _typeOrDescriptor2InfoMap[objType] = infoForType;
                         }
@@ -436,7 +426,7 @@ namespace BTDB.EventStoreLayer
             {
                 if (SomeTypeStored)
                 {
-                    for (var i = _id2InfoMap.Count - 1; i >= 0; i--)
+                    for (var i = (int)_id2InfoMap.Count - 1; i >= 0; i--)
                     {
                         writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
                         _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, writer, Descriptor2Id);
@@ -465,7 +455,7 @@ namespace BTDB.EventStoreLayer
                     if (!_typeOrDescriptor2InfoMap.TryGetValue(objType, out infoForType) && !_typeSerializersMapping._typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                     {
                         var descriptor = _typeSerializers.DescriptorOf(objType);
-                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor, out infoForType))
+                        if (_typeOrDescriptor2InfoMap.TryGetValue(descriptor!, out infoForType))
                         {
                             _typeOrDescriptor2InfoMap[objType] = infoForType;
                         }
@@ -597,8 +587,7 @@ namespace BTDB.EventStoreLayer
         public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
         {
             InfoForType infoForType;
-            var iKnowDescriptor = obj as IKnowDescriptor;
-            if (iKnowDescriptor != null)
+            if (obj is IKnowDescriptor iKnowDescriptor)
             {
                 var descriptor = iKnowDescriptor.GetDescriptor();
                 _typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType);
@@ -609,7 +598,7 @@ namespace BTDB.EventStoreLayer
                 if (!_typeOrDescriptor2Info.TryGetValue(objType, out infoForType))
                 {
                     var descriptor = _typeSerializers.DescriptorOf(objType);
-                    if (_typeOrDescriptor2Info.TryGetValue(descriptor, out infoForType))
+                    if (_typeOrDescriptor2Info.TryGetValue(descriptor!, out infoForType))
                     {
                         _typeOrDescriptor2Info[objType] = infoForType;
                     }
