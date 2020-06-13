@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using BTDB.Collections;
 
 namespace BTDB.IL.Caching
 {
@@ -12,15 +13,15 @@ namespace BTDB.IL.Caching
         readonly string _name;
         readonly Type _baseType;
         readonly Type[] _interfaces;
-        readonly List<IReplay> _insts = new List<IReplay>();
-        Type TrueContent { get; set; }
+        StructList<IReplay> _instructions;
+        Type? TrueContent { get; set; }
 
         interface IReplay
         {
             void ReplayTo(IILDynamicType target);
             void FinishReplay(IILDynamicType target);
             void FreeTemps();
-            bool Equals(IReplay other);
+            bool Equals(IReplay? other);
             object TrueContent();
         }
 
@@ -35,8 +36,8 @@ namespace BTDB.IL.Caching
         public IILMethod DefineMethod(string name, Type returns, Type[] parameters,
             MethodAttributes methodAttributes = MethodAttributes.Public)
         {
-            var res = new Method(_insts.Count, name, returns, parameters, methodAttributes);
-            _insts.Add(res);
+            var res = new Method((int)_instructions.Count, name, returns, parameters, methodAttributes);
+            _instructions.Add(res);
             return res;
         }
 
@@ -49,7 +50,7 @@ namespace BTDB.IL.Caching
             readonly MethodAttributes _methodAttributes;
             readonly CachingILGen _ilGen = new CachingILGen();
             int _expectedLength = -1;
-            IILMethodPrivate _trueContent;
+            IILMethodPrivate? _trueContent;
 
             public Method(int id, string name, Type returns, Type[] parameters, MethodAttributes methodAttributes)
             {
@@ -68,7 +69,7 @@ namespace BTDB.IL.Caching
 
             public void FinishReplay(IILDynamicType target)
             {
-                _ilGen.ReplayTo(_trueContent.Generator);
+                _ilGen.ReplayTo(_trueContent!.Generator);
             }
 
             public void FreeTemps()
@@ -77,10 +78,9 @@ namespace BTDB.IL.Caching
                 _ilGen.FreeTemps();
             }
 
-            public bool Equals(IReplay other)
+            public bool Equals(IReplay? other)
             {
-                var v = other as Method;
-                if (v == null) return false;
+                if (!(other is Method v)) return false;
                 return _id == v._id
                     && _name == v._name
                     && _returns == v._returns
@@ -107,7 +107,7 @@ namespace BTDB.IL.Caching
 
             public object TrueContent()
             {
-                return _trueContent;
+                return _trueContent!;
             }
 
             public void ExpectedLength(int length)
@@ -117,7 +117,7 @@ namespace BTDB.IL.Caching
 
             public IILGen Generator => _ilGen;
 
-            public MethodInfo TrueMethodInfo => _trueContent.TrueMethodInfo;
+            public MethodInfo TrueMethodInfo => _trueContent!.TrueMethodInfo;
 
             public Type ReturnType => _returns;
 
@@ -126,8 +126,8 @@ namespace BTDB.IL.Caching
 
         public IILField DefineField(string name, Type type, FieldAttributes fieldAttributes)
         {
-            var res = new Field(_insts.Count, name, type, fieldAttributes);
-            _insts.Add(res);
+            var res = new Field((int)_instructions.Count, name, type, fieldAttributes);
+            _instructions.Add(res);
             return res;
         }
 
@@ -137,7 +137,7 @@ namespace BTDB.IL.Caching
             readonly string _name;
             readonly Type _type;
             readonly FieldAttributes _fieldAttributes;
-            IILFieldPrivate _trueContent;
+            IILFieldPrivate? _trueContent;
 
             public Field(int id, string name, Type type, FieldAttributes fieldAttributes)
             {
@@ -157,10 +157,9 @@ namespace BTDB.IL.Caching
                 _trueContent = null;
             }
 
-            public bool Equals(IReplay other)
+            public bool Equals(IReplay? other)
             {
-                var v = other as Field;
-                if (v == null) return false;
+                if (!(other is Field v)) return false;
                 return _id == v._id && _name == v._name && _type == v._type && _fieldAttributes == v._fieldAttributes;
             }
 
@@ -182,7 +181,7 @@ namespace BTDB.IL.Caching
 
             public object TrueContent()
             {
-                return _trueContent;
+                return _trueContent!;
             }
 
             public Type FieldType => _type;
@@ -191,13 +190,13 @@ namespace BTDB.IL.Caching
             {
             }
 
-            public FieldBuilder TrueField => _trueContent.TrueField;
+            public FieldBuilder TrueField => _trueContent!.TrueField;
         }
 
         public IILEvent DefineEvent(string name, EventAttributes eventAttributes, Type type)
         {
-            var res = new Event(_insts.Count, name, eventAttributes, type);
-            _insts.Add(res);
+            var res = new Event((int)_instructions.Count, name, eventAttributes, type);
+            _instructions.Add(res);
             return res;
         }
 
@@ -207,9 +206,9 @@ namespace BTDB.IL.Caching
             readonly string _name;
             readonly EventAttributes _eventAttributes;
             readonly Type _type;
-            IILEvent _trueContent;
-            IReplay _addOnMethod;
-            IReplay _removeOnMethod;
+            IILEvent? _trueContent;
+            IReplay? _addOnMethod;
+            IReplay? _removeOnMethod;
 
             public Event(int id, string name, EventAttributes eventAttributes, Type type)
             {
@@ -229,10 +228,9 @@ namespace BTDB.IL.Caching
                 _trueContent = null;
             }
 
-            public bool Equals(IReplay other)
+            public bool Equals(IReplay? other)
             {
-                var v = other as Event;
-                if (v == null) return false;
+                if (!(other is Event v)) return false;
                 return _id == v._id && _name == v._name && _eventAttributes == v._eventAttributes && _type == v._type;
             }
 
@@ -254,7 +252,7 @@ namespace BTDB.IL.Caching
 
             public object TrueContent()
             {
-                return _trueContent;
+                return _trueContent!;
             }
 
             public void SetAddOnMethod(IILMethod method)
@@ -269,15 +267,15 @@ namespace BTDB.IL.Caching
 
             public void FinishReplay(IILDynamicType target)
             {
-                _trueContent.SetAddOnMethod((IILMethod)_addOnMethod.TrueContent());
-                _trueContent.SetRemoveOnMethod((IILMethod)_removeOnMethod.TrueContent());
+                _trueContent!.SetAddOnMethod((IILMethod)_addOnMethod!.TrueContent());
+                _trueContent.SetRemoveOnMethod((IILMethod)_removeOnMethod!.TrueContent());
             }
         }
 
         public IILMethod DefineConstructor(Type[] parameters)
         {
-            var res = new Constructor(_insts.Count, parameters);
-            _insts.Add(res);
+            var res = new Constructor((int)_instructions.Count, parameters);
+            _instructions.Add(res);
             return res;
         }
 
@@ -287,7 +285,7 @@ namespace BTDB.IL.Caching
             readonly Type[] _parameters;
             readonly CachingILGen _ilGen = new CachingILGen();
             int _expectedLength = -1;
-            IILMethod _trueContent;
+            IILMethod? _trueContent;
 
             public Constructor(int id, Type[] parameters)
             {
@@ -303,7 +301,7 @@ namespace BTDB.IL.Caching
 
             public void FinishReplay(IILDynamicType target)
             {
-                _ilGen.ReplayTo(_trueContent.Generator);
+                _ilGen.ReplayTo(_trueContent!.Generator);
             }
 
             public void FreeTemps()
@@ -312,10 +310,9 @@ namespace BTDB.IL.Caching
                 _ilGen.FreeTemps();
             }
 
-            public bool Equals(IReplay other)
+            public bool Equals(IReplay? other)
             {
-                var v = other as Constructor;
-                if (v == null) return false;
+                if (!(other is Constructor v)) return false;
                 return _id == v._id && _parameters.SequenceEqual(v._parameters) && _ilGen.Equals(v._ilGen);
             }
 
@@ -331,7 +328,7 @@ namespace BTDB.IL.Caching
 
             public object TrueContent()
             {
-                return _trueContent;
+                return _trueContent!;
             }
 
             public void ExpectedLength(int length)
@@ -344,7 +341,7 @@ namespace BTDB.IL.Caching
 
         public void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod)
         {
-            _insts.Add(new MethodOverride(_insts.Count, methodBuilder, baseMethod));
+            _instructions.Add(new MethodOverride((int)_instructions.Count, methodBuilder, baseMethod));
         }
 
         class MethodOverride : IReplay
@@ -373,10 +370,9 @@ namespace BTDB.IL.Caching
             {
             }
 
-            public bool Equals(IReplay other)
+            public bool Equals(IReplay? other)
             {
-                var v = other as MethodOverride;
-                if (v == null) return false;
+                if (!(other is MethodOverride v)) return false;
                 return _id == v._id && _methodBuilder.Equals(v._methodBuilder) && _baseMethod == v._baseMethod;
             }
 
@@ -404,9 +400,18 @@ namespace BTDB.IL.Caching
                 if (item.TrueContent == null)
                 {
                     var typeGen = _cachingIlBuilder.Wrapping.NewType(_name, _baseType, _interfaces);
-                    _insts.ForEach(r => r.ReplayTo(typeGen));
-                    _insts.ForEach(r => r.FinishReplay(typeGen));
-                    _insts.ForEach(r => r.FreeTemps());
+                    foreach (var replay in _instructions)
+                    {
+                        replay.ReplayTo(typeGen);
+                    }
+                    foreach (var replay in _instructions)
+                    {
+                        replay.FinishReplay(typeGen);
+                    }
+                    foreach (var replay in _instructions)
+                    {
+                        replay.FreeTemps();
+                    }
                     item.TrueContent = typeGen.CreateType();
                 }
                 return item.TrueContent;
@@ -415,26 +420,25 @@ namespace BTDB.IL.Caching
 
         public override int GetHashCode()
         {
-            return _name.GetHashCode() * 33 + _insts.Count;
+            // ReSharper disable once NonReadonlyMemberInGetHashCode
+            return _name.GetHashCode() * 33 + (int)_instructions.Count;
         }
 
         public override bool Equals(object obj)
         {
-            var v = obj as CachingILDynamicType;
-            if (v == null) return false;
+            if (!(obj is CachingILDynamicType v)) return false;
             return _name == v._name && _baseType == v._baseType && _interfaces.SequenceEqual(v._interfaces) &&
-                   _insts.SequenceEqual(v._insts, ReplayComparer.Instance);
+                   _instructions.SequenceEqual(v._instructions, ReplayComparer.Instance);
         }
 
         class ReplayComparer : IEqualityComparer<IReplay>
         {
             internal static readonly ReplayComparer Instance = new ReplayComparer();
 
-            public bool Equals(IReplay x, IReplay y)
+            public bool Equals(IReplay? x, IReplay? y)
             {
-                if (x == y) return true;
-                if (x == null) return false;
-                return x.Equals(y);
+                if (ReferenceEquals(x, y)) return true;
+                return x != null && x.Equals(y);
             }
 
             public int GetHashCode(IReplay obj)

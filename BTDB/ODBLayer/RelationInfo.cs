@@ -467,19 +467,17 @@ namespace BTDB.ODBLayer
         void CheckSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info)
         {
             var count = GetRelationCount(tr);
-            List<KeyValuePair<uint, SecondaryKeyInfo>> secKeysToAdd = null;
+            var secKeysToAdd = new StructList<KeyValuePair<uint, SecondaryKeyInfo>>();
             foreach (var sk in info.SecondaryKeys)
             {
                 if (WrongCountInSecondaryKey(tr.KeyValueDBTransaction, count, sk.Key))
                 {
                     DeleteSecondaryKey(tr.KeyValueDBTransaction, sk.Key);
-                    if (secKeysToAdd == null)
-                        secKeysToAdd = new List<KeyValuePair<uint, SecondaryKeyInfo>>();
                     secKeysToAdd.Add(sk);
                 }
             }
 
-            if (secKeysToAdd?.Count > 0)
+            if (secKeysToAdd.Count > 0)
                 CalculateSecondaryKey(tr, secKeysToAdd);
         }
 
@@ -499,7 +497,7 @@ namespace BTDB.ODBLayer
                     DeleteSecondaryKey(tr.KeyValueDBTransaction, prevIdx);
             }
 
-            var secKeysToAdd = new List<KeyValuePair<uint, SecondaryKeyInfo>>();
+            var secKeysToAdd = new StructList<KeyValuePair<uint, SecondaryKeyInfo>>();
             foreach (var sk in info.SecondaryKeys)
             {
                 if (!previousInfo.SecondaryKeys.ContainsKey(sk.Key))
@@ -553,7 +551,7 @@ namespace BTDB.ODBLayer
             keyValueTr.SetKeyPrefix(writer.Data);
         }
 
-        void CalculateSecondaryKey(IInternalObjectDBTransaction tr, IList<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
+        void CalculateSecondaryKey(IInternalObjectDBTransaction tr, ReadOnlySpan<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
         {
             var keyWriter = new ByteBufferWriter();
 
@@ -562,9 +560,9 @@ namespace BTDB.ODBLayer
             var enumerator = (IEnumerator) Activator.CreateInstance(enumeratorType, tr, this,
                 keyWriter.GetDataAndRewind().ToAsyncSafe(), new SimpleModificationCounter(), 0);
 
-            var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Count];
+            var keySavers = new Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object>[indexes.Length];
 
-            for (var i = 0; i < indexes.Count; i++)
+            for (var i = 0; i < indexes.Length; i++)
             {
                 keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
                     $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
@@ -577,7 +575,7 @@ namespace BTDB.ODBLayer
                 tr.TransactionProtector.Start();
                 tr.KeyValueDBTransaction.SetKeyPrefix(PrefixSecondary);
 
-                for (var i = 0; i < indexes.Count; i++)
+                for (var i = 0; i < indexes.Length; i++)
                 {
                     keyWriter.WriteUInt8((byte)indexes[i].Key);
                     keySavers[i](tr, keyWriter, obj);
