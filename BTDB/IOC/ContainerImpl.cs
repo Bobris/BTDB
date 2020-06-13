@@ -19,7 +19,7 @@ namespace BTDB.IOC
         public object[] Instances;
         // ReSharper restore MemberCanBePrivate.Global
 
-        internal ContainerImpl(IEnumerable<IRegistration> registrations)
+        internal ContainerImpl(ReadOnlySpan<IRegistration> registrations)
         {
             var context = new ContanerRegistrationContext(this, Registrations);
             foreach (var registration in registrations)
@@ -27,7 +27,7 @@ namespace BTDB.IOC
                 ((IContanerRegistration)registration).Register(context);
             }
             SingletonLocks = new object[context.SingletonCount];
-            for (int i = 0; i < context.SingletonCount; i++)
+            for (var i = 0; i < context.SingletonCount; i++)
             {
                 SingletonLocks[i] = new object();
             }

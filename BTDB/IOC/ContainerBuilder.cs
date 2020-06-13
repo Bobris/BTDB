@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BTDB.Collections;
 
 namespace BTDB.IOC
 {
     public class ContainerBuilder
     {
-        readonly List<IRegistration> _registrations = new List<IRegistration>();
+        StructList<IRegistration> _registrations;
 
         public IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType(Type type)
         {
@@ -52,7 +53,7 @@ namespace BTDB.IOC
 
         public IContainer Build()
         {
-            return new ContainerImpl(_registrations);
+            return new ContainerImpl(_registrations.AsReadOnlySpan());
         }
 
     }
