@@ -100,7 +100,7 @@ namespace BTDB.IOC
             var local = regIL.GenMain(this);
             if (local != null)
             {
-                IL.Ldloc(local);
+                IL!.Ldloc(local);
             }
         }
 
@@ -137,14 +137,14 @@ namespace BTDB.IOC
                 var local = parsLocals[i];
                 if (local != null)
                 {
-                    IL.Ldloc(local);
+                    IL!.Ldloc(local);
                 }
                 else
                 {
                     local = regs[i].GenMain(this);
                     if (local != null)
                     {
-                        IL.Ldloc(local);
+                        IL!.Ldloc(local);
                     }
                 }
 
@@ -249,7 +249,7 @@ namespace BTDB.IOC
             }
         }
 
-        internal void GatherNeeds(ICRegILGen regILGen, HashSet<Tuple<IBuildContext, ICRegILGen>> processed)
+        void GatherNeeds(ICRegILGen regILGen, HashSet<Tuple<IBuildContext, ICRegILGen>> processed)
         {
             var processingContext = new Tuple<IBuildContext, ICRegILGen>(_buildContext, regILGen);
             if (processed.Contains(processingContext)) return;
@@ -283,7 +283,7 @@ namespace BTDB.IOC
                     if (reg == null && !need.ForcedKey)
                         reg = ResolveNeedBy(need.ClrType, null);
                     if (reg == null && need.Optional)
-                        reg = new OptionalImpl(need.OptionalValue, need.ClrType);
+                        reg = new OptionalImpl(need.OptionalValue!, need.ClrType);
                     if (reg == null)
                     {
                         throw new ArgumentException(
@@ -368,11 +368,6 @@ namespace BTDB.IOC
             {
                 yield break;
             }
-
-            public INeed PreResolveNeed(IGenerationContext context, INeed need)
-            {
-                return need;
-            }
         }
 
         ICRegILGen AddConstant(object? obj, Type type)
@@ -418,14 +413,14 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var consts = ((GenerationContext) context)._constants;
-                if (consts.Count == 1)
+                var constants = ((GenerationContext) context)._constants;
+                if (constants.Count == 1)
                 {
                     context.IL.Ldarg(0);
                     return null;
                 }
 
-                var idx = consts.FindIndex(t => ReferenceEquals(t, _tuple));
+                var idx = constants.FindIndex(t => ReferenceEquals(t, _tuple));
                 context.IL.Ldarg(0).LdcI4(idx).LdelemRef().Castclass(_tuple.Item2);
                 return null;
             }
@@ -433,11 +428,6 @@ namespace BTDB.IOC
             public IEnumerable<INeed> GetNeeds(IGenerationContext context)
             {
                 yield break;
-            }
-
-            public INeed PreResolveNeed(IGenerationContext context, INeed need)
-            {
-                return need;
             }
         }
 
@@ -466,19 +456,14 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var consts = ((GenerationContext) context)._constants;
-                context.IL.Ldarg((ushort) (_idx + (consts.Count > 0 ? 1 : 0)));
+                var constants = ((GenerationContext) context)._constants;
+                context.IL.Ldarg((ushort) (_idx + (constants.Count > 0 ? 1 : 0)));
                 return null;
             }
 
             public IEnumerable<INeed> GetNeeds(IGenerationContext context)
             {
                 yield break;
-            }
-
-            public INeed PreResolveNeed(IGenerationContext context, INeed need)
-            {
-                return need;
             }
         }
 
