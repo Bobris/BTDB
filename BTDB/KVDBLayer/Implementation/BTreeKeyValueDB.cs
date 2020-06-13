@@ -43,7 +43,7 @@ namespace BTDB.KVDBLayer
         IFileCollectionFile? _fileWithTransactionLog;
         AbstractBufferedWriter? _writerWithTransactionLog;
         static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
-        public long MaxTrLogFileSize { get; }
+        public long MaxTrLogFileSize { get; set; }
         public ulong CompactorReadBytesPerSecondLimit { get; }
         public ulong CompactorWriteBytesPerSecondLimit { get; }
 
@@ -111,12 +111,12 @@ namespace BTDB.KVDBLayer
             return DistanceFromLastKeyIndex((IRootNode) root);
         }
 
-        List<KeyIndexInfo> IKeyValueDBInternal.BuildKeyIndexInfos()
+        Span<KeyIndexInfo> IKeyValueDBInternal.BuildKeyIndexInfos()
         {
             return BuildKeyIndexInfos();
         }
 
-        uint IKeyValueDBInternal.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
+        uint IKeyValueDBInternal.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes)
         {
             return CalculatePreserveKeyIndexKeyFromKeyIndexInfos(keyIndexes);
         }
@@ -131,9 +131,9 @@ namespace BTDB.KVDBLayer
             ((IRootNode) root).ValuesIterate(visit);
         }
 
-        internal List<KeyIndexInfo> BuildKeyIndexInfos()
+        internal Span<KeyIndexInfo> BuildKeyIndexInfos()
         {
-            var keyIndexes = new List<KeyIndexInfo>();
+            var keyIndexes = new StructList<KeyIndexInfo>();
             foreach (var fileInfo in _fileCollection.FileInfos)
             {
                 var keyIndex = fileInfo.Value as IKeyIndex;
@@ -143,8 +143,8 @@ namespace BTDB.KVDBLayer
             }
 
             if (keyIndexes.Count > 1)
-                keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Generation, r.Generation));
-            return keyIndexes;
+                keyIndexes.Sort(Comparer<KeyIndexInfo>.Create((l, r) => Comparer<long>.Default.Compare(l.Generation, r.Generation)));
+            return keyIndexes.AsSpan();
         }
 
         void LoadInfoAboutFiles(ulong? openUpToCommitUlong)
@@ -169,9 +169,9 @@ namespace BTDB.KVDBLayer
             var hasKeyIndex = false;
             try
             {
-                while (keyIndexes.Count > 0)
+                while (keyIndexes.Length > 0)
                 {
-                    var nearKeyIndex = keyIndexes.Count - 1;
+                    var nearKeyIndex = keyIndexes.Length - 1;
                     if (openUpToCommitUlong.HasValue)
                     {
                         while (nearKeyIndex >= 0)
@@ -192,7 +192,8 @@ namespace BTDB.KVDBLayer
                     }
 
                     var keyIndex = keyIndexes[nearKeyIndex];
-                    keyIndexes.RemoveAt(nearKeyIndex);
+                    keyIndexes.Slice(nearKeyIndex + 1).CopyTo(keyIndexes.Slice(nearKeyIndex));
+                    keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                     var info = (IKeyIndex) _fileCollection.FileInfoByIdx(keyIndex.Key);
                     _nextRoot = _lastCommitted.CreateWritableTransaction();
                     try
@@ -222,10 +223,10 @@ namespace BTDB.KVDBLayer
                     _fileCollection.MakeIdxUnknown(keyIndex.Key);
                 }
 
-                while (keyIndexes.Count > 0)
+                while (keyIndexes.Length > 0)
                 {
                     var keyIndex = keyIndexes[^1];
-                    keyIndexes.RemoveAt(keyIndexes.Count - 1);
+                    keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                     if (keyIndex.Key != preserveKeyIndexKey)
                         _fileCollection.MakeIdxUnknown(keyIndex.Key);
                 }
@@ -299,13 +300,13 @@ namespace BTDB.KVDBLayer
             return preserveKeyIndexKey < uint.MaxValue ? GetGeneration(preserveKeyIndexKey) : long.MaxValue;
         }
 
-        internal uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
+        internal uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes)
         {
             var preserveKeyIndexKey = uint.MaxValue;
             var preserveHistoryUpToCommitUlong = (ulong) Interlocked.Read(ref _preserveHistoryUpToCommitUlong);
             if (preserveHistoryUpToCommitUlong != ulong.MaxValue)
             {
-                var nearKeyIndex = keyIndexes.Count - 1;
+                var nearKeyIndex = keyIndexes.Length - 1;
                 while (nearKeyIndex >= 0)
                 {
                     if (keyIndexes[nearKeyIndex].CommitUlong <= preserveHistoryUpToCommitUlong)

@@ -8,7 +8,7 @@ namespace BTDB.KVDBLayer
     class KeyValueDBTransaction : IKeyValueDBTransaction
     {
         readonly KeyValueDB _keyValueDB;
-        IBTreeRootNode _btreeRoot;
+        IBTreeRootNode? _btreeRoot;
         readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
         byte[] _prefix;
         bool _writing;
@@ -41,7 +41,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        internal IBTreeRootNode BtreeRoot => _btreeRoot;
+        internal IBTreeRootNode? BtreeRoot => _btreeRoot;
 
         public void SetKeyPrefix(ByteBuffer prefix)
         {
@@ -66,7 +66,7 @@ namespace BTDB.KVDBLayer
         public bool FindPreviousKey()
         {
             if (_keyIndex < 0) return FindLastKey();
-            if (BtreeRoot.FindPreviousKey(_stack))
+            if (_btreeRoot!.FindPreviousKey(_stack))
             {
                 if (CheckPrefixIn(GetCurrentKeyFromStack()))
                 {
@@ -81,7 +81,7 @@ namespace BTDB.KVDBLayer
         public bool FindNextKey()
         {
             if (_keyIndex < 0) return FindFirstKey();
-            if (BtreeRoot.FindNextKey(_stack))
+            if (_btreeRoot!.FindNextKey(_stack))
             {
                 if (CheckPrefixIn(GetCurrentKeyFromStack()))
                 {
@@ -95,7 +95,7 @@ namespace BTDB.KVDBLayer
 
         public FindResult Find(ByteBuffer key)
         {
-            return BtreeRoot.FindKey(_stack, out _keyIndex, _prefix, key);
+            return _btreeRoot!.FindKey(_stack, out _keyIndex, _prefix, key);
         }
 
         public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
@@ -106,10 +106,7 @@ namespace BTDB.KVDBLayer
         public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
         {
             MakeWritable();
-            uint valueFileId;
-            uint valueOfs;
-            int valueSize;
-            _keyValueDB.WriteCreateOrUpdateCommand(_prefix, key, value, out valueFileId, out valueOfs, out valueSize);
+            _keyValueDB.WriteCreateOrUpdateCommand(_prefix, key, value, out var valueFileId, out var valueOfs, out var valueSize);
             var ctx = new CreateOrUpdateCtx
             {
                 KeyPrefix = _prefix,
@@ -119,7 +116,7 @@ namespace BTDB.KVDBLayer
                 ValueSize = valueSize,
                 Stack = _stack
             };
-            BtreeRoot.CreateOrUpdate(ctx);
+            _btreeRoot!.CreateOrUpdate(ctx);
             _keyIndex = ctx.KeyIndex;
             if (ctx.Created && _prefixKeyCount >= 0) _prefixKeyCount++;
             return ctx.Created;
@@ -139,8 +136,8 @@ namespace BTDB.KVDBLayer
             {
                 throw new BTDBTransactionRetryException("Cannot write from readOnly transaction");
             }
-            var oldBTreeRoot = BtreeRoot;
-            _btreeRoot = _keyValueDB.MakeWritableTransaction(this, oldBTreeRoot);
+            var oldBTreeRoot = _btreeRoot;
+            _btreeRoot = _keyValueDB.MakeWritableTransaction(this, oldBTreeRoot!);
             _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
             _keyValueDB.FinishedUsingBTreeRoot(oldBTreeRoot);
             _btreeRoot.DescriptionForLeaks = _descriptionForLeaks;
@@ -154,7 +151,7 @@ namespace BTDB.KVDBLayer
             if (_prefixKeyCount >= 0) return _prefixKeyCount;
             if (_prefix.Length == 0)
             {
-                _prefixKeyCount = BtreeRoot.CalcKeyCount();
+                _prefixKeyCount = _btreeRoot!.CalcKeyCount();
                 return _prefixKeyCount;
             }
             CalcPrefixKeyStart();
@@ -163,7 +160,7 @@ namespace BTDB.KVDBLayer
                 _prefixKeyCount = 0;
                 return 0;
             }
-            _prefixKeyCount = BtreeRoot.FindLastWithPrefix(_prefix) - _prefixKeyStart + 1;
+            _prefixKeyCount = _btreeRoot!.FindLastWithPrefix(_prefix) - _prefixKeyStart + 1;
             return _prefixKeyCount;
         }
 
@@ -177,7 +174,7 @@ namespace BTDB.KVDBLayer
         void CalcPrefixKeyStart()
         {
             if (_prefixKeyStart >= 0) return;
-            if (BtreeRoot.FindKey(new List<NodeIdxPair>(), out _prefixKeyStart, _prefix, ByteBuffer.NewEmpty()) == FindResult.NotFound)
+            if (_btreeRoot!.FindKey(new List<NodeIdxPair>(), out _prefixKeyStart, _prefix, ByteBuffer.NewEmpty()) == FindResult.NotFound)
             {
                 _prefixKeyStart = -1;
             }
@@ -192,12 +189,12 @@ namespace BTDB.KVDBLayer
                 return false;
             }
             _keyIndex = index + _prefixKeyStart;
-            if (_keyIndex >= BtreeRoot.CalcKeyCount())
+            if (_keyIndex >= _btreeRoot!.CalcKeyCount())
             {
                 InvalidateCurrentKey();
                 return false;
             }
-            BtreeRoot.FillStackByIndex(_stack, _keyIndex);
+            _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
             if (_prefixKeyCount >= 0)
                 return true;
             var key = GetCurrentKeyFromStack();
@@ -216,7 +213,7 @@ namespace BTDB.KVDBLayer
 
         ByteBuffer GetCurrentKeyFromStack()
         {
-            var nodeIdxPair = _stack[_stack.Count - 1];
+            var nodeIdxPair = _stack[^1];
             return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
         }
 
@@ -247,7 +244,7 @@ namespace BTDB.KVDBLayer
         public ByteBuffer GetValue()
         {
             if (!IsValidKey()) return ByteBuffer.NewEmpty();
-            var nodeIdxPair = _stack[_stack.Count - 1];
+            var nodeIdxPair = _stack[^1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
             try
             {
@@ -256,9 +253,9 @@ namespace BTDB.KVDBLayer
             catch (BTDBException ex)
             {
                 var oldestRoot = (IBTreeRootNode)_keyValueDB.ReferenceAndGetOldestRoot();
-                var lastCommited = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
+                var lastCommitted = (IBTreeRootNode)_keyValueDB.ReferenceAndGetLastCommitted();
                 // no need to dereference roots because we know it is managed
-                throw new BTDBException($"GetValue failed in TrId:{BtreeRoot.TransactionId},TRL:{BtreeRoot.TrLogFileId},Ofs:{BtreeRoot.TrLogOffset},ComUlong:{BtreeRoot.CommitUlong} and LastTrId:{lastCommited.TransactionId},ComUlong:{lastCommited.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
+                throw new BTDBException($"GetValue failed in TrId:{_btreeRoot!.TransactionId},TRL:{_btreeRoot!.TrLogFileId},Ofs:{_btreeRoot!.TrLogOffset},ComUlong:{_btreeRoot!.CommitUlong} and LastTrId:{lastCommitted.TransactionId},ComUlong:{lastCommitted.CommitUlong} OldestTrId:{oldestRoot.TransactionId},TRL:{oldestRoot.TrLogFileId},ComUlong:{oldestRoot.CommitUlong} innerMessage:{ex.Message}", ex);
             }
         }
 
@@ -283,9 +280,9 @@ namespace BTDB.KVDBLayer
             if (_keyIndex != keyIndexBackup)
             {
                 _keyIndex = keyIndexBackup;
-                BtreeRoot.FillStackByIndex(_stack, _keyIndex);
+                _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
             }
-            var nodeIdxPair = _stack[_stack.Count - 1];
+            var nodeIdxPair = _stack[^1];
             var memberValue = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
             var memberKey = ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);
             _keyValueDB.WriteCreateOrUpdateCommand(Array.Empty<byte>(), memberKey, value, out memberValue.ValueFileId, out memberValue.ValueOfs, out memberValue.ValueSize);
@@ -299,9 +296,9 @@ namespace BTDB.KVDBLayer
             MakeWritable();
             InvalidateCurrentKey();
             _prefixKeyCount--;
-            BtreeRoot.FillStackByIndex(_stack, keyIndex);
+            _btreeRoot!.FillStackByIndex(_stack, keyIndex);
             _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
-            BtreeRoot.EraseRange(keyIndex, keyIndex);
+            _btreeRoot!.EraseRange(keyIndex, keyIndex);
         }
 
         public void EraseAll()
@@ -319,7 +316,7 @@ namespace BTDB.KVDBLayer
             lastKeyIndex += _prefixKeyStart;
             InvalidateCurrentKey();
             _prefixKeyCount -= lastKeyIndex - firstKeyIndex + 1;
-            BtreeRoot.FillStackByIndex(_stack, firstKeyIndex);
+            _btreeRoot!.FillStackByIndex(_stack, firstKeyIndex);
             if (firstKeyIndex == lastKeyIndex)
             {
                 _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
@@ -327,10 +324,10 @@ namespace BTDB.KVDBLayer
             else
             {
                 var firstKey = GetCurrentKeyFromStack();
-                BtreeRoot.FillStackByIndex(_stack, lastKeyIndex);
+                _btreeRoot!.FillStackByIndex(_stack, lastKeyIndex);
                 _keyValueDB.WriteEraseRangeCommand(firstKey, GetCurrentKeyFromStack());
             }
-            BtreeRoot.EraseRange(firstKeyIndex, lastKeyIndex);
+            _btreeRoot!.EraseRange(firstKeyIndex, lastKeyIndex);
         }
 
         public bool IsWriting()
@@ -345,15 +342,15 @@ namespace BTDB.KVDBLayer
 
         public ulong GetCommitUlong()
         {
-            return BtreeRoot.CommitUlong;
+            return _btreeRoot!.CommitUlong;
         }
 
         public void SetCommitUlong(ulong value)
         {
-            if (BtreeRoot.CommitUlong != value)
+            if (_btreeRoot!.CommitUlong != value)
             {
                 MakeWritable();
-                BtreeRoot.CommitUlong = value;
+                _btreeRoot!.CommitUlong = value;
             }
         }
 
@@ -365,10 +362,10 @@ namespace BTDB.KVDBLayer
 
         public void Commit()
         {
-            if (BtreeRoot == null) throw new BTDBException("Transaction already commited or disposed");
+            if (BtreeRoot == null) throw new BTDBException("Transaction already committed or disposed");
             InvalidateCurrentKey();
             var currentBtreeRoot = _btreeRoot;
-            _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot);
+            _keyValueDB.FinishedUsingBTreeRoot(_btreeRoot!);
             _btreeRoot = null;
             GC.SuppressFinalize(this);
             if (_preapprovedWriting)
@@ -378,7 +375,7 @@ namespace BTDB.KVDBLayer
             }
             else if (_writing)
             {
-                _keyValueDB.CommitWritingTransaction(currentBtreeRoot, _temporaryCloseTransactionLog);
+                _keyValueDB.CommitWritingTransaction(currentBtreeRoot!, _temporaryCloseTransactionLog);
                 _writing = false;
             }
         }
@@ -399,13 +396,13 @@ namespace BTDB.KVDBLayer
 
         public long GetTransactionNumber()
         {
-            return _btreeRoot.TransactionId;
+            return _btreeRoot!.TransactionId;
         }
 
         public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
         {
             if (!IsValidKey()) return new KeyValuePair<uint, uint>();
-            var nodeIdxPair = _stack[_stack.Count - 1];
+            var nodeIdxPair = _stack[^1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
 
             return new KeyValuePair<uint, uint>(
@@ -420,31 +417,34 @@ namespace BTDB.KVDBLayer
 
         public ulong GetUlong(uint idx)
         {
-            return BtreeRoot.GetUlong(idx);
+            return _btreeRoot!.GetUlong(idx);
         }
 
         public void SetUlong(uint idx, ulong value)
         {
-            if (BtreeRoot.GetUlong(idx) != value)
+            if (_btreeRoot!.GetUlong(idx) != value)
             {
                 MakeWritable();
-                BtreeRoot.SetUlong(idx, value);
+                _btreeRoot!.SetUlong(idx, value);
             }
         }
 
         public uint GetUlongCount()
         {
-            return BtreeRoot.UlongsArray == null ? 0U : (uint)BtreeRoot.UlongsArray.Length;
+            return _btreeRoot!.UlongsArray == null ? 0U : (uint)_btreeRoot!.UlongsArray.Length;
         }
 
-        string _descriptionForLeaks;
-        public string DescriptionForLeaks
+        string? _descriptionForLeaks;
+
+        public IKeyValueDB Owner => _keyValueDB;
+
+        public string? DescriptionForLeaks
         {
-            get { return _descriptionForLeaks; }
+            get => _descriptionForLeaks;
             set
             {
                 _descriptionForLeaks = value;
-                if (_preapprovedWriting || _writing) _btreeRoot.DescriptionForLeaks = value;
+                if (_preapprovedWriting || _writing) _btreeRoot!.DescriptionForLeaks = value;
             }
         }
 

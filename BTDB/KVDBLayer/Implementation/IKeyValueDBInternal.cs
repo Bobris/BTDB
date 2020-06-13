@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using BTDB.KVDBLayer.BTree;
@@ -11,7 +12,6 @@ namespace BTDB.KVDBLayer
         void MarkAsUnknown(IEnumerable<uint> fileIds);
         IFileCollectionWithFileInfos FileCollection { get; }
         bool ContainsValuesAndDoesNotTouchGeneration(uint fileKey, long dontTouchGeneration);
-        long MaxTrLogFileSize { get; }
         bool AreAllTransactionsBeforeFinished(long transactionId);
         // This will reference that root, after use you need to call DereferenceRootNodeInternal
         IRootNodeInternal ReferenceAndGetOldestRoot();
@@ -26,8 +26,8 @@ namespace BTDB.KVDBLayer
         bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
         long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey);
         ulong DistanceFromLastKeyIndex(IRootNodeInternal root);
-        List<KeyIndexInfo> BuildKeyIndexInfos();
-        uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes);
+        Span<KeyIndexInfo> BuildKeyIndexInfos();
+        uint CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes);
         uint GetTrLogFileId(IRootNodeInternal root);
         void IterateRoot(IRootNodeInternal root, ValuesIterateAction visit);
     }

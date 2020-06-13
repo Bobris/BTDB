@@ -1,6 +1,6 @@
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.StreamLayer;
 
@@ -8,41 +8,43 @@ namespace BTDB.ODBLayer
 {
     public class DBReaderCtx : IDBReaderCtx
     {
-        protected readonly IInternalObjectDBTransaction _transaction;
+        protected readonly IInternalObjectDBTransaction Transaction;
         protected readonly AbstractBufferedReader? _reader;
-        List<object>? _objects;
-        Stack<IMemorizedPosition?>? _returningStack;
+        StructList<object> _objects;
+        StructList<IMemorizedPosition?> _returningStack;
         int _lastIdOfObj;
 
         public DBReaderCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader)
         {
-            _transaction = transaction;
+            Transaction = transaction;
             _reader = reader;
             _lastIdOfObj = -1;
         }
 
         public DBReaderCtx(IInternalObjectDBTransaction transaction)
         {
-            _transaction = transaction;
+            Transaction = transaction;
             _reader = null;
             _lastIdOfObj = -1;
         }
 
         public bool ReadObject(out object? @object)
         {
-            var id = _reader.ReadVInt64();
+            var id = _reader!.ReadVInt64();
             if (id == 0)
             {
                 @object = null;
                 return false;
             }
+
             if (id <= int.MinValue || id > 0)
             {
-                @object = _transaction.Get((ulong)id);
+                @object = Transaction.Get((ulong) id);
                 return false;
             }
-            var ido = (int)(-id) - 1;
-            var o = RetriveObj(ido);
+
+            var ido = (int) (-id) - 1;
+            var o = RetrieveObj(ido);
             if (o != null)
             {
                 if (!(o is IMemorizedPosition mp))
@@ -50,13 +52,15 @@ namespace BTDB.ODBLayer
                     @object = o;
                     return false;
                 }
-                PushReturningPosition(((ICanMemorizePosition)_reader).MemorizeCurrentPosition());
+
+                PushReturningPosition(((ICanMemorizePosition) _reader).MemorizeCurrentPosition());
                 mp.Restore();
             }
             else
             {
                 PushReturningPosition(null);
             }
+
             _lastIdOfObj = ido;
             @object = null;
             return true;
@@ -64,13 +68,8 @@ namespace BTDB.ODBLayer
 
         void PushReturningPosition(IMemorizedPosition? memorizedPosition)
         {
-            if (_returningStack == null)
-            {
-                if (memorizedPosition == null) return;
-                _returningStack = new Stack<IMemorizedPosition>();
-            }
             if (_returningStack.Count == 0 && memorizedPosition == null) return;
-            _returningStack.Push(memorizedPosition);
+            _returningStack.Add(memorizedPosition);
         }
 
         public void RegisterObject(object @object)
@@ -81,41 +80,44 @@ namespace BTDB.ODBLayer
 
         public void ReadObjectDone()
         {
-            if (_returningStack == null) return;
             if (_returningStack.Count == 0) return;
-            var returnPos = _returningStack.Pop();
-            if (returnPos != null) returnPos.Restore();
+            var returnPos = _returningStack[^1];
+            _returningStack.RemoveAt(^1);
+            returnPos?.Restore();
         }
 
-        public object ReadNativeObject()
+        public object? ReadNativeObject()
         {
-            object @object;
-            var test=ReadObject(out @object);
+            var test = ReadObject(out var @object);
             if (test)
             {
-                @object = _transaction.ReadInlineObject(this);
+                @object = Transaction.ReadInlineObject(this);
             }
+
             return @object;
         }
 
         public bool SkipObject()
         {
-            var id = _reader.ReadVInt64();
+            var id = _reader!.ReadVInt64();
             if (id == 0)
             {
                 return false;
             }
+
             if (id <= int.MinValue || id > 0)
             {
                 return false;
             }
-            var ido = (int)(-id) - 1;
-            var o = RetriveObj(ido);
+
+            var ido = (int) (-id) - 1;
+            var o = RetrieveObj(ido);
             if (o != null)
             {
                 return false;
             }
-            _objects[ido] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
+
+            _objects[ido] = ((ICanMemorizePosition) _reader).MemorizeCurrentPosition();
             _lastIdOfObj = ido;
             return true;
         }
@@ -126,25 +128,24 @@ namespace BTDB.ODBLayer
             if (test)
             {
                 // This should be skip inline object, but it is easier just to throw away result
-                _transaction.ReadInlineObject(this);
+                Transaction.ReadInlineObject(this);
             }
         }
 
-        object RetriveObj(int ido)
+        object? RetrieveObj(int ido)
         {
-            if (_objects == null) _objects = new List<object>();
             while (_objects.Count <= ido) _objects.Add(null);
             return _objects[ido];
         }
 
         public AbstractBufferedReader Reader()
         {
-            return _reader;
+            return _reader!;
         }
 
         public EncryptedString ReadEncryptedString()
         {
-            var cipher = _transaction.Owner.GetSymmetricCipher();
+            var cipher = Transaction.Owner.GetSymmetricCipher();
             var enc = Reader().ReadByteArray();
             var size = cipher.CalcPlainSizeFor(enc);
             var dec = new byte[size];
@@ -152,6 +153,7 @@ namespace BTDB.ODBLayer
             {
                 throw new CryptographicException();
             }
+
             var r = new ByteArrayReader(dec);
             return r.ReadString();
         }
@@ -163,7 +165,7 @@ namespace BTDB.ODBLayer
 
         public EncryptedString ReadOrderedEncryptedString()
         {
-            var cipher = _transaction.Owner.GetSymmetricCipher();
+            var cipher = Transaction.Owner.GetSymmetricCipher();
             var enc = Reader().ReadByteArray();
             var size = cipher.CalcOrderedPlainSizeFor(enc);
             var dec = new byte[size];
@@ -171,6 +173,7 @@ namespace BTDB.ODBLayer
             {
                 throw new CryptographicException();
             }
+
             var r = new ByteArrayReader(dec);
             return r.ReadString();
         }
@@ -182,7 +185,7 @@ namespace BTDB.ODBLayer
 
         public IInternalObjectDBTransaction GetTransaction()
         {
-            return _transaction;
+            return Transaction;
         }
 
         public virtual void RegisterDict(ulong dictId)

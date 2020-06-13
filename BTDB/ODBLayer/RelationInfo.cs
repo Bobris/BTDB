@@ -28,20 +28,20 @@ namespace BTDB.ODBLayer
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
 
-        internal StructList<ItemLoaderInfo> ItemLoaderInfos = new StructList<ItemLoaderInfo>();
+        internal StructList<ItemLoaderInfo> ItemLoaderInfos;
 
         public class ItemLoaderInfo
         {
-            internal readonly RelationInfo Owner;
-            internal readonly Type ItemType;
+            readonly RelationInfo _owner;
+            readonly Type _itemType;
 
             public ItemLoaderInfo(RelationInfo owner, Type itemType)
             {
-                Owner = owner;
-                ItemType = itemType;
-                _valueLoaders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[Owner._relationVersions.Length];
-                _primaryKeysLoader = CreatePkLoader(itemType, Owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                    $"RelationKeyLoader_{Owner.Name}_{itemType.ToSimpleName()}");
+                _owner = owner;
+                _itemType = itemType;
+                _valueLoaders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[_owner._relationVersions.Length];
+                _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
+                    $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}");
             }
 
             internal object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
@@ -64,8 +64,8 @@ namespace BTDB.ODBLayer
                 {
                     res = _valueLoaders[version];
                     if (res != null) return res;
-                    res = CreateLoader(ItemType,
-                        Owner._relationVersions[version]!.Fields.Span, $"RelationValueLoader_{Owner.Name}_{version}_{ItemType.ToSimpleName()}");
+                    res = CreateLoader(_itemType,
+                        _owner._relationVersions[version]!.Fields.Span, $"RelationValueLoader_{_owner.Name}_{version}_{_itemType.ToSimpleName()}");
                 } while (Interlocked.CompareExchange(ref _valueLoaders[version], res, null) != null);
 
                 return res;
@@ -96,7 +96,7 @@ namespace BTDB.ODBLayer
                             srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
-                            Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
+                            _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
                         if (converterGenerator != null)
                         {
                             loadInstructions.Add((specializedSrcHandler, converterGenerator, setterMethod));
@@ -184,7 +184,7 @@ namespace BTDB.ODBLayer
                 {
                     if (pi.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                     if (pi.GetIndexParameters().Length != 0) continue;
-                    var tfi = TableFieldInfo.Build(Owner.Name, pi, Owner._relationInfoResolver.FieldHandlerFactory,
+                    var tfi = TableFieldInfo.Build(_owner.Name, pi, _owner._relationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.None);
                     instanceTableFieldInfos.Add(tfi);
                     persistentNameToPropertyInfo.GetOrAddValueRef(tfi.Name) = pi;
@@ -201,7 +201,7 @@ namespace BTDB.ODBLayer
                             srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
-                            Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
+                            _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
                         if (converterGenerator != null)
                         {
                             for (var i = 0; i < instanceTableFieldInfos.Count; i++)
@@ -233,7 +233,7 @@ namespace BTDB.ODBLayer
                     var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
                     var setterMethod = fieldInfo.GetSetMethod(true);
                     var converterGenerator =
-                        Owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
+                        _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
                             setterMethod!.GetParameters()[0].ParameterType);
                     if (converterGenerator == null) continue;
                     if (!iFieldHandlerWithInit.NeedInit()) continue;
@@ -677,7 +677,7 @@ namespace BTDB.ODBLayer
             {
                 var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
                 Action<IILGen> writerOrCtx;
-                var handler = field.Handler!.SpecializeSaveForType(getter.ReturnType);
+                var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
                 if (handler.NeedsCtx())
                     writerOrCtx = il => il.Ldloc(writerCtxLocal!);
                 else
@@ -689,7 +689,7 @@ namespace BTDB.ODBLayer
                 {
                     if (apartFieldGetter != null)
                     {
-                        il.Do(pushRelationIface);
+                        il.Do(pushRelationIface!);
                         getter = apartFieldGetter;
                     }
                     else
@@ -880,20 +880,10 @@ namespace BTDB.ODBLayer
             };
         }
 
-        static Action<IILGen> WriterOrContextForHandler(IFieldHandler handler, IILLocal writerCtxLocal,
+        static Action<IILGen> WriterOrContextForHandler(IFieldHandler handler, IILLocal? writerCtxLocal,
             Action<IILGen> pushWriter)
         {
-            Action<IILGen> writerOrCtx;
-            if (handler.NeedsCtx())
-            {
-                writerOrCtx = il => il.Ldloc(writerCtxLocal);
-            }
-            else
-            {
-                writerOrCtx = pushWriter;
-            }
-
-            return writerOrCtx;
+            return handler.NeedsCtx() ? il => il.Ldloc(writerCtxLocal!) : pushWriter;
         }
 
         static void InitializeBuffer(ushort bufferArgIdx, ref BufferInfo bufferInfo, IILGen ilGenerator,
@@ -1071,7 +1061,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
+        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> GetIDictFinder(uint version)
         {
             Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>? res;
             do
@@ -1353,93 +1343,6 @@ namespace BTDB.ODBLayer
             return dm.Create();
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(uint version,
-            IEnumerable<TableFieldInfo> fields, string loaderName)
-        {
-            var method =
-                ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
-                    loaderName);
-            var ilGenerator = method.Generator;
-            ilGenerator.DeclareLocal(ClientType);
-            ilGenerator
-                .Ldarg(2)
-                .Castclass(ClientType)
-                .Stloc(0);
-            var relationVersionInfo = _relationVersions[version];
-            var clientRelationVersionInfo = ClientRelationVersionInfo;
-            var anyNeedsCtx = relationVersionInfo!.NeedsCtx() || clientRelationVersionInfo.NeedsCtx();
-            if (anyNeedsCtx)
-            {
-                ilGenerator.DeclareLocal(typeof(IReaderCtx));
-                ilGenerator
-                    .Ldarg(0)
-                    .Ldarg(1)
-                    .Newobj(() => new DBReaderCtx(null, null))
-                    .Stloc(1);
-            }
-
-            var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var srcFieldInfo in fields)
-            {
-                Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler!.NeedsCtx())
-                    readerOrCtx = il => il.Ldloc(1);
-                else
-                    readerOrCtx = il => il.Ldarg(1);
-                var destFieldInfo = clientRelationVersionInfo[srcFieldInfo.Name];
-                if (destFieldInfo != null)
-                {
-                    var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetSetMethod(true);
-                    var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
-                    var specializedSrcHandler =
-                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler!);
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var converterGenerator =
-                        _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);
-                    if (converterGenerator != null)
-                    {
-                        ilGenerator.Ldloc(0);
-                        specializedSrcHandler.Load(ilGenerator, readerOrCtx);
-                        converterGenerator(ilGenerator);
-                        ilGenerator.Call(fieldInfo);
-                        continue;
-                    }
-                }
-
-                srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
-            }
-
-            if (ClientTypeVersion != version)
-            {
-                foreach (var srcFieldInfo in clientRelationVersionInfo.Fields.Span)
-                {
-                    var iFieldHandlerWithInit = srcFieldInfo.Handler as IFieldHandlerWithInit;
-                    if (iFieldHandlerWithInit == null) continue;
-                    if (relationVersionInfo[srcFieldInfo.Name] != null) continue;
-                    Action<IILGen> readerOrCtx;
-                    if (srcFieldInfo.Handler.NeedsCtx())
-                        readerOrCtx = il => il.Ldloc(1);
-                    else
-                        readerOrCtx = il => il.Ldnull();
-                    var specializedSrcHandler = srcFieldInfo.Handler;
-                    var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
-                    var converterGenerator =
-                        _relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
-                            setterMethod!.GetParameters()[0].ParameterType);
-                    if (converterGenerator == null) continue;
-                    if (!iFieldHandlerWithInit.NeedInit()) continue;
-                    ilGenerator.Ldloc(0);
-                    iFieldHandlerWithInit.Init(ilGenerator, readerOrCtx);
-                    converterGenerator(ilGenerator);
-                    ilGenerator.Call(setterMethod);
-                }
-            }
-
-            ilGenerator.Ret();
-            return method.Create();
-        }
-
         static string GetPersistentName(PropertyInfo p)
         {
             var a = p.GetCustomAttribute<PersistedNameAttribute>();
@@ -1540,15 +1443,14 @@ namespace BTDB.ODBLayer
 
         void CalculatePrefix()
         {
-            var o = ObjectDB.AllRelationsPKPrefix.Length;
-            var prefix = new byte[o + PackUnpack.LengthVUInt(Id)];
-            Array.Copy(ObjectDB.AllRelationsPKPrefix, prefix, o);
-            PackUnpack.PackVUInt(prefix, ref o, Id);
+            var len = PackUnpack.LengthVUInt(Id);
+            var prefix = new byte[1 + len];
+            prefix[0] = ObjectDB.AllRelationsPKPrefixByte;
+            PackUnpack.UnsafePackVUInt(ref prefix[1], Id, len);
             Prefix = prefix;
-            o = ObjectDB.AllRelationsSKPrefix.Length;
-            prefix = new byte[o + PackUnpack.LengthVUInt(Id)];
-            Array.Copy(ObjectDB.AllRelationsSKPrefix, prefix, o);
-            PackUnpack.PackVUInt(prefix, ref o, Id);
+            prefix = new byte[1 + len];
+            prefix[0] = ObjectDB.AllRelationsSKPrefixByte;
+            PackUnpack.UnsafePackVUInt(ref prefix[1], Id, len);
             PrefixSecondary = prefix;
         }
 
@@ -1579,33 +1481,33 @@ namespace BTDB.ODBLayer
 
         public override void FreeContentInNativeObject()
         {
-            var id = _reader.ReadVInt64();
+            var id = _reader!.ReadVInt64();
             if (id == 0)
             {
             }
             else if (id <= int.MinValue || id > 0)
             {
-                _transaction.TransactionProtector.Start();
-                _transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                if (!_transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong) id)))
+                Transaction.TransactionProtector.Start();
+                Transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
+                if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong) id)))
                     return;
-                var reader = new ByteBufferReader(_transaction.KeyValueDBTransaction.GetValue());
+                var reader = new ByteBufferReader(Transaction.KeyValueDBTransaction.GetValue());
                 var tableId = reader.ReadVUInt32();
-                var tableInfo = ((ObjectDB) _transaction.Owner).TablesInfo.FindById(tableId);
+                var tableInfo = ((ObjectDB) Transaction.Owner).TablesInfo.FindById(tableId);
                 if (tableInfo == null)
                     return;
                 var tableVersion = reader.ReadVUInt32();
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
                 if (freeContentTuple.Item1 != NeedsFreeContent.No)
                 {
-                    freeContentTuple.Item2(_transaction, null, reader, _freeDictionaries);
+                    freeContentTuple.Item2(Transaction, null, reader, _freeDictionaries);
                 }
             }
             else
             {
                 var ido = (int) (-id) - 1;
                 if (!AlreadyProcessedInstance(ido))
-                    _transaction.FreeContentInNativeObject(this);
+                    Transaction.FreeContentInNativeObject(this);
             }
         }
 

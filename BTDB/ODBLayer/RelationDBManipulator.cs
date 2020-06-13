@@ -1,9 +1,7 @@
 using System;
-using System.Buffers.Text;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
@@ -384,12 +382,12 @@ namespace BTDB.ODBLayer
             {
                 //keyBytePrefix contains [3, Index Relation, Primary key prefix] we need
                 //                       [4, Index Relation, Secondary Key Index, Primary key prefix]
-                var idBytesLength = ObjectDB.AllRelationsPKPrefix.Length + PackUnpack.LengthVUInt(_relationInfo.Id);
+                var idBytesLength = 1 + PackUnpack.LengthVUInt(_relationInfo.Id);
                 var writer = new ByteBufferWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
                     WriteRelationSKPrefix(writer, secKey.Key);
-                    writer.WriteBlock(keyBytesPrefix.Buffer, idBytesLength, keyBytesPrefix.Length - idBytesLength);
+                    writer.WriteBlock(keyBytesPrefix.Buffer!, idBytesLength, keyBytesPrefix.Length - idBytesLength);
                     _kvtr.SetKeyPrefix(writer.Data);
                     _kvtr.EraseAll();
                     writer.Reset();
@@ -631,7 +629,7 @@ namespace BTDB.ODBLayer
             WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
 
             var o = valueBytes.Offset;
-            var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer, ref o);
+            var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer!, ref o);
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
             keySaver(_transaction, keyWriter, new ByteBufferReader(keyBytes), new ByteBufferReader(valueBytes),

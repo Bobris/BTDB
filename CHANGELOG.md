@@ -8,6 +8,7 @@ Relation self healing when primary key is changed works in more cases.
 
 ### Added
 
+Made public Owner getters in Transactions. Allowed to change Max Transaction Log size using public property.
 Some performance optimizations.
 
 ## 23.1.0

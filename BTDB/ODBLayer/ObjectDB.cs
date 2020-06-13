@@ -30,6 +30,8 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
         internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
         internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
+        internal const byte AllRelationsPKPrefixByte = 3;
+        internal const byte AllRelationsSKPrefixByte = 4;
         ITableInfoResolver _tableInfoResolver;
         IRelationInfoResolver _relationsInfoResolver;
         long _lastObjId;

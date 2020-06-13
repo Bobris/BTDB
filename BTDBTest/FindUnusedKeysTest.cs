@@ -53,7 +53,7 @@ namespace BTDBTest
 
         void AssertNoLeaksInDb()
         {
-            Assert.Equal(string.Empty, FindLeaks());
+            Assert.Equal("", FindLeaks());
         }
 
         string FindLeaks()

@@ -29,5 +29,8 @@ namespace BTDB.KVDBLayer
         // Try to limit additional memory for Compactor. Setting this value higher can speed up compactor.
         // Current default is 200MB. It will always do at least one iteration so it will make progress.
         uint CompactorRamLimitInMb { get; set; }
+
+        // Transaction Log files will try to be split at this size, can be modified during running (maximum size is int.MaxValue)
+        long MaxTrLogFileSize { get; set; }
     }
 }

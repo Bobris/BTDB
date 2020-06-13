@@ -6,6 +6,8 @@ namespace BTDB.KVDBLayer
 {
     public interface IKeyValueDBTransaction : IDisposable
     {
+        IKeyValueDB Owner { get; }
+
         /// <summary>
         /// Set for with some description for this transaction purpose to find reason for Transaction leak
         /// </summary>

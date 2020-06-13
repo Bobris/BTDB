@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -42,7 +43,7 @@ namespace BTDB.ChunkCache
 
         public DiskChunkCache(IFileCollection fileCollection, int keySize, long cacheCapacity)
         {
-            if (keySize != 20) throw new NotSupportedException("Only keySize of 20 (Usefull for SHA1) is supported for now");
+            if (keySize != 20) throw new NotSupportedException("Only keySize of 20 (Useful for SHA1) is supported for now");
             if (cacheCapacity < 1000) throw new ArgumentOutOfRangeException(nameof(cacheCapacity), "Minimum for cache capacity is 1kB");
             _fileCollection = fileCollection;
             _keySize = keySize;
@@ -66,15 +67,14 @@ namespace BTDB.ChunkCache
             {
                 _cache.Clear();
             }
-            if (_cache.Count == 0)
+
+            if (_cache.Count != 0) return;
+            foreach (var collectionFile in _fileInfos.Keys)
             {
-                foreach (var collectionFile in _fileInfos.Keys)
-                {
-                    _fileCollection.GetFile(collectionFile).Remove();
-                }
-                _fileInfos.Clear();
-                _fileGeneration = 0;
+                _fileCollection.GetFile(collectionFile).Remove();
             }
+            _fileInfos.Clear();
+            _fileGeneration = 0;
         }
 
         void LoadContent()
@@ -85,19 +85,12 @@ namespace BTDB.ChunkCache
                 reader = collectionFile.GetExclusiveReader();
                 if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
                 var fileType = (DiskChunkFileType)reader.ReadUInt8();
-                IFileInfo fileInfo;
-                switch (fileType)
+                var fileInfo = fileType switch
                 {
-                    case DiskChunkFileType.HashIndex:
-                        fileInfo = new FileHashIndex(reader);
-                        break;
-                    case DiskChunkFileType.PureValues:
-                        fileInfo = new FilePureValues(reader);
-                        break;
-                    default:
-                        fileInfo = UnknownFile.Instance;
-                        break;
-                }
+                    DiskChunkFileType.HashIndex => new FileHashIndex(reader),
+                    DiskChunkFileType.PureValues => new FilePureValues(reader),
+                    _ => UnknownFile.Instance
+                };
                 if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
                 _fileInfos.TryAdd(collectionFile.Index, fileInfo);
             }
@@ -127,8 +120,7 @@ namespace BTDB.ChunkCache
             if (key.Length != _keySize) throw new ArgumentException("Key has wrong Length not equal to KeySize");
             if (content.Length == 0) throw new ArgumentException("Empty Content cannot be stored");
             var k = new ByteStructs.Key20(key);
-            CacheValue cacheValue;
-            if (_cache.TryGetValue(k, out cacheValue))
+            if (_cache.TryGetValue(k, out var cacheValue))
             {
                 return;
             }
@@ -173,7 +165,7 @@ namespace BTDB.ChunkCache
                 fileInfo.WriteHeader(_cacheValueWriter!);
                 _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
                 _compactionCts = new CancellationTokenSource();
-                _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts.Token,
+                _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts!.Token,
                                                         TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
         }
@@ -185,7 +177,7 @@ namespace BTDB.ChunkCache
             _cacheValueWriter = _cacheValueFile.GetAppenderWriter();
         }
 
-        internal struct RateFilePair
+        readonly struct RateFilePair
         {
             internal RateFilePair(ulong accessRate, uint fileId)
             {
@@ -193,8 +185,8 @@ namespace BTDB.ChunkCache
                 FileId = fileId;
             }
 
-            internal ulong AccessRate;
-            internal uint FileId;
+            internal readonly ulong AccessRate;
+            internal readonly uint FileId;
         }
 
         void CompactionCore()
@@ -210,21 +202,20 @@ namespace BTDB.ChunkCache
                     finishedUsageStats = false;
                     break;
                 }
-                ulong accessRateRunningTotal;
-                usage.TryGetValue(cacheValue.FileId, out accessRateRunningTotal);
-                uint accessRate = cacheValue.AccessRate;
+
+                usage.TryGetValue(cacheValue.FileId, out var accessRateRunningTotal);
+                var accessRate = cacheValue.AccessRate;
                 if (maxAccessRate < accessRate) maxAccessRate = accessRate;
                 accessRateRunningTotal += accessRate;
                 usage[cacheValue.FileId] = accessRateRunningTotal;
             }
             var usageList = new List<RateFilePair>();
-            var fileIdsToRemove = new List<uint>();
+            var fileIdsToRemove = new StructList<uint>();
             foreach (var fileInfo in _fileInfos)
             {
                 if (fileInfo.Value.FileType != DiskChunkFileType.PureValues) continue;
                 if (fileInfo.Key == _cacheValueFileId) continue;
-                ulong accessRate;
-                if (!usage.TryGetValue(fileInfo.Key, out accessRate) && finishedUsageStats)
+                if (!usage.TryGetValue(fileInfo.Key, out var accessRate) && finishedUsageStats)
                 {
                     fileIdsToRemove.Add(fileInfo.Key);
                     continue;
@@ -244,10 +235,10 @@ namespace BTDB.ChunkCache
             }
             FlushCurrentValueFile();
             StoreHashIndex();
-            foreach (var fileid in fileIdsToRemove)
+            foreach (var fileId in fileIdsToRemove)
             {
-                _fileCollection.GetFile(fileid).Remove();
-                _fileInfos.TryRemove(fileid);
+                _fileCollection.GetFile(fileId).Remove();
+                _fileInfos.TryRemove(fileId);
             }
         }
 
@@ -263,15 +254,15 @@ namespace BTDB.ChunkCache
 
         void PreserveJustMostOftenUsed(uint fileId)
         {
-            var freqencies = new List<uint>();
+            var frequencies = new List<uint>();
             foreach (var itemPair in _cache)
             {
                 if (itemPair.Value.FileId == fileId)
                 {
-                    freqencies.Add(itemPair.Value.AccessRate);
+                    frequencies.Add(itemPair.Value.AccessRate);
                 }
             }
-            var preserveRate = freqencies.OrderByDescending(r => r).Skip(freqencies.Count / 5).FirstOrDefault();
+            var preserveRate = frequencies.OrderByDescending(r => r).Skip(frequencies.Count / 5).FirstOrDefault();
             foreach (var itemPair in _cache)
             {
                 if (itemPair.Value.FileId == fileId)
@@ -304,7 +295,7 @@ namespace BTDB.ChunkCache
                         _cache.TryUpdate(itemPair.Key, cacheValue, itemPair.Value);
                         continue;
                     }
-                remove:
+                    remove:
                     _cache.TryRemove(itemPair.Key);
                 }
             }
@@ -323,16 +314,16 @@ namespace BTDB.ChunkCache
 
         void QuickFinishCompaction()
         {
-            var compactionCTS = _compactionCts;
-            if (compactionCTS != null) compactionCTS.Cancel();
+            _compactionCts?.Cancel();
             var task = _compactionTask;
-            if (task != null)
+            if (task == null) return;
+            try
             {
-                try
-                {
-                    task.Wait();
-                }
-                catch { }
+                task.Wait();
+            }
+            catch
+            {
+                // ignored because any error is irrelevant due to canceling
             }
         }
 
@@ -343,21 +334,24 @@ namespace BTDB.ChunkCache
             try
             {
                 var k = new ByteStructs.Key20(key);
-                CacheValue cacheValue;
-                if (_cache.TryGetValue(k, out cacheValue))
+                if (_cache.TryGetValue(k, out var cacheValue))
                 {
                     var newCacheValue = cacheValue;
                     newCacheValue.AccessRate = cacheValue.AccessRate + 1;
                     _cache.TryUpdate(k, newCacheValue, cacheValue);
                     // It is not problem if update fails, it will have just lower access rate then real
                     var result = new byte[cacheValue.ContentLength];
-                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(result.AsSpan(0, (int)cacheValue.ContentLength),
-                                                                          cacheValue.FileOfs, false);
+                    _fileCollection.GetFile(cacheValue.FileId).RandomRead(
+                        result.AsSpan(0, (int) cacheValue.ContentLength),
+                        cacheValue.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(result));
                     return tcs.Task;
                 }
             }
-            catch { } // It is better to return nothing than throw exception
+            catch
+            {
+                // It is better to return nothing than throw exception
+            }
             tcs.SetResult(ByteBuffer.NewEmpty());
             return tcs.Task;
         }
@@ -368,7 +362,7 @@ namespace BTDB.ChunkCache
             res.AppendFormat("Files {0} FileInfos {1} FileGeneration {2} Cached items {3}{4}", _fileCollection.GetCount(),
                              _fileInfos.Count, _fileGeneration, _cache.Count, Environment.NewLine);
             var totalSize = 0UL;
-            var totalControledSize = 0UL;
+            var totalControlledSize = 0UL;
             foreach (var fileCollectionFile in _fileCollection.Enumerate())
             {
                 _fileInfos.TryGetValue(fileCollectionFile.Index, out var fileInfo);
@@ -383,12 +377,12 @@ namespace BTDB.ChunkCache
                 {
                     res.AppendFormat("{0} Size: {1} Type: {2} {3}", fileCollectionFile.Index,
                                      size, fileInfo.FileType, Environment.NewLine);
-                    totalControledSize += size;
+                    totalControlledSize += size;
                 }
             }
-            res.AppendFormat("TotalSize {0} TotalControledSize {1} Limit {2}{3}", totalSize, totalControledSize,
+            res.AppendFormat("TotalSize {0} TotalControlledSize {1} Limit {2}{3}", totalSize, totalControlledSize,
                              _cacheCapacity, Environment.NewLine);
-            Debug.Assert(totalControledSize <= (ulong)_cacheCapacity);
+            Debug.Assert(totalControlledSize <= (ulong)_cacheCapacity);
             return res.ToString();
         }
 

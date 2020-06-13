@@ -259,6 +259,7 @@ namespace BTDBTest
             }
 
             public uint CompactorRamLimitInMb { get; set; }
+            public long MaxTrLogFileSize { get; set; }
 
             public void Dispose()
             {
@@ -274,6 +275,8 @@ namespace BTDBTest
             {
                 _keyValueDBTransaction = keyValueDBTransaction;
             }
+
+            public IKeyValueDB Owner => _keyValueDBTransaction.Owner;
 
             public string DescriptionForLeaks
             {

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
+using BTDB.Collections;
 using BTDB.KVDBLayer.BTree;
 using BTDB.KVDBLayer.Implementation;
 using BTDB.ODBLayer;
@@ -44,7 +45,6 @@ namespace BTDB.KVDBLayer
         readonly Dictionary<long, object> _subDBs = new Dictionary<long, object>();
         readonly Func<CancellationToken, bool>? _compactFunc;
         readonly bool _readOnly;
-        readonly uint _maxTrLogFileSize;
         public uint CompactorRamLimitInMb { get; set; }
         public ulong CompactorReadBytesPerSecondLimit { get; }
         public ulong CompactorWriteBytesPerSecondLimit { get; }
@@ -79,7 +79,7 @@ namespace BTDB.KVDBLayer
             if (options.FileSplitSize < 1024 || options.FileSplitSize > int.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(options.FileSplitSize), "Allowed range 1024 - 2G");
             _compactorScheduler = options.CompactorScheduler;
-            _maxTrLogFileSize = options.FileSplitSize;
+            MaxTrLogFileSize = options.FileSplitSize;
             _compression = options.Compression ?? throw new ArgumentNullException(nameof(options.Compression));
             DurableTransactions = false;
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
@@ -102,9 +102,9 @@ namespace BTDB.KVDBLayer
             return DistanceFromLastKeyIndex((IBTreeRootNode)root);
         }
 
-        List<KeyIndexInfo> IKeyValueDBInternal.BuildKeyIndexInfos()
+        Span<KeyIndexInfo> IKeyValueDBInternal.BuildKeyIndexInfos()
         {
-            var keyIndexes = new List<KeyIndexInfo>();
+            var keyIndexes = new StructList<KeyIndexInfo>();
             foreach (var fileInfo in _fileCollection.FileInfos)
             {
                 var keyIndex = fileInfo.Value as IKeyIndex;
@@ -114,8 +114,8 @@ namespace BTDB.KVDBLayer
             }
 
             if (keyIndexes.Count > 1)
-                keyIndexes.Sort((l, r) => Comparer<long>.Default.Compare(l.Generation, r.Generation));
-            return keyIndexes;
+                keyIndexes.Sort(Comparer<KeyIndexInfo>.Create((l, r) => Comparer<long>.Default.Compare(l.Generation, r.Generation)));
+            return keyIndexes.AsSpan();
         }
 
         void LoadInfoAboutFiles(ulong? openUpToCommitUlong)
@@ -140,9 +140,9 @@ namespace BTDB.KVDBLayer
             var firstTrLogId = LinkTransactionLogFileIds(lastTrLogFileId);
             var firstTrLogOffset = 0u;
             var hasKeyIndex = false;
-            while (keyIndexes.Count > 0)
+            while (keyIndexes.Length > 0)
             {
-                var nearKeyIndex = keyIndexes.Count - 1;
+                var nearKeyIndex = keyIndexes.Length - 1;
                 if (openUpToCommitUlong.HasValue)
                 {
                     while (nearKeyIndex >= 0)
@@ -163,7 +163,8 @@ namespace BTDB.KVDBLayer
                 }
 
                 var keyIndex = keyIndexes[nearKeyIndex];
-                keyIndexes.RemoveAt(nearKeyIndex);
+                keyIndexes.Slice(nearKeyIndex+1).CopyTo(keyIndexes.Slice(nearKeyIndex));
+                keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                 var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
                 _nextRoot = _lastCommited.NewTransactionRoot();
                 if (LoadKeyIndex(keyIndex.Key, info!) && firstTrLogId <= info.TrLogFileId)
@@ -180,10 +181,10 @@ namespace BTDB.KVDBLayer
                 _fileCollection.MakeIdxUnknown(keyIndex.Key);
             }
 
-            while (keyIndexes.Count > 0)
+            while (keyIndexes.Length > 0)
             {
                 var keyIndex = keyIndexes[^1];
-                keyIndexes.RemoveAt(keyIndexes.Count - 1);
+                keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                 if (keyIndex.Key != preserveKeyIndexKey)
                     _fileCollection.MakeIdxUnknown(keyIndex.Key);
             }
@@ -214,7 +215,7 @@ namespace BTDB.KVDBLayer
                         _fileWithTransactionLog = FileCollection.GetFile(_fileIdWithTransactionLog);
                         _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
                     }
-                    if (_writerWithTransactionLog.GetCurrentPosition() > _maxTrLogFileSize)
+                    if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                     {
                         WriteStartOfNewTransactionLogFile();
                     }
@@ -249,14 +250,14 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        uint IKeyValueDBInternal.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(List<KeyIndexInfo> keyIndexes)
+        uint IKeyValueDBInternal.CalculatePreserveKeyIndexKeyFromKeyIndexInfos(ReadOnlySpan<KeyIndexInfo> keyIndexes)
         {
             var preserveKeyIndexKey = uint.MaxValue;
             var preserveHistoryUpToCommitUlong = (ulong)Interlocked.Read(ref _preserveHistoryUpToCommitUlong);
             if (preserveHistoryUpToCommitUlong != ulong.MaxValue &&
                 _lastCommited.CommitUlong != preserveHistoryUpToCommitUlong)
             {
-                var nearKeyIndex = keyIndexes.Count - 1;
+                var nearKeyIndex = keyIndexes.Length - 1;
                 while (nearKeyIndex >= 0)
                 {
                     if (keyIndexes[nearKeyIndex].CommitUlong <= preserveHistoryUpToCommitUlong)
@@ -718,7 +719,7 @@ namespace BTDB.KVDBLayer
             return ContainsValuesAndDoesNotTouchGeneration(fileKey, dontTouchGeneration);
         }
 
-        long IKeyValueDBInternal.MaxTrLogFileSize => _maxTrLogFileSize;
+        public long MaxTrLogFileSize { get; set; }
 
         public IRootNodeInternal ReferenceAndGetOldestRoot()
         {
@@ -958,7 +959,7 @@ namespace BTDB.KVDBLayer
                     _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
                 }
 
-                if (_writerWithTransactionLog.GetCurrentPosition() > _maxTrLogFileSize)
+                if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
                 {
                     WriteStartOfNewTransactionLogFile();
                 }
@@ -1015,7 +1016,7 @@ namespace BTDB.KVDBLayer
             }
 
             var trlPos = _writerWithTransactionLog!.GetCurrentPosition();
-            if (trlPos > 256 && trlPos + prefix.Length + key.Length + 16 + value.Length > _maxTrLogFileSize)
+            if (trlPos > 256 && trlPos + prefix.Length + key.Length + 16 + value.Length > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
@@ -1124,7 +1125,7 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            if (_writerWithTransactionLog!.GetCurrentPosition() > _maxTrLogFileSize)
+            if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
@@ -1153,7 +1154,7 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            if (_writerWithTransactionLog!.GetCurrentPosition() > _maxTrLogFileSize)
+            if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
@@ -1371,7 +1372,7 @@ namespace BTDB.KVDBLayer
 
             if (typeof(T) == typeof(IChunkStorage))
             {
-                subDB = new ChunkStorageInKV(id, _fileCollection, _maxTrLogFileSize);
+                subDB = new ChunkStorageInKV(id, _fileCollection, MaxTrLogFileSize);
             }
 
             _subDBs.Add(id, subDB);

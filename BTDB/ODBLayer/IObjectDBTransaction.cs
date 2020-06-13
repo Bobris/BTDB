@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using BTDB.KVDBLayer;
 
 namespace BTDB.ODBLayer
 {
     public interface IObjectDBTransaction : IDisposable
     {
+        IObjectDB Owner { get; }
+        IKeyValueDBTransaction KeyValueDBTransaction { get; }
+
         IEnumerable<T> Enumerate<T>() where T : class;
         IEnumerable<object> Enumerate(Type type);
 

@@ -516,6 +516,7 @@ namespace BTDB.KVDBLayer
         }
 
         string _descriptionForLeaks;
+
         public string DescriptionForLeaks
         {
             get { return _descriptionForLeaks; }
@@ -525,6 +526,8 @@ namespace BTDB.KVDBLayer
                 if (_preapprovedWriting || _writing) BTreeRoot.DescriptionForLeaks = value;
             }
         }
+
+        public IKeyValueDB Owner => _keyValueDB;
 
         public bool RollbackAdvised { get; set; }
     }

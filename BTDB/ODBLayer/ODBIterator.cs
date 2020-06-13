@@ -69,10 +69,7 @@ namespace BTDB.ODBLayer
 
             if (sortTableByNameAsc)
             {
-                _singletons = _singletons.OrderBy(item =>
-                {
-                    return _tableId2Name.TryGetValue(item.Key, out var name) ? name : string.Empty;
-                }).ToDictionary(item => item.Key, item => item.Value);
+                _singletons = _singletons.OrderBy(item => _tableId2Name.TryGetValue(item.Key, out var name) ? name : "").ToDictionary(item => item.Key, item => item.Value);
             }
         }
 

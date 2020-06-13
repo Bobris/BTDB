@@ -79,6 +79,7 @@ namespace BTDB.KVDBLayer
         public IKeyValueDBLogger Logger { get; set; }
 
         public uint CompactorRamLimitInMb { get; set; }
+        public long MaxTrLogFileSize { get; set; }
 
         public ulong? PreserveHistoryUpToCommitUlong {
             get { return null; }
