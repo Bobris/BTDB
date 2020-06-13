@@ -1,5 +1,3 @@
-using System;
-
 namespace BTDB.StreamLayer
 {
     public interface ISpanReader
@@ -50,5 +48,11 @@ namespace BTDB.StreamLayer
         /// <param name="length">how much to skip</param>
         /// <returns>true if not enough data to fill buffer</returns>
         bool SkipBlock(ref SpanReader spanReader, int length);
+        /// <summary>
+        /// Seek to position in SpanReader.
+        /// </summary>
+        /// <param name="spanReader">owning SpanReader</param>
+        /// <param name="position">new position to set</param>
+        void SetCurrentPosition(ref SpanReader spanReader, long position);
     }
 }

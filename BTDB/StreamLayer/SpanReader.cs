@@ -34,6 +34,18 @@ namespace BTDB.StreamLayer
                 ref MemoryMarshal.GetReference(_buf));
         }
 
+        public void SetCurrentPosition(long position)
+        {
+            if (_controller != null)
+            {
+                _controller.SetCurrentPosition(ref this, position);
+            }
+            else
+            {
+                _buf = _original.Slice((int)position);
+            }
+        }
+
         public bool Eof
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
