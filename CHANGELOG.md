@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.0.0
+
 ### Fixed
 
 Relation self healing when primary key is changed works in more cases.
