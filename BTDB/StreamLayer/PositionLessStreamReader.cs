@@ -3,7 +3,7 @@ using System.IO;
 
 namespace BTDB.StreamLayer
 {
-    public class PositionLessStreamReader : AbstractBufferedReader
+    public class PositionLessStreamReader : ISpanReader
     {
         readonly IPositionLessStream _stream;
         readonly ulong _valueSize;
@@ -21,8 +21,6 @@ namespace BTDB.StreamLayer
             _stream = stream;
             _valueSize = _stream.GetSize();
             _ofs = 0;
-            Buf = new byte[bufferSize];
-            FillBuffer();
         }
 
         protected sealed override void FillBuffer()
@@ -88,6 +86,32 @@ namespace BTDB.StreamLayer
         public override long GetCurrentPosition()
         {
             return (long)_ofs - End + Pos;
+        }
+
+        public bool FillBufAndCheckForEof(ref SpanReader spanReader, int size)
+        {
+
+            throw new NotImplementedException();
+        }
+
+        public long GetCurrentPosition(in SpanReader spanReader)
+        {
+            return (long)_ofs - spanReader.Buf.Length;
+        }
+
+        public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, int length)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool SkipBlock(ref SpanReader spanReader, int length)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetCurrentPosition(ref SpanReader spanReader, long position)
+        {
+            throw new NotImplementedException();
         }
     }
 }

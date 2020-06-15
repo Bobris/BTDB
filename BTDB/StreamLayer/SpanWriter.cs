@@ -33,6 +33,11 @@ namespace BTDB.StreamLayer
             return _initialBuffer.Slice(0, _initialBuffer.Length - _buf.Length);
         }
 
+        public void Reset()
+        {
+            _buf = _heapBuffer ?? _initialBuffer;
+        }
+
         public ReadOnlySpan<byte> GetSpanAndReset()
         {
             if (_heapBuffer != null)

@@ -30,8 +30,7 @@ namespace BTDB.EventStoreLayer
             Name = typeSerializers.TypeNameMapper.ToName(type);
         }
 
-        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader,
-            Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
         {
             _typeSerializers = typeSerializers;
             Sealed = false;
@@ -40,7 +39,7 @@ namespace BTDB.EventStoreLayer
             while (fieldCount-- > 0)
             {
                 _fields.Add(
-                    new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
+                    new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(ref reader)));
             }
         }
 
@@ -497,15 +496,15 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer,
-            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer,
+            DescriptorWriter nestedDescriptorWriter)
         {
             writer.WriteString(Name);
             writer.WriteVUInt32(_fields.Count);
             foreach (var pair in _fields)
             {
                 writer.WriteString(pair.Key);
-                nestedDescriptorWriter(writer, pair.Value);
+                nestedDescriptorWriter(ref writer, pair.Value);
             }
         }
 

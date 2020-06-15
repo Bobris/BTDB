@@ -54,7 +54,8 @@ namespace BTDB.EventStoreLayer
 
         public void ReadToEnd(IEventStoreObserver observer)
         {
-            var overflowWriter = default(ByteBufferWriter);
+            var overflowWriter = default(SpanWriter);
+            var wasFirstBlock = false;
             var bufferBlock = GetReadBuffer();
             var bufferStartPosition = NextReadPosition & SectorMask;
             var bufferFullLength = 0;
@@ -62,7 +63,7 @@ namespace BTDB.EventStoreLayer
             var currentReadAhead = FirstReadAhead;
             var buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, currentReadAhead);
             var bufReadLength = (int)File.Read(buf, bufferStartPosition);
-            bufferFullLength += bufReadLength;
+            bufferFullLength = bufReadLength;
             while (true)
             {
                 if (bufferStartPosition + (ulong)bufferReadOffset + HeaderSize > File.MaxFileSize)
@@ -152,17 +153,18 @@ namespace BTDB.EventStoreLayer
                 var stopReadingRequested = false;
                 if (blockTypeBlock == (BlockType.FirstBlock | BlockType.LastBlock))
                 {
-                    stopReadingRequested = Process(blockType, ByteBuffer.NewSync(bufferBlock, bufferReadOffset, (int)blockLen), observer);
+                    stopReadingRequested = Process(blockType, bufferBlock.AsSpan(bufferReadOffset, (int)blockLen), observer);
                 }
                 else
                 {
                     if (blockTypeBlock == BlockType.FirstBlock)
                     {
-                        overflowWriter = new ByteBufferWriter();
+                        overflowWriter.Reset();
+                        wasFirstBlock = true;
                     }
                     else if (blockTypeBlock == BlockType.MiddleBlock || blockTypeBlock == BlockType.LastBlock)
                     {
-                        if (overflowWriter == null)
+                        if (!wasFirstBlock)
                         {
                             SetCorrupted();
                             return;
@@ -173,15 +175,16 @@ namespace BTDB.EventStoreLayer
                         SetCorrupted();
                         return;
                     }
-                    overflowWriter.WriteBlock(ByteBuffer.NewSync(bufferBlock, bufferReadOffset, (int)blockLen));
+                    overflowWriter.WriteBlock(bufferBlock.AsSpan(bufferReadOffset, (int)blockLen));
                     if (blockTypeBlock == BlockType.LastBlock)
                     {
-                        stopReadingRequested = Process(blockType, overflowWriter.Data, observer);
-                        overflowWriter = null;
+                        stopReadingRequested = Process(blockType, overflowWriter.GetSpan(), observer);
+                        overflowWriter.Reset();
+                        wasFirstBlock = false;
                     }
                 }
                 bufferReadOffset += (int)blockLen;
-                if (overflowWriter == null)
+                if (wasFirstBlock)
                     NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset;
                 if (stopReadingRequested)
                 {
@@ -195,7 +198,7 @@ namespace BTDB.EventStoreLayer
                 bufferFullLength -= bufferMoveDistance;
                 bufferReadOffset -= bufferMoveDistance;
             }
-            if (overflowWriter != null)
+            if (wasFirstBlock)
             {
                 // It is not corrupted here just unfinished, but definitely not appendable
                 EndBufferPosition = ulong.MaxValue;
@@ -221,18 +224,18 @@ namespace BTDB.EventStoreLayer
             return EndBufferPosition != ulong.MaxValue;
         }
 
-        bool Process(BlockType blockType, ByteBuffer block, IEventStoreObserver observer)
+        bool Process(BlockType blockType, ReadOnlySpan<byte> block, IEventStoreObserver observer)
         {
             if ((blockType & BlockType.Compressed) != 0)
             {
                 CompressionStrategy.Decompress(ref block);
             }
-            var reader = new ByteBufferReader(block);
+            var reader = new SpanReader(block);
             if ((blockType & BlockType.HasTypeDeclaration) != 0)
             {
-                Mapping.LoadTypeDescriptors(reader);
+                Mapping.LoadTypeDescriptors(ref reader);
             }
-            var metadata = (blockType & BlockType.HasMetadata) != 0 ? Mapping.LoadObject(reader) : null;
+            var metadata = (blockType & BlockType.HasMetadata) != 0 ? Mapping.LoadObject(ref reader) : null;
             uint eventCount;
             if ((blockType & BlockType.HasOneEvent) != 0)
             {
@@ -252,7 +255,7 @@ namespace BTDB.EventStoreLayer
             var successfulEventCount = 0;
             for (var i = 0; i < eventCount; i++)
             {
-                var ev = Mapping.LoadObject(reader);
+                var ev = Mapping.LoadObject(ref reader);
                 if (ev == null) continue;
                 events[successfulEventCount] = ev;
                 successfulEventCount++;

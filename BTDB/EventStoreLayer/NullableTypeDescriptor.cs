@@ -11,10 +11,10 @@ namespace BTDB.EventStoreLayer
     class NullableTypeDescriptor : ITypeDescriptor, IPersistTypeDescriptor
     {
         readonly ITypeDescriptorCallbacks _typeSerializers;
-        Type _type;
-        Type _itemType;
-        ITypeDescriptor _itemDescriptor;
-        string _name;
+        Type? _type;
+        Type? _itemType;
+        ITypeDescriptor? _itemDescriptor;
+        string? _name;
         readonly ITypeConvertorGenerator _convertorGenerator;
 
         public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, Type type)
@@ -25,8 +25,8 @@ namespace BTDB.EventStoreLayer
             _itemType = GetItemType(type);
         }
 
-        public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
-            : this(typeSerializers, nestedDescriptorReader(reader))
+        public NullableTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+            : this(typeSerializers, nestedDescriptorReader(ref reader))
         {
         }
 
@@ -56,7 +56,7 @@ namespace BTDB.EventStoreLayer
         {
 #pragma warning disable RECS0025 // Non-readonly field referenced in 'GetHashCode()'
             // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return 17 * _itemDescriptor.GetHashCode();
+            return 17 * _itemDescriptor!.GetHashCode();
 #pragma warning restore RECS0025 // Non-readonly field referenced in 'GetHashCode()'
         }
 
@@ -64,15 +64,15 @@ namespace BTDB.EventStoreLayer
         {
             get
             {
-                if (_name == null) InitFromItemDescriptor(_itemDescriptor);
-                return _name;
+                if (_name == null) InitFromItemDescriptor(_itemDescriptor!);
+                return _name!;
             }
-            private set { _name = value; }
+            private set => _name = value;
         }
 
         public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
-            var descriptor = factory.Create(_itemType);
+            var descriptor = factory.Create(_itemType!);
             if (descriptor == null) return false;
             InitFromItemDescriptor(descriptor);
             return true;
@@ -81,22 +81,21 @@ namespace BTDB.EventStoreLayer
         public void BuildHumanReadableFullName(StringBuilder text, HashSet<ITypeDescriptor> stack, uint indent)
         {
             text.Append("Nullable<");
-            _itemDescriptor.BuildHumanReadableFullName(text, stack, indent);
+            _itemDescriptor!.BuildHumanReadableFullName(text, stack, indent);
             text.Append(">");
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
         {
-            var o = other as NullableTypeDescriptor;
-            if (o == null) return false;
-            return _itemDescriptor.Equals(o._itemDescriptor, stack);
+            if (!(other is NullableTypeDescriptor o)) return false;
+            return _itemDescriptor!.Equals(o._itemDescriptor!, stack);
         }
 
         public Type GetPreferredType()
         {
             if (_type == null)
             {
-                _itemType = _typeSerializers.LoadAsType(_itemDescriptor);
+                _itemType = _typeSerializers.LoadAsType(_itemDescriptor!);
                 _type = typeof(Nullable<>).MakeGenericType(_itemType);
             }
             return _type;
@@ -106,13 +105,13 @@ namespace BTDB.EventStoreLayer
         {
             if (_type == targetType) return _type;
             var targetTypeArguments = targetType.GetGenericArguments();
-            var itemType = _typeSerializers.LoadAsType(_itemDescriptor, targetTypeArguments[0]);
+            var itemType = _typeSerializers.LoadAsType(_itemDescriptor!, targetTypeArguments[0]);
             return targetType.GetGenericTypeDefinition().MakeGenericType(itemType);
         }
 
         public bool AnyOpNeedsCtx()
         {
-            return !_itemDescriptor.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
+            return !_itemDescriptor!.StoredInline || _itemDescriptor.AnyOpNeedsCtx();
         }
 
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
@@ -127,9 +126,9 @@ namespace BTDB.EventStoreLayer
 
                 ilGenerator
                     .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                    .Call(() => default(SpanReader).ReadBool())
                     .Brfalse(noValue);
-                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                     il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
                 ilGenerator
                     .Br(finish)
@@ -142,19 +141,19 @@ namespace BTDB.EventStoreLayer
                 var localResult = ilGenerator.DeclareLocal(targetType);
                 var finish = ilGenerator.DefineLabel();
                 var noValue = ilGenerator.DefineLabel();
-                
+
                 var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
 
                 if (!targetType.IsAssignableFrom(nullableType))
                     throw new NotSupportedException();
                 ilGenerator
                     .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                    .Call(() => default(SpanReader).ReadBool())
                     .Brfalse(noValue);
-                _itemDescriptor.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
+                _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                     il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
                 ilGenerator
-                    .Newobj(nullableType.GetConstructor(new[] { itemType }))
+                    .Newobj(nullableType.GetConstructor(new[] { itemType })!)
                     .Stloc(localResult)
                     .BrS(finish)
                     .Mark(noValue)
@@ -165,10 +164,10 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
+        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
         {
-            if (_itemDescriptor.Sealed) return null;
-            return new NullableTypeDescriptor.TypeNewDescriptorGenerator(this);
+            if (_itemDescriptor!.Sealed) return null;
+            return new TypeNewDescriptorGenerator(this);
         }
 
         class TypeNewDescriptorGenerator : ITypeNewDescriptorGenerator
@@ -191,16 +190,16 @@ namespace BTDB.EventStoreLayer
                     .Do(pushObj)
                     .Stloc(localValue)
                     .Ldloca(localValue)
-                    .Call(nullableType.GetMethod("get_HasValue"))
+                    .Call(nullableType.GetMethod("get_HasValue")!)
                     .Brfalse(finish)
                     .Ldloca(localValue)
-                    .Call(nullableType.GetMethod("get_Value"))
+                    .Call(nullableType.GetMethod("get_Value")!)
                     .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null))
                     .Mark(finish);
             }
         }
 
-        public ITypeDescriptor NestedType(int index)
+        public ITypeDescriptor? NestedType(int index)
         {
             if (index == 0) return _itemDescriptor;
             return null;
@@ -226,9 +225,9 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
-            nestedDescriptorWriter(writer, _itemDescriptor);
+            nestedDescriptorWriter(ref writer, _itemDescriptor!);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
@@ -243,21 +242,21 @@ namespace BTDB.EventStoreLayer
                 .Stloc(localValue)
                 .Do(pushWriter)
                 .Ldloca(localValue)
-                .Call(valueType.GetMethod("get_HasValue"))
+                .Call(valueType.GetMethod("get_HasValue")!)
                 .Dup()
                 .Stloc(localHasValue)
-                .Callvirt(() => default(AbstractBufferedWriter).WriteBool(false))
+                .Call(() => default(SpanWriter).WriteBool(false))
                 .Ldloc(localHasValue)
                 .Brfalse(finish);
-            _itemDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
-                il => il.Ldloca(localValue).Call(valueType.GetMethod("get_Value")), itemType);
+            _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
+                il => il.Ldloca(localValue).Call(valueType.GetMethod("get_Value")!), itemType);
             ilGenerator
                 .Mark(finish);
         }
 
         static Type GetItemType(Type valueType)
         {
-            return Nullable.GetUnderlyingType(valueType);
+            return Nullable.GetUnderlyingType(valueType)!;
         }
 
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
@@ -265,9 +264,9 @@ namespace BTDB.EventStoreLayer
             var finish = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                .Callvirt(() => default(SpanReader).ReadBool())
                 .Brfalse(finish);
-            _itemDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            _itemDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Mark(finish);
         }

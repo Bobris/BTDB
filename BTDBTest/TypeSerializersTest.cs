@@ -28,8 +28,8 @@ namespace BTDBTest
         [Fact]
         public void CanSerializeString()
         {
-            var writer = new ByteBufferWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, "Hello");
+            var writer = new SpanWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(ref writer, "Hello");
             storedDescriptorCtx.FinishNewDescriptors(writer);
             storedDescriptorCtx.StoreObject(writer, "Hello");
             storedDescriptorCtx.CommitNewDescriptors();
