@@ -67,7 +67,7 @@ namespace BTDB.ODBLayer
             _name = InterfaceType.ToSimpleName();
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             var methods = RelationInfo.GetMethods(InterfaceType).ToArray();
-            ApartFields = FindApartFields(methods, interfaceType.GetProperties(), ClientRelationVersionInfo);
+            ApartFields = FindApartFields(methods, interfaceType.GetProperties(BindingFlags.Instance | BindingFlags.Public), ClientRelationVersionInfo);
             _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
             LoadTypes.Add(ItemType);
             DelegateCreator = Build();

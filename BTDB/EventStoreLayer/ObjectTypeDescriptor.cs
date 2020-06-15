@@ -58,10 +58,10 @@ namespace BTDB.EventStoreLayer
 
         public string Name { get; }
 
-        public void CheckObjectTypeIsGoodDto(Type type)
+        public static void CheckObjectTypeIsGoodDto(Type type)
         {
-            var isInterface = _type!.IsInterface;
-            foreach (var propertyInfo in _type.GetProperties())
+            var isInterface = type.IsInterface;
+            foreach (var propertyInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
                 if (ShouldNotBeStored(propertyInfo)) continue;
@@ -75,7 +75,7 @@ namespace BTDB.EventStoreLayer
                                                         " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
             }
 
-            foreach (var fieldInfo in _type.GetFields(BindingFlags.NonPublic |
+            foreach (var fieldInfo in type.GetFields(BindingFlags.NonPublic |
                                                       BindingFlags.Public |
                                                       BindingFlags.Instance))
             {
@@ -94,7 +94,7 @@ namespace BTDB.EventStoreLayer
 
         public bool FinishBuildFromType(ITypeDescriptorFactory factory)
         {
-            var props = _type!.GetProperties();
+            var props = _type!.GetProperties(BindingFlags.Instance | BindingFlags.Public);
 #if DEBUG
             CheckObjectTypeIsGoodDto(_type);
 #endif
@@ -262,7 +262,7 @@ namespace BTDB.EventStoreLayer
                     .Ldloc(resultLoc)
                     .Callvirt(() => default(ITypeBinaryDeserializerContext).AddBackRef(null))
                     .Mark(labelNoCtx);
-                var props = targetType.GetProperties();
+                var props = targetType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
                 for (var idx = 0; idx < _fields.Count; idx++)
                 {
                     var idxForCapture = idx;
@@ -445,7 +445,7 @@ namespace BTDB.EventStoreLayer
             public void GenerateTypeIterator(IILGen ilGenerator, Action<IILGen> pushObj, Action<IILGen> pushCtx,
                 Type type)
             {
-                var allProps = _objectTypeDescriptor.GetPreferredType()!.GetProperties();
+                var allProps = _objectTypeDescriptor.GetPreferredType()!.GetProperties(BindingFlags.Instance | BindingFlags.Public);
                 foreach (var pair in _objectTypeDescriptor._fields)
                 {
                     if (pair.Value.Sealed) continue;

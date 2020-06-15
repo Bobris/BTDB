@@ -1043,7 +1043,7 @@ namespace BTDB.ODBLayer
         public static IEnumerable<PropertyInfo> GetProperties(Type interfaceType)
         {
             if (IsIgnoredType(interfaceType)) yield break;
-            var properties = interfaceType.GetProperties();
+            var properties = interfaceType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
             foreach (var property in properties)
             {
                 if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
@@ -1052,7 +1052,7 @@ namespace BTDB.ODBLayer
             foreach (var iface in interfaceType.GetInterfaces())
             {
                 if (IsIgnoredType(iface)) continue;
-                var inheritedProperties = iface.GetProperties();
+                var inheritedProperties = iface.GetProperties(BindingFlags.Instance | BindingFlags.Public);
                 foreach (var property in inheritedProperties)
                 {
                     if (property.Name == nameof(IRelation.BtdbInternalNextInChain)) continue;
