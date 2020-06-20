@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 24.0.2
+
+### Fixed
+
+Ignore static properties on DB Objects.
+
 ## 24.0.1
 
 ### Fixed

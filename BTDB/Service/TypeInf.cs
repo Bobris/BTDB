@@ -42,7 +42,7 @@ namespace BTDB.Service
                     if (!IsMethodSupported(method, fieldHandlerFactory)) continue;
                     methodInfs.Add(new MethodInf(method, fieldHandlerFactory));
                 }
-                var properties = type.GetProperties();
+                var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
                 foreach (var property in properties)
                 {
                     if (!property.CanRead || !property.CanWrite) continue;
