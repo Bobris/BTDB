@@ -26,10 +26,10 @@ namespace BTDB.ODBLayer
                 FieldHandlerOptions.Orderable | FieldHandlerOptions.AtEndOfStream);
             _valuesHandler =
                 fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
-            _configuration = writer.Data.ToByteArray();
+            _configuration = writer.GetSpan().ToArray();
             CreateConfiguration();
         }
 

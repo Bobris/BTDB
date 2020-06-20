@@ -53,7 +53,7 @@ namespace BTDB.ODBLayer
             Handler = handler;
         }
 
-        internal static TableFieldInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory,
+        internal static TableFieldInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory,
             string tableName, FieldHandlerOptions handlerOptions)
         {
             var name = reader.ReadString();
@@ -79,7 +79,7 @@ namespace BTDB.ODBLayer
             return new TableFieldInfo(a != null ? a.Name : pi.Name, fieldHandler);
         }
 
-        internal void Save(AbstractBufferedWriter writer)
+        internal void Save(ref SpanWriter writer)
         {
             writer.WriteString(Name);
             writer.WriteString(Handler!.Name);

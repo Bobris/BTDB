@@ -16,6 +16,13 @@ namespace BTDB.StreamLayer
             Controller = null;
         }
 
+        public SpanReader(in ByteBuffer data)
+        {
+            Buf = data.AsSyncReadOnlySpan();
+            Original = Buf;
+            Controller = null;
+        }
+
         public SpanReader(ISpanReader controller)
         {
             Controller = controller;

@@ -15,6 +15,14 @@ using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer
 {
+    delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref SpanReader reader, object value);
+    delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref SpanReader reader);
+    delegate void RelationKeysSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object o1,
+        object o2);
+    delegate void RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
+    delegate void RelationFreeObject(IInternalObjectDBTransaction transaction, ref SpanReader reader,
+        IList<ulong> dictIds);
+
     public class RelationInfo
     {
         readonly uint _id;
@@ -25,8 +33,8 @@ namespace BTDB.ODBLayer
         readonly object _defaultClientObject;
 
         RelationVersionInfo?[] _relationVersions = Array.Empty<RelationVersionInfo?>();
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object> _primaryKeysSaver;
-        Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object> _valueSaver;
+        RelationKeysSaver _primaryKeysSaver;
+        RelationSaver _valueSaver;
 
         internal StructList<ItemLoaderInfo> ItemLoaderInfos;
 
@@ -39,27 +47,27 @@ namespace BTDB.ODBLayer
             {
                 _owner = owner;
                 _itemType = itemType;
-                _valueLoaders = new Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[_owner._relationVersions.Length];
+                _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
                 _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
                     $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}");
             }
 
             internal object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
             {
-                var reader = new ByteBufferReader(keyBytes);
-                var obj = _primaryKeysLoader(tr, reader);
-                reader.Restart(valueBytes);
+                var reader = new SpanReader(keyBytes);
+                var obj = _primaryKeysLoader(tr, ref reader);
+                reader = new SpanReader(valueBytes);
                 var version = reader.ReadVUInt32();
-                GetValueLoader(version)(tr, reader, obj);
+                GetValueLoader(version)(tr, ref reader, obj);
                 return obj;
             }
 
-            readonly Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> _primaryKeysLoader;
-            readonly Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>?[] _valueLoaders;
+            readonly RelationLoaderFunc _primaryKeysLoader;
+            readonly RelationLoader?[] _valueLoaders;
 
-            Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> GetValueLoader(uint version)
+            RelationLoader GetValueLoader(uint version)
             {
-                Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>? res;
+                RelationLoader? res;
                 do
                 {
                     res = _valueLoaders[version];
@@ -71,11 +79,10 @@ namespace BTDB.ODBLayer
                 return res;
             }
 
-            Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreatePkLoader(Type instanceType,
-                ReadOnlySpan<TableFieldInfo> fields, string loaderName)
+            RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName)
             {
                 var method =
-                    ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
+                    ILBuilder.Instance.NewMethod<RelationLoaderFunc>(
                         loaderName);
                 var ilGenerator = method.Generator;
                 ilGenerator.DeclareLocal(instanceType);
@@ -126,41 +133,34 @@ namespace BTDB.ODBLayer
                     ilGenerator.DeclareLocal(typeof(IReaderCtx));
                     ilGenerator
                         .Ldarg(0)
-                        .Ldarg(1)
-                        .Newobj(() => new DBReaderCtx(null, null))
+                        .Newobj(() => new DBReaderCtx(null))
                         .Stloc(1);
                 }
 
                 for (var i = 0; i < loadInstructions.Count; i++)
                 {
                     ref var loadInstruction = ref loadInstructions[i];
-                    Action<IILGen> readerOrCtx;
-                    if (loadInstruction.Item1.NeedsCtx())
-                        readerOrCtx = il => il.Ldloc(1);
-                    else
-                        readerOrCtx = il => il.Ldarg(1);
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
-                        loadInstruction.Item1.Load(ilGenerator, readerOrCtx);
+                        loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                         loadInstruction.Item2(ilGenerator);
                         ilGenerator.Call(loadInstruction.Item3!);
                         continue;
                     }
 
-                    loadInstruction.Item1.Skip(ilGenerator, readerOrCtx);
+                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                 }
 
                 ilGenerator.Ldloc(0).Ret();
                 return method.Create();
             }
 
-            Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(Type instanceType,
+            RelationLoader CreateLoader(Type instanceType,
                 ReadOnlySpan<TableFieldInfo> fields, string loaderName)
             {
-                var method =
-                    ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
-                        loaderName);
+                var method = ILBuilder.Instance.NewMethod<RelationLoader>(loaderName);
                 var ilGenerator = method.Generator;
                 ilGenerator.DeclareLocal(instanceType);
                 ilGenerator
@@ -253,19 +253,14 @@ namespace BTDB.ODBLayer
                     ilGenerator.DeclareLocal(typeof(IReaderCtx));
                     ilGenerator
                         .Ldarg(0)
-                        .Ldarg(1)
-                        .Newobj(() => new DBReaderCtx(null, null))
+                        .Newobj(() => new DBReaderCtx(null))
                         .Stloc(1);
                 }
 
                 for (var i = 0; i < loadInstructions.Count; i++)
                 {
                     ref var loadInstruction = ref loadInstructions[i];
-                    Action<IILGen> readerOrCtx;
-                    if (loadInstruction.Item1.NeedsCtx())
-                        readerOrCtx = il => il.Ldloc(1);
-                    else
-                        readerOrCtx = il => il.Ldarg(1);
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
@@ -275,14 +270,14 @@ namespace BTDB.ODBLayer
                         }
                         else
                         {
-                            loadInstruction.Item1.Load(ilGenerator, readerOrCtx);
+                            loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                         }
                         loadInstruction.Item2(ilGenerator);
                         ilGenerator.Call(loadInstruction.Item3!);
                         continue;
                     }
 
-                    loadInstruction.Item1.Skip(ilGenerator, readerOrCtx);
+                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                 }
 
                 ilGenerator.Ret();
@@ -290,9 +285,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>?[]
-            _valueIDictFinders =
-                Array.Empty<Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>>?>();
+        RelationFreeObject?[] _valueIDictFinders = Array.Empty<RelationFreeObject?>();
 
         //SK
         Action<IInternalObjectDBTransaction, AbstractBufferedWriter, object, object>[]
@@ -1385,9 +1378,9 @@ namespace BTDB.ODBLayer
         public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, ByteBuffer valueBytes,
             IList<ulong> dictionaries)
         {
-            var valueReader = new ByteBufferReader(valueBytes);
+            var valueReader = new SpanReader(valueBytes);
             var version = valueReader.ReadVUInt32();
-            GetIDictFinder(version).Invoke(tr, valueReader, dictionaries);
+            GetIDictFinder(version).Invoke(tr, ref valueReader, dictionaries);
         }
 
         Action<IInternalObjectDBTransaction, AbstractBufferedReader, IList<ulong>> CreateIDictFinder(uint version)
@@ -1465,9 +1458,8 @@ namespace BTDB.ODBLayer
         readonly IList<ulong> _freeDictionaries;
         StructList<bool> _seenObjects;
 
-        public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, AbstractBufferedReader reader,
-            IList<ulong> freeDictionaries)
-            : base(transaction, reader)
+        public DBReaderWithFreeInfoCtx(IInternalObjectDBTransaction transaction, IList<ulong> freeDictionaries)
+            : base(transaction)
         {
             _freeDictionaries = freeDictionaries;
         }
@@ -1479,9 +1471,9 @@ namespace BTDB.ODBLayer
             _freeDictionaries.Add(dictId);
         }
 
-        public override void FreeContentInNativeObject()
+        public override void FreeContentInNativeObject(ref SpanReader outsideReader)
         {
-            var id = _reader!.ReadVInt64();
+            var id = outsideReader.ReadVInt64();
             if (id == 0)
             {
             }
@@ -1491,7 +1483,7 @@ namespace BTDB.ODBLayer
                 Transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                 if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong) id)))
                     return;
-                var reader = new ByteBufferReader(Transaction.KeyValueDBTransaction.GetValue());
+                var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValueAsReadOnlySpan());
                 var tableId = reader.ReadVUInt32();
                 var tableInfo = ((ObjectDB) Transaction.Owner).TablesInfo.FindById(tableId);
                 if (tableInfo == null)
@@ -1500,7 +1492,7 @@ namespace BTDB.ODBLayer
                 var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
                 if (freeContentTuple.Item1 != NeedsFreeContent.No)
                 {
-                    freeContentTuple.Item2(Transaction, null, reader, _freeDictionaries);
+                    freeContentTuple.Item2(Transaction, null, ref reader, _freeDictionaries);
                 }
             }
             else

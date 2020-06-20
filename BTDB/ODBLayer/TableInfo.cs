@@ -14,6 +14,13 @@ using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer
 {
+    delegate void ObjectSaver(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
+        ref SpanWriter writer, object value);
+    delegate void ObjectLoader(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
+        ref SpanReader reader, object value);
+    delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
+        ref SpanReader reader, IList<ulong> dictIds);
+
     class TableInfo
     {
         readonly ITableInfoResolver _tableInfoResolver;
@@ -25,19 +32,12 @@ namespace BTDB.ODBLayer
 
         Func<IInternalObjectDBTransaction, DBObjectMetadata, object>? _creator;
         Action<IInternalObjectDBTransaction, DBObjectMetadata, object>? _initializer;
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>? _saver;
+        ObjectSaver? _saver;
 
-        readonly
-            ConcurrentDictionary<uint,
-                Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>> _loaders =
-                new ConcurrentDictionary<uint, Action<IInternalObjectDBTransaction, DBObjectMetadata,
-                    AbstractBufferedReader, object>>();
+        readonly ConcurrentDictionary<uint, ObjectLoader> _loaders = new ConcurrentDictionary<uint, ObjectLoader>();
 
-        readonly
-            ConcurrentDictionary<uint, Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction, DBObjectMetadata,
-                AbstractBufferedReader, IList<ulong>>>> _freeContent =
-                new ConcurrentDictionary<uint, Tuple<NeedsFreeContent, Action<IInternalObjectDBTransaction,
-                    DBObjectMetadata, AbstractBufferedReader, IList<ulong>>>>();
+        readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent =
+            new ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>>();
 
         readonly Dictionary<uint, bool> _freeContentNeedDetectionInProgress = new Dictionary<uint, bool>();
         long _singletonOid;
@@ -175,7 +175,7 @@ namespace BTDB.ODBLayer
             Interlocked.CompareExchange(ref _initializer, initializer, null);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object> Saver
+        internal ObjectSaver Saver
         {
             get
             {
@@ -225,7 +225,7 @@ namespace BTDB.ODBLayer
         void CreateSaver()
         {
             var method = ILBuilder.Instance
-                .NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedWriter, object>>(
+                .NewMethod<ObjectSaver>(
                     $"Saver_{Name}");
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType!);
@@ -239,8 +239,7 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof(IWriterCtx));
                 ilGenerator
                     .Ldarg(0)
-                    .Ldarg(2)
-                    .Newobj(() => new DBWriterCtx(null, null))
+                    .Newobj(() => new DBWriterCtx(null))
                     .Stloc(1);
             }
 
@@ -249,13 +248,9 @@ namespace BTDB.ODBLayer
             {
                 var field = ClientTableVersionInfo[i];
                 var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
-                Action<IILGen> writerOrCtx;
                 var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
-                if (handler.NeedsCtx())
-                    writerOrCtx = il => il.Ldloc(1);
-                else
-                    writerOrCtx = il => il.Ldarg(2);
-                handler.Save(ilGenerator, writerOrCtx, il =>
+                var writerOrCtx = handler.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
+                handler.Save(ilGenerator, il => il.Ldarg(2), writerOrCtx, il =>
                 {
                     il.Ldloc(0).Callvirt(getter);
                     _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(getter.ReturnType,
@@ -324,18 +319,16 @@ namespace BTDB.ODBLayer
             LastPersistedVersion = _tableInfoResolver.GetLastPersistedVersion(Id);
         }
 
-        internal Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> GetLoader(
-            uint version)
+        internal ObjectLoader GetLoader(uint version)
         {
             return _loaders.GetOrAdd(version, CreateLoader);
         }
 
-        Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object> CreateLoader(
-            uint version)
+        ObjectLoader CreateLoader(uint version)
         {
             EnsureClientTypeVersion();
             var method = ILBuilder.Instance
-                .NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, object>>(
+                .NewMethod<ObjectLoader>(
                     $"Loader_{Name}_{version}");
             var ilGenerator = method.Generator;
             ilGenerator.DeclareLocal(ClientType!);
@@ -353,20 +346,15 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof(IReaderCtx));
                 ilGenerator
                     .Ldarg(0)
-                    .Ldarg(2)
-                    .Newobj(() => new DBReaderCtx(null, null))
+                    .Newobj(() => new DBReaderCtx(null))
                     .Stloc(1);
             }
 
             var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            for (int fi = 0; fi < tableVersionInfo.FieldCount; fi++)
+            for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
-                Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler!.NeedsCtx())
-                    readerOrCtx = il => il.Ldloc(1);
-                else
-                    readerOrCtx = il => il.Ldarg(2);
+                var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
                 var destFieldInfo = clientTableVersionInfo![srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
@@ -380,14 +368,14 @@ namespace BTDB.ODBLayer
                     if (converterGenerator != null)
                     {
                         ilGenerator.Ldloc(0);
-                        specializedSrcHandler.Load(ilGenerator, readerOrCtx);
+                        specializedSrcHandler.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
                         converterGenerator(ilGenerator);
                         ilGenerator.Call(fieldInfo);
                         continue;
                     }
                 }
 
-                srcFieldInfo.Handler.Skip(ilGenerator, readerOrCtx);
+                srcFieldInfo.Handler.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
             }
 
             if (ClientTypeVersion != version)
@@ -434,19 +422,14 @@ namespace BTDB.ODBLayer
             return result;
         }
 
-        internal Tuple<NeedsFreeContent,
-                Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>>>
-            GetFreeContent(uint version)
+        internal Tuple<NeedsFreeContent, ObjectFreeContent> GetFreeContent(uint version)
         {
             return _freeContent.GetOrAdd(version, CreateFreeContent);
         }
 
-        Tuple<NeedsFreeContent,
-                Action<IInternalObjectDBTransaction, DBObjectMetadata, AbstractBufferedReader, IList<ulong>>>
-            CreateFreeContent(uint version)
+        Tuple<NeedsFreeContent, ObjectFreeContent> CreateFreeContent(uint version)
         {
-            var method = ILBuilder.Instance.NewMethod<Action<IInternalObjectDBTransaction, DBObjectMetadata,
-                AbstractBufferedReader, IList<ulong>>>($"FreeContent_{Name}_{version}");
+            var method = ILBuilder.Instance.NewMethod<ObjectFreeContent>($"FreeContent_{Name}_{version}");
             var ilGenerator = method.Generator;
             var tableVersionInfo = _tableVersions.GetOrAdd(version,
                 (ver, tableInfo) =>
@@ -458,9 +441,8 @@ namespace BTDB.ODBLayer
                 ilGenerator.DeclareLocal(typeof(IReaderCtx));
                 ilGenerator
                     .Ldarg(0)
-                    .Ldarg(2)
                     .Ldarg(3)
-                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null, null))
+                    .Newobj(() => new DBReaderWithFreeInfoCtx(null, null))
                     .Stloc(0);
             }
 

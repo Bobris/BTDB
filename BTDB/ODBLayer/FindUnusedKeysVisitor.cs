@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -76,28 +77,18 @@ namespace BTDB.ODBLayer
                     trkv.SetKeyPrefixUnsafe(prefix);
                     if (!trkv.FindFirstKey())
                         continue;
-                    var reader = new KeyValueDBValueReader(trkv);
                     do
                     {
-                        reader.Restart();
                         yield return new UnseenKey
                         {
-                            Key = Merge(prefix, trkv.GetKeyAsByteArray()),
-                            ValueSize = reader.ReadVUInt32()
+                            Key = trkv.GetKeyIncludingPrefix().ToByteArray(),
+                            ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
                         };
                     } while (trkv.FindNextKey());
                 }
             }
         }
 
-        byte[] Merge(byte[] prefix, byte[] suffix)
-        {
-            var result = new byte[prefix.Length + suffix.Length];
-            System.Buffer.BlockCopy(prefix, 0, result, 0, prefix.Length);
-            System.Buffer.BlockCopy(suffix, 0, result, prefix.Length, suffix.Length);
-            return result;
-        }
-   
         public void DeleteUnused(IObjectDBTransaction tr)
         {
             var itr = (IInternalObjectDBTransaction)tr;

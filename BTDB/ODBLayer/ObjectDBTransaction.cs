@@ -65,9 +65,8 @@ namespace BTDB.ODBLayer
             return (ulong) (Interlocked.Increment(ref _lastDictId) - 1);
         }
 
-        public object ReadInlineObject(IReaderCtx readerCtx)
+        public object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx)
         {
-            var reader = readerCtx.Reader();
             var tableId = reader.ReadVUInt32();
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
@@ -75,24 +74,23 @@ namespace BTDB.ODBLayer
             EnsureClientTypeNotNull(tableInfo);
             var obj = tableInfo.Creator(this, null);
             readerCtx.RegisterObject(obj);
-            tableInfo.GetLoader(tableVersion)(this, null, reader, obj);
-            readerCtx.ReadObjectDone();
+            tableInfo.GetLoader(tableVersion)(this, null, ref reader, obj);
+            readerCtx.ReadObjectDone(ref reader);
             return obj;
         }
 
-        public void FreeContentInNativeObject(IReaderCtx readerCtx)
+        public void FreeContentInNativeObject(ref SpanReader reader, IReaderCtx readerCtx)
         {
-            var reader = readerCtx.Reader();
             var tableId = reader.ReadVUInt32();
             var tableVersion = reader.ReadVUInt32();
             var tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
             var readerWithFree = (DBReaderWithFreeInfoCtx) readerCtx;
-            freeContentTuple.Item2(this, null, reader, readerWithFree.DictIds);
+            freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);
         }
 
-        public void WriteInlineObject(object @object, IWriterCtx writerCtx)
+        public void WriteInlineObject(ref SpanWriter writer, object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());
             if (ti == null)
@@ -103,10 +101,9 @@ namespace BTDB.ODBLayer
 
             EnsureClientTypeNotNull(ti);
             IfNeededPersistTableInfo(ti);
-            var writer = writerCtx.Writer();
             writer.WriteVUInt32(ti.Id);
             writer.WriteVUInt32(ti.ClientTypeVersion);
-            ti.Saver(this, null, writer, @object);
+            ti.Saver(this, null, ref writer, @object);
         }
 
         void IfNeededPersistTableInfo(TableInfo tableInfo)
@@ -185,20 +182,15 @@ namespace BTDB.ODBLayer
                     continue;
                 }
 
-                var reader = ReadObjStart(oid, out var tableInfo);
+                ReadObjStart(oid, out var tableInfo, out var reader);
                 if (type != null && !type.IsAssignableFrom(tableInfo.ClientType)) continue;
-                var obj = ReadObjFinish(oid, tableInfo, reader);
+                var obj = ReadObjFinish(oid, tableInfo, ref reader);
                 yield return obj;
             }
 
             if (_dirtyObjSet == null) yield break;
             var dirtyObjsToEnum = _dirtyObjSet.Where(p => p.Key > oid && p.Key <= finalOid).ToList();
-            dirtyObjsToEnum.Sort((p1, p2) =>
-            {
-                if (p1.Key < p2.Key) return -1;
-                if (p1.Key > p2.Key) return 1;
-                return 0;
-            });
+            dirtyObjsToEnum.Sort((p1, p2) => p1.Key < p2.Key ? -1 : p1.Key > p2.Key ? 1 : 0);
             foreach (var dObjPair in dirtyObjsToEnum)
             {
                 var obj = dObjPair.Value;
@@ -225,13 +217,13 @@ namespace BTDB.ODBLayer
             return null;
         }
 
-        object ReadObjFinish(ulong oid, TableInfo tableInfo, ByteArrayReader reader)
+        object ReadObjFinish(ulong oid, TableInfo tableInfo, ref SpanReader reader)
         {
             var tableVersion = reader.ReadVUInt32();
             var metadata = new DBObjectMetadata(oid, DBObjectState.Read);
             var obj = tableInfo.Creator(this, metadata);
             AddToObjCache(oid, obj, metadata);
-            tableInfo.GetLoader(tableVersion)(this, metadata, reader, obj);
+            tableInfo.GetLoader(tableVersion)(this, metadata, ref reader, obj);
             return obj;
         }
 
@@ -302,16 +294,15 @@ namespace BTDB.ODBLayer
             }
         }
 
-        ByteArrayReader ReadObjStart(ulong oid, out TableInfo tableInfo)
+        void ReadObjStart(ulong oid, out TableInfo tableInfo, out SpanReader reader)
         {
-            var reader = new ByteArrayReader(_keyValueTr!.GetValueAsByteArray());
+            reader = new SpanReader(_keyValueTr!.GetValueAsReadOnlySpan());
             var tableId = reader.ReadVUInt32();
             tableInfo = _owner.TablesInfo.FindById(tableId) ?? throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
             EnsureClientTypeNotNull(tableInfo);
-            return reader;
         }
 
-        public object Get(ulong oid)
+        public object? Get(ulong oid)
         {
             var o = GetObjFromObjCacheByOid(oid);
             if (o != null)
@@ -331,8 +322,8 @@ namespace BTDB.ODBLayer
                 return null;
             }
 
-            var reader = ReadObjStart(oid, out var tableInfo);
-            return ReadObjFinish(oid, tableInfo, reader);
+            ReadObjStart(oid, out var tableInfo, out var reader);
+            return ReadObjFinish(oid, tableInfo, ref reader);
         }
 
         public ulong GetOid(object? obj)
@@ -493,9 +484,9 @@ namespace BTDB.ODBLayer
 
                 if (content != null)
                 {
-                    var reader = new ByteArrayReader(content);
+                    var reader = new SpanReader(content);
                     reader.SkipVUInt32();
-                    obj = ReadObjFinish(oid, tableInfo, reader);
+                    obj = ReadObjFinish(oid, tableInfo, ref reader);
                 }
             }
 
@@ -953,10 +944,10 @@ namespace BTDB.ODBLayer
 
             if (metadata == null) throw new BTDBException("Metadata for object not found");
             if (metadata.State == DBObjectState.Deleted) return;
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
-            tableInfo.Saver(this, metadata, writer, o);
+            tableInfo.Saver(this, metadata, ref writer, o);
             if (tableInfo.IsSingletonOid(metadata.Id))
             {
                 tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
@@ -964,7 +955,7 @@ namespace BTDB.ODBLayer
 
             _keyValueTrProtector.Start();
             _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.Data.ToByteArray());
+            _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.GetSpan());
         }
 
         void PersistTableInfo(TableInfo tableInfo)
@@ -974,25 +965,22 @@ namespace BTDB.ODBLayer
             {
                 if (tableInfo.LastPersistedVersion <= 0)
                 {
-                    _keyValueTr.SetKeyPrefix(ObjectDB.TableNamesPrefix);
+                    _keyValueTr!.SetKeyPrefix(ObjectDB.TableNamesPrefix);
                     if (_keyValueTr.CreateKey(BuildKeyFromOid(tableInfo.Id)))
                     {
-                        using (var writer = new KeyValueDBValueWriter(_keyValueTr))
-                        {
-                            writer.WriteString(tableInfo.Name);
-                        }
+                        var writer = new SpanWriter();
+                        writer.WriteString(tableInfo.Name);
+                        _keyValueTr.SetValue(writer.GetByteBufferAndReset());
                     }
                 }
 
-                _keyValueTr.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
-                if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion))
-                )
+                _keyValueTr!.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
+                if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
                 {
                     var tableVersionInfo = tableInfo.ClientTableVersionInfo;
-                    using (var writer = new KeyValueDBValueWriter(_keyValueTr))
-                    {
-                        tableVersionInfo.Save(writer);
-                    }
+                    var writer = new SpanWriter();
+                    tableVersionInfo!.Save(ref writer);
+                    _keyValueTr.SetValue(writer.GetByteBufferAndReset());
                 }
             }
 

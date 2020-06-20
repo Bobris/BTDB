@@ -93,7 +93,7 @@ namespace BTDB.ODBLayer
                     tr.SetKeyPrefix(AllObjectsPrefix);
                     if (tr.FindLastKey())
                     {
-                        _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
+                        _lastObjId = (long)new SpanReader(tr.GetKey().AsSyncReadOnlySpan()).ReadVUInt64();
                     }
                 }
                 _tablesInfo.LoadTables(LoadTablesEnum(tr));
@@ -103,7 +103,7 @@ namespace BTDB.ODBLayer
                     tr.SetKeyPrefix(null);
                     if (tr.FindExactKey(LastDictIdKey))
                     {
-                        _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
+                        _lastDictId = new SpanReader(tr.GetValueAsReadOnlySpan()).ReadVUInt64();
                     }
                 }
             }
@@ -122,26 +122,18 @@ namespace BTDB.ODBLayer
         internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
             tr.SetKeyPrefixUnsafe(TableNamesPrefix);
-            var keyReader = new KeyValueDBKeyReader(tr);
-            var valueReader = new KeyValueDBValueReader(tr);
             while (tr.FindNextKey())
             {
-                keyReader.Restart();
-                valueReader.Restart();
-                yield return new KeyValuePair<uint, string>(keyReader.ReadVUInt32(), valueReader.ReadString());
+                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKey()).ReadVUInt32(), new SpanReader(tr.GetValueAsReadOnlySpan()).ReadString());
             }
         }
 
         internal static IEnumerable<KeyValuePair<uint, string>> LoadRelationNamesEnum(IKeyValueDBTransaction tr)
         {
             tr.SetKeyPrefixUnsafe(RelationNamesPrefix);
-            var keyReader = new KeyValueDBKeyReader(tr);
-            var valueReader = new KeyValueDBValueReader(tr);
             while (tr.FindNextKey())
             {
-                keyReader.Restart();
-                valueReader.Restart();
-                yield return new KeyValuePair<uint, string>(valueReader.ReadVUInt32(), keyReader.ReadString());
+                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKey()).ReadVUInt32(), new SpanReader(tr.GetValueAsReadOnlySpan()).ReadString());
             }
         }
 
@@ -264,30 +256,27 @@ namespace BTDB.ODBLayer
 
             TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
             {
-                using (var tr = _keyValueDB.StartTransaction())
-                {
-                    tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = TableInfo.BuildKeyForTableVersions(id, version);
-                    if (!tr.FindExactKey(key))
-                        throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
-                    return TableVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, tableName);
-                }
+                using var tr = _keyValueDB.StartTransaction();
+                tr.SetKeyPrefix(TableVersionsPrefix);
+                var key = TableInfo.BuildKeyForTableVersions(id, version);
+                if (!tr.FindExactKey(key))
+                    throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
+                var reader = new SpanReader(tr.GetValueAsReadOnlySpan());
+                return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
             }
 
             public long GetSingletonOid(uint id)
             {
-                using (var tr = _keyValueDB.StartTransaction())
+                using var tr = _keyValueDB.StartTransaction();
+                tr.SetKeyPrefix(TableSingletonsPrefix);
+                var key = new byte[PackUnpack.LengthVUInt(id)];
+                var ofs = 0;
+                PackUnpack.PackVUInt(key, ref ofs, id);
+                if (tr.FindExactKey(key))
                 {
-                    tr.SetKeyPrefix(TableSingletonsPrefix);
-                    var key = new byte[PackUnpack.LengthVUInt(id)];
-                    var ofs = 0;
-                    PackUnpack.PackVUInt(key, ref ofs, id);
-                    if (tr.FindExactKey(key))
-                    {
-                        return (long)new KeyValueDBValueReader(tr).ReadVUInt64();
-                    }
-                    return 0;
+                    return (long)new SpanReader(tr.GetValueAsReadOnlySpan()).ReadVUInt64();
                 }
+                return 0;
             }
 
             public ulong AllocateNewOid()
