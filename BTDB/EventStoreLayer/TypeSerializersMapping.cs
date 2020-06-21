@@ -46,7 +46,7 @@ namespace BTDB.EventStoreLayer
             while (_id2DescriptorMap.Count < ReservedBuiltInTypes) _id2DescriptorMap.Add(null);
         }
 
-        public void LoadTypeDescriptors(AbstractBufferedReader reader)
+        public void LoadTypeDescriptors(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             var firstTypeId = typeId;
@@ -60,19 +60,19 @@ namespace BTDB.EventStoreLayer
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new ObjectTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.List:
-                        descriptor = new ListTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new ListTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Dictionary:
-                        descriptor = new DictionaryTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new DictionaryTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(_typeSerializers, reader);
+                        descriptor = new EnumTypeDescriptor(_typeSerializers, ref reader);
                         break;
                     case TypeCategory.Nullable:
-                        descriptor = new NullableTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new NullableTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -100,7 +100,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId < _id2DescriptorMap.Count)
@@ -210,7 +210,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public object? LoadObject(AbstractBufferedReader reader)
+        public object? LoadObject(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
@@ -221,10 +221,10 @@ namespace BTDB.EventStoreLayer
             {
                 throw new InvalidDataException("Backreference cannot be first object");
             }
-            return Load(typeId, reader, null);
+            return Load(typeId, ref reader, null);
         }
 
-        public object Load(uint typeId, AbstractBufferedReader reader, ITypeBinaryDeserializerContext? context)
+        public object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext? context)
         {
             var infoForType = _id2DescriptorMap[typeId];
             if (infoForType!.Loader == null)

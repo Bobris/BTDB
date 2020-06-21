@@ -24,7 +24,7 @@ namespace BTDB.ChunkCache
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         uint _cacheValueFileId;
         IFileCollectionFile? _cacheValueFile;
-        AbstractBufferedWriter? _cacheValueWriter;
+        ISpanWriter? _cacheValueWriter;
         long _fileGeneration;
         Task? _compactionTask;
         internal Task? CurrentCompactionTask() => _compactionTask;
@@ -79,10 +79,10 @@ namespace BTDB.ChunkCache
 
         void LoadContent()
         {
-            AbstractBufferedReader reader;
+            SpanReader reader;
             foreach (var collectionFile in _fileCollection.Enumerate())
             {
-                reader = collectionFile.GetExclusiveReader();
+                reader = new SpanReader(collectionFile.GetExclusiveReader());
                 if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
                 var fileType = (DiskChunkFileType)reader.ReadUInt8();
                 var fileInfo = fileType switch

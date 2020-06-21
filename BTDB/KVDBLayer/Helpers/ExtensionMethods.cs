@@ -43,20 +43,19 @@ namespace BTDB.KVDBLayer
             return transaction.GetValue().ToByteArray();
         }
 
-        public static void SetKeyPrefixUnsafe(this IKeyValueDBTransaction transaction, byte[] prefix)
+        public static void SetKeyPrefixUnsafe(this IKeyValueDBTransaction transaction, byte[]? prefix)
         {
             transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewAsync(prefix));
         }
 
-        public static void SetKeyPrefix(this IKeyValueDBTransaction transaction, byte[] prefix)
+        public static void SetKeyPrefix(this IKeyValueDBTransaction transaction, byte[]? prefix)
         {
             transaction.SetKeyPrefix(prefix == null ? ByteBuffer.NewEmpty() : ByteBuffer.NewSync(prefix));
         }
 
         public static bool TryRemove<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dict, TKey key)
         {
-            TValue val;
-            return dict.TryRemove(key, out val);
+            return dict.TryRemove(key, out _);
         }
 
         public static Lazy<T> Force<T>(this Lazy<T> lazy)

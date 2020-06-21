@@ -253,20 +253,20 @@ namespace BTDB.ODBLayer
             }
         }
 
-        public static RelationVersionInfo LoadUnresolved(AbstractBufferedReader reader, string relationName)
+        public static RelationVersionInfo LoadUnresolved(ref SpanReader reader, string relationName)
         {
             var pkCount = reader.ReadVUInt32();
             var primaryKeyFields = new StructList<TableFieldInfo>();
             primaryKeyFields.Reserve(pkCount);
             for (var i = 0u; i < pkCount; i++)
             {
-                primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.Orderable));
+                primaryKeyFields.Add(UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable));
             }
             var skFieldCount = reader.ReadVUInt32();
             var secondaryKeyFields = new TableFieldInfo[skFieldCount];
             for (var i = 0; i < skFieldCount; i++)
             {
-                secondaryKeyFields[i] = UnresolvedTableFieldInfo.Load(reader, relationName, FieldHandlerOptions.Orderable);
+                secondaryKeyFields[i] = UnresolvedTableFieldInfo.Load(ref reader, relationName, FieldHandlerOptions.Orderable);
             }
             var skCount = reader.ReadVUInt32();
             var secondaryKeys = new Dictionary<uint, SecondaryKeyInfo>((int)skCount);

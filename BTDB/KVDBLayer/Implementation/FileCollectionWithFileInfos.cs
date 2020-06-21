@@ -16,7 +16,7 @@ namespace BTDB.KVDBLayer
         internal static readonly byte[] MagicStartOfFile = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'2' };
         internal static readonly byte[] MagicStartOfFileWithGuid = { (byte)'B', (byte)'T', (byte)'D', (byte)'B', (byte)'3' };
 
-        internal static void SkipHeader(AbstractBufferedReader reader)
+        internal static void SkipHeader(ref SpanReader reader)
         {
             var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
             var withGuid = BitArrayManipulation.CompareByteArray(magic, magic.Length,
@@ -24,7 +24,7 @@ namespace BTDB.KVDBLayer
             if (withGuid) reader.SkipGuid();
         }
 
-        internal static void WriteHeader(AbstractBufferedWriter writer, Guid? guid)
+        internal static void WriteHeader(ref SpanWriter writer, Guid? guid)
         {
             if (guid.HasValue)
             {
@@ -50,7 +50,8 @@ namespace BTDB.KVDBLayer
             {
                 try
                 {
-                    var reader = file.GetExclusiveReader();
+                    var readerController = file.GetExclusiveReader();
+                    var reader = new SpanReader(readerController);
                     var magic = reader.ReadByteArrayRaw(MagicStartOfFile.Length);
                     Guid? guid = null;
                     if (
@@ -77,28 +78,28 @@ namespace BTDB.KVDBLayer
                     switch (fileType)
                     {
                         case KVFileType.TransactionLog:
-                            fileInfo = new FileTransactionLog(reader, guid);
+                            fileInfo = new FileTransactionLog(ref reader, guid);
                             break;
                         case KVFileType.KeyIndex:
-                            fileInfo = new FileKeyIndex(reader, guid, false, false, false);
+                            fileInfo = new FileKeyIndex(ref reader, guid, false, false, false);
                             break;
                         case KVFileType.KeyIndexWithCommitUlong:
-                            fileInfo = new FileKeyIndex(reader, guid, true, false, false);
+                            fileInfo = new FileKeyIndex(ref reader, guid, true, false, false);
                             break;
                         case KVFileType.ModernKeyIndex:
-                            fileInfo = new FileKeyIndex(reader, guid, true, true, false);
+                            fileInfo = new FileKeyIndex(ref reader, guid, true, true, false);
                             break;
                         case KVFileType.ModernKeyIndexWithUlongs:
-                            fileInfo = new FileKeyIndex(reader, guid, true, true, true);
+                            fileInfo = new FileKeyIndex(ref reader, guid, true, true, true);
                             break;
                         case KVFileType.PureValues:
-                            fileInfo = new FilePureValues(reader, guid);
+                            fileInfo = new FilePureValues(ref reader, guid);
                             break;
                         case KVFileType.PureValuesWithId:
-                            fileInfo = new FilePureValuesWithId(reader, guid);
+                            fileInfo = new FilePureValuesWithId(ref reader, guid);
                             break;
                         case KVFileType.HashKeyIndex:
-                            fileInfo = new HashKeyIndex(reader, guid);
+                            fileInfo = new HashKeyIndex(ref reader, guid);
                             break;
                         default:
                             fileInfo = UnknownFile.Instance;

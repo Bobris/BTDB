@@ -285,7 +285,7 @@ namespace BTDB.EventStoreLayer
                                 .Callvirt(currentGetter!);
                         }
                     })
-                    .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null))
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
                     .Br(next)
                     .Mark(finish)
                     .Finally()

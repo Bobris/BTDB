@@ -10,14 +10,14 @@ namespace BTDB.ODBLayer
     public interface IODBVisitor: IODBFastVisitor
     {
         bool VisitSingleton(uint tableId, string? tableName, ulong oid);
-        bool StartObject(ulong oid, uint tableId, string tableName, uint version);
+        bool StartObject(ulong oid, uint tableId, string? tableName, uint version);
         bool StartField(string name);
         bool NeedScalarAsObject(); // return true if needed as object
         void ScalarAsObject(object content);
         bool NeedScalarAsText(); // return true if needed as string
         void ScalarAsText(string content);
         void OidReference(ulong oid);
-        bool StartInlineObject(uint tableId, string tableName, uint version); // false to skip
+        bool StartInlineObject(uint tableId, string? tableName, uint version); // false to skip
         void EndInlineObject();
         bool StartList();
         bool StartItem();

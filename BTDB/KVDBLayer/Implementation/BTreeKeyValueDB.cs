@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -41,7 +42,7 @@ namespace BTDB.KVDBLayer
         uint _fileIdWithTransactionLog;
         uint _fileIdWithPreviousTransactionLog;
         IFileCollectionFile? _fileWithTransactionLog;
-        AbstractBufferedWriter? _writerWithTransactionLog;
+        ISpanWriter? _writerWithTransactionLog;
         static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
         public long MaxTrLogFileSize { get; set; }
         public ulong CompactorReadBytesPerSecondLimit { get; }
@@ -261,7 +262,7 @@ namespace BTDB.KVDBLayer
                             _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
                         }
 
-                        if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+                        if (_writerWithTransactionLog.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
                         {
                             WriteStartOfNewTransactionLogFile();
                         }
@@ -336,7 +337,7 @@ namespace BTDB.KVDBLayer
             CreateIndexFile(cancellation, preserveKeyIndexGeneration);
         }
 
-        AbstractBufferedWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
+        ISpanWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
         {
             return StartPureValuesFile(out fileId);
         }
@@ -412,8 +413,9 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                var reader = FileCollection.GetFile(fileId)!.GetExclusiveReader();
-                FileKeyIndex.SkipHeader(reader);
+                var readerController = FileCollection.GetFile(fileId)!.GetExclusiveReader();
+                var reader = new SpanReader(readerController);
+                FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = info.KeyValueCount;
                 _nextRoot!.TrLogFileId = info.TrLogFileId;
                 _nextRoot.TrLogOffset = info.TrLogOffset;
@@ -428,7 +430,7 @@ namespace BTDB.KVDBLayer
                 var cursor = _nextRoot.CreateCursor();
                 if (info.Compression == KeyIndexCompression.Old)
                 {
-                    cursor.BuildTree(keyCount, (ref ByteBuffer key, Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, (ref SpanReader reader, ref ByteBuffer key, Span<byte> trueValue) =>
                     {
                         var keyLength = reader.ReadVInt32();
                         key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
@@ -588,12 +590,13 @@ namespace BTDB.KVDBLayer
 
             Span<byte> trueValue = stackalloc byte[12];
             var collectionFile = FileCollection.GetFile(fileId);
-            var reader = collectionFile!.GetExclusiveReader();
+            var readerController = collectionFile!.GetExclusiveReader();
+            var reader = new SpanReader(readerController);
             try
             {
                 if (logOffset == 0)
                 {
-                    FileTransactionLog.SkipHeader(reader);
+                    FileTransactionLog.SkipHeader(ref reader);
                 }
                 else
                 {
@@ -654,10 +657,8 @@ namespace BTDB.KVDBLayer
                             if (valueLen <= MaxValueSizeInlineInMemory &&
                                 (command & KVCommandType.SecondParamCompressed) == 0)
                             {
-                                var value = 0;
-                                MemoryMarshal.Write(trueValue, ref value);
                                 trueValue[4] = (byte) valueLen;
-                                reader.ReadBlock(trueValue.Slice(5, valueLen));
+                                reader.ReadBlock( ref MemoryMarshal.GetReference(trueValue.Slice(5, valueLen)), valueLen);
                             }
                             else
                             {
@@ -831,7 +832,9 @@ namespace BTDB.KVDBLayer
 
             if (_writerWithTransactionLog != null)
             {
-                _writerWithTransactionLog.WriteUInt8((byte) KVCommandType.TemporaryEndOfFile);
+                var writer = new SpanWriter(_writerWithTransactionLog);
+                writer.WriteUInt8((byte) KVCommandType.TemporaryEndOfFile);
+                writer.Sync();
                 _fileWithTransactionLog!.HardFlushTruncateSwitchToDisposedMode();
             }
         }
@@ -1046,18 +1049,20 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                WriteUlongsDiff(root, _lastCommitted);
+                var writer = new SpanWriter(_writerWithTransactionLog!);
+                WriteUlongsDiff(ref writer, root, _lastCommitted);
                 var deltaUlong = unchecked(root.CommitUlong - _lastCommitted.CommitUlong);
                 if (deltaUlong != 0)
                 {
-                    _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.CommitWithDeltaUlong);
-                    _writerWithTransactionLog.WriteVUInt64(deltaUlong);
+                    writer.WriteUInt8((byte) KVCommandType.CommitWithDeltaUlong);
+                    writer.WriteVUInt64(deltaUlong);
                 }
                 else
                 {
-                    _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.Commit);
+                    writer.WriteUInt8((byte) KVCommandType.Commit);
                 }
 
+                writer.Sync();
                 if (DurableTransactions)
                 {
                     _fileWithTransactionLog!.HardFlush();
@@ -1070,7 +1075,9 @@ namespace BTDB.KVDBLayer
                 UpdateTransactionLogInBTreeRoot(root);
                 if (temporaryCloseTransactionLog)
                 {
-                    _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.TemporaryEndOfFile);
+                    writer = new SpanWriter(_writerWithTransactionLog!);
+                    writer.WriteUInt8((byte) KVCommandType.TemporaryEndOfFile);
+                    writer.Sync();
                     _fileWithTransactionLog!.Flush();
                     _fileWithTransactionLog.Truncate();
                 }
@@ -1095,7 +1102,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        void WriteUlongsDiff(IRootNode newArray, IRootNode oldArray)
+        void WriteUlongsDiff(ref SpanWriter writer, IRootNode newArray, IRootNode oldArray)
         {
             var newCount = newArray.GetUlongCount();
             var oldCount = oldArray.GetUlongCount();
@@ -1107,9 +1114,9 @@ namespace BTDB.KVDBLayer
                 var deltaUlong = unchecked(newValue - oldValue);
                 if (deltaUlong != 0)
                 {
-                    _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.DeltaUlongs);
-                    _writerWithTransactionLog.WriteVUInt32(i);
-                    _writerWithTransactionLog.WriteVUInt64(deltaUlong);
+                    writer.WriteUInt8((byte) KVCommandType.DeltaUlongs);
+                    writer.WriteVUInt32(i);
+                    writer.WriteVUInt64(deltaUlong);
                 }
             }
         }
@@ -1124,7 +1131,7 @@ namespace BTDB.KVDBLayer
             root.TrLogFileId = _fileIdWithTransactionLog;
             if (_writerWithTransactionLog != null)
             {
-                root.TrLogOffset = (uint) _writerWithTransactionLog.GetCurrentPosition();
+                root.TrLogOffset = (uint) _writerWithTransactionLog.GetCurrentPositionWithoutWriter();
             }
             else
             {
@@ -1189,8 +1196,9 @@ namespace BTDB.KVDBLayer
             writtenToTransactionLog.Dispose();
             if (!nothingWrittenToTransactionLog)
             {
-                _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.Rollback);
-                _writerWithTransactionLog.FlushBuffer();
+                var writer = new SpanWriter(_writerWithTransactionLog!);
+                writer.WriteUInt8((byte) KVCommandType.Rollback);
+                writer.Sync();
                 _fileWithTransactionLog!.Flush();
                 lock (_writeLock)
                 {
@@ -1223,21 +1231,26 @@ namespace BTDB.KVDBLayer
                     _writerWithTransactionLog = _fileWithTransactionLog!.GetAppenderWriter();
                 }
 
-                if (_writerWithTransactionLog.GetCurrentPosition() > MaxTrLogFileSize)
+                if (_writerWithTransactionLog.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
                 {
                     WriteStartOfNewTransactionLogFile();
                 }
             }
 
-            _writerWithTransactionLog!.WriteUInt8((byte) KVCommandType.TransactionStart);
-            _writerWithTransactionLog.WriteByteArrayRaw(MagicStartOfTransaction);
+            var writer = new SpanWriter(_writerWithTransactionLog!);
+            writer.WriteUInt8((byte) KVCommandType.TransactionStart);
+            writer.WriteByteArrayRaw(MagicStartOfTransaction);
+            writer.Sync();
         }
 
         void WriteStartOfNewTransactionLogFile()
         {
+            SpanWriter writer;
             if (_writerWithTransactionLog != null)
             {
-                _writerWithTransactionLog.WriteUInt8((byte) KVCommandType.EndOfFile);
+                writer = new SpanWriter(_writerWithTransactionLog);
+                writer.WriteUInt8((byte) KVCommandType.EndOfFile);
+                writer.Sync();
                 _fileWithTransactionLog!.HardFlushTruncateSwitchToReadOnlyMode();
                 _fileIdWithPreviousTransactionLog = _fileIdWithTransactionLog;
             }
@@ -1247,7 +1260,9 @@ namespace BTDB.KVDBLayer
             var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid,
                 _fileIdWithPreviousTransactionLog);
             _writerWithTransactionLog = _fileWithTransactionLog.GetAppenderWriter();
-            transactionLog.WriteHeader(_writerWithTransactionLog);
+            writer = new SpanWriter(_writerWithTransactionLog);
+            transactionLog.WriteHeader(ref writer);
+            writer.Sync();
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
         }
 
@@ -1270,39 +1285,41 @@ namespace BTDB.KVDBLayer
                 valueSize = -value.Length;
             }
 
-            var trlPos = _writerWithTransactionLog!.GetCurrentPosition();
+            var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
             if (trlPos > 256 && trlPos + key.Length + 16 + value.Length > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
-            _writerWithTransactionLog!.WriteUInt8((byte) command);
-            _writerWithTransactionLog.WriteVInt32(key.Length);
-            _writerWithTransactionLog.WriteVInt32(value.Length);
-            _writerWithTransactionLog.WriteBlock(key);
+            var writer = new SpanWriter(_writerWithTransactionLog!);
+            writer.WriteUInt8((byte) command);
+            writer.WriteVInt32(key.Length);
+            writer.WriteVInt32(value.Length);
+            writer.WriteBlock(key);
             if (valueSize != 0)
             {
                 if (valueSize > 0 && valueSize <= MaxValueSizeInlineInMemory)
                 {
-                    var zero = 0;
-                    MemoryMarshal.Write(trueValue, ref zero);
                     trueValue[4] = (byte) value.Length;
+                    Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(trueValue), 0);
                     value.CopyTo(trueValue.Slice(5));
                 }
                 else
                 {
                     MemoryMarshal.Write(trueValue, ref _fileIdWithTransactionLog);
-                    var valueOfs = (uint) _writerWithTransactionLog.GetCurrentPosition();
+                    var valueOfs = (uint) writer.GetCurrentPosition();
                     MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
                     MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
                 }
 
-                _writerWithTransactionLog.WriteBlock(value);
+                writer.WriteBlock(value);
             }
             else
             {
                 trueValue.Clear();
             }
+
+            writer.Sync();
         }
 
         public uint CalcValueSize(uint valueFileId, uint valueOfs, int valueSize)
@@ -1357,14 +1374,16 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
+            if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
-            _writerWithTransactionLog!.WriteUInt8((byte) command);
-            _writerWithTransactionLog.WriteVInt32(key.Length);
-            _writerWithTransactionLog.WriteBlock(key);
+            var writer = new SpanWriter(_writerWithTransactionLog!);
+            writer.WriteUInt8((byte) command);
+            writer.WriteVInt32(key.Length);
+            writer.WriteBlock(key);
+            writer.Sync();
         }
 
         public void WriteEraseRangeCommand(ByteBuffer firstKey, ByteBuffer secondKey)
@@ -1386,50 +1405,54 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            if (_writerWithTransactionLog!.GetCurrentPosition() > MaxTrLogFileSize)
+            if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
-            _writerWithTransactionLog!.WriteUInt8((byte) command);
-            _writerWithTransactionLog.WriteVInt32(firstKey.Length);
-            _writerWithTransactionLog.WriteVInt32(secondKey.Length);
-            _writerWithTransactionLog.WriteBlock(firstKey);
-            _writerWithTransactionLog.WriteBlock(secondKey);
+            var writer = new SpanWriter(_writerWithTransactionLog!);
+            writer.WriteUInt8((byte) command);
+            writer.WriteVInt32(firstKey.Length);
+            writer.WriteVInt32(secondKey.Length);
+            writer.WriteBlock(firstKey);
+            writer.WriteBlock(secondKey);
+            writer.Sync();
         }
 
         uint CreateKeyIndexFile(IRootNode root, CancellationToken cancellation, bool fullSpeed)
         {
             var bytesPerSecondLimiter = new BytesPerSecondLimiter(fullSpeed ? 0 : CompactorWriteBytesPerSecondLimit);
             var file = FileCollection.AddFile("kvi");
-            var writer = file.GetAppenderWriter();
+            var writerController = file.GetAppenderWriter();
+            var writer = new SpanWriter(writerController);
             var keyCount = root.GetCount();
             if (root.TrLogFileId != 0)
                 FileCollection.ConcurentTemporaryTruncate(root.TrLogFileId, root.TrLogOffset);
             var keyIndex = new FileKeyIndex(FileCollection.NextGeneration(), FileCollection.Guid, root.TrLogFileId,
                 root.TrLogOffset, keyCount, root.CommitUlong, KeyIndexCompression.None, root.UlongsArray);
-            keyIndex.WriteHeader(writer);
+            keyIndex.WriteHeader(ref writer);
             var usedFileIds = new HashSet<uint>();
             if (keyCount > 0)
             {
-                var keyValueIterateCtx = new KeyValueIterateCtx {CancellationToken = cancellation};
+                var keyValueIterateCtx = new KeyValueIterateCtx {CancellationToken = cancellation, Writer = writer};
                 root.KeyValueIterate(ref keyValueIterateCtx, (ref KeyValueIterateCtx ctx) =>
                 {
+                    ref var writerReference = ref ctx.Writer;
                     var memberValue = ctx.CurrentValue;
-                    writer.WriteVUInt32(ctx.PreviousCurrentCommonLength);
-                    writer.WriteVUInt32((uint) (ctx.CurrentPrefix.Length+ctx.CurrentSuffix.Length-ctx.PreviousCurrentCommonLength));
+                    writerReference.WriteVUInt32(ctx.PreviousCurrentCommonLength);
+                    writerReference.WriteVUInt32((uint) (ctx.CurrentPrefix.Length+ctx.CurrentSuffix.Length-ctx.PreviousCurrentCommonLength));
                     if (ctx.CurrentPrefix.Length <= ctx.PreviousCurrentCommonLength)
                     {
-                        writer.WriteBlock(ctx.CurrentSuffix.Slice((int)ctx.PreviousCurrentCommonLength-ctx.CurrentPrefix.Length));
+                        writerReference.WriteBlock(ctx.CurrentSuffix.Slice((int)ctx.PreviousCurrentCommonLength-ctx.CurrentPrefix.Length));
                     }
                     else
                     {
-                        writer.WriteBlock(ctx.CurrentPrefix.Slice((int)ctx.PreviousCurrentCommonLength));
-                        writer.WriteBlock(ctx.CurrentSuffix);
+                        writerReference.WriteBlock(ctx.CurrentPrefix.Slice((int)ctx.PreviousCurrentCommonLength));
+                        writerReference.WriteBlock(ctx.CurrentSuffix);
                     }
                     var vFileId = MemoryMarshal.Read<uint>(memberValue);
                     if (vFileId > 0) usedFileIds.Add(vFileId);
-                    writer.WriteVUInt32(vFileId);
+                    writerReference.WriteVUInt32(vFileId);
                     if (vFileId == 0)
                     {
                         uint valueOfs;
@@ -1481,24 +1504,25 @@ namespace BTDB.KVDBLayer
                                 throw new ArgumentOutOfRangeException();
                         }
 
-                        writer.WriteVUInt32(valueOfs);
-                        writer.WriteVInt32(valueSize);
+                        writerReference.WriteVUInt32(valueOfs);
+                        writerReference.WriteVInt32(valueSize);
                     }
                     else
                     {
                         var valueOfs = MemoryMarshal.Read<uint>(memberValue.Slice(4));
                         var valueSize = MemoryMarshal.Read<int>(memberValue.Slice(8));
-                        writer.WriteVUInt32(valueOfs);
-                        writer.WriteVInt32(valueSize);
+                        writerReference.WriteVUInt32(valueOfs);
+                        writerReference.WriteVInt32(valueSize);
                     }
-                    bytesPerSecondLimiter.Limit((ulong) writer.GetCurrentPosition());
+                    bytesPerSecondLimiter.Limit((ulong) writerReference.GetCurrentPosition());
                 });
+                writer = keyValueIterateCtx.Writer;
             }
 
-            writer.FlushBuffer();
+            writer.Sync();
             file.HardFlush();
             writer.WriteInt32(EndOfIndexFileMarker);
-            writer.FlushBuffer();
+            writer.Sync();
             file.HardFlush();
             file.Truncate();
             var trlGeneration = GetGeneration(keyIndex.TrLogFileId);
@@ -1518,15 +1542,17 @@ namespace BTDB.KVDBLayer
             return info.FileType == KVFileType.TransactionLog || info.FileType == KVFileType.PureValues;
         }
 
-        internal AbstractBufferedWriter StartPureValuesFile(out uint fileId)
+        internal ISpanWriter StartPureValuesFile(out uint fileId)
         {
             var fId = FileCollection.AddFile("pvl");
             fileId = fId.Index;
             var pureValues = new FilePureValues(FileCollection.NextGeneration(), FileCollection.Guid);
-            var writer = fId.GetAppenderWriter();
+            var writerController = fId.GetAppenderWriter();
             FileCollection.SetInfo(fId.Index, pureValues);
-            pureValues.WriteHeader(writer);
-            return writer;
+            var writer = new SpanWriter(writerController);
+            pureValues.WriteHeader(ref writer);
+            writer.Sync();
+            return writerController;
         }
 
         internal long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap)

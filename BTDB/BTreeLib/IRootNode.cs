@@ -3,6 +3,7 @@ using System.Threading;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using BTDB.KVDBLayer.BTree;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -42,6 +43,7 @@ namespace BTDB.BTreeLib
         public Span<byte> CurrentPrefix;
         public Span<byte> CurrentSuffix;
         public Span<byte> CurrentValue;
+        public SpanWriter Writer;
         public uint PreviousCurrentCommonLength;
 
         public void CalcCommonLength()

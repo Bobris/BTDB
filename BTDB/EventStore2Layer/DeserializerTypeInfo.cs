@@ -1,9 +1,10 @@
-using System;
 using BTDB.EventStoreLayer;
 using BTDB.StreamLayer;
 
 namespace BTDB.EventStore2Layer
 {
+    delegate object Layer2Loader(ref SpanReader reader, ITypeBinaryDeserializerContext ctx,
+        ITypeDescriptor descriptor);
     class DeserializerTypeInfo
     {
         /// <summary>
@@ -11,6 +12,6 @@ namespace BTDB.EventStore2Layer
         /// </summary>
         public int Id;
         public ITypeDescriptor? Descriptor;
-        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeDescriptor, object>? Loader;
+        public Layer2Loader? Loader;
     }
 }

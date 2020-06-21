@@ -1,6 +1,7 @@
 ﻿using BTDB.Buffer;
 using BTDB.KVDBLayer;
 using System;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -35,5 +36,5 @@ namespace BTDB.BTreeLib
         void ValueReplacer(ref ValueReplacerCtx ctx);
     }
 
-    public delegate void BuildTreeCallback(ref ByteBuffer key, Span<byte> value);
+    public delegate void BuildTreeCallback(ref SpanReader reader, ref ByteBuffer key, Span<byte> value);
 }

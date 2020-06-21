@@ -453,7 +453,7 @@ namespace BTDB.EventStoreLayer
                         .Do(pushObj)
                         .Castclass(_objectTypeDescriptor._type!)
                         .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetGetMethod()!)
-                        .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
+                        .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
                 }
             }
         }
@@ -496,8 +496,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(ref SpanWriter writer,
-            DescriptorWriter nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
             writer.WriteString(Name);
             writer.WriteVUInt32(_fields.Count);

@@ -25,23 +25,26 @@ namespace BTDB.FieldHandler
             return true;
         }
 
-        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            ilGenerator.Callvirt(()=>((IReaderCtx)null).ReadOrderedEncryptedString());
+            pushCtx(ilGenerator);
+            pushReader(ilGenerator);
+            ilGenerator.Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.ReadOrderedEncryptedString))!);
         }
 
-        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            ilGenerator.Callvirt(()=>((IReaderCtx)null).SkipOrderedEncryptedString());
+            pushCtx(ilGenerator);
+            pushReader(ilGenerator);
+            ilGenerator.Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipOrderedEncryptedString))!);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Callvirt(()=>((IWriterCtx)null).WriteOrderedEncryptedString(default));
+            ilGenerator.Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteOrderedEncryptedString))!);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -53,9 +56,9 @@ namespace BTDB.FieldHandler
             return new ConvertingHandler(this, type);
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
-            Skip(ilGenerator, pushReaderOrCtx);
+            Skip(ilGenerator, pushReader, pushCtx);
             return NeedsFreeContent.No;
         }
 
@@ -88,20 +91,23 @@ namespace BTDB.FieldHandler
                 return true;
             }
 
-            public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
-                _fieldHandler.Load(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Load(ilGenerator, pushReader, pushCtx);
                 DefaultTypeConvertorGenerator.Instance.GenerateConversion(_fieldHandler.HandledType(), _type)!(ilGenerator);
             }
 
-            public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
-                _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
             }
 
-            public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+            public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
             {
-                _fieldHandler.Save(ilGenerator, pushWriterOrCtx, il => il.Do(pushValue).Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type, _fieldHandler.HandledType())!));
+                _fieldHandler.Save(ilGenerator, pushWriter, pushCtx,
+                    il => il.Do(pushValue)
+                        .Do(DefaultTypeConvertorGenerator.Instance.GenerateConversion(_type,
+                            _fieldHandler.HandledType())!));
             }
 
             public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -114,9 +120,9 @@ namespace BTDB.FieldHandler
                 throw new InvalidOperationException();
             }
 
-            public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
             {
-                _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
                 return NeedsFreeContent.No;
             }
         }

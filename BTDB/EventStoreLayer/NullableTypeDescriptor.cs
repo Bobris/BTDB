@@ -194,15 +194,14 @@ namespace BTDB.EventStoreLayer
                     .Brfalse(finish)
                     .Ldloca(localValue)
                     .Call(nullableType.GetMethod("get_Value")!)
-                    .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null))
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
                     .Mark(finish);
             }
         }
 
         public ITypeDescriptor? NestedType(int index)
         {
-            if (index == 0) return _itemDescriptor;
-            return null;
+            return index == 0 ? _itemDescriptor : null;
         }
 
         public void MapNestedTypes(Func<ITypeDescriptor, ITypeDescriptor> map)

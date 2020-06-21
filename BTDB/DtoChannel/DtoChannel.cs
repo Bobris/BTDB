@@ -36,20 +36,20 @@ namespace BTDB.DtoChannel
 
             public void OnNext(ByteBuffer value)
             {
-                var reader = new ByteBufferReader(value);
+                var reader = new SpanReader(value);
                 byte c0 = 0;
                 if (!reader.Eof)
                     c0 = reader.ReadUInt8();
                 if (c0 == 99)
                 {
-                    _dtoChannel._receivingMapping.LoadTypeDescriptors(reader);
+                    _dtoChannel._receivingMapping.LoadTypeDescriptors(ref reader);
                 }
                 else if (c0 != 100)
                 {
                     _dtoChannel._onReceive.OnError(new InvalidDataException("Data received from other side must Start with byte 99 or 100"));
                     return;
                 }
-                _dtoChannel._onReceive.OnNext(_dtoChannel._receivingMapping.LoadObject(reader));
+                _dtoChannel._onReceive.OnNext(_dtoChannel._receivingMapping.LoadObject(ref reader));
             }
 
             public void OnError(Exception error)
@@ -68,12 +68,12 @@ namespace BTDB.DtoChannel
             lock (_sendLocker)
             {
                 IDescriptorSerializerContext serializerContext = _sendingMapping;
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 writer.WriteUInt8(100);
-                serializerContext = serializerContext.StoreNewDescriptors(writer, dto);
-                serializerContext.FinishNewDescriptors(writer);
-                serializerContext.StoreObject(writer, dto);
-                var block = writer.Data;
+                serializerContext = serializerContext.StoreNewDescriptors(ref writer, dto);
+                serializerContext.FinishNewDescriptors(ref writer);
+                serializerContext.StoreObject(ref writer, dto);
+                var block = writer.GetByteBufferAndReset();
                 if (serializerContext.SomeTypeStored)
                 {
                     block[0] = 99;

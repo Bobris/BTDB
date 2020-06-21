@@ -29,7 +29,6 @@ namespace BTDB.EventStore2Layer
             new Dictionary<ITypeDescriptor, ITypeDescriptor>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         StructList<object> _visited;
-        readonly ByteBufferReader _reader = new ByteBufferReader(ByteBuffer.NewEmpty());
         readonly object _lock = new object();
         readonly ISymmetricCipher _symmetricCipher;
 
@@ -69,8 +68,7 @@ namespace BTDB.EventStore2Layer
             if (obj == null) return null;
             var knowDescriptor = obj as IKnowDescriptor;
             if (knowDescriptor != null) return knowDescriptor.GetDescriptor();
-            DeserializerTypeInfo info;
-            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out info))
+            if (!_typeOrDescriptor2Info.TryGetValue(obj.GetType(), out var info))
                 return null;
             return info.Descriptor;
         }
@@ -102,7 +100,7 @@ namespace BTDB.EventStore2Layer
             return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name) ?? typeof(object);
         }
 
-        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
         {
             var typeId = reader.ReadVInt32();
             if (typeId < 0 && -typeId - 1 < _id2InfoNew.Count)
@@ -128,7 +126,7 @@ namespace BTDB.EventStore2Layer
         {
             lock (_lock)
             {
-                var reader = new ByteBufferReader(buffer);
+                var reader = new SpanReader(buffer);
                 var typeId = reader.ReadVInt32();
                 while (typeId != 0)
                 {
@@ -139,19 +137,19 @@ namespace BTDB.EventStore2Layer
                         case TypeCategory.BuildIn:
                             throw new ArgumentOutOfRangeException();
                         case TypeCategory.Class:
-                            descriptor = new ObjectTypeDescriptor(this, reader, NestedDescriptorReader);
+                            descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader);
                             break;
                         case TypeCategory.List:
-                            descriptor = new ListTypeDescriptor(this, reader, NestedDescriptorReader);
+                            descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
                             break;
                         case TypeCategory.Dictionary:
-                            descriptor = new DictionaryTypeDescriptor(this, reader, NestedDescriptorReader);
+                            descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
                             break;
                         case TypeCategory.Enum:
-                            descriptor = new EnumTypeDescriptor(this, reader);
+                            descriptor = new EnumTypeDescriptor(this, ref reader);
                             break;
                         case TypeCategory.Nullable:
-                            descriptor = new NullableTypeDescriptor(this, reader, NestedDescriptorReader);
+                            descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
@@ -159,8 +157,7 @@ namespace BTDB.EventStore2Layer
 
                     while (-typeId - 1 >= _id2InfoNew.Count)
                         _id2InfoNew.Add(null);
-                    if (_id2InfoNew[-typeId - 1] == null)
-                        _id2InfoNew[-typeId - 1] = new DeserializerTypeInfo {Id = typeId, Descriptor = descriptor};
+                    _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo {Id = typeId, Descriptor = descriptor};
                     typeId = reader.ReadVInt32();
                 }
 
@@ -183,20 +180,20 @@ namespace BTDB.EventStore2Layer
                     var infoForType = _id2InfoNew[i];
                     for (var j = ReservedBuildinTypes; j < _id2Info.Count; j++)
                     {
-                        if (infoForType.Descriptor.Equals(_id2Info[j].Descriptor))
+                        if (infoForType!.Descriptor.Equals(_id2Info[j]!.Descriptor))
                         {
-                            _remapToOld[infoForType.Descriptor] = _id2Info[j].Descriptor;
+                            _remapToOld[infoForType.Descriptor] = _id2Info[j]!.Descriptor;
                             _id2InfoNew[i] = _id2Info[j];
                             infoForType = _id2InfoNew[i];
                             break;
                         }
                     }
 
-                    if (infoForType.Id < 0)
+                    if (infoForType!.Id < 0)
                     {
                         infoForType.Id = (int) _id2Info.Count;
                         _id2Info.Add(infoForType);
-                        _typeOrDescriptor2Info[infoForType.Descriptor] = infoForType;
+                        _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                     }
                 }
 
@@ -210,14 +207,10 @@ namespace BTDB.EventStore2Layer
             }
         }
 
-        Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeDescriptor, object> LoaderFactory(
-            ITypeDescriptor descriptor)
+        Layer2Loader LoaderFactory(ITypeDescriptor descriptor)
         {
             var loadAsType = LoadAsType(descriptor);
-            var methodBuilder =
-                ILBuilder.Instance
-                    .NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeDescriptor, object>>(
-                        "DeserializerFor" + descriptor.Name);
+            var methodBuilder = ILBuilder.Instance.NewMethod<Layer2Loader>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             try
             {
@@ -246,11 +239,11 @@ namespace BTDB.EventStore2Layer
         {
             lock (_lock)
             {
-                _reader.Restart(buffer);
+                var reader = new SpanReader(buffer);
                 @object = null;
                 try
                 {
-                    @object = LoadObject();
+                    @object = LoadObject(ref reader);
                 }
                 catch (BtdbMissingMetadataException)
                 {
@@ -261,7 +254,6 @@ namespace BTDB.EventStore2Layer
                     _visited.Clear();
                 }
 
-                _reader.Restart(ByteBuffer.NewEmpty());
                 return true;
             }
         }
@@ -270,9 +262,9 @@ namespace BTDB.EventStore2Layer
         {
         }
 
-        public object? LoadObject()
+        public object? LoadObject(ref SpanReader reader)
         {
-            var typeId = _reader.ReadVUInt32();
+            var typeId = reader.ReadVUInt32();
             if (typeId == 0)
             {
                 return null;
@@ -280,7 +272,7 @@ namespace BTDB.EventStore2Layer
 
             if (typeId == 1)
             {
-                var backRefId = _reader.ReadVUInt32();
+                var backRefId = reader.ReadVUInt32();
                 return _visited[(int) backRefId];
             }
 
@@ -292,7 +284,7 @@ namespace BTDB.EventStore2Layer
                 infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
             }
 
-            return infoForType.Loader(_reader, this, infoForType.Descriptor);
+            return infoForType.Loader(ref reader, this, infoForType.Descriptor!);
         }
 
         public void AddBackRef(object obj)
@@ -300,9 +292,9 @@ namespace BTDB.EventStore2Layer
             _visited.Add(obj);
         }
 
-        public void SkipObject()
+        public void SkipObject(ref SpanReader reader)
         {
-            var typeId = _reader.ReadVUInt32();
+            var typeId = reader.ReadVUInt32();
             if (typeId == 0)
             {
                 return;
@@ -310,7 +302,7 @@ namespace BTDB.EventStore2Layer
 
             if (typeId == 1)
             {
-                var backRefId = _reader.ReadVUInt32();
+                var backRefId = reader.ReadVUInt32();
                 if (backRefId > _visited.Count) throw new InvalidDataException();
                 return;
             }
@@ -323,12 +315,12 @@ namespace BTDB.EventStore2Layer
                 infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
             }
 
-            infoForType.Loader(_reader, this, infoForType.Descriptor);
+            infoForType.Loader(ref reader, this, infoForType.Descriptor!);
         }
 
-        public EncryptedString LoadEncryptedString()
+        public EncryptedString LoadEncryptedString(ref SpanReader reader)
         {
-            var enc = _reader.ReadByteArray();
+            var enc = reader.ReadByteArray();
             var size = _symmetricCipher.CalcPlainSizeFor(enc);
             var dec = new byte[size];
             if (!_symmetricCipher.Decrypt(enc, dec))
@@ -336,13 +328,13 @@ namespace BTDB.EventStore2Layer
                 throw new CryptographicException();
             }
 
-            var r = new ByteArrayReader(dec);
+            var r = new SpanReader(dec);
             return r.ReadString();
         }
 
-        public void SkipEncryptedString()
+        public void SkipEncryptedString(ref SpanReader reader)
         {
-            _reader.SkipByteArray();
+            reader.SkipByteArray();
         }
     }
 }

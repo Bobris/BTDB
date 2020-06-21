@@ -20,7 +20,7 @@ namespace BTDB.KVDBLayer
 
         public uint KeyLen => _keyLen;
 
-        public HashKeyIndex(AbstractBufferedReader reader, Guid? guid)
+        public HashKeyIndex(ref SpanReader reader, Guid? guid)
         {
             _guid = guid;
             _subId = reader.ReadVInt64();
@@ -36,18 +36,18 @@ namespace BTDB.KVDBLayer
             _keyLen = keyLen;
         }
 
-        internal static void SkipHeader(AbstractBufferedReader reader)
+        internal static void SkipHeader(ref SpanReader reader)
         {
-            FileCollectionWithFileInfos.SkipHeader(reader);
+            FileCollectionWithFileInfos.SkipHeader(ref reader);
             reader.SkipUInt8(); // type of file
             reader.SkipVInt64(); // subId
             reader.SkipVInt64(); // generation
             reader.SkipVUInt32(); // keyLen
         }
 
-        internal void WriteHeader(AbstractBufferedWriter writer)
+        internal void WriteHeader(ref SpanWriter writer)
         {
-            FileCollectionWithFileInfos.WriteHeader(writer, _guid);
+            FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
             writer.WriteUInt8((byte) KVFileType.HashKeyIndex);
             writer.WriteVInt64(_subId);
             writer.WriteVInt64(_generation);

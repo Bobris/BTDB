@@ -14,6 +14,16 @@ namespace BTDB.StreamLayer
             _buf = initialBuffer;
             _initialBuffer = initialBuffer;
             _heapBuffer = null;
+            _controller = null;
+        }
+
+        public SpanWriter(ISpanWriter controller)
+        {
+            _controller = controller;
+            _buf = new Span<byte>();
+            _initialBuffer = new Span<byte>();
+            _heapBuffer = null;
+            _controller.Init(ref this);
         }
 
         Span<byte> _buf;
@@ -22,9 +32,11 @@ namespace BTDB.StreamLayer
 
         // When this is not null than _buf must be slice of _heapBuffer.AsSpan(), otherwise _buf must be slice of _initialBuffer
         byte[]? _heapBuffer;
+        ISpanWriter? _controller;
 
         public ReadOnlySpan<byte> GetSpan()
         {
+            if (_controller != null) ThrowCannotBeUsedWithController();
             if (_heapBuffer != null)
             {
                 return _heapBuffer.AsSpan(0, _heapBuffer.Length - _buf.Length);
@@ -33,13 +45,20 @@ namespace BTDB.StreamLayer
             return _initialBuffer.Slice(0, _initialBuffer.Length - _buf.Length);
         }
 
+        static void ThrowCannotBeUsedWithController()
+        {
+            throw new InvalidOperationException("Cannot have controller");
+        }
+
         public void Reset()
         {
+            if (_controller != null) ThrowCannotBeUsedWithController();
             _buf = _heapBuffer ?? _initialBuffer;
         }
 
         public ReadOnlySpan<byte> GetSpanAndReset()
         {
+            if (_controller != null) ThrowCannotBeUsedWithController();
             if (_heapBuffer != null)
             {
                 var buf = _heapBuffer;
@@ -58,6 +77,7 @@ namespace BTDB.StreamLayer
 
         public ByteBuffer GetByteBufferAndReset()
         {
+            if (_controller != null) ThrowCannotBeUsedWithController();
             if (_heapBuffer != null)
             {
                 var buf = _heapBuffer;
@@ -76,6 +96,8 @@ namespace BTDB.StreamLayer
 
         public long GetCurrentPosition()
         {
+            if (_controller != null) return _controller.GetCurrentPosition(this);
+
             if (_heapBuffer != null)
             {
                 return _heapBuffer.Length - _buf.Length;
@@ -84,8 +106,41 @@ namespace BTDB.StreamLayer
             return _initialBuffer.Length - _buf.Length;
         }
 
+        public void SetCurrentPosition(long pos)
+        {
+            if (_controller != null)
+            {
+                _controller.SetCurrentPosition(ref this, pos);
+                return;
+            }
+
+            if (_heapBuffer != null)
+            {
+                _buf = _heapBuffer.AsSpan((int)pos);
+                return;
+            }
+
+            _buf = _initialBuffer.Slice((int) pos);
+        }
+
+        public void Sync()
+        {
+            if (_controller == null) ThrowCanBeUsedOnlyWithController();
+            _controller?.Sync(ref this);
+        }
+
+        static void ThrowCanBeUsedOnlyWithController()
+        {
+            throw new InvalidOperationException("Need controller");
+        }
+
         void Resize(int spaceNeeded)
         {
+            if (_controller != null)
+            {
+                _controller.Flush(ref this);
+                return;
+            }
             var pos = (uint) GetCurrentPosition();
             if (_heapBuffer == null)
             {
@@ -346,6 +401,11 @@ namespace BTDB.StreamLayer
             if ((uint) _buf.Length < (uint) data.Length)
             {
                 Resize(data.Length);
+                if (_controller != null && (uint) _buf.Length < (uint) data.Length)
+                {
+                    _controller.WriteBlock(ref this, ref MemoryMarshal.GetReference(data), data.Length);
+                    return;
+                }
             }
 
             Unsafe.CopyBlock(ref PackUnpack.UnsafeGetAndAdvance(ref _buf, data.Length),

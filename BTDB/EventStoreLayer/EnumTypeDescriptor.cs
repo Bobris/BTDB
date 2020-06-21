@@ -59,7 +59,7 @@ namespace BTDB.EventStoreLayer
                 .Zip(enumValuesUnsignedLongs.ToArray(), (s, v) => new KeyValuePair<string, ulong>(s, v)).ToList();
         }
 
-        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader)
+        public EnumTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader)
         {
             _typeSerializers = typeSerializers;
             _name = reader.ReadString()!;
@@ -285,12 +285,12 @@ namespace BTDB.EventStoreLayer
             Type typeRead;
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
+                ilGenerator.Call(() => default(SpanReader).ReadVInt64());
                 typeRead = typeof(long);
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
+                ilGenerator.Call(() => default(SpanReader).ReadVUInt64());
                 typeRead = typeof(ulong);
             }
 
@@ -346,8 +346,7 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer,
-            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
             writer.WriteString(_name);
             writer.WriteVUInt32((_signed ? 1u : 0) + (_flags ? 2u : 0) + 4u * (uint) _pairs.Count);
@@ -370,13 +369,13 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .ConvI8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVInt64(0));
+                    .Call(() => default(SpanWriter).WriteVInt64(0));
             }
             else
             {
                 ilGenerator
                     .ConvU8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVUInt64(0));
+                    .Call(() => default(SpanWriter).WriteVUInt64(0));
             }
         }
 
@@ -385,11 +384,11 @@ namespace BTDB.EventStoreLayer
             pushReader(ilGenerator);
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVInt64());
+                ilGenerator.Call(() => default(SpanReader).SkipVInt64());
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVUInt64());
+                ilGenerator.Call(() => default(SpanReader).SkipVUInt64());
             }
         }
 

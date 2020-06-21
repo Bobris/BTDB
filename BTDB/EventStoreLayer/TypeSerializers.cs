@@ -12,17 +12,20 @@ using BTDB.Encrypted;
 
 namespace BTDB.EventStoreLayer
 {
+    public delegate object Layer1Loader(ref SpanReader reader, ITypeBinaryDeserializerContext ctx,
+        ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor);
+
+    public delegate void Layer1SimpleSaver(ref SpanWriter writer, object value);
+
+    public delegate void Layer1ComplexSaver(ref SpanWriter writer, ITypeBinarySerializerContext ctx, object value);
     public class TypeSerializers : ITypeSerializers
     {
         ITypeNameMapper _typeNameMapper;
         readonly TypeSerializersOptions _options;
 
         readonly
-            ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext,
-                ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaders =
-                new ConcurrentDictionary<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext,
-                    ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(
-                    ReferenceEqualityComparer<ITypeDescriptor>.Instance);
+            ConcurrentDictionary<ITypeDescriptor, Layer1Loader> _loaders =
+                new ConcurrentDictionary<ITypeDescriptor, Layer1Loader>(ReferenceEqualityComparer<ITypeDescriptor>.Instance);
 
         readonly ConcurrentDictionary<(ITypeDescriptor, Type), Action<object, IDescriptorSerializerLiteContext>>
             _newDescriptorSavers =
@@ -36,17 +39,13 @@ namespace BTDB.EventStoreLayer
 
         readonly object _buildTypeLock = new object();
 
-        readonly ConcurrentDictionary<(ITypeDescriptor, Type), Action<AbstractBufferedWriter, object>> _simpleSavers =
-            new ConcurrentDictionary<(ITypeDescriptor, Type), Action<AbstractBufferedWriter, object>>();
+        readonly ConcurrentDictionary<(ITypeDescriptor, Type), Layer1SimpleSaver> _simpleSavers =
+            new ConcurrentDictionary<(ITypeDescriptor, Type), Layer1SimpleSaver>();
 
-        readonly
-            ConcurrentDictionary<(ITypeDescriptor, Type), Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>
-            _complexSavers =
-                new ConcurrentDictionary<(ITypeDescriptor, Type),
-                    Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>();
+        readonly ConcurrentDictionary<(ITypeDescriptor, Type), Layer1ComplexSaver>
+            _complexSavers = new ConcurrentDictionary<(ITypeDescriptor, Type), Layer1ComplexSaver>();
 
-        readonly Func<ITypeDescriptor, Func<AbstractBufferedReader, ITypeBinaryDeserializerContext,
-            ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>> _loaderFactoryAction;
+        readonly Func<ITypeDescriptor, Layer1Loader> _loaderFactoryAction;
 
         readonly Func<Type, ITypeDescriptor> _buildFromTypeAction;
         readonly ISymmetricCipher _symmetricCipher;
@@ -267,14 +266,12 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping,
-            ITypeDescriptor, object> GetLoader(ITypeDescriptor descriptor)
+        public Layer1Loader GetLoader(ITypeDescriptor descriptor)
         {
             return _loaders.GetOrAdd(descriptor, _loaderFactoryAction);
         }
 
-        Func<AbstractBufferedReader, ITypeBinaryDeserializerContext, ITypeSerializersId2LoaderMapping, ITypeDescriptor,
-            object> LoaderFactory(ITypeDescriptor descriptor)
+        Layer1Loader LoaderFactory(ITypeDescriptor descriptor)
         {
             Type loadAsType = null;
             try
@@ -285,11 +282,7 @@ namespace BTDB.EventStoreLayer
             {
             }
 
-            var methodBuilder =
-                ILBuilder.Instance
-                    .NewMethod<Func<AbstractBufferedReader, ITypeBinaryDeserializerContext,
-                        ITypeSerializersId2LoaderMapping, ITypeDescriptor, object>>(
-                        "DeserializerFor" + descriptor.Name);
+            var methodBuilder = ILBuilder.Instance.NewMethod<Layer1Loader>("DeserializerFor" + descriptor.Name);
             var il = methodBuilder.Generator;
             if (descriptor.AnyOpNeedsCtx())
             {
@@ -300,10 +293,9 @@ namespace BTDB.EventStoreLayer
                     .Dup()
                     .Stloc(localCtx)
                     .Brtrue(haveCtx)
-                    .Ldarg(0)
                     .Ldarg(2)
                     // ReSharper disable once ObjectCreationAsStatement
-                    .Newobj(() => new DeserializerCtx(null, null))
+                    .Newobj(() => new DeserializerCtx(null))
                     .Castclass(typeof(ITypeBinaryDeserializerContext))
                     .Stloc(localCtx)
                     .Mark(haveCtx);
@@ -351,19 +343,17 @@ namespace BTDB.EventStoreLayer
 
         class DeserializerCtx : ITypeBinaryDeserializerContext
         {
-            readonly AbstractBufferedReader _reader;
             readonly ITypeSerializersId2LoaderMapping _mapping;
             readonly List<object> _backRefs = new List<object>();
 
-            public DeserializerCtx(AbstractBufferedReader reader, ITypeSerializersId2LoaderMapping mapping)
+            public DeserializerCtx(ITypeSerializersId2LoaderMapping mapping)
             {
-                _reader = reader;
                 _mapping = mapping;
             }
 
-            public object? LoadObject()
+            public object? LoadObject(ref SpanReader reader)
             {
-                var typeId = _reader.ReadVUInt32();
+                var typeId = reader.ReadVUInt32();
                 if (typeId == 0)
                 {
                     return null;
@@ -371,11 +361,11 @@ namespace BTDB.EventStoreLayer
 
                 if (typeId == 1)
                 {
-                    var backRefId = _reader.ReadVUInt32();
+                    var backRefId = reader.ReadVUInt32();
                     return _backRefs[(int) backRefId];
                 }
 
-                return _mapping.Load(typeId, _reader, this);
+                return _mapping.Load(typeId, ref reader, this);
             }
 
             public void AddBackRef(object obj)
@@ -383,9 +373,9 @@ namespace BTDB.EventStoreLayer
                 _backRefs.Add(obj);
             }
 
-            public void SkipObject()
+            public void SkipObject(ref SpanReader reader)
             {
-                var typeId = _reader.ReadVUInt32();
+                var typeId = reader.ReadVUInt32();
                 if (typeId == 0)
                 {
                     return;
@@ -393,18 +383,18 @@ namespace BTDB.EventStoreLayer
 
                 if (typeId == 1)
                 {
-                    var backRefId = _reader.ReadVUInt32();
+                    var backRefId = reader.ReadVUInt32();
                     if (backRefId > _backRefs.Count) throw new InvalidDataException();
                     return;
                 }
 
-                _mapping.Load(typeId, _reader, this);
+                _mapping.Load(typeId, ref reader, this);
             }
 
-            public EncryptedString LoadEncryptedString()
+            public EncryptedString LoadEncryptedString(ref SpanReader reader)
             {
                 var cipher = _mapping.GetSymmetricCipher();
-                var enc = _reader.ReadByteArray();
+                var enc = reader.ReadByteArray();
                 var size = cipher!.CalcPlainSizeFor(enc);
                 var dec = new byte[size];
                 if (!cipher.Decrypt(enc, dec))
@@ -412,27 +402,27 @@ namespace BTDB.EventStoreLayer
                     throw new CryptographicException();
                 }
 
-                var r = new ByteArrayReader(dec);
+                var r = new SpanReader(dec);
                 return r.ReadString();
             }
 
-            public void SkipEncryptedString()
+            public void SkipEncryptedString(ref SpanReader reader)
             {
-                _reader.SkipByteArray();
+                reader.SkipByteArray();
             }
         }
 
-        public Action<AbstractBufferedWriter, object> GetSimpleSaver(ITypeDescriptor descriptor, Type type)
+        public Layer1SimpleSaver GetSimpleSaver(ITypeDescriptor descriptor, Type type)
         {
             return _simpleSavers.GetOrAdd((descriptor, type), NewSimpleSaver);
         }
 
-        static Action<AbstractBufferedWriter, object>? NewSimpleSaver((ITypeDescriptor descriptor, Type type) v)
+        static Layer1SimpleSaver? NewSimpleSaver((ITypeDescriptor descriptor, Type type) v)
         {
             var (descriptor, type) = v;
             if (descriptor.AnyOpNeedsCtx()) return null;
             var method =
-                ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, object>>(descriptor.Name + "SimpleSaver");
+                ILBuilder.Instance.NewMethod<Layer1SimpleSaver>(descriptor.Name + "SimpleSaver");
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), null, ilgen =>
             {
@@ -446,18 +436,15 @@ namespace BTDB.EventStoreLayer
             return method.Create();
         }
 
-        public Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> GetComplexSaver(
-            ITypeDescriptor descriptor, Type type)
+        public Layer1ComplexSaver GetComplexSaver(ITypeDescriptor descriptor, Type type)
         {
             return _complexSavers.GetOrAdd((descriptor, type), NewComplexSaver);
         }
 
-        static Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> NewComplexSaver((ITypeDescriptor descriptor, Type type) v)
+        static Layer1ComplexSaver NewComplexSaver((ITypeDescriptor descriptor, Type type) v)
         {
             var (descriptor, type) = v;
-            var method =
-                ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(
-                    descriptor.Name + "ComplexSaver");
+            var method = ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "ComplexSaver");
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
@@ -499,8 +486,7 @@ namespace BTDB.EventStoreLayer
             return new TypeSerializersMapping(this);
         }
 
-        public void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer,
-            Func<ITypeDescriptor, uint> descriptor2Id)
+        public void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer, Func<ITypeDescriptor, uint> descriptor2Id)
         {
             if (descriptor is ListTypeDescriptor)
             {
@@ -527,16 +513,16 @@ namespace BTDB.EventStoreLayer
                 throw new ArgumentOutOfRangeException();
             }
 
-            ((IPersistTypeDescriptor) descriptor).Persist(writer, (w, d) => w.WriteVUInt32(descriptor2Id(d)));
+            ((IPersistTypeDescriptor) descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));
         }
 
         public ITypeDescriptor MergeDescriptor(ITypeDescriptor descriptor)
         {
-            foreach (var existingTypeDescriptor in _descriptorSet)
+            foreach (var (typeDescriptor, _) in _descriptorSet)
             {
-                if (descriptor.Equals(existingTypeDescriptor.Key))
+                if (descriptor.Equals(typeDescriptor))
                 {
-                    return existingTypeDescriptor.Key;
+                    return typeDescriptor;
                 }
             }
 
