@@ -9,28 +9,28 @@ namespace BTDB.FieldHandler
     {
         public override string Name => "Byte[]Last";
 
-        public override void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public override void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).ReadByteArrayRawTillEof());
+            pushReader(ilGenerator);
+            ilGenerator.Call(() => default(SpanReader).ReadByteArrayRawTillEof());
         }
 
-        public override void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public override void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
         }
 
-        public override void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public override void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArrayRaw(null));
+            ilGenerator.Call(() => default(SpanWriter).WriteByteArrayRaw(null));
         }
 
-        protected override void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        protected override void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedWriter).WriteBlock(ByteBuffer.NewEmpty()));
+            ilGenerator.Call(() => default(SpanWriter).WriteBlock(ByteBuffer.NewEmpty()));
         }
 
         public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)

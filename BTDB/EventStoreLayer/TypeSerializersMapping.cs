@@ -231,14 +231,14 @@ namespace BTDB.EventStoreLayer
             {
                 infoForType.Loader = _typeSerializers.GetLoader(infoForType.Descriptor);
             }
-            return infoForType.Loader(reader, context, this, infoForType.Descriptor);
+            return infoForType.Loader(ref reader, context, this, infoForType.Descriptor);
         }
 
         public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
         public bool SomeTypeStored => false;
 
-        public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object? obj)
+        public IDescriptorSerializerContext StoreNewDescriptors(ref SpanWriter writer, object? obj)
         {
             if (obj == null) return this;
             InfoForType infoForType;
@@ -269,7 +269,7 @@ namespace BTDB.EventStoreLayer
             DescriptorSerializerContext ctx = null;
             if (infoForType.Id == 0)
             {
-                ctx = new DescriptorSerializerContext(this, writer);
+                ctx = new DescriptorSerializerContext(this);
                 ctx.AddDescriptor(infoForType);
             }
 
@@ -282,7 +282,7 @@ namespace BTDB.EventStoreLayer
             var action = actions.NewTypeDiscoverer;
             if (action != null)
             {
-                ctx ??= new DescriptorSerializerContext(this, writer);
+                ctx ??= new DescriptorSerializerContext(this);
                 action(obj, ctx);
             }
             if (ctx != null && ctx.SomeTypeStored)
@@ -427,15 +427,10 @@ namespace BTDB.EventStoreLayer
                     for (var i = (int)_id2InfoMap.Count - 1; i >= 0; i--)
                     {
                         writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
-                        _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, writer, Descriptor2Id);
+                        _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, ref writer, Descriptor2Id);
                     }
                     writer.WriteUInt8(0);
                 }
-            }
-
-            public void StoreNewDescriptors(object obj)
-            {
-                StoreNewDescriptors(_writer, obj);
             }
 
             public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
@@ -500,7 +495,7 @@ namespace BTDB.EventStoreLayer
             var simpleSaver = actions.SimpleSaver;
             if (simpleSaver != null)
             {
-                simpleSaver(writer, obj);
+                simpleSaver(ref writer, obj);
                 return;
             }
             if (!actions.KnownComplexSaver)
@@ -509,8 +504,8 @@ namespace BTDB.EventStoreLayer
                 actions.KnownComplexSaver = true;
             }
             var complexSaver = actions.ComplexSaver;
-            var ctx = new TypeBinarySerializerContext(mapping, writer, obj);
-            complexSaver(writer, ctx, obj);
+            var ctx = new TypeBinarySerializerContext(mapping, obj);
+            complexSaver(ref writer, ctx, obj);
         }
 
         class TypeBinarySerializerContext : ITypeBinarySerializerContext
@@ -563,20 +558,20 @@ namespace BTDB.EventStoreLayer
                 complexSaver(ref writer, this, obj);
             }
 
-            public void StoreEncryptedString(EncryptedString value)
+            public void StoreEncryptedString(ref SpanWriter outsideWriter, EncryptedString value)
             {
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 writer.WriteString(value);
                 var cipher = _mapping.GetSymmetricCipher();
-                var plain = writer.Data.AsSyncReadOnlySpan();
+                var plain = writer.GetSpan();
                 var encSize = cipher.CalcEncryptedSizeFor(plain);
                 var enc = new byte[encSize];
                 cipher.Encrypt(plain, enc);
-                _writer.WriteByteArray(enc);
+                outsideWriter.WriteByteArray(enc);
             }
         }
 
-        public void FinishNewDescriptors(AbstractBufferedWriter writer)
+        public void FinishNewDescriptors(ref SpanWriter writer)
         {
         }
 

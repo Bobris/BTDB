@@ -9,7 +9,7 @@ namespace BTDB.FieldHandler
     {
         public virtual string Name => "Byte[]";
 
-        public byte[] Configuration => null;
+        public byte[]? Configuration => null;
 
         public virtual bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
@@ -26,30 +26,30 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        public virtual void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public virtual void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).ReadByteArray());
+            pushReader(ilGenerator);
+            ilGenerator.Call(() => default(SpanReader).ReadByteArray());
         }
 
-        public virtual void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public virtual void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).SkipByteArray());
+            pushReader(ilGenerator);
+            ilGenerator.Call(() => default(SpanReader).SkipByteArray());
         }
 
-        public virtual void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public virtual void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
+            ilGenerator.Call(() => default(SpanWriter).WriteByteArray(null));
         }
 
-        protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
+            ilGenerator.Call(() => default(SpanWriter).WriteByteArray(ByteBuffer.NewEmpty()));
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -61,9 +61,9 @@ namespace BTDB.FieldHandler
             return this;
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            Skip(ilGenerator, pushReaderOrCtx);
+            Skip(ilGenerator, pushReader, pushCtx);
             return NeedsFreeContent.No;
         }
 
@@ -77,7 +77,7 @@ namespace BTDB.FieldHandler
             }
 
             public string Name => _fieldHandler.Name;
-            public byte[] Configuration => _fieldHandler.Configuration;
+            public byte[]? Configuration => _fieldHandler.Configuration;
 
             public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
             {
@@ -94,20 +94,20 @@ namespace BTDB.FieldHandler
                 return false;
             }
 
-            public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
             {
-                _fieldHandler.Load(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Load(ilGenerator, pushReader, pushCtx);
                 ilGenerator.Call(() => ByteBuffer.NewAsync(null));
             }
 
-            public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
             {
-                _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
             }
 
-            public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+            public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
             {
-                _fieldHandler.SaveByteBuffer(ilGenerator, pushWriterOrCtx, pushValue);
+                _fieldHandler.SaveByteBuffer(ilGenerator, pushWriter, pushCtx, pushValue);
             }
 
             public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -120,9 +120,9 @@ namespace BTDB.FieldHandler
                 throw new InvalidOperationException();
             }
 
-            public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+            public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
             {
-                _fieldHandler.Skip(ilGenerator, pushReaderOrCtx);
+                _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
                 return NeedsFreeContent.No;
             }
         }

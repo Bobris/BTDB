@@ -29,8 +29,9 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .Do(pushCtx)
+                    .Do(pushWriter)
                     .Do(pushSubValue)
-                    .Callvirt(() => default(ITypeBinarySerializerContext).StoreObject(null));
+                    .Callvirt(typeof(ITypeBinarySerializerContext).GetMethod(nameof(ITypeBinarySerializerContext.StoreObject))!);
             }
         }
 
@@ -45,7 +46,8 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .Do(pushCtx)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).SkipObject());
+                    .Do(pushReader)
+                    .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.SkipObject))!);
             }
         }
 
@@ -77,7 +79,8 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .Do(pushCtx)
-                    .Callvirt(() => default(ITypeBinaryDeserializerContext).LoadObject());
+                    .Do(pushReader)
+                    .Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.LoadObject))!);
                 if (asType != typeof(object))
                     ilGenerator.Call(typeof(TypeDescriptorExtensions).GetMethod(nameof(IntelligentCast))!
                         .MakeGenericMethod(asType));

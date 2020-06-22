@@ -33,8 +33,6 @@ namespace BTDB.EventStore2Layer
         readonly Dictionary<object, int> _visited =
             new Dictionary<object, int>(ReferenceEqualityComparer<object>.Instance);
 
-        readonly ByteBufferWriter _writer = new ByteBufferWriter();
-
         readonly Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>> _gathererCache =
             new Dictionary<Type, Action<object, IDescriptorSerializerLiteContext>>(ReferenceEqualityComparer<Type>
                 .Instance);
@@ -73,12 +71,9 @@ namespace BTDB.EventStore2Layer
             while (_id2Info.Count < ReservedBuildinTypes) _id2Info.Add(null);
         }
 
-        Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object> BuildComplexSaver(
-            ITypeDescriptor descriptor, Type type)
+        Layer1ComplexSaver BuildComplexSaver(ITypeDescriptor descriptor, Type type)
         {
-            var method =
-                ILBuilder.Instance.NewMethod<Action<AbstractBufferedWriter, ITypeBinarySerializerContext, object>>(
-                    descriptor.Name + "Saver" + type.ToSimpleName());
+            var method = ILBuilder.Instance.NewMethod<Layer1ComplexSaver>(descriptor.Name + "Saver" + type.ToSimpleName());
             var il = method.Generator;
             descriptor.GenerateSave(il, ilgen => ilgen.Ldarg(0), ilgen => ilgen.Ldarg(1), ilgen =>
             {
@@ -156,7 +151,7 @@ namespace BTDB.EventStore2Layer
             return descriptor.GetPreferredType(targetType) ?? TypeNameMapper.ToType(descriptor.Name!) ?? typeof(object);
         }
 
-        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
         {
             var typeId = reader.ReadVInt32();
             if (typeId < 0 && -typeId - 1 < _id2InfoNew.Count)
@@ -180,7 +175,7 @@ namespace BTDB.EventStore2Layer
 
         public void ProcessMetadataLog(ByteBuffer buffer)
         {
-            var reader = new ByteBufferReader(buffer);
+            var reader = new SpanReader(buffer);
             var typeId = reader.ReadVInt32();
             while (typeId != 0)
             {
@@ -191,19 +186,19 @@ namespace BTDB.EventStore2Layer
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(this, reader, NestedDescriptorReader);
+                        descriptor = new ObjectTypeDescriptor(this, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.List:
-                        descriptor = new ListTypeDescriptor(this, reader, NestedDescriptorReader);
+                        descriptor = new ListTypeDescriptor(this, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Dictionary:
-                        descriptor = new DictionaryTypeDescriptor(this, reader, NestedDescriptorReader);
+                        descriptor = new DictionaryTypeDescriptor(this, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(this, reader);
+                        descriptor = new EnumTypeDescriptor(this, ref reader);
                         break;
                     case TypeCategory.Nullable:
-                        descriptor = new NullableTypeDescriptor(this, reader, NestedDescriptorReader);
+                        descriptor = new NullableTypeDescriptor(this, ref reader, NestedDescriptorReader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -262,35 +257,36 @@ namespace BTDB.EventStore2Layer
 
         public ByteBuffer Serialize(out bool hasMetaData, object? obj)
         {
+            var writer = new SpanWriter();
             if (obj == null)
             {
                 hasMetaData = false;
-                _writer.WriteUInt8(0); // null
-                return _writer.GetDataAndRewind();
+                writer.WriteUInt8(0); // null
+                return writer.GetByteBufferAndReset();
             }
 
             try
             {
                 _newTypeFound = false;
-                StoreObject(obj);
+                StoreObject(ref writer, obj);
                 _visited.Clear();
                 if (!_newTypeFound)
                 {
                     // No unknown metadata found - to be optimistic pays off
                     hasMetaData = false;
-                    return _writer.GetDataAndRewind();
+                    return writer.GetByteBufferAndReset();
                 }
 
                 StoreNewDescriptors(obj);
                 if (_typeOrDescriptor2InfoNew.Count > 0)
                 {
-                    _writer.Rewind();
-                    if (MergeTypesByShapeAndStoreNew())
+                    writer.Reset();
+                    if (MergeTypesByShapeAndStoreNew(ref writer))
                     {
                         _typeOrDescriptor2InfoNew.Clear();
                         _visited.Clear();
                         hasMetaData = true;
-                        return _writer.GetDataAndRewind();
+                        return writer.GetByteBufferAndReset();
                     }
 
                     _typeOrDescriptor2InfoNew.Clear();
@@ -298,7 +294,7 @@ namespace BTDB.EventStore2Layer
 
                 _visited.Clear();
                 _newTypeFound = false;
-                StoreObject(obj);
+                StoreObject(ref writer, obj);
                 if (_newTypeFound)
                 {
                     throw new BTDBException("Forgot descriptor or type");
@@ -306,13 +302,12 @@ namespace BTDB.EventStore2Layer
 
                 _visited.Clear();
                 hasMetaData = false;
-                return _writer.GetDataAndRewind();
+                return writer.GetByteBufferAndReset();
             }
             catch
             {
                 _visited.Clear();
                 _typeOrDescriptor2InfoNew.Clear();
-                _writer.Rewind();
                 throw;
             }
         }
@@ -573,9 +568,9 @@ namespace BTDB.EventStore2Layer
             return res;
         }
 
-        bool MergeTypesByShapeAndStoreNew()
+        bool MergeTypesByShapeAndStoreNew(ref SpanWriter writer)
         {
-            List<SerializerTypeInfo> toStore = null;
+            var toStore = new StructList<SerializerTypeInfo>();
             foreach (var typeDescriptor in _typeOrDescriptor2InfoNew)
             {
                 var info = typeDescriptor.Value;
@@ -594,9 +589,8 @@ namespace BTDB.EventStore2Layer
 
                 if (info.Id == 0)
                 {
-                    if (toStore == null) toStore = new List<SerializerTypeInfo>();
                     toStore.Add(info);
-                    info.Id = -toStore.Count;
+                    info.Id = -(int)toStore.Count;
                 }
                 else if (info.Id > 0)
                 {
@@ -607,22 +601,22 @@ namespace BTDB.EventStore2Layer
                 }
             }
 
-            if (toStore != null)
+            if (toStore.Count > 0)
             {
-                for (var i = toStore.Count - 1; i >= 0; i--)
+                for (var i = (int)toStore.Count - 1; i >= 0; i--)
                 {
-                    _writer.WriteVInt32(toStore[i].Id);
-                    StoreDescriptor(toStore[i].Descriptor!, _writer);
+                    writer.WriteVInt32(toStore[i].Id);
+                    StoreDescriptor(toStore[i].Descriptor!, ref writer);
                 }
 
-                _writer.WriteVInt32(0);
+                writer.WriteVInt32(0);
                 return true;
             }
 
             return false;
         }
 
-        void StoreDescriptor(ITypeDescriptor descriptor, AbstractBufferedWriter writer)
+        void StoreDescriptor(ITypeDescriptor descriptor, ref SpanWriter writer)
         {
             if (descriptor is ListTypeDescriptor)
             {
@@ -649,7 +643,7 @@ namespace BTDB.EventStore2Layer
                 throw new ArgumentOutOfRangeException();
             }
 
-            ((IPersistTypeDescriptor) descriptor).Persist(writer, (w, d) =>
+            ((IPersistTypeDescriptor) descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) =>
             {
                 if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
                     if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
@@ -658,20 +652,20 @@ namespace BTDB.EventStore2Layer
             });
         }
 
-        public void StoreObject(object? obj)
+        public void StoreObject(ref SpanWriter writer, object? obj)
         {
             if (_newTypeFound) return;
             if (obj == null)
             {
-                _writer.WriteUInt8(0);
+                writer.WriteUInt8(0);
                 return;
             }
 
             var visited = _visited;
             if (visited.TryGetValue(obj, out var index))
             {
-                _writer.WriteUInt8(1); // backreference
-                _writer.WriteVUInt32((uint) index);
+                writer.WriteUInt8(1); // backreference
+                writer.WriteVUInt32((uint) index);
                 return;
             }
 
@@ -696,19 +690,19 @@ namespace BTDB.EventStore2Layer
 
             ref var saver = ref info.ComplexSaver.GetOrAddValueRef(objType);
             saver ??= BuildComplexSaver(info.Descriptor!, objType);
-            _writer.WriteVUInt32((uint) info.Id);
-            saver(_writer, this, obj);
+            writer.WriteVUInt32((uint) info.Id);
+            saver(ref writer, this, obj);
         }
 
-        public void StoreEncryptedString(EncryptedString value)
+        public void StoreEncryptedString(ref SpanWriter outerWriter, EncryptedString value)
         {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteString(value);
-            var plain = writer.Data.AsSyncReadOnlySpan();
+            var plain = writer.GetSpan();
             var encSize = _symmetricCipher.CalcEncryptedSizeFor(plain);
             var enc = new byte[encSize];
             _symmetricCipher.Encrypt(plain, enc);
-            _writer.WriteByteArray(enc);
+            outerWriter.WriteByteArray(enc);
         }
     }
 }

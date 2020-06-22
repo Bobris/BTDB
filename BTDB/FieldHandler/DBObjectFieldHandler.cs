@@ -27,9 +27,9 @@ namespace BTDB.FieldHandler
             else
             {
                 _typeName = (_objectDb as ObjectDB)?.RegisterType(_type, false);
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 writer.WriteString(_typeName);
-                _configuration = writer.Data.ToByteArray();
+                _configuration = writer.GetSpan().ToArray();
             }
         }
 
@@ -60,7 +60,7 @@ namespace BTDB.FieldHandler
             }
             else
             {
-                _typeName = string.Intern(new ByteArrayReader(configuration).ReadString()!);
+                _typeName = string.Intern(new SpanReader(configuration).ReadString()!);
                 _indirect = false;
             }
 
@@ -115,46 +115,51 @@ namespace BTDB.FieldHandler
             return true;
         }
 
-        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             if (_indirect)
             {
                 ilGenerator
-                    .Do(pushReaderOrCtx)
+                    .Do(pushReader)
+                    .Do(pushCtx)
                     .Call(typeof(DBIndirect<>).MakeGenericType(_type!).GetMethod(nameof(DBIndirect<object>.LoadImpl))!);
                 return;
             }
 
             ilGenerator
-                .Do(pushReaderOrCtx)
-                .Callvirt(() => default(IReaderCtx).ReadNativeObject());
+                .Do(pushCtx)
+                .Do(pushReader)
+                .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.ReadNativeObject))!);
             var type = HandledType();
             ilGenerator.Do(_objectDb.TypeConvertorGenerator.GenerateConversion(typeof(object), type)!);
         }
 
-        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             ilGenerator
-                .Do(pushReaderOrCtx)
-                .Callvirt(() => default(IReaderCtx).SkipNativeObject());
+                .Do(pushCtx)
+                .Do(pushReader)
+                .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.SkipNativeObject))!);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
         {
             if (_indirect)
             {
                 ilGenerator
-                    .Do(pushWriterOrCtx)
+                    .Do(pushWriter)
+                    .Do(pushCtx)
                     .Do(pushValue)
                     .Call(typeof(DBIndirect<>).MakeGenericType(_type!).GetMethod(nameof(DBIndirect<object>.SaveImpl))!);
                 return;
             }
 
             ilGenerator
-                .Do(pushWriterOrCtx)
+                .Do(pushCtx)
+                .Do(pushWriter)
                 .Do(pushValue)
                 .Do(_objectDb.TypeConvertorGenerator.GenerateConversion(HandledType(), typeof(object))!)
-                .Callvirt(() => default(IWriterCtx).WriteNativeObject(null));
+                .Callvirt(typeof(IWriterCtx).GetMethod(nameof(IWriterCtx.WriteNativeObject))!);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -189,7 +194,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Newobj(typeof(DBIndirect<>).MakeGenericType(_type!).GetConstructor(Type.EmptyTypes)!);
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             var needsFreeContent = NeedsFreeContent.No;
             var type = HandledType();
@@ -202,8 +207,9 @@ namespace BTDB.FieldHandler
                 UpdateNeedsFreeContent(type, ref needsFreeContent);
 
             ilGenerator
-                .Do(pushReaderOrCtx)
-                .Callvirt(() => default(IReaderCtx).FreeContentInNativeObject());
+                .Do(pushCtx)
+                .Do(pushReader)
+                .Callvirt(typeof(IReaderCtx).GetMethod(nameof(IReaderCtx.FreeContentInNativeObject))!);
             return needsFreeContent;
         }
 

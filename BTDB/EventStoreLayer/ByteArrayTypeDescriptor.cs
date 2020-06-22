@@ -36,12 +36,12 @@ namespace BTDB.EventStoreLayer
             return GetPreferredType();
         }
 
-        public ITypeNewDescriptorGenerator BuildNewDescriptorGenerator()
+        public ITypeNewDescriptorGenerator? BuildNewDescriptorGenerator()
         {
             return null;
         }
 
-        public ITypeDescriptor NestedType(int index)
+        public ITypeDescriptor? NestedType(int index)
         {
             return null;
         }
@@ -78,7 +78,7 @@ namespace BTDB.EventStoreLayer
         public void GenerateLoad(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx, Action<IILGen> pushDescriptor, Type targetType)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).ReadByteArray());
+            ilGenerator.Call(() => default(SpanReader).ReadByteArray());
             if (targetType == typeof (ByteBuffer))
             {
                 ilGenerator.Call(() => ByteBuffer.NewAsync(null));
@@ -96,7 +96,7 @@ namespace BTDB.EventStoreLayer
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(AbstractBufferedReader).SkipByteArray());
+            ilGenerator.Call(() => default(SpanReader).SkipByteArray());
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
@@ -104,9 +104,9 @@ namespace BTDB.EventStoreLayer
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
             if (valueType==typeof(byte[]))
-                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(null));
+                ilGenerator.Call(() => default(SpanWriter).WriteByteArray(null));
             else if (valueType==typeof(ByteBuffer))
-                ilGenerator.Call(() => default(AbstractBufferedWriter).WriteByteArray(ByteBuffer.NewEmpty()));
+                ilGenerator.Call(() => default(SpanWriter).WriteByteArray(ByteBuffer.NewEmpty()));
             else throw new ArgumentOutOfRangeException(nameof(valueType));
         }
 
