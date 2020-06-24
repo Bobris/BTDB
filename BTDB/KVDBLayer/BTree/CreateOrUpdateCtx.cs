@@ -13,7 +13,7 @@ namespace BTDB.KVDBLayer.BTree
         internal int ValueSize;
 
         internal bool Created;
-        internal List<NodeIdxPair> Stack;
+        internal List<NodeIdxPair>? Stack;
         internal long KeyIndex;
 
         internal int Depth;

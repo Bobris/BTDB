@@ -6,7 +6,7 @@ namespace BTDB.ChunkCache
     {
         readonly long _generation;
 
-        public FilePureValues(AbstractBufferedReader reader)
+        public FilePureValues(ref SpanReader reader)
         {
             _generation = reader.ReadVInt64();
         }
@@ -20,7 +20,7 @@ namespace BTDB.ChunkCache
 
         public long Generation => _generation;
 
-        public void WriteHeader(AbstractBufferedWriter writer)
+        public void WriteHeader(ref SpanWriter writer)
         {
             writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
             writer.WriteUInt8((byte)DiskChunkFileType.PureValues);

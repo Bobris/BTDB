@@ -363,8 +363,8 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                var reader = FileCollection.GetFile(fileId)!.GetExclusiveReader();
-                FileKeyIndex.SkipHeader(reader);
+                var reader = new SpanReader(FileCollection.GetFile(fileId)!.GetExclusiveReader());
+                FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = info.KeyValueCount;
                 var usedFileIds = new HashSet<uint>();
                 if (info.Compression == KeyIndexCompression.Old)
@@ -430,22 +430,22 @@ namespace BTDB.KVDBLayer
                 var cursor = _nextRoot.CreateCursor();
                 if (info.Compression == KeyIndexCompression.Old)
                 {
-                    cursor.BuildTree(keyCount, (ref SpanReader reader, ref ByteBuffer key, Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, Span<byte> trueValue) =>
                     {
-                        var keyLength = reader.ReadVInt32();
+                        var keyLength = reader2.ReadVInt32();
                         key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
-                        reader.ReadBlock(key);
+                        reader2.ReadBlock(key);
                         if (keyLength < 0)
                         {
                             _compression.DecompressKey(ref key);
                         }
 
                         trueValue.Clear();
-                        var vFileId = reader.ReadVUInt32();
+                        var vFileId = reader2.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
                         MemoryMarshal.Write(trueValue, ref vFileId);
-                        var valueOfs = reader.ReadVUInt32();
-                        var valueSize = reader.ReadVInt32();
+                        var valueOfs = reader2.ReadVUInt32();
+                        var valueSize = reader2.ReadVInt32();
                         if (vFileId == 0)
                         {
                             var len = valueSize >> 24;
@@ -491,21 +491,21 @@ namespace BTDB.KVDBLayer
                     if (info.Compression != KeyIndexCompression.None)
                         return false;
                     var prevKey = ByteBuffer.NewEmpty();
-                    cursor.BuildTree(keyCount, (ref ByteBuffer key, Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, Span<byte> trueValue) =>
                     {
-                        var prefixLen = (int) reader.ReadVUInt32();
-                        var keyLengthWithoutPrefix = (int) reader.ReadVUInt32();
+                        var prefixLen = (int) reader2.ReadVUInt32();
+                        var keyLengthWithoutPrefix = (int) reader2.ReadVUInt32();
                         var keyLen = prefixLen + keyLengthWithoutPrefix;
                         key.Expand(keyLen);
                         Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
-                        reader.ReadBlock(key.Slice(prefixLen));
+                        reader2.ReadBlock(key.Slice(prefixLen));
                         prevKey = key;
-                        var vFileId = reader.ReadVUInt32();
+                        var vFileId = reader2.ReadVUInt32();
                         if (vFileId > 0) usedFileIds.Add(vFileId);
                         trueValue.Clear();
                         MemoryMarshal.Write(trueValue, ref vFileId);
-                        var valueOfs = reader.ReadVUInt32();
-                        var valueSize = reader.ReadVInt32();
+                        var valueOfs = reader2.ReadVUInt32();
+                        var valueSize = reader2.ReadVInt32();
                         if (vFileId == 0)
                         {
                             var len = valueSize >> 24;

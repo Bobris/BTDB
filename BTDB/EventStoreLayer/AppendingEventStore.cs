@@ -64,12 +64,12 @@ namespace BTDB.EventStoreLayer
             writer.WriteBlock(_zeroes.AsSpan(0, startOffset));
             serializerContext = Mapping;
             if (metadata != null)
-                serializerContext = serializerContext.StoreNewDescriptors(ref writer, metadata);
+                serializerContext = serializerContext.StoreNewDescriptors(metadata);
             if (events != null)
             {
                 foreach (var o in events)
                 {
-                    serializerContext = serializerContext.StoreNewDescriptors(ref writer, o);
+                    serializerContext = serializerContext.StoreNewDescriptors(o);
                 }
                 if (events.Count == 0) events = null;
             }

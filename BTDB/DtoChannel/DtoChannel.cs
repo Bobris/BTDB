@@ -70,7 +70,7 @@ namespace BTDB.DtoChannel
                 IDescriptorSerializerContext serializerContext = _sendingMapping;
                 var writer = new SpanWriter();
                 writer.WriteUInt8(100);
-                serializerContext = serializerContext.StoreNewDescriptors(ref writer, dto);
+                serializerContext = serializerContext.StoreNewDescriptors(dto);
                 serializerContext.FinishNewDescriptors(ref writer);
                 serializerContext.StoreObject(ref writer, dto);
                 var block = writer.GetByteBufferAndReset();

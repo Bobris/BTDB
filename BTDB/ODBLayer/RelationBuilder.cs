@@ -7,7 +7,6 @@ using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 // ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 

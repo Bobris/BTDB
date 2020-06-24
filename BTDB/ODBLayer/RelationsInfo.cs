@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {

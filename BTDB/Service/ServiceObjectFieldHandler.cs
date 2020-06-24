@@ -1,7 +1,6 @@
 using System;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {

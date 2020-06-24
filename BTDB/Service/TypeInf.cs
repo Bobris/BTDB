@@ -6,7 +6,6 @@ using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {

@@ -219,7 +219,7 @@ namespace BTDB.EventStoreLayer
             }
             if (typeId == 1)
             {
-                throw new InvalidDataException("Backreference cannot be first object");
+                throw new InvalidDataException("Back reference cannot be first object");
             }
             return Load(typeId, ref reader, null);
         }
@@ -238,7 +238,7 @@ namespace BTDB.EventStoreLayer
 
         public bool SomeTypeStored => false;
 
-        public IDescriptorSerializerContext StoreNewDescriptors(ref SpanWriter writer, object? obj)
+        public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
         {
             if (obj == null) return this;
             InfoForType infoForType;
@@ -348,7 +348,7 @@ namespace BTDB.EventStoreLayer
 
             public bool SomeTypeStored => _id2InfoMap.Count != 0;
 
-            public IDescriptorSerializerContext StoreNewDescriptors(ref SpanWriter writer, object? obj)
+            public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
             {
                 if (obj == null) return this;
                 InfoForType infoForType;
@@ -468,6 +468,11 @@ namespace BTDB.EventStoreLayer
             }
 
             public ISymmetricCipher GetSymmetricCipher() => _typeSerializers.GetSymmetricCipher();
+
+            void IDescriptorSerializerLiteContext.StoreNewDescriptors(object obj)
+            {
+                StoreNewDescriptors(obj);
+            }
         }
 
         public void StoreObject(ref SpanWriter writer, object? obj)

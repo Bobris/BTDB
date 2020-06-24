@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree
 {
@@ -9,7 +10,7 @@ namespace BTDB.KVDBLayer.BTree
     {
         readonly long _transactionId;
         long _keyValueCount;
-        IBTreeNode _rootNode;
+        IBTreeNode? _rootNode;
 
         public BTreeRoot(long transactionId)
         {
@@ -277,45 +278,45 @@ namespace BTDB.KVDBLayer.BTree
             _rootNode = _rootNode.ReplaceValues(ctx);
         }
 
-        IBTreeNode BuildTreeNode(long keyCount, Func<BTreeLeafMember> memberGenerator)
+        IBTreeNode BuildTreeNode(long keyCount, ref SpanReader reader, BuildTreeCallback memberGenerator)
         {
             var leafs = (keyCount + BTreeLeafComp.MaxMembers - 1) / BTreeLeafComp.MaxMembers;
             var order = 0L;
             var done = 0L;
-            return BuildBranchNode(leafs, () =>
+            return BuildBranchNode(leafs, ref reader, (ref SpanReader reader) =>
             {
                 order++;
                 var reach = keyCount * order / leafs;
                 var todo = (int) (reach - done);
                 done = reach;
-                var keyvalues = new BTreeLeafMember[todo];
+                var keyValues = new BTreeLeafMember[todo];
                 long totalKeyLen = 0;
-                for (int i = 0; i < keyvalues.Length; i++)
+                for (var i = 0; i < keyValues.Length; i++)
                 {
-                    keyvalues[i] = memberGenerator();
-                    totalKeyLen += keyvalues[i].Key.Length;
+                    keyValues[i] = memberGenerator(ref reader);
+                    totalKeyLen += keyValues[i].Key.Length;
                 }
                 if (totalKeyLen > BTreeLeafComp.MaxTotalLen)
                 {
-                    return new BTreeLeaf(_transactionId, keyvalues);
+                    return new BTreeLeaf(_transactionId, keyValues);
                 }
-                return new BTreeLeafComp(_transactionId, keyvalues);
+                return new BTreeLeafComp(_transactionId, keyValues);
             });
         }
 
-        IBTreeNode BuildBranchNode(long count, Func<IBTreeNode> generator)
+        IBTreeNode BuildBranchNode(long count, ref SpanReader reader, BuildBranchNodeGenerator generator)
         {
-            if (count == 1) return generator();
+            if (count == 1) return generator(ref reader);
             var children = (count + BTreeBranch.MaxChildren - 1) / BTreeBranch.MaxChildren;
             var order = 0L;
             var done = 0L;
-            return BuildBranchNode(children, () =>
+            return BuildBranchNode(children, ref reader, (ref SpanReader reader2) =>
             {
                 order++;
                 var reach = count * order / children;
                 var todo = (int) (reach - done);
                 done = reach;
-                return new BTreeBranch(_transactionId, todo, generator);
+                return new BTreeBranch(_transactionId, todo, ref reader2, generator);
             });
         }
 

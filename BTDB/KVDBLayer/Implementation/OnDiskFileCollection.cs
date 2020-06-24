@@ -58,81 +58,55 @@ namespace BTDB.KVDBLayer
 
             public uint Index => _index;
 
-            sealed class Reader : AbstractBufferedReader
+            sealed class Reader : ISpanReader
             {
                 readonly File _owner;
                 readonly ulong _valueSize;
                 ulong _ofs;
+                readonly byte[] _buf;
 
                 public Reader(File owner)
                 {
                     _owner = owner;
                     _valueSize = _owner.GetSize();
                     _ofs = 0;
-                    Buf = new byte[32768];
-                    FillBuffer();
+                    _buf = new byte[32768];
                 }
 
-                protected override void FillBuffer()
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader, int size)
                 {
-                    if (_ofs == _valueSize)
-                    {
-                        Pos = -1;
-                        End = -1;
-                        return;
-                    }
-
-                    End = (int) PlatformMethods.Instance.PRead(_owner._handle, Buf.AsSpan(0, Buf.Length), _ofs);
-                    _ofs += (ulong) End;
-                    Pos = 0;
-                }
-
-                public override void ReadBlock(Span<byte> data)
-                {
-                    if (data.Length < Buf.Length)
-                    {
-                        base.ReadBlock(data);
-                        return;
-                    }
-
-                    var l = End - Pos;
-                    Buf.AsSpan(Pos, l).CopyTo(data);
-                    data = data.Slice(l);
-                    Pos += l;
-                    var read = PlatformMethods.Instance.PRead(_owner._handle, data, _ofs);
-                    if (read != data.Length)
-                    {
-                        throw new EndOfStreamException();
-                    }
-
+                    var startSize = spanReader.Buf.Length;
+                    spanReader.Buf.CopyTo(_buf);
+                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf.AsSpan(startSize), _ofs);
+                    spanReader.Buf = _buf.AsSpan(0, startSize + (int)read);
                     _ofs += read;
+                    return size > spanReader.Buf.Length;
                 }
 
-                public override void SkipBlock(int length)
+                public long GetCurrentPosition(in SpanReader spanReader)
                 {
-                    if (length < Buf.Length)
-                    {
-                        base.SkipBlock(length);
-                        return;
-                    }
-
-                    if (GetCurrentPosition() + length > (long) _valueSize)
-                    {
-                        _ofs = _valueSize;
-                        Pos = 0;
-                        End = -1;
-                        throw new EndOfStreamException();
-                    }
-
-                    var l = End - Pos;
-                    Pos = End;
-                    length -= l;
-                    _ofs += (ulong) length;
+                    return (long)_ofs - spanReader.Buf.Length;
                 }
 
-                public override long GetCurrentPosition()
+                public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, int length)
                 {
-                    return (long) _ofs - End + Pos;
+                    throw new NotImplementedException();
+                }
+
+                public bool SkipBlock(ref SpanReader spanReader, int length)
+                {
+                    length -= spanReader.Buf.Length;
+                    spanReader.Buf = new ReadOnlySpan<byte>();
+                    _ofs += (uint)length;
+                    if (_ofs <= _valueSize) return false;
+                    _ofs = _valueSize;
+                    return true;
+                }
+
+                public void SetCurrentPosition(ref SpanReader spanReader, long position)
+                {
+                    spanReader.Buf = new ReadOnlySpan<byte>();
+                    _ofs = (ulong)position;
                 }
             }
 

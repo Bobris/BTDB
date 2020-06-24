@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using BTDB.FieldHandler;
 using BTDB.IL;
-using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {

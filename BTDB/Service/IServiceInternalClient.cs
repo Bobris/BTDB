@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
-using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {

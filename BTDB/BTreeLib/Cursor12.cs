@@ -3,6 +3,7 @@ using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Runtime.CompilerServices;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -237,11 +238,11 @@ namespace BTDB.BTreeLib
             _stack.Clear();
         }
 
-        public void BuildTree(long keyCount, BuildTreeCallback generator)
+        public void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator)
         {
             AssertWritable();
             Invalidate();
-            _rootNode._impl.BuildTree(_rootNode, keyCount, generator);
+            _rootNode._impl.BuildTree(_rootNode, keyCount, ref reader, generator);
         }
 
         public void ValueReplacer(ref ValueReplacerCtx ctx)

@@ -1,13 +1,8 @@
 using System;
-using System.Collections.Generic;
 using BTDB.Collections;
-using BTDB.StreamLayer;
 
 namespace BTDB.EventStoreLayer
 {
-    delegate void SaverObjectSimple(ref SpanWriter writer, object @object);
-    delegate void SaverObjectComplex(ref SpanWriter writer, ITypeBinarySerializerContext ctx, object @object);
-
     class InfoForType
     {
         public int Id;

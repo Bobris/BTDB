@@ -1,5 +1,4 @@
 using System;
-using BTDB.Buffer;
 using BTDB.SnappyCompression;
 
 namespace BTDB.EventStoreLayer

@@ -12,7 +12,7 @@ using BTDB.Encrypted;
 
 namespace BTDB.EventStoreLayer
 {
-    public delegate object Layer1Loader(ref SpanReader reader, ITypeBinaryDeserializerContext ctx,
+    public delegate object Layer1Loader(ref SpanReader reader, ITypeBinaryDeserializerContext? ctx,
         ITypeSerializersId2LoaderMapping mapping, ITypeDescriptor descriptor);
 
     public delegate void Layer1SimpleSaver(ref SpanWriter writer, object value);

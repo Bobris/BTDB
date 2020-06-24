@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
+using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree
 {
+    delegate IBTreeNode BuildBranchNodeGenerator(ref SpanReader reader);
+
     class BTreeBranch : IBTreeNode
     {
         internal readonly long TransactionId;
@@ -31,7 +34,7 @@ namespace BTDB.KVDBLayer.BTree
             _pairCounts = newPairCounts;
         }
 
-        public BTreeBranch(long transactionId, int count, Func<IBTreeNode> generator)
+        public BTreeBranch(long transactionId, int count, ref SpanReader reader, BuildBranchNodeGenerator generator)
         {
             Debug.Assert(count > 0 && count <= MaxChildren);
             TransactionId = transactionId;
@@ -41,7 +44,7 @@ namespace BTDB.KVDBLayer.BTree
             long pairs = 0;
             for (var i = 0; i < _children.Length; i++)
             {
-                var child = generator();
+                var child = generator(ref reader);
                 _children[i] = child;
                 pairs += child.CalcKeyCount();
                 _pairCounts[i] = pairs;

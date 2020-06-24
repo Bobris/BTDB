@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {

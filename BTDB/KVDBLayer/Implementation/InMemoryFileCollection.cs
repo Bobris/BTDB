@@ -36,7 +36,7 @@ namespace BTDB.KVDBLayer
 
             public uint Index => _index;
 
-            sealed class Reader : AbstractBufferedReader
+            sealed class Reader : ISpanReader
             {
                 readonly File _file;
                 ulong _ofs;
@@ -71,7 +71,7 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            public AbstractBufferedReader GetExclusiveReader()
+            public ISpanReader GetExclusiveReader()
             {
                 return new Reader(this);
             }
@@ -94,7 +94,7 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            sealed class Writer : AbstractBufferedWriter
+            sealed class Writer : ISpanWriter
             {
                 readonly File _file;
                 ulong _ofs;
@@ -133,12 +133,12 @@ namespace BTDB.KVDBLayer
                 }
             }
 
-            public AbstractBufferedWriter GetAppenderWriter()
+            public ISpanWriter GetAppenderWriter()
             {
                 return _writer;
             }
 
-            public AbstractBufferedWriter GetExclusiveAppenderWriter()
+            public ISpanWriter GetExclusiveAppenderWriter()
             {
                 return _writer;
             }
@@ -188,8 +188,7 @@ namespace BTDB.KVDBLayer
                 do
                 {
                     oldFiles = _owner._files;
-                    File value;
-                    if (!oldFiles.TryGetValue(_index, out value)) return;
+                    if (!oldFiles!.TryGetValue(_index, out _)) return;
                     newFiles = new Dictionary<uint, File>(oldFiles);
                     newFiles.Remove(_index);
                 } while (Interlocked.CompareExchange(ref _owner._files, newFiles, oldFiles) != oldFiles);

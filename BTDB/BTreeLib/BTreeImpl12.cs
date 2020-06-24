@@ -6,6 +6,7 @@ using BTDB.KVDBLayer.BTree;
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
 {
@@ -216,7 +217,7 @@ namespace BTDB.BTreeLib
             return node;
         }
 
-        internal void BuildTree(RootNode12 rootNode, long keyCount, BuildTreeCallback generator)
+        internal void BuildTree(RootNode12 rootNode, long keyCount, ref SpanReader reader, BuildTreeCallback generator)
         {
             Dereference(rootNode._root);
             if (keyCount == 0)
@@ -225,7 +226,7 @@ namespace BTDB.BTreeLib
                 return;
             }
 
-            rootNode._root = BuildTreeNode(keyCount, generator);
+            rootNode._root = BuildTreeNode(keyCount, ref reader, generator);
         }
 
         internal IntPtr ValueReplacer(ref ValueReplacerCtx ctx, in Span<CursorItem> stack, int stackIdx)
@@ -317,23 +318,23 @@ namespace BTDB.BTreeLib
             return stackItem._node;
         }
 
-        IntPtr BuildTreeNode(long keyCount, BuildTreeCallback generator)
+        IntPtr BuildTreeNode(long keyCount, ref SpanReader reader, BuildTreeCallback generator)
         {
             var leafs = (keyCount + MaxChildren - 1) / MaxChildren;
             var order = 0L;
             var done = 0L;
             var values = new byte[MaxChildren * 12];
             var keys = new ByteBuffer[MaxChildren];
-            return BuildBranchNode(leafs, () =>
+            return BuildBranchNode(leafs, ref reader, (ref SpanReader reader) =>
             {
                 order++;
                 var reach = keyCount * order / leafs;
                 var todo = (int) (reach - done);
                 done = reach;
                 long totalKeyLen = 0;
-                for (int i = 0; i < todo; i++)
+                for (var i = 0; i < todo; i++)
                 {
-                    generator(ref keys[i], values.AsSpan(i * 12, 12));
+                    generator(ref reader, ref keys[i], values.AsSpan(i * 12, 12));
                     totalKeyLen += keys[i].Length;
                 }
 
@@ -351,14 +352,16 @@ namespace BTDB.BTreeLib
             });
         }
 
-        IntPtr BuildBranchNode(long count, Func<IntPtr> generator)
+        delegate IntPtr BuildBranchNodeGenerator(ref SpanReader reader);
+
+        IntPtr BuildBranchNode(long count, ref SpanReader reader, BuildBranchNodeGenerator generator)
         {
-            if (count == 1) return generator();
+            if (count == 1) return generator(ref reader);
             var children = (count + MaxChildren - 1) / MaxChildren;
             var order = 0L;
             var done = 0L;
             var nodes = new IntPtr[MaxChildren];
-            return BuildBranchNode(children, () =>
+            return BuildBranchNode(children, ref reader, (ref SpanReader reader) =>
             {
                 order++;
                 var reach = count * order / children;
@@ -368,7 +371,7 @@ namespace BTDB.BTreeLib
                 var recursiveChildCount = 0UL;
                 for (var i = 0; i < todo; i++)
                 {
-                    var child = generator();
+                    var child = generator(ref reader);
                     nodes[i] = child;
                     recursiveChildCount += NodeUtils12.Ptr2NodeHeader(child).RecursiveChildCount;
                 }
