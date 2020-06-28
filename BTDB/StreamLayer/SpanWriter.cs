@@ -27,7 +27,7 @@ namespace BTDB.StreamLayer
         }
 
         public Span<byte> Buf;
-        public readonly Span<byte> InitialBuffer;
+        public Span<byte> InitialBuffer;
 
         // When this is not null than Buf must be slice of HeapBuffer.AsSpan(), otherwise Buf must be slice of InitialBuffer
         public byte[]? HeapBuffer;
