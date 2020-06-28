@@ -34,7 +34,7 @@ namespace BTDB.StreamLayer
         long GetCurrentPosition(in SpanReader spanReader);
 
         /// <summary>
-        /// Reads data into buffer. Called only in case there is not enough data in spanReader._buf.
+        /// Reads data into buffer. Called only when spanReader.Buf is empty.
         /// </summary>
         /// <param name="spanReader">owning SpanReader</param>
         /// <param name="buffer">reference to first byte of buffer to fill with length bytes</param>
@@ -42,7 +42,7 @@ namespace BTDB.StreamLayer
         /// <returns>true if not enough data to fill buffer</returns>
         bool ReadBlock(ref SpanReader spanReader, ref byte buffer, int length);
         /// <summary>
-        /// Skip data of length. Called only in case there is not enough data in spanReader._buf.
+        /// Skip data of length. Called only when spanReader.Buf is empty.
         /// </summary>
         /// <param name="spanReader">owning SpanReader</param>
         /// <param name="length">how much to skip</param>

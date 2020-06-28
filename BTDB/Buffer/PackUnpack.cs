@@ -555,5 +555,12 @@ namespace BTDB.Buffer
             p = MemoryMarshal.CreateReadOnlySpan(
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr) delta), p.Length - delta);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void UnsafeAdvance(ref Span<byte> p, int delta)
+        {
+            p = MemoryMarshal.CreateSpan(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(p), (IntPtr) delta), p.Length - delta);
+        }
     }
 }

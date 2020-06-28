@@ -403,10 +403,26 @@ namespace BTDB.StreamLayer
         {
             if (length > Buf.Length)
             {
+                if (Controller != null)
+                {
+                    if (Buf.Length > 0)
+                    {
+                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer, (uint) Buf.Length);
+                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) Buf.Length);
+                        length -= Buf.Length;
+                        Buf = new ReadOnlySpan<byte>();
+                    }
+                    if (Controller.ReadBlock(ref this, ref buffer, length))
+                        PackUnpack.ThrowEndOfStreamException();
+                }
+                else
+                {
+                    PackUnpack.ThrowEndOfStreamException();
+                }
                 if (Controller?.ReadBlock(ref this, ref buffer, length) ?? true)
                     PackUnpack.ThrowEndOfStreamException();
             }
-            Unsafe.CopyBlock(ref buffer, ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), (uint)length);
+            Unsafe.CopyBlockUnaligned(ref buffer, ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), (uint)length);
         }
 
         public void ReadBlock(in Span<byte> buffer)
@@ -423,8 +439,17 @@ namespace BTDB.StreamLayer
         {
             if (length > Buf.Length)
             {
-                if (Controller?.SkipBlock(ref this, length) ?? true)
+                if (Controller != null)
+                {
+                    length -= Buf.Length;
+                    Buf = new ReadOnlySpan<byte>();
+                    if (Controller.SkipBlock(ref this, length))
+                        PackUnpack.ThrowEndOfStreamException();
+                }
+                else
+                {
                     PackUnpack.ThrowEndOfStreamException();
+                }
             }
             PackUnpack.UnsafeAdvance(ref Buf, length);
         }
