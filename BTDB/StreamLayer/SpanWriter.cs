@@ -133,7 +133,7 @@ namespace BTDB.StreamLayer
             throw new InvalidOperationException("Need controller");
         }
 
-        void Resize(int spaceNeeded)
+        void Resize(uint spaceNeeded)
         {
             if (Controller != null)
             {
@@ -145,7 +145,7 @@ namespace BTDB.StreamLayer
             if (HeapBuffer == null)
             {
                 var newSize = Math.Max((uint) InitialBuffer.Length * 2, 32);
-                newSize = Math.Max(newSize, pos + (uint) spaceNeeded);
+                newSize = Math.Max(newSize, pos + spaceNeeded);
                 newSize = Math.Min(newSize, int.MaxValue);
                 HeapBuffer = new byte[newSize];
                 InitialBuffer.Slice(0, (int) pos).CopyTo(HeapBuffer);
@@ -153,7 +153,7 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                var newSize = Math.Max((uint) HeapBuffer.Length * 2, pos + (uint) spaceNeeded);
+                var newSize = Math.Max((uint) HeapBuffer.Length * 2, pos + spaceNeeded);
                 newSize = Math.Min(newSize, int.MaxValue);
                 Array.Resize(ref HeapBuffer, (int) newSize);
                 Buf = HeapBuffer.AsSpan((int) pos, (int) (newSize - pos));
@@ -233,23 +233,23 @@ namespace BTDB.StreamLayer
         public void WriteVInt64(long value)
         {
             var len = PackUnpack.LengthVInt(value);
-            if ((uint) Buf.Length < (uint) len)
+            if ((uint) Buf.Length < len)
             {
                 Resize(len);
             }
 
-            PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, len), value, len);
+            PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
         }
 
         public void WriteVUInt64(ulong value)
         {
             var len = PackUnpack.LengthVUInt(value);
-            if ((uint) Buf.Length < (uint) len)
+            if ((uint) Buf.Length < len)
             {
                 Resize(len);
             }
 
-            PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, len), value, len);
+            PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
         }
 
         public void WriteInt64(long value)
@@ -398,12 +398,12 @@ namespace BTDB.StreamLayer
 
         public void WriteBlock(ReadOnlySpan<byte> data)
         {
-            WriteBlock(ref MemoryMarshal.GetReference(data), data.Length);
+            WriteBlock(ref MemoryMarshal.GetReference(data), (uint) data.Length);
         }
 
-        public void WriteBlock(ref byte buffer, int length)
+        public void WriteBlock(ref byte buffer, uint length)
         {
-            if ((uint) Buf.Length < (uint) length)
+            if ((uint) Buf.Length < length)
             {
                 if (Controller != null)
                 {
@@ -412,25 +412,31 @@ namespace BTDB.StreamLayer
                         var bufLength = HeapBuffer.Length;
                         if (length < bufLength)
                         {
-                            Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer, (uint) Buf.Length);
+                            Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer,
+                                (uint) Buf.Length);
                             buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) Buf.Length);
-                            length -= Buf.Length;
+                            length -= (uint) Buf.Length;
                             Buf = new Span<byte>();
                         }
+
                         Controller.Flush(ref this);
                         if (length < bufLength)
                         {
-                            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), ref buffer, (uint) length);
+                            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length),
+                                ref buffer, length);
                             return;
                         }
                     }
+
                     Controller.WriteBlock(ref this, ref buffer, length);
                     return;
                 }
+
                 Resize(length);
             }
 
-            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, length), ref buffer, (uint) length);
+            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length), ref buffer,
+                length);
         }
 
         public void WriteBlock(byte[] buffer, int offset, int length)
@@ -440,7 +446,7 @@ namespace BTDB.StreamLayer
 
         public unsafe void WriteBlock(IntPtr data, int length)
         {
-            WriteBlock(ref Unsafe.AsRef<byte>((void*) data), length);
+            WriteBlock(ref Unsafe.AsRef<byte>((void*) data), (uint) length);
         }
 
         public void WriteBlock(byte[] data)
@@ -448,9 +454,9 @@ namespace BTDB.StreamLayer
             WriteBlock(data.AsSpan());
         }
 
-        public unsafe void WriteGuid(Guid value)
+        public void WriteGuid(Guid value)
         {
-            WriteBlock(new ReadOnlySpan<byte>((byte*) &value, 16));
+            WriteBlock(ref Unsafe.As<Guid, byte>(ref Unsafe.AsRef(value)), 16);
         }
 
         public void WriteSingle(float value)

@@ -34,13 +34,13 @@ namespace BTDB.StreamLayer
         /// <param name="spanWriter">owning SpanWriter</param>
         /// <param name="buffer">reference to first byte of buffer to write with length bytes</param>
         /// <param name="length">size of data to write</param>
-        void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, int length);
+        void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length);
         /// <summary>
         /// Writes data from buffer. Called only when SpanWriter does not exists.
         /// </summary>
         /// <param name="buffer">reference to first byte of buffer to write with length bytes</param>
         /// <param name="length">size of data to write</param>
-        void WriteBlockWithoutWriter(ref byte buffer, int length);
+        void WriteBlockWithoutWriter(ref byte buffer, uint length);
         /// <summary>
         /// Seek to position in SpanWriter.
         /// </summary>

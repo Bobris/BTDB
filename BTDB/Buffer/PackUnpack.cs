@@ -104,7 +104,7 @@ namespace BTDB.Buffer
             4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
         };
 
-        public static int LengthVUInt(uint value)
+        public static uint LengthVUInt(uint value)
         {
             /* Logically doing commented code, but branch less => much faster
             if (value < 0x80) return 1;
@@ -117,7 +117,7 @@ namespace BTDB.Buffer
                 (IntPtr) (32 + BitOperations.LeadingZeroCount(value)));
         }
 
-        public static int LengthVUInt(ulong value)
+        public static uint LengthVUInt(ulong value)
         {
             /* Logically doing commented code, but branch less => much faster
             if (value < 0x80) return 1;
@@ -134,13 +134,13 @@ namespace BTDB.Buffer
                 (IntPtr) BitOperations.LeadingZeroCount(value));
         }
 
-        public static int LengthVUInt(byte[] data, int ofs)
+        public static uint LengthVUInt(byte[] data, int ofs)
         {
             var first = data[ofs];
             return LengthVUIntByFirstByte(first);
         }
 
-        public static int LengthVUIntByFirstByte(byte first)
+        public static uint LengthVUIntByFirstByte(byte first)
         {
             /* Logically doing commented code, but branch less => much faster
             if (first < 0x80) return 1;
@@ -152,10 +152,10 @@ namespace BTDB.Buffer
             if (first < 0xFE) return 7;
             return first == 0xFE ? 8 : 9;
             */
-            return BitOperations.LeadingZeroCount(first ^ 0xffu) + 9 - 32;
+            return (uint)BitOperations.LeadingZeroCount(first ^ 0xffu) + 9 - 32;
         }
 
-        public static void UnsafePackVUInt(ref byte data, ulong value, int len)
+        public static void UnsafePackVUInt(ref byte data, ulong value, uint len)
         {
             Debug.Assert(LengthVUInt(value) == len);
             switch (len)
@@ -235,7 +235,7 @@ namespace BTDB.Buffer
             var len = LengthVUInt(value);
             if (data.Length < ofs + len) throw new IndexOutOfRangeException();
             UnsafePackVUInt(ref data[ofs], value, len);
-            ofs += len;
+            ofs += (int)len;
         }
 
         public static ushort AsBigEndian(ushort value)
@@ -268,7 +268,7 @@ namespace BTDB.Buffer
             return !BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
         }
 
-        public static ulong UnsafeUnpackVUInt(ref byte data, int len)
+        public static ulong UnsafeUnpackVUInt(ref byte data, uint len)
         {
             switch (len)
             {
@@ -316,11 +316,11 @@ namespace BTDB.Buffer
         {
             var first = data[ofs];
             var len = LengthVUIntByFirstByte(first);
-            if (data.Length < ofs + len) throw new IndexOutOfRangeException();
+            if ((uint)data.Length < (uint)ofs + len) throw new IndexOutOfRangeException();
             // All range checks were done already before, so now do it without them for speed
             var res = UnsafeUnpackVUInt(
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr) ofs), len);
-            ofs += len;
+            ofs += (int)len;
             return res;
         }
 
@@ -330,7 +330,7 @@ namespace BTDB.Buffer
             5, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1
         };
 
-        public static int LengthVInt(int value)
+        public static uint LengthVInt(int value)
         {
             /* Logically doing commented code, but branch less => much faster
             if (-0x40 <= value && value < 0x40) return 1;
@@ -344,7 +344,7 @@ namespace BTDB.Buffer
                 (IntPtr) 32 + BitOperations.LeadingZeroCount((uint) value));
         }
 
-        public static int LengthVInt(long value)
+        public static uint LengthVInt(long value)
         {
             /* Logically doing commented code, but branch less => 4x-10x faster
             if (-0x40 <= value && value < 0x40) return 1;
@@ -361,13 +361,13 @@ namespace BTDB.Buffer
                 (IntPtr) BitOperations.LeadingZeroCount((ulong) value));
         }
 
-        public static int LengthVInt(byte[] data, int ofs)
+        public static uint LengthVInt(byte[] data, int ofs)
         {
             var first = data[ofs];
             return LengthVIntByFirstByte(first);
         }
 
-        public static int LengthVIntByFirstByte(uint first)
+        public static uint LengthVIntByFirstByte(uint first)
         {
             /* Logically doing commented code, but branch less => much faster
             if (0x40 <= first && first < 0xC0) return 1;
@@ -381,10 +381,10 @@ namespace BTDB.Buffer
             */
             first ^= (uint) ((sbyte) first >> 7) & 0xff;
             var res = BitOperations.LeadingZeroCount(first) + 8 - 32;
-            return (int) (0x976543211UL >> (res * 4)) & 0xf;
+            return (uint) (0x976543211UL >> (res * 4)) & 0xf;
         }
 
-        public static void UnsafePackVInt(ref byte data, long value, int len)
+        public static void UnsafePackVInt(ref byte data, long value, uint len)
         {
             Debug.Assert(LengthVInt(value) == len);
             var sign = value >> 63;
@@ -462,10 +462,10 @@ namespace BTDB.Buffer
             var len = LengthVInt(value);
             if (data.Length < ofs + len) throw new IndexOutOfRangeException();
             UnsafePackVInt(ref data[ofs], value, len);
-            ofs += len;
+            ofs += (int)len;
         }
 
-        public static long UnsafeUnpackVInt(ref byte data, int len)
+        public static long UnsafeUnpackVInt(ref byte data, uint len)
         {
             switch (len)
             {
@@ -520,11 +520,11 @@ namespace BTDB.Buffer
         {
             var first = data[ofs];
             var len = LengthVIntByFirstByte(first);
-            if (data.Length < ofs + len) throw new IndexOutOfRangeException();
+            if ((uint)data.Length < (uint)ofs + len) throw new IndexOutOfRangeException();
             // All range checks were done already before, so now do it without them for speed
             var res = UnsafeUnpackVInt(
                 ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(data.AsSpan()), (IntPtr) ofs), len);
-            ofs += len;
+            ofs += (int)len;
             return res;
         }
 

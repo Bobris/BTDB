@@ -73,7 +73,7 @@ namespace BTDB.KVDBLayer
                     _buf = new byte[BufLength];
                 }
 
-                public bool FillBufAndCheckForEof(ref SpanReader spanReader, int size)
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
                 {
                     var startSize = spanReader.Buf.Length;
                     spanReader.Buf.CopyTo(_buf);
@@ -88,25 +88,25 @@ namespace BTDB.KVDBLayer
                     return (long) _ofs - spanReader.Buf.Length;
                 }
 
-                public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, int length)
+                public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
                 {
                     if (length < BufLength)
                     {
                         if (FillBufAndCheckForEof(ref spanReader, length)) return true;
                         Unsafe.CopyBlockUnaligned(ref buffer,
-                            ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, length), (uint) length);
+                            ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
                         return false;
                     }
 
                     var read = PlatformMethods.Instance.PRead(_owner._handle,
-                        MemoryMarshal.CreateSpan(ref buffer, length), _ofs);
+                        MemoryMarshal.CreateSpan(ref buffer, (int)length), _ofs);
                     _ofs += read;
                     return read < length;
                 }
 
-                public bool SkipBlock(ref SpanReader spanReader, int length)
+                public bool SkipBlock(ref SpanReader spanReader, uint length)
                 {
-                    _ofs += (uint) length;
+                    _ofs += length;
                     if (_ofs <= _valueSize) return false;
                     _ofs = _valueSize;
                     return true;
@@ -182,23 +182,23 @@ namespace BTDB.KVDBLayer
                     return (long) Ofs + _pos;
                 }
 
-                public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, int length)
+                public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
                 {
-                    PlatformMethods.Instance.PWrite(_file._handle, MemoryMarshal.CreateReadOnlySpan(ref buffer, length),
+                    PlatformMethods.Instance.PWrite(_file._handle, MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length),
                         Ofs);
                     using (_file._readerWriterLock.WriteLock())
                     {
-                        Ofs += (ulong) length;
+                        Ofs += length;
                     }
                 }
 
-                public void WriteBlockWithoutWriter(ref byte buffer, int length)
+                public void WriteBlockWithoutWriter(ref byte buffer, uint length)
                 {
-                    if ((uint) length <= (uint) (BufLength - _pos))
+                    if (length <= (uint) (BufLength - _pos))
                     {
-                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, length)), ref buffer,
-                            (uint) length);
-                        _pos += length;
+                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, (int)length)), ref buffer,
+                            length);
+                        _pos += (int)length;
                     }
                     else
                     {
