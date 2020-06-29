@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -11,8 +12,8 @@ namespace BTDB.ODBLayer
     {
         readonly IInternalObjectDBTransaction _tr;
         readonly IFieldHandler _keyHandler;
-        readonly Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
-        readonly Action<TKey, AbstractBufferedWriter, IWriterCtx> _keyWriter;
+        readonly ReaderFun<TKey> _keyReader;
+        readonly WriterFun<TKey> _keyWriter;
         readonly IKeyValueDBTransaction _keyValueTr;
         readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly ulong _id;
@@ -29,8 +30,8 @@ namespace BTDB.ODBLayer
             _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
             PackUnpack.PackVUInt(_prefix, ref o, _id);
-            _keyReader = ((Func<AbstractBufferedReader, IReaderCtx, TKey>) config.KeyReader)!;
-            _keyWriter = ((Action<TKey, AbstractBufferedWriter, IWriterCtx>) config.KeyWriter)!;
+            _keyReader = ((ReaderFun<TKey>) config.KeyReader)!;
+            _keyWriter = ((WriterFun<TKey>) config.KeyWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _keyValueTrProtector = _tr.TransactionProtector;
             _count = -1;
@@ -47,8 +48,7 @@ namespace BTDB.ODBLayer
             throw new InvalidOperationException("DB modified during iteration");
         }
 
-        // ReSharper disable once UnusedMember.Global
-        public static void DoSave(IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
+        public static void DoSave(ref SpanWriter writer, IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
         {
             var writerCtx = (IDBWriterCtx) ctx;
             if (!(dictionary is ODBSet<TKey> goodDict))
@@ -61,7 +61,7 @@ namespace BTDB.ODBLayer
                         goodDict.Add(pair);
             }
 
-            ctx.Writer().WriteVUInt64(goodDict._id);
+            writer.WriteVUInt64(goodDict._id);
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -185,19 +185,19 @@ namespace BTDB.ODBLayer
 
         ByteBuffer KeyToByteArray(TKey key)
         {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             IWriterCtx ctx = null;
-            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr, writer);
-            _keyWriter(key, writer, ctx);
-            return writer.Data;
+            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
+            _keyWriter(key, ref writer, ctx);
+            return writer.GetByteBufferAndReset();
         }
 
-        TKey ByteArrayToKey(ByteBuffer data)
+        TKey ByteArrayToKey(ReadOnlySpan<byte> data)
         {
-            var reader = new ByteBufferReader(data);
+            var reader = new SpanReader(data);
             IReaderCtx ctx = null;
-            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr, reader);
-            return _keyReader(reader, ctx);
+            if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
+            return _keyReader(ref reader, ctx);
         }
 
         public bool Add(TKey key)
@@ -276,7 +276,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKey();
+                var keyBytes = _keyValueTr.GetKey().AsSyncReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -314,7 +314,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKey();
+                var keyBytes = _keyValueTr.GetKey().AsSyncReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -370,7 +370,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKey();
+                var keyBytes = _keyValueTr.GetKey().AsSyncReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -426,7 +426,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                var keyBytes = _keyValueTr.GetKey();
+                var keyBytes = _keyValueTr.GetKey().AsSyncReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -705,7 +705,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                Current = _owner.ByteArrayToKey(_keyValueTr.GetKey());
+                Current = _owner.ByteArrayToKey(_keyValueTr.GetKey().AsSyncReadOnlySpan());
                 return true;
             }
 

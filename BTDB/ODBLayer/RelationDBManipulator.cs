@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -68,27 +69,27 @@ namespace BTDB.ODBLayer
 
         ByteBuffer ValueBytes(T obj)
         {
-            var valueWriter = new ByteBufferWriter();
+            var valueWriter = new SpanWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
             _relationInfo.ValueSaver(_transaction, valueWriter, obj);
-            return valueWriter.Data;
+            return valueWriter.GetByteBufferAndReset();
         }
 
         ByteBuffer KeyBytes(T obj)
         {
-            var keyWriter = new ByteBufferWriter();
-            WriteRelationPKPrefix(keyWriter);
+            var keyWriter = new SpanWriter();
+            WriteRelationPKPrefix(ref keyWriter);
             _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj,
                 this); //this for relation interface which is same with manipulator
-            return keyWriter.Data;
+            return keyWriter.GetByteBufferAndReset();
         }
 
-        public void WriteRelationPKPrefix(AbstractBufferedWriter writer)
+        public void WriteRelationPKPrefix(ref SpanWriter writer)
         {
             writer.WriteBlock(_relationInfo.Prefix);
         }
 
-        public void WriteRelationSKPrefix(AbstractBufferedWriter writer, uint secondaryKeyIndex)
+        public void WriteRelationSKPrefix(ref SpanWriter writer, uint secondaryKeyIndex)
         {
             writer.WriteBlock(_relationInfo.PrefixSecondary);
             writer.WriteUInt8((byte)secondaryKeyIndex);
@@ -382,14 +383,13 @@ namespace BTDB.ODBLayer
                 //keyBytePrefix contains [3, Index Relation, Primary key prefix] we need
                 //                       [4, Index Relation, Secondary Key Index, Primary key prefix]
                 var idBytesLength = 1 + PackUnpack.LengthVUInt(_relationInfo.Id);
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 foreach (var secKey in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
                 {
-                    WriteRelationSKPrefix(writer, secKey.Key);
-                    writer.WriteBlock(keyBytesPrefix.Buffer!, idBytesLength, keyBytesPrefix.Length - idBytesLength);
-                    _kvtr.SetKeyPrefix(writer.Data);
+                    WriteRelationSKPrefix(ref writer, secKey.Key);
+                    writer.WriteBlock(keyBytesPrefix.Buffer!, (int)idBytesLength, keyBytesPrefix.Length - (int)idBytesLength);
+                    _kvtr.SetKeyPrefix(writer.GetByteBufferAndReset());
                     _kvtr.EraseAll();
-                    writer.Reset();
                 }
             }
 
@@ -570,11 +570,11 @@ namespace BTDB.ODBLayer
         public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
             uint fieldInFirstBufferCount, ByteBuffer firstPart, ByteBuffer secondPart)
         {
-            var pkWriter = new ByteBufferWriter();
-            WriteRelationPKPrefix(pkWriter);
+            var pkWriter = new SpanWriter();
+            WriteRelationPKPrefix(ref pkWriter);
             _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                (new ByteBufferReader(firstPart), new ByteBufferReader(secondPart), pkWriter);
-            return FindByIdOrDefaultInternal(itemLoader, pkWriter.Data, true);
+                (new SpanReader(firstPart), new SpanReader(secondPart), pkWriter);
+            return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetByteBufferAndReset(), true);
         }
 
         public IEnumerator<TItem> FindBySecondaryKey<TItem>(uint secondaryKeyIndex, uint prefixFieldCount,
@@ -615,25 +615,25 @@ namespace BTDB.ODBLayer
 
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
         {
-            var keyWriter = new ByteBufferWriter();
+            var keyWriter = new SpanWriter();
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, obj, this); //secondary key
-            return keyWriter.Data;
+            WriteRelationSKPrefix(ref keyWriter, secondaryKeyIndex);
+            keySaver(_transaction, ref keyWriter, obj, this); //secondary key
+            return keyWriter.GetByteBufferAndReset();
         }
 
         ByteBuffer WriteSecondaryKeyKey(uint secondaryKeyIndex, ByteBuffer keyBytes, ByteBuffer valueBytes)
         {
-            var keyWriter = new ByteBufferWriter();
-            WriteRelationSKPrefix(keyWriter, secondaryKeyIndex);
+            var keyWriter = new SpanWriter();
+            WriteRelationSKPrefix(ref keyWriter, secondaryKeyIndex);
 
             var o = valueBytes.Offset;
             var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer!, ref o);
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, new ByteBufferReader(keyBytes), new ByteBufferReader(valueBytes),
+            keySaver(_transaction, keyWriter, new SpanReader(keyBytes), new SpanReader(valueBytes),
                 _relationInfo.DefaultClientObject);
-            return keyWriter.Data;
+            return keyWriter.GetByteBufferAndReset();
         }
 
         void AddIntoSecondaryIndexes(T obj)

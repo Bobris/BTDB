@@ -7,6 +7,7 @@ using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 // ReSharper disable ParameterOnlyUsedForPreconditionCheck.Local
 
@@ -25,8 +26,8 @@ namespace BTDB.ODBLayer
         public readonly IRelationInfoResolver RelationInfoResolver;
         public IILDynamicMethodWithThis DelegateCreator { get; }
 
-        static readonly MethodInfo ByteBufferWriterDataMethodInfo =
-            typeof(ByteBufferWriter).GetProperty(nameof(ByteBufferWriter.Data))!.GetGetMethod(true)!;
+        static readonly MethodInfo SpanWriterGetByteBufferAndResetMethodInfo =
+            typeof(SpanWriter).GetProperty(nameof(SpanWriter.GetByteBufferAndReset))!.GetGetMethod(true)!;
 
         static Dictionary<Type, RelationBuilder> _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
         static readonly object RelationBuilderCacheLock = new object();
@@ -283,7 +284,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            var dataGetter = ByteBufferWriterDataMethodInfo;
+            var dataGetter = SpanWriterGetByteBufferAndResetMethodInfo;
             reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter!);
             reqMethod.Generator.Callvirt(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
@@ -327,7 +328,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            reqMethod.Generator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
+            reqMethod.Generator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
             if (isPrefixBased)
             {
                 reqMethod.Generator.Callvirt(
@@ -436,7 +437,7 @@ namespace BTDB.ODBLayer
 
             il
                 .Ldarg(0) //manipulator
-                .Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo) //call byteBuffer.Data
+                .Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo) //call byteBuffer.Data
                 .Ldarg((ushort) methodParameters.Length)
                 .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByPrimaryKeyPrefixPartial))!);
@@ -969,7 +970,7 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            ilGenerator.Ldloc(writerLoc).Call(ByteBufferWriterDataMethodInfo);
+            ilGenerator.Ldloc(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
             if (isPrefixBased)
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1018,7 +1019,7 @@ namespace BTDB.ODBLayer
             ilGenerator.Ldloc(localRemapped);
             ilGenerator.LdcI4(methodParameters.Length + apartFields.Count);
             //call byteBuffer.data
-            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
+            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
             if (TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType))
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1132,20 +1133,19 @@ namespace BTDB.ODBLayer
             //stack contains KeyProposition
             var ignoreLabel = ilGenerator.DefineLabel(instField + "_ignore");
             var doneLabel = ilGenerator.DefineLabel(instField + "_done");
-            var writerLoc = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
             ilGenerator
                 .Dup()
                 .LdcI4((int) KeyProposition.Ignored)
                 .BeqS(ignoreLabel)
-                .Newobj(() => new ByteBufferWriter())
-                .Stloc(writerLoc);
+                .Ldloca(writerLoc)
+                .InitObj(typeof(SpanWriter));
             field.Handler!.SpecializeSaveForType(instField.FieldType).Save(ilGenerator,
-                il => il.Ldloc(writerLoc),
+                il => il.Ldloca(writerLoc), null,
                 il => il.Ldarg(advEnumParamOrder).Ldfld(instField));
             ilGenerator
-                .Ldloc(writerLoc)
-                .Castclass(typeof(ByteBufferWriter))
-                .Callvirt(ByteBufferWriterDataMethodInfo)
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetByteBufferAndResetMethodInfo)
                 .Br(doneLabel)
                 .Mark(ignoreLabel)
                 .Ldloc(emptyBufferLoc)
@@ -1165,18 +1165,18 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 secondaryKeyFields, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
+            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
             return localRemapped;
         }
 
         static (IILLocal, Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
         {
-            var writerLoc = ilGenerator.DeclareLocal(typeof(ByteBufferWriter));
+            var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
             ilGenerator
-                .Newobj(() => new ByteBufferWriter())
-                .Stloc(writerLoc);
+                .Ldloca(writerLoc)
+                .InitObj(typeof(SpanWriter));
 
-            void PushWriter(IILGen il) => il.Ldloc(writerLoc);
+            void PushWriter(IILGen il) => il.Ldloca(writerLoc);
 
             IILLocal? ctxLoc = null;
 
@@ -1188,8 +1188,7 @@ namespace BTDB.ODBLayer
                     ilGenerator
                         .Ldarg(0)
                         .Callvirt(() => ((IRelationDbManipulator) null).Transaction)
-                        .Do(PushWriter)
-                        .Newobj(() => new DBWriterCtx(null, null))
+                        .Newobj(() => new DBWriterCtx(null))
                         .Stloc(ctxLoc);
                 }
 
@@ -1209,7 +1208,7 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 keyFields.Span, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloc(writerLoc).Callvirt(ByteBufferWriterDataMethodInfo);
+            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
         }
 
         void GenerateApartFieldsProperties(IILDynamicType classImpl, Type interfaceType)
@@ -1273,10 +1272,9 @@ namespace BTDB.ODBLayer
             Type parameterType, IILLocal writerLoc, Func<IILLocal> ctxLocFactory)
         {
             var specialized = field.Handler!.SpecializeSaveForType(parameterType);
-            var locToUse = specialized.NeedsCtx() ? ctxLocFactory() : writerLoc;
             specialized
                 .Save(ilGenerator,
-                    il => il.Ldloc(locToUse),
+                    il => il.Ldloca(writerLoc), il => il.Ldloc(ctxLocFactory()),
                     il => il.Ldarg(parameterId));
         }
 
@@ -1284,9 +1282,8 @@ namespace BTDB.ODBLayer
             IILLocal writerLoc, Func<IILLocal> ctxLocFactory)
         {
             var specialized = field.Handler!.SpecializeSaveForType(fieldGetter.ReturnType);
-            var locToUse = specialized.NeedsCtx() ? ctxLocFactory() : writerLoc;
             specialized.Save(ilGenerator,
-                il => il.Ldloc(locToUse),
+                il => il.Ldloca(writerLoc), il => il.Ldloc(ctxLocFactory()),
                 il => il.Ldarg(0).Callvirt(fieldGetter));
         }
 

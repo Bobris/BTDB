@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -240,18 +241,16 @@ namespace BTDB.ODBLayer
 
             uint ITableInfoResolver.GetLastPersistedVersion(uint id)
             {
-                using (var tr = _keyValueDB.StartTransaction())
-                {
-                    tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
-                    if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
-                        return 0;
-                    var key2 = tr.GetKeyAsByteArray();
-                    var ofs = PackUnpack.LengthVUInt(id);
-                    if (key2.Length < ofs) return 0;
-                    if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
-                    return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
-                }
+                using var tr = _keyValueDB.StartTransaction();
+                tr.SetKeyPrefix(TableVersionsPrefix);
+                var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
+                if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
+                    return 0;
+                var key2 = tr.GetKeyAsByteArray();
+                var ofs = PackUnpack.LengthVUInt(id);
+                if (key2.Length < ofs) return 0;
+                if (BitArrayManipulation.CompareByteArray(key, (int)ofs, key2, (int)ofs) != 0) return 0;
+                return checked((uint)PackUnpack.UnpackVUInt(key2, ref Unsafe.As<uint,int>(ref ofs)));
             }
 
             TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
