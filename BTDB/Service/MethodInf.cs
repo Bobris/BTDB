@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using BTDB.FieldHandler;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
@@ -12,13 +13,13 @@ namespace BTDB.Service
         readonly string _name;
         readonly string _ifaceName;
         readonly ParameterInf[] _parameters;
-        readonly IFieldHandler _resultFieldHandler;
+        readonly IFieldHandler? _resultFieldHandler;
 
         public MethodInf(MethodInfo method, IFieldHandlerFactory fieldHandlerFactory)
         {
             MethodInfo = method;
             _name = method.Name;
-            foreach (var itf in GetInterfacesForMethod(method.DeclaringType, method.GetBaseDefinition()))
+            foreach (var itf in GetInterfacesForMethod(method.DeclaringType!, method.GetBaseDefinition()))
             {
                 _ifaceName = itf.Name;
                 break;
@@ -28,7 +29,7 @@ namespace BTDB.Service
                 _resultFieldHandler = fieldHandlerFactory.CreateFromType(syncReturnType, FieldHandlerOptions.None);
             var parameterInfos = method.GetParameters();
             _parameters = new ParameterInf[parameterInfos.Length];
-            for (int i = 0; i < parameterInfos.Length; i++)
+            for (var i = 0; i < parameterInfos.Length; i++)
             {
                 _parameters[i] = new ParameterInf(parameterInfos[i], fieldHandlerFactory);
             }
@@ -46,10 +47,10 @@ namespace BTDB.Service
             }
         }
 
-        public MethodInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
+        public MethodInf(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
-            _name = reader.ReadString();
-            _ifaceName = reader.ReadString();
+            _name = reader.ReadString()!;
+            _ifaceName = reader.ReadString()!;
             var resultFieldHandlerName = reader.ReadString();
             if (resultFieldHandlerName != null)
             {
@@ -57,9 +58,9 @@ namespace BTDB.Service
             }
             var parameterCount = reader.ReadVUInt32();
             _parameters = new ParameterInf[parameterCount];
-            for (int i = 0; i < _parameters.Length; i++)
+            for (var i = 0; i < _parameters.Length; i++)
             {
-                _parameters[i] = new ParameterInf(reader, fieldHandlerFactory);
+                _parameters[i] = new ParameterInf(ref reader, fieldHandlerFactory);
             }
         }
 
@@ -69,11 +70,11 @@ namespace BTDB.Service
 
         public ParameterInf[] Parameters => _parameters;
 
-        public IFieldHandler ResultFieldHandler => _resultFieldHandler;
+        public IFieldHandler? ResultFieldHandler => _resultFieldHandler;
 
         public MethodInfo MethodInfo { get; set; }
 
-        public void Store(AbstractBufferedWriter writer)
+        public void Store(ref SpanWriter writer)
         {
             writer.WriteString(_name);
             writer.WriteString(_ifaceName);
@@ -89,7 +90,7 @@ namespace BTDB.Service
             writer.WriteVUInt32((uint)_parameters.Length);
             foreach (var parameter in _parameters)
             {
-                parameter.Store(writer);
+                parameter.Store(ref writer);
             }
         }
 

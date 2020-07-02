@@ -14,6 +14,7 @@ using BTDB.FieldHandler;
 using BTDB.ODBLayer;
 using BTDB.Reactive;
 using BTDB.IL;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
@@ -154,7 +155,7 @@ namespace BTDB.Service
 
         void OnReceive(ByteBuffer obj)
         {
-            var reader = new ByteBufferReader(obj);
+            var reader = new SpanReader(obj);
             var c0 = reader.ReadVUInt32();
             uint ackId;
             TaskAndBindInf taskAndBind;
@@ -162,7 +163,7 @@ namespace BTDB.Service
             switch ((Command)c0)
             {
                 case Command.Subcommand:
-                    OnSubcommand(reader);
+                    OnSubcommand(ref reader);
                     break;
                 case Command.Result:
                     ackId = reader.ReadVUInt32();
@@ -177,7 +178,7 @@ namespace BTDB.Service
                     if (success)
                     {
                         _clientAckNumbers.Deallocate(ackId);
-                        taskAndBind.Binding.HandleResult(taskAndBind.TaskCompletionSource, reader, this);
+                        taskAndBind.Binding.HandleResult(taskAndBind.TaskCompletionSource, ref reader, this);
                     }
                     break;
                 case Command.Exception:
@@ -196,7 +197,7 @@ namespace BTDB.Service
                         Exception ex;
                         try
                         {
-                            ex = new BinaryFormatter().Deserialize(new MemoryStream(reader.ReadByteArray())) as Exception;
+                            ex = new BinaryFormatter().Deserialize(new MemoryStream(reader.ReadByteArray()!)) as Exception;
                         }
                         catch (Exception e)
                         {
@@ -206,16 +207,15 @@ namespace BTDB.Service
                     }
                     break;
                 default:
-                    ServerBindInf serverBindInf;
-                    if (_serverBindings.TryGetValue(c0, out serverBindInf))
-                        serverBindInf.Runner(serverBindInf.Object, reader, this);
+                    if (_serverBindings.TryGetValue(c0, out var serverBindInf))
+                        serverBindInf.Runner(serverBindInf.Object, ref reader, this);
                     else
                         throw new InvalidDataException();
                     break;
             }
         }
 
-        void OnSubcommand(ByteBufferReader reader)
+        void OnSubcommand(ref SpanReader reader)
         {
             var c1 = reader.ReadVUInt32();
             uint typeId;
@@ -223,7 +223,7 @@ namespace BTDB.Service
             {
                 case Subcommand.RegisterType:
                     typeId = reader.ReadVUInt32();
-                    _clientTypeInfs.TryAdd(typeId, new TypeInf(reader, _fieldHandlerFactory));
+                    _clientTypeInfs.TryAdd(typeId, new TypeInf(ref reader, _fieldHandlerFactory));
                     break;
                 case Subcommand.RegisterService:
                     var serviceId = reader.ReadVUInt32();
@@ -234,22 +234,19 @@ namespace BTDB.Service
                         _onNewRemoteService.OnNext(typeInf);
                     break;
                 case Subcommand.Bind:
-                    OnBind(reader);
+                    OnBind(ref reader);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
 
-        void OnBind(AbstractBufferedReader reader)
+        void OnBind(ref SpanReader reader)
         {
-            var binding = new ServerBindInf(reader);
-            object serverObject;
-            _serverObjects.TryGetValue(binding.ServiceId, out serverObject);
-            uint typeId;
-            _serverKnownServicesTypes.TryGetValue(binding.ServiceId, out typeId);
-            TypeInf typeInf;
-            _serverTypeInfs.TryGetValue(typeId, out typeInf);
+            var binding = new ServerBindInf(ref reader);
+            _serverObjects.TryGetValue(binding.ServiceId, out var serverObject);
+            _serverKnownServicesTypes.TryGetValue(binding.ServiceId, out var typeId);
+            _serverTypeInfs.TryGetValue(typeId, out var typeInf);
             var methodInf = typeInf.MethodInfs[binding.MethodId];
             var originalReturnType = methodInf.MethodInfo.ReturnType;
             var returnType = originalReturnType.UnwrapTask();
@@ -262,7 +259,7 @@ namespace BTDB.Service
                 $"{typeInf.Name}_{methodInf.Name}");
             var ilGenerator = method.Generator;
             IILLocal localResultId = null;
-            var localWriter = ilGenerator.DeclareLocal(typeof(AbstractBufferedWriter));
+            var localWriter = ilGenerator.DeclareLocal(typeof(SpanWriter));
             var localException = ilGenerator.DeclareLocal(typeof(Exception));
             var localParams = new IILLocal[methodInf.Parameters.Length];
             IILLocal localResult = null;
@@ -275,7 +272,7 @@ namespace BTDB.Service
                 }
                 ilGenerator
                     .Ldarg(1)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                    .Call(() => default(SpanReader).ReadVUInt32())
                     .Stloc(localResultId)
                     .Try();
             }

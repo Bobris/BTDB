@@ -16,8 +16,10 @@ namespace BTDB.ODBLayer
 {
     delegate void ObjectSaver(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
         ref SpanWriter writer, object value);
+
     delegate void ObjectLoader(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
         ref SpanReader reader, object value);
+
     delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
         ref SpanReader reader, IList<ulong> dictIds);
 
@@ -144,7 +146,7 @@ namespace BTDB.ODBLayer
                 }
 
                 var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                      BindingFlags.Instance);
+                                                       BindingFlags.Instance);
                 for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
                 {
                     var srcFieldInfo = tableVersionInfo[fi];
@@ -350,7 +352,8 @@ namespace BTDB.ODBLayer
                     .Stloc(1);
             }
 
-            var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            var props = _clientType!.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
+                                                   BindingFlags.Instance);
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
@@ -449,12 +452,8 @@ namespace BTDB.ODBLayer
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
-                Action<IILGen> readerOrCtx;
-                if (srcFieldInfo.Handler!.NeedsCtx())
-                    readerOrCtx = il => il.Ldloc(0);
-                else
-                    readerOrCtx = il => il.Ldarg(2);
-                Extensions.UpdateNeedsFreeContent(srcFieldInfo.Handler.FreeContent(ilGenerator, readerOrCtx),
+                Extensions.UpdateNeedsFreeContent(
+                    srcFieldInfo.Handler!.FreeContent(ilGenerator, il => il.Ldarg(2), il => il.Ldloc(0)),
                     ref needsFreeContent);
             }
 

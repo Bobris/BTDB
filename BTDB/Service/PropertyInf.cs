@@ -1,5 +1,6 @@
 using System.Reflection;
 using BTDB.FieldHandler;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
@@ -14,18 +15,18 @@ namespace BTDB.Service
             _fieldHandler= fieldHandlerFactory.CreateFromType(property.PropertyType, FieldHandlerOptions.None);
         }
 
-        public PropertyInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
+        public PropertyInf(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
-            _name = reader.ReadString();
+            _name = reader.ReadString()!;
             var resultFieldHandlerName = reader.ReadString();
-            _fieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName, reader.ReadByteArray(), FieldHandlerOptions.None);
+            _fieldHandler = fieldHandlerFactory.CreateFromName(resultFieldHandlerName!, reader.ReadByteArray(), FieldHandlerOptions.None);
         }
 
         public string Name => _name;
 
         public IFieldHandler FieldHandler => _fieldHandler;
 
-        public void Store(AbstractBufferedWriter writer)
+        public void Store(ref SpanWriter writer)
         {
             writer.WriteString(_name);
             writer.WriteString(_fieldHandler.Name);

@@ -10,7 +10,7 @@ using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
-    delegate T ReaderFun<out T>(ref SpanReader reader, IReaderCtx? ctx);
+    public delegate T ReaderFun<out T>(ref SpanReader reader, IReaderCtx? ctx);
     delegate void WriterFun<in T>(T value, ref SpanWriter writer, IWriterCtx? ctx);
     delegate void FreeContentFun(IInternalObjectDBTransaction transaction, ref SpanReader reader, IList<ulong> dictIds);
 

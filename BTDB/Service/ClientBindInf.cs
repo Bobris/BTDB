@@ -1,4 +1,5 @@
 using System;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
@@ -8,14 +9,18 @@ namespace BTDB.Service
         internal uint ServiceId { get; set; }
         internal uint MethodId { get; set; }
         internal bool OneWay { get; set; }
-        internal Action<object, AbstractBufferedReader, IServiceInternalClient> HandleResult { get; set; }
+
+        internal delegate void HandleResultFun(object that, ref SpanReader reader,
+            IServiceInternalClient serviceInternalClient);
+        
+        internal HandleResultFun HandleResult { get; set; }
         internal Action<object, Exception> HandleException { get; set; }
         internal Action<object> HandleCancellation { get; set; }
         internal Func<TaskWithSource> TaskWithSourceCreator { get; set; }
 
         internal ClientBindInf() { }
 
-        internal void Store(AbstractBufferedWriter writer)
+        internal void Store(ref SpanWriter writer)
         {
             writer.WriteVUInt32(BindingId);
             writer.WriteVUInt32(ServiceId);

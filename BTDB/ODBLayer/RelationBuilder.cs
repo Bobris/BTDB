@@ -283,9 +283,7 @@ namespace BTDB.ODBLayer
             //call manipulator.Contains
             reqMethod.Generator
                 .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            var dataGetter = SpanWriterGetByteBufferAndResetMethodInfo;
-            reqMethod.Generator.Ldloc(writerLoc).Callvirt(dataGetter!);
+            reqMethod.Generator.Ldloca(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
             reqMethod.Generator.Callvirt(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
         }
@@ -328,7 +326,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            reqMethod.Generator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
+            reqMethod.Generator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
             if (isPrefixBased)
             {
                 reqMethod.Generator.Callvirt(
@@ -437,7 +435,7 @@ namespace BTDB.ODBLayer
 
             il
                 .Ldarg(0) //manipulator
-                .Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo) //call byteBuffer.Data
+                .Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo) //call byteBuffer.Data
                 .Ldarg((ushort) methodParameters.Length)
                 .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByPrimaryKeyPrefixPartial))!);
@@ -970,7 +968,7 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(0); //manipulator
             //call byteBuffer.data
-            ilGenerator.Ldloc(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
             if (isPrefixBased)
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1018,8 +1016,7 @@ namespace BTDB.ODBLayer
             ilGenerator.Ldarg(0); //manipulator
             ilGenerator.Ldloc(localRemapped);
             ilGenerator.LdcI4(methodParameters.Length + apartFields.Count);
-            //call byteBuffer.data
-            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
+            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
             if (TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType))
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1165,7 +1162,7 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 secondaryKeyFields, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
+            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
             return localRemapped;
         }
 
@@ -1208,7 +1205,7 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 keyFields.Span, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloc(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
+            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
         }
 
         void GenerateApartFieldsProperties(IILDynamicType classImpl, Type interfaceType)

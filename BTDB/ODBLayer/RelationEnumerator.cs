@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.ODBLayer
 {
@@ -120,7 +121,7 @@ namespace BTDB.ODBLayer
             {
                 Reset();
             }
-            
+
             return this;
         }
 
@@ -435,7 +436,7 @@ namespace BTDB.ODBLayer
             {
                 Reset();
             }
-            
+
             return this;
         }
 
@@ -494,7 +495,7 @@ namespace BTDB.ODBLayer
         SeekState _seekState;
         readonly bool _ascending;
         protected readonly ByteBuffer _keyBytes;
-        protected Func<AbstractBufferedReader, IReaderCtx, TKey> _keyReader;
+        protected ReaderFun<TKey> _keyReader;
         readonly int _lengthOfNonDataPrefix;
 
         public RelationAdvancedOrderedEnumerator(IRelationDbManipulator manipulator,
@@ -594,7 +595,7 @@ namespace BTDB.ODBLayer
                 var advancedEnumParamField = primaryKeyFields.Span[(int) _prefixFieldCount];
                 if (advancedEnumParamField.Handler!.NeedsCtx())
                     throw new BTDBException("Not supported.");
-                _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>) manipulator.RelationInfo
+                _keyReader = (ReaderFun<TKey>) manipulator.RelationInfo
                     .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
 
                 _lengthOfNonDataPrefix = manipulator.RelationInfo.Prefix.Length;
@@ -606,9 +607,9 @@ namespace BTDB.ODBLayer
         protected virtual TValue CreateInstance(ByteBuffer prefixKeyBytes, ByteBuffer keyBytes)
         {
             var data = new byte[_keyBytes.Length - _lengthOfNonDataPrefix + keyBytes.Length];
-            Array.Copy(_keyBytes.Buffer, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0,
+            Array.Copy(_keyBytes.Buffer!, _keyBytes.Offset + _lengthOfNonDataPrefix, data, 0,
                 _keyBytes.Length - _lengthOfNonDataPrefix);
-            Array.Copy(keyBytes.Buffer, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix,
+            Array.Copy(keyBytes.Buffer!, keyBytes.Offset, data, _keyBytes.Length - _lengthOfNonDataPrefix,
                 keyBytes.Length);
 
             return (TValue) ItemLoader.CreateInstance(_tr, ByteBuffer.NewAsync(data),
@@ -637,7 +638,7 @@ namespace BTDB.ODBLayer
                 var keyBytes = _keyValueTr.GetKey();
                 return CreateInstance(_keyBytes, keyBytes);
             }
-            set { throw new NotSupportedException(); }
+            set => throw new NotSupportedException();
         }
 
         void Seek()
@@ -651,7 +652,7 @@ namespace BTDB.ODBLayer
 
         public uint Position
         {
-            get { return _pos; }
+            get => _pos;
 
             set
             {
@@ -694,9 +695,9 @@ namespace BTDB.ODBLayer
 
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             //read key
-            var keyData = _keyValueTr.GetKeyAsByteArray();
-            var reader = new ByteArrayReader(keyData);
-            key = _keyReader(reader, null);
+            var keyData = _keyValueTr.GetKey().AsSyncReadOnlySpan();
+            var reader = new SpanReader(keyData);
+            key = _keyReader(ref reader, null);
             return true;
         }
     }
@@ -721,7 +722,7 @@ namespace BTDB.ODBLayer
             var advancedEnumParamField = secKeyFields[(int) _prefixFieldCount];
             if (advancedEnumParamField.Handler!.NeedsCtx())
                 throw new BTDBException("Not supported.");
-            _keyReader = (Func<AbstractBufferedReader, IReaderCtx, TKey>) manipulator.RelationInfo
+            _keyReader = (ReaderFun<TKey>) manipulator.RelationInfo
                 .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
         }
 

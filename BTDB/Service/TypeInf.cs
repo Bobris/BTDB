@@ -6,6 +6,7 @@ using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
@@ -57,7 +58,7 @@ namespace BTDB.Service
             _propertyInfs = propertyInfs.ToArray();
         }
 
-        public TypeInf(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory)
+        public TypeInf(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory)
         {
             OriginalType = null;
             _name = reader.ReadString()!;
@@ -65,13 +66,13 @@ namespace BTDB.Service
             _methodInfs = new MethodInf[methodCount];
             for (var i = 0; i < methodCount; i++)
             {
-                _methodInfs[i] = new MethodInf(reader, fieldHandlerFactory);
+                _methodInfs[i] = new MethodInf(ref reader, fieldHandlerFactory);
             }
             var propertyCount = reader.ReadVUInt32();
             _propertyInfs = new PropertyInf[propertyCount];
             for (var i = 0; i < propertyCount; i++)
             {
-                PropertyInfs[i] = new PropertyInf(reader, fieldHandlerFactory);
+                PropertyInfs[i] = new PropertyInf(ref reader, fieldHandlerFactory);
             }
         }
 
@@ -83,18 +84,18 @@ namespace BTDB.Service
 
         public PropertyInf[] PropertyInfs => _propertyInfs;
 
-        public void Store(AbstractBufferedWriter writer)
+        public void Store(ref SpanWriter writer)
         {
             writer.WriteString(_name);
             writer.WriteVUInt32((uint)_methodInfs.Length);
             foreach (var methodInf in _methodInfs)
             {
-                methodInf.Store(writer);
+                methodInf.Store(ref writer);
             }
             writer.WriteVUInt32((uint)PropertyInfs.Length);
             foreach (var propertyInf in PropertyInfs)
             {
-                propertyInf.Store(writer);
+                propertyInf.Store(ref writer);
             }
         }
 

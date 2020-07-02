@@ -1,7 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using BTDB.Collections;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.StreamLayer;
@@ -12,38 +12,36 @@ namespace BTDB.Service
     {
         readonly IServiceInternalServer? _serviceServer;
         readonly IServiceInternalClient? _serviceClient;
-        readonly AbstractBufferedReader _reader;
-        List<object>? _objects;
-        Stack<IMemorizedPosition?>? _returningStack;
+        StructList<object> _objects;
+        StructList<long> _returningStack;
         int _lastIdOfObj;
         ISymmetricCipher? _cipher;
 
-        public ServiceReaderCtx(IServiceInternalServer serviceServer, AbstractBufferedReader reader)
+        public ServiceReaderCtx(IServiceInternalServer serviceServer)
         {
             _serviceServer = serviceServer;
             _serviceClient = null;
-            _reader = reader;
             _lastIdOfObj = 0;
         }
 
-        public ServiceReaderCtx(IServiceInternalClient serviceClient, AbstractBufferedReader reader)
+        public ServiceReaderCtx(IServiceInternalClient serviceClient)
         {
             _serviceServer = null;
             _serviceClient = serviceClient;
-            _reader = reader;
             _lastIdOfObj = 0;
         }
 
-        public bool ReadObject(out object? @object)
+        public bool ReadObject(ref SpanReader reader, out object? @object)
         {
-            var id = (int)_reader.ReadVUInt32();
+            var id = (int) reader.ReadVUInt32();
             if (id == 0)
             {
                 @object = null;
                 return false;
             }
+
             id--;
-            var o = RetriveObj(id);
+            var o = RetrieveObj(id);
             if (o != null)
             {
                 var mp = o as IMemorizedPosition;
@@ -52,27 +50,29 @@ namespace BTDB.Service
                     @object = o;
                     return false;
                 }
-                PushReturningPosition(((ICanMemorizePosition)_reader).MemorizeCurrentPosition());
-                mp.Restore();
+
+                PushReturningPosition(reader.GetCurrentPosition());
+                mp.Restore(ref reader);
             }
             else
             {
-                PushReturningPosition(null);
+                PushReturningPosition(-1);
             }
+
             _lastIdOfObj = id;
             @object = null;
             return true;
         }
 
-        void PushReturningPosition(IMemorizedPosition? memorizedPosition)
+        void PushReturningPosition(long memorizedPosition)
         {
-            if (_returningStack == null)
+            if (_returningStack.Count == 0)
             {
-                if (memorizedPosition == null) return;
-                _returningStack = new Stack<IMemorizedPosition?>();
+                if (memorizedPosition == -1) return;
             }
-            if (_returningStack.Count == 0 && memorizedPosition == null) return;
-            _returningStack.Push(memorizedPosition);
+
+            if (_returningStack.Count == 0 && memorizedPosition == -1) return;
+            _returningStack.Add(memorizedPosition);
         }
 
         public void RegisterObject(object @object)
@@ -81,103 +81,107 @@ namespace BTDB.Service
             _objects[_lastIdOfObj] = @object;
         }
 
-        public void ReadObjectDone()
+        public void ReadObjectDone(ref SpanReader reader)
         {
-            if (_returningStack == null) return;
             if (_returningStack.Count == 0) return;
-            var returnPos = _returningStack.Pop();
-            if (returnPos != null) returnPos.Restore();
+            var returnPos = _returningStack.Last;
+            _returningStack.RemoveAt(^1);
+            if (returnPos != -1) reader.SetCurrentPosition(returnPos);
         }
 
-        public object ReadNativeObject()
+        public object? ReadNativeObject(ref SpanReader reader)
         {
-            object @object;
-            if (ReadObject(out @object))
+            if (ReadObject(ref reader, out var @object))
             {
-                @object = _serviceServer != null ? _serviceServer.LoadObjectOnServer(this) : _serviceClient.LoadObjectOnClient(this);
-                ReadObjectDone();
+                @object = _serviceServer != null
+                    ? _serviceServer.LoadObjectOnServer(ref reader, this)
+                    : _serviceClient!.LoadObjectOnClient(ref reader, this);
+                ReadObjectDone(ref reader);
             }
+
             return @object;
         }
 
-        public bool SkipObject()
+        public bool SkipObject(ref SpanReader reader)
         {
-            var id = (int)_reader.ReadVUInt32();
+            var id = (int) reader.ReadVUInt32();
             if (id == 0)
             {
                 return false;
             }
+
             id--;
-            var o = RetriveObj(id);
+            var o = RetrieveObj(id);
             if (o != null)
             {
                 return false;
             }
-            _objects[id] = ((ICanMemorizePosition)_reader).MemorizeCurrentPosition();
+
+            _objects[id] = new MemorizedPosition(reader.GetCurrentPosition());
             return true;
         }
 
-        public void SkipNativeObject()
+        public void SkipNativeObject(ref SpanReader reader)
         {
-            ReadNativeObject(); // TODO: maybe optimize later
+            ReadNativeObject(ref reader);
         }
 
-        object? RetriveObj(int ido)
+        object? RetrieveObj(int ido)
         {
-            if (_objects == null) _objects = new List<object>();
             while (_objects.Count <= ido) _objects.Add(null);
             return _objects[ido];
         }
 
-        public AbstractBufferedReader Reader()
-        {
-            return _reader;
-        }
-
-        public EncryptedString ReadEncryptedString()
+        public EncryptedString ReadEncryptedString(ref SpanReader reader)
         {
             if (_cipher == null)
             {
-                _cipher = _serviceClient != null ? _serviceClient.GetSymmetricCipher() : _serviceServer!.GetSymmetricCipher();
+                _cipher = _serviceClient != null
+                    ? _serviceClient.GetSymmetricCipher()
+                    : _serviceServer!.GetSymmetricCipher();
             }
 
-            var enc = Reader().ReadByteArray();
+            var enc = reader.ReadByteArray();
             var size = _cipher!.CalcPlainSizeFor(enc);
             var dec = new byte[size];
             if (!_cipher.Decrypt(enc, dec))
             {
                 throw new CryptographicException();
             }
-            var r = new ByteArrayReader(dec);
+
+            var r = new SpanReader(dec);
             return r.ReadString();
         }
 
-        public void SkipEncryptedString()
+        public void SkipEncryptedString(ref SpanReader reader)
         {
-            Reader().SkipByteArray();
+            reader.SkipByteArray();
         }
 
-        public EncryptedString ReadOrderedEncryptedString()
+        public EncryptedString ReadOrderedEncryptedString(ref SpanReader reader)
         {
             if (_cipher == null)
             {
-                _cipher = _serviceClient != null ? _serviceClient.GetSymmetricCipher() : _serviceServer!.GetSymmetricCipher();
+                _cipher = _serviceClient != null
+                    ? _serviceClient.GetSymmetricCipher()
+                    : _serviceServer!.GetSymmetricCipher();
             }
 
-            var enc = Reader().ReadByteArray();
+            var enc = reader.ReadByteArray();
             var size = _cipher!.CalcOrderedPlainSizeFor(enc);
             var dec = new byte[size];
             if (!_cipher.OrderedDecrypt(enc, dec))
             {
                 throw new CryptographicException();
             }
-            var r = new ByteArrayReader(dec);
+
+            var r = new SpanReader(dec);
             return r.ReadString();
         }
 
-        public void SkipOrderedEncryptedString()
+        public void SkipOrderedEncryptedString(ref SpanReader reader)
         {
-            Reader().SkipByteArray();
+            reader.SkipByteArray();
         }
 
         public void RegisterDict(ulong dictId)
@@ -190,7 +194,7 @@ namespace BTDB.Service
             throw new InvalidOperationException();
         }
 
-        public void FreeContentInNativeObject()
+        public void FreeContentInNativeObject(ref SpanReader reader)
         {
             throw new InvalidOperationException();
         }

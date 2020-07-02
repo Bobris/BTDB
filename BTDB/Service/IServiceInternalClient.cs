@@ -1,17 +1,18 @@
 using System.Threading.Tasks;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
+using BTDB.StreamLayer;
 
 namespace BTDB.Service
 {
     public interface IServiceInternalClient
     {
-        AbstractBufferedWriter StartTwoWayMarshaling(ClientBindInf binding, out Task resultReturned);
-        void FinishTwoWayMarshaling(AbstractBufferedWriter writer);
-        AbstractBufferedWriter StartOneWayMarshaling(ClientBindInf binding);
-        void FinishOneWayMarshaling(AbstractBufferedWriter writer);
-        void WriteObjectForServer(object @object, IWriterCtx writerCtx);
-        object LoadObjectOnClient(IReaderCtx readerCtx);
+        void StartTwoWayMarshaling(ref SpanWriter writer, ClientBindInf binding, out Task resultReturned);
+        void FinishTwoWayMarshaling(ref SpanWriter writer);
+        void StartOneWayMarshaling(ref SpanWriter writer, ClientBindInf binding);
+        void FinishOneWayMarshaling(ref SpanWriter writer);
+        void WriteObjectForServer(object @object, ref SpanWriter writer, IWriterCtx writerCtx);
+        object LoadObjectOnClient(ref SpanReader reader, IReaderCtx readerCtx);
         ISymmetricCipher GetSymmetricCipher();
     }
 }
