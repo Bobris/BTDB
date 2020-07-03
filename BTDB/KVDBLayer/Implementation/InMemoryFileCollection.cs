@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
+using BTDB.Buffer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer
@@ -47,27 +50,70 @@ namespace BTDB.KVDBLayer
                     _file = file;
                     _totalSize = file.GetSize();
                     _ofs = 0;
-                    FillBuffer();
                 }
 
-                protected override void FillBuffer()
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
                 {
-                    if (_ofs == _totalSize)
+                    var startSize = spanReader.Buf.Length;
+                    if (startSize == 0)
                     {
-                        Pos = -1;
-                        End = -1;
-                        return;
+                        spanReader.Buf = _file._data[(int) (_ofs / OneBufSize)]
+                            .AsSpan(0, (int) Math.Min(_totalSize - _ofs, OneBufSize));
+                        startSize = spanReader.Buf.Length;
+                        _ofs += (uint) startSize;
                     }
 
-                    Buf = _file._data[(int) (_ofs / OneBufSize)];
-                    End = (int) Math.Min(_totalSize - _ofs, OneBufSize);
-                    _ofs += (ulong) End;
-                    Pos = 0;
+                    if (size <= (uint) startSize) return false;
+
+                    if (_ofs + size - (uint) startSize > _totalSize)
+                    {
+                        _ofs = _totalSize;
+                        return true;
+                    }
+
+                    if (spanReader.Original.Length < size)
+                    {
+                        spanReader.Original = new byte[Math.Max(16, size)];
+                    }
+
+                    var b = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(spanReader.Original), (int) size);
+                    spanReader.Buf.CopyTo(b);
+                    _file._data[(int) (_ofs / OneBufSize)].AsSpan(0, (int) size - startSize).CopyTo(b.Slice(startSize));
+                    _ofs += size - (uint) startSize;
+                    spanReader.Buf = b;
+                    return false;
                 }
 
-                public override long GetCurrentPosition()
+                public long GetCurrentPosition(in SpanReader spanReader)
                 {
-                    return (long) _ofs - End + Pos;
+                    return (long) _ofs - spanReader.Buf.Length;
+                }
+
+                public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
+                {
+                    while (length > 0)
+                    {
+                        if (FillBufAndCheckForEof(ref spanReader, 1)) return true;
+                        var lenTillEnd = (uint)Math.Min(length, spanReader.Buf.Length);
+                        Unsafe.CopyBlockUnaligned(ref buffer,
+                            ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)lenTillEnd), lenTillEnd);
+                        length -= lenTillEnd;
+                    }
+                    return false;
+                }
+
+                public bool SkipBlock(ref SpanReader spanReader, uint length)
+                {
+                    _ofs += length;
+                    if (_ofs <= _totalSize) return false;
+                    _ofs = _totalSize;
+                    return true;
+                }
+
+                public void SetCurrentPosition(ref SpanReader spanReader, long position)
+                {
+                    _ofs = (ulong)position;
+                    spanReader.Buf = new ReadOnlySpan<byte>();
                 }
             }
 
@@ -88,7 +134,7 @@ namespace BTDB.KVDBLayer
                     var buf = storage[(int) (position / OneBufSize)];
                     var bufOfs = (int) (position % OneBufSize);
                     var copy = Math.Min(data.Length, OneBufSize - bufOfs);
-                    buf.AsSpan(bufOfs,copy).CopyTo(data);
+                    buf.AsSpan(bufOfs, copy).CopyTo(data);
                     data = data.Slice(copy);
                     position += (ulong) copy;
                 }
@@ -110,7 +156,7 @@ namespace BTDB.KVDBLayer
                 public override void FlushBuffer()
                 {
                     if (Pos != End) return;
-                    _ofs += (ulong)End;
+                    _ofs += (ulong) End;
                     Pos = 0;
                     Buf = new byte[OneBufSize];
                     End = OneBufSize;

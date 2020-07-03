@@ -29,25 +29,25 @@ namespace BTDBTest
         public void CanSerializeString()
         {
             var writer = new SpanWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(ref writer, "Hello");
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, "Hello");
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors("Hello");
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, "Hello");
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            var obj = _mapping.LoadObject(reader);
+            var reader = new SpanReader(writer.GetSpan());
+            var obj = _mapping.LoadObject(ref reader);
             Assert.Equal("Hello", obj);
         }
 
         [Fact]
         public void CanSerializeInt()
         {
-            var writer = new ByteBufferWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, 12345);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, 12345);
+            var writer = new SpanWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(12345);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, 12345);
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            var obj = _mapping.LoadObject(reader);
+            var reader = new SpanReader(writer.GetSpan());
+            var obj = _mapping.LoadObject(ref reader);
             Assert.Equal(12345, obj);
         }
 
@@ -66,13 +66,13 @@ namespace BTDBTest
 
         void CanSerializeSimpleValue(object value)
         {
-            var writer = new ByteBufferWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, value);
+            var writer = new SpanWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            var obj = _mapping.LoadObject(reader);
+            var reader = new SpanReader(writer.GetSpan());
+            var obj = _mapping.LoadObject(ref reader);
             Assert.Equal(value, obj);
         }
 
@@ -96,15 +96,15 @@ namespace BTDBTest
         [Fact]
         public void CanSerializeSimpleDto()
         {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             var value = new SimpleDto { IntField = 42, StringField = "Hello" };
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, value);
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            _mapping.LoadTypeDescriptors(reader);
-            var obj = (SimpleDto)_mapping.LoadObject(reader);
+            var reader = new SpanReader(writer.GetSpan());
+            _mapping.LoadTypeDescriptors(ref reader);
+            var obj = (SimpleDto)_mapping.LoadObject(ref reader);
             Assert.Equal(value.IntField, obj.IntField);
             Assert.Equal(value.StringField, obj.StringField);
         }
@@ -112,41 +112,41 @@ namespace BTDBTest
         [Fact]
         public void CanSerializeSimpleDtoWithoutDefaultConstructor()
         {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             var value = new SimpleDtoWithoutDefaultConstructor("Hello") { IntField = 42 };
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, value);
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            _mapping.LoadTypeDescriptors(reader);
-            var obj = (SimpleDtoWithoutDefaultConstructor)_mapping.LoadObject(reader);
+            var reader = new SpanReader(writer.GetSpan());
+            _mapping.LoadTypeDescriptors(ref reader);
+            var obj = (SimpleDtoWithoutDefaultConstructor)_mapping.LoadObject(ref reader);
             Assert.Equal(value.IntField, obj.IntField);
             Assert.Equal(value.StringField, obj.StringField);
         }
 
         void TestSerialization(object value)
         {
-            var writer = new ByteBufferWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, value);
+            var writer = new SpanWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
-            var reader = new ByteBufferReader(writer.Data);
-            _mapping.LoadTypeDescriptors(reader);
-            Assert.Equal(value, _mapping.LoadObject(reader));
+            var reader = new SpanReader(writer.GetSpan());
+            _mapping.LoadTypeDescriptors(ref reader);
+            Assert.Equal(value, _mapping.LoadObject(ref reader));
             Assert.True(reader.Eof);
             _mapping = _ts.CreateMapping();
-            reader = new ByteBufferReader(writer.Data);
-            _mapping.LoadTypeDescriptors(reader);
-            Assert.Equal(value, _mapping.LoadObject(reader));
+            reader = new SpanReader(writer.GetSpan());
+            _mapping.LoadTypeDescriptors(ref reader);
+            Assert.Equal(value, _mapping.LoadObject(ref reader));
             Assert.True(reader.Eof);
         }
 
 #pragma warning disable 659
         public class ClassWithList : IEquatable<ClassWithList>
         {
-            public List<int> List { get; set; }
+            public List<int>? List { get; set; }
 
             public bool Equals(ClassWithList other)
             {
@@ -158,7 +158,7 @@ namespace BTDBTest
 
             public override bool Equals(object obj)
             {
-                return Equals(obj as ClassWithList);
+                return Equals((obj as ClassWithList)!);
             }
         }
 
@@ -182,7 +182,7 @@ namespace BTDBTest
 
         public class ClassWithDict : IEquatable<ClassWithDict>
         {
-            public Dictionary<int, string> Dict { get; set; }
+            public Dictionary<int, string>? Dict { get; set; }
 
             public bool Equals(ClassWithDict other)
             {
@@ -202,7 +202,7 @@ namespace BTDBTest
 
             public override bool Equals(object obj)
             {
-                return Equals(obj as ClassWithDict);
+                return Equals((obj as ClassWithDict)!);
             }
         }
 
@@ -248,7 +248,7 @@ namespace BTDBTest
                     ByteBuffer.NewEmpty(),
                     false,
                     new EncryptedString()
-                }.Select(o => ts.DescriptorOf(o).Describe());
+                }.Select(o => ts.DescriptorOf(o)!.Describe());
             this.Assent(string.Join("\n", res));
         }
 
@@ -312,19 +312,19 @@ namespace BTDBTest
 
         dynamic ConvertToDynamicThroughSerialization(object value)
         {
-            var writer = new ByteBufferWriter();
-            var storedDescriptorCtx = _mapping.StoreNewDescriptors(writer, value);
-            storedDescriptorCtx.FinishNewDescriptors(writer);
-            storedDescriptorCtx.StoreObject(writer, value);
+            var writer = new SpanWriter();
+            var storedDescriptorCtx = _mapping.StoreNewDescriptors(value);
+            storedDescriptorCtx.FinishNewDescriptors(ref writer);
+            storedDescriptorCtx.StoreObject(ref writer, value);
             storedDescriptorCtx.CommitNewDescriptors();
             var originalDescription = _ts.DescriptorOf(value).Describe();
-            var reader = new ByteBufferReader(writer.Data);
+            var reader = new SpanReader(writer.GetSpan());
             var ts = new TypeSerializers();
             ts.SetTypeNameMapper(new ToDynamicMapper());
             var mapping = ts.CreateMapping();
-            mapping.LoadTypeDescriptors(reader);
-            var obj = (dynamic)mapping.LoadObject(reader);
-            Assert.Equal(originalDescription, ts.DescriptorOf((object)obj).Describe());
+            mapping.LoadTypeDescriptors(ref reader);
+            var obj = (dynamic)mapping.LoadObject(ref reader);
+            Assert.Equal(originalDescription, ts.DescriptorOf((object)obj)!.Describe());
             return obj;
         }
 
@@ -524,11 +524,11 @@ namespace BTDBTest
 
         class DummyOrderedDictionary<TKey, TValue> : Dictionary<TKey, TValue>, IOrderedDictionary<TKey, TValue>
         {
-            public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param) => throw new NotImplementedException();
-            public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start) => throw new NotImplementedException();
-            public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start) => throw new NotImplementedException();
-            public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator() => throw new NotImplementedException();
-            public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd) => throw new NotImplementedException();
+            public IOrderedDictionaryEnumerator<TKey, TValue> GetAdvancedEnumerator(AdvancedEnumeratorParam<TKey> param) => throw new NotSupportedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetDecreasingEnumerator(TKey start) => throw new NotSupportedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start) => throw new NotSupportedException();
+            public IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator() => throw new NotSupportedException();
+            public long RemoveRange(TKey start, bool includeStart, TKey end, bool includeEnd) => throw new NotSupportedException();
         }
 
         [Fact]
@@ -546,7 +546,7 @@ namespace BTDBTest
 
         public class ClassWithBoxedIEnumerable
         {
-            public object Value { get; set; }
+            public object? Value { get; set; }
 
             public override bool Equals(object obj)
             {

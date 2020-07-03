@@ -1,5 +1,7 @@
 ﻿using System;
-using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using BTDB.Buffer;
 
 namespace BTDB.StreamLayer
 {
@@ -8,12 +10,9 @@ namespace BTDB.StreamLayer
         readonly IPositionLessStream _stream;
         readonly ulong _valueSize;
         ulong _ofs;
+        readonly byte[] _buf;
 
-        public PositionLessStreamReader(IPositionLessStream stream): this(stream, 8192)
-        {
-        }
-
-        public PositionLessStreamReader(IPositionLessStream stream, int bufferSize)
+        public PositionLessStreamReader(IPositionLessStream stream, int bufferSize = 8192)
         {
             if(bufferSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(bufferSize));
@@ -21,77 +20,17 @@ namespace BTDB.StreamLayer
             _stream = stream;
             _valueSize = _stream.GetSize();
             _ofs = 0;
+            _buf = new byte[bufferSize];
         }
 
-        protected sealed override void FillBuffer()
+        public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
         {
-            if (_ofs == _valueSize)
-            {
-                Pos = -1;
-                End = -1;
-                return;
-            }
-            End = _stream.Read(Buf.AsSpan(), _ofs);
-            _ofs += (ulong)End;
-            Pos = 0;
-        }
-
-        public override void ReadBlock(Span<byte> data)
-        {
-            if (data.Length < Buf.Length)
-            {
-                base.ReadBlock(data);
-                return;
-            }
-            var l = End - Pos;
-            Buf.AsSpan(Pos, l).CopyTo(data);
-            data = data.Slice(l);
-            Pos += l;
-
-            while (data.Length > 0)
-            {
-                var read = _stream.Read(data, _ofs);
-                if (read <= 0)
-                {
-                    _ofs = _valueSize;
-                    Pos = -1;
-                    End = -1;
-                    throw new EndOfStreamException();
-                }
-                _ofs += (ulong)read;
-                data = data.Slice(read);
-            }
-        }
-
-        public override void SkipBlock(int length)
-        {
-            if (length < Buf.Length)
-            {
-                base.SkipBlock(length);
-                return;
-            }
-            if (GetCurrentPosition() + length > (long)_valueSize)
-            {
-                _ofs = _valueSize;
-                Pos = -1;
-                End = -1;
-                throw new EndOfStreamException();
-            }
-            var l = End - Pos;
-            Pos = End;
-            length -= l;
-            _ofs += (ulong)length;
-        }
-
-        public override long GetCurrentPosition()
-        {
-            return (long)_ofs - End + Pos;
-        }
-
-        public bool FillBufAndCheckForEof(ref SpanReader spanReader, int size)
-        {
-
-            throw new NotImplementedException();
+            var startSize = spanReader.Buf.Length;
+            spanReader.Buf.CopyTo(_buf);
+            var read = _stream.Read(_buf.AsSpan(startSize), _ofs);
+            spanReader.Buf = _buf.AsSpan(0, startSize + read);
+            _ofs += (uint)read;
+            return size > spanReader.Buf.Length;
         }
 
         public long GetCurrentPosition(in SpanReader spanReader)
@@ -99,19 +38,33 @@ namespace BTDB.StreamLayer
             return (long)_ofs - spanReader.Buf.Length;
         }
 
-        public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, int length)
+        public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
         {
-            throw new NotImplementedException();
+            if (length < _buf.Length)
+            {
+                if (FillBufAndCheckForEof(ref spanReader, length)) return true;
+                Unsafe.CopyBlockUnaligned(ref buffer,
+                    ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
+                return false;
+            }
+
+            var read = _stream.Read(MemoryMarshal.CreateSpan(ref buffer, (int)length), _ofs);
+            _ofs += (uint)read;
+            return read < length;
         }
 
-        public bool SkipBlock(ref SpanReader spanReader, int length)
+        public bool SkipBlock(ref SpanReader spanReader, uint length)
         {
-            throw new NotImplementedException();
+            _ofs += length;
+            if (_ofs <= _valueSize) return false;
+            _ofs = _valueSize;
+            return true;
         }
 
         public void SetCurrentPosition(ref SpanReader spanReader, long position)
         {
-            throw new NotImplementedException();
+            spanReader.Buf = new ReadOnlySpan<byte>();
+            _ofs = (ulong) position;
         }
     }
 }

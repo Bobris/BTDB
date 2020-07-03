@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using BTDB.Buffer;
 using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using Xunit;
 
 namespace BTDBTest
@@ -23,10 +24,12 @@ namespace BTDBTest
             {
                 var f = dc.AddFile("kvi");
                 var w = f.GetAppenderWriter();
+                var writer = new SpanWriter(w);
                 for (var i = 0; i < 32000; i++)
                 {
-                    w.WriteInt32LE(i);
+                    writer.WriteInt32LE(i);
                 }
+                writer.Sync();
 
                 var data = new byte[4];
                 for (var i = 0; i < 32000; i++)

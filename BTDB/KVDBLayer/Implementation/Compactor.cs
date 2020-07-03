@@ -253,7 +253,7 @@ namespace BTDB.KVDBLayer
                     var blockStart = pos % blockSize;
                     var writeSize = (uint) (blockSize - blockStart);
                     if (writeSize > size) writeSize = size;
-                    writer.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(wasteInMemory[blockId].AsSpan((int) blockStart, (int) writeSize)), (int)writeSize);
+                    writer.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(wasteInMemory[blockId].AsSpan((int) blockStart, (int) writeSize)), writeSize);
                     size -= writeSize;
                     pos += writeSize;
                     _writerBytesPerSecondLimiter.Limit((ulong) writer.GetCurrentPositionWithoutWriter());

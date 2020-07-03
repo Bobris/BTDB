@@ -255,7 +255,7 @@ namespace BTDB.KVDBLayer.BTree
             return false;
         }
 
-        public void BuildTree(long keyCount, Func<BTreeLeafMember> memberGenerator)
+        public void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback memberGenerator)
         {
             _keyValueCount = keyCount;
             if (keyCount == 0)
@@ -263,7 +263,7 @@ namespace BTDB.KVDBLayer.BTree
                 _rootNode = null;
                 return;
             }
-            _rootNode = BuildTreeNode(keyCount, memberGenerator);
+            _rootNode = BuildTreeNode(keyCount, ref reader, memberGenerator);
         }
 
         IBTreeNode IBTreeNode.ReplaceValues(ReplaceValuesCtx ctx)

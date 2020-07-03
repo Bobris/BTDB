@@ -208,7 +208,7 @@ namespace BTDB.KVDBLayer
                 StartNewPureValueFile();
             result.FileId = _pureValueFile!.Index;
             result.FileOfs = (uint)_pureValueFileWriter!.GetCurrentPositionWithoutWriter();
-            _pureValueFileWriter.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(content.AsSyncReadOnlySpan()), content.Length);
+            _pureValueFileWriter.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(content.AsSyncReadOnlySpan()), (uint)content.Length);
             _pureValueFile.Flush();
             if (_pureValueFileWriter.GetCurrentPositionWithoutWriter() >= _maxFileSize)
             {

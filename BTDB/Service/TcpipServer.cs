@@ -196,7 +196,7 @@ namespace BTDB.Service
                     {
                         if (!Receive(buf, 0, 1)) return;
                         var packLen = PackUnpack.LengthVUInt(buf, 0);
-                        if (packLen > 1) if (!Receive(buf, 1, packLen - 1)) return;
+                        if (packLen > 1) if (!Receive(buf, 1, (int)packLen - 1)) return;
                         int o = 0;
                         var len = PackUnpack.UnpackVUInt(buf, ref o);
                         if (len > int.MaxValue) throw new InvalidDataException();

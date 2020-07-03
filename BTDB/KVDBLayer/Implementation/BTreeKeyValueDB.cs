@@ -658,7 +658,7 @@ namespace BTDB.KVDBLayer
                                 (command & KVCommandType.SecondParamCompressed) == 0)
                             {
                                 trueValue[4] = (byte) valueLen;
-                                reader.ReadBlock( ref MemoryMarshal.GetReference(trueValue.Slice(5, valueLen)), valueLen);
+                                reader.ReadBlock( ref MemoryMarshal.GetReference(trueValue.Slice(5, valueLen)), (uint)valueLen);
                             }
                             else
                             {
