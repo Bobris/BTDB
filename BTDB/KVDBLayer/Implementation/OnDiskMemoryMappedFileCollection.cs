@@ -99,16 +99,16 @@ namespace BTDB.KVDBLayer
 
                 public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
                 {
-                    _ofs += (ulong)(spanReader.Original.Length - spanReader.Buf.Length);
+                    _ofs += (ulong) (spanReader.Original.Length - spanReader.Buf.Length);
                     spanReader.Buf = new Span<byte>(_owner._pointer + _ofs,
                         (int) Math.Min(_valueSize - _ofs, int.MaxValue));
                     spanReader.Original = spanReader.Buf;
-                    return size > (uint)spanReader.Buf.Length;
+                    return size > (uint) spanReader.Buf.Length;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
                 {
-                    return (long)_ofs + spanReader.Original.Length - spanReader.Buf.Length;
+                    return (long) _ofs + spanReader.Original.Length - spanReader.Buf.Length;
                 }
 
                 public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
@@ -182,14 +182,15 @@ namespace BTDB.KVDBLayer
 
                 public void Sync(ref SpanWriter spanWriter)
                 {
-                    Ofs += (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                    Ofs += (ulong) (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
                 }
 
-                public void Flush(ref SpanWriter spanWriter)
+                public bool Flush(ref SpanWriter spanWriter)
                 {
                     Sync(ref spanWriter);
-                    ExpandIfNeeded((long)Ofs+ResizeChunkSize);
+                    ExpandIfNeeded((long) Ofs + ResizeChunkSize);
                     Init(ref spanWriter);
+                    return true;
                 }
 
                 public long GetCurrentPosition(in SpanWriter spanWriter)
@@ -199,13 +200,13 @@ namespace BTDB.KVDBLayer
 
                 public long GetCurrentPositionWithoutWriter()
                 {
-                    return (long)Ofs;
+                    return (long) Ofs;
                 }
 
                 public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
                 {
                     Sync(ref spanWriter);
-                    ExpandIfNeeded((long)Ofs + length);
+                    ExpandIfNeeded((long) Ofs + length);
                     WriteBlockWithoutWriter(ref buffer, length);
                     Init(ref spanWriter);
                 }

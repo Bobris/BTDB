@@ -71,7 +71,7 @@ namespace BTDB.ODBLayer
         {
             var valueWriter = new SpanWriter();
             valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(_transaction, valueWriter, obj);
+            _relationInfo.ValueSaver(_transaction, ref valueWriter, obj);
             return valueWriter.GetByteBufferAndReset();
         }
 
@@ -79,7 +79,7 @@ namespace BTDB.ODBLayer
         {
             var keyWriter = new SpanWriter();
             WriteRelationPKPrefix(ref keyWriter);
-            _relationInfo.PrimaryKeysSaver(_transaction, keyWriter, obj,
+            _relationInfo.PrimaryKeysSaver(_transaction, ref keyWriter, obj,
                 this); //this for relation interface which is same with manipulator
             return keyWriter.GetByteBufferAndReset();
         }
@@ -572,8 +572,10 @@ namespace BTDB.ODBLayer
         {
             var pkWriter = new SpanWriter();
             WriteRelationPKPrefix(ref pkWriter);
+            var readerFirst = new SpanReader(firstPart);
+            var readerSecond = new SpanReader(secondPart);
             _relationInfo.GetSKKeyValueToPKMerger(secondaryKeyIndex, fieldInFirstBufferCount)
-                (new SpanReader(firstPart), new SpanReader(secondPart), pkWriter);
+                (ref readerFirst, ref readerSecond, ref pkWriter);
             return FindByIdOrDefaultInternal(itemLoader, pkWriter.GetByteBufferAndReset(), true);
         }
 
@@ -631,8 +633,9 @@ namespace BTDB.ODBLayer
             var version = (uint)PackUnpack.UnpackVUInt(valueBytes.Buffer!, ref o);
 
             var keySaver = _relationInfo.GetPKValToSKMerger(version, secondaryKeyIndex);
-            keySaver(_transaction, keyWriter, new SpanReader(keyBytes), new SpanReader(valueBytes),
-                _relationInfo.DefaultClientObject);
+            var keyReader = new SpanReader(keyBytes);
+            var valueReader = new SpanReader(valueBytes);
+            keySaver(_transaction, ref keyWriter, ref keyReader, ref valueReader, _relationInfo.DefaultClientObject);
             return keyWriter.GetByteBufferAndReset();
         }
 

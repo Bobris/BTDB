@@ -15,8 +15,9 @@ namespace BTDB.StreamLayer
         /// <summary>
         /// Flush writing buffer and prepare another one. After calling this there must be at least 16 bytes free in _buf.
         /// </summary>
+        /// <returns>false if client must use spanWriter.Buf completely before calling Flush, it must return true if spanWriter.Buf is empty</returns>
         /// <param name="spanWriter">owning SpanWriter</param>
-        void Flush(ref SpanWriter spanWriter);
+        bool Flush(ref SpanWriter spanWriter);
         /// <summary>
         /// Calculate current position with help of spanWriter._buf.
         /// </summary>

@@ -148,34 +148,81 @@ namespace BTDB.KVDBLayer
                 public Writer(File file)
                 {
                     _file = file;
-                    Pos = 0;
-                    Buf = null;
-                    End = 0;
-                }
-
-                public override void FlushBuffer()
-                {
-                    if (Pos != End) return;
-                    _ofs += (ulong) End;
-                    Pos = 0;
-                    Buf = new byte[OneBufSize];
-                    End = OneBufSize;
-                    var storage = _file._data;
-                    Array.Resize(ref storage, storage.Length + 1);
-                    storage[storage.Length - 1] = Buf;
-                    Volatile.Write(ref _file._data, storage);
-                }
-
-                public override long GetCurrentPosition()
-                {
-                    return (long) (_ofs + (ulong) Pos);
+                    _ofs = 0;
                 }
 
                 internal void SimulateCorruptionBySetSize(int size)
                 {
                     if (size > OneBufSize || _ofs != 0) throw new ArgumentOutOfRangeException();
-                    Array.Clear(Buf, size, Pos - size);
-                    Pos = size;
+                    Array.Clear(_file._data[0], size, (int)_ofs - size);
+                    _ofs = (uint)size;
+                }
+
+                public void Init(ref SpanWriter spanWriter)
+                {
+                    if (_ofs == (ulong) _file._data.Length * OneBufSize)
+                    {
+                        var buf = new byte[OneBufSize];
+                        var storage = _file._data;
+                        Array.Resize(ref storage, storage.Length + 1);
+                        storage[^1] = buf;
+                        Volatile.Write(ref _file._data, storage);
+                        spanWriter.InitialBuffer = buf;
+                        spanWriter.Buf = spanWriter.InitialBuffer;
+                    }
+
+                    spanWriter.InitialBuffer = _file._data[^1].AsSpan((int) (_ofs % OneBufSize));
+                    spanWriter.Buf = spanWriter.InitialBuffer;
+                }
+
+                public void Sync(ref SpanWriter spanWriter)
+                {
+                    _ofs += (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                }
+
+                public bool Flush(ref SpanWriter spanWriter)
+                {
+                    if (spanWriter.Buf.Length != 0) return false;
+                    Init(ref spanWriter);
+                    return true;
+                }
+
+                public long GetCurrentPosition(in SpanWriter spanWriter)
+                {
+                    return (long)_ofs + (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                }
+
+                public long GetCurrentPositionWithoutWriter()
+                {
+                    return (long)_ofs;
+                }
+
+                public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
+                {
+                    while (length > 0)
+                    {
+                        if (spanWriter.Buf.Length == 0)
+                        {
+                            Flush(ref spanWriter);
+                        }
+
+                        var l = Math.Min((uint)spanWriter.Buf.Length, length);
+                        Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int)l), ref buffer, l);
+                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr)l);
+                        length -= l;
+                    }
+                }
+
+                public void WriteBlockWithoutWriter(ref byte buffer, uint length)
+                {
+                    var writer = new SpanWriter(this);
+                    writer.WriteBlock(ref buffer, length);
+                    writer.Sync();
+                }
+
+                public void SetCurrentPosition(ref SpanWriter spanWriter, long position)
+                {
+                    throw new NotSupportedException();
                 }
             }
 
@@ -191,7 +238,7 @@ namespace BTDB.KVDBLayer
 
             public void Flush()
             {
-                _flushedSize = _writer.GetCurrentPosition();
+                _flushedSize = _writer.GetCurrentPositionWithoutWriter();
                 Interlocked.MemoryBarrier();
             }
 
@@ -255,7 +302,7 @@ namespace BTDB.KVDBLayer
             do
             {
                 oldFiles = _files;
-                newFiles = new Dictionary<uint, File>(oldFiles) {{index, file}};
+                newFiles = new Dictionary<uint, File>(oldFiles!) {{index, file}};
             } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
 
             return file;
@@ -266,10 +313,9 @@ namespace BTDB.KVDBLayer
             return (uint) _files.Count;
         }
 
-        public IFileCollectionFile GetFile(uint index)
+        public IFileCollectionFile? GetFile(uint index)
         {
-            File value;
-            return _files.TryGetValue(index, out value) ? value : null;
+            return _files.TryGetValue(index, out var value) ? value : null;
         }
 
         public IEnumerable<IFileCollectionFile> Enumerate()

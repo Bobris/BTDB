@@ -133,12 +133,11 @@ namespace BTDB.StreamLayer
             throw new InvalidOperationException("Need controller");
         }
 
-        void Resize(uint spaceNeeded)
+        bool Resize(uint spaceNeeded)
         {
             if (Controller != null)
             {
-                Controller.Flush(ref this);
-                return;
+                return Controller.Flush(ref this);
             }
 
             var pos = (uint) GetCurrentPosition();
@@ -158,6 +157,8 @@ namespace BTDB.StreamLayer
                 Array.Resize(ref HeapBuffer, (int) newSize);
                 Buf = HeapBuffer.AsSpan((int) pos, (int) (newSize - pos));
             }
+
+            return true;
         }
 
         public void WriteByteZero()
@@ -235,7 +236,13 @@ namespace BTDB.StreamLayer
             var len = PackUnpack.LengthVInt(value);
             if ((uint) Buf.Length < len)
             {
-                Resize(len);
+                if (!Resize(len))
+                {
+                    Span<byte> buf = stackalloc byte[(int)len];
+                    PackUnpack.UnsafePackVInt(ref MemoryMarshal.GetReference(buf), value, len);
+                    WriteBlock(buf);
+                    return;
+                }
             }
 
             PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
@@ -246,7 +253,13 @@ namespace BTDB.StreamLayer
             var len = PackUnpack.LengthVUInt(value);
             if ((uint) Buf.Length < len)
             {
-                Resize(len);
+                if (!Resize(len))
+                {
+                    Span<byte> buf = stackalloc byte[(int)len];
+                    PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(buf), value, len);
+                    WriteBlock(buf);
+                    return;
+                }
             }
 
             PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
@@ -256,7 +269,13 @@ namespace BTDB.StreamLayer
         {
             if ((uint) Buf.Length < 8u)
             {
-                Resize(8);
+                if (!Resize(8))
+                {
+                    Span<byte> buf = stackalloc byte[8];
+                    Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsBigEndian((ulong) value);
+                    WriteBlock(buf);
+                    return;
+                }
             }
 
             Unsafe.As<byte, ulong>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 8)) =
@@ -267,7 +286,13 @@ namespace BTDB.StreamLayer
         {
             if ((uint) Buf.Length < 4u)
             {
-                Resize(4);
+                if (!Resize(4))
+                {
+                    Span<byte> buf = stackalloc byte[4];
+                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsBigEndian((uint) value);
+                    WriteBlock(buf);
+                    return;
+                }
             }
 
             Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
@@ -278,7 +303,13 @@ namespace BTDB.StreamLayer
         {
             if ((uint) Buf.Length < 4u)
             {
-                Resize(4);
+                if (!Resize(4))
+                {
+                    Span<byte> buf = stackalloc byte[4];
+                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsLittleEndian((uint) value);
+                    WriteBlock(buf);
+                    return;
+                }
             }
 
             Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
@@ -410,16 +441,16 @@ namespace BTDB.StreamLayer
                     if (HeapBuffer != null)
                     {
                         var bufLength = HeapBuffer.Length;
-                        if (length < bufLength)
+                        if (length < bufLength || !Controller.Flush(ref this))
                         {
                             Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer,
                                 (uint) Buf.Length);
                             buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) Buf.Length);
                             length -= (uint) Buf.Length;
                             Buf = new Span<byte>();
+                            Controller.Flush(ref this); // must return true because Buf is empty
                         }
 
-                        Controller.Flush(ref this);
                         if (length < bufLength)
                         {
                             Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length),
@@ -432,7 +463,7 @@ namespace BTDB.StreamLayer
                     return;
                 }
 
-                Resize(length);
+                Resize(length); // returns always success because it is without controller
             }
 
             Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length), ref buffer,
@@ -557,26 +588,14 @@ namespace BTDB.StreamLayer
                 {
                     value.TryWriteBytes(buf, out _);
                     WriteUInt8(2);
-                    if ((uint) Buf.Length < 16)
-                    {
-                        Resize(16);
-                    }
-
-                    Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 16),
-                        ref MemoryMarshal.GetReference(buf), 16);
+                    WriteBlock(buf);
                     WriteVUInt64((ulong) value.ScopeId);
                 }
                 else
                 {
                     value.TryWriteBytes(buf, out _);
                     WriteUInt8(1);
-                    if ((uint) Buf.Length < 16)
-                    {
-                        Resize(16);
-                    }
-
-                    Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 16),
-                        ref MemoryMarshal.GetReference(buf), 16);
+                    WriteBlock(buf);
                 }
             }
             else
