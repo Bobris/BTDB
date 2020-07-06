@@ -65,11 +65,12 @@ namespace BTDB.StreamLayer
             _pos = BufLength - spanWriter.Buf.Length;
         }
 
-        public void Flush(ref SpanWriter spanWriter)
+        public bool Flush(ref SpanWriter spanWriter)
         {
             _pos = BufLength - spanWriter.Buf.Length;
             FlushBuffer();
             spanWriter.Buf = _buf;
+            return true;
         }
 
         public long GetCurrentPosition(in SpanWriter spanWriter)

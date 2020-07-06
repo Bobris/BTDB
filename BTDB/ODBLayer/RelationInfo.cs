@@ -865,9 +865,9 @@ namespace BTDB.ODBLayer
             if (skipAllRelationsPKPrefix)
                 ilGenerator
                     .Do(bufferInfo.PushReader)
-                    .Call(() => default(SpanReader).SkipInt8()); //ObjectDB.AllRelationsPKPrefix
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8))!); //ObjectDB.AllRelationsPKPrefix
             ilGenerator
-                .Do(bufferInfo.PushReader).Call(() => default(SpanReader).SkipVUInt32());
+                .Do(bufferInfo.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!);
 
             var anyNeedsCtx = false;
             foreach (var fieldInfo in fields)
@@ -1186,11 +1186,11 @@ namespace BTDB.ODBLayer
             ilGenerator
                 //skip all relations
                 .Do(bi.PushReader)
-                .Call(() => default(SpanReader).SkipUInt8()) // ObjectDB.AllRelationsSKPrefix
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
                 //skip relation id
-                .Do(bi.PushReader).Call(() => default(SpanReader).SkipVUInt32())
+                .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!)
                 //skip secondary key index
-                .Do(bi.PushReader).Call(() => default(SpanReader).SkipUInt8());
+                .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!);
         }
 
 
@@ -1212,7 +1212,7 @@ namespace BTDB.ODBLayer
             handler.Skip(ilGenerator, pushReader, null);
             ilGenerator
                 .Do(pushReader) //[VR]
-                .Call(() => default(SpanReader).GetCurrentPosition()) //[posNew];
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[posNew];
                 .Ldloc(tempPosition) //[posNew, posOld]
                 .Sub() //[readLen]
                 .ConvI4() //[readLen(i)]
@@ -1232,20 +1232,20 @@ namespace BTDB.ODBLayer
                 .Do(pushReader)
                 .Ldloc(memo.Pos) //[W, VR, readLen, VR, pos]
                 .ConvI8()
-                .Call(() => default(SpanReader).SetCurrentPosition(0)) //[W, VR, readLen]
-                .Call(() => default(SpanReader).ReadByteArrayRaw(0)) //[W, byte[]]
-                .Call(() => default(SpanWriter).WriteByteArrayRaw(null)) //[]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!) //[W, VR, readLen]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRaw))!) //[W, byte[]]
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!) //[]
                 .Do(pushReader) // [VR]
                 .Ldloc(memoPositionLoc) //[VR, pos]
                 .ConvI8()
-                .Call(() => default(SpanReader).SetCurrentPosition(0)); //[]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!); //[]
         }
 
         static void MemorizeCurrentPosition(IILGen ilGenerator, Action<IILGen> pushReader, IILLocal memoPositionLoc)
         {
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).GetCurrentPosition())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!)
                 .ConvU4()
                 .Stloc(memoPositionLoc);
         }
@@ -1254,7 +1254,7 @@ namespace BTDB.ODBLayer
         {
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).GetCurrentPosition())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!)
                 .Stloc(positionLoc);
         }
 
@@ -1271,16 +1271,16 @@ namespace BTDB.ODBLayer
                 .Do(pushWriter) //[W]
                 .Do(pushReader) //[W,VR]
                 .Dup() //[W, VR, VR]
-                .Call(() => default(SpanReader).GetCurrentPosition()) //[W, VR, posNew];
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.GetCurrentPosition))!) //[W, VR, posNew];
                 .Ldloc(positionLoc) //[W, VR, posNew, posOld]
                 .Sub() //[W, VR, readLen]
                 .ConvI4() //[W, VR, readLen(i)]
                 .Do(pushReader)
                 .Ldloc(memoPositionLoc) //[W, VR, readLen, Memorize]
                 .ConvI8()
-                .Call(() => default(SpanReader).SetCurrentPosition(0)) //[W, VR, readLen]
-                .Call(() => default(SpanReader).ReadByteArrayRaw(0)) //[W, byte[]]
-                .Call(() => default(SpanWriter).WriteByteArrayRaw(null)); //[]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SetCurrentPosition))!) //[W, VR, readLen]
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRaw))!) //[W, byte[]]
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!); //[]
         }
 
         public object GetSimpleLoader(SimpleLoaderType handler)

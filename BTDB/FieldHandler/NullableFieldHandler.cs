@@ -80,7 +80,7 @@ namespace BTDB.FieldHandler
 
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadBool())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(noValue);
             _itemHandler.Load(ilGenerator, pushReader, pushCtx);
             _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)!(ilGenerator);
@@ -100,7 +100,7 @@ namespace BTDB.FieldHandler
             var finish = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadBool())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(finish)
                 .GenerateSkip(_itemHandler, pushReader, pushCtx)
                 .Mark(finish);
@@ -120,7 +120,7 @@ namespace BTDB.FieldHandler
                 .Call(nullableType.GetMethod("get_HasValue")!)
                 .Dup()
                 .Stloc(localHasValue)
-                .Call(() => default(SpanWriter).WriteBool(false))
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!)
                 .Ldloc(localHasValue)
                 .Brfalse(finish);
             _itemHandler.Save(ilGenerator, pushWriter, pushCtx,

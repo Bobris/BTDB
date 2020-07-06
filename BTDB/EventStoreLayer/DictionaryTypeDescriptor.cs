@@ -141,7 +141,7 @@ namespace BTDB.EventStoreLayer
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .LdcI4(1)
@@ -341,7 +341,7 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localDict)
                 .Brtrue(notnull)
                 .Do(pushWriter)
-                .Call(() => default(SpanWriter).WriteByteZero())
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
                 .Br(completeFinish)
                 .Mark(notnull)
                 .Do(pushWriter)
@@ -349,7 +349,7 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
-                .Call(() => default(SpanWriter).WriteVUInt32(0));
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
             {
                 var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = typeAsDictionary.GetMethods()
@@ -433,7 +433,7 @@ namespace BTDB.EventStoreLayer
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .Stloc(localCount)
                 .Ldloc(localCount)
                 .Brfalse(skipFinished)

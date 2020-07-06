@@ -134,7 +134,7 @@ namespace BTDB.ODBLayer
                 .LdcI4(_configurationId)
                 .Call(() => ODBDictionaryConfiguration.Get(0))
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadVUInt64())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
                 .Newobj(constructorInfo!)
                 .Castclass(_type);
         }
@@ -164,7 +164,7 @@ namespace BTDB.ODBLayer
         {
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).SkipVUInt64());
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
         }
 
         public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
@@ -235,7 +235,7 @@ namespace BTDB.ODBLayer
                 .Do(pushCtx)
                 .Castclass(typeof(IDBReaderCtx))
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadVUInt64())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!)
                 .Callvirt(() => default(IDBReaderCtx).RegisterDict(0ul));
             return NeedsFreeContent.Yes;
         }

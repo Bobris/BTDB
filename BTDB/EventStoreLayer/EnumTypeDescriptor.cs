@@ -285,12 +285,12 @@ namespace BTDB.EventStoreLayer
             Type typeRead;
             if (_signed)
             {
-                ilGenerator.Call(() => default(SpanReader).ReadVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!);
                 typeRead = typeof(long);
             }
             else
             {
-                ilGenerator.Call(() => default(SpanReader).ReadVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!);
                 typeRead = typeof(ulong);
             }
 
@@ -369,13 +369,13 @@ namespace BTDB.EventStoreLayer
             {
                 ilGenerator
                     .ConvI8()
-                    .Call(() => default(SpanWriter).WriteVInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
             }
             else
             {
                 ilGenerator
                     .ConvU8()
-                    .Call(() => default(SpanWriter).WriteVUInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
             }
         }
 
@@ -384,11 +384,11 @@ namespace BTDB.EventStoreLayer
             pushReader(ilGenerator);
             if (_signed)
             {
-                ilGenerator.Call(() => default(SpanReader).SkipVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!);
             }
             else
             {
-                ilGenerator.Call(() => default(SpanReader).SkipVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
             }
         }
 

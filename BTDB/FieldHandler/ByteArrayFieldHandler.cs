@@ -29,35 +29,38 @@ namespace BTDB.FieldHandler
         public virtual void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(SpanReader).ReadByteArray());
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArray))!);
         }
 
         public virtual void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(SpanReader).SkipByteArray());
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipByteArray))!);
         }
 
-        public virtual void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+        public virtual void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
+            Action<IILGen> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(SpanWriter).WriteByteArray(null));
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] {typeof(byte[])})!);
         }
 
-        protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+        protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(SpanWriter).WriteByteArray(ByteBuffer.NewEmpty()));
+            ilGenerator.Call(
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] {typeof(ByteBuffer)})!);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
-            if (typeof (ByteBuffer) == type)
+            if (typeof(ByteBuffer) == type)
             {
                 return new ByteBufferHandler(this);
             }
+
             return this;
         }
 
@@ -105,9 +108,10 @@ namespace BTDB.FieldHandler
                 _fieldHandler.Skip(ilGenerator, pushReader, pushCtx);
             }
 
-            public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+            public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
+                Action<IILGen> pushValue)
             {
-                _fieldHandler.SaveByteBuffer(ilGenerator, pushWriter, pushCtx, pushValue);
+                _fieldHandler.SaveByteBuffer(ilGenerator, pushWriter, pushValue);
             }
 
             public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
@@ -133,6 +137,7 @@ namespace BTDB.FieldHandler
             {
                 return new ByteBufferHandler(this);
             }
+
             return this;
         }
     }

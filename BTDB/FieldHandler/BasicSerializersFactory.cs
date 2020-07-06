@@ -1,9 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Reflection;
 using BTDB.EventStoreLayer;
-using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
@@ -15,94 +12,94 @@ namespace BTDB.FieldHandler
             var fh = new List<IFieldHandler>();
             var des = new List<ITypeDescriptor>();
             AddJustOrderable(fh, "StringOrderable",
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadStringOrdered()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipStringOrdered()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteStringOrdered(null)));
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadStringOrdered))!,
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipStringOrdered))!,
+                             typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteStringOrdered))!);
             Add(fh, des, "String",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadString()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipString()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteString(null)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadString))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipString))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteString))!);
             Add(fh, des, "UInt8",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadUInt8()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipUInt8()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteUInt8(0)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadUInt8))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteUInt8))!);
             AddJustOrderable(fh, "Int8Orderable",
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadInt8Ordered()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipInt8Ordered()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteInt8Ordered(0)));
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadInt8Ordered))!,
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8Ordered))!,
+                             typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteInt8Ordered))!);
             Add(fh, des, "Int8",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadInt8()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipInt8()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteInt8(0)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadInt8))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipInt8))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteInt8))!);
             fh.Add(new SignedFieldHandler());
             fh.Add(new UnsignedFieldHandler());
             AddDescriptor(des, "VInt16",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVInt16()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVInt16()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVInt16(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt16))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt16))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt16))!);
             AddDescriptor(des, "VUInt16",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVUInt16()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVUInt16()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVUInt16(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt16))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt16))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt16))!);
             AddDescriptor(des, "VInt32",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVInt32()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVInt32()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVInt32(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt32))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt32))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt32))!);
             AddDescriptor(des, "VUInt32",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVUInt32()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVUInt32()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVUInt32(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
             AddDescriptor(des, "VInt64",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVInt64()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVInt64()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVInt64(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
             AddDescriptor(des, "VUInt64",
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVUInt64()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVUInt64()),
-                          EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVUInt64(0)));
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!,
+                          typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!,
+                          typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
             Add(fh, des, "Bool",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadBool()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipBool()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteBool(false)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipBool))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!);
             Add(fh, des, "Single",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadSingle()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipSingle()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteSingle(0)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadSingle))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipSingle))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteSingle))!);
             Add(fh, des, "Double",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadDouble()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipDouble()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteDouble(0)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDouble))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDouble))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDouble))!);
             Add(fh, des, "Decimal",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadDecimal()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipDecimal()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteDecimal(0)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDecimal))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDecimal))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDecimal))!);
             AddJustOrderable(fh, "DateTime",
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadDateTime()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipDateTime()),
-                             EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteDateTimeForbidUnspecifiedKind(new DateTime())));
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDateTime))!,
+                             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDateTime))!,
+                             typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDateTimeForbidUnspecifiedKind))!);
             Add(fh, des, "DateTime",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadDateTime()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipDateTime()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteDateTime(new DateTime())));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadDateTime))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipDateTime))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteDateTime))!);
             Add(fh, des, "TimeSpan",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadTimeSpan()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipTimeSpan()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteTimeSpan(new TimeSpan())));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadTimeSpan))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipTimeSpan))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteTimeSpan))!);
             Add(fh, des, "Guid",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadGuid()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipGuid()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteGuid(new Guid())));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadGuid))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipGuid))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteGuid))!);
             fh.Add(new ByteArrayLastFieldHandler());
             fh.Add(new ByteArrayFieldHandler());
             des.Add(new ByteArrayTypeDescriptor());
             Add(fh, des, "IPAddress",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadIPAddress()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipIPAddress()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteIPAddress(IPAddress.Any)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadIPAddress))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipIPAddress))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteIPAddress))!);
             Add(fh, des, "Version",
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVersion()),
-                EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVersion()),
-                EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVersion(null)));
+                typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVersion))!,
+                typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVersion))!,
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVersion))!);
             fh.Add(new OrderedEncryptedStringHandler());
             fh.Add(new EncryptedStringHandler());
             des.Add(new EncryptedStringDescriptor());

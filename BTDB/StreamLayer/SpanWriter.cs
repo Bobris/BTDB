@@ -239,8 +239,9 @@ namespace BTDB.StreamLayer
                 if (!Resize(len))
                 {
                     Span<byte> buf = stackalloc byte[(int)len];
-                    PackUnpack.UnsafePackVInt(ref MemoryMarshal.GetReference(buf), value, len);
-                    WriteBlock(buf);
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    PackUnpack.UnsafePackVInt(ref bufRef, value, len);
+                    WriteBlock(ref bufRef, len);
                     return;
                 }
             }
@@ -256,8 +257,9 @@ namespace BTDB.StreamLayer
                 if (!Resize(len))
                 {
                     Span<byte> buf = stackalloc byte[(int)len];
-                    PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(buf), value, len);
-                    WriteBlock(buf);
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    PackUnpack.UnsafePackVUInt(ref bufRef, value, len);
+                    WriteBlock(ref bufRef, len);
                     return;
                 }
             }
@@ -272,8 +274,9 @@ namespace BTDB.StreamLayer
                 if (!Resize(8))
                 {
                     Span<byte> buf = stackalloc byte[8];
-                    Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsBigEndian((ulong) value);
-                    WriteBlock(buf);
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    Unsafe.As<byte, ulong>(ref bufRef) = PackUnpack.AsBigEndian((ulong) value);
+                    WriteBlock(ref bufRef, 8);
                     return;
                 }
             }
@@ -289,8 +292,9 @@ namespace BTDB.StreamLayer
                 if (!Resize(4))
                 {
                     Span<byte> buf = stackalloc byte[4];
-                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsBigEndian((uint) value);
-                    WriteBlock(buf);
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsBigEndian((uint) value);
+                    WriteBlock(ref bufRef, 4);
                     return;
                 }
             }
@@ -306,8 +310,9 @@ namespace BTDB.StreamLayer
                 if (!Resize(4))
                 {
                     Span<byte> buf = stackalloc byte[4];
-                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(buf)) = PackUnpack.AsLittleEndian((uint) value);
-                    WriteBlock(buf);
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
+                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsLittleEndian((uint) value);
+                    WriteBlock(ref bufRef, 4);
                     return;
                 }
             }
@@ -583,19 +588,22 @@ namespace BTDB.StreamLayer
 
             if (value.AddressFamily == AddressFamily.InterNetworkV6)
             {
-                Span<byte> buf = stackalloc byte[16];
                 if (value.ScopeId != 0)
                 {
+                    Span<byte> buf = stackalloc byte[16];
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
                     value.TryWriteBytes(buf, out _);
                     WriteUInt8(2);
-                    WriteBlock(buf);
+                    WriteBlock(ref bufRef, 16);
                     WriteVUInt64((ulong) value.ScopeId);
                 }
                 else
                 {
+                    Span<byte> buf = stackalloc byte[16];
+                    ref var bufRef = ref MemoryMarshal.GetReference(buf);
                     value.TryWriteBytes(buf, out _);
                     WriteUInt8(1);
-                    WriteBlock(buf);
+                    WriteBlock(ref bufRef, 16);
                 }
             }
             else

@@ -136,7 +136,7 @@ namespace BTDB.EventStoreLayer
                     .LdcI4(0)
                     .Stloc(localIndex)
                     .Do(pushReader)
-                    .Call(() => default(SpanReader).ReadVUInt32())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                     .ConvI4()
                     .Dup()
                     .Stloc(localCount)
@@ -179,7 +179,7 @@ namespace BTDB.EventStoreLayer
                 var next = ilGenerator.DefineLabel();
                 ilGenerator
                     .Do(pushReader)
-                    .Call(() => default(SpanReader).ReadVUInt32())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                     .ConvI4()
                     .Dup()
                     .Stloc(localCount)
@@ -353,7 +353,7 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localCollection)
                 .Brtrue(notnull)
                 .Do(pushWriter)
-                .Call(() => default(SpanWriter).WriteByteZero())
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
                 .Br(completeFinish)
                 .Mark(notnull)
                 .Do(pushWriter)
@@ -361,7 +361,7 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
-                .Call(() => default(SpanWriter).WriteVUInt32(0));
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
             {
                 var typeAsList = typeof(List<>).MakeGenericType(itemType);
                 var getEnumeratorMethod = typeAsList.GetMethods()
@@ -478,7 +478,7 @@ namespace BTDB.EventStoreLayer
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Call(() => default(SpanReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .Stloc(localCount)

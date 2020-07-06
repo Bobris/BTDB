@@ -94,11 +94,12 @@ namespace BTDB.KVDBLayer
                     while (length > 0)
                     {
                         if (FillBufAndCheckForEof(ref spanReader, 1)) return true;
-                        var lenTillEnd = (uint)Math.Min(length, spanReader.Buf.Length);
+                        var lenTillEnd = (uint) Math.Min(length, spanReader.Buf.Length);
                         Unsafe.CopyBlockUnaligned(ref buffer,
-                            ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)lenTillEnd), lenTillEnd);
+                            ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int) lenTillEnd), lenTillEnd);
                         length -= lenTillEnd;
                     }
+
                     return false;
                 }
 
@@ -112,7 +113,7 @@ namespace BTDB.KVDBLayer
 
                 public void SetCurrentPosition(ref SpanReader spanReader, long position)
                 {
-                    _ofs = (ulong)position;
+                    _ofs = (ulong) position;
                     spanReader.Buf = new ReadOnlySpan<byte>();
                 }
             }
@@ -154,8 +155,8 @@ namespace BTDB.KVDBLayer
                 internal void SimulateCorruptionBySetSize(int size)
                 {
                     if (size > OneBufSize || _ofs != 0) throw new ArgumentOutOfRangeException();
-                    Array.Clear(_file._data[0], size, (int)_ofs - size);
-                    _ofs = (uint)size;
+                    Array.Clear(_file._data[0], size, (int) _ofs - size);
+                    _ofs = (uint) size;
                 }
 
                 public void Init(ref SpanWriter spanWriter)
@@ -177,24 +178,25 @@ namespace BTDB.KVDBLayer
 
                 public void Sync(ref SpanWriter spanWriter)
                 {
-                    _ofs += (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                    _ofs += (ulong) (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
                 }
 
                 public bool Flush(ref SpanWriter spanWriter)
                 {
                     if (spanWriter.Buf.Length != 0) return false;
+                    _ofs += (ulong) spanWriter.InitialBuffer.Length;
                     Init(ref spanWriter);
                     return true;
                 }
 
                 public long GetCurrentPosition(in SpanWriter spanWriter)
                 {
-                    return (long)_ofs + (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                    return (long) _ofs + (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
                 }
 
                 public long GetCurrentPositionWithoutWriter()
                 {
-                    return (long)_ofs;
+                    return (long) _ofs;
                 }
 
                 public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
@@ -206,9 +208,10 @@ namespace BTDB.KVDBLayer
                             Flush(ref spanWriter);
                         }
 
-                        var l = Math.Min((uint)spanWriter.Buf.Length, length);
-                        Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int)l), ref buffer, l);
-                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr)l);
+                        var l = Math.Min((uint) spanWriter.Buf.Length, length);
+                        Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int) l),
+                            ref buffer, l);
+                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) l);
                         length -= l;
                     }
                 }

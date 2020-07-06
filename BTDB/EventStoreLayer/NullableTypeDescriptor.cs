@@ -126,7 +126,7 @@ namespace BTDB.EventStoreLayer
 
                 ilGenerator
                     .Do(pushReader)
-                    .Call(() => default(SpanReader).ReadBool())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                     .Brfalse(noValue);
                 _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                     il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), typeof(object), _convertorGenerator);
@@ -148,7 +148,7 @@ namespace BTDB.EventStoreLayer
                     throw new NotSupportedException();
                 ilGenerator
                     .Do(pushReader)
-                    .Call(() => default(SpanReader).ReadBool())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                     .Brfalse(noValue);
                 _itemDescriptor!.GenerateLoadEx(ilGenerator, pushReader, pushCtx,
                     il => il.Do(pushDescriptor).LdcI4(0).Callvirt(() => default(ITypeDescriptor).NestedType(0)), itemType, _convertorGenerator);
@@ -244,7 +244,7 @@ namespace BTDB.EventStoreLayer
                 .Call(valueType.GetMethod("get_HasValue")!)
                 .Dup()
                 .Stloc(localHasValue)
-                .Call(() => default(SpanWriter).WriteBool(false))
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!)
                 .Ldloc(localHasValue)
                 .Brfalse(finish);
             _itemDescriptor!.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
@@ -263,7 +263,7 @@ namespace BTDB.EventStoreLayer
             var finish = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Callvirt(() => default(SpanReader).ReadBool())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(finish);
             _itemDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator

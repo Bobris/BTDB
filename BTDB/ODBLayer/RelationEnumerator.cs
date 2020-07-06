@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using BTDB.Buffer;
-using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 

@@ -1,5 +1,4 @@
 ﻿using System;
-using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
@@ -7,9 +6,9 @@ namespace BTDB.FieldHandler
     public class UnsignedFieldHandler : SimpleFieldHandlerBase
     {
         public UnsignedFieldHandler(): base("Unsigned",
-            EmitHelpers.GetMethodInfo(() => default(SpanReader).ReadVUInt64()),
-            EmitHelpers.GetMethodInfo(() => default(SpanReader).SkipVUInt64()),
-            EmitHelpers.GetMethodInfo(() => default(SpanWriter).WriteVUInt64(0)))
+            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!,
+            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!,
+            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!)
         {
         }
 

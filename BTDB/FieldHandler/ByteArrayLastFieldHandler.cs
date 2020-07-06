@@ -12,25 +12,26 @@ namespace BTDB.FieldHandler
         public override void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             pushReader(ilGenerator);
-            ilGenerator.Call(() => default(SpanReader).ReadByteArrayRawTillEof());
+            ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadByteArrayRawTillEof))!);
         }
 
         public override void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
         }
 
-        public override void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+        public override void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx,
+            Action<IILGen> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(SpanWriter).WriteByteArrayRaw(null));
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArrayRaw))!);
         }
 
-        protected override void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
+        protected override void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(() => default(SpanWriter).WriteBlock(ByteBuffer.NewEmpty()));
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBlock), new[] {typeof(ByteBuffer)})!);
         }
 
         public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)

@@ -7,9 +7,7 @@ Currently this project these parts:
 - Key Value Database
 - Wrapped Dynamic IL generation with debugging + extensions
 - IOC Container
-- Object Database
-- RPC Library
-- Dto Channel
+- Object Database with Relations
 - Snappy Compression
 - Event Storage
 
@@ -128,32 +126,6 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ---
 
-## RPC Library
-
-Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad performance)
-
-### Features:
-
-- TCP/IP communication, service types negotiation
-- Automatic serialization with dynamically generated optimal IL code.
-- Both Client and Server can register services
-- Async calls, OneWay calls, Exception propagation
-- Services could be interfaces, classes, delegates
-
-### Sample code:
-
-    SimpleDTO received = null;
-    _first.RegisterLocalService((Action<SimpleDTO>)(a => received = a));
-    var d = _second.QueryRemoteService<Action<SimpleDTO>>();
-    d(new SimpleDTO { Name = "Text", Number = 3.14 });
-    Assert.NotNull(received);
-
-### Roadmap:
-
-- Even more speed and event based TCP/IP server channels
-
----
-
 ## Event storage
 
 ### Features:
@@ -163,26 +135,6 @@ Deprecated use Dto Channel instead (RPC is really too easy to abuse and get bad 
 - Storage is transactional
 - As storage could be used Azure Page Blobs
 - EventStorage2 is specialized to be used with Kafka, metadata are stored in separate topic
-
----
-
-## Dto Channel
-
-### Features:
-
-- Send and receive Dto over Tcp/Ip
-- Identical serialization from Event Storage
-
-### Sample code:
-
-    object u1 = new User { Name = "A", Age = 1 };
-    object u2 = null;
-    _second.OnReceive.Subscribe(o => u2 = o);
-    _first.Send(u1);
-
-### Roadmap:
-
-- Even more speed and event based TCP/IP server channels
 
 ---
 
