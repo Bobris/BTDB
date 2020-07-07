@@ -135,7 +135,7 @@ namespace BTDB.ODBLayer
             tr.SetKeyPrefixUnsafe(RelationNamesPrefix);
             while (tr.FindNextKey())
             {
-                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKey()).ReadVUInt32(), new SpanReader(tr.GetValueAsReadOnlySpan()).ReadString());
+                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetValueAsReadOnlySpan()).ReadVUInt32(), new SpanReader(tr.GetKey()).ReadString());
             }
         }
 

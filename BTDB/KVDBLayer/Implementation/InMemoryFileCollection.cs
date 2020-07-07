@@ -154,7 +154,7 @@ namespace BTDB.KVDBLayer
 
                 internal void SimulateCorruptionBySetSize(int size)
                 {
-                    if (size > OneBufSize || _ofs != 0) throw new ArgumentOutOfRangeException();
+                    if (size > OneBufSize || _ofs > OneBufSize) throw new ArgumentOutOfRangeException();
                     Array.Clear(_file._data[0], size, (int) _ofs - size);
                     _ofs = (uint) size;
                 }
@@ -170,6 +170,7 @@ namespace BTDB.KVDBLayer
                         Volatile.Write(ref _file._data, storage);
                         spanWriter.InitialBuffer = buf;
                         spanWriter.Buf = spanWriter.InitialBuffer;
+                        return;
                     }
 
                     spanWriter.InitialBuffer = _file._data[^1].AsSpan((int) (_ofs % OneBufSize));
@@ -211,7 +212,7 @@ namespace BTDB.KVDBLayer
                         var l = Math.Min((uint) spanWriter.Buf.Length, length);
                         Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int) l),
                             ref buffer, l);
-                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) l);
+                        buffer = ref Unsafe.AddByteOffset(ref buffer, (IntPtr) l);
                         length -= l;
                     }
                 }

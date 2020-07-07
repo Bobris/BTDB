@@ -27,7 +27,7 @@ namespace BTDB.ODBLayer
         public IILDynamicMethodWithThis DelegateCreator { get; }
 
         static readonly MethodInfo SpanWriterGetByteBufferAndResetMethodInfo =
-            typeof(SpanWriter).GetProperty(nameof(SpanWriter.GetByteBufferAndReset))!.GetGetMethod(true)!;
+            typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetByteBufferAndReset))!;
 
         static Dictionary<Type, RelationBuilder> _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
         static readonly object RelationBuilderCacheLock = new object();
