@@ -31,14 +31,14 @@ namespace SimpleTester
             //new EventStorageSpeedTestAwaitable().Run();
             //new EventStorageSpeedTestDisruptor().Run();
             //new EventStorageSpeedTest().Run();
-            //new RelationSpeedTest().Run();
+            new RelationSpeedTest().Run();
             //BenchmarkRunner.Run<EventSerializationBenchmark>();
             //new TestCompactor().Run(new CancellationToken());
             //new CompactorLatencyMeasurement().Run();
             //new ClassGenerator().Run();
             //new EventLayer2TestWithALotOfClasses().Run();
-            new BenchTest().Verify();
-            BenchmarkRunner.Run<BenchTest>();
+            //new BenchTest().Verify();
+            //BenchmarkRunner.Run<BenchTest>();
             //new KeyValueDBRollbackTest().CanOpenDbAfterDeletingAndCompacting();
             //
             //var cts = new CancellationTokenSource();
