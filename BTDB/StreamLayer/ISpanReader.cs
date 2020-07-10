@@ -3,36 +3,17 @@ namespace BTDB.StreamLayer
     public interface ISpanReader
     {
         /// <summary>
-        /// Initialize initial data. spanReader._buf and spanReader._initialData are empty spans before calling this function.
+        /// Fill Buf at least 1 byte of data or return true if there at end of stream.
         /// </summary>
         /// <param name="spanReader">owning SpanReader</param>
-        void Init(ref SpanReader spanReader)
-        {
-            FillBufAndCheckForEof(ref spanReader, 0);
-        }
+        /// <returns>true if at end of stream (spanReader.Buf must be empty)</returns>
+        bool FillBufAndCheckForEof(ref SpanReader spanReader);
         /// <summary>
-        /// Read at least 1 byte of data or return true if there is not enough data.
-        /// </summary>
-        /// <param name="spanReader">owning SpanReader</param>
-        /// <returns>true if there is not enough data in source</returns>
-        bool FillBufAndCheckForEof(ref SpanReader spanReader)
-        {
-            return FillBufAndCheckForEof(ref spanReader, 1);
-        }
-        /// <summary>
-        /// Read at least size bytes of data or return true if there is not enough data.
-        /// </summary>
-        /// <param name="spanReader">owning SpanReader</param>
-        /// <param name="size">how much bytes are needed to be in spanReader._buf</param>
-        /// <returns>true if there is not enough data in source</returns>
-        bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size);
-        /// <summary>
-        /// Calculate current position with help of spanReader._buf.
+        /// Calculate current position with help of spanReader.Buf.
         /// </summary>
         /// <param name="spanReader">owning SpanReader</param>
         /// <returns>byte offset from start</returns>
         long GetCurrentPosition(in SpanReader spanReader);
-
         /// <summary>
         /// Reads data into buffer. Called only when spanReader.Buf is empty.
         /// </summary>

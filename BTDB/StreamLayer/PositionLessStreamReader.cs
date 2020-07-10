@@ -23,14 +23,13 @@ namespace BTDB.StreamLayer
             _buf = new byte[bufferSize];
         }
 
-        public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
+        public bool FillBufAndCheckForEof(ref SpanReader spanReader)
         {
-            var startSize = spanReader.Buf.Length;
-            spanReader.Buf.CopyTo(_buf);
-            var read = _stream.Read(_buf.AsSpan(startSize), _ofs);
-            spanReader.Buf = _buf.AsSpan(0, startSize + read);
+            if (spanReader.Buf.Length != 0) return false;
+            var read = _stream.Read(_buf, _ofs);
+            spanReader.Buf = _buf.AsSpan(0, read);
             _ofs += (uint)read;
-            return size > spanReader.Buf.Length;
+            return spanReader.Buf.Length == 0;
         }
 
         public long GetCurrentPosition(in SpanReader spanReader)
@@ -42,7 +41,7 @@ namespace BTDB.StreamLayer
         {
             if (length < _buf.Length)
             {
-                if (FillBufAndCheckForEof(ref spanReader, length)) return true;
+                if (FillBufAndCheckForEof(ref spanReader) || (uint)spanReader.Buf.Length < length) return true;
                 Unsafe.CopyBlockUnaligned(ref buffer,
                     ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
                 return false;

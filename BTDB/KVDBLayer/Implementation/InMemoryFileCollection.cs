@@ -52,36 +52,19 @@ namespace BTDB.KVDBLayer
                     _ofs = 0;
                 }
 
-                public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
                     var startSize = spanReader.Buf.Length;
                     if (startSize == 0)
                     {
+                        var bufOfs = (int)(_ofs % OneBufSize);
                         spanReader.Buf = _file._data[(int) (_ofs / OneBufSize)]
-                            .AsSpan(0, (int) Math.Min(_totalSize - _ofs, OneBufSize));
+                            .AsSpan(bufOfs, (int) Math.Min(_totalSize - _ofs, (ulong)(OneBufSize- bufOfs)));
                         startSize = spanReader.Buf.Length;
                         _ofs += (uint) startSize;
                     }
 
-                    if (size <= (uint) startSize) return false;
-
-                    if (_ofs + size - (uint) startSize > _totalSize)
-                    {
-                        _ofs = _totalSize;
-                        return true;
-                    }
-
-                    if (spanReader.Original.Length < size)
-                    {
-                        spanReader.Original = new byte[Math.Max(16, size)];
-                    }
-
-                    var b = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(spanReader.Original), (int) size);
-                    spanReader.Buf.CopyTo(b);
-                    _file._data[(int) (_ofs / OneBufSize)].AsSpan(0, (int) size - startSize).CopyTo(b.Slice(startSize));
-                    _ofs += size - (uint) startSize;
-                    spanReader.Buf = b;
-                    return false;
+                    return 0 == startSize;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
@@ -93,7 +76,7 @@ namespace BTDB.KVDBLayer
                 {
                     while (length > 0)
                     {
-                        if (FillBufAndCheckForEof(ref spanReader, 1)) return true;
+                        if (FillBufAndCheckForEof(ref spanReader)) return true;
                         var lenTillEnd = (uint) Math.Min(length, spanReader.Buf.Length);
                         Unsafe.CopyBlockUnaligned(ref buffer,
                             ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int) lenTillEnd), lenTillEnd);

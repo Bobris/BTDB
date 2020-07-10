@@ -33,7 +33,8 @@ namespace BTDB.ODBLayer
         KeysCollection? _keysCollection;
         ValuesCollection? _valuesCollection;
 
-        ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
+        // ReSharper disable once MemberCanBePrivate.Global used by FieldHandler.Load
+        public ODBDictionary(IInternalObjectDBTransaction tr, ODBDictionaryConfiguration config, ulong id)
         {
             _tr = tr;
             _keyHandler = config.KeyHandler!;

@@ -73,14 +73,14 @@ namespace BTDB.KVDBLayer
                     _buf = new byte[BufLength];
                 }
 
-                public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
-                    var startSize = spanReader.Buf.Length;
-                    spanReader.Buf.CopyTo(_buf);
-                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf.AsSpan(startSize), _ofs);
-                    spanReader.Buf = _buf.AsSpan(0, startSize + (int) read);
+                    if (0 != spanReader.Buf.Length)
+                        return false;
+                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
+                    spanReader.Buf = _buf.AsSpan(0, (int) read);
                     _ofs += read;
-                    return size > spanReader.Buf.Length;
+                    return read == 0;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
@@ -92,7 +92,7 @@ namespace BTDB.KVDBLayer
                 {
                     if (length < BufLength)
                     {
-                        if (FillBufAndCheckForEof(ref spanReader, length)) return true;
+                        if (FillBufAndCheckForEof(ref spanReader) || length> (uint)spanReader.Buf.Length) return true;
                         Unsafe.CopyBlockUnaligned(ref buffer,
                             ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
                         return false;

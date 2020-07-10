@@ -184,7 +184,7 @@ namespace BTDB.EventStoreLayer
                     }
                 }
                 bufferReadOffset += (int)blockLen;
-                if (wasFirstBlock)
+                if (!wasFirstBlock)
                     NextReadPosition = bufferStartPosition + (ulong)bufferReadOffset;
                 if (stopReadingRequested)
                 {

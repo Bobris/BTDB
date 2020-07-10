@@ -97,13 +97,13 @@ namespace BTDB.KVDBLayer
                     _ofs = 0;
                 }
 
-                public bool FillBufAndCheckForEof(ref SpanReader spanReader, uint size)
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
                     _ofs += (ulong) (spanReader.Original.Length - spanReader.Buf.Length);
                     spanReader.Buf = new Span<byte>(_owner._pointer + _ofs,
                         (int) Math.Min(_valueSize - _ofs, int.MaxValue));
                     spanReader.Original = spanReader.Buf;
-                    return size > (uint) spanReader.Buf.Length;
+                    return 0 == spanReader.Buf.Length;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)

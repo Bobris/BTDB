@@ -544,6 +544,7 @@ namespace BTDB.IL.Caching
 
         public void Emit(OpCode opCode, ConstructorInfo param)
         {
+            if (param == null) throw new ArgumentNullException(nameof(param));
             _instructions.Add(new EmitConstructorInfoInst(opCode, param));
         }
 

@@ -28,7 +28,7 @@ namespace BTDB.StreamLayer
             Controller = controller;
             Buf = new ReadOnlySpan<byte>();
             Original = new ReadOnlySpan<byte>();
-            controller.Init(ref this);
+            controller.FillBufAndCheckForEof(ref this);
         }
 
         public ReadOnlySpan<byte> Buf;
@@ -37,7 +37,8 @@ namespace BTDB.StreamLayer
 
         public long GetCurrentPosition()
         {
-            return Controller?.GetCurrentPosition(this) ?? (long) Unsafe.ByteOffset(ref MemoryMarshal.GetReference(Original),
+            return Controller?.GetCurrentPosition(this) ?? (long) Unsafe.ByteOffset(
+                ref MemoryMarshal.GetReference(Original),
                 ref MemoryMarshal.GetReference(Buf));
         }
 
@@ -49,7 +50,7 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                Buf = Original.Slice((int)position);
+                Buf = Original.Slice((int) position);
             }
         }
 
@@ -68,11 +69,46 @@ namespace BTDB.StreamLayer
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void RequireBufLength(uint len)
+        ref byte PessimisticBlockReadAsByteRef(ref byte buf, uint len)
         {
-            if (Buf.Length < len && (Controller?.FillBufAndCheckForEof(ref this, len) ?? true))
+            if (Controller == null)
+            {
+                if ((uint) Buf.Length >= len)
+                {
+                    ref var res = ref MemoryMarshal.GetReference(Buf);
+                    PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+                    return ref res;
+                }
+
                 PackUnpack.ThrowEndOfStreamException();
+            }
+            else
+            {
+                if (Controller.FillBufAndCheckForEof(ref this))
+                    PackUnpack.ThrowEndOfStreamException();
+                if ((uint) Buf.Length >= len)
+                {
+                    ref var res = ref MemoryMarshal.GetReference(Buf);
+                    PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+                    return ref res;
+                }
+
+                ref var cur = ref buf;
+                do
+                {
+                    Unsafe.CopyBlockUnaligned(ref cur, ref MemoryMarshal.GetReference(Buf), (uint) Buf.Length);
+                    cur = ref Unsafe.AddByteOffset(ref cur, (IntPtr) Buf.Length);
+                    len -= (uint) Buf.Length;
+                    Buf = new ReadOnlySpan<byte>();
+                    if (Controller.FillBufAndCheckForEof(ref this))
+                        PackUnpack.ThrowEndOfStreamException();
+                } while (len > (uint) Buf.Length);
+
+                Unsafe.CopyBlockUnaligned(ref cur, ref MemoryMarshal.GetReference(Buf), len);
+                PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+            }
+
+            return ref buf;
         }
 
         public bool ReadBool()
@@ -185,17 +221,31 @@ namespace BTDB.StreamLayer
             NeedOneByteInBuffer();
             ref var byteRef = ref MemoryMarshal.GetReference(Buf);
             var len = PackUnpack.LengthVIntByFirstByte(byteRef);
-            RequireBufLength(len);
-            PackUnpack.UnsafeAdvance(ref Buf, (int)len);
-            return PackUnpack.UnsafeUnpackVInt(ref byteRef, len);
+            if (len <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+                return PackUnpack.UnsafeUnpackVInt(ref byteRef, len);
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[(int)len];
+                return PackUnpack.UnsafeUnpackVInt(
+                    ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), len), len);
+            }
         }
 
         public void SkipVInt64()
         {
             NeedOneByteInBuffer();
             var len = PackUnpack.LengthVIntByFirstByte(MemoryMarshal.GetReference(Buf));
-            RequireBufLength(len);
-            PackUnpack.UnsafeAdvance(ref Buf, (int)len);
+            if (len <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+            }
+            else
+            {
+                SkipBlock(len);
+            }
         }
 
         public ulong ReadVUInt64()
@@ -203,9 +253,17 @@ namespace BTDB.StreamLayer
             NeedOneByteInBuffer();
             ref var byteRef = ref MemoryMarshal.GetReference(Buf);
             var len = PackUnpack.LengthVUIntByFirstByte(byteRef);
-            RequireBufLength(len);
-            PackUnpack.UnsafeAdvance(ref Buf, (int)len);
-            return PackUnpack.UnsafeUnpackVUInt(ref byteRef, len);
+            if (len <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+                return PackUnpack.UnsafeUnpackVUInt(ref byteRef, len);
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[(int)len];
+                return PackUnpack.UnsafeUnpackVUInt(
+                    ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), len), len);
+            }
         }
 
         public void SkipVUInt64()
@@ -213,38 +271,83 @@ namespace BTDB.StreamLayer
             NeedOneByteInBuffer();
             ref var byteRef = ref MemoryMarshal.GetReference(Buf);
             var len = PackUnpack.LengthVUIntByFirstByte(byteRef);
-            RequireBufLength(len);
-            PackUnpack.UnsafeAdvance(ref Buf, (int)len);
+            if (len <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, (int) len);
+            }
+            else
+            {
+                SkipBlock(len);
+            }
         }
 
         public long ReadInt64()
         {
-            RequireBufLength(8);
-            return (long) PackUnpack.AsBigEndian(Unsafe.As<byte, ulong>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 8)));
+            if (8 <= (uint) Buf.Length)
+            {
+                return (long) PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, ulong>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 8)));
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[8];
+                return (long) PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, ulong>(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), 8)));
+            }
         }
 
         public void SkipInt64()
         {
-            RequireBufLength(8);
-            PackUnpack.UnsafeAdvance(ref Buf, 8);
+            if (8 <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, 8);
+            }
+            else
+            {
+                SkipBlock(8);
+            }
         }
 
         public int ReadInt32()
         {
-            RequireBufLength(4);
-            return (int) PackUnpack.AsBigEndian(Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)));
+            if (4 <= (uint) Buf.Length)
+            {
+                return (int) PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)));
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[4];
+                return (int) PackUnpack.AsBigEndian(
+                    Unsafe.As<byte, uint>(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), 4)));
+            }
         }
 
         public int ReadInt32LE()
         {
-            RequireBufLength(4);
-            return (int) PackUnpack.AsLittleEndian(Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)));
+            if (4 <= (uint) Buf.Length)
+            {
+                return (int) PackUnpack.AsLittleEndian(
+                    Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)));
+            }
+            else
+            {
+                Span<byte> buf = stackalloc byte[4];
+                return (int) PackUnpack.AsLittleEndian(
+                    Unsafe.As<byte, uint>(ref PessimisticBlockReadAsByteRef(ref MemoryMarshal.GetReference(buf), 4)));
+            }
         }
 
         public void SkipInt32()
         {
-            RequireBufLength(4);
-            PackUnpack.UnsafeAdvance(ref Buf, 4);
+            if (4 <= (uint) Buf.Length)
+            {
+                PackUnpack.UnsafeAdvance(ref Buf, 4);
+            }
+            else
+            {
+                SkipBlock(4);
+            }
         }
 
         public DateTime ReadDateTime()
@@ -331,10 +434,11 @@ namespace BTDB.StreamLayer
                     c -= 0x10000;
                     if (charBuf.Length < len + 2)
                     {
-                        var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                        var newCharBuf = (Span<char>) new char[charBuf.Length * 2];
                         charBuf.CopyTo(newCharBuf);
                         charBuf = newCharBuf;
                     }
+
                     Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char) ((c >> 10) + 0xD800);
                     Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char) ((c & 0x3FF) + 0xDC00);
                 }
@@ -342,10 +446,11 @@ namespace BTDB.StreamLayer
                 {
                     if (charBuf.Length < len + 1)
                     {
-                        var newCharBuf = (Span<char>)new char[charBuf.Length * 2];
+                        var newCharBuf = (Span<char>) new char[charBuf.Length * 2];
                         charBuf.CopyTo(newCharBuf);
                         charBuf = newCharBuf;
                     }
+
                     Unsafe.Add(ref MemoryMarshal.GetReference(charBuf), len++) = (char) c;
                 }
             }
@@ -409,9 +514,10 @@ namespace BTDB.StreamLayer
                     {
                         Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer, (uint) Buf.Length);
                         buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) Buf.Length);
-                        length -= (uint)Buf.Length;
+                        length -= (uint) Buf.Length;
                         Buf = new ReadOnlySpan<byte>();
                     }
+
                     if (Controller.ReadBlock(ref this, ref buffer, length))
                         PackUnpack.ThrowEndOfStreamException();
                 }
@@ -419,15 +525,17 @@ namespace BTDB.StreamLayer
                 {
                     PackUnpack.ThrowEndOfStreamException();
                 }
+
                 if (Controller?.ReadBlock(ref this, ref buffer, length) ?? true)
                     PackUnpack.ThrowEndOfStreamException();
             }
-            Unsafe.CopyBlockUnaligned(ref buffer, ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)length), length);
+
+            Unsafe.CopyBlockUnaligned(ref buffer, ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length), length);
         }
 
         public void ReadBlock(in Span<byte> buffer)
         {
-            ReadBlock(ref MemoryMarshal.GetReference(buffer), (uint)buffer.Length);
+            ReadBlock(ref MemoryMarshal.GetReference(buffer), (uint) buffer.Length);
         }
 
         public void ReadBlock(byte[] data, int offset, int length)
@@ -441,7 +549,7 @@ namespace BTDB.StreamLayer
             {
                 if (Controller != null)
                 {
-                    length -= (uint)Buf.Length;
+                    length -= (uint) Buf.Length;
                     Buf = new ReadOnlySpan<byte>();
                     if (Controller.SkipBlock(ref this, length))
                         PackUnpack.ThrowEndOfStreamException();
@@ -451,7 +559,8 @@ namespace BTDB.StreamLayer
                     PackUnpack.ThrowEndOfStreamException();
                 }
             }
-            PackUnpack.UnsafeAdvance(ref Buf, (int)length);
+
+            PackUnpack.UnsafeAdvance(ref Buf, (int) length);
         }
 
         public void SkipBlock(int length)
