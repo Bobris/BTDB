@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
@@ -17,7 +16,7 @@ namespace BTDB.KVDBLayer.BTreeMem
         {
             TransactionId = transactionId;
             _children = new[] { node1, node2 };
-            _keys = new[] { node2.GetLeftMostKey() };
+            _keys = new[] { node2.GetLeftMostKey().ToArray() };
             var leftCount = node1.CalcKeyCount();
             var rightCount = node2.CalcKeyCount();
             _pairCounts = new[] { leftCount, leftCount + rightCount };
@@ -47,12 +46,12 @@ namespace BTDB.KVDBLayer.BTreeMem
                 _pairCounts[i] = pairs;
                 if (i > 0)
                 {
-                    _keys[i - 1] = child.GetLeftMostKey();
+                    _keys[i - 1] = child.GetLeftMostKey().ToArray();
                 }
             }
         }
 
-        int Find(byte[] prefix, ByteBuffer key)
+        int Find(in ReadOnlySpan<byte> key)
         {
             var left = 0;
             var right = _keys.Length;
@@ -60,13 +59,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             {
                 var middle = (left + right) / 2;
                 var currentKey = _keys[middle];
-                var result = BitArrayManipulation.CompareByteArray(prefix, prefix.Length,
-                                                                   currentKey, Math.Min(currentKey.Length, prefix.Length));
-                if (result == 0)
-                {
-                    result = BitArrayManipulation.CompareByteArray(key.Buffer, key.Offset, key.Length,
-                                                                   currentKey, prefix.Length, currentKey.Length - prefix.Length);
-                }
+                var result = key.SequenceCompareTo(currentKey);
                 if (result < 0)
                 {
                     right = middle;
@@ -79,12 +72,12 @@ namespace BTDB.KVDBLayer.BTreeMem
             return left;
         }
 
-        public void CreateOrUpdate(CreateOrUpdateCtx ctx)
+        public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
         {
-            var index = Find(ctx.KeyPrefix, ctx.Key);
+            var index = Find(ctx.Key);
             ctx.Stack.Add(new NodeIdxPair { Node = this, Idx = index });
             ctx.Depth++;
-            _children[index].CreateOrUpdate(ctx);
+            _children[index].CreateOrUpdate(ref ctx);
             ctx.Depth--;
             var newBranch = this;
             if (ctx.Split)
@@ -94,10 +87,10 @@ namespace BTDB.KVDBLayer.BTreeMem
                 var newChildren = new IBTreeNode[_children.Length + 1];
                 var newPairCounts = new long[_children.Length + 1];
                 Array.Copy(_keys, 0, newKeys, 0, index);
-                newKeys[index] = ctx.Node2.GetLeftMostKey();
+                newKeys[index] = ctx.Node2!.GetLeftMostKey().ToArray();
                 Array.Copy(_keys, index, newKeys, index + 1, _keys.Length - index);
                 Array.Copy(_children, 0, newChildren, 0, index);
-                newChildren[index] = ctx.Node1;
+                newChildren[index] = ctx.Node1!;
                 newChildren[index + 1] = ctx.Node2;
                 Array.Copy(_children, index + 1, newChildren, index + 2, _children.Length - index - 1);
                 Array.Copy(_pairCounts, newPairCounts, index);
@@ -146,7 +139,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 splitPairCounts = new long[keyCountRight];
                 Array.Copy(newKeys, keyCountLeft, splitKeys, 0, splitKeys.Length);
                 Array.Copy(newChildren, keyCountLeft, splitChildren, 0, splitChildren.Length);
-                for (int i = 0; i < splitPairCounts.Length; i++)
+                for (var i = 0; i < splitPairCounts.Length; i++)
                 {
                     splitPairCounts[i] = newPairCounts[keyCountLeft + i] - newPairCounts[keyCountLeft - 1];
                 }
@@ -173,14 +166,14 @@ namespace BTDB.KVDBLayer.BTreeMem
                     var newPairCounts = new long[_children.Length];
                     Array.Copy(_keys, newKeys, _keys.Length);
                     Array.Copy(_children, newChildren, _children.Length);
-                    newChildren[index] = ctx.Node1;
+                    newChildren[index] = ctx.Node1!;
                     Array.Copy(_pairCounts, newPairCounts, _pairCounts.Length);
                     newBranch = new BTreeBranch(ctx.TransactionId, newKeys, newChildren, newPairCounts);
                     ctx.Node1 = newBranch;
                 }
                 else
                 {
-                    _children[index] = ctx.Node1;
+                    _children[index] = ctx.Node1!;
                     ctx.Update = false;
                     ctx.Node1 = null;
                 }
@@ -195,21 +188,21 @@ namespace BTDB.KVDBLayer.BTreeMem
             }
         }
 
-        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key)
+        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
         {
-            var idx = Find(prefix, key);
+            var idx = Find(key);
             stack.Add(new NodeIdxPair { Node = this, Idx = idx });
-            var result = _children[idx].FindKey(stack, out keyIndex, prefix, key);
+            var result = _children[idx].FindKey(stack, out keyIndex, key);
             if (idx > 0) keyIndex += _pairCounts[idx - 1];
             return result;
         }
 
         public long CalcKeyCount()
         {
-            return _pairCounts[_pairCounts.Length - 1];
+            return _pairCounts[^1];
         }
 
-        public byte[] GetLeftMostKey()
+        public ReadOnlySpan<byte> GetLeftMostKey()
         {
             return _children[0].GetLeftMostKey();
         }
@@ -235,7 +228,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
         }
 
-        public long FindLastWithPrefix(byte[] prefix)
+        public long FindLastWithPrefix(in ReadOnlySpan<byte> prefix)
         {
             var left = 0;
             var right = _keys.Length;
@@ -243,8 +236,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             {
                 var middle = (left + right) / 2;
                 var currentKey = _keys[middle];
-                var result = BitArrayManipulation.CompareByteArray(prefix, prefix.Length,
-                                                                   currentKey, Math.Min(currentKey.Length, prefix.Length));
+                var result = prefix.SequenceCompareTo(currentKey.AsSpan(0,Math.Min(currentKey.Length, prefix.Length)));
                 if (result < 0)
                 {
                     right = middle;
@@ -284,13 +276,12 @@ namespace BTDB.KVDBLayer.BTreeMem
 
         public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
         {
+            var firstRemoved = -1;
+            var lastRemoved = -1;
+            IBTreeNode? firstPartialNode = null;
+            IBTreeNode? lastPartialNode = null;
 
-            int firstRemoved = -1;
-            int lastRemoved = -1;
-            IBTreeNode firstPartialNode = null;
-            IBTreeNode lastPartialNode = null;
-
-            for (int i = 0; i < _pairCounts.Length; i++)
+            for (var i = 0; i < _pairCounts.Length; i++)
             {
                 var prevPairCount = i > 0 ? _pairCounts[i - 1] : 0;
                 if (lastKeyIndex < prevPairCount) break;
@@ -352,7 +343,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             }
             for (var i = 0; i < finalChildrenCount - 1; i++)
             {
-                newKeys[i] = newChildren[i + 1].GetLeftMostKey();
+                newKeys[i] = newChildren[i + 1].GetLeftMostKey().ToArray();
             }
             if (transactionId == TransactionId)
             {

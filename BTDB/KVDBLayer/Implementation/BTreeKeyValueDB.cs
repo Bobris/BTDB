@@ -1356,23 +1356,21 @@ namespace BTDB.KVDBLayer
             return result;
         }
 
-        public void WriteEraseOneCommand(ByteBuffer key)
+        public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
         {
-            var command = KVCommandType.EraseOne;
-
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
             var writer = new SpanWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte) command);
+            writer.WriteUInt8((byte) KVCommandType.EraseOne);
             writer.WriteVInt32(key.Length);
             writer.WriteBlock(key);
             writer.Sync();
         }
 
-        public void WriteEraseRangeCommand(ByteBuffer firstKey, ByteBuffer secondKey)
+        public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKey, in ReadOnlySpan<byte> secondKey)
         {
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {

@@ -41,17 +41,15 @@ namespace BTDB.ODBLayer
 
         void ImportKeysWithPrefix(byte[] prefix, IKeyValueDBTransaction sourceKvTr)
         {
-            sourceKvTr.SetKeyPrefix(prefix);
-            if (!sourceKvTr.FindFirstKey())
+            if (!sourceKvTr.FindFirstKey(prefix))
                 return;
             using (var kvtr = _keyValueDb.StartWritingTransaction().Result)
             {
-                kvtr.SetKeyPrefix(prefix);
                 do
                 {
                     //create all keys, instead of value store only byte length of value
-                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
-                } while (sourceKvTr.FindNextKey());
+                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKeyAsReadOnlySpan(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
+                } while (sourceKvTr.FindNextKey(prefix));
                 kvtr.Commit();
             }
         }
@@ -81,7 +79,7 @@ namespace BTDB.ODBLayer
                     {
                         yield return new UnseenKey
                         {
-                            Key = trkv.GetKeyIncludingPrefix().ToByteArray(),
+                            Key = trkv.GetKeyAsReadOnlySpan().ToArray(),
                             ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
                         };
                     } while (trkv.FindNextKey());
@@ -95,8 +93,7 @@ namespace BTDB.ODBLayer
             var kvtr = itr.KeyValueDBTransaction;
             foreach (var unseen in UnseenKeys())
             {
-                kvtr.SetKeyPrefix(unseen.Key);
-                kvtr.EraseAll();
+                kvtr.EraseAll(unseen.Key);
             }
         }
 
@@ -108,17 +105,16 @@ namespace BTDB.ODBLayer
             _memoryFileCollection = null;
         }
 
-        ByteBuffer Vuint2ByteBuffer(uint v)
+        ReadOnlySpan<byte> Vuint2ByteBuffer(uint v)
         {
             var ofs = 0;
             PackUnpack.PackVUInt(_tempBytes, ref ofs, v);
-            return ByteBuffer.NewSync(_tempBytes, 0, ofs);
+            return _tempBytes.AsSpan(0, ofs);
         }
 
         void MarkKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            _kvtr.SetKeyPrefix(tr.GetKeyPrefix());
-            if (_kvtr.Find(tr.GetKey())==FindResult.Exact) _kvtr.EraseCurrent();
+            if (_kvtr.Find(tr.GetKeyAsReadOnlySpan(), 0)==FindResult.Exact) _kvtr.EraseCurrent();
         }
 
         class VisitorForFindUnused : IODBFastVisitor

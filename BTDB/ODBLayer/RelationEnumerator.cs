@@ -332,8 +332,7 @@ namespace BTDB.ODBLayer
             var buffer = ByteBuffer.NewEmpty();
             buffer = buffer.ResizingAppend(keyBytes).ResizingAppend(endKeyBytes);
             keyValueTrProtector.Start();
-            keyValueTr.SetKeyPrefix(buffer);
-            if (!keyValueTr.FindLastKey())
+            if (!keyValueTr.FindLastKey(buffer.AsSyncReadOnlySpan()))
                 return endKeyBytes;
             var key = keyValueTr.GetKeyIncludingPrefix();
             return key.Slice(keyBytes.Length);

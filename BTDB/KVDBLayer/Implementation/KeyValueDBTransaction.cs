@@ -10,14 +10,11 @@ namespace BTDB.KVDBLayer
         readonly KeyValueDB _keyValueDB;
         IBTreeRootNode? _btreeRoot;
         readonly List<NodeIdxPair> _stack = new List<NodeIdxPair>();
-        byte[] _prefix;
         bool _writing;
         readonly bool _readOnly;
         bool _preapprovedWriting;
-        long _prefixKeyStart;
-        long _prefixKeyCount;
-        long _keyIndex;
         bool _temporaryCloseTransactionLog;
+        long _keyIndex;
 
         public KeyValueDBTransaction(KeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing, bool readOnly)
         {
@@ -25,9 +22,6 @@ namespace BTDB.KVDBLayer
             _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _btreeRoot = btreeRoot;
-            _prefix = Array.Empty<byte>();
-            _prefixKeyStart = 0;
-            _prefixKeyCount = -1;
             _keyIndex = -1;
             _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
         }
@@ -43,15 +37,7 @@ namespace BTDB.KVDBLayer
 
         internal IBTreeRootNode? BtreeRoot => _btreeRoot;
 
-        public void SetKeyPrefix(ByteBuffer prefix)
-        {
-            _prefix = prefix.ToByteArray();
-            _prefixKeyStart = _prefix.Length == 0 ? 0 : -1;
-            _prefixKeyCount = -1;
-            InvalidateCurrentKey();
-        }
-
-        public bool FindFirstKey()
+        public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
             return SetKeyIndex(0);
         }
@@ -211,7 +197,7 @@ namespace BTDB.KVDBLayer
             return BTreeRoot.KeyStartsWithPrefix(_prefix, key);
         }
 
-        ByteBuffer GetCurrentKeyFromStack()
+        ReadOnlySpan<byte> GetCurrentKeyFromStack()
         {
             var nodeIdxPair = _stack[^1];
             return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx);

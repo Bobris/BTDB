@@ -492,8 +492,7 @@ namespace BTDB.KVDBLayer
 
                                 var ctx = new CreateOrUpdateCtx
                                 {
-                                    KeyPrefix = Array.Empty<byte>(),
-                                    Key = keyBuf,
+                                    Key = keyBuf.AsSyncReadOnlySpan(),
                                     ValueFileId = fileId,
                                     ValueOfs = (uint)reader.GetCurrentPosition(),
                                     ValueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen
@@ -511,7 +510,7 @@ namespace BTDB.KVDBLayer
                                     reader.SkipBlock(valueLen);
                                 }
 
-                                _nextRoot.CreateOrUpdate(ctx);
+                                _nextRoot.CreateOrUpdate(ref ctx);
                             }
                             break;
                         case KVCommandType.EraseOne:
@@ -526,7 +525,7 @@ namespace BTDB.KVDBLayer
                                     _compression.DecompressKey(ref keyBuf);
                                 }
 
-                                var findResult = _nextRoot.FindKey(stack, out var keyIndex, Array.Empty<byte>(), keyBuf);
+                                var findResult = _nextRoot.FindKey(stack, out var keyIndex, keyBuf.AsSyncReadOnlySpan(), 0);
                                 if (findResult == FindResult.Exact)
                                     _nextRoot.EraseRange(keyIndex, keyIndex);
                             }
@@ -544,7 +543,7 @@ namespace BTDB.KVDBLayer
                                     _compression.DecompressKey(ref keyBuf);
                                 }
 
-                                var findResult = _nextRoot.FindKey(stack, out var keyIndex1, Array.Empty<byte>(), keyBuf);
+                                var findResult = _nextRoot.FindKey(stack, out var keyIndex1, keyBuf.AsSyncReadOnlySpan(), 0);
                                 if (findResult == FindResult.Previous) keyIndex1++;
                                 key = new byte[keyLen2];
                                 reader.ReadBlock(key);
@@ -554,7 +553,7 @@ namespace BTDB.KVDBLayer
                                     _compression.DecompressKey(ref keyBuf);
                                 }
 
-                                findResult = _nextRoot.FindKey(stack, out var keyIndex2, Array.Empty<byte>(), keyBuf);
+                                findResult = _nextRoot.FindKey(stack, out var keyIndex2, keyBuf.AsSyncReadOnlySpan(), 0);
                                 if (findResult == FindResult.Next) keyIndex2--;
                                 _nextRoot.EraseRange(keyIndex1, keyIndex2);
                             }
@@ -1160,7 +1159,7 @@ namespace BTDB.KVDBLayer
             if (keyCount > 0)
             {
                 var stack = new List<NodeIdxPair>();
-                var prevKey = ByteBuffer.NewEmpty();
+                var prevKey = new ReadOnlySpan<byte>();
                 root.FillStackByIndex(stack, 0);
                 do
                 {

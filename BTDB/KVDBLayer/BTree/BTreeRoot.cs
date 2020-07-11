@@ -87,21 +87,16 @@ namespace BTDB.KVDBLayer.BTree
             return result;
         }
 
-        internal static bool KeyStartsWithPrefix(byte[] prefix, ByteBuffer key)
+        internal static bool KeyStartsWithPrefix(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
         {
             if (key.Length < prefix.Length) return false;
-            var keyBuffer = key.Buffer;
-            var offset = key.Offset;
-            for (int i = 0; i < prefix.Length; i++)
-            {
-                if (keyBuffer[offset + i] != prefix[i]) return false;
-            }
-            return true;
+            return prefix.SequenceEqual(key.Slice(0, prefix.Length));
         }
 
-        static ByteBuffer GetKeyFromStack(List<NodeIdxPair> stack)
+        static ReadOnlySpan<byte> GetKeyFromStack(List<NodeIdxPair> stack)
         {
-            return ((IBTreeLeafNode) stack[stack.Count - 1].Node).GetKey(stack[stack.Count - 1].Idx);
+            var last = stack[^1];
+            return ((IBTreeLeafNode) last.Node).GetKey(last.Idx);
         }
 
         public long CalcKeyCount()
@@ -111,17 +106,17 @@ namespace BTDB.KVDBLayer.BTree
 
         public byte[] GetLeftMostKey()
         {
-            return _rootNode.GetLeftMostKey();
+            return _rootNode!.GetLeftMostKey();
         }
 
         public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
         {
             Debug.Assert(keyIndex >= 0 && keyIndex < _keyValueCount);
             stack.Clear();
-            _rootNode.FillStackByIndex(stack, keyIndex);
+            _rootNode!.FillStackByIndex(stack, keyIndex);
         }
 
-        public long FindLastWithPrefix(byte[] prefix)
+        public long FindLastWithPrefix(in ReadOnlySpan<byte> prefix)
         {
             if (_rootNode == null) return -1;
             return _rootNode.FindLastWithPrefix(prefix);

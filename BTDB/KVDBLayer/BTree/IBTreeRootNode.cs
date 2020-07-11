@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BTDB.StreamLayer;
 
@@ -17,6 +18,7 @@ namespace BTDB.KVDBLayer.BTree
         void SetUlong(uint idx, ulong value);
         IBTreeRootNode NewTransactionRoot();
         IBTreeRootNode CloneRoot();
+        FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
         bool FindNextKey(List<NodeIdxPair> stack);
         bool FindPreviousKey(List<NodeIdxPair> stack);

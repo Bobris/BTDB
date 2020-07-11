@@ -14,50 +14,39 @@ namespace BTDB.KVDBLayer
         string DescriptionForLeaks { get; set; }
 
         /// <summary>
-        /// It sets automatic key prefix, all functions then works relatively to this prefix, it also invalidates current key
+        /// Move actual key pointer to first key matching provided prefix.
         /// </summary>
-        void SetKeyPrefix(ByteBuffer prefix);
+        /// <returns>true if there is such key, false if there are no such keys</returns>
+        bool FindFirstKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Move actual key pointer to first key in current prefix.
+        /// Move actual key pointer to last key matching provided prefix.
         /// </summary>
-        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
-        bool FindFirstKey();
+        /// <returns>true if there is such key, false if there are no such keys</returns>
+        bool FindLastKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Move actual key pointer to last key in current prefix.
-        /// </summary>
-        /// <returns>true if there is such key, false if there are no keys in current prefix</returns>
-        bool FindLastKey();
-
-        /// <summary>
-        /// Move actual key pointer to previus key from current Position
-        /// </summary>
-        /// <returns>true if there was such previous key in curent prefix, else Position will not move</returns>
-        bool FindPreviousKey();
-
-        /// <summary>
-        /// Move actual key pointer to next key from current Position
+        /// Move actual key pointer to previous key from current Position only if still matches provided prefix
         /// </summary>
         /// <returns>true if there was such previous key, else Position will not move</returns>
-        bool FindNextKey();
+        bool FindPreviousKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// Try to find key exactly, then try previous, then try next, then return NotFound
+        /// Move actual key pointer to next key from current Position only if still matches provided prefix
         /// </summary>
-        FindResult Find(ByteBuffer key);
+        /// <returns>true if there was such next key, else Position will not move</returns>
+        bool FindNextKey(in ReadOnlySpan<byte> prefix);
 
         /// <summary>
-        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
+        /// Try to find key exactly, then try previous, then try next, then return NotFound. It has to match at least prefixLen
+        /// </summary>
+        FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen);
+
+        /// <summary>
+        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced.
         /// </summary>
         /// <returns>true for Create, false for Update</returns>
-        bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value);
-
-        /// <summary>
-        /// All in one function for creating and updating key value pair. If Key does not exists it is created and value is always replaced. It automaticaly preppend current prefix to key.
-        /// </summary>
-        /// <returns>true for Create, false for Update</returns>
-        bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+        bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
         /// <summary>
         /// In current prefix will calculate number of key value pairs
@@ -66,13 +55,13 @@ namespace BTDB.KVDBLayer
         long GetKeyValueCount();
 
         /// <summary>
-        /// Gets index of current key in current prefix
+        /// Gets index of current key
         /// </summary>
         /// <returns>-1 if current Key is invalid</returns>
         long GetKeyIndex();
 
         /// <summary>
-        /// Sets index of current key in current prefix
+        /// Sets index of current key
         /// </summary>
         /// <returns>true if such index exists</returns>
         bool SetKeyIndex(long index);
@@ -90,7 +79,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Return current key.
         /// </summary>
-        ByteBuffer GetKey();
+        ReadOnlySpan<byte> GetKeyAsReadOnlySpan();
 
         /// <summary>
         /// Return current key and it includes current prefix
@@ -110,7 +99,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Overwrite current value with new content.
         /// </summary>
-        void SetValue(ByteBuffer value);
+        void SetValue(in ReadOnlySpan<byte> value);
 
         /// <summary>
         /// Remove current key and value. Current key will be invalidated.
@@ -190,12 +179,6 @@ namespace BTDB.KVDBLayer
         /// </summary>
         /// <returns>Size of key and value (possibly even compressed size)</returns>
         KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
-
-        /// <summary>
-        /// Gets current prefix. Do not modify resulting bytes!
-        /// </summary>
-        /// <returns>Prefix. DO NOT MODIFY!</returns>
-        byte[] GetKeyPrefix();
 
         /// <summary>
         /// This is just storage for boolean, add could store here that it does not want to commit transaction, it is up to infrastructure code around if it will listen this advice.
