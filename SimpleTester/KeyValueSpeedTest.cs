@@ -19,7 +19,7 @@ namespace SimpleTester
         readonly Stopwatch _sw = new Stopwatch();
         readonly bool _inMemory;
         readonly bool _memoryMapped;
-        IFileCollection _fileCollection;
+        IFileCollection? _fileCollection;
         readonly bool _fastInMemory;
         readonly KVType _kvType;
 
@@ -36,7 +36,7 @@ namespace SimpleTester
             _fastInMemory = true;
         }
 
-        IFileCollection CreateTestFileCollection()
+        IFileCollection? CreateTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -55,7 +55,7 @@ namespace SimpleTester
             return new OnDiskFileCollection(dbfilename);
         }
 
-        IFileCollection OpenTestFileCollection()
+        IFileCollection? OpenTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -114,7 +114,7 @@ namespace SimpleTester
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
 
-        IKeyValueDB CreateKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compressionStrategy = null)
+        IKeyValueDB CreateKeyValueDB(IFileCollection? fileCollection, ICompressionStrategy? compressionStrategy = null)
         {
             if (fileCollection == null)
             {
@@ -194,7 +194,7 @@ namespace SimpleTester
                 _sw.Stop();
                 Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
                 _sw.Restart();
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
+                using (IKeyValueDB db = new KeyValueDB(fileCollection!))
                 {
                     _sw.Stop();
                     Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
@@ -418,11 +418,11 @@ namespace SimpleTester
             [PrimaryKey(2)] public ulong TestId { get; set; }
 
             [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
-            public string TestName { get; set; }
+            public string? TestName { get; set; }
 
-            public string Data1 { get; set; }
-            public string Data2 { get; set; }
-            public string Data3 { get; set; }
+            public string? Data1 { get; set; }
+            public string? Data2 { get; set; }
+            public string? Data3 { get; set; }
         }
 
         public interface IBtdbTestTable : IRelation<BtdbTest>

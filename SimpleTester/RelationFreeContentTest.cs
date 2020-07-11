@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -23,20 +24,20 @@ namespace SimpleTester
         public ulong CompanyId { get; set; }
         [PrimaryKey(2)]
         public ulong Id { get; set; }
-        public IDictionary<int, SimpleObject> Simple { get; set; }
-        public IDictionary<int, ComplexObject> Complex { get; set; }
-        public IDictionary<int, IIndirect<SimpleObject>> IndirectSimple { get; set; }
-        public IDictionary<int, IIndirect<ComplexObject>> IndirectComplex { get; set; }
+        public IDictionary<int, SimpleObject>? Simple { get; set; }
+        public IDictionary<int, ComplexObject>? Complex { get; set; }
+        public IDictionary<int, IIndirect<SimpleObject>>? IndirectSimple { get; set; }
+        public IDictionary<int, IIndirect<ComplexObject>>? IndirectComplex { get; set; }
     }
 
     public class SimpleObject
     {
-        public string Text { get; set; }
+        public string? Text { get; set; }
     }
 
     public class ComplexObject
     {
-        public SimpleObject SimpleObject { get; set; }
+        public SimpleObject? SimpleObject { get; set; }
     }
 
     public enum DictValueType
@@ -47,7 +48,7 @@ namespace SimpleTester
         IndirectComplex
     }
 
-    [CoreJob]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     [RPlotExporter, RankColumn]
     public class RelationFreeContentTest
     {
@@ -57,8 +58,8 @@ namespace SimpleTester
         [Params(DictValueType.Simple, DictValueType.Complex, DictValueType.IndirectSimple, DictValueType.IndirectComplex)]
         public DictValueType ValueType;
 
-        ObjectDB _db;
-        Func<IObjectDBTransaction, ITestTable> _creator;
+        ObjectDB? _db;
+        Func<IObjectDBTransaction, ITestTable>? _creator;
 
         [GlobalSetup]
         public void Setup()
@@ -108,25 +109,21 @@ namespace SimpleTester
         [Benchmark]
         public void UpdateInRelation()
         {
-            using (var tr = _db.StartTransaction())
-            {
-                var table = _creator(tr);
-                var test = table.FindByIdOrDefault(1, 1);
-                table.Update(test);
-                tr.Commit();
-            }
+            using var tr = _db!.StartTransaction();
+            var table = _creator!(tr);
+            var test = table.FindByIdOrDefault(1, 1);
+            table.Update(test);
+            tr.Commit();
         }
 
         [Benchmark]
         public void ShallowUpdateInRelation()
         {
-            using (var tr = _db.StartTransaction())
-            {
-                var table = _creator(tr);
-                var test = table.FindByIdOrDefault(1, 1);
-                table.ShallowUpdate(test);
-                tr.Commit();
-            }
+            using var tr = _db!.StartTransaction();
+            var table = _creator!(tr);
+            var test = table.FindByIdOrDefault(1, 1);
+            table.ShallowUpdate(test);
+            tr.Commit();
         }
 
     }

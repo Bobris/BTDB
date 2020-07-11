@@ -14,7 +14,7 @@ namespace SimpleTester
             [PrimaryKey(1)]
             public ulong Id { get; set; }
             [SecondaryKey("Email")]
-            public string Email { get; set; }
+            public string? Email { get; set; }
         }
 
         static ObjectDB CreateInMemoryDb()
@@ -126,12 +126,12 @@ namespace SimpleTester
         //definitions for singletons
         public class PersonMap
         {
-            public IDictionary<ulong, Person> Items { get; set; }
+            public IDictionary<ulong, Person>? Items { get; set; }
         }
 
         public class PersonNameIndex
         {
-            public IOrderedDictionary<string, ulong> Items { get; set; }
+            public IOrderedDictionary<string, ulong>? Items { get; set; }
         }
         //
 
@@ -155,8 +155,8 @@ namespace SimpleTester
                     var persons = tr.Singleton<PersonMap>();
                     var emails = tr.Singleton<PersonNameIndex>();
 
-                    persons.Items[idx] = new Person { Email = email, Id = idx };
-                    emails.Items[email] = idx;
+                    persons.Items![idx] = new Person { Email = email, Id = idx };
+                    emails.Items![email] = idx;
                     idx++;
                     tr.Commit();
                 }
@@ -168,9 +168,9 @@ namespace SimpleTester
                 var persons = tr.Singleton<PersonMap>();
                 var emails = tr.Singleton<PersonNameIndex>();
                 ulong sum = 0;
-                foreach (var e in emails.Items)
+                foreach (var e in emails.Items!)
                 {
-                    var p = persons.Items[e.Value];
+                    var p = persons.Items![e.Value];
                     sum += p.Id;
                 }
             }
@@ -183,8 +183,8 @@ namespace SimpleTester
                     var persons = tr.Singleton<PersonMap>();
                     var emails = tr.Singleton<PersonNameIndex>();
 
-                    var p = persons.Items[id];
-                    emails.Items.Remove(p.Email);
+                    var p = persons.Items![id];
+                    emails.Items!.Remove(p.Email!);
                     p.Email += "a";
                     emails.Items[p.Email] = id;
                     persons.Items[id] = p;
@@ -200,8 +200,8 @@ namespace SimpleTester
                     var persons = tr.Singleton<PersonMap>();
                     var emails = tr.Singleton<PersonNameIndex>();
 
-                    var p = persons.Items[id];
-                    emails.Items.Remove(p.Email);
+                    var p = persons.Items![id];
+                    emails.Items!.Remove(p.Email!);
                     persons.Items.Remove(id);
                     tr.Commit();
                 }

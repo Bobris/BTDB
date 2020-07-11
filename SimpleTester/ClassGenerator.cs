@@ -6,9 +6,9 @@ namespace SimpleTester
 {
     public class ClassGenerator
     {
-        StringBuilder _sb;
-        StringBuilder _sbInst;
-        Random _rand;
+        StringBuilder? _sb;
+        StringBuilder? _sbInst;
+        Random? _rand;
 
         public void Run()
         {
@@ -37,12 +37,12 @@ namespace SimpleTester
 
         void GenerateClass(int i)
         {
-            _sb.Append($@"
+            _sb!.Append($@"
     public class TestKlass{i} 
     {{");
-            _sbInst.Append($@"
+            _sbInst!.Append($@"
         yield return new TestKlass{i} {{");
-            var fieldsCount = _rand.Next(2, 5);
+            var fieldsCount = _rand!.Next(2, 5);
             for (var j = 0; j < fieldsCount; j++)
             {
                 switch (_rand.Next(4))

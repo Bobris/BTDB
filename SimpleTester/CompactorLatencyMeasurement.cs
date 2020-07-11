@@ -16,12 +16,12 @@ namespace SimpleTester
         public class SmallObject
         {
             public ulong Id { get; set; }
-            public string Label { get; set; }
+            public string? Label { get; set; }
         }
 
         public class SmallObjects
         {
-            public IOrderedDictionary<ulong, SmallObject> Items { get; set; }
+            public IOrderedDictionary<ulong, SmallObject>? Items { get; set; }
         }
 
         public void Run()
@@ -40,8 +40,8 @@ namespace SimpleTester
                         var objects = tr.Singleton<SmallObjects>();
                         while (true)
                         {
-                            objects.Items.Add(itemsCount, new SmallObject() {Id = itemsCount, Label = "bu"});
-                            
+                            objects.Items!.Add(itemsCount, new SmallObject() {Id = itemsCount, Label = "bu"});
+
                             if(itemsCount % 1_000_000 == 0)
                                 Console.WriteLine("Generated {0}", itemsCount);
 
@@ -59,7 +59,7 @@ namespace SimpleTester
                     using (var tr = objDb.StartWritingTransaction().Result)
                     {
                         var objects = tr.Singleton<SmallObjects>();
-                        itemsCount = (ulong)objects.Items.Count;
+                        itemsCount = (ulong)objects.Items!.Count;
                         tr.Commit();
                     }
 
@@ -71,8 +71,8 @@ namespace SimpleTester
                         {
                             if (i % 2 == 0)
                                 continue;
-                            
-                            objects.Items.Remove(i);
+
+                            objects.Items!.Remove(i);
                         }
 
                         tr.Commit();
