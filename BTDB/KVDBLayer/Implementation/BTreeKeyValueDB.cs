@@ -1270,13 +1270,6 @@ namespace BTDB.KVDBLayer
             Span<byte> trueValue)
         {
             var command = KVCommandType.CreateOrUpdate;
-            if (_compression.ShouldTryToCompressKey(key.Length))
-            {
-                if (_compression.CompressKey(ref key))
-                {
-                    command |= KVCommandType.FirstParamCompressed;
-                }
-            }
 
             var valueSize = value.Length;
             if (_compression.CompressValue(ref value))
@@ -1366,13 +1359,6 @@ namespace BTDB.KVDBLayer
         public void WriteEraseOneCommand(ByteBuffer key)
         {
             var command = KVCommandType.EraseOne;
-            if (_compression.ShouldTryToCompressKey(key.Length))
-            {
-                if (_compression.CompressKey(ref key))
-                {
-                    command |= KVCommandType.FirstParamCompressed;
-                }
-            }
 
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
@@ -1388,30 +1374,13 @@ namespace BTDB.KVDBLayer
 
         public void WriteEraseRangeCommand(ByteBuffer firstKey, ByteBuffer secondKey)
         {
-            var command = KVCommandType.EraseRange;
-            if (_compression.ShouldTryToCompressKey(firstKey.Length))
-            {
-                if (_compression.CompressKey(ref firstKey))
-                {
-                    command |= KVCommandType.FirstParamCompressed;
-                }
-            }
-
-            if (_compression.ShouldTryToCompressKey(secondKey.Length))
-            {
-                if (_compression.CompressKey(ref secondKey))
-                {
-                    command |= KVCommandType.SecondParamCompressed;
-                }
-            }
-
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
             var writer = new SpanWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte) command);
+            writer.WriteUInt8((byte) KVCommandType.EraseRange);
             writer.WriteVInt32(firstKey.Length);
             writer.WriteVInt32(secondKey.Length);
             writer.WriteBlock(firstKey);

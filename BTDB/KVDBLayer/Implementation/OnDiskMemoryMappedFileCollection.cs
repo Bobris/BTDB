@@ -31,6 +31,7 @@ namespace BTDB.KVDBLayer
             readonly uint _index;
             readonly string _fileName;
             long _trueLength;
+            long _cachedLength;
             readonly FileStream _stream;
             readonly object _lock = new object();
             readonly Writer _writer;
@@ -47,6 +48,7 @@ namespace BTDB.KVDBLayer
                 _stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, 1,
                     FileOptions.None);
                 _trueLength = _stream.Length;
+                _cachedLength = _trueLength;
                 _writer = new Writer(this);
             }
 
@@ -163,11 +165,12 @@ namespace BTDB.KVDBLayer
 
                 void ExpandIfNeeded(long size)
                 {
-                    if (_file._stream.Length < size)
+                    if (_file._cachedLength < size)
                     {
                         _file.UnmapContent();
                         var newSize = ((size - 1) / ResizeChunkSize + 1) * ResizeChunkSize;
                         _file._stream.SetLength(newSize);
+                        _file._cachedLength = newSize;
                     }
 
                     _file.MapContent();
@@ -176,7 +179,7 @@ namespace BTDB.KVDBLayer
                 public void Init(ref SpanWriter spanWriter)
                 {
                     spanWriter.Buf = new Span<byte>(_file._pointer + Ofs,
-                        (int) Math.Min((ulong) _file._stream.Length - Ofs, int.MaxValue));
+                        (int) Math.Min((ulong) _file._trueLength - Ofs, int.MaxValue));
                     spanWriter.InitialBuffer = spanWriter.Buf;
                 }
 
