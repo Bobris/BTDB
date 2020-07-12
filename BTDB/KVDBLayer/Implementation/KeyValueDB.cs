@@ -490,27 +490,31 @@ namespace BTDB.KVDBLayer
                                     _compression.DecompressKey(ref keyBuf);
                                 }
 
-                                var ctx = new CreateOrUpdateCtx
-                                {
-                                    Key = keyBuf.AsSyncReadOnlySpan(),
-                                    ValueFileId = fileId,
-                                    ValueOfs = (uint)reader.GetCurrentPosition(),
-                                    ValueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen
-                                };
                                 if (valueLen <= MaxValueSizeInlineInMemory &&
                                     (command & KVCommandType.SecondParamCompressed) == 0)
                                 {
+                                    var ctx = new CreateOrUpdateCtx
+                                    {
+                                        Key = keyBuf.AsSyncReadOnlySpan()
+                                    };
                                     reader.ReadBlock(inlineValueBuf, 0, valueLen);
-                                    StoreValueInlineInMemory(ByteBuffer.NewSync(inlineValueBuf, 0, valueLen),
+                                    StoreValueInlineInMemory(inlineValueBuf.AsSpan(0, valueLen),
                                         out ctx.ValueOfs, out ctx.ValueSize);
                                     ctx.ValueFileId = 0;
+                                    _nextRoot.CreateOrUpdate(ref ctx);
                                 }
                                 else
                                 {
+                                    var ctx = new CreateOrUpdateCtx
+                                    {
+                                        Key = keyBuf.AsSyncReadOnlySpan(),
+                                        ValueFileId = fileId,
+                                        ValueOfs = (uint)reader.GetCurrentPosition(),
+                                        ValueSize = (command & KVCommandType.SecondParamCompressed) != 0 ? -valueLen : valueLen
+                                    };
                                     reader.SkipBlock(valueLen);
+                                    _nextRoot.CreateOrUpdate(ref ctx);
                                 }
-
-                                _nextRoot.CreateOrUpdate(ref ctx);
                             }
                             break;
                         case KVCommandType.EraseOne:
@@ -615,11 +619,9 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        static void StoreValueInlineInMemory(ByteBuffer value, out uint valueOfs, out int valueSize)
+        static void StoreValueInlineInMemory(in ReadOnlySpan<byte> value, out uint valueOfs, out int valueSize)
         {
-            var inlineValueBuf = value.Buffer;
             var valueLen = value.Length;
-            var ofs = value.Offset;
             switch (valueLen)
             {
                 case 0:
@@ -628,38 +630,31 @@ namespace BTDB.KVDBLayer
                     break;
                 case 1:
                     valueOfs = 0;
-                    valueSize = 0x1000000 | (inlineValueBuf[ofs] << 16);
+                    valueSize = 0x1000000 | (value[0] << 16);
                     break;
                 case 2:
                     valueOfs = 0;
-                    valueSize = 0x2000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8);
+                    valueSize = 0x2000000 | (value[0] << 16) | (value[1] << 8);
                     break;
                 case 3:
                     valueOfs = 0;
-                    valueSize = 0x3000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) |
-                                inlineValueBuf[ofs + 2];
+                    valueSize = 0x3000000 | (value[0] << 16) | (value[1] << 8) | value[2];
                     break;
                 case 4:
-                    valueOfs = inlineValueBuf[ofs + 3];
-                    valueSize = 0x4000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) |
-                                inlineValueBuf[ofs + 2];
+                    valueOfs = value[3];
+                    valueSize = 0x4000000 | (value[0] << 16) | (value[1] << 8) | value[2];
                     break;
                 case 5:
-                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8);
-                    valueSize = 0x5000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) |
-                                inlineValueBuf[ofs + 2];
+                    valueOfs = value[3] | ((uint)value[4] << 8);
+                    valueSize = 0x5000000 | (value[0] << 16) | (value[1] << 8) | value[2];
                     break;
                 case 6:
-                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8) |
-                               ((uint)inlineValueBuf[ofs + 5] << 16);
-                    valueSize = 0x6000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) |
-                                inlineValueBuf[ofs + 2];
+                    valueOfs = value[3] | ((uint)value[4] << 8) | ((uint)value[5] << 16);
+                    valueSize = 0x6000000 | (value[0] << 16) | (value[1] << 8) | value[2];
                     break;
                 case 7:
-                    valueOfs = inlineValueBuf[ofs + 3] | ((uint)inlineValueBuf[ofs + 4] << 8) |
-                               ((uint)inlineValueBuf[ofs + 5] << 16) | (((uint)inlineValueBuf[ofs + 6]) << 24);
-                    valueSize = 0x7000000 | (inlineValueBuf[ofs] << 16) | (inlineValueBuf[ofs + 1] << 8) |
-                                inlineValueBuf[ofs + 2];
+                    valueOfs = value[3] | ((uint)value[4] << 8) | ((uint)value[5] << 16) | (((uint)value[6]) << 24);
+                    valueSize = 0x7000000 | (value[0] << 16) | (value[1] << 8) | value[2];
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -1000,29 +995,21 @@ namespace BTDB.KVDBLayer
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
         }
 
-        public void WriteCreateOrUpdateCommand(byte[] prefix, ByteBuffer key, ByteBuffer value, out uint valueFileId,
+        public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value, out uint valueFileId,
             out uint valueOfs, out int valueSize)
         {
-            var command = KVCommandType.CreateOrUpdate;
-
             valueSize = value.Length;
-            if (_compression.CompressValue(ref value))
-            {
-                command |= KVCommandType.SecondParamCompressed;
-                valueSize = -value.Length;
-            }
 
             var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
-            if (trlPos > 256 && trlPos + prefix.Length + key.Length + 16 + value.Length > MaxTrLogFileSize)
+            if (trlPos > 256 && trlPos + key.Length + 16 + value.Length > MaxTrLogFileSize)
             {
                 WriteStartOfNewTransactionLogFile();
             }
 
             var writer = new SpanWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte)command);
-            writer.WriteVInt32(prefix.Length + key.Length);
+            writer.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
+            writer.WriteVInt32(key.Length);
             writer.WriteVInt32(value.Length);
-            writer.WriteBlock(prefix);
             writer.WriteBlock(key);
             if (valueSize != 0)
             {
@@ -1113,7 +1100,7 @@ namespace BTDB.KVDBLayer
             return result;
         }
 
-        public void WriteEraseOneCommand(ByteBuffer key)
+        public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
         {
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
@@ -1127,7 +1114,7 @@ namespace BTDB.KVDBLayer
             writer.Sync();
         }
 
-        public void WriteEraseRangeCommand(ByteBuffer firstKey, ByteBuffer secondKey)
+        public void WriteEraseRangeCommand(in ReadOnlySpan<byte> firstKey, in ReadOnlySpan<byte> secondKey)
         {
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)
             {
