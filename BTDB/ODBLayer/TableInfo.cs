@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
-using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
@@ -14,13 +13,13 @@ using Extensions = BTDB.FieldHandler.Extensions;
 
 namespace BTDB.ODBLayer
 {
-    delegate void ObjectSaver(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
+    delegate void ObjectSaver(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
         ref SpanWriter writer, object value);
 
     delegate void ObjectLoader(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
         ref SpanReader reader, object value);
 
-    delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata metadata,
+    delegate void ObjectFreeContent(IInternalObjectDBTransaction transaction, DBObjectMetadata? metadata,
         ref SpanReader reader, IList<ulong> dictIds);
 
     class TableInfo
@@ -469,11 +468,12 @@ namespace BTDB.ODBLayer
 
         internal static byte[] BuildKeyForTableVersions(uint tableId, uint tableVersion)
         {
-            var key = new byte[PackUnpack.LengthVUInt(tableId) + PackUnpack.LengthVUInt(tableVersion)];
-            var ofs = 0;
-            PackUnpack.PackVUInt(key, ref ofs, tableId);
-            PackUnpack.PackVUInt(key, ref ofs, tableVersion);
-            return key;
+            Span<byte> buf = stackalloc byte[2+5+5];
+            var writer = new SpanWriter(buf);
+            writer.WriteBlock(ObjectDB.TableVersionsPrefix);
+            writer.WriteVUInt32(tableId);
+            writer.WriteVUInt32(tableVersion);
+            return writer.GetSpan().ToArray();
         }
 
         public byte[]? SingletonContent(long transactionNumber)

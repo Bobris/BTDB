@@ -10,7 +10,7 @@ namespace BTDB.KVDBLayer.BTree
         void CreateOrUpdate(ref CreateOrUpdateCtx ctx);
         FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key);
         long CalcKeyCount();
-        byte[] GetLeftMostKey();
+        ReadOnlySpan<byte> GetLeftMostKey();
         void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex);
         long FindLastWithPrefix(in ReadOnlySpan<byte> prefix);
         bool NextIdxValid(int idx);

@@ -166,6 +166,25 @@ namespace BTDB.KVDBLayer
             return false;
         }
 
+        public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+        {
+            if (!_cursor.FindFirst(prefix))
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
+
+            index += _cursor.CalcIndex();
+            if (_cursor.SeekIndex(_cursor.CalcIndex() + index))
+            {
+                _keyIndex = index;
+                if (_cursor.KeyHasPrefix(prefix))
+                    return true;
+            }
+            InvalidateCurrentKey();
+            return false;
+        }
+
         ReadOnlySpan<byte> GetCurrentKeyFromStack()
         {
             var result = new byte[_cursor.GetKeyLength()];
@@ -409,7 +428,7 @@ namespace BTDB.KVDBLayer
 
         public uint GetUlongCount()
         {
-            return BTreeRoot.GetUlongCount();
+            return BTreeRoot!.GetUlongCount();
         }
 
         string? _descriptionForLeaks;

@@ -10,7 +10,7 @@ namespace BTDB.KVDBLayer.BTree
         internal long _transactionId;
         internal Dictionary<ulong, ulong> _newPositionMap;
         internal DateTime _iterationTimeOut;
-        internal byte[] _restartKey;
+        internal byte[]? _restartKey;
         internal bool _interrupt;
     }
 }

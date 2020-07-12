@@ -17,6 +17,15 @@ namespace BTDB.KVDBLayer
             return transaction.Find(key, (uint)key.Length) == FindResult.Exact;
         }
 
+        public static long GetKeyValueCount(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
+        {
+            if (!transaction.FindFirstKey(prefix)) return 0;
+            var startIndex = transaction.GetKeyIndex();
+            transaction.FindLastKey(prefix);
+            var endIndex = transaction.GetKeyIndex();
+            return endIndex - startIndex + 1;
+        }
+
         public static long EraseAll(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
         {
             if (!transaction.FindFirstKey(prefix)) return 0;

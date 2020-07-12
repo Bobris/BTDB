@@ -145,6 +145,27 @@ namespace BTDB.KVDBLayer
             return true;
         }
 
+        public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+        {
+            if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) ==
+                FindResult.NotFound)
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
+
+            index += _keyIndex;
+            if (index < _btreeRoot!.CalcKeyCount())
+            {
+                _keyIndex = index;
+                _btreeRoot!.FillStackByIndex(_stack, _keyIndex);
+                if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
+                    return true;
+            }
+            InvalidateCurrentKey();
+            return false;
+        }
+
         static bool CheckPrefixIn(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
         {
             return BTreeRoot.KeyStartsWithPrefix(prefix, key);

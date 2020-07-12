@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using BTDB.Buffer;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree
@@ -17,28 +16,28 @@ namespace BTDB.KVDBLayer.BTree
             _transactionId = transactionId;
         }
 
-        public void CreateOrUpdate(CreateOrUpdateCtx ctx)
+        public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
         {
             ctx.TransactionId = _transactionId;
             if (ctx.Stack == null) ctx.Stack = new List<NodeIdxPair>();
             else ctx.Stack.Clear();
             if (_rootNode == null)
             {
-                _rootNode = ctx.WholeKeyLen > BTreeLeafComp.MaxTotalLen
-                    ? BTreeLeaf.CreateFirst(ctx)
-                    : BTreeLeafComp.CreateFirst(ctx);
+                _rootNode = ctx.Key.Length > BTreeLeafComp.MaxTotalLen
+                    ? BTreeLeaf.CreateFirst(ref ctx)
+                    : BTreeLeafComp.CreateFirst(ref ctx);
                 _keyValueCount = 1;
-                ctx.Stack.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
+                ctx.Stack!.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
                 ctx.KeyIndex = 0;
                 ctx.Created = true;
                 return;
             }
             ctx.Depth = 0;
-            _rootNode.CreateOrUpdate(ctx);
+            _rootNode.CreateOrUpdate(ref ctx);
             if (ctx.Split)
             {
-                _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1, ctx.Node2);
-                ctx.Stack.Insert(0, new NodeIdxPair {Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0});
+                _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1!, ctx.Node2!);
+                ctx.Stack!.Insert(0, new NodeIdxPair {Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0});
             }
             else if (ctx.Update)
             {
@@ -50,7 +49,12 @@ namespace BTDB.KVDBLayer.BTree
             }
         }
 
-        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, byte[] prefix, ByteBuffer key)
+        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen)
         {
             stack.Clear();
             if (_rootNode == null)
@@ -58,18 +62,18 @@ namespace BTDB.KVDBLayer.BTree
                 keyIndex = -1;
                 return FindResult.NotFound;
             }
-            var result = _rootNode.FindKey(stack, out keyIndex, prefix, key);
+            var result = _rootNode.FindKey(stack, out keyIndex, key);
             if (result == FindResult.Previous)
             {
                 if (keyIndex < 0)
                 {
                     keyIndex = 0;
-                    stack[stack.Count - 1] = new NodeIdxPair {Node = stack[stack.Count - 1].Node, Idx = 0};
+                    stack[^1] = new NodeIdxPair {Node = stack[^1].Node, Idx = 0};
                     result = FindResult.Next;
                 }
                 else
                 {
-                    if (!KeyStartsWithPrefix(prefix, GetKeyFromStack(stack)))
+                    if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
                     {
                         result = FindResult.Next;
                         keyIndex++;
@@ -79,7 +83,7 @@ namespace BTDB.KVDBLayer.BTree
                         }
                     }
                 }
-                if (!KeyStartsWithPrefix(prefix, GetKeyFromStack(stack)))
+                if (!KeyStartsWithPrefix(key.Slice(0, (int)prefixLen), GetKeyFromStack(stack)))
                 {
                     return FindResult.NotFound;
                 }
@@ -89,6 +93,7 @@ namespace BTDB.KVDBLayer.BTree
 
         internal static bool KeyStartsWithPrefix(in ReadOnlySpan<byte> prefix, in ReadOnlySpan<byte> key)
         {
+            if (prefix.Length == 0) return true;
             if (key.Length < prefix.Length) return false;
             return prefix.SequenceEqual(key.Slice(0, prefix.Length));
         }
@@ -104,7 +109,7 @@ namespace BTDB.KVDBLayer.BTree
             return _keyValueCount;
         }
 
-        public byte[] GetLeftMostKey()
+        public ReadOnlySpan<byte> GetLeftMostKey()
         {
             return _rootNode!.GetLeftMostKey();
         }
@@ -129,7 +134,7 @@ namespace BTDB.KVDBLayer.BTree
 
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
-            stack.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
+            stack.Add(new NodeIdxPair {Node = _rootNode!, Idx = 0});
             _rootNode.FillStackByLeftMost(stack, 0);
         }
 
@@ -150,22 +155,21 @@ namespace BTDB.KVDBLayer.BTree
 
         public void Iterate(ValuesIterateAction action)
         {
-            if (_rootNode == null) return;
-            _rootNode.Iterate(action);
+            _rootNode?.Iterate(action);
         }
 
         public long TransactionId => _transactionId;
 
-        public string DescriptionForLeaks { get; set; }
+        public string? DescriptionForLeaks { get; set; }
         public uint TrLogFileId { get; set; }
         public uint TrLogOffset { get; set; }
 
         public int UseCount { get; set; }
         public ulong CommitUlong { get; set; }
 
-        ulong[] CloneUlongs()
+        ulong[]? CloneUlongs()
         {
-            ulong[] newulongs = null;
+            ulong[]? newulongs = null;
             if (_ulongs != null)
             {
                 newulongs = new ulong[_ulongs.Length];
@@ -211,12 +215,12 @@ namespace BTDB.KVDBLayer.BTree
                 return;
             }
             _keyValueCount -= lastKeyIndex - firstKeyIndex + 1;
-            _rootNode = _rootNode.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
+            _rootNode = _rootNode!.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
         }
 
         public bool FindNextKey(List<NodeIdxPair> stack)
         {
-            int idx = stack.Count - 1;
+            var idx = stack.Count - 1;
             while (idx >= 0)
             {
                 var pair = stack[idx];
@@ -273,12 +277,12 @@ namespace BTDB.KVDBLayer.BTree
             _rootNode = _rootNode.ReplaceValues(ctx);
         }
 
-        IBTreeNode BuildTreeNode(long keyCount, ref SpanReader reader, BuildTreeCallback memberGenerator)
+        IBTreeNode BuildTreeNode(long keyCount, ref SpanReader outsideReader, BuildTreeCallback memberGenerator)
         {
             var leafs = (keyCount + BTreeLeafComp.MaxMembers - 1) / BTreeLeafComp.MaxMembers;
             var order = 0L;
             var done = 0L;
-            return BuildBranchNode(leafs, ref reader, (ref SpanReader reader) =>
+            return BuildBranchNode(leafs, ref outsideReader, (ref SpanReader reader) =>
             {
                 order++;
                 var reach = keyCount * order / leafs;
@@ -315,7 +319,7 @@ namespace BTDB.KVDBLayer.BTree
             });
         }
 
-        ulong[] _ulongs;
+        ulong[]? _ulongs;
 
         public ulong GetUlong(uint idx)
         {
@@ -331,10 +335,10 @@ namespace BTDB.KVDBLayer.BTree
             _ulongs[idx] = value;
         }
 
-        public ulong[] UlongsArray
+        public ulong[]? UlongsArray
         {
-            get { return _ulongs; }
-            set { _ulongs = value; }
+            get => _ulongs;
+            set => _ulongs = value;
         }
     }
 }

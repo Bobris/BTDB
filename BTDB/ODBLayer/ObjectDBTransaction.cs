@@ -137,20 +137,18 @@ namespace BTDB.ODBLayer
                 if (oid == 0)
                 {
                     prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
-                    _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                    if (!_keyValueTr.FindFirstKey()) break;
+                    if (!_keyValueTr!.FindFirstKey(ObjectDB.AllObjectsPrefix)) break;
                 }
                 else
                 {
                     if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
                     {
-                        _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
                         oid++;
-                        var key = BuildKeyFromOid(oid);
-                        var result = _keyValueTr.Find(ByteBuffer.NewSync(key));
+                        var key = BuildKeyFromOidWithAllObjectsPrefix(oid);
+                        var result = _keyValueTr!.Find(key, 0);
                         if (result == FindResult.Previous)
                         {
-                            if (!_keyValueTr.FindNextKey())
+                            if (!_keyValueTr.FindNextKey(ObjectDB.AllObjectsPrefix))
                             {
                                 result = FindResult.NotFound;
                             }
@@ -164,7 +162,7 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (!_keyValueTr!.FindNextKey()) break;
+                        if (!_keyValueTr!.FindNextKey(ObjectDB.AllObjectsPrefix)) break;
                     }
 
                     prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
@@ -298,7 +296,8 @@ namespace BTDB.ODBLayer
         {
             reader = new SpanReader(_keyValueTr!.GetValueAsReadOnlySpan());
             var tableId = reader.ReadVUInt32();
-            tableInfo = _owner.TablesInfo.FindById(tableId) ?? throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
+            tableInfo = _owner.TablesInfo.FindById(tableId) ??
+                        throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
             EnsureClientTypeNotNull(tableInfo);
         }
 
@@ -316,8 +315,7 @@ namespace BTDB.ODBLayer
         object? GetDirectlyFromStorage(ulong oid)
         {
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+            if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
             {
                 return null;
             }
@@ -346,8 +344,7 @@ namespace BTDB.ODBLayer
         public KeyValuePair<uint, uint> GetStorageSize(ulong oid)
         {
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            if (!_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+            if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
             {
                 return new KeyValuePair<uint, uint>(0, 0);
             }
@@ -474,10 +471,9 @@ namespace BTDB.ODBLayer
                 if (content == null)
                 {
                     _keyValueTrProtector.Start();
-                    _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                    if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+                    if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
                     {
-                        content = _keyValueTr.GetValueAsByteArray();
+                        content = _keyValueTr.GetValueAsReadOnlySpan().ToArray();
                         tableInfo.CacheSingletonContent(_transactionNumber, content);
                     }
                 }
@@ -724,17 +720,31 @@ namespace BTDB.ODBLayer
 
         ulong ReadOidFromCurrentKeyInTransaction()
         {
-            var key = _keyValueTr!.GetKey();
-            var bufOfs = key.Offset;
-            var oid = PackUnpack.UnpackVUInt(key.Buffer!, ref bufOfs);
-            return oid;
+            var key = _keyValueTr!.GetKeyAsReadOnlySpan().Slice(1);
+            ref var keyRef = ref MemoryMarshal.GetReference(key);
+            var len = PackUnpack.LengthVUIntByFirstByte(key[0]);
+            if (key.Length < len) PackUnpack.ThrowEndOfStreamException();
+            return PackUnpack.UnsafeUnpackVUInt(ref keyRef, len);
         }
 
-        internal static byte[] BuildKeyFromOid(ulong oid)
+        internal static byte[] BuildKeyFromOidWithAllObjectsPrefix(ulong oid)
         {
             var len = PackUnpack.LengthVUInt(oid);
-            var key = new byte[len];
-            PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(key.AsSpan()), oid, len);
+            var key = new byte[ObjectDB.AllObjectsPrefixLen + len];
+            key[0] = ObjectDB.AllObjectsPrefixByte;
+            PackUnpack.UnsafePackVUInt(ref key[ObjectDB.AllObjectsPrefixLen], oid, len);
+            return key;
+        }
+
+        internal static byte[] BuildKeyFromOid(in ReadOnlySpan<byte> prefix, ulong oid)
+        {
+            var len = PackUnpack.LengthVUInt(oid);
+            var key = new byte[prefix.Length + len];
+            Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(key.AsSpan()),
+                ref MemoryMarshal.GetReference(prefix), (uint) prefix.Length);
+            PackUnpack.UnsafePackVUInt(
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key.AsSpan()), (IntPtr) prefix.Length), oid,
+                len);
             return key;
         }
 
@@ -815,8 +825,7 @@ namespace BTDB.ODBLayer
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             metadata.State = DBObjectState.Deleted;
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            if (_keyValueTr.FindExactKey(BuildKeyFromOid(metadata.Id)))
+            if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id)))
                 _keyValueTr.EraseCurrent();
             tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             if (_objSmallCache != null)
@@ -852,8 +861,7 @@ namespace BTDB.ODBLayer
 
             _dirtyObjSet?.Remove(oid);
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            if (_keyValueTr.FindExactKey(BuildKeyFromOid(oid)))
+            if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
                 _keyValueTr.EraseCurrent();
             if (obj == null) return;
             DBObjectMetadata metadata = null;
@@ -954,8 +962,7 @@ namespace BTDB.ODBLayer
             }
 
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(metadata.Id), writer.GetSpan());
+            _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id), writer.GetSpan());
         }
 
         void PersistTableInfo(TableInfo tableInfo)
@@ -965,30 +972,31 @@ namespace BTDB.ODBLayer
             {
                 if (tableInfo.LastPersistedVersion <= 0)
                 {
-                    _keyValueTr!.SetKeyPrefix(ObjectDB.TableNamesPrefix);
-                    if (_keyValueTr.CreateKey(BuildKeyFromOid(tableInfo.Id)))
+                    var keyTableId = BuildKeyFromOid(ObjectDB.TableNamesPrefix, tableInfo.Id);
+                    if (_keyValueTr!.FindExactKey(keyTableId))
                     {
                         var writer = new SpanWriter();
                         writer.WriteString(tableInfo.Name);
-                        _keyValueTr.SetValue(writer.GetByteBufferAndReset());
+                        _keyValueTr.CreateOrUpdateKeyValue(keyTableId, writer.GetSpan());
                     }
                 }
 
-                _keyValueTr!.SetKeyPrefix(ObjectDB.TableVersionsPrefix);
-                if (_keyValueTr.CreateKey(TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
+                if (!_keyValueTr!.FindExactKey(
+                    TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion)))
                 {
                     var tableVersionInfo = tableInfo.ClientTableVersionInfo;
                     var writer = new SpanWriter();
                     tableVersionInfo!.Save(ref writer);
-                    _keyValueTr.SetValue(writer.GetByteBufferAndReset());
+                    _keyValueTr.CreateOrUpdateKeyValue(
+                        TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion),
+                        writer.GetSpan());
                 }
             }
 
             if (tableInfo.NeedStoreSingletonOid)
             {
-                _keyValueTr!.SetKeyPrefix(ObjectDB.TableSingletonsPrefix);
-                _keyValueTr.CreateOrUpdateKeyValue(BuildKeyFromOid(tableInfo.Id),
-                    BuildKeyFromOid((ulong) tableInfo.SingletonOid));
+                _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
+                    BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong) tableInfo.SingletonOid));
             }
         }
 
@@ -1022,14 +1030,10 @@ namespace BTDB.ODBLayer
             _lastDictId = 0;
             // Resetting last oid is risky due to singletons. So better to waste something.
             _keyValueTrProtector.Start();
-            _keyValueTr!.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-            _keyValueTr.EraseAll();
-            _keyValueTr.SetKeyPrefix(ObjectDB.AllDictionariesPrefix);
-            _keyValueTr.EraseAll();
-            _keyValueTr.SetKeyPrefix(ObjectDB.AllRelationsPKPrefix);
-            _keyValueTr.EraseAll();
-            _keyValueTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
-            _keyValueTr.EraseAll();
+            _keyValueTr!.EraseAll(ObjectDB.AllObjectsPrefix);
+            _keyValueTr.EraseAll(ObjectDB.AllDictionariesPrefix);
+            _keyValueTr.EraseAll(ObjectDB.AllRelationsPKPrefix);
+            _keyValueTr.EraseAll(ObjectDB.AllRelationsSKPrefix);
         }
     }
 }

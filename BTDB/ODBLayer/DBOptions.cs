@@ -34,9 +34,9 @@ namespace BTDB.ODBLayer
         }
 
         public bool AutoRegisterType { get; private set; }
-        public IType2NameRegistry CustomType2NameRegistry { get; private set; }
+        public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
         public bool SelfHealing { get; private set; }
 
-        public ISymmetricCipher SymmetricCipher { get; private set; }
+        public ISymmetricCipher? SymmetricCipher { get; private set; }
     }
 }

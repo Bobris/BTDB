@@ -324,6 +324,14 @@ namespace BTDB.Buffer
             return res;
         }
 
+        public static ulong UnpackVUInt(in ReadOnlySpan<byte> data)
+        {
+            var len = LengthVUIntByFirstByte(data[0]);
+            if ((uint)data.Length < len) ThrowEndOfStreamException();
+            // All range checks were done already before, so now do it without them for speed
+            return UnsafeUnpackVUInt(ref MemoryMarshal.GetReference(data), len);
+        }
+
         static ReadOnlySpan<byte> LzcToVIntLen => new byte[65]
         {
             9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5,

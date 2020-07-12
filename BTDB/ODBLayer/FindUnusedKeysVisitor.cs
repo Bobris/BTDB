@@ -68,22 +68,19 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<UnseenKey> UnseenKeys()
         {
-            using (var trkv = _keyValueDb.StartReadOnlyTransaction())
+            using var trkv = _keyValueDb.StartReadOnlyTransaction();
+            foreach (var prefix in SupportedKeySpaces())
             {
-                foreach (var prefix in SupportedKeySpaces())
+                if (!trkv.FindFirstKey(prefix))
+                    continue;
+                do
                 {
-                    trkv.SetKeyPrefixUnsafe(prefix);
-                    if (!trkv.FindFirstKey())
-                        continue;
-                    do
+                    yield return new UnseenKey
                     {
-                        yield return new UnseenKey
-                        {
-                            Key = trkv.GetKeyAsReadOnlySpan().ToArray(),
-                            ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
-                        };
-                    } while (trkv.FindNextKey());
-                }
+                        Key = trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length).ToArray(),
+                        ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
+                    };
+                } while (trkv.FindNextKey(prefix));
             }
         }
 

@@ -28,7 +28,6 @@ namespace BTDB.KVDBLayer
 
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
-            _stack.Clear();
             if (BtreeRoot.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) == FindResult.NotFound)
             {
                 return false;
@@ -128,6 +127,28 @@ namespace BTDB.KVDBLayer
         {
             if (_keyIndex < 0) return -1;
             return _keyIndex;
+        }
+
+        public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+        {
+            if (BtreeRoot.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) == FindResult.NotFound)
+            {
+                return false;
+            }
+
+            index += _keyIndex;
+            if (index < BtreeRoot.CalcKeyCount())
+            {
+                BtreeRoot.FillStackByIndex(_stack, index);
+                _keyIndex = index;
+                if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
+                {
+                    return true;
+                }
+            }
+
+            InvalidateCurrentKey();
+            return false;
         }
 
         public bool SetKeyIndex(long index)

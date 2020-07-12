@@ -2,7 +2,7 @@ using BTDB.Allocators;
 using System;
 using Xunit;
 
-namespace ARTLibTest
+namespace BTreeLibTest
 {
     public class OffHeapAllocatorTests
     {
