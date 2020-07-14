@@ -27,7 +27,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
         const uint TableVersionsPrefixLen = 2;
         internal static readonly byte[] TableSingletonsPrefix = { 0, 2 }; // Index Table => singleton oid
-        const uint TableSingletonsPrefixLen = 2;
+        internal const uint TableSingletonsPrefixLen = 2;
         internal static readonly byte[] LastDictIdKey = { 0, 3 }; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
         internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
         const int RelationNamesPrefixLen = 2;

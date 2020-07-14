@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Threading;
 
 namespace BTDB.KVDBLayer
@@ -24,6 +25,15 @@ namespace BTDB.KVDBLayer
             transaction.FindLastKey(prefix);
             var endIndex = transaction.GetKeyIndex();
             return endIndex - startIndex + 1;
+        }
+
+        public static long GetKeyIndex(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
+        {
+            var currentIndex = transaction.GetKeyIndex();
+            if (!transaction.FindFirstKey(prefix)) throw new InvalidDataException();
+            var relative = currentIndex - transaction.GetKeyIndex();
+            transaction.SetKeyIndex(currentIndex);
+            return relative;
         }
 
         public static long EraseAll(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
