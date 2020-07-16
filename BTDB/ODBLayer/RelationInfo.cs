@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
@@ -17,8 +18,6 @@ namespace BTDB.ODBLayer
 {
     delegate void RelationLoader(IInternalObjectDBTransaction transaction, ref SpanReader reader, object value);
     delegate object RelationLoaderFunc(IInternalObjectDBTransaction transaction, ref SpanReader reader);
-    delegate void RelationKeysSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object o1,
-        object o2);
     delegate void RelationSaver(IInternalObjectDBTransaction transaction, ref SpanWriter writer, object value);
 
     public class RelationInfo
@@ -50,7 +49,7 @@ namespace BTDB.ODBLayer
                     $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}");
             }
 
-            internal object CreateInstance(IInternalObjectDBTransaction tr, ByteBuffer keyBytes, ByteBuffer valueBytes)
+            internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
             {
                 var reader = new SpanReader(keyBytes);
                 var obj = _primaryKeysLoader(tr, ref reader);
@@ -329,6 +328,7 @@ namespace BTDB.ODBLayer
         bool? _needImplementFreeContent;
         internal byte[]? PrimeSK2Real;
 
+        // ReSharper disable once NotNullMemberIsNotInitialized - not true
         public RelationInfo(uint id, string name, RelationBuilder builder, IInternalObjectDBTransaction tr)
         {
             _id = id;
@@ -366,7 +366,6 @@ namespace BTDB.ODBLayer
                 writerKey.WriteVUInt32(ClientTypeVersion);
                 var writerValue = new SpanWriter();
                 ClientRelationVersionInfo.Save(ref writerValue);
-                tr.KeyValueDBTransaction.SetKeyPrefix(ByteBuffer.NewEmpty());
                 tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(writerKey.GetSpan(), writerValue.GetSpan());
 
                 CreateCreatorLoadersAndSavers();
@@ -472,8 +471,7 @@ namespace BTDB.ODBLayer
 
         long GetRelationCount(IInternalObjectDBTransaction tr)
         {
-            tr.KeyValueDBTransaction.SetKeyPrefix(Prefix);
-            return tr.KeyValueDBTransaction.GetKeyValueCount();
+            return tr.KeyValueDBTransaction.GetKeyValueCount(Prefix);
         }
 
         void UpdateSecondaryKeys(IInternalObjectDBTransaction tr, RelationVersionInfo info,
@@ -506,8 +504,7 @@ namespace BTDB.ODBLayer
 
         bool WrongCountInSecondaryKey(IKeyValueDBTransaction tr, long count, uint index)
         {
-            SetPrefixToSecondaryKey(tr, index);
-            return count != tr.GetKeyValueCount();
+            return count != tr.GetKeyValueCount(GetPrefixToSecondaryKey(index));
         }
 
         void ClearRelationData(IInternalObjectDBTransaction tr, RelationVersionInfo info)
@@ -521,23 +518,20 @@ namespace BTDB.ODBLayer
             writer.WriteBlock(ObjectDB.AllRelationsPKPrefix);
             writer.WriteVUInt32(Id);
 
-            tr.KeyValueDBTransaction.SetKeyPrefix(writer.GetByteBufferAndReset());
-            tr.KeyValueDBTransaction.EraseAll();
+            tr.KeyValueDBTransaction.EraseAll(writer.GetSpan());
         }
 
         void DeleteSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
         {
-            SetPrefixToSecondaryKey(keyValueTr, index);
-            keyValueTr.EraseAll();
+            keyValueTr.EraseAll(GetPrefixToSecondaryKey(index));
         }
 
-        void SetPrefixToSecondaryKey(IKeyValueDBTransaction keyValueTr, uint index)
+        ReadOnlySpan<byte> GetPrefixToSecondaryKey(uint index)
         {
             var writer = new SpanWriter();
             writer.WriteBlock(PrefixSecondary);
             writer.WriteUInt8((byte)index);
-
-            keyValueTr.SetKeyPrefix(writer.GetByteBufferAndReset());
+            return writer.GetSpan();
         }
 
         void CalculateSecondaryKey(IInternalObjectDBTransaction tr, ReadOnlySpan<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
@@ -562,16 +556,17 @@ namespace BTDB.ODBLayer
                 var obj = enumerator.Current;
 
                 tr.TransactionProtector.Start();
-                tr.KeyValueDBTransaction.SetKeyPrefix(PrefixSecondary);
 
                 for (var i = 0; i < indexes.Length; i++)
                 {
+                    keyWriter.WriteBlock(PrefixSecondary);
                     keyWriter.WriteUInt8((byte)indexes[i].Key);
-                    keySavers[i](tr, ref keyWriter, obj);
-                    var keyBytes = keyWriter.GetSpanAndReset();
+                    keySavers[i](tr, ref keyWriter, obj!);
+                    var keyBytes = keyWriter.GetSpan();
 
                     if (!tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>()))
                         throw new BTDBException("Internal error, secondary key bytes must be always unique.");
+                    keyWriter.Reset();
                 }
             }
         }
@@ -582,18 +577,18 @@ namespace BTDB.ODBLayer
             var writer = new SpanWriter();
             writer.WriteByteArrayRaw(ObjectDB.RelationVersionsPrefix);
             writer.WriteVUInt32(_id);
-            tr.SetKeyPrefix(writer.GetByteBufferAndReset());
+            var prefix = writer.GetSpan();
             var relationVersions = new Dictionary<uint, RelationVersionInfo>();
-            if (tr.FindFirstKey())
+            if (tr.FindFirstKey(prefix))
             {
                 do
                 {
-                    var keyReader = new SpanReader(tr.GetKey().AsSyncReadOnlySpan());
+                    var keyReader = new SpanReader(tr.GetKeyAsReadOnlySpan().Slice(prefix.Length));
                     var valueReader = new SpanReader(tr.GetValueAsReadOnlySpan());
                     LastPersistedVersion = keyReader.ReadVUInt32();
                     var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, _name);
                     relationVersions[LastPersistedVersion] = relationVersionInfo;
-                } while (tr.FindNextKey());
+                } while (tr.FindNextKey(prefix));
             }
 
             _relationVersions = new RelationVersionInfo[LastPersistedVersion + 2];
@@ -1331,13 +1326,12 @@ namespace BTDB.ODBLayer
 
         internal static void FreeIDictionary(IInternalObjectDBTransaction tr, ulong dictId)
         {
-            var prefix = new byte[1 + PackUnpack.LengthVUInt(dictId)];
+            var len = PackUnpack.LengthVUInt(dictId);
+            Span<byte> prefix = stackalloc byte[1 + (int)len];
             prefix[0] = ObjectDB.AllDictionariesPrefixByte;
-            var o = 1;
-            PackUnpack.PackVUInt(prefix, ref o, dictId);
+            PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix.Slice(1)), dictId, len);
             tr.TransactionProtector.Start();
-            tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(prefix);
-            tr.KeyValueDBTransaction.EraseAll();
+            tr.KeyValueDBTransaction.EraseAll(prefix);
         }
 
         public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, ByteBuffer valueBytes,
@@ -1437,8 +1431,7 @@ namespace BTDB.ODBLayer
             else if (id <= int.MinValue || id > 0)
             {
                 Transaction.TransactionProtector.Start();
-                Transaction.KeyValueDBTransaction.SetKeyPrefix(ObjectDB.AllObjectsPrefix);
-                if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOid((ulong) id)))
+                if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong) id)))
                     return;
                 var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValueAsReadOnlySpan());
                 var tableId = reader.ReadVUInt32();
@@ -1454,7 +1447,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var ido = (int) (-id) - 1;
+                var ido = (int) -id - 1;
                 if (!AlreadyProcessedInstance(ido))
                     Transaction.FreeContentInNativeObject(ref outsideReader, this);
             }

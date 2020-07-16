@@ -51,13 +51,17 @@ namespace BTDB.StreamLayer
 
         public void Reset()
         {
+#if DEBUG
             if (Controller != null) ThrowCannotBeUsedWithController();
+#endif
             Buf = HeapBuffer ?? InitialBuffer;
         }
 
         public ReadOnlySpan<byte> GetSpanAndReset()
         {
+#if DEBUG
             if (Controller != null) ThrowCannotBeUsedWithController();
+#endif
             if (HeapBuffer != null)
             {
                 var buf = HeapBuffer;
