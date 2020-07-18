@@ -2,14 +2,15 @@
 using BTDB.Allocators;
 using BTDB.KVDBLayer;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace BTDBTest
 {
     public class BTreeKeyValueDBTest : KeyValueDBTestBase, IDisposable
     {
-        LeakDetectorWrapperAllocator _allocator;
+        readonly LeakDetectorWrapperAllocator _allocator;
 
-        public BTreeKeyValueDBTest()
+        public BTreeKeyValueDBTest(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
         {
             _allocator = new LeakDetectorWrapperAllocator(new MallocAllocator());
         }
@@ -20,22 +21,22 @@ namespace BTDBTest
             Assert.Equal(0ul, leaks.Count);
         }
 
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection)
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection)
         {
             return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = new SnappyCompressionStrategy(), FileSplitSize = 2147483647});
         }
 
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = 2147483647)
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = int.MaxValue)
         {
             return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize});
         }
 
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
         {
             return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize, CompactorScheduler = compactorScheduler});
         }
 
-        public override IKeyValueDB NewKeyValueDB(KeyValueDBOptions options)
+        protected override IKeyValueDB NewKeyValueDB(KeyValueDBOptions options)
         {
             options.Allocator = _allocator;
             return new BTreeKeyValueDB(options);

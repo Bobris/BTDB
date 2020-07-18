@@ -42,8 +42,8 @@ namespace BTDB.ODBLayer
             {
                 id = _freeId++;
                 _name2Id[name] = id;
-                tr.KeyValueDBTransaction.SetKeyPrefixUnsafe(ObjectDB.RelationNamesPrefix);
                 var nameWriter = new SpanWriter();
+                nameWriter.WriteBlock(ObjectDB.RelationNamesPrefix);
                 nameWriter.WriteString(name);
                 var idWriter = new SpanWriter();
                 idWriter.WriteVUInt32(id);

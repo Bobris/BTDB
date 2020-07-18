@@ -17,7 +17,7 @@ namespace BTDBTest
         public ObjectDbTableTest(ITestOutputHelper output) : base(output)
         {
         }
-        
+
         public class PersonSimple : IEquatable<PersonSimple>
         {
             [PrimaryKey(1)] public ulong TenantId { get; set; }
@@ -1853,7 +1853,7 @@ namespace BTDBTest
 
             Assert.Equal("Relation modified during iteration.", exc.Message);
         }
-        
+
         [Fact]
         public void TransactionProtectionWorksForFindingBySecondaryKey()
         {
@@ -1899,8 +1899,7 @@ namespace BTDBTest
             {
                 //be bad, delete secondary indexes
                 var kvTr = ((IInternalObjectDBTransaction) tr).KeyValueDBTransaction;
-                kvTr.SetKeyPrefix(ObjectDB.AllRelationsSKPrefix);
-                kvTr.EraseAll();
+                kvTr.EraseAll(ObjectDB.AllRelationsSKPrefix);
                 tr.Commit();
             }
 

@@ -1,5 +1,5 @@
 ﻿Relation IterateNullableValues
-Used key: 03 01|80 Value len:4
+Used key: 03 01 80 Value len:4
 BeginKey
 StartField Id
 ScalarObj 0

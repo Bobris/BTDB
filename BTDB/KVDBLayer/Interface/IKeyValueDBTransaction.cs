@@ -11,7 +11,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Set for with some description for this transaction purpose to find reason for Transaction leak
         /// </summary>
-        string DescriptionForLeaks { get; set; }
+        string? DescriptionForLeaks { get; set; }
 
         /// <summary>
         /// Move actual key pointer to first key matching provided prefix.

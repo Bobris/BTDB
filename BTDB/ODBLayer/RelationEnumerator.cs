@@ -142,7 +142,7 @@ namespace BTDB.ODBLayer
         public RelationSecondaryKeyEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo,
             in ReadOnlySpan<byte> keyBytes, uint secondaryKeyIndex, uint fieldCountInKey, IRelationDbManipulator manipulator,
             int loaderIndex)
-            : base(tr, relationInfo, keyBytes, manipulator.ModificationCounter, loaderIndex)
+            : base(tr, relationInfo, keyBytes, manipulator, loaderIndex)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
             _fieldCountInKey = fieldCountInKey;
@@ -200,7 +200,7 @@ namespace BTDB.ODBLayer
             _keyValueTr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _keyValueTr.GetKeyIndex();
 
-            _prevModificationCounter = manipulator.ModificationCounter.ModificationCounter;
+            _prevModificationCounter = manipulator.ModificationCounter;
 
             long startIndex;
             long endIndex;
@@ -289,7 +289,7 @@ namespace BTDB.ODBLayer
 
             _keyValueTrProtector.Start();
 
-            _prevModificationCounter = manipulator.ModificationCounter.ModificationCounter;
+            _prevModificationCounter = manipulator.ModificationCounter;
 
             _count = (uint) _keyValueTr.GetKeyValueCount(prefixBytes);
             _startPos = _ascending ? 0 : _count - 1;
@@ -315,7 +315,7 @@ namespace BTDB.ODBLayer
             _keyValueTrProtector.Start();
             if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
             {
-                Manipulator.ModificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                Manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
                 Seek();
             }
             else if (_seekNeeded)
@@ -353,7 +353,7 @@ namespace BTDB.ODBLayer
                 _keyValueTrProtector.Start();
                 if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
                 {
-                    Manipulator.ModificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
+                    Manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
                     Seek();
                 }
 

@@ -69,18 +69,16 @@ namespace BTDBTest
 
             public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
             {
-                Keys = Keys.ResizingAppend(ByteBuffer.NewSync(tr.GetKeyPrefix())).ResizingAppend(tr.GetKey());
+                Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(tr.GetKeyAsReadOnlySpan()));
                 Builder.Append("Used key: ");
-                Print(ByteBuffer.NewSync(tr.GetKeyPrefix()));
-                Builder.Append('|');
-                Print(tr.GetKey());
+                Print(tr.GetKeyAsReadOnlySpan());
                 Builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
                 Builder.AppendLine();
             }
 
-            void Print(ByteBuffer b)
+            void Print(in ReadOnlySpan<byte> b)
             {
-                for (int i = 0; i < b.Length; i++)
+                for (var i = 0; i < b.Length; i++)
                 {
                     if (i > 0) Builder.Append(' ');
                     Builder.Append(b[i].ToString("X2"));
@@ -90,14 +88,14 @@ namespace BTDBTest
 
         internal class ToStringVisitor : ToStringFastVisitor, IODBVisitor
         {
-            public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+            public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
             {
                 Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
                 Builder.AppendLine();
                 return true;
             }
 
-            public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+            public bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
             {
                 Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
                     version);
@@ -610,14 +608,14 @@ namespace BTDBTest
 
         public class Blob
         {
-            public string Name { get; set; }
+            public string? Name { get; set; }
 
             protected bool Equals(Blob other)
             {
                 return string.Equals(Name, other.Name);
             }
 
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;

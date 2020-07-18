@@ -197,12 +197,12 @@ namespace ODbDump
                     });
                     using var transaction = kdb.StartReadOnlyTransaction();
                     var keyValueCount = transaction.GetKeyValueCount();
-                    transaction.FindFirstKey();
+                    transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
                     for (long kv = 0; kv < keyValueCount; kv++)
                     {
-                        transaction.GetKey();
-                        transaction.GetValue();
-                        transaction.FindNextKey();
+                        transaction.GetKeyAsReadOnlySpan();
+                        transaction.GetValueAsReadOnlySpan();
+                        transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                     }
 
                     break;

@@ -9,12 +9,12 @@ using Xunit;
 
 namespace BTDBTest
 {
-    public class ObjectDbTableRemoveOptimalizeTest : IDisposable
+    public class ObjectDbTableRemoveOptimizeTest : IDisposable
     {
         readonly IKeyValueDB _lowDb;
         IObjectDB _db;
 
-        public ObjectDbTableRemoveOptimalizeTest()
+        public ObjectDbTableRemoveOptimizeTest()
         {
             _lowDb = new InMemoryKeyValueDBWithCount();
             OpenDb();
@@ -32,11 +32,10 @@ namespace BTDBTest
             _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
         }
 
-        KeyValueDBTransactionWithCount GetCountingTransaction(IObjectDBTransaction tr)
+        static KeyValueDBTransactionWithCount GetCountingTransaction(IObjectDBTransaction tr)
         {
-            var trimpl = tr as ObjectDBTransaction;
-            var kvtr = trimpl.KeyValueDBTransaction as KeyValueDBTransactionWithCount;
-            return kvtr;
+            var trimpl = (ObjectDBTransaction) tr;
+            return ((KeyValueDBTransactionWithCount) trimpl.KeyValueDBTransaction)!;
         }
 
         public interface IResourcesTable : IRelation<Resource>
@@ -96,7 +95,7 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 Assert.Equal(100, table.RemoveById(1));
-                AssertCounts(tr, eraseAll: 1, eraseCurrent: 0);
+                AssertCounts(tr, 1, 0);
                 Assert.Equal(100, table.Count);
             }
         }
@@ -136,7 +135,7 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 Assert.Equal(5, table.RemoveById(0));
-                AssertCounts(tr, eraseAll: 1, eraseCurrent: 5);
+                AssertCounts(tr, 1, 5);
                 Assert.Equal(5, table.Count);
             }
         }
@@ -181,7 +180,7 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 Assert.Equal(5, table.RemoveById(0));
-                AssertCounts(tr, eraseAll: 2, eraseCurrent: 0);
+                AssertCounts(tr, 2, 0);
                 Assert.Equal(5, table.Count);
             }
 
@@ -189,7 +188,7 @@ namespace BTDBTest
             {
                 var table = creator(tr);
                 Assert.Equal(5, table.RemoveById(0, 0));
-                AssertCounts(tr, eraseAll: 1, eraseCurrent: 5);
+                AssertCounts(tr, 1, 5);
                 Assert.Equal(5, table.Count);
             }
         }
@@ -203,7 +202,7 @@ namespace BTDBTest
 
         class InMemoryKeyValueDBWithCount : IKeyValueDB
         {
-            IKeyValueDB _keyValueDB;
+            readonly IKeyValueDB _keyValueDB;
 
             public InMemoryKeyValueDBWithCount()
             {
@@ -212,8 +211,8 @@ namespace BTDBTest
 
             public bool DurableTransactions
             {
-                get { return _keyValueDB.DurableTransactions; }
-                set { _keyValueDB.DurableTransactions = value; }
+                get => _keyValueDB.DurableTransactions;
+                set => _keyValueDB.DurableTransactions = value;
             }
 
             public IKeyValueDBTransaction StartTransaction()
@@ -248,14 +247,14 @@ namespace BTDBTest
 
             public ulong? PreserveHistoryUpToCommitUlong
             {
-                get { return _keyValueDB.PreserveHistoryUpToCommitUlong; }
-                set { _keyValueDB.PreserveHistoryUpToCommitUlong = value; }
+                get => _keyValueDB.PreserveHistoryUpToCommitUlong;
+                set => _keyValueDB.PreserveHistoryUpToCommitUlong = value;
             }
 
             public IKeyValueDBLogger Logger
             {
-                get { return _keyValueDB.Logger; }
-                set { _keyValueDB.Logger = value; }
+                get => _keyValueDB.Logger;
+                set => _keyValueDB.Logger = value;
             }
 
             public uint CompactorRamLimitInMb { get; set; }
@@ -269,7 +268,7 @@ namespace BTDBTest
 
         class KeyValueDBTransactionWithCount : IKeyValueDBTransaction
         {
-            IKeyValueDBTransaction _keyValueDBTransaction;
+            readonly IKeyValueDBTransaction _keyValueDBTransaction;
 
             public KeyValueDBTransactionWithCount(IKeyValueDBTransaction keyValueDBTransaction)
             {
@@ -278,58 +277,38 @@ namespace BTDBTest
 
             public IKeyValueDB Owner => _keyValueDBTransaction.Owner;
 
-            public string DescriptionForLeaks
+            public string? DescriptionForLeaks
             {
-                get { return _keyValueDBTransaction.DescriptionForLeaks; }
-                set { _keyValueDBTransaction.DescriptionForLeaks = value; }
+                get => _keyValueDBTransaction.DescriptionForLeaks;
+                set => _keyValueDBTransaction.DescriptionForLeaks = value;
             }
 
-            public int EraseAllCount { get; set; }
-            public int EraseRangeCount { get; set; }
-            public int EraseCurrentCount { get; set; }
-
-            public bool RollbackAdvised
+            public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
             {
-                get => _keyValueDBTransaction.RollbackAdvised;
-                set => _keyValueDBTransaction.RollbackAdvised = value;
+                return _keyValueDBTransaction.FindFirstKey(prefix);
             }
 
-            public void SetKeyPrefix(ByteBuffer prefix)
+            public bool FindLastKey(in ReadOnlySpan<byte> prefix)
             {
-                _keyValueDBTransaction.SetKeyPrefix(prefix);
+                return _keyValueDBTransaction.FindLastKey(prefix);
             }
 
-            public bool FindFirstKey()
+            public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
             {
-                return _keyValueDBTransaction.FindFirstKey();
+                return _keyValueDBTransaction.FindPreviousKey(prefix);
             }
 
-            public bool FindLastKey()
+            public bool FindNextKey(in ReadOnlySpan<byte> prefix)
             {
-                return _keyValueDBTransaction.FindLastKey();
+                return _keyValueDBTransaction.FindNextKey(prefix);
             }
 
-            public bool FindPreviousKey()
+            public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
             {
-                return _keyValueDBTransaction.FindPreviousKey();
+                return _keyValueDBTransaction.Find(key, prefixLen);
             }
 
-            public bool FindNextKey()
-            {
-                return _keyValueDBTransaction.FindNextKey();
-            }
-
-            public FindResult Find(ByteBuffer key)
-            {
-                return _keyValueDBTransaction.Find(key);
-            }
-
-            public bool CreateOrUpdateKeyValue(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-            {
-                return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
-            }
-
-            public bool CreateOrUpdateKeyValue(ByteBuffer key, ByteBuffer value)
+            public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
             {
                 return _keyValueDBTransaction.CreateOrUpdateKeyValue(key, value);
             }
@@ -342,6 +321,11 @@ namespace BTDBTest
             public long GetKeyIndex()
             {
                 return _keyValueDBTransaction.GetKeyIndex();
+            }
+
+            public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
+            {
+                return _keyValueDBTransaction.SetKeyIndex(prefix, index);
             }
 
             public bool SetKeyIndex(long index)
@@ -359,9 +343,9 @@ namespace BTDBTest
                 return _keyValueDBTransaction.IsValidKey();
             }
 
-            public ByteBuffer GetKey()
+            public ReadOnlySpan<byte> GetKeyAsReadOnlySpan()
             {
-                return _keyValueDBTransaction.GetKey();
+                return _keyValueDBTransaction.GetKeyAsReadOnlySpan();
             }
 
             public ByteBuffer GetKeyIncludingPrefix()
@@ -379,10 +363,21 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetValueAsReadOnlySpan();
             }
 
-            public void SetValue(ByteBuffer value)
+            public void SetValue(in ReadOnlySpan<byte> value)
             {
                 _keyValueDBTransaction.SetValue(value);
             }
+
+            public int EraseAllCount { get; set; }
+            public int EraseRangeCount { get; set; }
+            public int EraseCurrentCount { get; set; }
+
+            public bool RollbackAdvised
+            {
+                get => _keyValueDBTransaction.RollbackAdvised;
+                set => _keyValueDBTransaction.RollbackAdvised = value;
+            }
+
 
             public void EraseCurrent()
             {
@@ -455,11 +450,6 @@ namespace BTDBTest
             public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
             {
                 return _keyValueDBTransaction.GetStorageSizeOfCurrentKey();
-            }
-
-            public byte[] GetKeyPrefix()
-            {
-                return _keyValueDBTransaction.GetKeyPrefix();
             }
 
             public void Dispose()

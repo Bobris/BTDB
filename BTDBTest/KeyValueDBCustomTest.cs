@@ -59,8 +59,8 @@ namespace BTDBTest
 
                             if (find)
                             {
-                                var id = Reverse(tr.GetKeyAsByteArray());
-                                var tick = ToTick(tr.GetValueAsByteArray());
+                                var id = Reverse(tr.GetKeyAsReadOnlySpan().ToArray());
+                                var tick = ToTick(tr.GetValueAsReadOnlySpan().ToArray());
                                 Assert.Equal(item.Key, id);
                             }
                         }

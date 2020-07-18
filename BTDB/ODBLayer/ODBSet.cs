@@ -316,7 +316,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<TKey> GetIncreasingEnumerator(TKey start)
         {
-            var startKeyBytes = KeyToByteArray(start);
+            var startKeyBytes = KeyToByteArray(start).ToArray();
             long prevProtectionCounter = 0;
             var prevModificationCounter = 0;
             long pos = 0;
@@ -370,7 +370,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<TKey> GetDecreasingEnumerator(TKey start)
         {
-            var startKeyBytes = KeyToByteArray(start);
+            var startKeyBytes = KeyToByteArray(start).ToArray();
             long prevProtectionCounter = 0;
             var prevModificationCounter = 0;
             var pos = long.MaxValue;

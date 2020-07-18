@@ -1313,7 +1313,7 @@ namespace BTDB.ODBLayer
             return name;
         }
 
-        public void FreeContent(IInternalObjectDBTransaction tr, ByteBuffer valueBytes)
+        public void FreeContent(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> valueBytes)
         {
             FreeContentOldDict.Clear();
             FindUsedObjectsToFree(tr, valueBytes, FreeContentOldDict);
@@ -1334,7 +1334,7 @@ namespace BTDB.ODBLayer
             tr.KeyValueDBTransaction.EraseAll(prefix);
         }
 
-        public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, ByteBuffer valueBytes,
+        public void FindUsedObjectsToFree(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> valueBytes,
             IList<ulong> dictionaries)
         {
             var valueReader = new SpanReader(valueBytes);

@@ -1,25 +1,30 @@
 using BTDB.KVDBLayer;
+using Xunit.Abstractions;
 
 namespace BTDBTest
 {
     public class KeyValueDBTest : KeyValueDBTestBase
     {
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection)
+        public KeyValueDBTest(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
+        {
+        }
+
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection)
         {
             return new KeyValueDB(fileCollection);
         }
 
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = 2147483647)
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = int.MaxValue)
         {
             return new KeyValueDB(fileCollection, compression, fileSplitSize);
         }
 
-        public override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
+        protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
         {
             return new KeyValueDB(fileCollection, compression, fileSplitSize, compactorScheduler);
         }
 
-        public override IKeyValueDB NewKeyValueDB(KeyValueDBOptions options)
+        protected override IKeyValueDB NewKeyValueDB(KeyValueDBOptions options)
         {
             return new KeyValueDB(options);
         }

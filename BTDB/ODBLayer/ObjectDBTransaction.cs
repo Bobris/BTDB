@@ -1013,18 +1013,6 @@ namespace BTDB.ODBLayer
             return (Func<IObjectDBTransaction, IRelation>) builder.DelegateCreator.Create(relationInfo);
         }
 
-        Dictionary<uint, IRelationModificationCounter>? _modificationCounters;
-
-        public IRelationModificationCounter GetRelationModificationCounter(uint relationId)
-        {
-            _modificationCounters ??= new Dictionary<uint, IRelationModificationCounter>();
-            if (_modificationCounters.TryGetValue(relationId, out var result))
-                return result;
-            result = new UnforgivingRelationModificationCounter();
-            _modificationCounters.Add(relationId, result);
-            return result;
-        }
-
         public void DeleteAllData()
         {
             _lastDictId = 0;
