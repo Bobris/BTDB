@@ -19,7 +19,7 @@ namespace BTreeLibTest
             allocator.Deallocate(ptr);
         }
 
-        [Fact]
+        [Fact(Skip = "Using HGlobalAllocator instead")]
         public void MallocAllocatorReturnsPointerCanWriteInto()
         {
             var allocator = new MallocAllocator();

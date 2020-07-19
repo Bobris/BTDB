@@ -26,8 +26,8 @@ namespace BTDB.ODBLayer
         public readonly IRelationInfoResolver RelationInfoResolver;
         public IILDynamicMethodWithThis DelegateCreator { get; }
 
-        static readonly MethodInfo SpanWriterGetByteBufferAndResetMethodInfo =
-            typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetByteBufferAndReset))!;
+        static readonly MethodInfo SpanWriterGetSpanMethodInfo =
+            typeof(SpanWriter).GetMethod(nameof(SpanWriter.GetSpan))!;
 
         static Dictionary<Type, RelationBuilder> _relationBuilderCache = new Dictionary<Type, RelationBuilder>();
         static readonly object RelationBuilderCacheLock = new object();
@@ -280,12 +280,15 @@ namespace BTDB.ODBLayer
                 throw new BTDBException(
                     $"Number of parameters in Contains does not match primary key count {primaryKeyFields.Length}.");
 
+            var localSpan = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             //call manipulator.Contains
             reqMethod.Generator
-                .Ldarg(0); //manipulator
-            reqMethod.Generator.Ldloca(writerLoc).Callvirt(SpanWriterGetByteBufferAndResetMethodInfo);
-            reqMethod.Generator.Callvirt(
-                _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
+                .Ldarg(0) //manipulator
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan)
+                .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>.Contains))!);
         }
 
         void BuildFindByMethod(MethodInfo method, IILMethod reqMethod)
@@ -325,8 +328,12 @@ namespace BTDB.ODBLayer
             //call manipulator.RemoveBy_
             reqMethod.Generator
                 .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            reqMethod.Generator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+            var localSpan = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            reqMethod.Generator
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan);
             if (isPrefixBased)
             {
                 reqMethod.Generator.Callvirt(
@@ -383,13 +390,13 @@ namespace BTDB.ODBLayer
                 .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!)
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
-            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
+                reqMethod.Generator);
             reqMethod.Generator
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
-            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!,
+                reqMethod.Generator);
         }
 
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(MethodInfo method,
@@ -403,13 +410,13 @@ namespace BTDB.ODBLayer
             reqMethod.Generator
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
-            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
+                reqMethod.Generator);
             reqMethod.Generator
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
-            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, emptyBufferLoc,
-                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
+            FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!,
+                reqMethod.Generator);
         }
 
         void BuildRemoveByIdPartialMethod(MethodInfo method, ParameterInfo[] methodParameters, IILMethod reqMethod)
@@ -433,9 +440,14 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(il, method.Name, methodParameters[..^1],
                 ApartFields, primaryKeyFields, writerLoc, ctxLocFactory);
 
+            var localSpan = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
+
             il
                 .Ldarg(0) //manipulator
-                .Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo) //call byteBuffer.Data
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan)
                 .Ldarg((ushort) methodParameters.Length)
                 .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByPrimaryKeyPrefixPartial))!);
@@ -683,14 +695,12 @@ namespace BTDB.ODBLayer
                     .Ldarg(advEnumParamOrder)
                     .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
                 FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
-                    reqMethod.Generator);
+                    advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
                 reqMethod.Generator
                     .Ldarg(advEnumParamOrder)
                     .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
                 FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                    emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!,
-                    reqMethod.Generator);
+                    advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
                 reqMethod.Generator
                     .Ldloc(localRemapped);
 
@@ -848,13 +858,12 @@ namespace BTDB.ODBLayer
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!,
-                reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Start))!, reqMethod.Generator);
             reqMethod.Generator
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!);
             FillBufferWhenNotIgnoredKeyPropositionIl(advEnumParamOrder, field,
-                emptyBufferLoc, advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
+                advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.End))!, reqMethod.Generator);
         }
 
         static Action<IILGen> CheckLongLikeResult(MethodInfo method)
@@ -953,6 +962,7 @@ namespace BTDB.ODBLayer
             IILLocal writerLoc,
             Func<IILLocal> ctxLocFactory)
         {
+            var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
             WriteRelationPKPrefix(ilGenerator, pushWriter);
 
@@ -966,9 +976,12 @@ namespace BTDB.ODBLayer
 
             //call manipulator.FindBy_
             ilGenerator
-                .Ldarg(0); //manipulator
-            //call byteBuffer.data
-            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+                .Ldarg(0) //manipulator
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(spanLocal)
+                .Ldloca(spanLocal);
+
             if (isPrefixBased)
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1012,11 +1025,18 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters,
                 apartFields, secondaryKeyFields, writerLoc, ctxLocFactory);
 
+            var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+
             //call public T FindBySecondaryKeyOrDefault<T>(uint secondaryKeyIndex, uint prefixParametersCount, ByteBuffer secKeyBytes, bool throwWhenNotFound, int loaderIndex)
-            ilGenerator.Ldarg(0); //manipulator
-            ilGenerator.Ldloc(localRemapped);
-            ilGenerator.LdcI4(methodParameters.Length + apartFields.Count);
-            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+            ilGenerator
+                .Ldarg(0) //manipulator
+                .Ldloc(localRemapped)
+                .LdcI4(methodParameters.Length + apartFields.Count)
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan);
+
             if (TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType))
             {
                 ilGenerator.LdcI4(RegisterLoadType(itemType));
@@ -1124,13 +1144,13 @@ namespace BTDB.ODBLayer
         }
 
         static void FillBufferWhenNotIgnoredKeyPropositionIl(ushort advEnumParamOrder, TableFieldInfo field,
-            IILLocal emptyBufferLoc,
             FieldInfo instField, IILGen ilGenerator)
         {
             //stack contains KeyProposition
             var ignoreLabel = ilGenerator.DefineLabel(instField + "_ignore");
             var doneLabel = ilGenerator.DefineLabel(instField + "_done");
             var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
+            var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             ilGenerator
                 .Dup()
                 .LdcI4((int) KeyProposition.Ignored)
@@ -1142,11 +1162,14 @@ namespace BTDB.ODBLayer
                 il => il.Ldarg(advEnumParamOrder).Ldfld(instField));
             ilGenerator
                 .Ldloca(writerLoc)
-                .Call(SpanWriterGetByteBufferAndResetMethodInfo)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
                 .Br(doneLabel)
                 .Mark(ignoreLabel)
-                .Ldloc(emptyBufferLoc)
-                .Mark(doneLabel);
+                .Ldloca(localSpan)
+                .InitObj(typeof(ReadOnlySpan<byte>))
+                .Mark(doneLabel)
+                .Ldloca(localSpan);
         }
 
         IILLocal SaveListPrefixBytes(uint secondaryKeyIndex, IILGen ilGenerator, string methodName,
@@ -1162,7 +1185,12 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 secondaryKeyFields, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+            var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            ilGenerator
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan);
             return localRemapped;
         }
 
@@ -1205,7 +1233,12 @@ namespace BTDB.ODBLayer
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
                 keyFields.Span, writerLoc, ctxLocFactory);
 
-            ilGenerator.Ldloca(writerLoc).Call(SpanWriterGetByteBufferAndResetMethodInfo);
+            var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
+            ilGenerator
+                .Ldloca(writerLoc)
+                .Call(SpanWriterGetSpanMethodInfo)
+                .Stloc(localSpan)
+                .Ldloca(localSpan);
         }
 
         void GenerateApartFieldsProperties(IILDynamicType classImpl, Type interfaceType)

@@ -973,9 +973,10 @@ namespace BTDB.ODBLayer
                 if (tableInfo.LastPersistedVersion <= 0)
                 {
                     var keyTableId = BuildKeyFromOid(ObjectDB.TableNamesPrefix, tableInfo.Id);
-                    if (_keyValueTr!.FindExactKey(keyTableId))
+                    if (!_keyValueTr!.FindExactKey(keyTableId))
                     {
-                        var writer = new SpanWriter();
+                        Span<byte> buf = stackalloc byte[128];
+                        var writer = new SpanWriter(buf);
                         writer.WriteString(tableInfo.Name);
                         _keyValueTr.CreateOrUpdateKeyValue(keyTableId, writer.GetSpan());
                     }

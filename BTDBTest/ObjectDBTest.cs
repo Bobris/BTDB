@@ -69,7 +69,7 @@ namespace BTDBTest
 
         public ObjectDbTest()
         {
-            _allocator = new LeakDetectorWrapperAllocator(new MallocAllocator());
+            _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
             _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
             {
                 Allocator = _allocator,

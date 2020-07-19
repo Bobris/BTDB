@@ -175,7 +175,7 @@ namespace BTDB.KVDBLayer
             }
 
             index += _cursor.CalcIndex();
-            if (_cursor.SeekIndex(_cursor.CalcIndex() + index))
+            if (_cursor.SeekIndex(index))
             {
                 _keyIndex = index;
                 if (_cursor.KeyHasPrefix(prefix))

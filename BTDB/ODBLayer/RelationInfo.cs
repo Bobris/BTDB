@@ -52,6 +52,8 @@ namespace BTDB.ODBLayer
             internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
             {
                 var reader = new SpanReader(keyBytes);
+                reader.SkipInt8(); // 3
+                reader.SkipVUInt64(); // RelationId
                 var obj = _primaryKeysLoader(tr, ref reader);
                 reader = new SpanReader(valueBytes);
                 var version = reader.ReadVUInt32();

@@ -72,7 +72,7 @@ namespace BTDB.KVDBLayer
             ICompactorScheduler? compactorScheduler)
             : this(new KeyValueDBOptions
             {
-                Allocator = new MallocAllocator(),
+                Allocator = new HGlobalAllocator(),
                 FileCollection = fileCollection,
                 Compression = compression,
                 FileSplitSize = fileSplitSize,
@@ -95,7 +95,7 @@ namespace BTDB.KVDBLayer
             _fileCollection = new FileCollectionWithFileInfos(options.FileCollection);
             CompactorReadBytesPerSecondLimit = options.CompactorReadBytesPerSecondLimit ?? 0;
             CompactorWriteBytesPerSecondLimit = options.CompactorWriteBytesPerSecondLimit ?? 0;
-            _allocator = options.Allocator ?? new MallocAllocator();
+            _allocator = options.Allocator ?? new HGlobalAllocator();
             _lastCommitted = BTreeImpl12.CreateEmptyRoot(_allocator);
             _lastCommitted.Commit();
             _preserveHistoryUpToCommitUlong = (long) (options.PreserveHistoryUpToCommitUlong ?? ulong.MaxValue);
