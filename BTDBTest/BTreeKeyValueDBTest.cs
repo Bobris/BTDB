@@ -12,7 +12,7 @@ namespace BTDBTest
 
         public BTreeKeyValueDBTest(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
         {
-            _allocator = new LeakDetectorWrapperAllocator(new MallocAllocator());
+            _allocator = new LeakDetectorWrapperAllocator(new HGlobalAllocator());
         }
 
         public void Dispose()

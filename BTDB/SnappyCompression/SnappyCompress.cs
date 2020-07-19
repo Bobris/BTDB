@@ -12,7 +12,7 @@ namespace BTDB.SnappyCompression
         static bool Equal4(in ReadOnlySpan<byte> buf, int o1, int o2)
         {
             ref var b = ref MemoryMarshal.GetReference(buf);
-            return Unsafe.As<byte,uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o1)) == Unsafe.As<byte,uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o2));
+            return Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o1)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o2));
         }
 
         static bool EmitLiteral(Span<byte> dst, ref int d, ref int dL, ReadOnlySpan<byte> src, int s, int sL)

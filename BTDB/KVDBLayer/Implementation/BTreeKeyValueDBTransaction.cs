@@ -88,7 +88,7 @@ namespace BTDB.KVDBLayer
         public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
         {
             var result = _cursor.Find(key);
-            _keyIndex = -1;
+            _keyIndex = _cursor.CalcIndex();
             if (prefixLen == 0) return result;
             switch (result)
             {
