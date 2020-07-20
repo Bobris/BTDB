@@ -118,7 +118,7 @@ namespace BTDB.ODBLayer
             if (!SkipAlreadyVisitedOidChecks && !_visitedOids.Add(oid))
                 return;
             _tr.TransactionProtector.Start();
-            if (_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
+            if (!_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
                 return; // Object oid was deleted
             _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
             var reader = new SpanReader(_trkv.GetValueAsReadOnlySpan());

@@ -1,8 +1,8 @@
 ﻿Singleton 1-VariousFieldTypes oid:1
-Used key: 00 00|01 Value len:18
-Used key: 00 02|01 Value len:1
-Used key: 01|01 Value len:88
-Used key: 00 01|01 01 Value len:469
+Used key: 00 00 01 Value len:18
+Used key: 00 02 01 Value len:1
+Used key: 01 01 Value len:88
+Used key: 00 01 01 01 Value len:469
 Object oid:1 1-VariousFieldTypes version:1
 StartField StringField
 ScalarObj Text

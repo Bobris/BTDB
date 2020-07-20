@@ -1,24 +1,24 @@
 ﻿Singleton 1-JobMap oid:1
-Used key: 00 00|01 Value len:7
-Used key: 00 02|01 Value len:1
-Used key: 01|01 Value len:4
-Used key: 00 01|01 01 Value len:71
+Used key: 00 00 01 Value len:7
+Used key: 00 02 01 Value len:1
+Used key: 01 01 Value len:4
+Used key: 00 01 01 01 Value len:71
 Object oid:1 1-JobMap version:1
 StartField Jobs
 StartDictionary
-Used key: 02 00|01 Value len:20
+Used key: 02 00 01 Value len:20
 StartDictKey
 ScalarObj 1
 ScalarStr 1
 EndDictKey
 StartDictValue
-Used key: 00 00|02 Value len:4
-Used key: 00 01|02 01 Value len:19
+Used key: 00 00 02 Value len:4
+Used key: 00 01 02 01 Value len:19
 StartInlineObject 2-Job-1
 StartField Duty
 Inline ref -1
-Used key: 00 00|03 Value len:5
-Used key: 00 01|03 01 Value len:14
+Used key: 00 00 03 Value len:5
+Used key: 00 01 03 01 Value len:14
 StartInlineObject 3-Duty-1
 StartField Name
 ScalarObj HardCore Code
@@ -32,7 +32,7 @@ EndDictionary
 EndField
 StartField Duties
 StartSet
-Used key: 02 01|7F 03 01 07 54 65 73 74 65 72 Value len:0
+Used key: 02 01 7F 03 01 07 54 65 73 74 65 72 Value len:0
 StartSetKey
 StartInlineObject 3-Duty-1
 StartField Name
@@ -41,7 +41,7 @@ ScalarStr Tester
 EndField
 EndInlineObject
 EndSetKey
-Used key: 02 01|7F 03 01 0A 44 65 76 65 6C 6F 70 65 72 Value len:0
+Used key: 02 01 7F 03 01 0A 44 65 76 65 6C 6F 70 65 72 Value len:0
 StartSetKey
 StartInlineObject 3-Duty-1
 StartField Name

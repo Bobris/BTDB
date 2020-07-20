@@ -77,7 +77,7 @@ namespace BTDB.ODBLayer
                 {
                     yield return new UnseenKey
                     {
-                        Key = trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length).ToArray(),
+                        Key = trkv.GetKeyAsReadOnlySpan().ToArray(),
                         ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
                     };
                 } while (trkv.FindNextKey(prefix));

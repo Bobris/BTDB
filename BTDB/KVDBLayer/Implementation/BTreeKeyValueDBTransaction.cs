@@ -101,15 +101,16 @@ namespace BTDB.KVDBLayer
 
                     if (_cursor.KeyHasPrefix(key.Slice(0,(int)prefixLen)))
                     {
+                        _keyIndex++;
                         return FindResult.Next;
                     }
 
-                    _cursor.Invalidate();
+                    InvalidateCurrentKey();
                     return FindResult.NotFound;
                 }
                 case FindResult.Next when !_cursor.KeyHasPrefix(key.Slice(0,(int)prefixLen)):
                     // FindResult.Previous is preferred that's why it has to be NotFound when next does not match prefix
-                    _cursor.Invalidate();
+                    InvalidateCurrentKey();
                     return FindResult.NotFound;
                 default:
                     return result;

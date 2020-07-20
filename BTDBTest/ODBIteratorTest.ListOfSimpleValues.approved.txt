@@ -1,8 +1,8 @@
 ﻿Singleton 1-VariousLists oid:1
-Used key: 00 00|01 Value len:13
-Used key: 00 02|01 Value len:1
-Used key: 01|01 Value len:21
-Used key: 00 01|01 01 Value len:70
+Used key: 00 00 01 Value len:13
+Used key: 00 02 01 Value len:1
+Used key: 01 01 Value len:21
+Used key: 00 01 01 01 Value len:70
 Object oid:1 1-VariousLists version:1
 StartField IntList
 StartList
