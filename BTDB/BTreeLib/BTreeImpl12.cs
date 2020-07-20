@@ -1254,28 +1254,6 @@ namespace BTDB.BTreeLib
             }
         }
 
-        internal unsafe FindResult Find(RootNode12 rootNode, ref StructList<CursorItem> stack,
-            ReadOnlySpan<byte> keyPrefix,
-            ReadOnlySpan<byte> key)
-        {
-            var keyLen = keyPrefix.Length + key.Length;
-            if (keyPrefix.Length == 0)
-            {
-                return Find(rootNode, ref stack, key);
-            }
-            else if (key.Length == 0)
-            {
-                return Find(rootNode, ref stack, keyPrefix);
-            }
-            else
-            {
-                var temp = keyLen < 256 ? stackalloc byte[keyLen] : new byte[keyLen];
-                keyPrefix.CopyTo(temp);
-                key.CopyTo(temp.Slice(keyPrefix.Length));
-                return Find(rootNode, ref stack, temp);
-            }
-        }
-
         internal unsafe bool FindFirst(RootNode12 rootNode, ref StructList<CursorItem> stack,
             ReadOnlySpan<byte> keyPrefix)
         {
@@ -1360,7 +1338,7 @@ namespace BTDB.BTreeLib
             }
         }
 
-        internal static unsafe long FindLastWithPrefix(RootNode12 rootNode, ReadOnlySpan<byte> keyPrefix)
+        internal static unsafe long FindLastWithPrefix(RootNode12 rootNode, in ReadOnlySpan<byte> keyPrefix)
         {
             var top = rootNode._root;
             if (top == IntPtr.Zero)
@@ -1435,8 +1413,8 @@ namespace BTDB.BTreeLib
             }
         }
 
-        internal unsafe bool Upsert(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key,
-            ReadOnlySpan<byte> content)
+        internal unsafe bool Upsert(RootNode12 rootNode, ref StructList<CursorItem> stack, in ReadOnlySpan<byte> key,
+            in ReadOnlySpan<byte> content)
         {
             CheckContent12(content);
             stack.Clear();

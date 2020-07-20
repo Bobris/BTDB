@@ -538,12 +538,9 @@ namespace BTDB.ODBLayer
 
         void CalculateSecondaryKey(IInternalObjectDBTransaction tr, ReadOnlySpan<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
         {
-            var keyWriter = new SpanWriter();
-
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-            keyWriter.WriteByteArrayRaw(Prefix);
             var enumerator = (IEnumerator) Activator.CreateInstance(enumeratorType, tr, this,
-                keyWriter.GetByteBufferAndReset().ToAsyncSafe(), new SimpleModificationCounter(), 0);
+                Prefix, new SimpleModificationCounter(), 0);
 
             var keySavers = new RelationSaver[indexes.Length];
 
@@ -552,6 +549,8 @@ namespace BTDB.ODBLayer
                 keySavers[i] = CreateSaver(ClientRelationVersionInfo.GetSecondaryKeyFields(indexes[i].Key),
                     $"Relation_{Name}_Upgrade_SK_{indexes[i].Value.Name}_KeySaver");
             }
+
+            var keyWriter = new SpanWriter();
 
             while (enumerator!.MoveNext())
             {

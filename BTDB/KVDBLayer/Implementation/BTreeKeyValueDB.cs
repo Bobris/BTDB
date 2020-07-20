@@ -430,7 +430,7 @@ namespace BTDB.KVDBLayer
                 var cursor = _nextRoot.CreateCursor();
                 if (info.Compression == KeyIndexCompression.Old)
                 {
-                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                     {
                         var keyLength = reader2.ReadVInt32();
                         key = ByteBuffer.NewAsync(new byte[Math.Abs(keyLength)]);
@@ -491,7 +491,7 @@ namespace BTDB.KVDBLayer
                     if (info.Compression != KeyIndexCompression.None)
                         return false;
                     var prevKey = ByteBuffer.NewEmpty();
-                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, Span<byte> trueValue) =>
+                    cursor.BuildTree(keyCount, ref reader, (ref SpanReader reader2, ref ByteBuffer key, in Span<byte> trueValue) =>
                     {
                         var prefixLen = (int) reader2.ReadVUInt32();
                         var keyLengthWithoutPrefix = (int) reader2.ReadVUInt32();

@@ -38,6 +38,24 @@ namespace BTDB.ODBLayer
             _prevModificationCounter = _modificationCounter.ModificationCounter;
         }
 
+        public RelationEnumerator(IInternalObjectDBTransaction tr, RelationInfo relationInfo, byte[] keyBytes,
+    IRelationModificationCounter modificationCounter, int loaderIndex)
+        {
+            _transaction = tr;
+
+            ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
+            _keyValueTr = _transaction.KeyValueDBTransaction;
+            _keyValueTrProtector = _transaction.TransactionProtector;
+            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+
+            KeyBytes = keyBytes;
+            _modificationCounter = modificationCounter;
+            _keyValueTrProtector.Start();
+            _pos = 0;
+            _seekNeeded = true;
+            _prevModificationCounter = _modificationCounter.ModificationCounter;
+        }
+
         public bool MoveNext()
         {
             if (!_seekNeeded)

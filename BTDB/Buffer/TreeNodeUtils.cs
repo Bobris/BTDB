@@ -114,7 +114,7 @@ namespace BTDB.Buffer
             new Span<byte>(src.ToPointer(), size).CopyTo(new Span<byte>(dst.ToPointer(), size));
         }
 
-        internal static bool IsPrefix(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prefix)
+        internal static bool IsPrefix(in ReadOnlySpan<byte> data, in ReadOnlySpan<byte> prefix)
         {
             if (data.Length < prefix.Length)
                 return false;
@@ -188,7 +188,7 @@ namespace BTDB.Buffer
             return pos + FindFirstDifference(buf1b, buf2b.Slice(pos - buf2a.Length));
         }
 
-        internal static uint CalcCommonPrefix(Span<ByteBuffer> keys)
+        internal static uint CalcCommonPrefix(in Span<ByteBuffer> keys)
         {
             var first = keys[0].AsSyncReadOnlySpan();
             var res = first.Length;

@@ -77,29 +77,26 @@ namespace BTDB.BTreeLib
             return _rootNode._impl.EraseRange(_rootNode, ref _stack, ref ((Cursor12)to)._stack);
         }
 
-        public bool FindExact(ReadOnlySpan<byte> key)
+        public bool FindExact(in ReadOnlySpan<byte> key)
         {
             return _rootNode._impl.FindExact(_rootNode, ref _stack, key);
         }
 
-        public FindResult Find(ReadOnlySpan<byte> key)
+        public FindResult Find(in ReadOnlySpan<byte> key)
         {
             return BTreeImpl12.Find(_rootNode, ref _stack, key);
         }
 
-        public FindResult Find(ReadOnlySpan<byte> keyPrefix, ReadOnlySpan<byte> key)
-        {
-            return _rootNode._impl.Find(_rootNode, ref _stack, keyPrefix, key);
-        }
-
-        public bool FindFirst(ReadOnlySpan<byte> keyPrefix)
+        public bool FindFirst(in ReadOnlySpan<byte> keyPrefix)
         {
             return _rootNode._impl.FindFirst(_rootNode, ref _stack, keyPrefix);
         }
 
-        public long FindLastWithPrefix(ReadOnlySpan<byte> keyPrefix)
+        public long FindLastWithPrefix(in ReadOnlySpan<byte> keyPrefix)
         {
-            return BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
+            var res = BTreeImpl12.FindLastWithPrefix(_rootNode, keyPrefix);
+            SeekIndex(res);
+            return res;
         }
 
         public int GetKeyLength()
@@ -130,7 +127,7 @@ namespace BTDB.BTreeLib
             }
         }
 
-        public unsafe Span<byte> FillByKey(Span<byte> buffer)
+        public unsafe Span<byte> FillByKey(in Span<byte> buffer)
         {
             AssertValid();
             ref var stackItem = ref _stack[_stack.Count - 1];
@@ -167,7 +164,7 @@ namespace BTDB.BTreeLib
             return result;
         }
 
-        public unsafe bool KeyHasPrefix(ReadOnlySpan<byte> prefix)
+        public unsafe bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
         {
             if (_stack.Count == 0)
                 return false;
@@ -220,13 +217,13 @@ namespace BTDB.BTreeLib
             return _rootNode._impl.SeekIndex(index, _rootNode._root, ref _stack);
         }
 
-        public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> content)
+        public bool Upsert(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> content)
         {
             AssertWritable();
             return _rootNode._impl.Upsert(_rootNode, ref _stack, key, content);
         }
 
-        public void WriteValue(ReadOnlySpan<byte> content)
+        public void WriteValue(in ReadOnlySpan<byte> content)
         {
             AssertWritable();
             AssertValid();
