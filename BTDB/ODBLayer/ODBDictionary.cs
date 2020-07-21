@@ -840,7 +840,7 @@ namespace BTDB.ODBLayer
                 if (param.EndProposition == KeyProposition.Ignored)
                 {
                     _keyValueTr.FindLastKey(_owner._prefix);
-                    endIndex = _keyValueTr.GetKeyIndex() - prefixIndex - 1;
+                    endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
                 }
                 else
                 {

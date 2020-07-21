@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
-using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -143,7 +142,7 @@ namespace BTDB.ODBLayer
                 }
             }
             LoadTypes.Add(itemType);
-            return (int)LoadTypes.Count - 1;
+            return LoadTypes.Count - 1;
         }
 
         IILDynamicMethodWithThis Build()
@@ -269,13 +268,13 @@ namespace BTDB.ODBLayer
 
         void BuildContainsMethod(MethodInfo method, IILMethod reqMethod)
         {
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
             WriteRelationPKPrefix(reqMethod.Generator, pushWriter);
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
 
             var count = SaveMethodParameters(reqMethod.Generator, "Contains", method.GetParameters(),
-                ApartFields, primaryKeyFields.Span, writerLoc, ctxLocFactory);
+                ApartFields, primaryKeyFields.Span, pushWriter, ctxLocFactory);
             if (count != primaryKeyFields.Length)
                 throw new BTDBException(
                     $"Number of parameters in Contains does not match primary key count {primaryKeyFields.Length}.");
@@ -284,7 +283,7 @@ namespace BTDB.ODBLayer
             //call manipulator.Contains
             reqMethod.Generator
                 .Ldarg(0) //manipulator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan)
@@ -293,19 +292,18 @@ namespace BTDB.ODBLayer
 
         void BuildFindByMethod(MethodInfo method, IILMethod reqMethod)
         {
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
             var nameWithoutVariants = StripVariant(method.Name.Substring(6), true);
             if (nameWithoutVariants == "Id" || nameWithoutVariants == "IdOrDefault")
             {
                 CreateMethodFindById(reqMethod.Generator, method.Name,
-                    method.GetParameters(), method.ReturnType, ApartFields, pushWriter, writerLoc,
-                    ctxLocFactory);
+                    method.GetParameters(), method.ReturnType, ApartFields, pushWriter, ctxLocFactory);
             }
             else
             {
                 CreateMethodFindBy(reqMethod.Generator, method.Name, method.GetParameters(),
-                    method.ReturnType, ApartFields, pushWriter, writerLoc, ctxLocFactory);
+                    method.ReturnType, ApartFields, pushWriter, ctxLocFactory);
             }
         }
 
@@ -313,14 +311,14 @@ namespace BTDB.ODBLayer
         {
             var isPrefixBased = method.ReturnType == typeof(int); //returns number of removed items
 
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
 
             WriteRelationPKPrefix(reqMethod.Generator, pushWriter);
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
 
             var count = SaveMethodParameters(reqMethod.Generator, method.Name, methodParameters,
-                ApartFields, primaryKeyFields.Span, writerLoc, ctxLocFactory);
+                ApartFields, primaryKeyFields.Span, pushWriter, ctxLocFactory);
             if (!isPrefixBased && count != primaryKeyFields.Length)
                 throw new BTDBException(
                     $"Number of parameters in {method.Name} does not match primary key count {primaryKeyFields.Length}.");
@@ -330,7 +328,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0); //manipulator
             var localSpan = reqMethod.Generator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             reqMethod.Generator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan);
@@ -361,7 +359,6 @@ namespace BTDB.ODBLayer
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
             var prefixParamCount = parameters.Length - 1;
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
@@ -371,7 +368,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator.Ldarg(0); //manipulator for call RemoveByIdAdvancedParam
 
             WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
-                advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
+                advEnumParamOrder, advEnumParam, field);
             reqMethod.Generator.Call(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByIdAdvancedParam))!);
@@ -380,8 +377,7 @@ namespace BTDB.ODBLayer
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(MethodInfo method,
             ReadOnlySpan<ParameterInfo> parameters,
             IILMethod reqMethod, int prefixParamCount, ushort advEnumParamOrder, Type advEnumParam,
-            TableFieldInfo field,
-            IILLocal emptyBufferLoc)
+            TableFieldInfo field)
         {
             SavePKListPrefixBytes(reqMethod.Generator, method.Name,
                 parameters[..^1], ApartFields);
@@ -401,8 +397,7 @@ namespace BTDB.ODBLayer
 
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(MethodInfo method,
             ReadOnlySpan<ParameterInfo> parameters,
-            IILMethod reqMethod, ushort advEnumParamOrder, Type advEnumParam, TableFieldInfo field,
-            IILLocal emptyBufferLoc)
+            IILMethod reqMethod, ushort advEnumParamOrder, Type advEnumParam, TableFieldInfo field)
         {
             reqMethod.Generator.Ldarg(0);
             SavePKListPrefixBytes(reqMethod.Generator, method.Name,
@@ -432,19 +427,19 @@ namespace BTDB.ODBLayer
             }
 
             var il = reqMethod.Generator;
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(il);
+            var (pushWriter, ctxLocFactory) = WriterPushers(il);
 
             WriteRelationPKPrefix(il, pushWriter);
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
             SaveMethodParameters(il, method.Name, methodParameters[..^1],
-                ApartFields, primaryKeyFields, writerLoc, ctxLocFactory);
+                ApartFields, primaryKeyFields, pushWriter, ctxLocFactory);
 
             var localSpan = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
 
             il
                 .Ldarg(0) //manipulator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan)
@@ -482,7 +477,6 @@ namespace BTDB.ODBLayer
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-                var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                 var prefixParamCount = parameters.Length - 1;
 
                 var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
@@ -492,7 +486,7 @@ namespace BTDB.ODBLayer
                 reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
 
                 WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
-                    advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
+                    advEnumParamOrder, advEnumParam, field);
 
                 if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
                 {
@@ -655,7 +649,6 @@ namespace BTDB.ODBLayer
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
             var prefixParamCount = parameters.Length - 1;
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
@@ -663,7 +656,7 @@ namespace BTDB.ODBLayer
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(method, parameters, reqMethod,
-                advEnumParamOrder, advEnumParam, field, emptyBufferLoc);
+                advEnumParamOrder, advEnumParam, field);
         }
 
         void BuildListByMethod(MethodInfo method, IILMethod reqMethod)
@@ -675,7 +668,6 @@ namespace BTDB.ODBLayer
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-                var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
                 var secondaryKeyIndex =
                     ClientRelationVersionInfo.GetSecondaryKeyIndex(
                         StripVariant(method.Name.Substring(6), false));
@@ -707,7 +699,7 @@ namespace BTDB.ODBLayer
                 if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
                 {
                     //return new RelationAdvancedSecondaryKeyEnumerator<T>(relationManipulator,
-                    //    prefixBytes, prefixFieldCount,
+                    //    prefixLen, prefixFieldCount,
                     //    order,
                     //    startKeyProposition, startKeyBytes,
                     //    endKeyProposition, endKeyBytes, secondaryKeyIndex, loaderIndex);
@@ -722,7 +714,7 @@ namespace BTDB.ODBLayer
                 else if (ReturnTypeIsIOrderedDictionaryEnumerator(method, advEnumParamType, out itemType))
                 {
                     //return new RelationAdvancedOrderedSecondaryKeyEnumerator<T>(relationManipulator,
-                    //    prefixBytes, prefixFieldCount,
+                    //    prefixLen, prefixFieldCount,
                     //    order,
                     //    startKeyProposition, startKeyBytes,
                     //    endKeyProposition, endKeyBytes, secondaryKeyIndex, loaderIndex);
@@ -843,7 +835,6 @@ namespace BTDB.ODBLayer
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-            var emptyBufferLoc = reqMethod.Generator.DeclareLocal(typeof(ByteBuffer));
             var prefixParamCount = parameters.Length - 1;
 
             var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
@@ -958,9 +949,7 @@ namespace BTDB.ODBLayer
 
         void CreateMethodFindById(IILGen ilGenerator, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType, IDictionary<string, MethodInfo> apartFields,
-            Action<IILGen> pushWriter,
-            IILLocal writerLoc,
-            Func<IILLocal> ctxLocFactory)
+            Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
             var spanLocal = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             var isPrefixBased = TypeIsEnumeratorOrEnumerable(methodReturnType, out var itemType);
@@ -969,7 +958,7 @@ namespace BTDB.ODBLayer
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields;
 
             var count = SaveMethodParameters(ilGenerator, methodName, methodParameters,
-                apartFields, primaryKeyFields.Span, writerLoc, ctxLocFactory);
+                apartFields, primaryKeyFields.Span, pushWriter, ctxLocFactory);
             if (!isPrefixBased && count != primaryKeyFields.Length)
                 throw new BTDBException(
                     $"Number of parameters in {methodName} does not match primary key count {primaryKeyFields.Length}.");
@@ -977,7 +966,7 @@ namespace BTDB.ODBLayer
             //call manipulator.FindBy_
             ilGenerator
                 .Ldarg(0) //manipulator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(spanLocal)
                 .Ldloca(spanLocal);
@@ -1005,9 +994,7 @@ namespace BTDB.ODBLayer
 
         void CreateMethodFindBy(IILGen ilGenerator, string methodName,
             ParameterInfo[] methodParameters, Type methodReturnType, IDictionary<string, MethodInfo> apartFields,
-            Action<IILGen> pushWriter,
-            IILLocal writerLoc,
-            Func<IILLocal> ctxLocFactory)
+            Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
             var allowDefault = false;
             var skName = StripVariant(methodName.Substring(6), true);
@@ -1023,7 +1010,7 @@ namespace BTDB.ODBLayer
 
             var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(skIndex);
             SaveMethodParameters(ilGenerator, methodName, methodParameters,
-                apartFields, secondaryKeyFields, writerLoc, ctxLocFactory);
+                apartFields, secondaryKeyFields, pushWriter, ctxLocFactory);
 
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
 
@@ -1032,7 +1019,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(0) //manipulator
                 .Ldloc(localRemapped)
                 .LdcI4(methodParameters.Length + apartFields.Count)
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan);
@@ -1093,7 +1080,7 @@ namespace BTDB.ODBLayer
         static ushort SaveMethodParameters(IILGen ilGenerator, string methodName,
             ReadOnlySpan<ParameterInfo> methodParameters,
             IDictionary<string, MethodInfo> apartFields,
-            ReadOnlySpan<TableFieldInfo> fields, IILLocal writerLoc, Func<IILLocal> ctxLocFactory)
+            ReadOnlySpan<TableFieldInfo> fields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
             ushort usedApartFieldsCount = 0;
             ushort idx = 0;
@@ -1102,7 +1089,7 @@ namespace BTDB.ODBLayer
                 if (apartFields.TryGetValue(field.Name, out var fieldGetter))
                 {
                     usedApartFieldsCount++;
-                    SaveKeyFieldFromApartField(ilGenerator, field, fieldGetter, writerLoc, ctxLocFactory);
+                    SaveKeyFieldFromApartField(ilGenerator, field, fieldGetter, pushWriter, ctxLocFactory);
                     continue;
                 }
 
@@ -1123,7 +1110,7 @@ namespace BTDB.ODBLayer
                         $"Parameter type mismatch in {methodName} (expected '{field.Handler.HandledType().ToSimpleName()}' but '{par.ParameterType.ToSimpleName()}' found).");
                 }
 
-                SaveKeyFieldFromArgument(ilGenerator, field, idx, par.ParameterType, writerLoc, ctxLocFactory);
+                SaveKeyFieldFromArgument(ilGenerator, field, idx, par.ParameterType, pushWriter, ctxLocFactory);
             }
 
             if (usedApartFieldsCount != apartFields.Count)
@@ -1176,25 +1163,25 @@ namespace BTDB.ODBLayer
             ReadOnlySpan<ParameterInfo> methodParameters,
             IDictionary<string, MethodInfo> apartFields)
         {
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
+            var (pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
 
             var localRemapped = RemapSecondaryKeyIndex(ilGenerator, secondaryKeyIndex);
             WriteRelationSKPrefix(ilGenerator, pushWriter, localRemapped);
 
             var secondaryKeyFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
-                secondaryKeyFields, writerLoc, ctxLocFactory);
+                secondaryKeyFields, pushWriter, ctxLocFactory);
 
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             ilGenerator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan);
             return localRemapped;
         }
 
-        static (IILLocal, Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
+        static (Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
         {
             var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
             ilGenerator
@@ -1220,22 +1207,22 @@ namespace BTDB.ODBLayer
                 return ctxLoc;
             }
 
-            return (writerLoc, PushWriter, PushCtx);
+            return (PushWriter, PushCtx);
         }
 
         void SavePKListPrefixBytes(IILGen ilGenerator, string methodName, ReadOnlySpan<ParameterInfo> methodParameters,
             IDictionary<string, MethodInfo> apartFields)
         {
-            var (writerLoc, pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
+            var (pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
             WriteRelationPKPrefix(ilGenerator, pushWriter);
 
             var keyFields = ClientRelationVersionInfo.PrimaryKeyFields;
             SaveMethodParameters(ilGenerator, methodName, methodParameters, apartFields,
-                keyFields.Span, writerLoc, ctxLocFactory);
+                keyFields.Span, pushWriter, ctxLocFactory);
 
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
             ilGenerator
-                .Ldloca(writerLoc)
+                .Do(pushWriter)
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan);
@@ -1299,21 +1286,20 @@ namespace BTDB.ODBLayer
         }
 
         static void SaveKeyFieldFromArgument(IILGen ilGenerator, TableFieldInfo field, ushort parameterId,
-            Type parameterType, IILLocal writerLoc, Func<IILLocal> ctxLocFactory)
+            Type parameterType, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
             var specialized = field.Handler!.SpecializeSaveForType(parameterType);
             specialized
                 .Save(ilGenerator,
-                    il => il.Ldloca(writerLoc), il => il.Ldloc(ctxLocFactory()),
+                    pushWriter, il => il.Ldloc(ctxLocFactory()),
                     il => il.Ldarg(parameterId));
         }
 
         static void SaveKeyFieldFromApartField(IILGen ilGenerator, TableFieldInfo field, MethodInfo fieldGetter,
-            IILLocal writerLoc, Func<IILLocal> ctxLocFactory)
+            Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
             var specialized = field.Handler!.SpecializeSaveForType(fieldGetter.ReturnType);
-            specialized.Save(ilGenerator,
-                il => il.Ldloca(writerLoc), il => il.Ldloc(ctxLocFactory()),
+            specialized.Save(ilGenerator, pushWriter, il => il.Ldloc(ctxLocFactory()),
                 il => il.Ldarg(0).Callvirt(fieldGetter));
         }
 

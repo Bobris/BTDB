@@ -193,9 +193,9 @@ namespace BTDB.ODBLayer
 
         public RelationAdvancedEnumerator(
             IRelationDbManipulator manipulator,
-            int prefixLen, uint prefixFieldCount,
+            uint prefixFieldCount,
             EnumerationOrder order,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes, int loaderIndex)
         {
             PrefixFieldCount = prefixFieldCount;
@@ -428,13 +428,13 @@ namespace BTDB.ODBLayer
 
         public RelationAdvancedSecondaryKeyEnumerator(
             IRelationDbManipulator manipulator,
-            int prefixLen, uint prefixFieldCount,
+            uint prefixFieldCount,
             EnumerationOrder order,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes,
             uint secondaryKeyIndex, int loaderIndex)
-            : base(manipulator, prefixLen, prefixFieldCount, order,
-                startKeyProposition, startKeyBytes,
+            : base(manipulator, prefixFieldCount, order,
+                startKeyProposition, prefixLen, startKeyBytes,
                 endKeyProposition, endKeyBytes, loaderIndex)
         {
             _secondaryKeyIndex = secondaryKeyIndex;
@@ -474,8 +474,8 @@ namespace BTDB.ODBLayer
         protected ReaderFun<TKey> KeyReader;
 
         public RelationAdvancedOrderedEnumerator(IRelationDbManipulator manipulator,
-            int prefixLen, uint prefixFieldCount, EnumerationOrder order,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+            uint prefixFieldCount, EnumerationOrder order,
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes, bool initKeyReader, int loaderIndex)
         {
             PrefixFieldCount = prefixFieldCount;
@@ -674,12 +674,12 @@ namespace BTDB.ODBLayer
         readonly uint _secondaryKeyIndex;
 
         public RelationAdvancedOrderedSecondaryKeyEnumerator(IRelationDbManipulator manipulator,
-            int prefixLen, uint prefixFieldCount, EnumerationOrder order,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+            uint prefixFieldCount, EnumerationOrder order,
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes,
             uint secondaryKeyIndex, int loaderIndex)
-            : base(manipulator, prefixLen, prefixFieldCount, order,
-                startKeyProposition, startKeyBytes,
+            : base(manipulator, prefixFieldCount, order,
+                startKeyProposition, prefixLen, startKeyBytes,
                 endKeyProposition, endKeyBytes, false, loaderIndex)
         {
             _secondaryKeyIndex = secondaryKeyIndex;

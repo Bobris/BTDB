@@ -515,13 +515,13 @@ namespace BTDB.ODBLayer
             return Math.Max(0, endIndex - startIndex + 1);
         }
 
-        public int RemoveByIdAdvancedParam(int prefixLen, uint prefixFieldCount,
+        public int RemoveByIdAdvancedParam(uint prefixFieldCount,
             EnumerationOrder order,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+            KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            using var enumerator = new RelationAdvancedEnumerator<T>(this, prefixLen, prefixFieldCount,
-                order, startKeyProposition, startKeyBytes, endKeyProposition, endKeyBytes, 0);
+            using var enumerator = new RelationAdvancedEnumerator<T>(this, prefixFieldCount,
+                order, startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes, 0);
             var keysToDelete = new StructList<byte[]>();
             while (enumerator.MoveNext())
             {
