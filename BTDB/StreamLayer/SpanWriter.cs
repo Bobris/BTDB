@@ -44,6 +44,24 @@ namespace BTDB.StreamLayer
             return InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length);
         }
 
+        public ReadOnlySpan<byte> GetPersistentSpanAndReset()
+        {
+            if (Controller != null) ThrowCannotBeUsedWithController();
+            if (HeapBuffer != null)
+            {
+                var res = HeapBuffer.AsSpan(0, HeapBuffer.Length - Buf.Length);
+                Buf = InitialBuffer;
+                HeapBuffer = null;
+                return res;
+            }
+            else
+            {
+                var res = InitialBuffer.Slice(0, InitialBuffer.Length - Buf.Length);
+                InitialBuffer = Buf;
+                return res;
+            }
+        }
+
         static void ThrowCannotBeUsedWithController()
         {
             throw new InvalidOperationException("Cannot have controller");
