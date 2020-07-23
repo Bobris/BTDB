@@ -196,7 +196,7 @@ namespace BTDBTest
         void AssertCounts(IObjectDBTransaction tr, int eraseAll = -1, int eraseCurrent = -1)
         {
             var ctr = GetCountingTransaction(tr);
-            Assert.Equal(eraseAll, ctr.EraseAllCount);
+            Assert.Equal(eraseAll, ctr.EraseRangeCount);
             Assert.Equal(eraseCurrent, ctr.EraseCurrentCount);
         }
 

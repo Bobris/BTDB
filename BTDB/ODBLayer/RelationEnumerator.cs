@@ -564,7 +564,7 @@ namespace BTDB.ODBLayer
             _count = (uint) Math.Max(0, endIndex - startIndex + 1);
             _startPos = (uint) (_ascending ? startIndex : endIndex);
             _pos = 0;
-            _seekState = SeekState.SeekNeeded;
+            _seekState = SeekState.Undefined;
 
             if (initKeyReader)
             {
