@@ -603,7 +603,7 @@ namespace BTDB.ODBLayer
                 throw new BTDBException("Ambiguous result.");
 
             return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
-                prefixParametersCount, secKeyBytes, keyBytes);
+                prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
         }
 
         void ResetKeyPrefix()
