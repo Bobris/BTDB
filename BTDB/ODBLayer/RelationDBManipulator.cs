@@ -425,16 +425,13 @@ namespace BTDB.ODBLayer
             return _kvtr.FindFirstKey(keyBytesPrefix);
         }
 
-        public bool AnyWithProposition(int prefixLen,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+        public bool AnyWithProposition(KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            return 0 < CountWithProposition(prefixLen, startKeyProposition, startKeyBytes, endKeyProposition,
-                endKeyBytes);
+            return 0 < CountWithProposition(startKeyProposition, prefixLen, startKeyBytes, endKeyProposition, endKeyBytes);
         }
 
-        public long CountWithProposition(int prefixLen,
-            KeyProposition startKeyProposition, in ReadOnlySpan<byte> startKeyBytes,
+        public long CountWithProposition(KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
             var keyValueTrProtector = _transaction.TransactionProtector;

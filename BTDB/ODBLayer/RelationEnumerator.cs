@@ -661,7 +661,7 @@ namespace BTDB.ODBLayer
 
             _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
             //read key
-            var keyData = _keyValueTr.GetKeyAsReadOnlySpan();
+            var keyData = _keyValueTr.GetKeyAsReadOnlySpan().Slice(KeyBytes.Length);
             var reader = new SpanReader(keyData);
             key = KeyReader(ref reader, null);
             return true;

@@ -1409,8 +1409,7 @@ namespace BTDBTest
             var enumerator = personTable.ListById(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
                 "a", KeyProposition.Included, "c", KeyProposition.Excluded));
             Assert.Equal(2u, enumerator.Count);
-            string email;
-            Assert.True(enumerator.NextKey(out email));
+            Assert.True(enumerator.NextKey(out var email));
             Assert.Equal("a@d.cz", email);
             Assert.True(enumerator.NextKey(out email));
             Assert.Equal("b@d.cz", email);
