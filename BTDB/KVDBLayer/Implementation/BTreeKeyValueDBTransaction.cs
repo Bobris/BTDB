@@ -216,13 +216,13 @@ namespace BTDB.KVDBLayer
             return ByteBuffer.NewAsync(GetCurrentKeyFromStack());
         }
 
-        public ByteBuffer GetValue()
+        public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
         {
-            if (!IsValidKey()) return ByteBuffer.NewEmpty();
+            if (!IsValidKey()) return new ReadOnlySpan<byte>();
             var trueValue = _cursor.GetValue();
             try
             {
-                return ByteBuffer.NewAsync(_keyValueDB.ReadValue(trueValue));
+                return _keyValueDB.ReadValue(trueValue, ref buffer, bufferLength);
             }
             catch (BTDBException ex)
             {
@@ -288,6 +288,38 @@ namespace BTDB.KVDBLayer
             _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             _cursor.Erase();
             InvalidateCurrentKey();
+        }
+
+        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
+        {
+            if (_cursor.Find(exactKey) != FindResult.Exact)
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
+            MakeWritable();
+            _keyValueDB.WriteEraseOneCommand(exactKey);
+            _cursor.Erase();
+            InvalidateCurrentKey();
+            return true;
+        }
+
+        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+        {
+            if (_cursor.Find(exactKey) != FindResult.Exact)
+            {
+                InvalidateCurrentKey();
+                value = ReadOnlySpan<byte>.Empty;
+                return false;
+            }
+
+            _keyIndex = 0; // fake value key index is enough to pass IsValidKey test
+            value = GetClonedValue(ref buffer, bufferLength);
+            MakeWritable();
+            _keyValueDB.WriteEraseOneCommand(exactKey);
+            _cursor.Erase();
+            InvalidateCurrentKey();
+            return true;
         }
 
         public void EraseAll()

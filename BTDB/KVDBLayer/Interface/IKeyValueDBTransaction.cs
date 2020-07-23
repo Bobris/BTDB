@@ -93,9 +93,9 @@ namespace BTDB.KVDBLayer
         ByteBuffer GetKeyIncludingPrefix();
 
         /// <summary>
-        /// Return current value.
+        /// Return current value into fresh memory or provided buffer if it fits.
         /// </summary>
-        ByteBuffer GetValue();
+        ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength);
 
         /// <summary>
         /// Return current value.
@@ -114,16 +114,30 @@ namespace BTDB.KVDBLayer
         void EraseCurrent();
 
         /// <summary>
-        /// Remove all keys in current prefix.
+        /// Remove key and value by exact key match. Current key will be invalidated.
+        /// </summary>
+        /// <returns>true if found and erased</returns>
+        bool EraseCurrent(in ReadOnlySpan<byte> exactKey);
+
+        /// <summary>
+        /// Remove key and value by exact key match. Current key will be invalidated.
+        /// Before erase read value into prepared buffer, if it is not big enough new memory will be allocated,
+        /// but for sure it is safe to read it even after any DB modification.
+        /// </summary>
+        /// <returns>true if found and erased</returns>
+        bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value);
+
+        /// <summary>
+        /// Remove all keys in DB.
         /// It is same as calling EraseRange(0,long.MaxValue).
         /// </summary>
         void EraseAll();
 
         /// <summary>
-        /// This will remove keys in range of key indexes. It will erase only keys in current prefix, even you specify indexes outside of range. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
+        /// This will remove keys in range of key indexes. Nothing will be removed if lastKeyIndex is less than firstKeyIndex.
         /// </summary>
-        /// <param name="firstKeyIndex">zero based index relative to current prefix where to Start erase (inclusive)</param>
-        /// <param name="lastKeyIndex">zero based index relative to current prefix where to finish erase (inclusive)</param>
+        /// <param name="firstKeyIndex">absolute zero based index where to Start erase (inclusive)</param>
+        /// <param name="lastKeyIndex">absolute zero based index where to finish erase (inclusive)</param>
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
 
         /// <summary>

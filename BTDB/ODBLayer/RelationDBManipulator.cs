@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
@@ -117,12 +118,13 @@ namespace BTDB.ODBLayer
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
             var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
 
             ResetKeyPrefix();
 
             if (_kvtr.FindExactKey(keyBytes))
                 return false;
+
+            var valueBytes = ValueBytes(obj);
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -143,7 +145,8 @@ namespace BTDB.ODBLayer
             ResetKeyPrefix();
             if (_kvtr.FindExactKey(keyBytes))
             {
-                var oldValueBytes = _kvtr.GetValueAsReadOnlySpan();
+                Span<byte> buffer = stackalloc byte[256];
+                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -174,7 +177,8 @@ namespace BTDB.ODBLayer
             {
                 if (_kvtr.FindExactKey(keyBytes))
                 {
-                    var oldValueBytes = _kvtr.GetValueAsReadOnlySpan().ToArray();
+                    Span<byte> buffer = stackalloc byte[256];
+                    var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
 
                     _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -210,7 +214,8 @@ namespace BTDB.ODBLayer
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
-            var oldValueBytes = _kvtr.GetValueAsReadOnlySpan().ToArray();
+            Span<byte> buffer = stackalloc byte[256];
+            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
@@ -231,9 +236,10 @@ namespace BTDB.ODBLayer
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
+            Span<byte> buffer = stackalloc byte[256];
             var oldValueBytes = _hasSecondaryIndexes
-                ? _kvtr.GetValueAsReadOnlySpan().ToArray()
-                : Array.Empty<byte>();
+                ? _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length)
+                : ReadOnlySpan<byte>.Empty;
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -292,20 +298,21 @@ namespace BTDB.ODBLayer
         public bool RemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
             ResetKeyPrefix();
-            if (!_kvtr.FindExactKey(keyBytes))
+            Span<byte> valueBuffer = stackalloc byte[256];
+
+            if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length, out var value))
             {
                 if (throwWhenNotFound)
                     throw new BTDBException("Not found record to delete.");
                 return false;
             }
 
-            var valueBytes = _kvtr.GetValueAsReadOnlySpan();
-            _kvtr.EraseCurrent();
-
             if (_hasSecondaryIndexes)
-                RemoveSecondaryIndexes(keyBytes, valueBytes);
+            {
+                RemoveSecondaryIndexes(keyBytes, value);
+            }
 
-            _relationInfo.FreeContent(_transaction, valueBytes);
+            _relationInfo.FreeContent(_transaction, value);
 
             MarkModification();
             return true;
@@ -314,21 +321,27 @@ namespace BTDB.ODBLayer
         public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
             ResetKeyPrefix();
-            if (!_kvtr.FindExactKey(keyBytes))
-            {
-                if (throwWhenNotFound)
-                    throw new BTDBException("Not found record to delete.");
-                return false;
-            }
-
-            var valueBytes = _hasSecondaryIndexes
-                ? _kvtr.GetValueAsReadOnlySpan()
-                : new ReadOnlySpan<byte>();
-
-            _kvtr.EraseCurrent();
-
             if (_hasSecondaryIndexes)
-                RemoveSecondaryIndexes(keyBytes, valueBytes);
+            {
+                Span<byte> valueBuffer = stackalloc byte[256];
+
+                if (!_kvtr.EraseCurrent(keyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length, out var value))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+                RemoveSecondaryIndexes(keyBytes, value);
+            }
+            else
+            {
+                if (!_kvtr.EraseCurrent(keyBytes))
+                {
+                    if (throwWhenNotFound)
+                        throw new BTDBException("Not found record to delete.");
+                    return false;
+                }
+            }
 
             MarkModification();
             return true;

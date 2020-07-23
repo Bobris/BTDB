@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -386,7 +387,7 @@ namespace BTDB.KVDBLayer
                         var prefixLen = (int)reader2.ReadVUInt32();
                         var keyLengthWithoutPrefix = (int)reader2.ReadVUInt32();
                         var key = ByteBuffer.NewAsync(new byte[prefixLen + keyLengthWithoutPrefix]);
-                        Array.Copy(prevKey.Buffer, prevKey.Offset, key.Buffer, key.Offset, prefixLen);
+                        Array.Copy(prevKey.Buffer!, prevKey.Offset, key.Buffer!, key.Offset, prefixLen);
                         reader2.ReadBlock(key.Slice(prefixLen));
                         prevKey = key;
                         var vFileId = reader2.ReadVUInt32();
@@ -1045,13 +1046,13 @@ namespace BTDB.KVDBLayer
             return (uint)Math.Abs(valueSize);
         }
 
-        public ByteBuffer ReadValue(uint valueFileId, uint valueOfs, int valueSize)
+        public ReadOnlySpan<byte> ReadValue(uint valueFileId, uint valueOfs, int valueSize, ref byte buffer, int bufferLength)
         {
-            if (valueSize == 0) return ByteBuffer.NewEmpty();
+            if (valueSize == 0) return ReadOnlySpan<byte>.Empty;
             if (valueFileId == 0)
             {
                 var len = valueSize >> 24;
-                var buf = new byte[len];
+                var buf = len > bufferLength ? new byte[len] : MemoryMarshal.CreateSpan(ref buffer, len);
                 switch (len)
                 {
                     case 7:
@@ -1079,7 +1080,7 @@ namespace BTDB.KVDBLayer
                         throw new BTDBException("Corrupted DB");
                 }
 
-                return ByteBuffer.NewAsync(buf);
+                return buf;
             }
 
             var compressed = false;
@@ -1089,14 +1090,14 @@ namespace BTDB.KVDBLayer
                 valueSize = -valueSize;
             }
 
-            var result = ByteBuffer.NewAsync(new byte[valueSize]);
+            var result = valueSize > bufferLength ? new byte[valueSize] : MemoryMarshal.CreateSpan(ref buffer, valueSize);
             var file = FileCollection.GetFile(valueFileId);
             if (file == null)
                 throw new BTDBException(
                     $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
-            file.RandomRead(result.Buffer.AsSpan(0, valueSize), valueOfs, false);
+            file.RandomRead(result, valueOfs, false);
             if (compressed)
-                _compression.DecompressValue(ref result);
+                result = _compression.DecompressValue(result);
             return result;
         }
 

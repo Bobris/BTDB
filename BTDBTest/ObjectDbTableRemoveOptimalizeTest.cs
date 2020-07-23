@@ -353,9 +353,9 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetKeyIncludingPrefix();
             }
 
-            public ByteBuffer GetValue()
+            public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
             {
-                return _keyValueDBTransaction.GetValue();
+                return _keyValueDBTransaction.GetClonedValue(ref buffer, bufferLength);
             }
 
             public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
@@ -383,6 +383,21 @@ namespace BTDBTest
             {
                 EraseCurrentCount++;
                 _keyValueDBTransaction.EraseCurrent();
+            }
+
+            public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
+            {
+                if (!_keyValueDBTransaction.EraseCurrent(in exactKey)) return false;
+                EraseCurrentCount++;
+                return true;
+            }
+
+            public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+            {
+                if (!_keyValueDBTransaction.EraseCurrent(in exactKey, ref buffer, bufferLength, out value))
+                    return false;
+                EraseCurrentCount++;
+                return true;
             }
 
             public void EraseAll()

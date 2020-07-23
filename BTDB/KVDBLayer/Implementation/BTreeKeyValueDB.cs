@@ -1356,6 +1356,43 @@ namespace BTDB.KVDBLayer
             return result;
         }
 
+        public ReadOnlySpan<byte> ReadValue(ReadOnlySpan<byte> trueValue, ref byte buffer, int bufferLength)
+        {
+            var valueFileId = MemoryMarshal.Read<uint>(trueValue);
+            if (valueFileId == 0)
+            {
+                var len = trueValue[4];
+                var res = trueValue.Slice(5, len);
+                if (len <= bufferLength)
+                {
+                    Unsafe.CopyBlockUnaligned(ref buffer, ref MemoryMarshal.GetReference(res), len);
+                    return MemoryMarshal.CreateReadOnlySpan(ref buffer, len);
+                }
+                return res.ToArray();
+            }
+
+            var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
+            if (valueSize == 0) return new ReadOnlySpan<byte>();
+            var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
+
+            var compressed = false;
+            if (valueSize < 0)
+            {
+                compressed = true;
+                valueSize = -valueSize;
+            }
+
+            Span<byte> result = bufferLength < valueSize ? new byte[valueSize] : MemoryMarshal.CreateSpan(ref buffer, valueSize);
+            var file = FileCollection.GetFile(valueFileId);
+            if (file == null)
+                throw new BTDBException(
+                    $"ReadValue({valueFileId},{valueOfs},{valueSize}) compressed: {compressed} file does not exist in {CalcStats()}");
+            file.RandomRead(result, valueOfs, false);
+            if (compressed)
+                result = _compression.DecompressValue(result);
+            return result;
+        }
+
         public void WriteEraseOneCommand(in ReadOnlySpan<byte> key)
         {
             if (_writerWithTransactionLog!.GetCurrentPositionWithoutWriter() > MaxTrLogFileSize)

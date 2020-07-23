@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using BTDB.Buffer;
 using BTDB.KVDBLayer.BTree;
 
@@ -200,14 +201,14 @@ namespace BTDB.KVDBLayer
             return ByteBuffer.NewAsync(GetCurrentKeyFromStack());
         }
 
-        public ByteBuffer GetValue()
+        public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
         {
-            if (!IsValidKey()) return ByteBuffer.NewEmpty();
+            if (!IsValidKey()) return ReadOnlySpan<byte>.Empty;
             var nodeIdxPair = _stack[^1];
             var leafMember = ((IBTreeLeafNode)nodeIdxPair.Node).GetMemberValue(nodeIdxPair.Idx);
             try
             {
-                return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize);
+                return _keyValueDB.ReadValue(leafMember.ValueFileId, leafMember.ValueOfs, leafMember.ValueSize, ref buffer, bufferLength);
             }
             catch (BTDBException ex)
             {
@@ -220,7 +221,7 @@ namespace BTDB.KVDBLayer
 
         public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
         {
-            return GetValue().AsSyncReadOnlySpan();
+            return GetClonedValue(ref Unsafe.AsRef((byte)0), 0);
         }
 
         void EnsureValidKey()
@@ -261,6 +262,16 @@ namespace BTDB.KVDBLayer
             _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             InvalidateCurrentKey();
             _btreeRoot!.EraseRange(keyIndex, keyIndex);
+        }
+
+        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
+        {
+            throw new NotImplementedException();
         }
 
         public void EraseAll()

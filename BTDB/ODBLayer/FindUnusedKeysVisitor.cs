@@ -111,7 +111,7 @@ namespace BTDB.ODBLayer
 
         void MarkKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            if (_kvtr.Find(tr.GetKeyAsReadOnlySpan(), 0)==FindResult.Exact) _kvtr.EraseCurrent();
+            if (_kvtr.FindExactKey(tr.GetKeyAsReadOnlySpan())) _kvtr.EraseCurrent();
         }
 
         class VisitorForFindUnused : IODBFastVisitor

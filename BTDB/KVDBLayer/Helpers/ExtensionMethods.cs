@@ -15,7 +15,7 @@ namespace BTDB.KVDBLayer
 
         public static bool FindExactKey(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> key)
         {
-            return transaction.Find(key, (uint)key.Length) == FindResult.Exact;
+            return transaction.Find(key, 0) == FindResult.Exact;
         }
 
         public static long GetKeyValueCount(this IKeyValueDBTransaction transaction, in ReadOnlySpan<byte> prefix)
