@@ -177,8 +177,7 @@ namespace DBBenchmark
             using (var db = CreateKeyValueDb(_fileCollection, new NoCompressionStrategy()))
             using (var tr = db.StartTransaction())
             {
-                tr.FindExactKey(key);
-                tr.EraseCurrent();
+                tr.EraseCurrent(key);
                 tr.Commit();
             }
 

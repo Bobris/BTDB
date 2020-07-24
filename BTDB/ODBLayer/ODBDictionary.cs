@@ -276,10 +276,9 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyToByteArray(key);
             _keyValueTrProtector.Start();
             _modificationCounter++;
-            var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
+            var found = _keyValueTr.EraseCurrent(keyBytes);
             if (found)
             {
-                _keyValueTr.EraseCurrent();
                 NotifyRemoved();
             }
 

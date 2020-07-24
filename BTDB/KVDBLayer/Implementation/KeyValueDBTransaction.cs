@@ -266,12 +266,34 @@ namespace BTDB.KVDBLayer
 
         public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
         {
-            throw new NotImplementedException();
+            if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
+            {
+                InvalidateCurrentKey();
+                return false;
+            }
+            var keyIndex = _keyIndex;
+            MakeWritable();
+            _keyValueDB.WriteEraseOneCommand(exactKey);
+            InvalidateCurrentKey();
+            _btreeRoot!.EraseRange(keyIndex, keyIndex);
+            return true;
         }
 
         public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
         {
-            throw new NotImplementedException();
+            if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
+            {
+                InvalidateCurrentKey();
+                value = ReadOnlySpan<byte>.Empty;
+                return false;
+            }
+            var keyIndex = _keyIndex;
+            value = GetClonedValue(ref buffer, bufferLength);
+            MakeWritable();
+            _keyValueDB.WriteEraseOneCommand(exactKey);
+            InvalidateCurrentKey();
+            _btreeRoot!.EraseRange(keyIndex, keyIndex);
+            return true;
         }
 
         public void EraseAll()

@@ -825,8 +825,7 @@ namespace BTDB.ODBLayer
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             metadata.State = DBObjectState.Deleted;
             _keyValueTrProtector.Start();
-            if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id)))
-                _keyValueTr.EraseCurrent();
+            _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id));
             tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             if (_objSmallCache != null)
             {
@@ -861,8 +860,7 @@ namespace BTDB.ODBLayer
 
             _dirtyObjSet?.Remove(oid);
             _keyValueTrProtector.Start();
-            if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
-                _keyValueTr.EraseCurrent();
+            _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(oid));
             if (obj == null) return;
             DBObjectMetadata metadata = null;
             if (_objSmallMetadata != null)

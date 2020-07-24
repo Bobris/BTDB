@@ -688,13 +688,12 @@ namespace BTDB.ODBLayer
 
         void EraseOldSecondaryKey(in ReadOnlySpan<byte> primaryKey, in ReadOnlySpan<byte> keyBytes, uint skKey)
         {
-            if (!_kvtr.FindExactKey(keyBytes))
+            if (!_kvtr.EraseCurrent(keyBytes))
             {
                 var sk = _relationInfo.ClientRelationVersionInfo.SecondaryKeys[skKey];
                 throw new BTDBException(
                     $"Error in removing secondary indexes, previous index entry not found. {_relationInfo.Name}:{sk.Name} PK:{BitConverter.ToString(primaryKey.ToArray()).Replace("-", "")}");
             }
-            _kvtr.EraseCurrent();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
