@@ -25,7 +25,6 @@ namespace BTDB.ODBLayer
         readonly ReaderFun<TValue> _valueReader;
         readonly WriterFun<TValue> _valueWriter;
         readonly IKeyValueDBTransaction _keyValueTr;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly ulong _id;
         readonly byte[] _prefix;
         int _count;
@@ -49,7 +48,6 @@ namespace BTDB.ODBLayer
             _valueReader = ((ReaderFun<TValue>) config.ValueReader)!;
             _valueWriter = ((WriterFun<TValue>) config.ValueWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
             _count = -1;
         }
 
@@ -118,14 +116,13 @@ namespace BTDB.ODBLayer
             long pos = 0;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == 0)
                 {
                     if (!_keyValueTr.FindFirstKey(_prefix)) break;
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (!_keyValueTr.SetKeyIndex(_prefix, pos)) break;
                     }
@@ -135,7 +132,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                 var valueReader = new SpanReader(valueBytes);
                 findIDictAction(ctx.GetTransaction(), ref valueReader, ctx.DictIds);
@@ -156,7 +153,6 @@ namespace BTDB.ODBLayer
 
         public void Clear()
         {
-            _keyValueTrProtector.Start();
             _modificationCounter++;
             _keyValueTr.EraseAll(_prefix);
             _count = 0;
@@ -204,7 +200,6 @@ namespace BTDB.ODBLayer
             {
                 if (_count == -1)
                 {
-                    _keyValueTrProtector.Start();
                     _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
                 }
 
@@ -252,7 +247,6 @@ namespace BTDB.ODBLayer
         public bool ContainsKey(TKey key)
         {
             var keyBytes = KeyToByteArray(key);
-            _keyValueTrProtector.Start();
             return _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
         }
 
@@ -260,7 +254,6 @@ namespace BTDB.ODBLayer
         {
             var keyBytes = KeyToByteArray(key);
             var valueBytes = ValueToByteArray(value);
-            _keyValueTrProtector.Start();
             _modificationCounter++;
             if (_keyValueTr.Find(keyBytes, 0) == FindResult.Exact)
             {
@@ -274,7 +267,6 @@ namespace BTDB.ODBLayer
         public bool Remove(TKey key)
         {
             var keyBytes = KeyToByteArray(key);
-            _keyValueTrProtector.Start();
             _modificationCounter++;
             var found = _keyValueTr.EraseCurrent(keyBytes);
             if (found)
@@ -288,7 +280,6 @@ namespace BTDB.ODBLayer
         public bool TryGetValue(TKey key, out TValue value)
         {
             var keyBytes = KeyToByteArray(key);
-            _keyValueTrProtector.Start();
             var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
             if (!found)
             {
@@ -306,7 +297,6 @@ namespace BTDB.ODBLayer
             get
             {
                 var keyBytes = KeyToByteArray(key);
-                _keyValueTrProtector.Start();
                 var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
                 if (!found)
                 {
@@ -320,7 +310,6 @@ namespace BTDB.ODBLayer
             {
                 var keyBytes = KeyToByteArray(key);
                 var valueBytes = ValueToByteArray(value);
-                _keyValueTrProtector.Start();
                 if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                 {
                     _modificationCounter++;
@@ -368,7 +357,6 @@ namespace BTDB.ODBLayer
                 long pos = 0;
                 while (true)
                 {
-                    _parent._keyValueTrProtector.Start();
                     if (pos == 0)
                     {
                         prevModificationCounter = _parent._modificationCounter;
@@ -376,7 +364,7 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        if (_parent._keyValueTr.CursorMovedCounter != prevProtectionCounter)
                         {
                             if (prevModificationCounter != _parent._modificationCounter)
                                 ThrowModifiedDuringEnum();
@@ -388,7 +376,7 @@ namespace BTDB.ODBLayer
                         }
                     }
 
-                    prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                    prevProtectionCounter = _parent._keyValueTr.CursorMovedCounter;
                     var keyBytes = _parent._keyValueTr.GetKeyAsReadOnlySpan();
                     var key = _parent.ByteArrayToKey(keyBytes);
                     yield return key;
@@ -454,7 +442,6 @@ namespace BTDB.ODBLayer
                 long pos = 0;
                 while (true)
                 {
-                    _parent._keyValueTrProtector.Start();
                     if (pos == 0)
                     {
                         prevModificationCounter = _parent._modificationCounter;
@@ -462,7 +449,7 @@ namespace BTDB.ODBLayer
                     }
                     else
                     {
-                        if (_parent._keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                        if (_parent._keyValueTr.CursorMovedCounter != prevProtectionCounter)
                         {
                             if (prevModificationCounter != _parent._modificationCounter)
                                 ThrowModifiedDuringEnum();
@@ -474,7 +461,7 @@ namespace BTDB.ODBLayer
                         }
                     }
 
-                    prevProtectionCounter = _parent._keyValueTrProtector.ProtectionCounter;
+                    prevProtectionCounter = _parent._keyValueTr.CursorMovedCounter;
                     var valueBytes = _parent._keyValueTr.GetValueAsReadOnlySpan();
                     var value = _parent.ByteArrayToValue(valueBytes);
                     yield return value;
@@ -537,7 +524,6 @@ namespace BTDB.ODBLayer
             long pos = 0;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == 0)
                 {
                     prevModificationCounter = _modificationCounter;
@@ -545,7 +531,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (prevModificationCounter != _modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -557,7 +543,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
@@ -574,7 +560,6 @@ namespace BTDB.ODBLayer
             var pos = long.MaxValue;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == long.MaxValue)
                 {
                     prevModificationCounter = _modificationCounter;
@@ -585,7 +570,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (prevModificationCounter != _modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -597,7 +582,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
@@ -615,7 +600,6 @@ namespace BTDB.ODBLayer
             long pos = 0;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == 0)
                 {
                     prevModificationCounter = _modificationCounter;
@@ -645,7 +629,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (prevModificationCounter != _modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -657,7 +641,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
@@ -675,7 +659,6 @@ namespace BTDB.ODBLayer
             var pos = long.MaxValue;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == long.MaxValue)
                 {
                     prevModificationCounter = _modificationCounter;
@@ -704,7 +687,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (prevModificationCounter != _modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -716,7 +699,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                 var key = ByteArrayToKey(keyBytes);
@@ -730,7 +713,6 @@ namespace BTDB.ODBLayer
         {
             var startKeyBytes = KeyToByteArray(start);
             var endKeyBytes = KeyToByteArray(end);
-            _keyValueTrProtector.Start();
             _modificationCounter++;
             var result = _keyValueTr.Find(startKeyBytes, (uint)_prefix.Length);
             if (result == FindResult.NotFound) return 0;
@@ -767,7 +749,6 @@ namespace BTDB.ODBLayer
             long pos = 0;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (pos == 0)
                 {
                     prevModificationCounter = _modificationCounter;
@@ -775,7 +756,7 @@ namespace BTDB.ODBLayer
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (prevModificationCounter != _modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -787,7 +768,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var size = _keyValueTr.GetStorageSizeOfCurrentKey();
                 yield return size;
                 pos++;
@@ -797,7 +778,6 @@ namespace BTDB.ODBLayer
         public KeyValuePair<uint, uint> QuerySizeByKey(TKey key)
         {
             var keyBytes = KeyToByteArray(key);
-            _keyValueTrProtector.Start();
             var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
             if (!found)
             {
@@ -813,7 +793,6 @@ namespace BTDB.ODBLayer
 #pragma warning restore 693
         {
             readonly ODBDictionary<TKey, TValue> _owner;
-            readonly KeyValueDBTransactionProtector _keyValueTrProtector;
             readonly IKeyValueDBTransaction _keyValueTr;
             long _prevProtectionCounter;
             readonly int _prevModificationCounter;
@@ -826,12 +805,10 @@ namespace BTDB.ODBLayer
             public AdvancedEnumerator(ODBDictionary<TKey, TValue> owner, AdvancedEnumeratorParam<TKey> param)
             {
                 _owner = owner;
-                _keyValueTrProtector = _owner._keyValueTrProtector;
                 _keyValueTr = _owner._keyValueTr;
                 _ascending = param.Order == EnumerationOrder.Ascending;
-                _keyValueTrProtector.Start();
                 _prevModificationCounter = _owner._modificationCounter;
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 _keyValueTr.FindFirstKey(_owner._prefix);
                 var prefixIndex = _keyValueTr.GetKeyIndex();
                 long startIndex;
@@ -915,8 +892,7 @@ namespace BTDB.ODBLayer
                     if (_seekState == SeekState.Undefined)
                         throw new BTDBException("Invalid access to uninitialized CurrentValue.");
 
-                    _keyValueTrProtector.Start();
-                    if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
                     {
                         if (_prevModificationCounter != _owner._modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -927,7 +903,7 @@ namespace BTDB.ODBLayer
                         Seek();
                     }
 
-                    _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                    _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                     var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
                     return _owner.ByteArrayToValue(valueBytes);
                 }
@@ -937,8 +913,7 @@ namespace BTDB.ODBLayer
                     if (_pos >= _count) throw new IndexOutOfRangeException();
                     if (_seekState == SeekState.Undefined)
                         throw new BTDBException("Invalid access to uninitialized CurrentValue.");
-                    _keyValueTrProtector.Start();
-                    if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                    if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
                     {
                         if (_prevModificationCounter != _owner._modificationCounter)
                             ThrowModifiedDuringEnum();
@@ -949,7 +924,7 @@ namespace BTDB.ODBLayer
                         Seek();
                     }
 
-                    _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                    _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                     var valueBytes = _owner.ValueToByteArray(value);
                     _keyValueTr.SetValue(valueBytes);
                 }
@@ -985,8 +960,7 @@ namespace BTDB.ODBLayer
                     return false;
                 }
 
-                _keyValueTrProtector.Start();
-                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
                 {
                     if (_prevModificationCounter != _owner._modificationCounter)
                         ThrowModifiedDuringEnum();
@@ -1008,7 +982,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 key = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsReadOnlySpan());
                 return true;
             }

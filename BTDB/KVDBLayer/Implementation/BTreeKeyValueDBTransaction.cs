@@ -15,8 +15,9 @@ namespace BTDB.KVDBLayer
         readonly bool _readOnly;
         bool _writing;
         bool _preapprovedWriting;
-        long _keyIndex;
         bool _temporaryCloseTransactionLog;
+        long _keyIndex;
+        long _cursorMovedCounter;
 
         public BTreeKeyValueDBTransaction(BTreeKeyValueDB keyValueDB, IRootNode artRoot, bool writing, bool readOnly)
         {
@@ -27,6 +28,7 @@ namespace BTDB.KVDBLayer
             _cursor = artRoot.CreateCursor();
             _cursor2 = null;
             BTreeRoot = artRoot;
+            _cursorMovedCounter = 0;
         }
 
         ~BTreeKeyValueDBTransaction()
@@ -40,6 +42,7 @@ namespace BTDB.KVDBLayer
 
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
+            _cursorMovedCounter++;
             if (_cursor.FindFirst(prefix))
             {
                 _keyIndex = _cursor.CalcIndex();
@@ -51,6 +54,7 @@ namespace BTDB.KVDBLayer
 
         public bool FindLastKey(in ReadOnlySpan<byte> prefix)
         {
+            _cursorMovedCounter++;
             _keyIndex = _cursor.FindLastWithPrefix(prefix);
             return _keyIndex >= 0;
         }
@@ -58,6 +62,7 @@ namespace BTDB.KVDBLayer
         public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
         {
             if (_keyIndex == -1) return FindLastKey(prefix);
+            _cursorMovedCounter++;
             if (_cursor.MovePrevious())
             {
                 if (_cursor.KeyHasPrefix(prefix))
@@ -73,6 +78,7 @@ namespace BTDB.KVDBLayer
         public bool FindNextKey(in ReadOnlySpan<byte> prefix)
         {
             if (_keyIndex == -1) return FindFirstKey(prefix);
+            _cursorMovedCounter++;
             if (_cursor.MoveNext())
             {
                 if (_cursor.KeyHasPrefix(prefix))
@@ -87,6 +93,7 @@ namespace BTDB.KVDBLayer
 
         public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
         {
+            _cursorMovedCounter++;
             var result = _cursor.Find(key);
             _keyIndex = _cursor.CalcIndex();
             if (prefixLen == 0) return result;
@@ -119,6 +126,7 @@ namespace BTDB.KVDBLayer
 
         public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
+            _cursorMovedCounter++;
             MakeWritable();
             Span<byte> trueValue = stackalloc byte[12];
             _keyValueDB.WriteCreateOrUpdateCommand(key, value, trueValue);
@@ -161,6 +169,7 @@ namespace BTDB.KVDBLayer
 
         public bool SetKeyIndex(long index)
         {
+            _cursorMovedCounter++;
             _keyIndex = index;
             if (_cursor.SeekIndex(index)) return true;
             InvalidateCurrentKey();
@@ -169,6 +178,7 @@ namespace BTDB.KVDBLayer
 
         public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
         {
+            _cursorMovedCounter++;
             if (!_cursor.FindFirst(prefix))
             {
                 InvalidateCurrentKey();
@@ -195,6 +205,7 @@ namespace BTDB.KVDBLayer
 
         public void InvalidateCurrentKey()
         {
+            _cursorMovedCounter++;
             _keyIndex = -1;
             _cursor.Invalidate();
         }
@@ -434,6 +445,8 @@ namespace BTDB.KVDBLayer
         {
             return BTreeRoot!.TransactionId;
         }
+
+        public long CursorMovedCounter => _cursorMovedCounter;
 
         public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
         {

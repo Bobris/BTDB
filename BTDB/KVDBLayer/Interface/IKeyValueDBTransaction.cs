@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {
@@ -86,11 +85,6 @@ namespace BTDB.KVDBLayer
         /// Return current key.
         /// </summary>
         ReadOnlySpan<byte> GetKeyAsReadOnlySpan();
-
-        /// <summary>
-        /// Return current key and it includes current prefix
-        /// </summary>
-        ByteBuffer GetKeyIncludingPrefix();
 
         /// <summary>
         /// Return current value into fresh memory or provided buffer if it fits.
@@ -193,6 +187,11 @@ namespace BTDB.KVDBLayer
         /// Global unique increasing number of actually running transaction
         /// </summary>
         long GetTransactionNumber();
+
+        /// <summary>
+        /// Returns current value of internal transaction counter which is incremented everytime current key position is moved.
+        /// </summary>
+        long CursorMovedCounter { get; }
 
         /// <summary>
         /// Useful for finding what takes most storage in your DB

@@ -117,7 +117,6 @@ namespace BTDB.ODBLayer
         {
             if (!SkipAlreadyVisitedOidChecks && !_visitedOids.Add(oid))
                 return;
-            _tr.TransactionProtector.Start();
             if (!_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
                 return; // Object oid was deleted
             _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
@@ -148,10 +147,8 @@ namespace BTDB.ODBLayer
         public void IterateRelationRow(ODBIteratorRelationInfo relation, long pos)
         {
             var prefix = BuildRelationPrefix(relation.Id);
-            var protector = _tr.TransactionProtector;
-            protector.Start();
             if (!_trkv.SetKeyIndex(prefix, pos)) return;
-            var prevProtectionCounter = protector.ProtectionCounter;
+            var prevProtectionCounter = _trkv.CursorMovedCounter;
             if (_visitor == null || _visitor.StartRelationKey())
             {
                 var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
@@ -159,7 +156,7 @@ namespace BTDB.ODBLayer
                 IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                 _visitor?.EndRelationKey();
             }
-            if (protector.WasInterupted(prevProtectionCounter))
+            if (_trkv.CursorMovedCounter != prevProtectionCounter)
             {
                 if (!_trkv.SetKeyIndex(prefix, pos)) return;
             }
@@ -177,19 +174,17 @@ namespace BTDB.ODBLayer
         {
             var prefix = BuildRelationPrefix(relation.Id);
 
-            var protector = _tr.TransactionProtector;
             long prevProtectionCounter = 0;
             long pos = 0;
             while (true)
             {
-                protector.Start();
                 if (pos == 0)
                 {
                     if (!_trkv.FindFirstKey(prefix)) break;
                 }
                 else
                 {
-                    if (protector.WasInterupted(prevProtectionCounter))
+                    if (_trkv.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (!_trkv.SetKeyIndex(prefix, pos)) break;
                     }
@@ -199,7 +194,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-                prevProtectionCounter = protector.ProtectionCounter;
+                prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartRelationKey())
                 {
                     var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
@@ -207,7 +202,7 @@ namespace BTDB.ODBLayer
                     IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                     _visitor?.EndRelationKey();
                 }
-                if (protector.WasInterupted(prevProtectionCounter))
+                if (_trkv.CursorMovedCounter != prevProtectionCounter)
                 {
                     if (!_trkv.SetKeyIndex(prefix, pos)) break;
                 }
@@ -282,19 +277,17 @@ namespace BTDB.ODBLayer
             var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, dictId);
-            var protector = _tr.TransactionProtector;
             long prevProtectionCounter = 0;
             long pos = 0;
             while (true)
             {
-                protector.Start();
                 if (pos == 0)
                 {
                     if (!_trkv.FindFirstKey(prefix)) break;
                 }
                 else
                 {
-                    if (protector.WasInterupted(prevProtectionCounter))
+                    if (_trkv.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (!_trkv.SetKeyIndex(prefix, pos)) break;
                     }
@@ -304,14 +297,14 @@ namespace BTDB.ODBLayer
                     }
                 }
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-                prevProtectionCounter = protector.ProtectionCounter;
+                prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartDictKey())
                 {
                     var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }
-                if (protector.WasInterupted(prevProtectionCounter))
+                if (_trkv.CursorMovedCounter !=prevProtectionCounter)
                 {
                     if (!_trkv.SetKeyIndex(prefix, pos)) break;
                 }
@@ -334,19 +327,17 @@ namespace BTDB.ODBLayer
             var prefix = new byte[o + PackUnpack.LengthVUInt(dictId)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, prefix, o);
             PackUnpack.PackVUInt(prefix, ref o, dictId);
-            var protector = _tr.TransactionProtector;
             long prevProtectionCounter = 0;
             long pos = 0;
             while (true)
             {
-                protector.Start();
                 if (pos == 0)
                 {
                     if (!_trkv.FindFirstKey(prefix)) break;
                 }
                 else
                 {
-                    if (protector.WasInterupted(prevProtectionCounter))
+                    if (_trkv.CursorMovedCounter != prevProtectionCounter)
                     {
                         if (!_trkv.SetKeyIndex(prefix, pos)) break;
                     }
@@ -356,7 +347,7 @@ namespace BTDB.ODBLayer
                     }
                 }
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-                prevProtectionCounter = protector.ProtectionCounter;
+                prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartSetKey())
                 {
                     var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
@@ -572,7 +563,6 @@ namespace BTDB.ODBLayer
             if (!_usedTableVersions.Add(new TableIdVersionId(tableId, version)))
                 return;
             MarkTableName(tableId);
-            _tr.TransactionProtector.Start();
             if (_trkv.Find(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version), 0) == FindResult.Exact)
             {
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
@@ -591,7 +581,6 @@ namespace BTDB.ODBLayer
         {
             if (!_usedTableIds.Add(tableId))
                 return;
-            _tr.TransactionProtector.Start();
             if (_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.TableNamesPrefix, tableId)))
             {
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
@@ -600,7 +589,6 @@ namespace BTDB.ODBLayer
 
         void MarkRelationName(uint relationId)
         {
-            _tr.TransactionProtector.Start();
             if (_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.RelationNamesPrefix, relationId)))
             {
                 _fastVisitor.MarkCurrentKeyAsUsed(_trkv);

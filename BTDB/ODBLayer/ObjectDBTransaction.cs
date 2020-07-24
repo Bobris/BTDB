@@ -20,7 +20,6 @@ namespace BTDB.ODBLayer
         IKeyValueDBTransaction? _keyValueTr;
         readonly bool _readOnly;
         readonly long _transactionNumber;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector = new KeyValueDBTransactionProtector();
 
         Dictionary<ulong, object>? _objSmallCache;
         Dictionary<object, DBObjectMetadata>? _objSmallMetadata;
@@ -51,8 +50,6 @@ namespace BTDB.ODBLayer
         public IObjectDB Owner => _owner;
 
         public IKeyValueDBTransaction? KeyValueDBTransaction => _keyValueTr;
-
-        public KeyValueDBTransactionProtector TransactionProtector => _keyValueTrProtector;
 
         public bool RollbackAdvised
         {
@@ -133,19 +130,18 @@ namespace BTDB.ODBLayer
             long prevProtectionCounter = 0;
             while (true)
             {
-                _keyValueTrProtector.Start();
                 if (oid == 0)
                 {
-                    prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
                     if (!_keyValueTr!.FindFirstKey(ObjectDB.AllObjectsPrefix)) break;
+                    prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 }
                 else
                 {
-                    if (_keyValueTrProtector.WasInterupted(prevProtectionCounter))
+                    if (prevProtectionCounter != _keyValueTr!.CursorMovedCounter)
                     {
                         oid++;
                         var key = BuildKeyFromOidWithAllObjectsPrefix(oid);
-                        var result = _keyValueTr!.Find(key, 0);
+                        var result = _keyValueTr.Find(key, 0);
                         if (result == FindResult.Previous)
                         {
                             if (!_keyValueTr.FindNextKey(ObjectDB.AllObjectsPrefix))
@@ -165,7 +161,7 @@ namespace BTDB.ODBLayer
                         if (!_keyValueTr!.FindNextKey(ObjectDB.AllObjectsPrefix)) break;
                     }
 
-                    prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                    prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 }
 
                 oid = ReadOidFromCurrentKeyInTransaction();
@@ -314,7 +310,6 @@ namespace BTDB.ODBLayer
 
         object? GetDirectlyFromStorage(ulong oid)
         {
-            _keyValueTrProtector.Start();
             if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
             {
                 return null;
@@ -343,7 +338,6 @@ namespace BTDB.ODBLayer
 
         public KeyValuePair<uint, uint> GetStorageSize(ulong oid)
         {
-            _keyValueTrProtector.Start();
             if (!_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
             {
                 return new KeyValuePair<uint, uint>(0, 0);
@@ -470,7 +464,6 @@ namespace BTDB.ODBLayer
                 var content = tableInfo.SingletonContent(_transactionNumber);
                 if (content == null)
                 {
-                    _keyValueTrProtector.Start();
                     if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
                     {
                         content = _keyValueTr.GetValueAsReadOnlySpan().ToArray();
@@ -824,7 +817,6 @@ namespace BTDB.ODBLayer
 
             if (metadata.Id == 0 || metadata.State == DBObjectState.Deleted) return;
             metadata.State = DBObjectState.Deleted;
-            _keyValueTrProtector.Start();
             _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id));
             tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             if (_objSmallCache != null)
@@ -859,7 +851,6 @@ namespace BTDB.ODBLayer
             }
 
             _dirtyObjSet?.Remove(oid);
-            _keyValueTrProtector.Start();
             _keyValueTr!.EraseCurrent(BuildKeyFromOidWithAllObjectsPrefix(oid));
             if (obj == null) return;
             DBObjectMetadata metadata = null;
@@ -959,13 +950,11 @@ namespace BTDB.ODBLayer
                 tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             }
 
-            _keyValueTrProtector.Start();
             _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id), writer.GetSpan());
         }
 
         void PersistTableInfo(TableInfo tableInfo)
         {
-            _keyValueTrProtector.Start();
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
             {
                 if (tableInfo.LastPersistedVersion <= 0)
@@ -1016,7 +1005,6 @@ namespace BTDB.ODBLayer
         {
             _lastDictId = 0;
             // Resetting last oid is risky due to singletons. So better to waste something.
-            _keyValueTrProtector.Start();
             _keyValueTr!.EraseAll(ObjectDB.AllObjectsPrefix);
             _keyValueTr.EraseAll(ObjectDB.AllDictionariesPrefix);
             _keyValueTr.EraseAll(ObjectDB.AllRelationsPKPrefix);

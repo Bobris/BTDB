@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using BTDB.Buffer;
 using BTDB.KVDBLayer.BTree;
 
 namespace BTDB.KVDBLayer
@@ -16,6 +15,7 @@ namespace BTDB.KVDBLayer
         bool _preapprovedWriting;
         bool _temporaryCloseTransactionLog;
         long _keyIndex;
+        long _cursorMovedCounter;
 
         public KeyValueDBTransaction(KeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing, bool readOnly)
         {
@@ -24,6 +24,7 @@ namespace BTDB.KVDBLayer
             _keyValueDB = keyValueDB;
             _btreeRoot = btreeRoot;
             _keyIndex = -1;
+            _cursorMovedCounter = 0;
             _keyValueDB.StartedUsingBTreeRoot(_btreeRoot);
         }
 
@@ -40,6 +41,7 @@ namespace BTDB.KVDBLayer
 
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) !=
                 FindResult.NotFound) return true;
             InvalidateCurrentKey();
@@ -48,6 +50,7 @@ namespace BTDB.KVDBLayer
 
         public bool FindLastKey(in ReadOnlySpan<byte> prefix)
         {
+            _cursorMovedCounter++;
             _keyIndex = _btreeRoot!.FindLastWithPrefix(prefix);
             if (_keyIndex == -1) return false;
             _btreeRoot.FillStackByIndex(_stack, _keyIndex);
@@ -57,6 +60,7 @@ namespace BTDB.KVDBLayer
         public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
         {
             if (_keyIndex == -1) return FindLastKey(prefix);
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindPreviousKey(_stack))
             {
                 if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
@@ -72,6 +76,7 @@ namespace BTDB.KVDBLayer
         public bool FindNextKey(in ReadOnlySpan<byte> prefix)
         {
             if (_keyIndex == -1) return FindFirstKey(prefix);
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindNextKey(_stack))
             {
                 if (CheckPrefixIn(prefix, GetCurrentKeyFromStack()))
@@ -86,11 +91,13 @@ namespace BTDB.KVDBLayer
 
         public FindResult Find(in ReadOnlySpan<byte> key, uint prefixLen)
         {
+            _cursorMovedCounter++;
             return _btreeRoot!.FindKey(_stack, out _keyIndex, key, prefixLen);
         }
 
         public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
+            _cursorMovedCounter++;
             MakeWritable();
             _keyValueDB.WriteCreateOrUpdateCommand(key, value, out var valueFileId, out var valueOfs, out var valueSize);
             var ctx = new CreateOrUpdateCtx
@@ -136,6 +143,7 @@ namespace BTDB.KVDBLayer
 
         public bool SetKeyIndex(long index)
         {
+            _cursorMovedCounter++;
             if (index < 0 || index >= _btreeRoot!.CalcKeyCount())
             {
                 InvalidateCurrentKey();
@@ -148,6 +156,7 @@ namespace BTDB.KVDBLayer
 
         public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
         {
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) ==
                 FindResult.NotFound)
             {
@@ -180,6 +189,7 @@ namespace BTDB.KVDBLayer
 
         public void InvalidateCurrentKey()
         {
+            _cursorMovedCounter++;
             _keyIndex = -1;
             _stack.Clear();
         }
@@ -193,12 +203,6 @@ namespace BTDB.KVDBLayer
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();
             return GetCurrentKeyFromStack();
-        }
-
-        public ByteBuffer GetKeyIncludingPrefix()
-        {
-            if (!IsValidKey()) return ByteBuffer.NewEmpty();
-            return ByteBuffer.NewAsync(GetCurrentKeyFromStack());
         }
 
         public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
@@ -251,6 +255,7 @@ namespace BTDB.KVDBLayer
 
         public void EraseCurrent()
         {
+            _cursorMovedCounter++;
             EnsureValidKey();
             var keyIndex = _keyIndex;
             MakeWritable();
@@ -266,6 +271,7 @@ namespace BTDB.KVDBLayer
 
         public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
         {
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
             {
                 InvalidateCurrentKey();
@@ -281,6 +287,7 @@ namespace BTDB.KVDBLayer
 
         public bool EraseCurrent(in ReadOnlySpan<byte> exactKey, ref byte buffer, int bufferLength, out ReadOnlySpan<byte> value)
         {
+            _cursorMovedCounter++;
             if (_btreeRoot!.FindKey(_stack, out _keyIndex, exactKey, 0) != FindResult.Exact)
             {
                 InvalidateCurrentKey();
@@ -306,6 +313,7 @@ namespace BTDB.KVDBLayer
             if (firstKeyIndex < 0) firstKeyIndex = 0;
             if (lastKeyIndex >= GetKeyValueCount()) lastKeyIndex = GetKeyValueCount() - 1;
             if (lastKeyIndex < firstKeyIndex) return;
+            _cursorMovedCounter++;
             MakeWritable();
             InvalidateCurrentKey();
             _btreeRoot!.FillStackByIndex(_stack, firstKeyIndex);
@@ -390,6 +398,8 @@ namespace BTDB.KVDBLayer
         {
             return _btreeRoot!.TransactionId;
         }
+
+        public long CursorMovedCounter => _cursorMovedCounter;
 
         public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
         {

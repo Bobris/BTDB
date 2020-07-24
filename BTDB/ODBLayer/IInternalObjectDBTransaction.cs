@@ -5,7 +5,6 @@ namespace BTDB.ODBLayer
 {
     public interface IInternalObjectDBTransaction : IObjectDBTransaction
     {
-        KeyValueDBTransactionProtector TransactionProtector { get; }
         ulong AllocateDictionaryId();
         object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx);
         void WriteInlineObject(ref SpanWriter writer, object @object, IWriterCtx writerCtx);

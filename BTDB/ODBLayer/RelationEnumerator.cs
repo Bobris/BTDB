@@ -11,7 +11,6 @@ namespace BTDB.ODBLayer
         readonly IInternalObjectDBTransaction _transaction;
         protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
         readonly IRelationModificationCounter _modificationCounter;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
 
@@ -27,12 +26,10 @@ namespace BTDB.ODBLayer
 
             ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
             _keyValueTr = _transaction.KeyValueDBTransaction;
-            _keyValueTrProtector = _transaction.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
             KeyBytes = keyBytes.ToArray();
             _modificationCounter = modificationCounter;
-            _keyValueTrProtector.Start();
             _pos = 0;
             _seekNeeded = true;
             _prevModificationCounter = _modificationCounter.ModificationCounter;
@@ -45,12 +42,10 @@ namespace BTDB.ODBLayer
 
             ItemLoader = relationInfo.ItemLoaderInfos[loaderIndex];
             _keyValueTr = _transaction.KeyValueDBTransaction;
-            _keyValueTrProtector = _transaction.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
             KeyBytes = keyBytes;
             _modificationCounter = modificationCounter;
-            _keyValueTrProtector.Start();
             _pos = 0;
             _seekNeeded = true;
             _prevModificationCounter = _modificationCounter.ModificationCounter;
@@ -60,14 +55,13 @@ namespace BTDB.ODBLayer
         {
             if (!_seekNeeded)
                 _pos++;
-            _keyValueTrProtector.Start();
-            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
             }
 
             var ret = Seek();
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             return ret;
         }
 
@@ -99,14 +93,13 @@ namespace BTDB.ODBLayer
         void SeekCurrent()
         {
             if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
-            _keyValueTrProtector.Start();
-            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 _modificationCounter.CheckModifiedDuringEnum(_prevModificationCounter);
                 Seek();
             }
 
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
         }
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
@@ -179,7 +172,6 @@ namespace BTDB.ODBLayer
         protected readonly uint PrefixFieldCount;
         protected readonly IRelationDbManipulator Manipulator;
         protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IInternalObjectDBTransaction _tr;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
@@ -206,15 +198,13 @@ namespace BTDB.ODBLayer
 
             _tr = manipulator.Transaction;
             _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
             KeyBytes = startKeyBytes.Slice(0, prefixLen).ToArray();
             var realEndKeyBytes = endKeyBytes;
             if (endKeyProposition == KeyProposition.Included)
-                realEndKeyBytes = FindLastKeyWithPrefix(endKeyBytes, _keyValueTr, _keyValueTrProtector);
+                realEndKeyBytes = FindLastKeyWithPrefix(endKeyBytes, _keyValueTr);
 
-            _keyValueTrProtector.Start();
             _keyValueTr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _keyValueTr.GetKeyIndex();
 
@@ -300,12 +290,9 @@ namespace BTDB.ODBLayer
 
             _tr = manipulator.Transaction;
             _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
             KeyBytes = prefixBytes.ToArray();
-
-            _keyValueTrProtector.Start();
 
             _prevModificationCounter = manipulator.ModificationCounter;
 
@@ -316,9 +303,8 @@ namespace BTDB.ODBLayer
         }
 
         internal static ReadOnlySpan<byte> FindLastKeyWithPrefix(in ReadOnlySpan<byte> endKeyBytes,
-            IKeyValueDBTransaction keyValueTr, KeyValueDBTransactionProtector keyValueTrProtector)
+            IKeyValueDBTransaction keyValueTr)
         {
-            keyValueTrProtector.Start();
             if (!keyValueTr.FindLastKey(endKeyBytes))
                 return endKeyBytes;
             return keyValueTr.GetKeyAsReadOnlySpan();
@@ -330,8 +316,7 @@ namespace BTDB.ODBLayer
                 _pos++;
             if (_pos >= _count)
                 return false;
-            _keyValueTrProtector.Start();
-            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 Manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
                 Seek();
@@ -352,7 +337,7 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             return true;
         }
 
@@ -368,14 +353,13 @@ namespace BTDB.ODBLayer
             {
                 if (_pos >= _count) throw new IndexOutOfRangeException();
                 if (_seekNeeded) throw new BTDBException("Invalid access to uninitialized Current.");
-                _keyValueTrProtector.Start();
-                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
                 {
                     Manipulator.CheckModifiedDuringEnum(_prevModificationCounter);
                     Seek();
                 }
 
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 return CreateInstance(keyBytes);
             }
@@ -462,7 +446,6 @@ namespace BTDB.ODBLayer
         protected readonly IRelationDbManipulator Manipulator;
         protected readonly RelationInfo.ItemLoaderInfo ItemLoader;
         readonly IInternalObjectDBTransaction _tr;
-        readonly KeyValueDBTransactionProtector _keyValueTrProtector;
         readonly IKeyValueDBTransaction _keyValueTr;
         long _prevProtectionCounter;
         readonly uint _startPos;
@@ -486,15 +469,13 @@ namespace BTDB.ODBLayer
 
             _tr = manipulator.Transaction;
             _keyValueTr = _tr.KeyValueDBTransaction;
-            _keyValueTrProtector = _tr.TransactionProtector;
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
 
             KeyBytes = startKeyBytes.Slice(0, prefixLen).ToArray();
             var realEndKeyBytes = endKeyBytes;
             if (endKeyProposition == KeyProposition.Included)
-                realEndKeyBytes = RelationAdvancedEnumerator<TValue>.FindLastKeyWithPrefix(endKeyBytes, _keyValueTr, _keyValueTrProtector);
+                realEndKeyBytes = RelationAdvancedEnumerator<TValue>.FindLastKeyWithPrefix(endKeyBytes, _keyValueTr);
 
-            _keyValueTrProtector.Start();
             _keyValueTr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _keyValueTr.GetKeyIndex();
 
@@ -591,8 +572,7 @@ namespace BTDB.ODBLayer
                 if (_pos >= _count) throw new IndexOutOfRangeException();
                 if (_seekState == SeekState.Undefined)
                     throw new BTDBException("Invalid access to uninitialized CurrentValue.");
-                _keyValueTrProtector.Start();
-                if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+                if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
                 {
                     Seek();
                 }
@@ -601,7 +581,7 @@ namespace BTDB.ODBLayer
                     Seek();
                 }
 
-                _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+                _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
                 var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
                 return CreateInstance(keyBytes);
             }
@@ -638,8 +618,7 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            _keyValueTrProtector.Start();
-            if (_keyValueTrProtector.WasInterupted(_prevProtectionCounter))
+            if (_keyValueTr.CursorMovedCounter != _prevProtectionCounter)
             {
                 Seek();
             }
@@ -659,7 +638,7 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            _prevProtectionCounter = _keyValueTrProtector.ProtectionCounter;
+            _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             //read key
             var keyData = _keyValueTr.GetKeyAsReadOnlySpan().Slice(KeyBytes.Length);
             var reader = new SpanReader(keyData);

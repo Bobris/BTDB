@@ -119,8 +119,6 @@ namespace BTDB.ODBLayer
 
             var keyBytes = KeyBytes(obj);
 
-            ResetKeyPrefix();
-
             if (_kvtr.FindExactKey(keyBytes))
                 return false;
 
@@ -142,7 +140,6 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 
-            ResetKeyPrefix();
             if (_kvtr.FindExactKey(keyBytes))
             {
                 Span<byte> buffer = stackalloc byte[256];
@@ -170,8 +167,6 @@ namespace BTDB.ODBLayer
 
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
-
-            ResetKeyPrefix();
 
             if (_hasSecondaryIndexes)
             {
@@ -209,8 +204,6 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 
-            ResetKeyPrefix();
-
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
@@ -231,8 +224,6 @@ namespace BTDB.ODBLayer
             var keyBytes = KeyBytes(obj);
             var valueBytes = ValueBytes(obj);
 
-            ResetKeyPrefix();
-
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
@@ -249,7 +240,6 @@ namespace BTDB.ODBLayer
 
         public bool Contains(in ReadOnlySpan<byte> keyBytes)
         {
-            ResetKeyPrefix();
             return _kvtr.FindExactKey(keyBytes);
         }
 
@@ -297,7 +287,6 @@ namespace BTDB.ODBLayer
 
         public bool RemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
-            ResetKeyPrefix();
             Span<byte> valueBuffer = stackalloc byte[256];
 
             if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length, out var value))
@@ -320,7 +309,6 @@ namespace BTDB.ODBLayer
 
         public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
-            ResetKeyPrefix();
             if (_hasSecondaryIndexes)
             {
                 Span<byte> valueBuffer = stackalloc byte[256];
@@ -359,7 +347,6 @@ namespace BTDB.ODBLayer
 
             foreach (var key in keysToDelete)
             {
-                ResetKeyPrefix();
                 if (!_kvtr.FindExactKey(key))
                     throw new BTDBException("Not found record to delete.");
 
@@ -421,20 +408,17 @@ namespace BTDB.ODBLayer
 
         int RemovePrimaryKeysByPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
             MarkModification();
             return (int)_kvtr.EraseAll(keyBytesPrefix);
         }
 
         public long CountWithPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
             return _kvtr.GetKeyValueCount(keyBytesPrefix);
         }
 
         public bool AnyWithPrefix(in ReadOnlySpan<byte> keyBytesPrefix)
         {
-            _transaction.TransactionProtector.Start();
             return _kvtr.FindFirstKey(keyBytesPrefix);
         }
 
@@ -447,14 +431,11 @@ namespace BTDB.ODBLayer
         public long CountWithProposition(KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
-            var keyValueTrProtector = _transaction.TransactionProtector;
-
             var realEndKeyBytes = endKeyBytes;
             if (endKeyProposition == KeyProposition.Included)
                 realEndKeyBytes =
-                    RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr, keyValueTrProtector);
+                    RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr);
 
-            keyValueTrProtector.Start();
             _kvtr.FindFirstKey(startKeyBytes.Slice(0,prefixLen));
             var prefixIndex = _kvtr.GetKeyIndex();
 
@@ -560,7 +541,6 @@ namespace BTDB.ODBLayer
         object? FindByIdOrDefaultInternal(RelationInfo.ItemLoaderInfo itemLoader, in ReadOnlySpan<byte> keyBytes,
             bool throwWhenNotFound)
         {
-            ResetKeyPrefix();
             if (!_kvtr.FindExactKey(keyBytes))
             {
                 if (throwWhenNotFound)
@@ -601,7 +581,6 @@ namespace BTDB.ODBLayer
             in ReadOnlySpan<byte> secKeyBytes,
             bool throwWhenNotFound, int loaderIndex)
         {
-            _transaction.TransactionProtector.Start();
             _kvtr.InvalidateCurrentKey();
             if (!_kvtr.FindFirstKey(secKeyBytes))
             {
@@ -617,11 +596,6 @@ namespace BTDB.ODBLayer
 
             return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
                 prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
-        }
-
-        void ResetKeyPrefix()
-        {
-            _transaction.TransactionProtector.Start();
         }
 
         ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
@@ -649,8 +623,6 @@ namespace BTDB.ODBLayer
 
         void AddIntoSecondaryIndexes(T obj)
         {
-            ResetKeyPrefix();
-
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
@@ -660,8 +632,6 @@ namespace BTDB.ODBLayer
 
         void UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
         {
-            ResetKeyPrefix();
-
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var newKeyBytes = WriteSecondaryKeyKey(key, newValue);
@@ -677,8 +647,6 @@ namespace BTDB.ODBLayer
 
         void RemoveSecondaryIndexes(in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
         {
-            ResetKeyPrefix();
-
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
                 var keyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
@@ -701,14 +669,7 @@ namespace BTDB.ODBLayer
             return GetEnumerator();
         }
 
-        public int Count
-        {
-            get
-            {
-                _transaction.TransactionProtector.Start();
-                return (int) _kvtr.GetKeyValueCount(_relationInfo.Prefix);
-            }
-        }
+        public int Count => (int) _kvtr.GetKeyValueCount(_relationInfo.Prefix);
 
         public Type BtdbInternalGetRelationInterfaceType()
         {

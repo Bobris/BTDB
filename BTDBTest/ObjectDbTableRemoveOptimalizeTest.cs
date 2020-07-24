@@ -348,11 +348,6 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetKeyAsReadOnlySpan();
             }
 
-            public ByteBuffer GetKeyIncludingPrefix()
-            {
-                return _keyValueDBTransaction.GetKeyIncludingPrefix();
-            }
-
             public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
             {
                 return _keyValueDBTransaction.GetClonedValue(ref buffer, bufferLength);
@@ -461,6 +456,8 @@ namespace BTDBTest
             {
                 return _keyValueDBTransaction.GetTransactionNumber();
             }
+
+            public long CursorMovedCounter => _keyValueDBTransaction.CursorMovedCounter;
 
             public KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey()
             {

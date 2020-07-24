@@ -556,8 +556,6 @@ namespace BTDB.ODBLayer
             {
                 var obj = enumerator.Current;
 
-                tr.TransactionProtector.Start();
-
                 for (var i = 0; i < indexes.Length; i++)
                 {
                     keyWriter.WriteBlock(PrefixSecondary);
@@ -1331,7 +1329,6 @@ namespace BTDB.ODBLayer
             Span<byte> prefix = stackalloc byte[1 + (int)len];
             prefix[0] = ObjectDB.AllDictionariesPrefixByte;
             PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(prefix.Slice(1)), dictId, len);
-            tr.TransactionProtector.Start();
             tr.KeyValueDBTransaction.EraseAll(prefix);
         }
 
@@ -1431,7 +1428,6 @@ namespace BTDB.ODBLayer
             }
             else if (id <= int.MinValue || id > 0)
             {
-                Transaction.TransactionProtector.Start();
                 if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong) id)))
                     return;
                 var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValueAsReadOnlySpan());
