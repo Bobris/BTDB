@@ -197,7 +197,7 @@ namespace BTDB.KVDBLayer
         /// Useful for finding what takes most storage in your DB
         /// </summary>
         /// <returns>Size of key and value (possibly even compressed size)</returns>
-        KeyValuePair<uint,uint> GetStorageSizeOfCurrentKey();
+        KeyValuePair<uint, uint> GetStorageSizeOfCurrentKey();
 
         /// <summary>
         /// This is just storage for boolean, add could store here that it does not want to commit transaction, it is up to infrastructure code around if it will listen this advice.

@@ -83,7 +83,7 @@ namespace SimpleTester
                     using var tr = db.StartTransaction();
                     for (var j = 0; j < 200; j++)
                     {
-                        tr.CreateOrUpdateKeyValue(new[] {(byte) j, (byte) i}, new byte[1 + i * j]);
+                        tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
                         pureDataLength += 2 + 1 + i * j;
                     }
 
@@ -172,10 +172,10 @@ namespace SimpleTester
                 for (var i = 0; i < keyCount; i++)
                 {
                     using var tr = db.StartTransaction();
-                    key[0] = (byte) (i / 100);
-                    key[1] = (byte) (i % 100);
-                    value[100] = (byte) (i / 100);
-                    value[200] = (byte) (i % 100);
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
+                    value[100] = (byte)(i / 100);
+                    value[200] = (byte)(i % 100);
                     tr.CreateOrUpdateKeyValue(key, value);
                     tr.Commit();
                 }
@@ -193,12 +193,12 @@ namespace SimpleTester
                 for (var i = 0; i < keyCount; i++)
                 {
                     using var tr = db.StartTransaction();
-                    key[0] = (byte) (i / 100);
-                    key[1] = (byte) (i % 100);
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
                     tr.FindExactKey(key);
                     var value = tr.GetValueAsReadOnlySpan();
-                    if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
-                    if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
+                    if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                    if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
 
                 _sw.Stop();
@@ -216,12 +216,12 @@ namespace SimpleTester
                 for (var i = 0; i < keyCount; i++)
                 {
                     using var tr = db.StartTransaction();
-                    key[0] = (byte) (i / 100);
-                    key[1] = (byte) (i % 100);
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
                     tr.FindExactKey(key);
                     var value = tr.GetValueAsReadOnlySpan();
-                    if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
-                    if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
+                    if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                    if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
 
                 _sw.Stop();
@@ -321,7 +321,7 @@ namespace SimpleTester
                         for (var i = 0; i < keys; i++)
                         {
                             var o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint) i);
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
                             tr.CreateOrUpdateKeyValue(key.AsSpan(0, o), value);
                         }
 
@@ -347,7 +347,7 @@ namespace SimpleTester
                         for (var i = 0; i < keys; i++)
                         {
                             var o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint) i);
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
                             tr.Find(key.AsSpan(0, o), 0);
                         }
 
@@ -410,18 +410,18 @@ namespace SimpleTester
             using var fileCollection = CreateTestFileCollection();
             using var db = CreateKeyValueDB(fileCollection);
             using var odb = new ObjectDB();
-            odb.Open(db,false);
+            odb.Open(db, false);
             Func<IObjectDBTransaction, IBtdbTestTable> table;
             using (var tr = odb.StartTransaction())
             {
-                 table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
-                 tr.Commit();
+                table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
+                tr.Commit();
             }
             for (var i = 0; i < count; i++)
             {
                 using var tr = odb.StartTransaction();
                 var tbl = table(tr);
-                tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name "+i, Data1 = "data1 "+i, Data2 = "data2 "+i, Data3="data3 "+i});
+                tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name " + i, Data1 = "data1 " + i, Data2 = "data2 " + i, Data3 = "data3 " + i });
                 tr.Commit();
             }
 

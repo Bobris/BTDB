@@ -30,11 +30,11 @@ namespace BTDB.ODBLayer
 
             if (id <= int.MinValue || id > 0)
             {
-                @object = Transaction.Get((ulong) id);
+                @object = Transaction.Get((ulong)id);
                 return false;
             }
 
-            var ido = (int) (-id) - 1;
+            var ido = (int)(-id) - 1;
             var o = RetrieveObj(ido);
             if (o != null)
             {
@@ -74,7 +74,7 @@ namespace BTDB.ODBLayer
             if (_returningStack.Count == 0) return;
             var returnPos = _returningStack[^1];
             _returningStack.Pop();
-            if (returnPos>=0) reader.SetCurrentPosition(returnPos);
+            if (returnPos >= 0) reader.SetCurrentPosition(returnPos);
         }
 
         public object? ReadNativeObject(ref SpanReader reader)
@@ -101,7 +101,7 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            var ido = (int) (-id) - 1;
+            var ido = (int)(-id) - 1;
             var o = RetrieveObj(ido);
             if (o != null)
             {

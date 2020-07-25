@@ -6,7 +6,7 @@ namespace BTDB.IOC
     {
         public static IRegistration<IAsLiveScopeConstructorPropertiesTrait> RegisterType<T>(this ContainerBuilder builder)
         {
-            return builder.RegisterType(typeof (T));
+            return builder.RegisterType(typeof(T));
         }
 
         public static IRegistration<TTraits> SingleInstance<TTraits>(this IRegistration<TTraits> registration) where TTraits : ILiveScopeTrait

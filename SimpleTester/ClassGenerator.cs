@@ -48,7 +48,7 @@ namespace SimpleTester
                 switch (_rand.Next(4))
                 {
                     case 0:
-                        if (i>0)
+                        if (i > 0)
                         {
                             var k = _rand.Next(i);
                             _sb.Append($@"

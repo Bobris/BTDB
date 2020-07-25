@@ -175,7 +175,7 @@ namespace BTDB.EventStoreLayer
                     }
                 }
 
-                haveDescriptor:
+            haveDescriptor:
                 _temporaryMap[type] = result;
                 if (result != null)
                 {
@@ -362,7 +362,7 @@ namespace BTDB.EventStoreLayer
                 if (typeId == 1)
                 {
                     var backRefId = reader.ReadVUInt32();
-                    return _backRefs[(int) backRefId];
+                    return _backRefs[(int)backRefId];
                 }
 
                 return _mapping.Load(typeId, ref reader, this);
@@ -490,30 +490,30 @@ namespace BTDB.EventStoreLayer
         {
             if (descriptor is ListTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.List);
+                writer.WriteUInt8((byte)TypeCategory.List);
             }
             else if (descriptor is DictionaryTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Dictionary);
+                writer.WriteUInt8((byte)TypeCategory.Dictionary);
             }
             else if (descriptor is ObjectTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Class);
+                writer.WriteUInt8((byte)TypeCategory.Class);
             }
             else if (descriptor is EnumTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Enum);
+                writer.WriteUInt8((byte)TypeCategory.Enum);
             }
             else if (descriptor is NullableTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Nullable);
+                writer.WriteUInt8((byte)TypeCategory.Nullable);
             }
             else
             {
                 throw new ArgumentOutOfRangeException();
             }
 
-            ((IPersistTypeDescriptor) descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));
+            ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) => w.WriteVUInt32(descriptor2Id(d)));
         }
 
         public ITypeDescriptor MergeDescriptor(ITypeDescriptor descriptor)

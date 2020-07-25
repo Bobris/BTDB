@@ -44,7 +44,7 @@ namespace BTDB.IOC.CRegs
         {
             var il = context.IL;
             var needsForProps = context.NeedsForProperties(_implementationType, _arePropertiesAutowired).ToList();
-            if (needsForProps.Count>0)
+            if (needsForProps.Count > 0)
             {
                 var result = il.DeclareLocal(_implementationType);
                 context.PushToILStack(context.NeedsForConstructor(_constructorInfo));

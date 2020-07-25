@@ -5,7 +5,7 @@ namespace BTDB.FieldHandler
 {
     public class SignedFieldHandler : SimpleFieldHandlerBase
     {
-        public SignedFieldHandler(): base("Signed",
+        public SignedFieldHandler() : base("Signed",
             typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!,
             typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!,
             typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!)

@@ -28,7 +28,7 @@ namespace BTDB.EventStoreLayer
         }
 
         public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
-            :this(typeSerializers, nestedDescriptorReader(ref reader))
+            : this(typeSerializers, nestedDescriptorReader(ref reader))
         {
         }
 
@@ -57,7 +57,7 @@ namespace BTDB.EventStoreLayer
         {
 #pragma warning disable RECS0025 // Non-readonly field referenced in 'GetHashCode()'
             // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return 33 *_itemDescriptor!.GetHashCode();
+            return 33 * _itemDescriptor!.GetHashCode();
 #pragma warning restore RECS0025 // Non-readonly field referenced in 'GetHashCode()'
         }
 
@@ -169,8 +169,8 @@ namespace BTDB.EventStoreLayer
             }
             else
             {
-                var isSet = targetType.InheritsOrImplements( typeof(ISet<>));
-                var listType = (isSet?typeof(HashSetWithDescriptor<>):typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
+                var isSet = targetType.InheritsOrImplements(typeof(ISet<>));
+                var listType = (isSet ? typeof(HashSetWithDescriptor<>) : typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
 
                 if (!targetType.IsAssignableFrom(listType))
                     throw new NotSupportedException($"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");

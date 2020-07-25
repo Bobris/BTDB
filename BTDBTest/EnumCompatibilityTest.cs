@@ -61,7 +61,7 @@ namespace BTDBTest
         }
 
         [PersistedName("Test")]
-        public interface IItemTable: IRelation<Item>
+        public interface IItemTable : IRelation<Item>
         {
             void Insert(Item item);
             Item FindById(ulong id);
@@ -85,7 +85,7 @@ namespace BTDBTest
         }
 
         [PersistedName("Test")]
-        public interface IFlagTable: IRelation<Flag>
+        public interface IFlagTable : IRelation<Flag>
         {
             void Insert(Flag item);
             Flag FindById(ulong id);

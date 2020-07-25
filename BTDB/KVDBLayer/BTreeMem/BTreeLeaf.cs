@@ -159,10 +159,10 @@ namespace BTDB.KVDBLayer.BTreeMem
         static BTreeLeafMember NewMemberFromCtx(ref CreateOrUpdateCtx ctx)
         {
             return new BTreeLeafMember
-                {
-                    Key = ctx.Key.ToArray(),
-                    Value = ctx.Value.ToArray()
-                };
+            {
+                Key = ctx.Key.ToArray(),
+                Value = ctx.Value.ToArray()
+            };
         }
 
         public long CalcKeyCount()

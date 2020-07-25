@@ -109,10 +109,10 @@ namespace BTDB.EventStoreLayer
             pushValue(ilGenerator);
             if (valueType == typeof(byte[]))
                 ilGenerator.Call(
-                    typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] {typeof(byte[])})!);
+                    typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
             else if (valueType == typeof(ByteBuffer))
                 ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray),
-                    new[] {typeof(ByteBuffer)})!);
+                    new[] { typeof(ByteBuffer) })!);
             else throw new ArgumentOutOfRangeException(nameof(valueType));
         }
 

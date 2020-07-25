@@ -44,7 +44,7 @@ namespace BTDB.StreamLayer
         void FlushBuffer()
         {
             _stream.Write(_buf.AsSpan(0, _pos), _ofs);
-            _ofs += (ulong) _pos;
+            _ofs += (ulong)_pos;
             _pos = 0;
         }
 
@@ -75,27 +75,27 @@ namespace BTDB.StreamLayer
 
         public long GetCurrentPosition(in SpanWriter spanWriter)
         {
-            return (long) _ofs + BufLength - spanWriter.Buf.Length;
+            return (long)_ofs + BufLength - spanWriter.Buf.Length;
         }
 
         public long GetCurrentPositionWithoutWriter()
         {
-            return (long) _ofs + _pos;
+            return (long)_ofs + _pos;
         }
 
         public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
         {
-            _stream.Write(MemoryMarshal.CreateReadOnlySpan(ref buffer, (int) length), _ofs);
+            _stream.Write(MemoryMarshal.CreateReadOnlySpan(ref buffer, (int)length), _ofs);
             _ofs += length;
         }
 
         public void WriteBlockWithoutWriter(ref byte buffer, uint length)
         {
-            if (length <= (uint) (BufLength - _pos))
+            if (length <= (uint)(BufLength - _pos))
             {
-                Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, (int) length)), ref buffer,
+                Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, (int)length)), ref buffer,
                     length);
-                _pos += (int) length;
+                _pos += (int)length;
             }
             else
             {
@@ -108,7 +108,7 @@ namespace BTDB.StreamLayer
         public void SetCurrentPosition(ref SpanWriter spanWriter, long position)
         {
             if (_pos != 0) FlushBuffer();
-            _ofs = (ulong) position;
+            _ofs = (ulong)position;
             spanWriter.Buf = _buf;
         }
     }

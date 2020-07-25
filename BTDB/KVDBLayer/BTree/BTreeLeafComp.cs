@@ -41,7 +41,7 @@ namespace BTDB.KVDBLayer.BTree
                 _keyValues[i] = new Member
                 {
                     KeyOffset = ofs,
-                    KeyLength = (ushort) newKeyValues[i].Key.Length,
+                    KeyLength = (ushort)newKeyValues[i].Key.Length,
                     ValueFileId = newKeyValues[i].ValueFileId,
                     ValueOfs = newKeyValues[i].ValueOfs,
                     ValueSize = newKeyValues[i].ValueSize
@@ -61,11 +61,11 @@ namespace BTDB.KVDBLayer.BTree
         internal static IBTreeNode CreateFirst(ref CreateOrUpdateCtx ctx)
         {
             Debug.Assert(ctx.Key.Length <= MaxTotalLen);
-            var result = new BTreeLeafComp(ctx.TransactionId, 1) {_keyBytes = ctx.Key.ToArray()};
+            var result = new BTreeLeafComp(ctx.TransactionId, 1) { _keyBytes = ctx.Key.ToArray() };
             result._keyValues[0] = new Member
             {
                 KeyOffset = 0,
-                KeyLength = (ushort) result._keyBytes.Length,
+                KeyLength = (ushort)result._keyBytes.Length,
                 ValueFileId = ctx.ValueFileId,
                 ValueOfs = ctx.ValueOfs,
                 ValueSize = ctx.ValueSize
@@ -107,7 +107,7 @@ namespace BTDB.KVDBLayer.BTree
             var index = Find(ctx.Key);
             if ((index & 1) == 1)
             {
-                index = (int) ((uint) index / 2);
+                index = (int)((uint)index / 2);
                 ctx.Created = false;
                 ctx.KeyIndex = index;
                 var m = _keyValues[index];
@@ -125,11 +125,11 @@ namespace BTDB.KVDBLayer.BTree
                 }
 
                 leaf._keyValues[index] = m;
-                ctx.Stack!.Add(new NodeIdxPair {Node = leaf, Idx = index});
+                ctx.Stack!.Add(new NodeIdxPair { Node = leaf, Idx = index });
                 return;
             }
 
-            if ((long) _keyBytes!.Length + ctx.Key.Length > MaxTotalLen)
+            if ((long)_keyBytes!.Length + ctx.Key.Length > MaxTotalLen)
             {
                 var currentKeyValues = new BTreeLeafMember[_keyValues.Length];
                 for (var i = 0; i < currentKeyValues.Length; i++)
@@ -148,7 +148,7 @@ namespace BTDB.KVDBLayer.BTree
                 return;
             }
 
-            index = (int) ((uint) index / 2);
+            index = (int)((uint)index / 2);
             ctx.Created = true;
             ctx.KeyIndex = index;
             var newKey = ctx.Key;
@@ -157,13 +157,13 @@ namespace BTDB.KVDBLayer.BTree
                 var newKeyValues = new Member[_keyValues.Length + 1];
                 var newKeyBytes = new byte[_keyBytes.Length + newKey.Length];
                 Array.Copy(_keyValues, 0, newKeyValues, 0, index);
-                var ofs = (ushort) (index == 0
+                var ofs = (ushort)(index == 0
                     ? 0
                     : newKeyValues[index - 1].KeyOffset + newKeyValues[index - 1].KeyLength);
                 newKeyValues[index] = new Member
                 {
                     KeyOffset = ofs,
-                    KeyLength = (ushort) newKey.Length,
+                    KeyLength = (ushort)newKey.Length,
                     ValueFileId = ctx.ValueFileId,
                     ValueOfs = ctx.ValueOfs,
                     ValueSize = ctx.ValueSize
@@ -186,7 +186,7 @@ namespace BTDB.KVDBLayer.BTree
                     _keyBytes = newKeyBytes;
                 }
 
-                ctx.Stack!.Add(new NodeIdxPair {Node = leaf, Idx = index});
+                ctx.Stack!.Add(new NodeIdxPair { Node = leaf, Idx = index });
                 return;
             }
 
@@ -200,11 +200,11 @@ namespace BTDB.KVDBLayer.BTree
             if (index < keyCountLeft)
             {
                 Array.Copy(_keyValues, 0, leftNode._keyValues, 0, index);
-                var ofs = (ushort) (index == 0 ? 0 : _keyValues[index - 1].KeyOffset + _keyValues[index - 1].KeyLength);
+                var ofs = (ushort)(index == 0 ? 0 : _keyValues[index - 1].KeyOffset + _keyValues[index - 1].KeyLength);
                 leftNode._keyValues[index] = new Member
                 {
                     KeyOffset = ofs,
-                    KeyLength = (ushort) newKey.Length,
+                    KeyLength = (ushort)newKey.Length,
                     ValueFileId = ctx.ValueFileId,
                     ValueOfs = ctx.ValueOfs,
                     ValueSize = ctx.ValueSize
@@ -220,7 +220,7 @@ namespace BTDB.KVDBLayer.BTree
                 newKeyBytes = new byte[_keyBytes.Length + newKey.Length - leftKeyBytesLen];
                 Array.Copy(_keyBytes, leftKeyBytesLen - newKey.Length, newKeyBytes, 0, newKeyBytes.Length);
                 rightNode._keyBytes = newKeyBytes;
-                ctx.Stack!.Add(new NodeIdxPair {Node = leftNode, Idx = index});
+                ctx.Stack!.Add(new NodeIdxPair { Node = leftNode, Idx = index });
                 ctx.SplitInRight = false;
                 RecalculateOffsets(leftNode._keyValues);
             }
@@ -243,14 +243,14 @@ namespace BTDB.KVDBLayer.BTree
                 rightNode._keyValues[index - keyCountLeft] = new Member
                 {
                     KeyOffset = 0,
-                    KeyLength = (ushort) newKey.Length,
+                    KeyLength = (ushort)newKey.Length,
                     ValueFileId = ctx.ValueFileId,
                     ValueOfs = ctx.ValueOfs,
                     ValueSize = ctx.ValueSize
                 };
                 Array.Copy(_keyValues, index, rightNode._keyValues, index - keyCountLeft + 1,
                     keyCountLeft + keyCountRight - 1 - index);
-                ctx.Stack!.Add(new NodeIdxPair {Node = rightNode, Idx = index - keyCountLeft});
+                ctx.Stack!.Add(new NodeIdxPair { Node = rightNode, Idx = index - keyCountLeft });
                 ctx.SplitInRight = true;
             }
 
@@ -264,15 +264,15 @@ namespace BTDB.KVDBLayer.BTree
             if ((idx & 1) == 1)
             {
                 result = FindResult.Exact;
-                idx = (int) ((uint) idx / 2);
+                idx = (int)((uint)idx / 2);
             }
             else
             {
                 result = FindResult.Previous;
-                idx = (int) ((uint) idx / 2) - 1;
+                idx = (int)((uint)idx / 2) - 1;
             }
 
-            stack.Add(new NodeIdxPair {Node = this, Idx = idx});
+            stack.Add(new NodeIdxPair { Node = this, Idx = idx });
             keyIndex = idx;
             return result;
         }
@@ -290,7 +290,7 @@ namespace BTDB.KVDBLayer.BTree
 
         public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
         {
-            stack.Add(new NodeIdxPair {Node = this, Idx = (int) keyIndex});
+            stack.Add(new NodeIdxPair { Node = this, Idx = (int)keyIndex });
         }
 
         public long FindLastWithPrefix(in ReadOnlySpan<byte> prefix)
@@ -350,9 +350,9 @@ namespace BTDB.KVDBLayer.BTree
             var newKeyValues = new Member[_keyValues.Length + firstKeyIndex - lastKeyIndex - 1];
             var newKeyBytes = new byte[_keyBytes!.Length + _keyValues[firstKeyIndex].KeyOffset -
                                        _keyValues[lastKeyIndex].KeyOffset - _keyValues[lastKeyIndex].KeyLength];
-            Array.Copy(_keyValues, 0, newKeyValues, 0, (int) firstKeyIndex);
-            Array.Copy(_keyValues, (int) lastKeyIndex + 1, newKeyValues, (int) firstKeyIndex,
-                newKeyValues.Length - (int) firstKeyIndex);
+            Array.Copy(_keyValues, 0, newKeyValues, 0, (int)firstKeyIndex);
+            Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex,
+                newKeyValues.Length - (int)firstKeyIndex);
             Array.Copy(_keyBytes, 0, newKeyBytes, 0, _keyValues[firstKeyIndex].KeyOffset);
             Array.Copy(_keyBytes, _keyValues[lastKeyIndex].KeyOffset + _keyValues[lastKeyIndex].KeyLength, newKeyBytes,
                 _keyValues[firstKeyIndex].KeyOffset, newKeyBytes.Length - _keyValues[firstKeyIndex].KeyOffset);
@@ -395,7 +395,7 @@ namespace BTDB.KVDBLayer.BTree
             for (var i = 0; i < keyValues.Length; i++)
             {
                 ref var ii = ref keyValues[i];
-                if (map.TryGetValue(((ulong) ii.ValueFileId << 32) | ii.ValueOfs, out var newOffset))
+                if (map.TryGetValue(((ulong)ii.ValueFileId << 32) | ii.ValueOfs, out var newOffset))
                 {
                     if (result.TransactionId != ctx._transactionId)
                     {
@@ -405,8 +405,8 @@ namespace BTDB.KVDBLayer.BTree
                         keyValues = newKeyValues;
                     }
 
-                    keyValues[i].ValueFileId = (uint) (newOffset >> 32);
-                    keyValues[i].ValueOfs = (uint) newOffset;
+                    keyValues[i].ValueFileId = (uint)(newOffset >> 32);
+                    keyValues[i].ValueOfs = (uint)newOffset;
                 }
             }
 

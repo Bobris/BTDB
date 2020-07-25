@@ -29,7 +29,7 @@ namespace BTDB.StreamLayer
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             _stream = stream;
-            _position = (ulong) _stream.Position;
+            _position = (ulong)_stream.Position;
             _dispose = dispose;
             _writeBufUsed = 0;
         }
@@ -41,7 +41,7 @@ namespace BTDB.StreamLayer
                 FlushWriteBuf();
                 if (_position != pos)
                 {
-                    _stream.Position = (long) pos;
+                    _stream.Position = (long)pos;
                     _position = pos;
                 }
 
@@ -54,12 +54,12 @@ namespace BTDB.StreamLayer
                     var res = _stream.Read(tempBuf, 0, tempBuf.Length);
                     tempBuf.AsSpan().CopyTo(data);
 #endif
-                    _position += (ulong) res;
+                    _position += (ulong)res;
                     return res;
                 }
                 catch (Exception)
                 {
-                    _position = (ulong) _stream.Position;
+                    _position = (ulong)_stream.Position;
                     throw;
                 }
             }
@@ -70,19 +70,19 @@ namespace BTDB.StreamLayer
             if (_writeBufUsed == 0) return;
             if (_position != _writeBufStart)
             {
-                _stream.Position = (long) _writeBufStart;
+                _stream.Position = (long)_writeBufStart;
                 _position = _writeBufStart;
             }
 
             try
             {
                 _stream.Write(_writeBuf, 0, _writeBufUsed);
-                _position += (ulong) _writeBufUsed;
+                _position += (ulong)_writeBufUsed;
                 _writeBufUsed = 0;
             }
             catch (Exception)
             {
-                _position = (ulong) _stream.Position;
+                _position = (ulong)_stream.Position;
                 _writeBufUsed = 0;
                 throw;
             }
@@ -101,10 +101,10 @@ namespace BTDB.StreamLayer
 
                     if (_writeBufUsed > 0)
                     {
-                        if (pos >= _writeBufStart && pos <= _writeBufStart + (ulong) _writeBufUsed &&
-                            pos + (ulong) data.Length <= _writeBufStart + (ulong) _writeBufSize)
+                        if (pos >= _writeBufStart && pos <= _writeBufStart + (ulong)_writeBufUsed &&
+                            pos + (ulong)data.Length <= _writeBufStart + (ulong)_writeBufSize)
                         {
-                            var writeBufOfs = (int) (pos - _writeBufStart);
+                            var writeBufOfs = (int)(pos - _writeBufStart);
                             data.CopyTo(new Span<byte>(_writeBuf, writeBufOfs, data.Length));
                             _writeBufUsed = Math.Max(_writeBufUsed, writeBufOfs + data.Length);
                             return;
@@ -122,7 +122,7 @@ namespace BTDB.StreamLayer
                 FlushWriteBuf();
                 if (_position != pos)
                 {
-                    _stream.Position = (long) pos;
+                    _stream.Position = (long)pos;
                     _position = pos;
                 }
 
@@ -133,11 +133,11 @@ namespace BTDB.StreamLayer
 #else
                     _stream.Write(data.ToArray(), 0, data.Length);
 #endif
-                    _position += (ulong) data.Length;
+                    _position += (ulong)data.Length;
                 }
                 catch (Exception)
                 {
-                    _position = (ulong) _stream.Position;
+                    _position = (ulong)_stream.Position;
                     throw;
                 }
             }
@@ -173,10 +173,10 @@ namespace BTDB.StreamLayer
         {
             lock (_lock)
             {
-                var res = (ulong) _stream.Length;
+                var res = (ulong)_stream.Length;
                 if (_writeBufUsed > 0)
                 {
-                    res = Math.Max(res, _writeBufStart + (ulong) _writeBufUsed);
+                    res = Math.Max(res, _writeBufStart + (ulong)_writeBufUsed);
                 }
 
                 return res;
@@ -188,8 +188,8 @@ namespace BTDB.StreamLayer
             lock (_lock)
             {
                 FlushWriteBuf();
-                _stream.SetLength((long) size);
-                _position = (ulong) _stream.Position;
+                _stream.SetLength((long)size);
+                _position = (ulong)_stream.Position;
             }
         }
 

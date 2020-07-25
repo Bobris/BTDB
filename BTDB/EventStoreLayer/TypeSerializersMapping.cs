@@ -79,7 +79,7 @@ namespace BTDB.EventStoreLayer
                 }
                 while (typeId >= _id2DescriptorMap.Count)
                     _id2DescriptorMap.Add(null);
-                _id2DescriptorMap[(int) typeId] ??= new InfoForType {Id = (int) typeId, Descriptor = descriptor};
+                _id2DescriptorMap[(int)typeId] ??= new InfoForType { Id = (int)typeId, Descriptor = descriptor };
                 typeId = reader.ReadVUInt32();
             }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)

@@ -71,7 +71,7 @@ namespace BTDBTest
         {
             using (var tr = _cs.StartTransaction())
             {
-                tr.Put(CalcHash(new byte[] {0}), ByteBuffer.NewAsync(new byte[] {1}), true);
+                tr.Put(CalcHash(new byte[] { 0 }), ByteBuffer.NewAsync(new byte[] { 1 }), true);
             }
             using (var tr = _cs.StartTransaction())
             {

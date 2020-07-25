@@ -626,9 +626,9 @@ namespace BTDBTest
             using var tr = db.StartTransaction();
             tr.CreateKey(_key1);
             tr.CreateKey(Key2);
-            Assert.True(tr.FindFirstKey(Key2.AsSpan(0,1)));
-            Assert.True(tr.FindNextKey(Key2.AsSpan(0,1)));
-            Assert.False(tr.FindNextKey(Key2.AsSpan(0,1)));
+            Assert.True(tr.FindFirstKey(Key2.AsSpan(0, 1)));
+            Assert.True(tr.FindNextKey(Key2.AsSpan(0, 1)));
+            Assert.False(tr.FindNextKey(Key2.AsSpan(0, 1)));
             tr.Commit();
         }
 
@@ -640,8 +640,8 @@ namespace BTDBTest
             using var tr = db.StartTransaction();
             tr.CreateKey(_key1);
             tr.CreateKey(Key2);
-            Assert.True(tr.FindFirstKey(Key2.AsSpan(0,1)));
-            Assert.False(tr.FindPreviousKey(Key2.AsSpan(0,1)));
+            Assert.True(tr.FindFirstKey(Key2.AsSpan(0, 1)));
+            Assert.False(tr.FindPreviousKey(Key2.AsSpan(0, 1)));
             tr.Commit();
         }
 
@@ -1209,7 +1209,7 @@ namespace BTDBTest
                 var value = new byte[2000];
                 for (var i = 0; i < 2000; i++)
                 {
-                    PackUnpack.PackInt32BE(key,0,i);
+                    PackUnpack.PackInt32BE(key, 0, i);
                     tr.CreateOrUpdateKeyValue(key, value);
                 }
                 tr.Commit();
@@ -1217,15 +1217,15 @@ namespace BTDBTest
             using (var tr = db.StartTransaction())
             {
                 var key = new byte[100];
-                for (var i = 0; i < 2000; i+=2)
+                for (var i = 0; i < 2000; i += 2)
                 {
-                    PackUnpack.PackInt32BE(key,0,i);
+                    PackUnpack.PackInt32BE(key, 0, i);
                     tr.FindExactKey(key);
                     tr.EraseCurrent();
                 }
-                for (var i = 0; i < 2000; i+=3)
+                for (var i = 0; i < 2000; i += 3)
                 {
-                    PackUnpack.PackInt32BE(key,0,i);
+                    PackUnpack.PackInt32BE(key, 0, i);
                     if (tr.FindExactKey(key))
                         tr.EraseCurrent();
                 }

@@ -236,7 +236,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             {
                 var middle = (left + right) / 2;
                 var currentKey = _keys[middle];
-                var result = prefix.SequenceCompareTo(currentKey.AsSpan(0,Math.Min(currentKey.Length, prefix.Length)));
+                var result = prefix.SequenceCompareTo(currentKey.AsSpan(0, Math.Min(currentKey.Length, prefix.Length)));
                 if (result < 0)
                 {
                     right = middle;

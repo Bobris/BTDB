@@ -69,7 +69,7 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILinks>("LinksRelation");
                 var links = creator(tr);
-                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}};
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } };
                 links.Insert(link);
                 tr.Commit();
             }
@@ -84,8 +84,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                links.Insert(new Link {Id = 2, Edges = new Dictionary<ulong, ulong> {[10] = 20}});
-                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
+                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
                 links.Update(link); //replace dict
                 link = links.FindById(2);
                 link.Edges.Add(20, 30);
@@ -105,8 +105,8 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                links.Insert(new Link {Id = 2, Edges = new Dictionary<ulong, ulong> {[10] = 20}});
-                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
+                links.Insert(new Link { Id = 2, Edges = new Dictionary<ulong, ulong> { [10] = 20 } });
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
                 links.ShallowUpdate(link); //replace dict
                 link = links.FindById(2);
                 link.Edges.Add(20, 30);
@@ -159,7 +159,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
                 links.Upsert(link); //replace dict
                 tr.Commit();
             }
@@ -174,7 +174,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var links = creator(tr);
-                var link = new Link {Id = 1, Edges = new Dictionary<ulong, ulong>()};
+                var link = new Link { Id = 1, Edges = new Dictionary<ulong, ulong>() };
                 links.ShallowUpsert(link); //replace dict
                 tr.Commit();
             }
@@ -256,7 +256,7 @@ namespace BTDBTest
                 var links = creator(tr);
                 var link = links.FindById(1);
                 for (int i = 0; i < 20; i++)
-                    link.EdgesList.Add(new Dictionary<ulong, ulong> {[10] = 20});
+                    link.EdgesList.Add(new Dictionary<ulong, ulong> { [10] = 20 });
                 links.Update(link);
                 tr.Commit();
             }
@@ -290,8 +290,8 @@ namespace BTDBTest
                     Id = 1,
                     EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
                     {
-                        [0] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
-                        [1] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
+                        [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
+                        [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
                     }
                 };
                 links.Insert(link);
@@ -334,8 +334,8 @@ namespace BTDBTest
                     Id = 1,
                     EdgesIDict = new Dictionary<int, IDictionary<ulong, ulong>>
                     {
-                        [0] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3},
-                        [1] = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}
+                        [0] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 },
+                        [1] = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }
                     }
                 };
                 links.Insert(link);
@@ -382,7 +382,7 @@ namespace BTDBTest
                 var link = new Links
                 {
                     Id = 1,
-                    Nodes = new Nodes {Edges = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}}
+                    Nodes = new Nodes { Edges = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 } }
                 };
                 links.Insert(link);
                 tr.Commit();
@@ -433,7 +433,7 @@ namespace BTDBTest
             {
                 creator = tr.InitRelation<ILicenseTable>("LicRel");
                 var lics = creator(tr);
-                var license = new LicenseDb {ItemId = 1}; //no LicenseFileDb inserted
+                var license = new LicenseDb { ItemId = 1 }; //no LicenseFileDb inserted
                 lics.Insert(license);
                 tr.Commit();
             }
@@ -441,7 +441,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var lics = creator(tr);
-                var license = new LicenseDb {ItemId = 1};
+                var license = new LicenseDb { ItemId = 1 };
                 lics.Update(license);
 
                 tr.Commit();
@@ -491,7 +491,7 @@ namespace BTDBTest
                         new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                         {
                             [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                                {[2] = new ConcurrentFeatureItemInfo()}
+                            { [2] = new ConcurrentFeatureItemInfo() }
                         }
                 };
                 lics.Insert(license);
@@ -546,8 +546,8 @@ namespace BTDBTest
                     Id = 1,
                     Data = new DBIndirect<RawData>(new RawData
                     {
-                        Data = new byte[] {1, 2, 3},
-                        Edges = new Dictionary<ulong, ulong> {[10] = 20}
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
                     })
                 };
                 files.Insert(file);
@@ -558,7 +558,7 @@ namespace BTDBTest
             {
                 var files = creator(tr);
                 var file = files.FindById(1);
-                Assert.Equal(file.Data.Value.Data, new byte[] {1, 2, 3});
+                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
                 files.RemoveById(1);
                 tr.Commit();
             }
@@ -579,8 +579,8 @@ namespace BTDBTest
                     Id = 1,
                     Data = new DBIndirect<RawData>(new RawData
                     {
-                        Data = new byte[] {1, 2, 3},
-                        Edges = new Dictionary<ulong, ulong> {[10] = 20}
+                        Data = new byte[] { 1, 2, 3 },
+                        Edges = new Dictionary<ulong, ulong> { [10] = 20 }
                     })
                 };
                 files.Insert(file);
@@ -591,7 +591,7 @@ namespace BTDBTest
             {
                 var files = creator(tr);
                 var file = files.FindById(1);
-                Assert.Equal(file.Data.Value.Data, new byte[] {1, 2, 3});
+                Assert.Equal(file.Data.Value.Data, new byte[] { 1, 2, 3 });
                 file.Data.Value.Edges.Clear();
                 tr.Delete(file.Data);
                 files.RemoveById(1);
@@ -630,7 +630,7 @@ namespace BTDBTest
                             new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                             {
                                 [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                                    {[2] = new ConcurrentFeatureItemInfo()}
+                                { [2] = new ConcurrentFeatureItemInfo() }
                             }
                     }
                 };
@@ -684,13 +684,13 @@ namespace BTDBTest
                 var graph = new Graph
                 {
                     Id = 1,
-                    Nodes = new NodesA {A = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, F = "f"}
+                    Nodes = new NodesA { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
                 };
                 table.Insert(graph);
                 graph = new Graph
                 {
                     Id = 2,
-                    Nodes = new NodesB {B = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, E = "e"}
+                    Nodes = new NodesB { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
                 };
                 table.Insert(graph);
 
@@ -764,7 +764,7 @@ namespace BTDBTest
                         new Dictionary<ulong, IDictionary<ulong, ConcurrentFeatureItemInfo>>
                         {
                             [4] = new Dictionary<ulong, ConcurrentFeatureItemInfo>
-                                {[2] = new ConcurrentFeatureItemInfo()}
+                            { [2] = new ConcurrentFeatureItemInfo() }
                         }
                 };
                 lics.Insert(license);
@@ -830,7 +830,7 @@ namespace BTDBTest
                 {
                     Location = loc,
                     TempLocation = loc,
-                    Dict = new Dictionary<int, bool> {[1] = true}
+                    Dict = new Dictionary<int, bool> { [1] = true }
                 });
                 files.RemoveById(0, 0);
                 tr.Commit();
@@ -924,13 +924,13 @@ namespace BTDBTest
                 var graph = new NodesGraph
                 {
                     Id = 1,
-                    Nodes = new NodesOne {A = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, F = "f"}
+                    Nodes = new NodesOne { A = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, F = "f" }
                 };
                 table.Insert(graph);
                 graph = new NodesGraph
                 {
                     Id = 2,
-                    Nodes = new NodesTwo {B = new Dictionary<ulong, ulong> {[0] = 1, [1] = 2, [2] = 3}, E = "e"}
+                    Nodes = new NodesTwo { B = new Dictionary<ulong, ulong> { [0] = 1, [1] = 2, [2] = 3 }, E = "e" }
                 };
                 table.Insert(graph);
                 graph = new NodesGraph
@@ -997,9 +997,9 @@ namespace BTDBTest
                         {
                             Content = new EmailMessage
                             {
-                                Bcc = new Dictionary<string, string> {["a"] = "b"},
-                                Cc = new Dictionary<string, string> {["c"] = "d"},
-                                To = new Dictionary<string, string> {["e"] = "f"}
+                                Bcc = new Dictionary<string, string> { ["a"] = "b" },
+                                Cc = new Dictionary<string, string> { ["c"] = "d" },
+                                To = new Dictionary<string, string> { ["e"] = "f" }
                             }
                         }
                     }

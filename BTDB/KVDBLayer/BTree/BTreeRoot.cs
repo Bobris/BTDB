@@ -27,7 +27,7 @@ namespace BTDB.KVDBLayer.BTree
                     ? BTreeLeaf.CreateFirst(ref ctx)
                     : BTreeLeafComp.CreateFirst(ref ctx);
                 _keyValueCount = 1;
-                ctx.Stack!.Add(new NodeIdxPair {Node = _rootNode, Idx = 0});
+                ctx.Stack!.Add(new NodeIdxPair { Node = _rootNode, Idx = 0 });
                 ctx.KeyIndex = 0;
                 ctx.Created = true;
                 return;
@@ -37,7 +37,7 @@ namespace BTDB.KVDBLayer.BTree
             if (ctx.Split)
             {
                 _rootNode = new BTreeBranch(ctx.TransactionId, ctx.Node1!, ctx.Node2!);
-                ctx.Stack!.Insert(0, new NodeIdxPair {Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0});
+                ctx.Stack!.Insert(0, new NodeIdxPair { Node = _rootNode, Idx = ctx.SplitInRight ? 1 : 0 });
             }
             else if (ctx.Update)
             {
@@ -68,7 +68,7 @@ namespace BTDB.KVDBLayer.BTree
                 if (keyIndex < 0)
                 {
                     keyIndex = 0;
-                    stack[^1] = new NodeIdxPair {Node = stack[^1].Node, Idx = 0};
+                    stack[^1] = new NodeIdxPair { Node = stack[^1].Node, Idx = 0 };
                     result = FindResult.Next;
                 }
                 else
@@ -101,7 +101,7 @@ namespace BTDB.KVDBLayer.BTree
         static ReadOnlySpan<byte> GetKeyFromStack(List<NodeIdxPair> stack)
         {
             var last = stack[^1];
-            return ((IBTreeLeafNode) last.Node).GetKey(last.Idx);
+            return ((IBTreeLeafNode)last.Node).GetKey(last.Idx);
         }
 
         public long CalcKeyCount()
@@ -134,7 +134,7 @@ namespace BTDB.KVDBLayer.BTree
 
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
-            stack.Add(new NodeIdxPair {Node = _rootNode!, Idx = 0});
+            stack.Add(new NodeIdxPair { Node = _rootNode!, Idx = 0 });
             _rootNode.FillStackByLeftMost(stack, 0);
         }
 
@@ -227,7 +227,7 @@ namespace BTDB.KVDBLayer.BTree
                 if (pair.Node.NextIdxValid(pair.Idx))
                 {
                     stack.RemoveRange(idx + 1, stack.Count - idx - 1);
-                    stack[idx] = new NodeIdxPair {Node = pair.Node, Idx = pair.Idx + 1};
+                    stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx + 1 };
                     pair.Node.FillStackByLeftMost(stack, pair.Idx + 1);
                     return true;
                 }
@@ -245,7 +245,7 @@ namespace BTDB.KVDBLayer.BTree
                 if (pair.Idx > 0)
                 {
                     stack.RemoveRange(idx + 1, stack.Count - idx - 1);
-                    stack[idx] = new NodeIdxPair {Node = pair.Node, Idx = pair.Idx - 1};
+                    stack[idx] = new NodeIdxPair { Node = pair.Node, Idx = pair.Idx - 1 };
                     pair.Node.FillStackByRightMost(stack, pair.Idx - 1);
                     return true;
                 }
@@ -286,7 +286,7 @@ namespace BTDB.KVDBLayer.BTree
             {
                 order++;
                 var reach = keyCount * order / leafs;
-                var todo = (int) (reach - done);
+                var todo = (int)(reach - done);
                 done = reach;
                 var keyValues = new BTreeLeafMember[todo];
                 long totalKeyLen = 0;
@@ -313,7 +313,7 @@ namespace BTDB.KVDBLayer.BTree
             {
                 order++;
                 var reach = count * order / children;
-                var todo = (int) (reach - done);
+                var todo = (int)(reach - done);
                 done = reach;
                 return new BTreeBranch(_transactionId, todo, ref reader2, generator);
             });
@@ -331,7 +331,7 @@ namespace BTDB.KVDBLayer.BTree
         public void SetUlong(uint idx, ulong value)
         {
             if (_ulongs == null || idx >= _ulongs.Length)
-                Array.Resize(ref _ulongs, (int) (idx + 1));
+                Array.Resize(ref _ulongs, (int)(idx + 1));
             _ulongs[idx] = value;
         }
 

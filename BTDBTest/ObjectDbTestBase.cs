@@ -6,7 +6,7 @@ using Xunit.Abstractions;
 
 namespace BTDBTest
 {
-    public abstract class ObjectDbTestBase: IDisposable
+    public abstract class ObjectDbTestBase : IDisposable
     {
         protected readonly ITestOutputHelper _output;
         protected readonly IKeyValueDB _lowDb;

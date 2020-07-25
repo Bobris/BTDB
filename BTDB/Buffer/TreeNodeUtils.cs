@@ -29,49 +29,49 @@ namespace BTDB.Buffer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe byte ReadByte(IntPtr ptr)
         {
-            return *(byte*) ptr;
+            return *(byte*)ptr;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void WriteByte(IntPtr ptr, byte value)
         {
-            *(byte*) ptr = value;
+            *(byte*)ptr = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void WriteByte(IntPtr ptr, int offset, byte value)
         {
-            *(byte*) (ptr + offset) = value;
+            *(byte*)(ptr + offset) = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void WriteInt32Aligned(IntPtr ptr, int value)
         {
-            *(int*) ptr = value;
+            *(int*)ptr = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe int ReadInt32Aligned(IntPtr ptr)
         {
-            return *(int*) ptr;
+            return *(int*)ptr;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe IntPtr ReadIntPtrUnaligned(IntPtr ptr)
         {
-            return *(IntPtr*) ptr;
+            return *(IntPtr*)ptr;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void WriteIntPtrUnaligned(IntPtr ptr, IntPtr value)
         {
-            *(IntPtr*) ptr = value;
+            *(IntPtr*)ptr = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt16(IntPtr ptr)
         {
-            return ptr + ((int) ptr.ToInt64() & 1);
+            return ptr + ((int)ptr.ToInt64() & 1);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -83,7 +83,7 @@ namespace BTDB.Buffer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt32(IntPtr ptr)
         {
-            return ptr + (~(int) ptr.ToInt64() + 1 & 3);
+            return ptr + (~(int)ptr.ToInt64() + 1 & 3);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -95,7 +95,7 @@ namespace BTDB.Buffer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt64(IntPtr ptr)
         {
-            return ptr + (~(int) ptr.ToInt64() + 1 & 7);
+            return ptr + (~(int)ptr.ToInt64() + 1 & 7);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -106,7 +106,7 @@ namespace BTDB.Buffer
 
         internal static unsafe void CopyMemory(IntPtr src, IntPtr dst, int size)
         {
-            Unsafe.CopyBlockUnaligned(dst.ToPointer(), src.ToPointer(), (uint) size);
+            Unsafe.CopyBlockUnaligned(dst.ToPointer(), src.ToPointer(), (uint)size);
         }
 
         internal static unsafe void MoveMemory(IntPtr src, IntPtr dst, int size)
@@ -199,7 +199,7 @@ namespace BTDB.Buffer
                 first = first.Slice(0, res);
             }
 
-            return (uint) res;
+            return (uint)res;
         }
     }
 }

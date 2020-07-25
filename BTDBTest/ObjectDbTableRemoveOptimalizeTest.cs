@@ -34,8 +34,8 @@ namespace BTDBTest
 
         static KeyValueDBTransactionWithCount GetCountingTransaction(IObjectDBTransaction tr)
         {
-            var trimpl = (ObjectDBTransaction) tr;
-            return ((KeyValueDBTransactionWithCount) trimpl.KeyValueDBTransaction)!;
+            var trimpl = (ObjectDBTransaction)tr;
+            return ((KeyValueDBTransactionWithCount)trimpl.KeyValueDBTransaction)!;
         }
 
         public interface IResourcesTable : IRelation<Resource>
@@ -125,7 +125,7 @@ namespace BTDBTest
                 var table = creator(tr);
                 for (var i = 0; i < 10; i++)
                 {
-                    table.Insert(new DataDifferentPrefix {A = i % 2, B = i});
+                    table.Insert(new DataDifferentPrefix { A = i % 2, B = i });
                 }
 
                 tr.Commit();
@@ -170,7 +170,7 @@ namespace BTDBTest
                 var table = creator(tr);
                 for (var i = 0; i < 10; i++)
                 {
-                    table.Insert(new DataSamePrefix {A = i % 2, B = i % 2, C = i});
+                    table.Insert(new DataSamePrefix { A = i % 2, B = i % 2, C = i });
                 }
 
                 tr.Commit();

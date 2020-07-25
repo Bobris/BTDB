@@ -130,7 +130,8 @@ namespace BTDB.EventStoreLayer
                         bufferLenToFill = (uint)(File.MaxFileSize - bufferStartPosition);
                     }
                     buf = ByteBuffer.NewSync(bufferBlock, bufferFullLength, (int)(bufferLenToFill - bufferFullLength));
-                    if (buf.Length > 0) {
+                    if (buf.Length > 0)
+                    {
                         if (currentReadAhead * 4 < MaxBlockSize)
                         {
                             currentReadAhead = currentReadAhead * 2;

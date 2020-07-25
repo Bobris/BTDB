@@ -78,21 +78,21 @@ namespace BTDB.KVDBLayer
                     if (0 != spanReader.Buf.Length)
                         return false;
                     var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
-                    spanReader.Buf = _buf.AsSpan(0, (int) read);
+                    spanReader.Buf = _buf.AsSpan(0, (int)read);
                     _ofs += read;
                     return read == 0;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
                 {
-                    return (long) _ofs - spanReader.Buf.Length;
+                    return (long)_ofs - spanReader.Buf.Length;
                 }
 
                 public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
                 {
                     if (length < BufLength)
                     {
-                        if (FillBufAndCheckForEof(ref spanReader) || length> (uint)spanReader.Buf.Length) return true;
+                        if (FillBufAndCheckForEof(ref spanReader) || length > (uint)spanReader.Buf.Length) return true;
                         Unsafe.CopyBlockUnaligned(ref buffer,
                             ref PackUnpack.UnsafeGetAndAdvance(ref spanReader.Buf, (int)length), length);
                         return false;
@@ -115,7 +115,7 @@ namespace BTDB.KVDBLayer
                 public void SetCurrentPosition(ref SpanReader spanReader, long position)
                 {
                     spanReader.Buf = new ReadOnlySpan<byte>();
-                    _ofs = (ulong) position;
+                    _ofs = (ulong)position;
                 }
             }
 
@@ -134,7 +134,7 @@ namespace BTDB.KVDBLayer
                     _pos = 0;
                     using (_file._readerWriterLock.WriteLock())
                     {
-                        Ofs = (ulong) _file._stream.Length;
+                        Ofs = (ulong)_file._stream.Length;
                     }
                 }
 
@@ -144,7 +144,7 @@ namespace BTDB.KVDBLayer
                     PlatformMethods.Instance.PWrite(_file._handle, _buf.AsSpan(0, _pos), Ofs);
                     using (_file._readerWriterLock.WriteLock())
                     {
-                        Ofs += (ulong) _pos;
+                        Ofs += (ulong)_pos;
                         _pos = 0;
                     }
                 }
@@ -175,12 +175,12 @@ namespace BTDB.KVDBLayer
 
                 public long GetCurrentPosition(in SpanWriter spanWriter)
                 {
-                    return (long) Ofs + BufLength - spanWriter.Buf.Length;
+                    return (long)Ofs + BufLength - spanWriter.Buf.Length;
                 }
 
                 public long GetCurrentPositionWithoutWriter()
                 {
-                    return (long) Ofs + _pos;
+                    return (long)Ofs + _pos;
                 }
 
                 public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
@@ -195,7 +195,7 @@ namespace BTDB.KVDBLayer
 
                 public void WriteBlockWithoutWriter(ref byte buffer, uint length)
                 {
-                    if (length <= (uint) (BufLength - _pos))
+                    if (length <= (uint)(BufLength - _pos))
                     {
                         Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(_buf.AsSpan(_pos, (int)length)), ref buffer,
                             length);
@@ -231,17 +231,17 @@ namespace BTDB.KVDBLayer
                     if (data.Length > 0 && position < _writer.Ofs)
                     {
                         var read = data.Length;
-                        if (_writer.Ofs - position < (ulong) read) read = (int) (_writer.Ofs - position);
+                        if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
                         if (PlatformMethods.Instance.PRead(_handle, data.Slice(0, read), position) != read)
                             throw new EndOfStreamException();
                         data = data.Slice(read);
-                        position += (ulong) read;
+                        position += (ulong)read;
                     }
 
                     if (data.Length == 0) return;
-                    if ((ulong) _writer.GetCurrentPositionWithoutWriter() < position + (ulong) data.Length)
+                    if ((ulong)_writer.GetCurrentPositionWithoutWriter() < position + (ulong)data.Length)
                         throw new EndOfStreamException();
-                    _writer.GetBuffer().AsSpan((int) (position - _writer.Ofs), data.Length).CopyTo(data);
+                    _writer.GetBuffer().AsSpan((int)(position - _writer.Ofs), data.Length).CopyTo(data);
                 }
             }
 
@@ -288,7 +288,7 @@ namespace BTDB.KVDBLayer
             {
                 using (_readerWriterLock.ReadLock())
                 {
-                    return (ulong) _writer.GetCurrentPositionWithoutWriter();
+                    return (ulong)_writer.GetCurrentPositionWithoutWriter();
                 }
             }
 
@@ -319,7 +319,7 @@ namespace BTDB.KVDBLayer
                 if (id == 0) continue;
                 var file = new File(this, id, filePath);
                 _files.Add(id, file);
-                if (id > _maxFileId) _maxFileId = (int) id;
+                if (id > _maxFileId) _maxFileId = (int)id;
             }
         }
 
@@ -330,7 +330,7 @@ namespace BTDB.KVDBLayer
 
         public IFileCollectionFile AddFile(string? humanHint)
         {
-            var index = (uint) Interlocked.Increment(ref _maxFileId);
+            var index = (uint)Interlocked.Increment(ref _maxFileId);
             var fileName = index.ToString("D8") + "." + (humanHint ?? "");
             var file = new File(this, index, Path.Combine(_directory, fileName));
             Dictionary<uint, File> newFiles;
@@ -338,7 +338,7 @@ namespace BTDB.KVDBLayer
             do
             {
                 oldFiles = _files;
-                newFiles = new Dictionary<uint, File>(oldFiles!) {{index, file}};
+                newFiles = new Dictionary<uint, File>(oldFiles!) { { index, file } };
             } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
 
             return file;
@@ -346,7 +346,7 @@ namespace BTDB.KVDBLayer
 
         public uint GetCount()
         {
-            return (uint) _files.Count;
+            return (uint)_files.Count;
         }
 
         public IFileCollectionFile? GetFile(uint index)

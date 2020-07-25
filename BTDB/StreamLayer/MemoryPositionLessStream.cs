@@ -21,15 +21,15 @@ namespace BTDB.StreamLayer
             using (_lock.ReadLock())
             {
                 int read = 0;
-                while (data.Length > 0 && position < (ulong) _size)
+                while (data.Length > 0 && position < (ulong)_size)
                 {
-                    var buf = _data[(int) (position / OneBufSize)];
-                    var startOfs = (int) (position % OneBufSize);
+                    var buf = _data[(int)(position / OneBufSize)];
+                    var startOfs = (int)(position % OneBufSize);
                     var rest = buf.Length - startOfs;
-                    if ((ulong) _size - position < (ulong) rest) rest = (int) ((ulong) _size - position);
+                    if ((ulong)_size - position < (ulong)rest) rest = (int)((ulong)_size - position);
                     if (data.Length < rest) rest = data.Length;
                     buf.AsSpan(startOfs, rest).CopyTo(data);
-                    position += (ulong) rest;
+                    position += (ulong)rest;
                     read += rest;
                     data = data.Slice(rest);
                 }
@@ -43,7 +43,7 @@ namespace BTDB.StreamLayer
             if (data.Length == 0) return;
             using (_lock.WriteLock())
             {
-                if (position + (ulong) data.Length > (ulong) _size) SetSizeInternal(position + (ulong) data.Length);
+                if (position + (ulong)data.Length > (ulong)_size) SetSizeInternal(position + (ulong)data.Length);
             }
 
             while (data.Length > 0)
@@ -51,13 +51,13 @@ namespace BTDB.StreamLayer
                 byte[] buf;
                 using (_lock.ReadLock())
                 {
-                    buf = _data[(int) (position / OneBufSize)];
+                    buf = _data[(int)(position / OneBufSize)];
                 }
-                var startOfs = (int) (position % OneBufSize);
+                var startOfs = (int)(position % OneBufSize);
                 var rest = buf.Length - startOfs;
                 if (data.Length < rest) rest = data.Length;
                 data.Slice(0, rest).CopyTo(buf.AsSpan(startOfs, rest));
-                position += (ulong) rest;
+                position += (ulong)rest;
                 data = data.Slice(rest);
             }
         }
@@ -72,7 +72,7 @@ namespace BTDB.StreamLayer
 
         public ulong GetSize()
         {
-            return (ulong) Interlocked.Read(ref _size);
+            return (ulong)Interlocked.Read(ref _size);
         }
 
         public void SetSize(ulong newSize)
@@ -85,12 +85,12 @@ namespace BTDB.StreamLayer
 
         void SetSizeInternal(ulong newSize)
         {
-            while (_data.Count < (int) ((newSize + OneBufSize - 1) / OneBufSize))
+            while (_data.Count < (int)((newSize + OneBufSize - 1) / OneBufSize))
             {
                 _data.Add(new byte[OneBufSize]);
             }
 
-            Interlocked.Exchange(ref _size, (long) newSize);
+            Interlocked.Exchange(ref _size, (long)newSize);
         }
     }
 }

@@ -55,7 +55,7 @@ namespace BTDB.IL
 
     class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : Delegate
     {
-        public ILDynamicMethodImpl(string name):base(name,typeof(TDelegate),null)
+        public ILDynamicMethodImpl(string name) : base(name, typeof(TDelegate), null)
         {
         }
 

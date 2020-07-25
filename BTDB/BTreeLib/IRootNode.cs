@@ -55,7 +55,7 @@ namespace BTDB.BTreeLib
         public void CalcCommonLengthWithIdenticalPrefixes()
         {
             PreviousCurrentCommonLength =
-                (uint) (CurrentPrefix.Length + TreeNodeUtils.FindFirstDifference(PreviousSuffix, CurrentSuffix));
+                (uint)(CurrentPrefix.Length + TreeNodeUtils.FindFirstDifference(PreviousSuffix, CurrentSuffix));
         }
     }
 

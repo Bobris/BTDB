@@ -55,7 +55,7 @@ namespace BTDB.FieldHandler
         public static bool IsCompatibleWith(Type type)
         {
             if (!type.IsGenericType) return false;
-            return type.InheritsOrImplements(typeof(IList<>)) || type.InheritsOrImplements( typeof(ISet<>));
+            return type.InheritsOrImplements(typeof(IList<>)) || type.InheritsOrImplements(typeof(ISet<>));
         }
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -96,7 +96,7 @@ namespace BTDB.FieldHandler
                 .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .Stloc(localCount)
                 .Ldloc(localCount)
-                .Newobj((_isSet?typeof(HashSet<>):typeof(List<>)).MakeGenericType(itemType).GetConstructor(new[] { typeof(int) })!)
+                .Newobj((_isSet ? typeof(HashSet<>) : typeof(List<>)).MakeGenericType(itemType).GetConstructor(new[] { typeof(int) })!)
                 .Stloc(localResult)
                 .Do(pushCtx)
                 .Ldloc(localResult)

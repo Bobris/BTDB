@@ -35,7 +35,7 @@ namespace BTreeLibTest
             {
                 for (int j = i + 1; j < 12; j++)
                 {
-                    yield return new object[] {i, j};
+                    yield return new object[] { i, j };
                 }
             }
         }
@@ -84,7 +84,7 @@ namespace BTreeLibTest
         {
             var val = GetSampleValue(valueIndex1).ToArray();
             var val2 = GetSampleValue(valueIndex2).ToArray();
-            _cursor.Upsert(new byte[] {1}, val);
+            _cursor.Upsert(new byte[] { 1 }, val);
             Assert.Equal(val.Length, _cursor.GetValueLength());
             Assert.Equal(val, _cursor.GetValue().ToArray());
             _cursor.WriteValue(val2);
@@ -100,7 +100,7 @@ namespace BTreeLibTest
                 Assert.Equal(val2, _cursor.GetValue().ToArray());
             }
 
-            _cursor.Upsert(new byte[] {2}, val);
+            _cursor.Upsert(new byte[] { 2 }, val);
             Assert.Equal(val.Length, _cursor.GetValueLength());
             Assert.Equal(val, _cursor.GetValue().ToArray());
             _cursor.WriteValue(val2);
@@ -166,7 +166,7 @@ namespace BTreeLibTest
             var key = new byte[1];
             for (var i = 0; i < 256; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 Assert.True(_cursor.Upsert(key, val));
                 Assert.Equal(i, _cursor.CalcIndex());
                 Assert.Equal(i + 1, _root.GetCount());
@@ -176,7 +176,7 @@ namespace BTreeLibTest
                 Assert.Equal(val, _cursor.GetValue().ToArray());
                 for (var j = 0; j < 256; j++)
                 {
-                    key[0] = (byte) j;
+                    key[0] = (byte)j;
                     Assert.Equal(j <= i, _cursor.FindExact(key));
                 }
             }
@@ -185,13 +185,13 @@ namespace BTreeLibTest
             key[0] = 20;
             for (var j = 0; j < 256; j++)
             {
-                key[1] = (byte) j;
+                key[1] = (byte)j;
                 Assert.False(_cursor.FindExact(key));
             }
 
             for (var i = 0; i < 256; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 Assert.True(_cursor.Upsert(key, val));
                 Assert.Equal(256 + i + 1, _root.GetCount());
                 Assert.Equal(20 + 1 + i, _cursor.CalcIndex());
@@ -201,7 +201,7 @@ namespace BTreeLibTest
                 Assert.Equal(val, _cursor.GetValue().ToArray());
                 for (var j = 0; j < 256; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     Assert.Equal(j <= i, _cursor.FindExact(key));
                 }
             }
@@ -232,7 +232,7 @@ namespace BTreeLibTest
             var key = new byte[1];
             for (var i = 0; i < 256; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 var snapshot = _root.Snapshot();
                 Assert.True(_cursor.Upsert(key, val));
                 Assert.Equal(i + 1, _root.GetCount());
@@ -242,14 +242,14 @@ namespace BTreeLibTest
                 Assert.Equal(val, _cursor.GetValue().ToArray());
                 for (var j = 0; j < 256; j++)
                 {
-                    key[0] = (byte) j;
+                    key[0] = (byte)j;
                     Assert.Equal(j <= i, _cursor.FindExact(key));
                 }
 
                 var snapshotCursor = snapshot.CreateCursor();
                 for (var j = 0; j < 256; j++)
                 {
-                    key[0] = (byte) j;
+                    key[0] = (byte)j;
                     Assert.Equal(j < i, snapshotCursor.FindExact(key));
                 }
 
@@ -260,13 +260,13 @@ namespace BTreeLibTest
             key[0] = 20;
             for (var j = 0; j < 256; j++)
             {
-                key[1] = (byte) j;
+                key[1] = (byte)j;
                 Assert.False(_cursor.FindExact(key));
             }
 
             for (var i = 0; i < 256; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 var snapshot = _root.Snapshot();
                 Assert.True(_cursor.Upsert(key, val));
                 Assert.Equal(256 + i + 1, _root.GetCount());
@@ -276,14 +276,14 @@ namespace BTreeLibTest
                 Assert.Equal(val, _cursor.GetValue().ToArray());
                 for (var j = 0; j < 256; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     Assert.Equal(j <= i, _cursor.FindExact(key));
                 }
 
                 var snapshotCursor = snapshot.CreateCursor();
                 for (var j = 0; j < 256; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     Assert.Equal(j < i, snapshotCursor.FindExact(key));
                 }
 
@@ -320,7 +320,7 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (var i = 0; i < 200; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 Assert.True(_cursor.Upsert(key, val));
                 Assert.Equal(i + 1, _root.GetCount());
                 Assert.Equal(key.Length, _cursor.GetKeyLength());
@@ -355,7 +355,7 @@ namespace BTreeLibTest
             key[5] = 0;
             for (int i = 0; i < 4; i++)
             {
-                key[6] = (byte) i;
+                key[6] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 7), val);
             }
 
@@ -376,7 +376,7 @@ namespace BTreeLibTest
             Assert.Equal(key.AsSpan(0, 7).ToArray(), _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 4; i < 16; i++)
             {
-                key[6] = (byte) i;
+                key[6] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 7), val);
             }
 
@@ -393,7 +393,7 @@ namespace BTreeLibTest
             Assert.Equal(key.AsSpan(0, 7).ToArray(), _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 32; i < 32 + 16; i++)
             {
-                key[6] = (byte) i;
+                key[6] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 7), val);
             }
 
@@ -410,7 +410,7 @@ namespace BTreeLibTest
             Assert.Equal(key.AsSpan(0, 7).ToArray(), _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 64; i < 255; i++)
             {
-                key[6] = (byte) i;
+                key[6] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 7), val);
             }
 
@@ -435,7 +435,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 254; i >= 253; i--)
             {
-                key[9] = (byte) i;
+                key[9] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -443,7 +443,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 252; i >= 230; i--)
             {
-                key[9] = (byte) i;
+                key[9] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -451,7 +451,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 229; i >= 1; i--)
             {
-                key[9] = (byte) i;
+                key[9] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -467,15 +467,15 @@ namespace BTreeLibTest
             Assert.Equal(-1, _cursor.FindLastWithPrefix(key.AsSpan(0, 0)));
             for (var i = 0; i < 8000; i++)
             {
-                key[2] = (byte) (i / 400);
-                key[3] = (byte) (i / 20 % 20);
-                key[4] = (byte) (i % 20);
+                key[2] = (byte)(i / 400);
+                key[3] = (byte)(i / 20 % 20);
+                key[4] = (byte)(i % 20);
                 _cursor.Upsert(key.AsSpan(0, 7), val);
             }
 
             for (var i = 0; i < 20; i++)
             {
-                key[2] = (byte) i;
+                key[2] = (byte)i;
                 Assert.Equal(i * 400 + 399, _cursor.FindLastWithPrefix(key.AsSpan(0, 3)));
             }
         }
@@ -488,7 +488,7 @@ namespace BTreeLibTest
             key[0] = 2;
             for (int i = 0; i < 4; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -503,7 +503,7 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -523,7 +523,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 1; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -536,7 +536,7 @@ namespace BTreeLibTest
 
             for (int i = 3; i < 15; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -549,7 +549,7 @@ namespace BTreeLibTest
 
             for (int i = 16; i < 41; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -562,7 +562,7 @@ namespace BTreeLibTest
 
             for (int i = 45; i < 80; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -590,7 +590,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 1; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -603,7 +603,7 @@ namespace BTreeLibTest
 
             for (int i = 3; i < 15; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -616,7 +616,7 @@ namespace BTreeLibTest
 
             for (int i = 16; i < 41; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -629,7 +629,7 @@ namespace BTreeLibTest
 
             for (int i = 45; i < 80; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -654,7 +654,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 1; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -667,7 +667,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 3; i < 15; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -680,7 +680,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 16; i < 41; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -693,7 +693,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 45; i < 80; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -720,7 +720,7 @@ namespace BTreeLibTest
             Assert.Equal(key, _cursor.FillByKey(keyBuffer).ToArray());
             for (int i = 1; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -733,7 +733,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 3; i < 15; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -746,7 +746,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 16; i < 41; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -759,7 +759,7 @@ namespace BTreeLibTest
             Assert.False(_cursor.MovePrevious());
             for (int i = 45; i < 80; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -787,7 +787,7 @@ namespace BTreeLibTest
             CheckSeekIndex();
             for (int i = 1; i < 3; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
                 total++;
                 Assert.Equal(total, _root.GetCount());
@@ -796,7 +796,7 @@ namespace BTreeLibTest
             CheckSeekIndex();
             for (int i = 4; i < 15; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
                 total++;
                 Assert.Equal(total, _root.GetCount());
@@ -805,7 +805,7 @@ namespace BTreeLibTest
             CheckSeekIndex();
             for (int i = 16; i < 40; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
                 total++;
                 Assert.Equal(total, _root.GetCount());
@@ -814,7 +814,7 @@ namespace BTreeLibTest
             CheckSeekIndex();
             for (int i = 41; i < 240; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
                 total++;
                 Assert.Equal(total, _root.GetCount());
@@ -856,13 +856,13 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i < 2; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 1), val);
             }
 
             for (int i = 0; i < 4; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -881,13 +881,13 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i < 2; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 1), val);
             }
 
             for (int i = 0; i < 16; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
@@ -907,13 +907,13 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i < 2; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 1), val);
             }
 
             for (int i = 0; i < 48; i++)
             {
-                key[1] = (byte) (i * 2);
+                key[1] = (byte)(i * 2);
                 _cursor.Upsert(key, val);
             }
 
@@ -933,13 +933,13 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i < 2; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 _cursor.Upsert(key.AsSpan(0, 1), val);
             }
 
             for (int i = 0; i < 120; i++)
             {
-                key[1] = (byte) (i * 2);
+                key[1] = (byte)(i * 2);
                 _cursor.Upsert(key, val);
             }
 
@@ -963,8 +963,8 @@ namespace BTreeLibTest
             var key = new byte[3];
             for (int i = 0; i < count; i++)
             {
-                key[1] = (byte) (i * 2);
-                key[2] = (byte) (i + 5);
+                key[1] = (byte)(i * 2);
+                key[2] = (byte)(i + 5);
                 _cursor.Upsert(key, val);
             }
 
@@ -984,7 +984,7 @@ namespace BTreeLibTest
             _cursor.Erase();
             for (int i = 0; i < count; i++)
             {
-                key[1] = (byte) (i * 2);
+                key[1] = (byte)(i * 2);
                 _cursor.Upsert(key, val);
             }
 
@@ -1017,14 +1017,14 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = datafrom; i <= datato; i++)
             {
-                key[1] = (byte) i;
+                key[1] = (byte)i;
                 _cursor.Upsert(key, val);
             }
 
-            key[1] = (byte) erasefrom;
+            key[1] = (byte)erasefrom;
             _cursor.FindExact(key);
             var c2 = _cursor.Clone();
-            key[1] = (byte) eraseto;
+            key[1] = (byte)eraseto;
             c2.FindExact(key);
             var snapshot = _root.Snapshot();
             Assert.Equal(eraseto - erasefrom + 1, _cursor.EraseTo(c2));
@@ -1048,10 +1048,10 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 0; i <= 255; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 for (int j = 0; j <= 255; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     _cursor.Upsert(key, GetSampleValue(j));
                 }
 
@@ -1059,7 +1059,7 @@ namespace BTreeLibTest
             }
 
             key[0] = l0;
-            key[1] = (byte) l1;
+            key[1] = (byte)l1;
             _cursor.FindExact(key.AsSpan(0, 1 + (l1 >= 0 ? 1 : 0)));
             var c2 = _cursor.Clone();
             key[0] = r0;
@@ -1072,10 +1072,10 @@ namespace BTreeLibTest
             snapshot.Dispose();
             for (int i = 0; i <= 255; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 for (int j = 0; j <= 255; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     if (_cursor.FindExact(key))
                         Assert.Equal(GetSampleValue(j).ToArray(), _cursor.GetValue().ToArray());
                 }
@@ -1094,10 +1094,10 @@ namespace BTreeLibTest
             var key = new byte[2];
             for (int i = 10; i <= 40; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 for (int j = 10; j <= 40; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     _cursor.Upsert(key, GetSampleValue(j));
                 }
 
@@ -1105,7 +1105,7 @@ namespace BTreeLibTest
             }
 
             key[0] = l0;
-            key[1] = (byte) l1;
+            key[1] = (byte)l1;
             _cursor.FindExact(key.AsSpan(0, 1 + (l1 >= 0 ? 1 : 0)));
             var c2 = _cursor.Clone();
             key[0] = r0;
@@ -1118,10 +1118,10 @@ namespace BTreeLibTest
             snapshot.Dispose();
             for (int i = 10; i <= 40; i++)
             {
-                key[0] = (byte) i;
+                key[0] = (byte)i;
                 for (int j = 10; j <= 40; j++)
                 {
-                    key[1] = (byte) j;
+                    key[1] = (byte)j;
                     if (_cursor.FindExact(key))
                         Assert.Equal(GetSampleValue(j).ToArray(), _cursor.GetValue().ToArray());
                 }

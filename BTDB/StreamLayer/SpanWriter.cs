@@ -137,11 +137,11 @@ namespace BTDB.StreamLayer
 
             if (HeapBuffer != null)
             {
-                Buf = HeapBuffer.AsSpan((int) pos);
+                Buf = HeapBuffer.AsSpan((int)pos);
                 return;
             }
 
-            Buf = InitialBuffer.Slice((int) pos);
+            Buf = InitialBuffer.Slice((int)pos);
         }
 
         public void Sync()
@@ -162,22 +162,22 @@ namespace BTDB.StreamLayer
                 return Controller.Flush(ref this);
             }
 
-            var pos = (uint) GetCurrentPosition();
+            var pos = (uint)GetCurrentPosition();
             if (HeapBuffer == null)
             {
-                var newSize = Math.Max((uint) InitialBuffer.Length * 2, 32);
+                var newSize = Math.Max((uint)InitialBuffer.Length * 2, 32);
                 newSize = Math.Max(newSize, pos + spaceNeeded);
                 newSize = Math.Min(newSize, int.MaxValue);
                 HeapBuffer = new byte[newSize];
-                InitialBuffer.Slice(0, (int) pos).CopyTo(HeapBuffer);
-                Buf = HeapBuffer.AsSpan((int) pos, (int) (newSize - pos));
+                InitialBuffer.Slice(0, (int)pos).CopyTo(HeapBuffer);
+                Buf = HeapBuffer.AsSpan((int)pos, (int)(newSize - pos));
             }
             else
             {
-                var newSize = Math.Max((uint) HeapBuffer.Length * 2, pos + spaceNeeded);
+                var newSize = Math.Max((uint)HeapBuffer.Length * 2, pos + spaceNeeded);
                 newSize = Math.Min(newSize, int.MaxValue);
-                Array.Resize(ref HeapBuffer, (int) newSize);
-                Buf = HeapBuffer.AsSpan((int) pos, (int) (newSize - pos));
+                Array.Resize(ref HeapBuffer, (int)newSize);
+                Buf = HeapBuffer.AsSpan((int)pos, (int)(newSize - pos));
             }
 
             return true;
@@ -200,7 +200,7 @@ namespace BTDB.StreamLayer
                 Resize(1);
             }
 
-            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = *(byte*) &value;
+            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = *(byte*)&value;
         }
 
         public void WriteUInt8(byte value)
@@ -220,7 +220,7 @@ namespace BTDB.StreamLayer
                 Resize(1);
             }
 
-            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte) value;
+            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte)value;
         }
 
         public void WriteInt8Ordered(sbyte value)
@@ -230,7 +230,7 @@ namespace BTDB.StreamLayer
                 Resize(1);
             }
 
-            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte) (value + 128);
+            PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte)(value + 128);
         }
 
         public void WriteVInt16(short value)
@@ -256,7 +256,7 @@ namespace BTDB.StreamLayer
         public void WriteVInt64(long value)
         {
             var len = PackUnpack.LengthVInt(value);
-            if ((uint) Buf.Length < len)
+            if ((uint)Buf.Length < len)
             {
                 if (!Resize(len))
                 {
@@ -268,13 +268,13 @@ namespace BTDB.StreamLayer
                 }
             }
 
-            PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
+            PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)len), value, len);
         }
 
         public void WriteVUInt64(ulong value)
         {
             var len = PackUnpack.LengthVUInt(value);
-            if ((uint) Buf.Length < len)
+            if ((uint)Buf.Length < len)
             {
                 if (!Resize(len))
                 {
@@ -286,61 +286,61 @@ namespace BTDB.StreamLayer
                 }
             }
 
-            PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) len), value, len);
+            PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)len), value, len);
         }
 
         public void WriteInt64(long value)
         {
-            if ((uint) Buf.Length < 8u)
+            if ((uint)Buf.Length < 8u)
             {
                 if (!Resize(8))
                 {
                     Span<byte> buf = stackalloc byte[8];
                     ref var bufRef = ref MemoryMarshal.GetReference(buf);
-                    Unsafe.As<byte, ulong>(ref bufRef) = PackUnpack.AsBigEndian((ulong) value);
+                    Unsafe.As<byte, ulong>(ref bufRef) = PackUnpack.AsBigEndian((ulong)value);
                     WriteBlock(ref bufRef, 8);
                     return;
                 }
             }
 
             Unsafe.As<byte, ulong>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 8)) =
-                PackUnpack.AsBigEndian((ulong) value);
+                PackUnpack.AsBigEndian((ulong)value);
         }
 
         public void WriteInt32(int value)
         {
-            if ((uint) Buf.Length < 4u)
+            if ((uint)Buf.Length < 4u)
             {
                 if (!Resize(4))
                 {
                     Span<byte> buf = stackalloc byte[4];
                     ref var bufRef = ref MemoryMarshal.GetReference(buf);
-                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsBigEndian((uint) value);
+                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsBigEndian((uint)value);
                     WriteBlock(ref bufRef, 4);
                     return;
                 }
             }
 
             Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
-                PackUnpack.AsBigEndian((uint) value);
+                PackUnpack.AsBigEndian((uint)value);
         }
 
         public void WriteInt32LE(int value)
         {
-            if ((uint) Buf.Length < 4u)
+            if ((uint)Buf.Length < 4u)
             {
                 if (!Resize(4))
                 {
                     Span<byte> buf = stackalloc byte[4];
                     ref var bufRef = ref MemoryMarshal.GetReference(buf);
-                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsLittleEndian((uint) value);
+                    Unsafe.As<byte, uint>(ref bufRef) = PackUnpack.AsLittleEndian((uint)value);
                     WriteBlock(ref bufRef, 4);
                     return;
                 }
             }
 
             Unsafe.As<byte, uint>(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, 4)) =
-                PackUnpack.AsLittleEndian((uint) value);
+                PackUnpack.AsLittleEndian((uint)value);
         }
 
         public void WriteDateTime(DateTime value)
@@ -388,8 +388,8 @@ namespace BTDB.StreamLayer
             {
                 var strPtr = strPtrStart;
                 var strPtrEnd = strPtrStart + l;
-                var toEncode = (uint) (l + 1);
-                doEncode:
+                var toEncode = (uint)(l + 1);
+            doEncode:
                 WriteVUInt32(toEncode);
                 while (strPtr != strPtrEnd)
                 {
@@ -401,7 +401,7 @@ namespace BTDB.StreamLayer
                             Resize(1);
                         }
 
-                        PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte) c;
+                        PackUnpack.UnsafeGetAndAdvance(ref Buf, 1) = (byte)c;
                     }
                     else
                     {
@@ -410,7 +410,7 @@ namespace BTDB.StreamLayer
                             var c2 = *strPtr;
                             if (char.IsLowSurrogate(c2))
                             {
-                                toEncode = (uint) ((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000);
+                                toEncode = (uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000);
                                 strPtr++;
                                 goto doEncode;
                             }
@@ -441,13 +441,13 @@ namespace BTDB.StreamLayer
                     var c2 = value[i + 1];
                     if (char.IsLowSurrogate(c2))
                     {
-                        WriteVUInt32((uint) ((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
+                        WriteVUInt32((uint)((c - 0xD800) * 0x400 + (c2 - 0xDC00) + 0x10000) + 1);
                         i += 2;
                         continue;
                     }
                 }
 
-                WriteVUInt32((uint) c + 1);
+                WriteVUInt32((uint)c + 1);
                 i++;
             }
 
@@ -456,12 +456,12 @@ namespace BTDB.StreamLayer
 
         public void WriteBlock(ReadOnlySpan<byte> data)
         {
-            WriteBlock(ref MemoryMarshal.GetReference(data), (uint) data.Length);
+            WriteBlock(ref MemoryMarshal.GetReference(data), (uint)data.Length);
         }
 
         public void WriteBlock(ref byte buffer, uint length)
         {
-            if ((uint) Buf.Length < length)
+            if ((uint)Buf.Length < length)
             {
                 if (Controller != null)
                 {
@@ -471,16 +471,16 @@ namespace BTDB.StreamLayer
                         if (length < bufLength || !Controller.Flush(ref this))
                         {
                             Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer,
-                                (uint) Buf.Length);
-                            buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr) Buf.Length);
-                            length -= (uint) Buf.Length;
+                                (uint)Buf.Length);
+                            buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
+                            length -= (uint)Buf.Length;
                             Buf = new Span<byte>();
                             Controller.Flush(ref this); // must return true because Buf is empty
                         }
 
                         if (length < bufLength)
                         {
-                            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length),
+                            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)length),
                                 ref buffer, length);
                             return;
                         }
@@ -493,7 +493,7 @@ namespace BTDB.StreamLayer
                 Resize(length); // returns always success because it is without controller
             }
 
-            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int) length), ref buffer,
+            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)length), ref buffer,
                 length);
         }
 
@@ -504,7 +504,7 @@ namespace BTDB.StreamLayer
 
         public unsafe void WriteBlock(IntPtr data, int length)
         {
-            WriteBlock(ref Unsafe.AsRef<byte>((void*) data), (uint) length);
+            WriteBlock(ref Unsafe.AsRef<byte>((void*)data), (uint)length);
         }
 
         public void WriteBlock(byte[] data)
@@ -530,9 +530,9 @@ namespace BTDB.StreamLayer
         public void WriteDecimal(decimal value)
         {
             var ints = decimal.GetBits(value);
-            var header = (byte) ((ints[3] >> 16) & 31);
+            var header = (byte)((ints[3] >> 16) & 31);
             if (ints[3] < 0) header |= 128;
-            var first = (uint) ints[0] + ((ulong) ints[1] << 32);
+            var first = (uint)ints[0] + ((ulong)ints[1] << 32);
             if (ints[2] == 0)
             {
                 if (first == 0)
@@ -548,19 +548,19 @@ namespace BTDB.StreamLayer
             }
             else
             {
-                if ((uint) ints[2] < 0x10000000)
+                if ((uint)ints[2] < 0x10000000)
                 {
                     header |= 64;
                     WriteUInt8(header);
-                    WriteVUInt32((uint) ints[2]);
-                    WriteInt64((long) first);
+                    WriteVUInt32((uint)ints[2]);
+                    WriteInt64((long)first);
                 }
                 else
                 {
                     header |= 64 | 32;
                     WriteUInt8(header);
                     WriteInt32(ints[2]);
-                    WriteInt64((long) first);
+                    WriteInt64((long)first);
                 }
             }
         }
@@ -573,19 +573,19 @@ namespace BTDB.StreamLayer
                 return;
             }
 
-            WriteVUInt32((uint) (value.Length + 1));
+            WriteVUInt32((uint)(value.Length + 1));
             WriteBlock(value);
         }
 
         public void WriteByteArray(ByteBuffer value)
         {
-            WriteVUInt32((uint) (value.Length + 1));
+            WriteVUInt32((uint)(value.Length + 1));
             WriteBlock(value);
         }
 
         public void WriteByteArray(ReadOnlySpan<byte> value)
         {
-            WriteVUInt32((uint) (value.Length + 1));
+            WriteVUInt32((uint)(value.Length + 1));
             WriteBlock(value);
         }
 
@@ -617,7 +617,7 @@ namespace BTDB.StreamLayer
                     value.TryWriteBytes(buf, out _);
                     WriteUInt8(2);
                     WriteBlock(ref bufRef, 16);
-                    WriteVUInt64((ulong) value.ScopeId);
+                    WriteVUInt64((ulong)value.ScopeId);
                 }
                 else
                 {
@@ -632,7 +632,7 @@ namespace BTDB.StreamLayer
             {
                 WriteUInt8(0);
 #pragma warning disable 612,618
-                WriteInt32LE((int) value.Address);
+                WriteInt32LE((int)value.Address);
 #pragma warning restore 612,618
             }
         }
@@ -645,12 +645,12 @@ namespace BTDB.StreamLayer
                 return;
             }
 
-            WriteVUInt32((uint) value.Major + 1);
-            WriteVUInt32((uint) value.Minor + 1);
+            WriteVUInt32((uint)value.Major + 1);
+            WriteVUInt32((uint)value.Minor + 1);
             if (value.Minor == -1) return;
-            WriteVUInt32((uint) value.Build + 1);
+            WriteVUInt32((uint)value.Build + 1);
             if (value.Build == -1) return;
-            WriteVUInt32((uint) value.Revision + 1);
+            WriteVUInt32((uint)value.Revision + 1);
         }
     }
 }

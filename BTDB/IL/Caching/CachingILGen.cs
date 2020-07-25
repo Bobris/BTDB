@@ -186,7 +186,7 @@ namespace BTDB.IL.Caching
             public bool Equals(IReplayILGen other)
             {
                 if (!(other is MarkInst v)) return false;
-                return ((ILLabel) _label).Index == ((ILLabel) v._label).Index;
+                return ((ILLabel)_label).Index == ((ILLabel)v._label).Index;
             }
         }
 
@@ -735,7 +735,7 @@ namespace BTDB.IL.Caching
 
             public void FreeTemps()
             {
-                ((IILFieldPrivate) _ilField).FreeTemps();
+                ((IILFieldPrivate)_ilField).FreeTemps();
             }
 
             public bool Equals(IReplayILGen other)

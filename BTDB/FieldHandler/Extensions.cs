@@ -54,7 +54,7 @@ namespace BTDB.FieldHandler
 
         public static void UpdateNeedsFreeContent(NeedsFreeContent partial, ref NeedsFreeContent accumulatedValue)
         {
-            if ((int) partial > (int) accumulatedValue)
+            if ((int)partial > (int)accumulatedValue)
                 accumulatedValue = partial;
         }
 

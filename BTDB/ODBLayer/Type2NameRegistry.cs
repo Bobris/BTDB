@@ -30,7 +30,7 @@ namespace BTDB.ODBLayer
 
         public Type FindTypeByName(string name)
         {
-            Debug.Assert(string.IsInterned(name)!=null);
+            Debug.Assert(string.IsInterned(name) != null);
             Type result;
             if (_name2Type.TryGetValue(name, out result)) return result;
             return null;

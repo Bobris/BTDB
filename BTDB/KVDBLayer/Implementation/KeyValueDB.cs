@@ -164,7 +164,7 @@ namespace BTDB.KVDBLayer
                 }
 
                 var keyIndex = keyIndexes[nearKeyIndex];
-                keyIndexes.Slice(nearKeyIndex+1).CopyTo(keyIndexes.Slice(nearKeyIndex));
+                keyIndexes.Slice(nearKeyIndex + 1).CopyTo(keyIndexes.Slice(nearKeyIndex));
                 keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                 var info = (IKeyIndex)_fileCollection.FileInfoByIdx(keyIndex.Key);
                 _nextRoot = _lastCommited.NewTransactionRoot();
@@ -346,7 +346,7 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                var reader =new SpanReader(FileCollection.GetFile(fileId)!.GetExclusiveReader());
+                var reader = new SpanReader(FileCollection.GetFile(fileId)!.GetExclusiveReader());
                 FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = info.KeyValueCount;
                 _nextRoot!.TrLogFileId = info.TrLogFileId;

@@ -81,7 +81,7 @@ namespace BTDB.ODBLayer
             var delegateType = typeof(ReaderFun<>).MakeGenericType(realType);
             var dm = ILBuilder.Instance.NewMethod(fieldHandler.Name + "Reader", delegateType);
             var ilGenerator = dm.Generator;
-            fieldHandler.Load(ilGenerator, il=>il.Ldarg(0),il=>il.Ldarg(1));
+            fieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldarg(1));
             ilGenerator
                 .Do(_typeConvertGenerator.GenerateConversion(fieldHandler.HandledType(), realType)!)
                 .Ret();
@@ -126,7 +126,7 @@ namespace BTDB.ODBLayer
             var genericArguments = _type!.GetGenericArguments();
             var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
-                new[] {typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration), typeof(ulong)});
+                new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration), typeof(ulong) });
             ilGenerator
                 .Do(pushCtx)
                 .Castclass(typeof(IDBReaderCtx))
@@ -149,7 +149,7 @@ namespace BTDB.ODBLayer
             var genericArguments = _type!.GetGenericArguments();
             var instanceType = typeof(ODBSet<>).MakeGenericType(genericArguments);
             var constructorInfo = instanceType.GetConstructor(
-                new[] {typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration)});
+                new[] { typeof(IInternalObjectDBTransaction), typeof(ODBDictionaryConfiguration) });
             ilGenerator
                 .Do(pushReaderCtx)
                 .Castclass(typeof(IDBReaderCtx))

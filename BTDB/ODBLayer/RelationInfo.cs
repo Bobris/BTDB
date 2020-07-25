@@ -139,7 +139,7 @@ namespace BTDB.ODBLayer
                 for (var i = 0; i < loadInstructions.Count; i++)
                 {
                     ref var loadInstruction = ref loadInstructions[i];
-                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
@@ -175,7 +175,7 @@ namespace BTDB.ODBLayer
                 var publicFields = instanceType.GetFields(BindingFlags.Public | BindingFlags.Instance);
                 foreach (var field in publicFields)
                 {
-                    if (field.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                    if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
                     throw new BTDBException($"Public field {instanceType.ToSimpleName()}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
                 }
 
@@ -259,7 +259,7 @@ namespace BTDB.ODBLayer
                 for (var i = 0; i < loadInstructions.Count; i++)
                 {
                     ref var loadInstruction = ref loadInstructions[i];
-                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
+                    var readerOrCtx = loadInstruction.Item1.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
@@ -344,7 +344,7 @@ namespace BTDB.ODBLayer
             LoadUnresolvedVersionInfos(tr.KeyValueDBTransaction);
             ResolveVersionInfos();
             ClientRelationVersionInfo = CreateVersionInfoFromPrime(builder.ClientRelationVersionInfo);
-            Extensions.RegisterFieldHandlers(ClientRelationVersionInfo.GetAllFields().ToArray().Select(a=>a.Handler), tr.Owner);
+            Extensions.RegisterFieldHandlers(ClientRelationVersionInfo.GetAllFields().ToArray().Select(a => a.Handler), tr.Owner);
             ApartFields = builder.ApartFields;
             foreach (var loadType in builder.LoadTypes)
             {
@@ -422,8 +422,8 @@ namespace BTDB.ODBLayer
             if (newHandledType.IsEnum && previousHandledType.IsEnum)
             {
                 var prevEnumCfg =
-                    new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler) previousHandler).Configuration);
-                var newEnumCfg = new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler) newHandler).Configuration);
+                    new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler)previousHandler).Configuration);
+                var newEnumCfg = new EnumFieldHandler.EnumConfiguration(((EnumFieldHandler)newHandler).Configuration);
 
                 return prevEnumCfg.IsBinaryRepresentationSubsetOf(newEnumCfg);
             }
@@ -446,7 +446,7 @@ namespace BTDB.ODBLayer
             for (var i = 0; i < _relationVersions.Length; i++)
             {
                 if (_relationVersions[i] == null) continue;
-                GetIDictFinder((uint) i);
+                GetIDictFinder((uint)i);
                 if (_needImplementFreeContent.HasValue)
                     return;
             }
@@ -539,7 +539,7 @@ namespace BTDB.ODBLayer
         void CalculateSecondaryKey(IInternalObjectDBTransaction tr, ReadOnlySpan<KeyValuePair<uint, SecondaryKeyInfo>> indexes)
         {
             var enumeratorType = typeof(RelationEnumerator<>).MakeGenericType(_clientType);
-            var enumerator = (IEnumerator) Activator.CreateInstance(enumeratorType, tr, this,
+            var enumerator = (IEnumerator)Activator.CreateInstance(enumeratorType, tr, this,
                 Prefix, new SimpleModificationCounter(), 0);
 
             var keySavers = new RelationSaver[indexes.Length];
@@ -753,9 +753,9 @@ namespace BTDB.ODBLayer
                             skFields[skFieldIdxForPk].Handler!);
                     }
 
-                    CopyToOutput(ilGenerator, pks[(int) skf.Index].Handler!, writerCtxLocal!, PushWriter,
+                    CopyToOutput(ilGenerator, pks[(int)skf.Index].Handler!, writerCtxLocal!, PushWriter,
                         skFields[skFieldIdx].Handler!, firstBuffer);
-                    firstBuffer.ActualFieldIdx = (int) skf.Index + 1;
+                    firstBuffer.ActualFieldIdx = (int)skf.Index + 1;
                 }
                 else
                 {
@@ -808,7 +808,7 @@ namespace BTDB.ODBLayer
 
                         var loc = defaultObjectLoc;
                         CreateSaverIl(ilGenerator,
-                            new[] {ClientRelationVersionInfo.GetSecondaryKeyField((int) skf.Index)},
+                            new[] { ClientRelationVersionInfo.GetSecondaryKeyField((int)skf.Index) },
                             il => il.Ldloc(loc), null, PushWriter, il => il.Ldarg(0));
                     }
                 }
@@ -898,7 +898,7 @@ namespace BTDB.ODBLayer
             }
 
             CreateSaverIl(ilGenerator, fields,
-                il => il.Ldloc(0), hasApartFields ? il => il.Ldloc(1) : (Action<IILGen>) null,
+                il => il.Ldloc(0), hasApartFields ? il => il.Ldloc(1) : (Action<IILGen>)null,
                 il => il.Ldarg(1), il => il.Ldarg(0));
             ilGenerator
                 .Ret();
@@ -1054,7 +1054,7 @@ namespace BTDB.ODBLayer
                 (_, secKeyIndex, relationInfo, paramFieldCount) => relationInfo.CreatePrimaryKeyFromSKDataMerger(
                     secKeyIndex, paramFieldCount,
                     $"Relation_SK_to_PK_{relationInfo.ClientRelationVersionInfo.SecondaryKeys[secKeyIndex].Name}_p{paramFieldCount}"),
-                secondaryKeyIndex, this, (int) paramFieldCountInFirstBuffer);
+                secondaryKeyIndex, this, (int)paramFieldCountInFirstBuffer);
         }
 
         struct MemorizedPositionWithLength
@@ -1084,7 +1084,7 @@ namespace BTDB.ODBLayer
             var memoPositionLoc = ilGenerator.DeclareLocal(typeof(IMemorizedPosition));
 
             var firstBuffer = new BufferInfo();
-            var secondBuffer = new BufferInfo {ActualFieldIdx = paramFieldCountInFirstBuffer};
+            var secondBuffer = new BufferInfo { ActualFieldIdx = paramFieldCountInFirstBuffer };
             var outOfOrderPKParts =
                 new Dictionary<int, MemorizedPositionWithLength>(); //index -> bufferIdx, pos, length
 
@@ -1131,18 +1131,18 @@ namespace BTDB.ODBLayer
                 var field = skFields[idx];
                 if (field.IsFromPrimaryKey)
                 {
-                    outOfOrderPKParts[(int) field.Index] = SkipWithMemorizing(bufferIdx, ilGenerator, bi.PushReader,
-                        pks[(int) field.Index].Handler!, positionLoc);
+                    outOfOrderPKParts[(int)field.Index] = SkipWithMemorizing(bufferIdx, ilGenerator, bi.PushReader,
+                        pks[(int)field.Index].Handler!, positionLoc);
                 }
                 else
                 {
-                    var f = ClientRelationVersionInfo.GetSecondaryKeyField((int) field.Index);
+                    var f = ClientRelationVersionInfo.GetSecondaryKeyField((int)field.Index);
                     f.Handler!.Skip(ilGenerator, bi.PushReader, bi.PushCtx);
                 }
             }
 
             var skField = skFields[skFieldIdx];
-            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int) skField.Index].Handler!, bi.PushReader,
+            GenerateCopyFieldFromByteBufferToWriterIl(ilGenerator, pks[(int)skField.Index].Handler!, bi.PushReader,
                 pushWriter, positionLoc, memoPositionLoc);
 
             bi.ActualFieldIdx = skFieldIdx + 1;
@@ -1181,7 +1181,7 @@ namespace BTDB.ODBLayer
                 //skip all relations
                 .Do(bi.PushReader)
                 .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!) // ObjectDB.AllRelationsSKPrefix
-                //skip relation id
+                                                                                   //skip relation id
                 .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt32))!)
                 //skip secondary key index
                 .Do(bi.PushReader).Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipUInt8))!);
@@ -1200,7 +1200,7 @@ namespace BTDB.ODBLayer
             var memoPos = ilGenerator.DeclareLocal(typeof(uint));
             var memoLen = ilGenerator.DeclareLocal(typeof(int));
             var position = new MemorizedPositionWithLength
-                {BufferIndex = activeBuffer, Pos = memoPos, Length = memoLen};
+            { BufferIndex = activeBuffer, Pos = memoPos, Length = memoLen };
             MemorizeCurrentPosition(ilGenerator, pushReader, memoPos);
             StoreCurrentPosition(ilGenerator, pushReader, tempPosition);
             handler.Skip(ilGenerator, pushReader, null);
@@ -1287,7 +1287,7 @@ namespace BTDB.ODBLayer
             var delegateType = typeof(ReaderFun<>).MakeGenericType(loaderType.RealType);
             var dm = ILBuilder.Instance.NewMethod(loaderType.FieldHandler.Name + "SimpleReader", delegateType);
             var ilGenerator = dm.Generator;
-            loaderType.FieldHandler.Load(ilGenerator, il=>il.Ldarg(0), il=>il.Ldarg(1));
+            loaderType.FieldHandler.Load(ilGenerator, il => il.Ldarg(0), il => il.Ldarg(1));
             ilGenerator
                 .Do(_relationInfoResolver.TypeConvertorGenerator.GenerateConversion(loaderType.FieldHandler.HandledType(),
                     loaderType.RealType)!)
@@ -1428,11 +1428,11 @@ namespace BTDB.ODBLayer
             }
             else if (id <= int.MinValue || id > 0)
             {
-                if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong) id)))
+                if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id)))
                     return;
                 var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValueAsReadOnlySpan());
                 var tableId = reader.ReadVUInt32();
-                var tableInfo = ((ObjectDB) Transaction.Owner).TablesInfo.FindById(tableId);
+                var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
                 if (tableInfo == null)
                     return;
                 var tableVersion = reader.ReadVUInt32();
@@ -1444,7 +1444,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                var ido = (int) -id - 1;
+                var ido = (int)-id - 1;
                 if (!AlreadyProcessedInstance(ido))
                     Transaction.FreeContentInNativeObject(ref outsideReader, this);
             }

@@ -304,7 +304,7 @@ namespace BTDB.ODBLayer
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }
-                if (_trkv.CursorMovedCounter !=prevProtectionCounter)
+                if (_trkv.CursorMovedCounter != prevProtectionCounter)
                 {
                     if (!_trkv.SetKeyIndex(prefix, pos)) break;
                 }
@@ -398,13 +398,13 @@ namespace BTDB.ODBLayer
                 {
                     if (knownInlineRefs != null)
                     {
-                        if (knownInlineRefs.Contains((int) oid))
+                        if (knownInlineRefs.Contains((int)oid))
                         {
                             if (!skipping) _visitor?.InlineBackRef((int)oid);
                             return;
                         }
                         if (!skipping) _visitor?.InlineRef((int)oid);
-                        knownInlineRefs.Add((int) oid);
+                        knownInlineRefs.Add((int)oid);
                     }
                     var tableId = reader.ReadVUInt32();
                     var version = reader.ReadVUInt32();
@@ -479,7 +479,7 @@ namespace BTDB.ODBLayer
             {
                 var length = reader.ReadVUInt32();
                 _visitor?.ScalarAsText($"Encrypted[{length}]");
-                if (length>0)
+                if (length > 0)
                     reader.SkipBlock(length - 1);
             }
             else if (handler.NeedsCtx() || handler.HandledType() == null)

@@ -16,7 +16,7 @@ namespace BTDB.EventStoreLayer
 
         public bool Equals(EquatableType other)
         {
-            return Value==other.Value;
+            return Value == other.Value;
         }
 
         public override bool Equals(object? obj)

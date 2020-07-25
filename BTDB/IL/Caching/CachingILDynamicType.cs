@@ -63,7 +63,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = (IILMethodPrivate) target.DefineMethod(_name, _returns, _parameters, _methodAttributes);
+                _trueContent = (IILMethodPrivate)target.DefineMethod(_name, _returns, _parameters, _methodAttributes);
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
             }
 
@@ -149,7 +149,7 @@ namespace BTDB.IL.Caching
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = (IILFieldPrivate) target.DefineField(_name, _type, _fieldAttributes);
+                _trueContent = (IILFieldPrivate)target.DefineField(_name, _type, _fieldAttributes);
             }
 
             public void FreeTemps()

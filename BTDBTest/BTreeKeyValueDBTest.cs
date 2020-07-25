@@ -23,17 +23,17 @@ namespace BTDBTest
 
         protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection)
         {
-            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = new SnappyCompressionStrategy(), FileSplitSize = 2147483647});
+            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = new SnappyCompressionStrategy(), FileSplitSize = 2147483647 });
         }
 
         protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize = int.MaxValue)
         {
-            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize});
+            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize });
         }
 
         protected override IKeyValueDB NewKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compression, uint fileSplitSize, ICompactorScheduler compactorScheduler)
         {
-            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize, CompactorScheduler = compactorScheduler});
+            return NewKeyValueDB(new KeyValueDBOptions { FileCollection = fileCollection, Compression = compression, FileSplitSize = fileSplitSize, CompactorScheduler = compactorScheduler });
         }
 
         protected override IKeyValueDB NewKeyValueDB(KeyValueDBOptions options)

@@ -49,7 +49,7 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
         {
-            if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(EncryptedString), type)==null)
+            if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeof(EncryptedString), type) == null)
             {
                 return this;
             }
@@ -126,7 +126,7 @@ namespace BTDB.FieldHandler
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(type, typeof(EncryptedString))==null)
+            if (HandledType() == type || DefaultTypeConvertorGenerator.Instance.GenerateConversion(type, typeof(EncryptedString)) == null)
             {
                 return this;
             }

@@ -95,7 +95,7 @@ namespace BTDB.EventStoreLayer
             {
                 return indirect.ValueAsObject as T;
             }
-            return (T) obj; // This will throw
+            return (T)obj; // This will throw
         }
 
         public static StringBuilder AppendJsonLike(this StringBuilder sb, object? obj)

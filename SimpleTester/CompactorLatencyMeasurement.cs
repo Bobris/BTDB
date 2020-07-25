@@ -40,9 +40,9 @@ namespace SimpleTester
                         var objects = tr.Singleton<SmallObjects>();
                         while (true)
                         {
-                            objects.Items!.Add(itemsCount, new SmallObject() {Id = itemsCount, Label = "bu"});
+                            objects.Items!.Add(itemsCount, new SmallObject() { Id = itemsCount, Label = "bu" });
 
-                            if(itemsCount % 1_000_000 == 0)
+                            if (itemsCount % 1_000_000 == 0)
                                 Console.WriteLine("Generated {0}", itemsCount);
 
                             if (itemsCount % 1000 == 0 && collection.GetCount() == 20)
@@ -106,7 +106,7 @@ namespace SimpleTester
                         iterations++;
                         watch.Start();
                         var task = objDb.StartWritingTransaction();
-                        if(!transactionCreationStarted.IsSet)
+                        if (!transactionCreationStarted.IsSet)
                             transactionCreationStarted.Set();
 
                         task.AsTask().Wait();
@@ -124,7 +124,7 @@ namespace SimpleTester
                             break;
                     }
                     Console.WriteLine("Finished concurrent transaction creation, longest transaction create time was {0}ms, " +
-                                     "average {1}ms, iterations {2}", msMax, average/(double)iterations, iterations);
+                                     "average {1}ms, iterations {2}", msMax, average / (double)iterations, iterations);
                 }
             }
         }

@@ -10,7 +10,7 @@ namespace BTDBTest
         [Fact]
         public void PackVUIntIsOrderable()
         {
-            foreach(var ul in GenerateULongs())
+            foreach (var ul in GenerateULongs())
                 PackVUIntIsOrderableCore(ul);
         }
 
@@ -119,7 +119,7 @@ namespace BTDBTest
             }
             Assert.Equal((uint)o2, PackUnpack.LengthVInt(t));
             Assert.Equal((uint)o2, PackUnpack.LengthVInt(buf2, 0));
-            Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), $"{t-1} is not before {t}");
+            Assert.True(0 > BitArrayManipulation.CompareByteArray(buf1, o1, buf2, o2), $"{t - 1} is not before {t}");
             var o1A = 0;
             Assert.Equal(t - 1, PackUnpack.UnpackVInt(buf1, ref o1A));
             Assert.Equal(o1, o1A);

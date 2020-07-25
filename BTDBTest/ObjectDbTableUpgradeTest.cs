@@ -82,7 +82,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 {Id = 11, Name = "Code"};
+                var job = new JobV1 { Id = 11, Name = "Code" };
                 jobTable.Insert(job);
                 tr.Commit();
             }
@@ -101,7 +101,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 {Id = 11, Name = "Code"};
+                var job = new JobV1 { Id = 11, Name = "Code" };
                 jobTable.Insert(job);
                 tr.Commit();
             }
@@ -111,7 +111,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 {Id = 21, Name = "Build", Cost = 42};
+                var job = new JobV2 { Id = 21, Name = "Build", Cost = 42 };
                 jobTable.Insert(job);
                 var j = jobTable.FindByNameOrDefault("Code");
                 Assert.Equal("Code", j.Name);
@@ -155,7 +155,7 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ICarTableApart>("Car");
                 var carTable = creator(tr);
                 carTable.CompanyId = 10;
-                var car = new Car {Id = 11, Name = "Ferrari"};
+                var car = new Car { Id = 11, Name = "Ferrari" };
                 carTable.Insert(car);
                 tr.Commit();
             }
@@ -176,7 +176,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ICarTable>("Car");
                 var carTable = creator(tr);
-                var car = new Car {CompanyId = 10, Id = 11, Name = "Ferrari"};
+                var car = new Car { CompanyId = 10, Id = 11, Name = "Ferrari" };
                 carTable.Insert(car);
                 tr.Commit();
             }
@@ -251,8 +251,8 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKey");
                 var table = creator(tr);
 
-                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.One, Value = "A"});
-                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.Two, Value = "B"});
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.Two, Value = "B" });
 
                 tr.Commit();
             }
@@ -263,8 +263,8 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ITableWithEnumInKeyV2>("EnumWithItemInKey");
                 var table = creator(tr);
                 Assert.Equal("A", table.FindById(SimpleEnumV2.Eins).Value);
-                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 {Key = SimpleEnumV2.Zwei, Value = "B2"}));
-                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 {Key = SimpleEnumV2.Drei, Value = "C"}));
+                Assert.False(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Zwei, Value = "B2" }));
+                Assert.True(table.Upsert(new ItemWithEnumInKeyV2 { Key = SimpleEnumV2.Drei, Value = "C" }));
                 Assert.Equal(3, table.Count);
             }
         }
@@ -277,7 +277,7 @@ namespace BTDBTest
                 var creator = tr.InitRelation<ITableWithEnumInKey>("EnumWithItemInKeyIncompatible");
                 var table = creator(tr);
 
-                table.Insert(new ItemWithEnumInKey {Key = SimpleEnum.One, Value = "A"});
+                table.Insert(new ItemWithEnumInKey { Key = SimpleEnum.One, Value = "A" });
 
                 tr.Commit();
             }
@@ -315,7 +315,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 {Id = 11, Name = "Code", Cost = 1000};
+                var job = new JobV2 { Id = 11, Name = "Code", Cost = 1000 };
                 jobTable.Insert(job);
                 tr.Commit();
             }
@@ -357,7 +357,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable2>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV2 {Id = 11, Name = "Code"};
+                var job = new JobV2 { Id = 11, Name = "Code" };
                 jobTable.Insert(job);
                 tr.Commit();
             }
@@ -403,10 +403,10 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable3>("Job");
                 var jobTable = creator(tr);
-                var job1 = new JobV3 {Id = 11, Status = 300};
+                var job1 = new JobV3 { Id = 11, Status = 300 };
                 jobTable.Insert(job1);
 
-                var job2 = new JobV3 {Id = 12, Status = 200};
+                var job2 = new JobV3 { Id = 12, Status = 200 };
                 jobTable.Insert(job2);
 
                 tr.Commit();

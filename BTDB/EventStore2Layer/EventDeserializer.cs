@@ -45,7 +45,7 @@ namespace BTDB.EventStore2Layer
             {
                 var infoForType = new DeserializerTypeInfo
                 {
-                    Id = (int) _id2Info.Count,
+                    Id = (int)_id2Info.Count,
                     Descriptor = predefinedType
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
@@ -130,7 +130,7 @@ namespace BTDB.EventStore2Layer
                 var typeId = reader.ReadVInt32();
                 while (typeId != 0)
                 {
-                    var typeCategory = (TypeCategory) reader.ReadUInt8();
+                    var typeCategory = (TypeCategory)reader.ReadUInt8();
                     ITypeDescriptor descriptor;
                     switch (typeCategory)
                     {
@@ -157,7 +157,7 @@ namespace BTDB.EventStore2Layer
 
                     while (-typeId - 1 >= _id2InfoNew.Count)
                         _id2InfoNew.Add(null);
-                    _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo {Id = typeId, Descriptor = descriptor};
+                    _id2InfoNew[-typeId - 1] ??= new DeserializerTypeInfo { Id = typeId, Descriptor = descriptor };
                     typeId = reader.ReadVInt32();
                 }
 
@@ -191,7 +191,7 @@ namespace BTDB.EventStore2Layer
 
                     if (infoForType!.Id < 0)
                     {
-                        infoForType.Id = (int) _id2Info.Count;
+                        infoForType.Id = (int)_id2Info.Count;
                         _id2Info.Add(infoForType);
                         _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                     }
@@ -273,12 +273,12 @@ namespace BTDB.EventStore2Layer
             if (typeId == 1)
             {
                 var backRefId = reader.ReadVUInt32();
-                return _visited[(int) backRefId];
+                return _visited[(int)backRefId];
             }
 
             if (typeId >= _id2Info.Count)
                 throw new BtdbMissingMetadataException();
-            var infoForType = _id2Info[(int) typeId];
+            var infoForType = _id2Info[(int)typeId];
             if (infoForType!.Loader == null)
             {
                 infoForType.Loader = LoaderFactory(infoForType.Descriptor!);
@@ -309,7 +309,7 @@ namespace BTDB.EventStore2Layer
 
             if (typeId >= _id2Info.Count)
                 throw new BtdbMissingMetadataException();
-            var infoForType = _id2Info[(int) typeId];
+            var infoForType = _id2Info[(int)typeId];
             if (infoForType!.Loader == null)
             {
                 infoForType.Loader = LoaderFactory(infoForType.Descriptor!);

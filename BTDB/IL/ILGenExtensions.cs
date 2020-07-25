@@ -565,7 +565,7 @@ namespace BTDB.IL
 
         public static IILGen Callvirt(this IILGen il, Expression<Action> expression)
         {
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
@@ -575,7 +575,7 @@ namespace BTDB.IL
             {
                 return il.Callvirt(((PropertyInfo)newExpression.Member).GetGetMethod(true)!);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
@@ -585,7 +585,7 @@ namespace BTDB.IL
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Call(methodInfo);
         }
 
@@ -600,19 +600,19 @@ namespace BTDB.IL
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Call(methodInfo);
         }
 
         public static IILGen Newobj<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            var constructorInfo = ((NewExpression) expression.Body).Constructor;
+            var constructorInfo = ((NewExpression)expression.Body).Constructor;
             return il.Newobj(constructorInfo);
         }
 
         public static IILGen Ldfld<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            return il.Ldfld((FieldInfo)((MemberExpression) expression.Body).Member);
+            return il.Ldfld((FieldInfo)((MemberExpression)expression.Body).Member);
         }
 
         public static IILGen Newarr(this IILGen il, Type arrayMemberType)

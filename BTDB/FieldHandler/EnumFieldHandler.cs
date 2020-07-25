@@ -278,7 +278,7 @@ namespace BTDB.FieldHandler
             }
             if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
             {
-                if (type.GetCustomAttributes(typeof (BinaryCompatibilityOnlyAttribute), false).Length != 0)
+                if (type.GetCustomAttributes(typeof(BinaryCompatibilityOnlyAttribute), false).Length != 0)
                 {
                     if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
                         return typeHandler;

@@ -5,7 +5,7 @@ using Xunit;
 
 namespace BTreeLibTest
 {
-    public class RootNode12Tests: IDisposable
+    public class RootNode12Tests : IDisposable
     {
         LeakDetectorWrapperAllocator _allocator;
         BTreeImpl12 _impl;

@@ -81,7 +81,8 @@ namespace BTDB.KVDBLayer
         public uint CompactorRamLimitInMb { get; set; }
         public long MaxTrLogFileSize { get; set; }
 
-        public ulong? PreserveHistoryUpToCommitUlong {
+        public ulong? PreserveHistoryUpToCommitUlong
+        {
             get { return null; }
             set { /* ignore */ }
         }

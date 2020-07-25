@@ -34,7 +34,7 @@ namespace BTDBTest
                 var data = new byte[4];
                 for (var i = 0; i < 32000; i++)
                 {
-                    f.RandomRead(data, (ulong) i * 4, false);
+                    f.RandomRead(data, (ulong)i * 4, false);
                     Assert.Equal(i, PackUnpack.UnpackInt32LE(data, 0));
                 }
             }

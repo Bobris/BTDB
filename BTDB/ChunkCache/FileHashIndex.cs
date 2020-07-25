@@ -19,7 +19,7 @@ namespace BTDB.ChunkCache
         public FileHashIndex(ref SpanReader reader)
         {
             _generation = reader.ReadVInt64();
-            _keySize = (int) reader.ReadVUInt32();
+            _keySize = (int)reader.ReadVUInt32();
             _keyValueCount = (long)reader.ReadVUInt64();
         }
 

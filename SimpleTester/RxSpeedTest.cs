@@ -69,11 +69,14 @@ namespace SimpleTester
                     {
                         d += p => { };
                     }
-                    { var localD = d;
+                    {
+                        var localD = d;
                         localD?.Invoke(0);
                     }
                     sw = Stopwatch.StartNew();
-                    for (var i = 0; i < 100000000; i++) { var localD = d;
+                    for (var i = 0; i < 100000000; i++)
+                    {
+                        var localD = d;
                         localD?.Invoke(i);
                     }
                     Console.Write("{0,8} ", sw.ElapsedMilliseconds);

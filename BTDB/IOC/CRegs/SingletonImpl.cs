@@ -112,7 +112,7 @@ namespace BTDB.IOC.CRegs
                 return localSingleton;
             }
             var localSingletons = context.GetSpecific<SingletonsLocal>().MainLocal;
-            var safeImplementationType = _implementationType.IsPublic ? _implementationType : typeof (object);
+            var safeImplementationType = _implementationType.IsPublic ? _implementationType : typeof(object);
             localSingleton = il.DeclareLocal(safeImplementationType, "singleton");
             var obj = context.Container.Singletons[_singletonIndex];
             if (obj != null)
@@ -192,10 +192,10 @@ namespace BTDB.IOC.CRegs
             _buildCtx = backupCtx.FreezeMulti();
             context.BuildContext = _buildCtx;
             yield return new Need
-                {
-                    Kind = NeedKind.CReg,
-                    Key = _wrapping
-                };
+            {
+                Kind = NeedKind.CReg,
+                Key = _wrapping
+            };
             yield return Need.ContainerNeed;
             context.BuildContext = backupCtx;
         }

@@ -30,8 +30,8 @@ namespace BTDB.ODBLayer
             _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
             PackUnpack.PackVUInt(_prefix, ref o, _id);
-            _keyReader = ((ReaderFun<TKey>) config.KeyReader)!;
-            _keyWriter = ((WriterFun<TKey>) config.KeyWriter)!;
+            _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
+            _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _count = -1;
         }
@@ -49,7 +49,7 @@ namespace BTDB.ODBLayer
 
         public static void DoSave(ref SpanWriter writer, IWriterCtx ctx, IOrderedSet<TKey>? dictionary, int cfgId)
         {
-            var writerCtx = (IDBWriterCtx) ctx;
+            var writerCtx = (IDBWriterCtx)ctx;
             if (!(dictionary is ODBSet<TKey> goodDict))
             {
                 var tr = writerCtx.GetTransaction();
@@ -167,7 +167,7 @@ namespace BTDB.ODBLayer
             {
                 if (_count == -1)
                 {
-                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
+                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
                 }
 
                 return _count;
@@ -230,7 +230,7 @@ namespace BTDB.ODBLayer
             {
                 if (_count == int.MaxValue)
                 {
-                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
+                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                 }
                 else
                 {
@@ -320,7 +320,7 @@ namespace BTDB.ODBLayer
                 {
                     prevModificationCounter = _modificationCounter;
                     bool startOk;
-                    switch (_keyValueTr.Find(startKeyBytes, (uint) _prefix.Length))
+                    switch (_keyValueTr.Find(startKeyBytes, (uint)_prefix.Length))
                     {
                         case FindResult.Exact:
                         case FindResult.Next:
@@ -373,7 +373,7 @@ namespace BTDB.ODBLayer
                 {
                     prevModificationCounter = _modificationCounter;
                     bool startOk;
-                    switch (_keyValueTr.Find(startKeyBytes, (uint) _prefix.Length))
+                    switch (_keyValueTr.Find(startKeyBytes, (uint)_prefix.Length))
                     {
                         case FindResult.Exact:
                         case FindResult.Previous:
@@ -430,7 +430,7 @@ namespace BTDB.ODBLayer
             else
             {
                 var keyBytes = KeyToByteArray(param.End);
-                switch (_keyValueTr.Find(keyBytes, (uint) _prefix.Length))
+                switch (_keyValueTr.Find(keyBytes, (uint)_prefix.Length))
                 {
                     case FindResult.Exact:
                         endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
@@ -461,7 +461,7 @@ namespace BTDB.ODBLayer
             else
             {
                 var keyBytes = KeyToByteArray(param.Start);
-                switch (_keyValueTr.Find(keyBytes, (uint) _prefix.Length))
+                switch (_keyValueTr.Find(keyBytes, (uint)_prefix.Length))
                 {
                     case FindResult.Exact:
                         startIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
@@ -622,8 +622,8 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                _count = (uint) Math.Max(0, endIndex - startIndex + 1);
-                _startPos = (uint) (_ascending ? startIndex : endIndex);
+                _count = (uint)Math.Max(0, endIndex - startIndex + 1);
+                _startPos = (uint)(_ascending ? startIndex : endIndex);
                 _pos = 0;
                 _seekState = SeekState.Undefined;
             }

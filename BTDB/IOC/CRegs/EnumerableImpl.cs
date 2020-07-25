@@ -43,7 +43,7 @@ namespace BTDB.IOC.CRegs
             foreach (var pair in _list)
             {
                 context.BuildContext = pair.Key;
-                result|=pair.Value.IsCorruptingILStack(context);
+                result |= pair.Value.IsCorruptingILStack(context);
             }
             context.BuildContext = backupCtx;
             return result;

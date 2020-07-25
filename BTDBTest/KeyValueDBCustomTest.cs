@@ -22,7 +22,7 @@ namespace BTDBTest
                 Directory.CreateDirectory("data");
         }
 
-        [Fact(Skip="Takes too long time")]
+        [Fact(Skip = "Takes too long time")]
         public void Reader()
         {
             IEnumerable<KeyValuePair<long, Tick>> flow = TicksGenerator.GetFlow(1000000, KeysType.Random);

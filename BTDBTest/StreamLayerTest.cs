@@ -5,7 +5,7 @@ using Xunit;
 
 namespace BTDBTest
 {
-    public class StreamLayerTest: IDisposable
+    public class StreamLayerTest : IDisposable
     {
         const string TestFileName = "testfile.txt";
         byte[] buff = new byte[8];

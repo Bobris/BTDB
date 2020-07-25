@@ -209,7 +209,7 @@ namespace BTDB.ODBLayer
                 singletonOid = Interlocked.Read(ref _singletonOid);
                 if (singletonOid != 0) return singletonOid;
                 NeedStoreSingletonOid = true;
-                var newSingletonOid = (long) _tableInfoResolver.AllocateNewOid();
+                var newSingletonOid = (long)_tableInfoResolver.AllocateNewOid();
                 singletonOid = Interlocked.CompareExchange(ref _singletonOid, newSingletonOid, 0);
                 if (singletonOid == 0) singletonOid = newSingletonOid;
                 return singletonOid;
@@ -250,7 +250,7 @@ namespace BTDB.ODBLayer
                 var field = ClientTableVersionInfo[i];
                 var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
                 var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
-                var writerOrCtx = handler.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
+                var writerOrCtx = handler.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
                 handler.Save(ilGenerator, il => il.Ldarg(2), writerOrCtx, il =>
                 {
                     il.Ldloc(0).Callvirt(getter);
@@ -280,7 +280,7 @@ namespace BTDB.ODBLayer
 
             var props = _clientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var fields = new StructList<TableFieldInfo>();
-            fields.Reserve((uint) props.Length);
+            fields.Reserve((uint)props.Length);
             foreach (var pi in props)
             {
                 if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
@@ -356,7 +356,7 @@ namespace BTDB.ODBLayer
             for (var fi = 0; fi < tableVersionInfo.FieldCount; fi++)
             {
                 var srcFieldInfo = tableVersionInfo[fi];
-                var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(1)) : null;
+                var readerOrCtx = srcFieldInfo.Handler!.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(1)) : null;
                 var destFieldInfo = clientTableVersionInfo![srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
@@ -468,7 +468,7 @@ namespace BTDB.ODBLayer
 
         internal static byte[] BuildKeyForTableVersions(uint tableId, uint tableVersion)
         {
-            Span<byte> buf = stackalloc byte[2+5+5];
+            Span<byte> buf = stackalloc byte[2 + 5 + 5];
             var writer = new SpanWriter(buf);
             writer.WriteBlock(ObjectDB.TableVersionsPrefix);
             writer.WriteVUInt32(tableId);
@@ -497,7 +497,7 @@ namespace BTDB.ODBLayer
 
         public bool IsSingletonOid(ulong id)
         {
-            return (ulong) Interlocked.Read(ref _singletonOid) == id;
+            return (ulong)Interlocked.Read(ref _singletonOid) == id;
         }
     }
 }

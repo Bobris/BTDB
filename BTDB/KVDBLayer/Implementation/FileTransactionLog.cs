@@ -13,7 +13,7 @@ namespace BTDB.KVDBLayer
         {
             _guid = guid;
             _generation = reader.ReadVInt64();
-            _previousFileId = (uint) reader.ReadVInt32();
+            _previousFileId = (uint)reader.ReadVInt32();
         }
 
         public FileTransactionLog(long generation, Guid? guid, uint fileIdWithPreviousTransactionLog)
@@ -48,7 +48,7 @@ namespace BTDB.KVDBLayer
             FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
             writer.WriteUInt8((byte)KVFileType.TransactionLog);
             writer.WriteVInt64(_generation);
-            writer.WriteVInt32((int) _previousFileId);
+            writer.WriteVInt32((int)_previousFileId);
         }
     }
 }

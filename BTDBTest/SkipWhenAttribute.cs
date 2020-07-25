@@ -40,7 +40,7 @@ namespace BTDBTest
                     throw new InvalidEnumArgumentException();
             }
         }
-   }
+    }
 
     public class SkipWhenAllAttribute : FactAttribute
     {

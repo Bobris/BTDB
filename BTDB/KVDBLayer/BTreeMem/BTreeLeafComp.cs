@@ -37,11 +37,11 @@ namespace BTDB.KVDBLayer.BTreeMem
             for (var i = 0; i < newKeyValues.Length; i++)
             {
                 _keyValues[i] = new Member
-                    {
-                        KeyOffset = ofs,
-                        KeyLength = (ushort)newKeyValues[i].Key.Length,
-                        Value = newKeyValues[i].Value
-                    };
+                {
+                    KeyOffset = ofs,
+                    KeyLength = (ushort)newKeyValues[i].Key.Length,
+                    Value = newKeyValues[i].Value
+                };
                 Array.Copy(newKeyValues[i].Key, 0, _keyBytes, ofs, _keyValues[i].KeyLength);
                 ofs += _keyValues[i].KeyLength;
             }
@@ -60,11 +60,11 @@ namespace BTDB.KVDBLayer.BTreeMem
             var result = new BTreeLeafComp(ctx.TransactionId, 1);
             result._keyBytes = ctx.Key.ToArray();
             result._keyValues[0] = new Member
-                {
-                    KeyOffset = 0,
-                    KeyLength = (ushort)result._keyBytes.Length,
-                    Value = ctx.Value.ToArray()
-                };
+            {
+                KeyOffset = 0,
+                KeyLength = (ushort)result._keyBytes.Length,
+                Value = ctx.Value.ToArray()
+            };
             return result;
         }
 
@@ -79,7 +79,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 var middle = (left + right) / 2;
                 int currentKeyOfs = keyValues[middle].KeyOffset;
                 int currentKeyLen = keyValues[middle].KeyLength;
-                var result = key.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs,currentKeyLen));
+                var result = key.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs, currentKeyLen));
                 if (result == 0)
                 {
                     return middle * 2 + 1;
@@ -126,10 +126,10 @@ namespace BTDB.KVDBLayer.BTreeMem
                 {
                     var member = _keyValues[i];
                     currentKeyValues[i] = new BTreeLeafMember
-                        {
-                            Key = _keyBytes.AsSpan(member.KeyOffset, member.KeyLength).ToArray(),
-                            Value = member.Value
-                        };
+                    {
+                        Key = _keyBytes.AsSpan(member.KeyOffset, member.KeyLength).ToArray(),
+                        Value = member.Value
+                    };
                 }
                 new BTreeLeaf(ctx.TransactionId - 1, currentKeyValues).CreateOrUpdate(ref ctx);
                 return;
@@ -145,11 +145,11 @@ namespace BTDB.KVDBLayer.BTreeMem
                 Array.Copy(_keyValues, 0, newKeyValues, 0, index);
                 var ofs = (ushort)(index == 0 ? 0 : newKeyValues[index - 1].KeyOffset + newKeyValues[index - 1].KeyLength);
                 newKeyValues[index] = new Member
-                    {
-                        KeyOffset = ofs,
-                        KeyLength = (ushort)newKey.Length,
-                        Value = ctx.Value.ToArray()
-                    };
+                {
+                    KeyOffset = ofs,
+                    KeyLength = (ushort)newKey.Length,
+                    Value = ctx.Value.ToArray()
+                };
                 Array.Copy(_keyBytes, 0, newKeyBytes, 0, ofs);
                 newKey.CopyTo(newKeyBytes.AsSpan(ofs));
                 Array.Copy(_keyBytes, ofs, newKeyBytes, ofs + newKey.Length, _keyBytes.Length - ofs);
@@ -255,7 +255,7 @@ namespace BTDB.KVDBLayer.BTreeMem
 
         public ReadOnlySpan<byte> GetLeftMostKey()
         {
-            Debug.Assert(_keyValues[0].KeyOffset==0);
+            Debug.Assert(_keyValues[0].KeyOffset == 0);
             return _keyBytes.AsSpan(0, _keyValues[0].KeyLength);
         }
 
@@ -278,7 +278,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 var middle = (left + right) / 2;
                 currentKeyOfs = keyValues[middle].KeyOffset;
                 currentKeyLen = keyValues[middle].KeyLength;
-                result = prefix.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs,Math.Min(currentKeyLen, prefix.Length)));
+                result = prefix.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs, Math.Min(currentKeyLen, prefix.Length)));
                 if (result < 0)
                 {
                     right = middle;
@@ -290,7 +290,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             }
             currentKeyOfs = keyValues[left].KeyOffset;
             currentKeyLen = keyValues[left].KeyLength;
-            result = prefix.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs,Math.Min(currentKeyLen, prefix.Length)));
+            result = prefix.SequenceCompareTo(keyBytes.AsSpan(currentKeyOfs, Math.Min(currentKeyLen, prefix.Length)));
             if (result < 0) left--;
             return left;
         }

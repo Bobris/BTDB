@@ -54,7 +54,7 @@ namespace BTDB.IOC
                 _specifics.Add(typeof(T), specific);
             }
 
-            return (T) specific;
+            return (T)specific;
         }
 
         public IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor)
@@ -258,7 +258,7 @@ namespace BTDB.IOC
             {
                 if (need.Kind == NeedKind.CReg)
                 {
-                    GatherNeeds(((ICRegILGen) need.Key)!, processed);
+                    GatherNeeds(((ICRegILGen)need.Key)!, processed);
                     continue;
                 }
 
@@ -384,7 +384,7 @@ namespace BTDB.IOC
             }
 
             _constants.Add(tuple);
-            found:
+        found:
             return new ConstantImpl(tuple);
         }
 
@@ -413,7 +413,7 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var constants = ((GenerationContext) context)._constants;
+                var constants = ((GenerationContext)context)._constants;
                 if (constants.Count == 1)
                 {
                     context.IL.Ldarg(0);
@@ -456,8 +456,8 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var constants = ((GenerationContext) context)._constants;
-                context.IL.Ldarg((ushort) (_idx + (constants.Count > 0 ? 1 : 0)));
+                var constants = ((GenerationContext)context)._constants;
+                context.IL.Ldarg((ushort)(_idx + (constants.Count > 0 ? 1 : 0)));
                 return null;
             }
 

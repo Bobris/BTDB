@@ -54,7 +54,7 @@ namespace BTDB.EventStore2Layer
             {
                 var infoForType = new SerializerTypeInfo
                 {
-                    Id = (int) _id2Info.Count,
+                    Id = (int)_id2Info.Count,
                     Descriptor = predefinedType
                 };
                 _typeOrDescriptor2Info[predefinedType] = infoForType;
@@ -179,7 +179,7 @@ namespace BTDB.EventStore2Layer
             var typeId = reader.ReadVInt32();
             while (typeId != 0)
             {
-                var typeCategory = (TypeCategory) reader.ReadUInt8();
+                var typeCategory = (TypeCategory)reader.ReadUInt8();
                 ITypeDescriptor descriptor;
                 switch (typeCategory)
                 {
@@ -207,7 +207,7 @@ namespace BTDB.EventStore2Layer
                 while (-typeId - 1 >= _id2InfoNew.Count)
                     _id2InfoNew.Add(null);
                 if (_id2InfoNew[-typeId - 1] == null)
-                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo {Id = typeId, Descriptor = descriptor};
+                    _id2InfoNew[-typeId - 1] = new SerializerTypeInfo { Id = typeId, Descriptor = descriptor };
                 typeId = reader.ReadVInt32();
             }
 
@@ -240,7 +240,7 @@ namespace BTDB.EventStore2Layer
 
                 if (infoForType!.Id < 0)
                 {
-                    infoForType.Id = (int) _id2Info.Count;
+                    infoForType.Id = (int)_id2Info.Count;
                     _id2Info.Add(infoForType);
                     _typeOrDescriptor2Info[infoForType.Descriptor!] = infoForType;
                 }
@@ -537,7 +537,7 @@ namespace BTDB.EventStore2Layer
                 {
                     if (old is PlaceHolderDescriptor)
                     {
-                        return ((PlaceHolderDescriptor) old).TypeDesc;
+                        return ((PlaceHolderDescriptor)old).TypeDesc;
                     }
 
                     if (visited.Contains(old)) return old;
@@ -620,36 +620,36 @@ namespace BTDB.EventStore2Layer
         {
             if (descriptor is ListTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.List);
+                writer.WriteUInt8((byte)TypeCategory.List);
             }
             else if (descriptor is DictionaryTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Dictionary);
+                writer.WriteUInt8((byte)TypeCategory.Dictionary);
             }
             else if (descriptor is ObjectTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Class);
+                writer.WriteUInt8((byte)TypeCategory.Class);
             }
             else if (descriptor is EnumTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Enum);
+                writer.WriteUInt8((byte)TypeCategory.Enum);
             }
             else if (descriptor is NullableTypeDescriptor)
             {
-                writer.WriteUInt8((byte) TypeCategory.Nullable);
+                writer.WriteUInt8((byte)TypeCategory.Nullable);
             }
             else
             {
                 throw new ArgumentOutOfRangeException();
             }
 
-            ((IPersistTypeDescriptor) descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) =>
-            {
-                if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
-                    if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
-                        throw new BTDBException("Invalid state unknown descriptor " + d.Name);
-                w.WriteVInt32(result.Id);
-            });
+            ((IPersistTypeDescriptor)descriptor).Persist(ref writer, (ref SpanWriter w, ITypeDescriptor d) =>
+           {
+               if (!_typeOrDescriptor2Info.TryGetValue(d, out var result))
+                   if (!_typeOrDescriptor2InfoNew.TryGetValue(d, out result))
+                       throw new BTDBException("Invalid state unknown descriptor " + d.Name);
+               w.WriteVInt32(result.Id);
+           });
         }
 
         public void StoreObject(ref SpanWriter writer, object? obj)
@@ -665,7 +665,7 @@ namespace BTDB.EventStore2Layer
             if (visited.TryGetValue(obj, out var index))
             {
                 writer.WriteUInt8(1); // backreference
-                writer.WriteVUInt32((uint) index);
+                writer.WriteVUInt32((uint)index);
                 return;
             }
 
@@ -690,7 +690,7 @@ namespace BTDB.EventStore2Layer
 
             ref var saver = ref info.ComplexSaver.GetOrAddValueRef(objType);
             saver ??= BuildComplexSaver(info.Descriptor!, objType);
-            writer.WriteVUInt32((uint) info.Id);
+            writer.WriteVUInt32((uint)info.Id);
             saver(ref writer, this, obj);
         }
 

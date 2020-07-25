@@ -14,7 +14,7 @@ namespace BTDB.StreamLayer
 
         public PositionLessStreamReader(IPositionLessStream stream, int bufferSize = 8192)
         {
-            if(bufferSize <= 0)
+            if (bufferSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(bufferSize));
 
             _stream = stream;
@@ -63,7 +63,7 @@ namespace BTDB.StreamLayer
         public void SetCurrentPosition(ref SpanReader spanReader, long position)
         {
             spanReader.Buf = new ReadOnlySpan<byte>();
-            _ofs = (ulong) position;
+            _ofs = (ulong)position;
         }
     }
 }

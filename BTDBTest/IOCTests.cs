@@ -554,7 +554,7 @@ namespace BTDBTest
             Assert.NotNull(obj);
             Assert.Same(container.Resolve<ILogger>(), obj.Logger);
             Assert.Same(container.ResolveNamed<ILogger>("SuperLogger"), obj.Logger2);
-            Assert.NotSame(obj.Logger,obj.Logger2);
+            Assert.NotSame(obj.Logger, obj.Logger2);
         }
 
         public class KlassWith2IntParams

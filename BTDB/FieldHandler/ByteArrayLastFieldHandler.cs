@@ -31,7 +31,7 @@ namespace BTDB.FieldHandler
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBlock), new[] {typeof(ByteBuffer)})!);
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBlock), new[] { typeof(ByteBuffer) })!);
         }
 
         public override bool IsCompatibleWith(Type type, FieldHandlerOptions options)

@@ -13,32 +13,32 @@ namespace BTDB.SnappyCompression
             if (offset >= limit) goto error;
             var b = compressedBytes[offset];
             offset++;
-            var result = (uint) (b & 127);
+            var result = (uint)(b & 127);
             if (b < 128) goto done;
             if (offset >= limit) goto error;
             b = compressedBytes[offset];
             offset++;
-            result |= ((uint) (b & 127) << 7);
+            result |= ((uint)(b & 127) << 7);
             if (b < 128) goto done;
             if (offset >= limit) goto error;
             b = compressedBytes[offset];
             offset++;
-            result |= ((uint) (b & 127) << 14);
+            result |= ((uint)(b & 127) << 14);
             if (b < 128) goto done;
             if (offset >= limit) goto error;
             b = compressedBytes[offset];
             offset++;
-            result |= ((uint) (b & 127) << 21);
+            result |= ((uint)(b & 127) << 21);
             if (b < 128) goto done;
             if (offset >= limit) goto error;
             b = compressedBytes[offset];
             offset++;
-            result |= ((uint) (b & 127) << 28);
+            result |= ((uint)(b & 127) << 28);
             if (b >= 16) goto error;
             done:
             length = offset;
-            return (int) result;
-            error:
+            return (int)result;
+        error:
             length = 0;
             return -1;
         }

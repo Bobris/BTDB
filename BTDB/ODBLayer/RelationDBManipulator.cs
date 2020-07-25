@@ -35,7 +35,7 @@ namespace BTDB.ODBLayer
         }
     }
 
-    public interface IRelationDbManipulator: IRelation, IRelationModificationCounter
+    public interface IRelationDbManipulator : IRelation, IRelationModificationCounter
     {
         public IInternalObjectDBTransaction Transaction { get; }
         public RelationInfo RelationInfo { get; }
@@ -57,7 +57,7 @@ namespace BTDB.ODBLayer
 
         public RelationDBManipulator(IObjectDBTransaction transaction, RelationInfo relationInfo)
         {
-            _transaction = (IInternalObjectDBTransaction) transaction;
+            _transaction = (IInternalObjectDBTransaction)transaction;
             _kvtr = _transaction.KeyValueDBTransaction;
             _relationInfo = relationInfo;
             _hasSecondaryIndexes = _relationInfo.ClientRelationVersionInfo.HasSecondaryIndexes;
@@ -436,14 +436,14 @@ namespace BTDB.ODBLayer
                 realEndKeyBytes =
                     RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr);
 
-            _kvtr.FindFirstKey(startKeyBytes.Slice(0,prefixLen));
+            _kvtr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _kvtr.GetKeyIndex();
 
             long startIndex;
             long endIndex;
             if (endKeyProposition == KeyProposition.Ignored)
             {
-                _kvtr.FindLastKey(startKeyBytes.Slice(0,prefixLen));
+                _kvtr.FindLastKey(startKeyBytes.Slice(0, prefixLen));
 
                 endIndex = _kvtr.GetKeyIndex() - prefixIndex;
             }
@@ -534,7 +534,7 @@ namespace BTDB.ODBLayer
 
         public TItem FindByIdOrDefault<TItem>(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound, int loaderIndex)
         {
-            return (TItem) FindByIdOrDefaultInternal(_relationInfo.ItemLoaderInfos[loaderIndex], keyBytes,
+            return (TItem)FindByIdOrDefaultInternal(_relationInfo.ItemLoaderInfos[loaderIndex], keyBytes,
                 throwWhenNotFound);
         }
 
@@ -554,7 +554,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)
         {
-            return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix,this, loaderIndex);
+            return new RelationPrimaryKeyEnumerator<TItem>(_transaction, _relationInfo, keyBytesPrefix, this, loaderIndex);
         }
 
         public object? CreateInstanceFromSecondaryKey(RelationInfo.ItemLoaderInfo itemLoader, uint secondaryKeyIndex,
@@ -594,7 +594,7 @@ namespace BTDB.ODBLayer
             if (_kvtr.FindNextKey(secKeyBytes))
                 throw new BTDBException("Ambiguous result.");
 
-            return (TItem) CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
+            return (TItem)CreateInstanceFromSecondaryKey(_relationInfo.ItemLoaderInfos[loaderIndex], secondaryKeyIndex,
                 prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
         }
 
@@ -669,7 +669,7 @@ namespace BTDB.ODBLayer
             return GetEnumerator();
         }
 
-        public int Count => (int) _kvtr.GetKeyValueCount(_relationInfo.Prefix);
+        public int Count => (int)_kvtr.GetKeyValueCount(_relationInfo.Prefix);
 
         public Type BtdbInternalGetRelationInterfaceType()
         {

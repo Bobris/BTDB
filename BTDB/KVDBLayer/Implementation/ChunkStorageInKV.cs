@@ -81,7 +81,7 @@ namespace BTDB.KVDBLayer
         void LoadHashKeyIndex(uint hashKeyIndexFileId)
         {
             var reader = new SpanReader(_fileCollection.GetFile(hashKeyIndexFileId).GetExclusiveReader());
-            _keyLen = (int) ((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
+            _keyLen = (int)((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
             HashKeyIndex.SkipHeader(ref reader);
             var keyBuf = ByteBuffer.NewSync(new byte[_keyLen]);
             while (!reader.Eof)

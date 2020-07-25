@@ -36,7 +36,7 @@ namespace BTDB.ODBLayer
             _owner = owner;
             _keyValueTr = keyValueTr;
             _readOnly = readOnly;
-            _lastDictId = (long) _owner.LastDictId;
+            _lastDictId = (long)_owner.LastDictId;
             _transactionNumber = keyValueTr.GetTransactionNumber();
         }
 
@@ -59,7 +59,7 @@ namespace BTDB.ODBLayer
 
         public ulong AllocateDictionaryId()
         {
-            return (ulong) (Interlocked.Increment(ref _lastDictId) - 1);
+            return (ulong)(Interlocked.Increment(ref _lastDictId) - 1);
         }
 
         public object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx)
@@ -83,7 +83,7 @@ namespace BTDB.ODBLayer
             var tableInfo = _owner.TablesInfo.FindById(tableId);
             if (tableInfo == null) throw new BTDBException($"Unknown TypeId {tableId} of inline object");
             var freeContentTuple = tableInfo.GetFreeContent(tableVersion);
-            var readerWithFree = (DBReaderWithFreeInfoCtx) readerCtx;
+            var readerWithFree = (DBReaderWithFreeInfoCtx)readerCtx;
             freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);
         }
 
@@ -417,7 +417,7 @@ namespace BTDB.ODBLayer
             {
                 if (_owner.RelationFactories.TryGetValue(type, out var factory))
                 {
-                    var res = (IRelation) factory(this);
+                    var res = (IRelation)factory(this);
                     res.BtdbInternalNextInChain = _relationInstances;
                     _relationInstances = res;
                     return res;
@@ -438,7 +438,7 @@ namespace BTDB.ODBLayer
                                         " must implement ICovariantRelation<>");
             if (!spec.GenericTypeArguments[0].IsClass)
                 throw new BTDBException("Relation type " + type.ToSimpleName() + " does not have item as class");
-            var name = type.GetCustomAttribute<PersistedNameAttribute>() is {} persistedNameAttribute
+            var name = type.GetCustomAttribute<PersistedNameAttribute>() is { } persistedNameAttribute
                 ? persistedNameAttribute.Name
                 : type.ToSimpleName();
             if (!_keyValueTr!.IsReadOnly())
@@ -448,7 +448,7 @@ namespace BTDB.ODBLayer
             else
             {
                 using var tr = _owner.StartWritingTransaction().Result;
-                _owner.RegisterCustomRelation(type, ((ObjectDBTransaction) tr).InitRelation(name, type));
+                _owner.RegisterCustomRelation(type, ((ObjectDBTransaction)tr).InitRelation(name, type));
                 tr.Commit();
             }
         }
@@ -457,7 +457,7 @@ namespace BTDB.ODBLayer
         {
             var tableInfo = AutoRegisterType(type, true);
             tableInfo.EnsureClientTypeVersion();
-            var oid = (ulong) tableInfo.SingletonOid;
+            var oid = (ulong)tableInfo.SingletonOid;
             var obj = GetObjFromObjCacheByOid(oid);
             if (obj == null)
             {
@@ -506,7 +506,7 @@ namespace BTDB.ODBLayer
 
         public T Singleton<T>() where T : class
         {
-            return (T) Singleton(typeof(T));
+            return (T)Singleton(typeof(T));
         }
 
         public object New(Type type)
@@ -522,7 +522,7 @@ namespace BTDB.ODBLayer
 
         public T New<T>() where T : class
         {
-            return (T) New(typeof(T));
+            return (T)New(typeof(T));
         }
 
         public ulong Store(object @object)
@@ -734,9 +734,9 @@ namespace BTDB.ODBLayer
             var len = PackUnpack.LengthVUInt(oid);
             var key = new byte[prefix.Length + len];
             Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(key.AsSpan()),
-                ref MemoryMarshal.GetReference(prefix), (uint) prefix.Length);
+                ref MemoryMarshal.GetReference(prefix), (uint)prefix.Length);
             PackUnpack.UnsafePackVUInt(
-                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key.AsSpan()), (IntPtr) prefix.Length), oid,
+                ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key.AsSpan()), (IntPtr)prefix.Length), oid,
                 len);
             return key;
         }
@@ -908,7 +908,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                _owner.CommitLastObjIdAndDictId((ulong) _lastDictId, _keyValueTr!);
+                _owner.CommitLastObjIdAndDictId((ulong)_lastDictId, _keyValueTr!);
                 _keyValueTr.Commit();
                 if (_updatedTables != null)
                     foreach (var updatedTable in _updatedTables)
@@ -984,7 +984,7 @@ namespace BTDB.ODBLayer
             if (tableInfo.NeedStoreSingletonOid)
             {
                 _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
-                    BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong) tableInfo.SingletonOid));
+                    BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong)tableInfo.SingletonOid));
             }
         }
 
@@ -998,7 +998,7 @@ namespace BTDB.ODBLayer
         {
             var builder = RelationBuilder.GetFromCache(interfaceType, _owner.RelationInfoResolver);
             var relationInfo = _owner.RelationsInfo.CreateByName(this, relationName, interfaceType, builder);
-            return (Func<IObjectDBTransaction, IRelation>) builder.DelegateCreator.Create(relationInfo);
+            return (Func<IObjectDBTransaction, IRelation>)builder.DelegateCreator.Create(relationInfo);
         }
 
         public void DeleteAllData()

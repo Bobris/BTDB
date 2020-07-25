@@ -80,7 +80,7 @@ namespace BTDBTest
             Assert.False(tr.CreateOrUpdateKeyValue(_key1, ReadOnlySpan<byte>.Empty));
             Assert.Equal(FindResult.Previous, tr.Find(_key2, 0));
             Assert.True(tr.CreateOrUpdateKeyValue(_key2, ReadOnlySpan<byte>.Empty));
-            Assert.Equal(FindResult.Exact, tr.Find(_key1,0));
+            Assert.Equal(FindResult.Exact, tr.Find(_key1, 0));
             Assert.Equal(FindResult.Exact, tr.Find(_key2, 0));
             Assert.Equal(FindResult.Previous, tr.Find(_key3, 0));
             Assert.Equal(FindResult.Next, tr.Find(ReadOnlySpan<byte>.Empty, 0));
@@ -248,7 +248,7 @@ namespace BTDBTest
                     {
                         key[0] = (byte)(j / 256);
                         key[1] = (byte)(j % 256);
-                        Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan( 0, 2 + j * 10),0));
+                        Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan(0, 2 + j * 10), 0));
                     }
                 }
                 tr1.Commit();
@@ -273,7 +273,7 @@ namespace BTDBTest
                     {
                         key[0] = (byte)((transactionCount - j) / 256);
                         key[1] = (byte)((transactionCount - j) % 256);
-                        Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan( 0, 2 + j * 10),0));
+                        Assert.Equal(FindResult.Exact, tr1.Find(key.AsSpan(0, 2 + j * 10), 0));
                     }
                 }
                 tr1.Commit();
@@ -572,7 +572,7 @@ namespace BTDBTest
         [Fact]
         public void AdvancedEraseRangeWorks()
         {
-            foreach(var range in EraseRangeSource())
+            foreach (var range in EraseRangeSource())
                 AdvancedEraseRangeWorksCore(range[0], range[1], range[2]);
         }
 
@@ -617,7 +617,7 @@ namespace BTDBTest
 
         // ReSharper disable UnusedMember.Global
         public static IEnumerable<int[]> EraseRangeSource()
-            // ReSharper restore UnusedMember.Global
+        // ReSharper restore UnusedMember.Global
         {
             yield return new[] { 1, 0, 1 };
             for (var i = 11; i < 1000; i += i)

@@ -7,7 +7,7 @@ namespace BTDB.ODBLayer
         void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr);
     }
 
-    public interface IODBVisitor: IODBFastVisitor
+    public interface IODBVisitor : IODBFastVisitor
     {
         bool VisitSingleton(uint tableId, string? tableName, ulong oid);
         bool StartObject(ulong oid, uint tableId, string? tableName, uint version);

@@ -72,7 +72,7 @@ namespace BTDBTest
         public void DeserializeSimpleClass()
         {
             var serializer = new EventSerializer();
-            var obj = new User {Name = "Boris", Age = 40};
+            var obj = new User { Name = "Boris", Age = 40 };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -105,14 +105,14 @@ namespace BTDBTest
                 return Equals(obj as ObjectWithEnum);
             }
 
-            public override int GetHashCode() => (int) State;
+            public override int GetHashCode() => (int)State;
         }
 
         [Fact]
         public void DeserializesClassWithEnum()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithEnum {State = StateEnum.Alive};
+            var obj = new ObjectWithEnum { State = StateEnum.Alive };
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out _, obj);
@@ -227,7 +227,7 @@ namespace BTDBTest
         public void DeserializesClassWithList()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithList {Items = new List<int> {1}};
+            var obj = new ObjectWithList { Items = new List<int> { 1 } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -243,7 +243,7 @@ namespace BTDBTest
         public void DeserializesAsObjectClassWithList()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithList {Items = new List<int> {1}};
+            var obj = new ObjectWithList { Items = new List<int> { 1 } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -259,7 +259,7 @@ namespace BTDBTest
         public void DeserializesClassWithIList()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithIList {Items = new List<int> {1}};
+            var obj = new ObjectWithIList { Items = new List<int> { 1 } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -281,7 +281,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             var obj = new ObjectWithIList2
-                {Items = new List<ObjectDbTest.Person> {new ObjectDbTest.Person {Name = "A", Age = 1}}};
+            { Items = new List<ObjectDbTest.Person> { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             Assert.Equal(99, meta.Length);
             serializer.ProcessMetadataLog(meta);
@@ -304,7 +304,7 @@ namespace BTDBTest
         {
             var serializer = new EventSerializer();
             var obj = new ObjectWithIList2
-                {Items = new ObjectDbTest.Person[] {new ObjectDbTest.Person {Name = "A", Age = 1}}};
+            { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Person { Name = "A", Age = 1 } } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             Assert.Equal(99, meta.Length);
             serializer.ProcessMetadataLog(meta);
@@ -330,9 +330,9 @@ namespace BTDBTest
         public void DeserializesClassWithIListArrayFirstEmpty()
         {
             var serializer = new EventSerializer();
-            var objE = new ObjectWithIList2 {Items = null};
+            var objE = new ObjectWithIList2 { Items = null };
             var obj = new ObjectWithIList2
-                {Items = new ObjectDbTest.Person[] {new ObjectDbTest.Manager {Name = "A", Age = 1}}};
+            { Items = new ObjectDbTest.Person[] { new ObjectDbTest.Manager { Name = "A", Age = 1 } } };
             var meta = serializer.Serialize(out var hasMetadata, objE).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, objE);
@@ -378,7 +378,7 @@ namespace BTDBTest
         public void DeserializesClassWithDictionaryOfSimpleTypes()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithDictionaryOfSimpleType {Items = new Dictionary<int, string>() {{1, "Ahoj"}}};
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>() { { 1, "Ahoj" } } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -394,7 +394,7 @@ namespace BTDBTest
         public void DeserializesAsObjectClassWithDictionaryOfSimpleTypes()
         {
             var serializer = new EventSerializer();
-            var obj = new ObjectWithDictionaryOfSimpleType {Items = new Dictionary<int, string>() {{1, "Ahoj"}}};
+            var obj = new ObjectWithDictionaryOfSimpleType { Items = new Dictionary<int, string>() { { 1, "Ahoj" } } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -437,7 +437,7 @@ namespace BTDBTest
         public void SupportStrangeVisibilities()
         {
             var serializer = new EventSerializer();
-            var obj = new StrangeVisibilities {A = "a", C = "c", D = "d"};
+            var obj = new StrangeVisibilities { A = "a", C = "c", D = "d" };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -485,7 +485,7 @@ namespace BTDBTest
         public void SerializingSkipsNotStoredProperties()
         {
             var serializer = new EventSerializer();
-            var obj = new DtoWithNotStored {Name = "Boris", Skip = 1};
+            var obj = new DtoWithNotStored { Name = "Boris", Skip = 1 };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -494,7 +494,7 @@ namespace BTDBTest
             Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
-            Assert.Equal(0, ((DtoWithNotStored) obj2).Skip);
+            Assert.Equal(0, ((DtoWithNotStored)obj2).Skip);
         }
 
         public class DtoWithObject
@@ -506,7 +506,7 @@ namespace BTDBTest
         public void SerializingBoxedDoubleDoesNotCrash()
         {
             var serializer = new EventSerializer();
-            var obj = new DtoWithObject {Something = 1.2};
+            var obj = new DtoWithObject { Something = 1.2 };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -515,7 +515,7 @@ namespace BTDBTest
             Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
-            Assert.Equal(1.2, ((DtoWithObject) obj2).Something);
+            Assert.Equal(1.2, ((DtoWithObject)obj2).Something);
         }
 
         public class PureArray
@@ -528,7 +528,7 @@ namespace BTDBTest
         public void SupportPureArray()
         {
             var serializer = new EventSerializer();
-            var obj = new PureArray {A = new[] {"A", "B"}, B = new[] {42, 7}};
+            var obj = new PureArray { A = new[] { "A", "B" }, B = new[] { 42, 7 } };
             var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out hasMetadata, obj);
@@ -538,8 +538,8 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
             var ev = obj2 as PureArray;
-            Assert.Equal(ev.A, new[] {"A", "B"});
-            Assert.Equal(ev.B, new[] {42, 7});
+            Assert.Equal(ev.A, new[] { "A", "B" });
+            Assert.Equal(ev.B, new[] { 42, 7 });
         }
 
         public struct Structure
@@ -663,7 +663,7 @@ namespace BTDBTest
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
-                return Equals((EventWithInt) obj);
+                return Equals((EventWithInt)obj);
             }
 
             public override int GetHashCode()
@@ -681,7 +681,7 @@ namespace BTDBTest
                 fullNameMapper);
 
             var serializer = new EventSerializer(fullNameMapper);
-            var original = new EventWithEnum {Status = WorkStatus.Employed};
+            var original = new EventWithEnum { Status = WorkStatus.Employed };
             var metadata = serializer.Serialize(out var hasMetadata, original).ToAsyncSafe();
             Assert.True(hasMetadata);
 
@@ -695,7 +695,7 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out var readed, data));
 
             var readedEvem = readed as EventWithInt;
-            Assert.Equal(readedEvem.Status, (int) original.Status);
+            Assert.Equal(readedEvem.Status, (int)original.Status);
         }
 
         public class EventWithString
@@ -712,7 +712,7 @@ namespace BTDBTest
                 fullNameMapper);
 
             var serializer = new EventSerializer(fullNameMapper);
-            var original = new EventWithString {Status = "Test string"};
+            var original = new EventWithString { Status = "Test string" };
             var metadata = serializer.Serialize(out var hasMetadata, original).ToAsyncSafe();
             Assert.True(hasMetadata);
 
@@ -747,8 +747,8 @@ namespace BTDBTest
             {
                 EventId = 1,
                 NullableInt = 42,
-                ListWithNullables = new List<int?> {4, new int?()},
-                DictionaryWithNullables = new Dictionary<int?, bool?> {{1, true}, {2, new bool?()}}
+                ListWithNullables = new List<int?> { 4, new int?() },
+                DictionaryWithNullables = new Dictionary<int?, bool?> { { 1, true }, { 2, new bool?() } }
             };
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
@@ -758,7 +758,7 @@ namespace BTDBTest
             Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
-            var ev = (EventWithNullable) obj2;
+            var ev = (EventWithNullable)obj2;
             Assert.Equal(42, ev.NullableInt.Value);
             Assert.False(ev.NullableEmpty.HasValue);
             Assert.Equal(2, ev.ListWithNullables.Count);
@@ -783,7 +783,7 @@ namespace BTDBTest
             Assert.False(metadataProduced);
 
             // Serialize the top-level type containing properties with a not-yet-encountered object type
-            var reusableObj = new EventWithInt {Status = 42};
+            var reusableObj = new EventWithInt { Status = 42 };
             var input2 = new ObjectWithMultipleReferences
             {
                 Reference1 = reusableObj,
@@ -824,7 +824,7 @@ namespace BTDBTest
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
-                return Equals((ObjectWithMultipleReferences) obj);
+                return Equals((ObjectWithMultipleReferences)obj);
             }
 
             public override int GetHashCode()
@@ -866,7 +866,7 @@ namespace BTDBTest
                 {
                     {1, new Dictionary<string, ComplexObject> {{"a", new ComplexObjectEx {Obj = new ComplexObject()}}}}
                 },
-                PropList = new List<List<ComplexObject>> {new List<ComplexObject> {new ComplexObjectEx()}}
+                PropList = new List<List<ComplexObject>> { new List<ComplexObject> { new ComplexObjectEx() } }
             };
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
@@ -876,7 +876,7 @@ namespace BTDBTest
             Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
-            var ev = (EventWithDeepDictWithComplexObject) obj2;
+            var ev = (EventWithDeepDictWithComplexObject)obj2;
             Assert.Equal(1ul, ev.Prop.First().Key);
         }
 
@@ -906,7 +906,7 @@ namespace BTDBTest
             Assert.False(deserializer.Deserialize(out var obj2, data));
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
-            var ev = (EventWithEncryptedString) obj2;
+            var ev = (EventWithEncryptedString)obj2;
             Assert.Equal("pass", ev.Secret);
         }
 
@@ -951,7 +951,7 @@ namespace BTDBTest
             deserializer.ProcessMetadataLog(meta);
             Assert.True(deserializer.Deserialize(out obj2, data));
 
-            Assert.Equal(obj.Items, ((ObjectWithIDictionary) obj2).Items);
+            Assert.Equal(obj.Items, ((ObjectWithIDictionary)obj2).Items);
         }
 
         public class SomeSets
@@ -964,7 +964,7 @@ namespace BTDBTest
         public void SupportSets()
         {
             var serializer = new EventSerializer();
-            var obj = new SomeSets {A = new HashSet<string> {"A", "B"}, B = new HashSet<int> {42, 7}};
+            var obj = new SomeSets { A = new HashSet<string> { "A", "B" }, B = new HashSet<int> { 42, 7 } };
             var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
             serializer.ProcessMetadataLog(meta);
             var data = serializer.Serialize(out _, obj);
@@ -975,8 +975,8 @@ namespace BTDBTest
             Assert.True(deserializer.Deserialize(out obj2, data));
 
             var ev = obj2 as SomeSets;
-            Assert.Equal(new[] {"A", "B"}, ev!.A.OrderBy(a => a));
-            Assert.Equal(new[] {7, 42}, ev.B.OrderBy(b => b));
+            Assert.Equal(new[] { "A", "B" }, ev!.A.OrderBy(a => a));
+            Assert.Equal(new[] { 7, 42 }, ev.B.OrderBy(b => b));
         }
 
         [Fact]
@@ -995,7 +995,7 @@ namespace BTDBTest
             }
 
             Store(new List<bool>());
-            Store(new[] {true});
+            Store(new[] { true });
             Store(new HashSet<bool>());
         }
 
@@ -1014,9 +1014,9 @@ namespace BTDBTest
                 }
             }
 
-            Store(new Dictionary<int, List<bool>> {{1, new List<bool> {true}}});
-            Store(new Dictionary<int, IList<bool>> {{1, new List<bool> {true}}});
-            Store(new Dictionary<int, IList<bool>> {{1, new[] {true}}});
+            Store(new Dictionary<int, List<bool>> { { 1, new List<bool> { true } } });
+            Store(new Dictionary<int, IList<bool>> { { 1, new List<bool> { true } } });
+            Store(new Dictionary<int, IList<bool>> { { 1, new[] { true } } });
         }
     }
 }

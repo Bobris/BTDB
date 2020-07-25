@@ -101,16 +101,16 @@ namespace BTDB.KVDBLayer
 
                 public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
-                    _ofs += (ulong) (spanReader.Original.Length - spanReader.Buf.Length);
+                    _ofs += (ulong)(spanReader.Original.Length - spanReader.Buf.Length);
                     spanReader.Buf = new Span<byte>(_owner._pointer + _ofs,
-                        (int) Math.Min(_valueSize - _ofs, int.MaxValue));
+                        (int)Math.Min(_valueSize - _ofs, int.MaxValue));
                     spanReader.Original = spanReader.Buf;
                     return 0 == spanReader.Buf.Length;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
                 {
-                    return (long) _ofs + spanReader.Original.Length - spanReader.Buf.Length;
+                    return (long)_ofs + spanReader.Original.Length - spanReader.Buf.Length;
                 }
 
                 public bool ReadBlock(ref SpanReader spanReader, ref byte buffer, uint length)
@@ -152,14 +152,14 @@ namespace BTDB.KVDBLayer
                 public Writer(File file)
                 {
                     _file = file;
-                    Ofs = (ulong) _file._trueLength;
+                    Ofs = (ulong)_file._trueLength;
                 }
 
                 public void FlushBuffer()
                 {
                     lock (_file._lock)
                     {
-                        _file._trueLength = (long) Ofs;
+                        _file._trueLength = (long)Ofs;
                     }
                 }
 
@@ -179,37 +179,37 @@ namespace BTDB.KVDBLayer
                 public void Init(ref SpanWriter spanWriter)
                 {
                     spanWriter.Buf = new Span<byte>(_file._pointer + Ofs,
-                        (int) Math.Min((ulong) _file._trueLength - Ofs, int.MaxValue));
+                        (int)Math.Min((ulong)_file._trueLength - Ofs, int.MaxValue));
                     spanWriter.InitialBuffer = spanWriter.Buf;
                 }
 
                 public void Sync(ref SpanWriter spanWriter)
                 {
-                    Ofs += (ulong) (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
+                    Ofs += (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length);
                 }
 
                 public bool Flush(ref SpanWriter spanWriter)
                 {
                     Sync(ref spanWriter);
-                    ExpandIfNeeded((long) Ofs + ResizeChunkSize);
+                    ExpandIfNeeded((long)Ofs + ResizeChunkSize);
                     Init(ref spanWriter);
                     return true;
                 }
 
                 public long GetCurrentPosition(in SpanWriter spanWriter)
                 {
-                    return (long) (Ofs + (ulong) (spanWriter.InitialBuffer.Length - spanWriter.Buf.Length));
+                    return (long)(Ofs + (ulong)(spanWriter.InitialBuffer.Length - spanWriter.Buf.Length));
                 }
 
                 public long GetCurrentPositionWithoutWriter()
                 {
-                    return (long) Ofs;
+                    return (long)Ofs;
                 }
 
                 public void WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
                 {
                     Sync(ref spanWriter);
-                    ExpandIfNeeded((long) Ofs + length);
+                    ExpandIfNeeded((long)Ofs + length);
                     WriteBlockWithoutWriter(ref buffer, length);
                     Init(ref spanWriter);
                 }
@@ -244,7 +244,7 @@ namespace BTDB.KVDBLayer
                     {
                         MapContent();
                         var read = data.Length;
-                        if (_writer.Ofs - position < (ulong) read) read = (int) (_writer.Ofs - position);
+                        if (_writer.Ofs - position < (ulong)read) read = (int)(_writer.Ofs - position);
                         new Span<byte>(_pointer + position, read).CopyTo(data);
                         data = data.Slice(read);
                     }
@@ -280,7 +280,7 @@ namespace BTDB.KVDBLayer
                 _writer.FlushBuffer();
                 lock (_lock)
                 {
-                    _writer.Ofs = (ulong) size;
+                    _writer.Ofs = (ulong)size;
                     _trueLength = size;
                 }
             }
@@ -307,7 +307,7 @@ namespace BTDB.KVDBLayer
             {
                 lock (_lock)
                 {
-                    return (ulong) _writer.GetCurrentPositionWithoutWriter();
+                    return (ulong)_writer.GetCurrentPositionWithoutWriter();
                 }
             }
 
@@ -339,7 +339,7 @@ namespace BTDB.KVDBLayer
                 if (id == 0) continue;
                 var file = new File(this, id, filePath);
                 _files.Add(id, file);
-                if (id > _maxFileId) _maxFileId = (int) id;
+                if (id > _maxFileId) _maxFileId = (int)id;
             }
         }
 
@@ -350,7 +350,7 @@ namespace BTDB.KVDBLayer
 
         public IFileCollectionFile AddFile(string? humanHint)
         {
-            var index = (uint) Interlocked.Increment(ref _maxFileId);
+            var index = (uint)Interlocked.Increment(ref _maxFileId);
             var fileName = index.ToString("D8") + "." + (humanHint ?? "");
             var file = new File(this, index, Path.Combine(_directory, fileName));
             Dictionary<uint, File> newFiles;
@@ -358,7 +358,7 @@ namespace BTDB.KVDBLayer
             do
             {
                 oldFiles = _files;
-                newFiles = new Dictionary<uint, File>(oldFiles!) {{index, file}};
+                newFiles = new Dictionary<uint, File>(oldFiles!) { { index, file } };
             } while (Interlocked.CompareExchange(ref _files, newFiles, oldFiles) != oldFiles);
 
             return file;
@@ -366,7 +366,7 @@ namespace BTDB.KVDBLayer
 
         public uint GetCount()
         {
-            return (uint) _files.Count;
+            return (uint)_files.Count;
         }
 
         public IFileCollectionFile? GetFile(uint index)

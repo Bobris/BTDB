@@ -301,7 +301,7 @@ namespace BTDB.ChunkCache
                         _cache.TryUpdate(itemPair.Key, cacheValue, itemPair.Value);
                         continue;
                     }
-                    remove:
+                remove:
                     _cache.TryRemove(itemPair.Key);
                 }
             }
@@ -348,7 +348,7 @@ namespace BTDB.ChunkCache
                     // It is not problem if update fails, it will have just lower access rate then real
                     var result = new byte[cacheValue.ContentLength];
                     _fileCollection.GetFile(cacheValue.FileId).RandomRead(
-                        result.AsSpan(0, (int) cacheValue.ContentLength),
+                        result.AsSpan(0, (int)cacheValue.ContentLength),
                         cacheValue.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(result));
                     return tcs.Task;

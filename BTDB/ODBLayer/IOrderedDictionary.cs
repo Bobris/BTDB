@@ -87,7 +87,7 @@ namespace BTDB.ODBLayer
         }
     }
 
-    public interface IOrderedDictionary<TKey, TValue> : IDictionary<TKey,TValue>
+    public interface IOrderedDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
         IEnumerable<KeyValuePair<TKey, TValue>> GetReverseEnumerator();
         IEnumerable<KeyValuePair<TKey, TValue>> GetIncreasingEnumerator(TKey start);

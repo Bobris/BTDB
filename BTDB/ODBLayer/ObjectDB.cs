@@ -155,7 +155,7 @@ namespace BTDB.ODBLayer
         public ValueTask<IObjectDBTransaction> StartWritingTransaction()
         {
             var tr = _keyValueDB.StartWritingTransaction();
-            if(tr.IsCompletedSuccessfully)
+            if (tr.IsCompletedSuccessfully)
                 return new ValueTask<IObjectDBTransaction>(new ObjectDBTransaction(this, tr.Result, false));
 
             return new ValueTask<IObjectDBTransaction>(tr.AsTask()
@@ -270,7 +270,7 @@ namespace BTDB.ODBLayer
                 var len = PackUnpack.LengthVUInt(id);
                 Span<byte> key = stackalloc byte[(int)(TableSingletonsPrefixLen + len)];
                 TableSingletonsPrefix.CopyTo(key);
-                PackUnpack.UnsafePackVUInt( ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key), (IntPtr)TableSingletonsPrefixLen), id, len);
+                PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key), (IntPtr)TableSingletonsPrefixLen), id, len);
                 if (tr.FindExactKey(key))
                 {
                     return (long)PackUnpack.UnpackVUInt(tr.GetValueAsReadOnlySpan());

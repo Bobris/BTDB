@@ -54,7 +54,7 @@ namespace SimpleTester
 
         ulong AllocatedId()
         {
-            return (ulong) Interlocked.Increment(ref _lastAllocatorId);
+            return (ulong)Interlocked.Increment(ref _lastAllocatorId);
         }
 
         void DoEventInsertPerson()
@@ -65,7 +65,7 @@ namespace SimpleTester
                 var item = new Person();
                 item.Id = AllocatedId();
                 item.Email =
-                    $"{(char) _randomForEvents.Next('a', 'z')}{(uint) _randomForEvents.Next()}@{RandomString(_randomForEvents, 5, 10)}";
+                    $"{(char)_randomForEvents.Next('a', 'z')}{(uint)_randomForEvents.Next()}@{RandomString(_randomForEvents, 5, 10)}";
                 item.Description = RandomString(_randomForEvents, 50, 100);
                 rel.Insert(item);
             });
@@ -78,7 +78,7 @@ namespace SimpleTester
             {
                 for (var i = 0; i < span.Length; i++)
                 {
-                    span[i] = (char) random1.Next('a', 'z');
+                    span[i] = (char)random1.Next('a', 'z');
                 }
             }));
         }

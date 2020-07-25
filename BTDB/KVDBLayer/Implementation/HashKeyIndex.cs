@@ -48,7 +48,7 @@ namespace BTDB.KVDBLayer
         internal void WriteHeader(ref SpanWriter writer)
         {
             FileCollectionWithFileInfos.WriteHeader(ref writer, _guid);
-            writer.WriteUInt8((byte) KVFileType.HashKeyIndex);
+            writer.WriteUInt8((byte)KVFileType.HashKeyIndex);
             writer.WriteVInt64(_subId);
             writer.WriteVInt64(_generation);
             writer.WriteVUInt32(_keyLen);

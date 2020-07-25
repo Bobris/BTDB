@@ -85,20 +85,20 @@ namespace BTDB.ODBLayer
             var publicFields = ItemType.GetFields(BindingFlags.Public | BindingFlags.Instance);
             foreach (var field in publicFields)
             {
-                if (field.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                if (field.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
                 throw new BTDBException($"Public field {_name}.{field.Name} must have NotStoredAttribute. It is just intermittent, until they can start to be supported.");
             }
 
             var fields = new List<TableFieldInfo>(props.Length);
             foreach (var pi in props)
             {
-                if (pi.GetCustomAttribute<NotStoredAttribute>(true)!=null) continue;
+                if (pi.GetCustomAttribute<NotStoredAttribute>(true) != null) continue;
                 if (pi.GetIndexParameters().Length != 0) continue;
                 var pks = pi.GetCustomAttributes(typeof(PrimaryKeyAttribute), true);
                 PrimaryKeyAttribute actualPKAttribute = null;
                 if (pks.Length != 0)
                 {
-                    actualPKAttribute = (PrimaryKeyAttribute) pks[0];
+                    actualPKAttribute = (PrimaryKeyAttribute)pks[0];
                     var fieldInfo = TableFieldInfo.Build(_name, pi, RelationInfoResolver.FieldHandlerFactory,
                         FieldHandlerOptions.Orderable);
                     if (fieldInfo.Handler!.NeedsCtx())
@@ -107,7 +107,7 @@ namespace BTDB.ODBLayer
                 }
 
                 var sks = pi.GetCustomAttributes(typeof(SecondaryKeyAttribute), true);
-                var id = (int) (-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
+                var id = (int)(-actualPKAttribute?.Order ?? secondaryKeyFields.Count);
                 List<SecondaryKeyAttribute> currentList = null;
                 for (var i = 0; i < sks.Length; i++)
                 {
@@ -120,7 +120,7 @@ namespace BTDB.ODBLayer
                                 RelationInfoResolver.FieldHandlerFactory, FieldHandlerOptions.Orderable));
                     }
 
-                    var key = (SecondaryKeyAttribute) sks[i];
+                    var key = (SecondaryKeyAttribute)sks[i];
                     if (key.Name == "Id")
                         throw new BTDBException(
                             "'Id' is invalid name for secondary key, it is reserved for primary key identification.");
@@ -153,9 +153,9 @@ namespace BTDB.ODBLayer
             var interfaceType = InterfaceType;
             var relationName = interfaceType!.ToSimpleName();
             var classImpl = ILBuilder.Instance.NewType("Relation" + relationName, _relationDbManipulatorType,
-                new[] {interfaceType});
+                new[] { interfaceType });
             var constructorMethod =
-                classImpl.DefineConstructor(new[] {typeof(IObjectDBTransaction), typeof(RelationInfo)});
+                classImpl.DefineConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) });
             var il = constructorMethod.Generator;
             // super.ctor(transaction, relationInfo);
             il.Ldarg(0).Ldarg(1).Ldarg(2)
@@ -251,7 +251,7 @@ namespace BTDB.ODBLayer
             ilGenerator
                 .Ldarg(1)
                 .Ldarg(0)
-                .Newobj(classImplType.GetConstructor(new[] {typeof(IObjectDBTransaction), typeof(RelationInfo)})!)
+                .Newobj(classImplType.GetConstructor(new[] { typeof(IObjectDBTransaction), typeof(RelationInfo) })!)
                 .Castclass(typeof(IRelation))
                 .Ret();
             return methodBuilder;
@@ -358,7 +358,7 @@ namespace BTDB.ODBLayer
             if (method.ReturnType != typeof(int))
                 throw new BTDBException($"Return value in {method.Name} must be int.");
 
-            var advEnumParamOrder = (ushort) parameters.Length;
+            var advEnumParamOrder = (ushort)parameters.Length;
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -441,7 +441,7 @@ namespace BTDB.ODBLayer
                 .Call(SpanWriterGetSpanMethodInfo)
                 .Stloc(localSpan)
                 .Ldloca(localSpan)
-                .Ldarg((ushort) methodParameters.Length)
+                .Ldarg((ushort)methodParameters.Length)
                 .Callvirt(_relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByPrimaryKeyPrefixPartial))!);
         }
@@ -471,7 +471,7 @@ namespace BTDB.ODBLayer
             var parameters = method.GetParameters();
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
-                var advEnumParamOrder = (ushort) parameters.Length;
+                var advEnumParamOrder = (ushort)parameters.Length;
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -643,7 +643,7 @@ namespace BTDB.ODBLayer
 
         void PrepareAnyCountByIdWithAep(MethodInfo method, IILMethod reqMethod, ParameterInfo[] parameters)
         {
-            var advEnumParamOrder = (ushort) parameters.Length;
+            var advEnumParamOrder = (ushort)parameters.Length;
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -662,7 +662,7 @@ namespace BTDB.ODBLayer
             var parameters = method.GetParameters();
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
-                var advEnumParamOrder = (ushort) parameters.Length;
+                var advEnumParamOrder = (ushort)parameters.Length;
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -833,7 +833,7 @@ namespace BTDB.ODBLayer
         void PrepareAnyCountByWithAep(MethodInfo method, IILMethod reqMethod, ParameterInfo[] parameters,
             uint secondaryKeyIndex)
         {
-            var advEnumParamOrder = (ushort) parameters.Length;
+            var advEnumParamOrder = (ushort)parameters.Length;
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
@@ -1119,7 +1119,7 @@ namespace BTDB.ODBLayer
                 throw new BTDBException($"Apart fields must be part of prefix in {methodName}.");
             }
 
-            return (ushort) (idx + usedApartFieldsCount);
+            return (ushort)(idx + usedApartFieldsCount);
         }
 
         bool ShouldThrowWhenKeyNotFound(string methodName, Type methodReturnType)
@@ -1139,7 +1139,7 @@ namespace BTDB.ODBLayer
         }
 
         static void KeyPropositionStartAfter(ushort advEnumParamOrder, IILGen ilGenerator, Type advEnumParamType, TableFieldInfo field, Action<IILGen> pushWriter)
-            {
+        {
             var instField = advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.Start));
             var ignoreLabel = ilGenerator.DefineLabel("start_ignore");
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));
@@ -1149,7 +1149,7 @@ namespace BTDB.ODBLayer
                 .ConvI4()
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!)
-                .LdcI4((int) KeyProposition.Ignored)
+                .LdcI4((int)KeyProposition.Ignored)
                 .BeqS(ignoreLabel);
             field.Handler!.SpecializeSaveForType(instField!.FieldType).Save(ilGenerator,
                 pushWriter, null,
@@ -1169,7 +1169,7 @@ namespace BTDB.ODBLayer
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.EndProposition))!)
                 .Dup()
-                .LdcI4((int) KeyProposition.Ignored)
+                .LdcI4((int)KeyProposition.Ignored)
                 .Beq(ignoreLabel);
             return ignoreLabel;
         }
@@ -1236,7 +1236,7 @@ namespace BTDB.ODBLayer
                     ctxLoc = ilGenerator.DeclareLocal(typeof(IDBWriterCtx));
                     ilGenerator
                         .Ldarg(0)
-                        .Callvirt(() => ((IRelationDbManipulator) null).Transaction)
+                        .Callvirt(() => ((IRelationDbManipulator)null).Transaction)
                         .Newobj(() => new DBWriterCtx(null))
                         .Stloc(ctxLoc);
                 }
@@ -1360,7 +1360,7 @@ namespace BTDB.ODBLayer
             var local = ilGenerator.DeclareLocal(typeof(uint));
             ilGenerator
                 .Ldarg(0)
-                .LdcI4((int) secondaryKeyIndex)
+                .LdcI4((int)secondaryKeyIndex)
                 .Call(_relationDbManipulatorType.GetMethod(
                     nameof(RelationDBManipulator<IRelation>.RemapPrimeSK))!)
                 .Stloc(local);

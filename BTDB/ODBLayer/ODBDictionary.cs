@@ -43,10 +43,10 @@ namespace BTDB.ODBLayer
             _prefix = new byte[o + PackUnpack.LengthVUInt(_id)];
             Array.Copy(ObjectDB.AllDictionariesPrefix, _prefix, o);
             PackUnpack.PackVUInt(_prefix, ref o, _id);
-            _keyReader = ((ReaderFun<TKey>) config.KeyReader)!;
-            _keyWriter = ((WriterFun<TKey>) config.KeyWriter)!;
-            _valueReader = ((ReaderFun<TValue>) config.ValueReader)!;
-            _valueWriter = ((WriterFun<TValue>) config.ValueWriter)!;
+            _keyReader = ((ReaderFun<TKey>)config.KeyReader)!;
+            _keyWriter = ((WriterFun<TKey>)config.KeyWriter)!;
+            _valueReader = ((ReaderFun<TValue>)config.ValueReader)!;
+            _valueWriter = ((WriterFun<TValue>)config.ValueWriter)!;
             _keyValueTr = _tr.KeyValueDBTransaction;
             _count = -1;
         }
@@ -64,7 +64,7 @@ namespace BTDB.ODBLayer
 
         public static void DoSave(ref SpanWriter writer, IWriterCtx ctx, IDictionary<TKey, TValue>? dictionary, int cfgId)
         {
-            var writerCtx = (IDBWriterCtx) ctx;
+            var writerCtx = (IDBWriterCtx)ctx;
             if (!(dictionary is ODBDictionary<TKey, TValue> goodDict))
             {
                 var tr = writerCtx.GetTransaction();
@@ -80,7 +80,7 @@ namespace BTDB.ODBLayer
 
         public static void DoFreeContent(IReaderCtx ctx, ulong id, int cfgId)
         {
-            var readerCtx = (DBReaderCtx) ctx;
+            var readerCtx = (DBReaderCtx)ctx;
             var tr = readerCtx.GetTransaction();
             var dict = new ODBDictionary<TKey, TValue>(tr, ODBDictionaryConfiguration.Get(cfgId), id);
             dict.FreeContent(ctx, cfgId);
@@ -89,7 +89,7 @@ namespace BTDB.ODBLayer
         void FreeContent(IReaderCtx readerCtx, int cfgId)
         {
             var config = ODBDictionaryConfiguration.Get(cfgId);
-            var ctx = (DBReaderWithFreeInfoCtx) readerCtx;
+            var ctx = (DBReaderWithFreeInfoCtx)readerCtx;
 
             if (config.FreeContent == null)
             {
@@ -104,13 +104,13 @@ namespace BTDB.ODBLayer
                     .Newobj(() => new DBReaderWithFreeInfoCtx(null, null))
                     .Stloc(readerLoc);
 
-                var readerOrCtx = _valueHandler.NeedsCtx() ? (Action<IILGen>?) (il => il.Ldloc(readerLoc)) : null;
+                var readerOrCtx = _valueHandler.NeedsCtx() ? (Action<IILGen>?)(il => il.Ldloc(readerLoc)) : null;
                 _valueHandler.FreeContent(ilGenerator, il => il.Ldarg(1), readerOrCtx);
                 ilGenerator.Ret();
                 config.FreeContent = method.Create();
             }
 
-            var findIDictAction = (FreeContentFun) config.FreeContent;
+            var findIDictAction = (FreeContentFun)config.FreeContent;
 
             long prevProtectionCounter = 0;
             long pos = 0;
@@ -200,7 +200,7 @@ namespace BTDB.ODBLayer
             {
                 if (_count == -1)
                 {
-                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
+                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(_prefix), int.MaxValue);
                 }
 
                 return _count;
@@ -332,7 +332,7 @@ namespace BTDB.ODBLayer
             {
                 if (_count == int.MaxValue)
                 {
-                    _count = (int) Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
+                    _count = (int)Math.Min(_keyValueTr.GetKeyValueCount(), int.MaxValue);
                 }
                 else
                 {
@@ -876,8 +876,8 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                _count = (uint) Math.Max(0, endIndex - startIndex + 1);
-                _startPos = (uint) (_ascending ? startIndex : endIndex);
+                _count = (uint)Math.Max(0, endIndex - startIndex + 1);
+                _startPos = (uint)(_ascending ? startIndex : endIndex);
                 _pos = 0;
                 _seekState = SeekState.Undefined;
             }

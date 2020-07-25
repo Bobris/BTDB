@@ -61,7 +61,7 @@ namespace BTDBTest
             CanSerializeSimpleValue((uint)123456789);
             CanSerializeSimpleValue(-123456789012L);
             CanSerializeSimpleValue(123456789012UL);
-            CanSerializeSimpleValue(new Version(4,3,2,1));
+            CanSerializeSimpleValue(new Version(4, 3, 2, 1));
         }
 
         void CanSerializeSimpleValue(object value)
@@ -408,7 +408,7 @@ namespace BTDBTest
         [Fact]
         public void CanDeserializeNullableToDynamic()
         {
-            var value = new SimpleDtoWithNullable {IntField = 1};
+            var value = new SimpleDtoWithNullable { IntField = 1 };
             var obj = ConvertToDynamicThroughSerialization(value);
             Assert.Equal(1, obj.IntField);
         }

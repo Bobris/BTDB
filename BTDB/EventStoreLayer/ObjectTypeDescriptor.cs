@@ -148,7 +148,7 @@ namespace BTDB.EventStoreLayer
 
         static void AppendIndent(StringBuilder text, uint indent)
         {
-            text.Append(' ', (int) (indent * 4));
+            text.Append(' ', (int)(indent * 4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
@@ -206,7 +206,7 @@ namespace BTDB.EventStoreLayer
                 ilGenerator
                     .Do(pushDescriptor)
                     .Castclass(typeof(ObjectTypeDescriptor))
-                    .Newobj(typeof(DynamicObject).GetConstructor(new[] {typeof(ObjectTypeDescriptor)})!)
+                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) })!)
                     .Stloc(resultLoc)
                     .Do(pushCtx)
                     .BrfalseS(labelNoCtx)
@@ -374,7 +374,7 @@ namespace BTDB.EventStoreLayer
 
                 public override DynamicMetaObject BindSetMember(SetMemberBinder binder, DynamicMetaObject value)
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     var idx = descriptor.FindFieldIndex(binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
                             typeof(DynamicObject).GetMethod(nameof(SetFieldByIdx))!,
@@ -387,7 +387,7 @@ namespace BTDB.EventStoreLayer
 
                 public override DynamicMetaObject BindGetMember(GetMemberBinder binder)
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     var idx = descriptor.FindFieldIndex(binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
                             typeof(DynamicObject).GetMethod(nameof(GetFieldByIdx))!,
@@ -399,7 +399,7 @@ namespace BTDB.EventStoreLayer
 
                 public override IEnumerable<string> GetDynamicMemberNames()
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     return descriptor._fields.Select(p => p.Key);
                 }
             }

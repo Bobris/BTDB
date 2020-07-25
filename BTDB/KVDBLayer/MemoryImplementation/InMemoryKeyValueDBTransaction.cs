@@ -29,7 +29,7 @@ namespace BTDB.KVDBLayer
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
             _cursorMovedCounter++;
-            if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) == FindResult.NotFound)
+            if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint)prefix.Length) == FindResult.NotFound)
             {
                 return false;
             }
@@ -94,11 +94,11 @@ namespace BTDB.KVDBLayer
             _cursorMovedCounter++;
             MakeWritable();
             var ctx = new CreateOrUpdateCtx
-                {
-                    Key = key,
-                    Value = value,
-                    Stack = _stack
-                };
+            {
+                Key = key,
+                Value = value,
+                Stack = _stack
+            };
             _btreeRoot!.CreateOrUpdate(ref ctx);
             _keyIndex = ctx.KeyIndex;
             return ctx.Created;
@@ -138,7 +138,7 @@ namespace BTDB.KVDBLayer
         public bool SetKeyIndex(in ReadOnlySpan<byte> prefix, long index)
         {
             _cursorMovedCounter++;
-            if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint) prefix.Length) == FindResult.NotFound)
+            if (_btreeRoot!.FindKey(_stack, out _keyIndex, prefix, (uint)prefix.Length) == FindResult.NotFound)
             {
                 return false;
             }

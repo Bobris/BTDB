@@ -62,7 +62,7 @@ namespace BTDB.SnappyCompression
                 d += 5;
                 dL -= 5;
             }
-            src.Slice(s,sL).CopyTo(dst.Slice(d));
+            src.Slice(s, sL).CopyTo(dst.Slice(d));
             d += sL;
             dL -= sL;
             return true;
@@ -181,7 +181,7 @@ namespace BTDB.SnappyCompression
                 {
                     s++;
                     sL--;
-                    if (sL>3)
+                    if (sL > 3)
                     {
                         v = (v >> 8) | ((uint)src[s + 3]) << 24;
                         goto nextfast;

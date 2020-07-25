@@ -14,7 +14,7 @@ namespace SimpleTester.TestModel
                 .AddSubType(101, typeof(NewUserEvent));
 
             model.Add(typeof(ActionFinishedBase<string>), true)
-                .AddSubType(100, typeof(TemplateSavedV1)); 
+                .AddSubType(100, typeof(TemplateSavedV1));
 
             return model;
         }

@@ -4,7 +4,7 @@ using System.Runtime.Serialization;
 namespace SimpleTester.TestModel.Events
 {
     [DataContract]
-    public class ActionFinishedBase<TResult> : Event where TResult: class
+    public class ActionFinishedBase<TResult> : Event where TResult : class
     {
         [DataMember(Order = 1)]
         public ulong ActionId { get; set; }

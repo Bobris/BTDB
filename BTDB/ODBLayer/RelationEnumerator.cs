@@ -104,7 +104,7 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
         {
-            return (T) ItemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
+            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
         object IEnumerator.Current => Current!;
@@ -162,7 +162,7 @@ namespace BTDB.ODBLayer
 
         protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
         {
-            return (T) _manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _fieldCountInKey,
+            return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _fieldCountInKey,
                 KeyBytes, keyBytes.Slice(KeyBytes.Length));
         }
     }
@@ -219,7 +219,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                switch (_keyValueTr.Find(realEndKeyBytes, (uint) prefixLen))
+                switch (_keyValueTr.Find(realEndKeyBytes, (uint)prefixLen))
                 {
                     case FindResult.Exact:
                         endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
@@ -273,8 +273,8 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            _count = (uint) Math.Max(0, endIndex - startIndex + 1);
-            _startPos = (uint) (_ascending ? startIndex : endIndex);
+            _count = (uint)Math.Max(0, endIndex - startIndex + 1);
+            _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
             _seekNeeded = true;
         }
@@ -296,7 +296,7 @@ namespace BTDB.ODBLayer
 
             _prevModificationCounter = manipulator.ModificationCounter;
 
-            _count = (uint) _keyValueTr.GetKeyValueCount(prefixBytes);
+            _count = (uint)_keyValueTr.GetKeyValueCount(prefixBytes);
             _startPos = _ascending ? 0 : _count - 1;
             _pos = 0;
             _seekNeeded = true;
@@ -367,7 +367,7 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T) ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
+            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
         }
 
         public byte[] GetKeyBytes()
@@ -435,7 +435,7 @@ namespace BTDB.ODBLayer
 
         protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T) Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, PrefixFieldCount,
+            return (T)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, PrefixFieldCount,
                 KeyBytes, keyBytes.Slice(KeyBytes.Length));
         }
     }
@@ -488,7 +488,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
-                switch (_keyValueTr.Find(realEndKeyBytes, (uint) prefixLen))
+                switch (_keyValueTr.Find(realEndKeyBytes, (uint)prefixLen))
                 {
                     case FindResult.Exact:
                         endIndex = _keyValueTr.GetKeyIndex() - prefixIndex;
@@ -542,18 +542,18 @@ namespace BTDB.ODBLayer
                 }
             }
 
-            _count = (uint) Math.Max(0, endIndex - startIndex + 1);
-            _startPos = (uint) (_ascending ? startIndex : endIndex);
+            _count = (uint)Math.Max(0, endIndex - startIndex + 1);
+            _startPos = (uint)(_ascending ? startIndex : endIndex);
             _pos = 0;
             _seekState = SeekState.Undefined;
 
             if (initKeyReader)
             {
                 var primaryKeyFields = manipulator.RelationInfo.ClientRelationVersionInfo.PrimaryKeyFields;
-                var advancedEnumParamField = primaryKeyFields.Span[(int) PrefixFieldCount];
+                var advancedEnumParamField = primaryKeyFields.Span[(int)PrefixFieldCount];
                 if (advancedEnumParamField.Handler!.NeedsCtx())
                     throw new BTDBException("Not supported.");
-                KeyReader = (ReaderFun<TKey>) manipulator.RelationInfo
+                KeyReader = (ReaderFun<TKey>)manipulator.RelationInfo
                     .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
             }
         }
@@ -562,7 +562,7 @@ namespace BTDB.ODBLayer
 
         protected virtual TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue) ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
+            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
         }
 
         public TValue CurrentValue
@@ -664,16 +664,16 @@ namespace BTDB.ODBLayer
             _secondaryKeyIndex = secondaryKeyIndex;
             var secKeyFields =
                 manipulator.RelationInfo.ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
-            var advancedEnumParamField = secKeyFields[(int) PrefixFieldCount];
+            var advancedEnumParamField = secKeyFields[(int)PrefixFieldCount];
             if (advancedEnumParamField.Handler!.NeedsCtx())
                 throw new BTDBException("Not supported.");
-            KeyReader = (ReaderFun<TKey>) manipulator.RelationInfo
+            KeyReader = (ReaderFun<TKey>)manipulator.RelationInfo
                 .GetSimpleLoader(new RelationInfo.SimpleLoaderType(advancedEnumParamField.Handler, typeof(TKey)));
         }
 
         protected override TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue) Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex,
+            return (TValue)Manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex,
                 PrefixFieldCount, KeyBytes, keyBytes.Slice(KeyBytes.Length));
         }
     }

@@ -43,7 +43,7 @@ namespace BTDB.FieldHandler
         {
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] {typeof(byte[])})!);
+            ilGenerator.Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(byte[]) })!);
         }
 
         protected virtual void SaveByteBuffer(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushValue)
@@ -51,7 +51,7 @@ namespace BTDB.FieldHandler
             pushWriter(ilGenerator);
             pushValue(ilGenerator);
             ilGenerator.Call(
-                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] {typeof(ByteBuffer)})!);
+                typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(ByteBuffer) })!);
         }
 
         public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)

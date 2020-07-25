@@ -40,7 +40,7 @@ namespace BTDB.StreamLayer
                 }
                 if (j == 0)
                 {
-                    sb.AppendFormat("{0:X8}", pos + (uint) i);
+                    sb.AppendFormat("{0:X8}", pos + (uint)i);
                 }
                 sb.AppendFormat(" {0:X2}", data[i]);
                 j++;
@@ -69,7 +69,7 @@ namespace BTDB.StreamLayer
                 }
                 if (j == 0)
                 {
-                    sb.AppendFormat("{0:X8}", pos + (uint) i);
+                    sb.AppendFormat("{0:X8}", pos + (uint)i);
                 }
                 sb.AppendFormat(" {0:X2}", data[i]);
                 j++;

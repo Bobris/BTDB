@@ -44,7 +44,7 @@ namespace DBBenchmark
             {
                 stopwatch.Stop();
 
-                GC.Collect();GC.WaitForPendingFinalizers();GC.Collect();
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
                 var memFinish = GC.GetTotalMemory(false);
 
                 return (openTime: stopwatch.Elapsed, memorySize: (memFinish - memStart) / 1024);
