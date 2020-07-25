@@ -1,8 +1,8 @@
-using BTDB.Allocators;
 using System;
+using BTDB.Allocators;
 using Xunit;
 
-namespace BTreeLibTest
+namespace BTDBTest.BTreeLibTests
 {
     public class OffHeapAllocatorTests
     {

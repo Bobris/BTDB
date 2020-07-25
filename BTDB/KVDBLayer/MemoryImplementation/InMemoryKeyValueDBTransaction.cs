@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using BTDB.Buffer;
 using BTDB.KVDBLayer.BTreeMem;
 
 namespace BTDB.KVDBLayer
@@ -200,10 +199,10 @@ namespace BTDB.KVDBLayer
             return GetCurrentKeyFromStack();
         }
 
-        public ByteBuffer GetKeyIncludingPrefix()
+        public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
-            if (!IsValidKey()) return ByteBuffer.NewEmpty();
-            return ByteBuffer.NewAsync(GetCurrentKeyFromStack());
+            if (!IsValidKey()) return new ReadOnlySpan<byte>();
+            return GetCurrentKeyFromStack();
         }
 
         public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)

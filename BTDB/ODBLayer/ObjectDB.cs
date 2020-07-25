@@ -129,7 +129,7 @@ namespace BTDB.ODBLayer
             tr.InvalidateCurrentKey();
             while (tr.FindNextKey(TableNamesPrefix))
             {
-                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKey().Slice(TableNamesPrefixLen)).ReadVUInt32(), new SpanReader(tr.GetValue()).ReadString());
+                yield return new KeyValuePair<uint, string>((uint)PackUnpack.UnpackVUInt(tr.GetKey().Slice(TableNamesPrefixLen)), new SpanReader(tr.GetValue()).ReadString());
             }
         }
 
@@ -138,7 +138,7 @@ namespace BTDB.ODBLayer
             tr.InvalidateCurrentKey();
             while (tr.FindNextKey(RelationNamesPrefix))
             {
-                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetValue()).ReadVUInt32(), new SpanReader(tr.GetKey().Slice(RelationNamesPrefixLen)).ReadString());
+                yield return new KeyValuePair<uint, string>((uint)PackUnpack.UnpackVUInt(tr.GetValue()), new SpanReader(tr.GetKey().Slice(RelationNamesPrefixLen)).ReadString());
             }
         }
 
@@ -152,15 +152,9 @@ namespace BTDB.ODBLayer
             return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction(), true);
         }
 
-        public ValueTask<IObjectDBTransaction> StartWritingTransaction()
+        public async ValueTask<IObjectDBTransaction> StartWritingTransaction()
         {
-            var tr = _keyValueDB.StartWritingTransaction();
-            if (tr.IsCompletedSuccessfully)
-                return new ValueTask<IObjectDBTransaction>(new ObjectDBTransaction(this, tr.Result, false));
-
-            return new ValueTask<IObjectDBTransaction>(tr.AsTask()
-                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false),
-                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+            return new ObjectDBTransaction(this, await _keyValueDB.StartWritingTransaction(), false);
         }
 
         public string RegisterType(Type type)

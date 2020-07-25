@@ -18,11 +18,9 @@ namespace BTDB.BTreeLib
         bool MoveNext();
         bool MovePrevious();
         long CalcIndex();
-        long CalcDistance(ICursor to);
         bool IsValid();
         int GetKeyLength();
-        Span<byte> FillByKey(in Span<byte> buffer);
-        byte[] GetKeyAsByteArray();
+        ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength);
         bool KeyHasPrefix(in ReadOnlySpan<byte> prefix);
         int GetValueLength();
         ReadOnlySpan<byte> GetValue();
@@ -33,6 +31,13 @@ namespace BTDB.BTreeLib
         long EraseTo(ICursor to);
         void BuildTree(long keyCount, ref SpanReader reader, BuildTreeCallback generator);
         void ValueReplacer(ref ValueReplacerCtx ctx);
+
+        byte[] GetKeyAsArray()
+        {
+            var res = new byte[GetKeyLength()];
+            if (res.Length != 0) GetKey(ref res[0], res.Length);
+            return res;
+        }
     }
 
     public delegate void BuildTreeCallback(ref SpanReader reader, ref ByteBuffer key, in Span<byte> value);

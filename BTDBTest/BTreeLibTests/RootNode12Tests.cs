@@ -1,9 +1,9 @@
-﻿using BTDB.Allocators;
+﻿using System;
+using BTDB.Allocators;
 using BTDB.BTreeLib;
-using System;
 using Xunit;
 
-namespace BTreeLibTest
+namespace BTDBTest.BTreeLibTests
 {
     public class RootNode12Tests : IDisposable
     {

@@ -348,6 +348,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetKey();
             }
 
+            public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
+            {
+                return _keyValueDBTransaction.GetKey(ref buffer, bufferLength);
+            }
+
             public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
             {
                 return _keyValueDBTransaction.GetClonedValue(ref buffer, bufferLength);

@@ -205,6 +205,12 @@ namespace BTDB.KVDBLayer
             return GetCurrentKeyFromStack();
         }
 
+        public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
+        {
+            if (!IsValidKey()) return new ReadOnlySpan<byte>();
+            return GetCurrentKeyFromStack();
+        }
+
         public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
         {
             if (!IsValidKey()) return ReadOnlySpan<byte>.Empty;

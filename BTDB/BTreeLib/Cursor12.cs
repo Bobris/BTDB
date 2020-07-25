@@ -3,6 +3,7 @@ using BTDB.Collections;
 using BTDB.KVDBLayer;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.StreamLayer;
 
 namespace BTDB.BTreeLib
@@ -127,9 +128,9 @@ namespace BTDB.BTreeLib
             }
         }
 
-        public unsafe Span<byte> FillByKey(in Span<byte> buffer)
+        public unsafe ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
-            AssertValid();
+            if (_stack.Count == 0) return ReadOnlySpan<byte>.Empty;
             ref var stackItem = ref _stack[_stack.Count - 1];
             ref var header = ref NodeUtils12.Ptr2NodeHeader(stackItem._node);
             if (header.HasLongKeys)
@@ -138,7 +139,7 @@ namespace BTDB.BTreeLib
                 var keyPtr = keys[stackItem._posInNode];
                 var lenSuffix = TreeNodeUtils.ReadInt32Aligned(keyPtr);
                 var len = header._keyPrefixLength + lenSuffix;
-                var res = buffer.Slice(0, len);
+                var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
                 new Span<byte>((keyPtr + 4).ToPointer(), lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
@@ -149,22 +150,14 @@ namespace BTDB.BTreeLib
                 var ofs = keyOffsets[stackItem._posInNode];
                 var lenSuffix = keyOffsets[stackItem._posInNode + 1] - ofs;
                 var len = header._keyPrefixLength + lenSuffix;
-                var res = buffer.Slice(0, len);
+                var res = len <= bufferLength ? MemoryMarshal.CreateSpan(ref buffer, len) : new byte[len];
                 NodeUtils12.GetPrefixSpan(stackItem._node).CopyTo(res);
                 keySuffixes.Slice(ofs, lenSuffix).CopyTo(res.Slice(header._keyPrefixLength));
                 return res;
             }
         }
 
-        public byte[] GetKeyAsByteArray()
-        {
-            AssertValid();
-            var result = new byte[GetKeyLength()];
-            FillByKey(result);
-            return result;
-        }
-
-        public unsafe bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
+        public bool KeyHasPrefix(in ReadOnlySpan<byte> prefix)
         {
             if (_stack.Count == 0)
                 return false;

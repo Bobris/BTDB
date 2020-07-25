@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using BTDB.BTreeLib;
-using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
 {
@@ -196,13 +195,6 @@ namespace BTDB.KVDBLayer
             return false;
         }
 
-        ReadOnlySpan<byte> GetCurrentKeyFromStack()
-        {
-            var result = new byte[_cursor.GetKeyLength()];
-            _cursor.FillByKey(result);
-            return result;
-        }
-
         public void InvalidateCurrentKey()
         {
             _cursorMovedCounter++;
@@ -217,14 +209,13 @@ namespace BTDB.KVDBLayer
 
         public ReadOnlySpan<byte> GetKey()
         {
-            if (!IsValidKey()) return new ReadOnlySpan<byte>();
-            return GetCurrentKeyFromStack();
+            byte b = 0;
+            return GetKey(ref b, 0);
         }
 
-        public ByteBuffer GetKeyIncludingPrefix()
+        public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
-            if (!IsValidKey()) return ByteBuffer.NewEmpty();
-            return ByteBuffer.NewAsync(GetCurrentKeyFromStack());
+            return _cursor.GetKey(ref buffer, bufferLength);
         }
 
         public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
@@ -288,7 +279,8 @@ namespace BTDB.KVDBLayer
             EnsureValidKey();
             MakeWritable();
             Span<byte> trueValue = stackalloc byte[12];
-            _keyValueDB.WriteCreateOrUpdateCommand(GetCurrentKeyFromStack(), value, trueValue);
+            Span<byte> buffer = stackalloc byte[256];
+            _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length), value, trueValue);
             _cursor.WriteValue(trueValue);
         }
 
@@ -296,7 +288,8 @@ namespace BTDB.KVDBLayer
         {
             EnsureValidKey();
             MakeWritable();
-            _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
+            Span<byte> buffer = stackalloc byte[256];
+            _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
             _cursor.Erase();
             InvalidateCurrentKey();
         }
@@ -349,15 +342,17 @@ namespace BTDB.KVDBLayer
             {
                 _cursor2 ??= BTreeRoot!.CreateCursor();
                 _cursor2.SeekIndex(lastKeyIndex);
-                var firstKey = GetCurrentKeyFromStack();
-                var secondKey = new byte[_cursor2!.GetKeyLength()];
-                _cursor2.FillByKey(secondKey);
+                Span<byte> buffer = stackalloc byte[256];
+                Span<byte> buffer2 = stackalloc byte[256];
+                var firstKey = _cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length);
+                var secondKey = _cursor2.GetKey(ref MemoryMarshal.GetReference(buffer2), buffer2.Length);
                 _keyValueDB.WriteEraseRangeCommand(firstKey, secondKey);
                 _cursor.EraseTo(_cursor2);
             }
             else
             {
-                _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
+                Span<byte> buffer = stackalloc byte[256];
+                _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
                 _cursor.Erase();
             }
             InvalidateCurrentKey();
