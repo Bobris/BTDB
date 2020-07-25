@@ -19,6 +19,7 @@ namespace BTDB.KVDBLayer.BTree
         IBTreeRootNode NewTransactionRoot();
         IBTreeRootNode CloneRoot();
         FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key, uint prefixLen);
+        void EraseOne(long keyIndex);
         void EraseRange(long firstKeyIndex, long lastKeyIndex);
         bool FindNextKey(List<NodeIdxPair> stack);
         bool FindPreviousKey(List<NodeIdxPair> stack);

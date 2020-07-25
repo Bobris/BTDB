@@ -282,10 +282,10 @@ namespace BTDB.KVDBLayer.BTree
             return _keyValues.Length;
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             Debug.Assert(_keyValues[0].KeyOffset == 0);
-            return _keyBytes.AsSpan(0, _keyValues[0].KeyLength);
+            return _keyBytes.AsSpan(0, _keyValues[0].KeyLength).ToArray();
         }
 
         public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)
@@ -356,6 +356,27 @@ namespace BTDB.KVDBLayer.BTree
             Array.Copy(_keyBytes, 0, newKeyBytes, 0, _keyValues[firstKeyIndex].KeyOffset);
             Array.Copy(_keyBytes, _keyValues[lastKeyIndex].KeyOffset + _keyValues[lastKeyIndex].KeyLength, newKeyBytes,
                 _keyValues[firstKeyIndex].KeyOffset, newKeyBytes.Length - _keyValues[firstKeyIndex].KeyOffset);
+            RecalculateOffsets(newKeyValues);
+            if (TransactionId == transactionId)
+            {
+                _keyValues = newKeyValues;
+                _keyBytes = newKeyBytes;
+                return this;
+            }
+
+            return new BTreeLeafComp(transactionId, newKeyBytes, newKeyValues);
+        }
+
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
+        {
+            var newKeyValues = new Member[_keyValues.Length - 1];
+            var newKeyBytes = new byte[_keyBytes!.Length - _keyValues[keyIndex].KeyLength];
+            Array.Copy(_keyValues, 0, newKeyValues, 0, (int)keyIndex);
+            Array.Copy(_keyValues, (int)keyIndex + 1, newKeyValues, (int)keyIndex,
+                newKeyValues.Length - (int)keyIndex);
+            Array.Copy(_keyBytes, 0, newKeyBytes, 0, _keyValues[keyIndex].KeyOffset);
+            Array.Copy(_keyBytes, _keyValues[keyIndex].KeyOffset + _keyValues[keyIndex].KeyLength, newKeyBytes,
+                _keyValues[keyIndex].KeyOffset, newKeyBytes.Length - _keyValues[keyIndex].KeyOffset);
             RecalculateOffsets(newKeyValues);
             if (TransactionId == transactionId)
             {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using BTDB.FieldHandler;
 using BTDB.StreamLayer;
 
 namespace BTDB.KVDBLayer.BTree
@@ -9,7 +10,7 @@ namespace BTDB.KVDBLayer.BTree
 
     class BTreeBranch : IBTreeNode
     {
-        internal readonly long TransactionId;
+        readonly long _transactionId;
         byte[][] _keys;
         IBTreeNode[] _children;
         long[] _pairCounts;
@@ -17,17 +18,17 @@ namespace BTDB.KVDBLayer.BTree
 
         internal BTreeBranch(long transactionId, IBTreeNode node1, IBTreeNode node2)
         {
-            TransactionId = transactionId;
-            _children = new[] { node1, node2 };
-            _keys = new[] { node2.GetLeftMostKey().ToArray() };
+            _transactionId = transactionId;
+            _children = new[] {node1, node2};
+            _keys = new[] {node2.GetLeftMostKey()};
             var leftCount = node1.CalcKeyCount();
             var rightCount = node2.CalcKeyCount();
-            _pairCounts = new[] { leftCount, leftCount + rightCount };
+            _pairCounts = new[] {leftCount, leftCount + rightCount};
         }
 
         BTreeBranch(long transactionId, byte[][] newKeys, IBTreeNode[] newChildren, long[] newPairCounts)
         {
-            TransactionId = transactionId;
+            _transactionId = transactionId;
             _keys = newKeys;
             _children = newChildren;
             _pairCounts = newPairCounts;
@@ -36,7 +37,7 @@ namespace BTDB.KVDBLayer.BTree
         public BTreeBranch(long transactionId, int count, ref SpanReader reader, BuildBranchNodeGenerator generator)
         {
             Debug.Assert(count > 0 && count <= MaxChildren);
-            TransactionId = transactionId;
+            _transactionId = transactionId;
             _keys = new byte[count - 1][];
             _pairCounts = new long[count];
             _children = new IBTreeNode[count];
@@ -49,7 +50,7 @@ namespace BTDB.KVDBLayer.BTree
                 _pairCounts[i] = pairs;
                 if (i > 0)
                 {
-                    _keys[i - 1] = child.GetLeftMostKey().ToArray();
+                    _keys[i - 1] = child.GetLeftMostKey();
                 }
             }
         }
@@ -78,7 +79,7 @@ namespace BTDB.KVDBLayer.BTree
         public void CreateOrUpdate(ref CreateOrUpdateCtx ctx)
         {
             var index = Find(ctx.Key);
-            ctx.Stack!.Add(new NodeIdxPair { Node = this, Idx = index });
+            ctx.Stack!.Add(new NodeIdxPair {Node = this, Idx = index});
             ctx.Depth++;
             _children[index].CreateOrUpdate(ref ctx);
             ctx.Depth--;
@@ -90,7 +91,7 @@ namespace BTDB.KVDBLayer.BTree
                 var newChildren = new IBTreeNode[_children.Length + 1];
                 var newPairCounts = new long[_children.Length + 1];
                 Array.Copy(_keys, 0, newKeys, 0, index);
-                newKeys[index] = ctx.Node2!.GetLeftMostKey().ToArray();
+                newKeys[index] = ctx.Node2!.GetLeftMostKey();
                 Array.Copy(_keys, index, newKeys, index + 1, _keys.Length - index);
                 Array.Copy(_children, 0, newChildren, 0, index);
                 newChildren[index] = ctx.Node1!;
@@ -107,7 +108,7 @@ namespace BTDB.KVDBLayer.BTree
                 ctx.Node2 = null;
                 if (_children.Length < MaxChildren)
                 {
-                    if (TransactionId != ctx.TransactionId)
+                    if (_transactionId != ctx.TransactionId)
                     {
                         newBranch = new BTreeBranch(ctx.TransactionId, newKeys, newChildren, newPairCounts);
                         ctx.Node1 = newBranch;
@@ -120,7 +121,7 @@ namespace BTDB.KVDBLayer.BTree
                         _pairCounts = newPairCounts;
                     }
                     if (ctx.SplitInRight) index++;
-                    ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
+                    ctx.Stack![ctx.Depth] = new NodeIdxPair {Node = newBranch, Idx = index};
                     return;
                 }
                 if (ctx.SplitInRight) index++;
@@ -150,19 +151,19 @@ namespace BTDB.KVDBLayer.BTree
 
                 if (index < keyCountLeft)
                 {
-                    ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = ctx.Node1, Idx = index };
+                    ctx.Stack![ctx.Depth] = new NodeIdxPair {Node = ctx.Node1, Idx = index};
                     ctx.SplitInRight = false;
                 }
                 else
                 {
-                    ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = ctx.Node2, Idx = index - keyCountLeft };
+                    ctx.Stack![ctx.Depth] = new NodeIdxPair {Node = ctx.Node2, Idx = index - keyCountLeft};
                     ctx.SplitInRight = true;
                 }
                 return;
             }
             if (ctx.Update)
             {
-                if (TransactionId != ctx.TransactionId)
+                if (_transactionId != ctx.TransactionId)
                 {
                     var newKeys = new byte[_keys.Length][];
                     var newChildren = new IBTreeNode[_children.Length];
@@ -180,9 +181,9 @@ namespace BTDB.KVDBLayer.BTree
                     ctx.Update = false;
                     ctx.Node1 = null;
                 }
-                ctx.Stack![ctx.Depth] = new NodeIdxPair { Node = newBranch, Idx = index };
+                ctx.Stack![ctx.Depth] = new NodeIdxPair {Node = newBranch, Idx = index};
             }
-            Debug.Assert(newBranch.TransactionId == ctx.TransactionId);
+            Debug.Assert(newBranch._transactionId == ctx.TransactionId);
             if (!ctx.Created) return;
             var pairCounts = newBranch._pairCounts;
             for (var i = index; i < pairCounts.Length; i++)
@@ -194,7 +195,7 @@ namespace BTDB.KVDBLayer.BTree
         public FindResult FindKey(List<NodeIdxPair> stack, out long keyIndex, in ReadOnlySpan<byte> key)
         {
             var idx = Find(key);
-            stack.Add(new NodeIdxPair { Node = this, Idx = idx });
+            stack.Add(new NodeIdxPair {Node = this, Idx = idx});
             var result = _children[idx].FindKey(stack, out keyIndex, key);
             if (idx > 0) keyIndex += _pairCounts[idx - 1];
             return result;
@@ -205,7 +206,7 @@ namespace BTDB.KVDBLayer.BTree
             return _pairCounts[^1];
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             return _children[0].GetLeftMostKey();
         }
@@ -227,7 +228,7 @@ namespace BTDB.KVDBLayer.BTree
                     left = middle + 1;
                 }
             }
-            stack.Add(new NodeIdxPair { Node = this, Idx = left });
+            stack.Add(new NodeIdxPair {Node = this, Idx = left});
             _children[left].FillStackByIndex(stack, keyIndex - (left > 0 ? _pairCounts[left - 1] : 0));
         }
 
@@ -260,7 +261,7 @@ namespace BTDB.KVDBLayer.BTree
         public void FillStackByLeftMost(List<NodeIdxPair> stack, int idx)
         {
             var leftMost = _children[idx];
-            stack.Add(new NodeIdxPair { Node = leftMost, Idx = 0 });
+            stack.Add(new NodeIdxPair {Node = leftMost, Idx = 0});
             leftMost.FillStackByLeftMost(stack, 0);
         }
 
@@ -268,7 +269,7 @@ namespace BTDB.KVDBLayer.BTree
         {
             var rightMost = _children[idx];
             var lastIdx = rightMost.GetLastChildrenIdx();
-            stack.Add(new NodeIdxPair { Node = rightMost, Idx = lastIdx });
+            stack.Add(new NodeIdxPair {Node = rightMost, Idx = lastIdx});
             rightMost.FillStackByRightMost(stack, lastIdx);
         }
 
@@ -301,7 +302,7 @@ namespace BTDB.KVDBLayer.BTree
                     firstRemoved = i;
                     lastRemoved = i;
                     firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
-                                                               lastKeyIndex - prevPairCount);
+                        lastKeyIndex - prevPairCount);
                     lastPartialNode = firstPartialNode;
                     break;
                 }
@@ -311,7 +312,7 @@ namespace BTDB.KVDBLayer.BTree
                     if (nextPairCount > lastKeyIndex) throw new InvalidOperationException();
                     firstRemoved = i;
                     firstPartialNode = _children[i].EraseRange(transactionId, firstKeyIndex - prevPairCount,
-                                                               nextPairCount - 1 - prevPairCount);
+                        nextPairCount - 1 - prevPairCount);
                     continue;
                 }
                 if (lastKeyIndex >= nextPairCount - 1) throw new InvalidOperationException();
@@ -320,8 +321,8 @@ namespace BTDB.KVDBLayer.BTree
                 break;
             }
             var finalChildrenCount = firstRemoved - (firstPartialNode == null ? 1 : 0)
-                                   + _children.Length + 1 - lastRemoved - (lastPartialNode == null ? 1 : 0)
-                                   - (firstPartialNode == lastPartialNode && firstPartialNode != null ? 1 : 0);
+                                     + _children.Length + 1 - lastRemoved - (lastPartialNode == null ? 1 : 0)
+                                     - (firstPartialNode == lastPartialNode && firstPartialNode != null ? 1 : 0);
             var newKeys = new byte[finalChildrenCount - 1][];
             var newChildren = new IBTreeNode[finalChildrenCount];
             var newPairCounts = new long[finalChildrenCount];
@@ -346,9 +347,75 @@ namespace BTDB.KVDBLayer.BTree
             }
             for (var i = 0; i < finalChildrenCount - 1; i++)
             {
-                newKeys[i] = newChildren[i + 1].GetLeftMostKey().ToArray();
+                newKeys[i] = newChildren[i + 1].GetLeftMostKey();
             }
-            if (transactionId == TransactionId)
+            if (transactionId == _transactionId)
+            {
+                _keys = newKeys;
+                _children = newChildren;
+                _pairCounts = newPairCounts;
+                return this;
+            }
+            return new BTreeBranch(transactionId, newKeys, newChildren, newPairCounts);
+        }
+
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
+        {
+            var firstRemoved = -1;
+            IBTreeNode firstPartialNode = null;
+
+            for (var i = 0; i < _pairCounts.Length; i++)
+            {
+                var nextPairCount = _pairCounts[i];
+                if (nextPairCount <= keyIndex) continue;
+                var prevPairCount = i > 0 ? _pairCounts[i - 1] : 0;
+                if (prevPairCount <= keyIndex && keyIndex < nextPairCount)
+                {
+                    firstRemoved = i;
+                    if (prevPairCount + 1 < nextPairCount)
+                        firstPartialNode = _children[i].EraseOne(transactionId, keyIndex - prevPairCount);
+                    break;
+                }
+            }
+            var finalChildrenCount = _children.Length - (firstPartialNode == null ? 1 : 0);
+            var newKeys = new byte[finalChildrenCount - 1][];
+            var newChildren = new IBTreeNode[finalChildrenCount];
+            var newPairCounts = new long[finalChildrenCount];
+            Array.Copy(_children, 0, newChildren, 0, firstRemoved);
+            var idx = firstRemoved;
+            if (firstPartialNode != null)
+            {
+                newChildren[idx] = firstPartialNode;
+                idx++;
+            }
+            Array.Copy(_children, firstRemoved + 1, newChildren, idx, finalChildrenCount - idx);
+            var previousPairCount = 0L;
+            for (var i = 0; i < finalChildrenCount; i++)
+            {
+                previousPairCount += newChildren[i].CalcKeyCount();
+                newPairCounts[i] = previousPairCount;
+            }
+            if (firstPartialNode == null)
+            {
+                if (firstRemoved == 0)
+                {
+                    Array.Copy(_keys, 1, newKeys, 0, finalChildrenCount - 1);
+                }
+                else
+                {
+                    if (firstRemoved > 1) Array.Copy(_keys, 0, newKeys, 0, firstRemoved - 1);
+                    if (finalChildrenCount - firstRemoved > 0)
+                        Array.Copy(_keys, firstRemoved, newKeys, firstRemoved - 1,
+                            finalChildrenCount - firstRemoved);
+                }
+            }
+            else
+            {
+                Array.Copy(_keys, newKeys, finalChildrenCount - 1);
+                if (firstRemoved > 0)
+                    newKeys[firstRemoved - 1] = newChildren[firstRemoved].GetLeftMostKey();
+            }
+            if (transactionId == _transactionId)
             {
                 _keys = newKeys;
                 _children = newChildren;
@@ -385,7 +452,7 @@ namespace BTDB.KVDBLayer.BTree
                 var newChild = child.ReplaceValues(ctx);
                 if (newChild != child)
                 {
-                    if (result.TransactionId != ctx._transactionId)
+                    if (result._transactionId != ctx._transactionId)
                     {
                         var newKeys = new byte[_keys.Length][];
                         Array.Copy(_keys, newKeys, newKeys.Length);

@@ -16,7 +16,7 @@ namespace BTDB.KVDBLayer.BTreeMem
         {
             TransactionId = transactionId;
             _children = new[] { node1, node2 };
-            _keys = new[] { node2.GetLeftMostKey().ToArray() };
+            _keys = new[] { node2.GetLeftMostKey() };
             var leftCount = node1.CalcKeyCount();
             var rightCount = node2.CalcKeyCount();
             _pairCounts = new[] { leftCount, leftCount + rightCount };
@@ -46,7 +46,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 _pairCounts[i] = pairs;
                 if (i > 0)
                 {
-                    _keys[i - 1] = child.GetLeftMostKey().ToArray();
+                    _keys[i - 1] = child.GetLeftMostKey();
                 }
             }
         }
@@ -87,7 +87,7 @@ namespace BTDB.KVDBLayer.BTreeMem
                 var newChildren = new IBTreeNode[_children.Length + 1];
                 var newPairCounts = new long[_children.Length + 1];
                 Array.Copy(_keys, 0, newKeys, 0, index);
-                newKeys[index] = ctx.Node2!.GetLeftMostKey().ToArray();
+                newKeys[index] = ctx.Node2!.GetLeftMostKey();
                 Array.Copy(_keys, index, newKeys, index + 1, _keys.Length - index);
                 Array.Copy(_children, 0, newChildren, 0, index);
                 newChildren[index] = ctx.Node1!;
@@ -202,7 +202,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             return _pairCounts[^1];
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             return _children[0].GetLeftMostKey();
         }
@@ -343,7 +343,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             }
             for (var i = 0; i < finalChildrenCount - 1; i++)
             {
-                newKeys[i] = newChildren[i + 1].GetLeftMostKey().ToArray();
+                newKeys[i] = newChildren[i + 1].GetLeftMostKey();
             }
             if (transactionId == TransactionId)
             {

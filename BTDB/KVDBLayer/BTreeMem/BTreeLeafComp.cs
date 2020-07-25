@@ -253,10 +253,10 @@ namespace BTDB.KVDBLayer.BTreeMem
             return _keyValues.Length;
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             Debug.Assert(_keyValues[0].KeyOffset == 0);
-            return _keyBytes.AsSpan(0, _keyValues[0].KeyLength);
+            return _keyBytes.AsSpan(0, _keyValues[0].KeyLength).ToArray();
         }
 
         public void FillStackByIndex(List<NodeIdxPair> stack, long keyIndex)

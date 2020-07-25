@@ -278,7 +278,7 @@ namespace BTDB.KVDBLayer
             }
             _keyValueDB.WriteEraseOneCommand(GetCurrentKeyFromStack());
             InvalidateCurrentKey();
-            _btreeRoot!.EraseRange(keyIndex, keyIndex);
+            _btreeRoot!.EraseOne(keyIndex);
         }
 
         public bool EraseCurrent(in ReadOnlySpan<byte> exactKey)
@@ -293,7 +293,7 @@ namespace BTDB.KVDBLayer
             MakeWritable();
             _keyValueDB.WriteEraseOneCommand(exactKey);
             InvalidateCurrentKey();
-            _btreeRoot!.EraseRange(keyIndex, keyIndex);
+            _btreeRoot!.EraseOne(keyIndex);
             return true;
         }
 
@@ -311,7 +311,7 @@ namespace BTDB.KVDBLayer
             MakeWritable();
             _keyValueDB.WriteEraseOneCommand(exactKey);
             InvalidateCurrentKey();
-            _btreeRoot!.EraseRange(keyIndex, keyIndex);
+            _btreeRoot!.EraseOne(keyIndex);
             return true;
         }
 

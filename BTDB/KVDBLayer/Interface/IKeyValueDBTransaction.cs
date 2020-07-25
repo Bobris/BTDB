@@ -87,7 +87,7 @@ namespace BTDB.KVDBLayer
         ReadOnlySpan<byte> GetKey();
 
         /// <summary>
-        /// Return current key.
+        /// Return current key. It is always new Array.
         /// </summary>
         byte[] GetKeyToArray();
 

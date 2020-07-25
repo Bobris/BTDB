@@ -105,7 +105,7 @@ namespace BTDB.KVDBLayer.BTreeMem
             return _keyValueCount;
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             return _rootNode!.GetLeftMostKey();
         }

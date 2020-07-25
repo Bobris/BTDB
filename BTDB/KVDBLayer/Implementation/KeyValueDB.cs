@@ -532,7 +532,7 @@ namespace BTDB.KVDBLayer
 
                                 var findResult = _nextRoot.FindKey(stack, out var keyIndex, keyBuf.AsSyncReadOnlySpan(), 0);
                                 if (findResult == FindResult.Exact)
-                                    _nextRoot.EraseRange(keyIndex, keyIndex);
+                                    _nextRoot.EraseOne(keyIndex);
                             }
                             break;
                         case KVCommandType.EraseRange:

@@ -170,7 +170,7 @@ namespace BTDB.KVDBLayer.BTree
             return _keyValues.Length;
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             return _keyValues[0].Key;
         }
@@ -233,6 +233,21 @@ namespace BTDB.KVDBLayer.BTree
             Array.Copy(_keyValues, 0, newKeyValues, 0, (int)firstKeyIndex);
             Array.Copy(_keyValues, (int)lastKeyIndex + 1, newKeyValues, (int)firstKeyIndex,
                 newKeyValues.Length - (int)firstKeyIndex);
+            if (TransactionId == transactionId)
+            {
+                _keyValues = newKeyValues;
+                return this;
+            }
+
+            return new BTreeLeaf(transactionId, newKeyValues);
+        }
+
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
+        {
+            var newKeyValues = new BTreeLeafMember[_keyValues.Length - 1];
+            Array.Copy(_keyValues, 0, newKeyValues, 0, (int)keyIndex);
+            Array.Copy(_keyValues, (int)keyIndex + 1, newKeyValues, (int)keyIndex,
+                newKeyValues.Length - (int)keyIndex);
             if (TransactionId == transactionId)
             {
                 _keyValues = newKeyValues;

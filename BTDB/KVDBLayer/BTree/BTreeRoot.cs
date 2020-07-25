@@ -109,7 +109,7 @@ namespace BTDB.KVDBLayer.BTree
             return _keyValueCount;
         }
 
-        public ReadOnlySpan<byte> GetLeftMostKey()
+        public byte[] GetLeftMostKey()
         {
             return _rootNode!.GetLeftMostKey();
         }
@@ -149,6 +149,11 @@ namespace BTDB.KVDBLayer.BTree
         }
 
         public IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex)
+        {
+            throw new ArgumentException();
+        }
+
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
         {
             throw new ArgumentException();
         }
@@ -202,6 +207,20 @@ namespace BTDB.KVDBLayer.BTree
                 CommitUlong = CommitUlong,
                 _ulongs = CloneUlongs()
             };
+        }
+
+        public void EraseOne(long keyIndex)
+        {
+            Debug.Assert(keyIndex >= 0);
+            Debug.Assert(keyIndex < _keyValueCount);
+            if (1 == _keyValueCount)
+            {
+                _rootNode = null;
+                _keyValueCount = 0;
+                return;
+            }
+            _keyValueCount --;
+            _rootNode = _rootNode!.EraseOne(TransactionId, keyIndex);
         }
 
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)

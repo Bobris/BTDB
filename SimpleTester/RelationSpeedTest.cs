@@ -33,6 +33,14 @@ namespace SimpleTester
             return db;
         }
 
+        static ObjectDB CreateBTreeDb(IFileCollection fc)
+        {
+            var lowDb = new BTreeKeyValueDB(fc);
+            var db = new ObjectDB();
+            db.Open(lowDb, true);
+            return db;
+        }
+
         static IEnumerable<string> GenerateEmails(int count)
         {
             var rnd = new Random();
@@ -255,6 +263,16 @@ namespace SimpleTester
             using (var db = CreateDb(fc))
             {
                 Measure("2 Maps: ", new SingletonPersonTest(db, cnt));
+            }
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateBTreeDb(fc))
+            {
+                Measure("Relation (BTree): ", new RelationPersonTest(db, cnt));
+            }
+            using (var fc = new InMemoryFileCollection())
+            using (var db = CreateBTreeDb(fc))
+            {
+                Measure("2 Maps (BTree): ", new SingletonPersonTest(db, cnt));
             }
             using (var db = CreateInMemoryDb())
             {
