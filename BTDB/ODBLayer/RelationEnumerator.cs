@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
+// ReSharper disable MemberCanBeProtected.Global
 
 namespace BTDB.ODBLayer
 {
@@ -410,6 +411,7 @@ namespace BTDB.ODBLayer
     {
         readonly uint _secondaryKeyIndex;
 
+        // ReSharper disable once UnusedMember.Global
         public RelationAdvancedSecondaryKeyEnumerator(
             IRelationDbManipulator manipulator,
             uint prefixFieldCount,
@@ -424,6 +426,7 @@ namespace BTDB.ODBLayer
             _secondaryKeyIndex = secondaryKeyIndex;
         }
 
+        // ReSharper disable once UnusedMember.Global
         public RelationAdvancedSecondaryKeyEnumerator(
             IRelationDbManipulator manipulator,
             in ReadOnlySpan<byte> prefixBytes, uint prefixFieldCount,
@@ -454,7 +457,7 @@ namespace BTDB.ODBLayer
         SeekState _seekState;
         readonly bool _ascending;
         protected readonly byte[] KeyBytes;
-        protected ReaderFun<TKey> KeyReader;
+        protected ReaderFun<TKey>? KeyReader;
 
         public RelationAdvancedOrderedEnumerator(IRelationDbManipulator manipulator,
             uint prefixFieldCount, EnumerationOrder order,
@@ -642,7 +645,7 @@ namespace BTDB.ODBLayer
             //read key
             var keyData = _keyValueTr.GetKeyAsReadOnlySpan().Slice(KeyBytes.Length);
             var reader = new SpanReader(keyData);
-            key = KeyReader(ref reader, null);
+            key = KeyReader!(ref reader, null);
             return true;
         }
     }

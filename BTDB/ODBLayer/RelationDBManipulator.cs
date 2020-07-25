@@ -13,26 +13,7 @@ namespace BTDB.ODBLayer
     public interface IRelationModificationCounter
     {
         int ModificationCounter { get; }
-        void MarkModification();
         void CheckModifiedDuringEnum(int prevModification);
-    }
-
-    public class UnforgivingRelationModificationCounter : IRelationModificationCounter
-    {
-        int _modificationCounter;
-
-        public int ModificationCounter => _modificationCounter;
-
-        public void CheckModifiedDuringEnum(int prevModification)
-        {
-            if (prevModification != _modificationCounter)
-                throw new InvalidOperationException("Relation modified during iteration.");
-        }
-
-        public void MarkModification()
-        {
-            _modificationCounter++;
-        }
     }
 
     public interface IRelationDbManipulator : IRelation, IRelationModificationCounter
