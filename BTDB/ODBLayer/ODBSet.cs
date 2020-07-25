@@ -266,7 +266,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -301,7 +301,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -354,7 +354,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos++;
@@ -407,7 +407,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 var key = ByteArrayToKey(keyBytes);
                 yield return key;
                 pos--;
@@ -680,7 +680,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                Current = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsReadOnlySpan());
+                Current = _owner.ByteArrayToKey(_keyValueTr.GetKey());
                 return true;
             }
 

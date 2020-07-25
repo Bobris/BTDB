@@ -100,7 +100,7 @@ namespace BTDB.ODBLayer
             {
                 if (tr.FindLastKey(AllObjectsPrefix))
                 {
-                    _lastObjId = (long)PackUnpack.UnpackVUInt(tr.GetKeyAsReadOnlySpan().Slice(AllObjectsPrefixLen));
+                    _lastObjId = (long)PackUnpack.UnpackVUInt(tr.GetKey().Slice(AllObjectsPrefixLen));
                 }
             }
             _tablesInfo.LoadTables(LoadTablesEnum(tr));
@@ -109,7 +109,7 @@ namespace BTDB.ODBLayer
             {
                 if (tr.FindExactKey(LastDictIdKey))
                 {
-                    _lastDictId = PackUnpack.UnpackVUInt(tr.GetValueAsReadOnlySpan());
+                    _lastDictId = PackUnpack.UnpackVUInt(tr.GetValue());
                 }
             }
         }
@@ -129,7 +129,7 @@ namespace BTDB.ODBLayer
             tr.InvalidateCurrentKey();
             while (tr.FindNextKey(TableNamesPrefix))
             {
-                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKeyAsReadOnlySpan().Slice(TableNamesPrefixLen)).ReadVUInt32(), new SpanReader(tr.GetValueAsReadOnlySpan()).ReadString());
+                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetKey().Slice(TableNamesPrefixLen)).ReadVUInt32(), new SpanReader(tr.GetValue()).ReadString());
             }
         }
 
@@ -138,7 +138,7 @@ namespace BTDB.ODBLayer
             tr.InvalidateCurrentKey();
             while (tr.FindNextKey(RelationNamesPrefix))
             {
-                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetValueAsReadOnlySpan()).ReadVUInt32(), new SpanReader(tr.GetKeyAsReadOnlySpan().Slice(RelationNamesPrefixLen)).ReadString());
+                yield return new KeyValuePair<uint, string>(new SpanReader(tr.GetValue()).ReadVUInt32(), new SpanReader(tr.GetKey().Slice(RelationNamesPrefixLen)).ReadString());
             }
         }
 
@@ -250,7 +250,7 @@ namespace BTDB.ODBLayer
                 var ofs = PackUnpack.LengthVUInt(id);
                 if (tr.Find(key, TableVersionsPrefixLen + ofs) == FindResult.NotFound)
                     return 0;
-                var key2 = tr.GetKeyAsReadOnlySpan().Slice((int)(TableVersionsPrefixLen + ofs));
+                var key2 = tr.GetKey().Slice((int)(TableVersionsPrefixLen + ofs));
                 return checked((uint)PackUnpack.UnpackVUInt(key2));
             }
 
@@ -260,7 +260,7 @@ namespace BTDB.ODBLayer
                 var key = TableInfo.BuildKeyForTableVersions(id, version);
                 if (!tr.FindExactKey(key))
                     throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
-                var reader = new SpanReader(tr.GetValueAsReadOnlySpan());
+                var reader = new SpanReader(tr.GetValue());
                 return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
             }
 
@@ -273,7 +273,7 @@ namespace BTDB.ODBLayer
                 PackUnpack.UnsafePackVUInt(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key), (IntPtr)TableSingletonsPrefixLen), id, len);
                 if (tr.FindExactKey(key))
                 {
-                    return (long)PackUnpack.UnpackVUInt(tr.GetValueAsReadOnlySpan());
+                    return (long)PackUnpack.UnpackVUInt(tr.GetValue());
                 }
                 return 0;
             }

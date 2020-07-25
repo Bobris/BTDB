@@ -133,7 +133,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var valueBytes = _keyValueTr.GetValue();
                 var valueReader = new SpanReader(valueBytes);
                 findIDictAction(ctx.GetTransaction(), ref valueReader, ctx.DictIds);
 
@@ -287,7 +287,7 @@ namespace BTDB.ODBLayer
                 return false;
             }
 
-            var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+            var valueBytes = _keyValueTr.GetValue();
             value = ByteArrayToValue(valueBytes);
             return true;
         }
@@ -303,7 +303,7 @@ namespace BTDB.ODBLayer
                     throw new ArgumentException("Key not found in Dictionary");
                 }
 
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var valueBytes = _keyValueTr.GetValue();
                 return ByteArrayToValue(valueBytes);
             }
             set
@@ -377,7 +377,7 @@ namespace BTDB.ODBLayer
                     }
 
                     prevProtectionCounter = _parent._keyValueTr.CursorMovedCounter;
-                    var keyBytes = _parent._keyValueTr.GetKeyAsReadOnlySpan();
+                    var keyBytes = _parent._keyValueTr.GetKey();
                     var key = _parent.ByteArrayToKey(keyBytes);
                     yield return key;
                     pos++;
@@ -462,7 +462,7 @@ namespace BTDB.ODBLayer
                     }
 
                     prevProtectionCounter = _parent._keyValueTr.CursorMovedCounter;
-                    var valueBytes = _parent._keyValueTr.GetValueAsReadOnlySpan();
+                    var valueBytes = _parent._keyValueTr.GetValue();
                     var value = _parent.ByteArrayToValue(valueBytes);
                     yield return value;
                     pos++;
@@ -544,8 +544,8 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 var key = ByteArrayToKey(keyBytes);
                 var value = ByteArrayToValue(valueBytes);
                 yield return new KeyValuePair<TKey, TValue>(key, value);
@@ -583,8 +583,8 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 var key = ByteArrayToKey(keyBytes);
                 var value = ByteArrayToValue(valueBytes);
                 yield return new KeyValuePair<TKey, TValue>(key, value);
@@ -642,8 +642,8 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 var key = ByteArrayToKey(keyBytes);
                 var value = ByteArrayToValue(valueBytes);
                 yield return new KeyValuePair<TKey, TValue>(key, value);
@@ -700,8 +700,8 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 var key = ByteArrayToKey(keyBytes);
                 var value = ByteArrayToValue(valueBytes);
                 yield return new KeyValuePair<TKey, TValue>(key, value);
@@ -904,7 +904,7 @@ namespace BTDB.ODBLayer
                     }
 
                     _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                    var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                    var valueBytes = _keyValueTr.GetValue();
                     return _owner.ByteArrayToValue(valueBytes);
                 }
 
@@ -983,7 +983,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                key = _owner.ByteArrayToKey(_keyValueTr.GetKeyAsReadOnlySpan());
+                key = _owner.ByteArrayToKey(_keyValueTr.GetKey());
                 return true;
             }
         }

@@ -215,7 +215,7 @@ namespace BTDB.KVDBLayer
             return _keyIndex != -1;
         }
 
-        public ReadOnlySpan<byte> GetKeyAsReadOnlySpan()
+        public ReadOnlySpan<byte> GetKey()
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();
             return GetCurrentKeyFromStack();
@@ -251,7 +251,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        public ReadOnlySpan<byte> GetValue()
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();
             var trueValue = _cursor.GetValue();

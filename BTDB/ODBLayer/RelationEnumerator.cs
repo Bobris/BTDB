@@ -79,8 +79,8 @@ namespace BTDB.ODBLayer
             get
             {
                 SeekCurrent();
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
-                var valueBytes = _keyValueTr.GetValueAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
+                var valueBytes = _keyValueTr.GetValue();
                 return CreateInstance(keyBytes, valueBytes);
             }
         }
@@ -88,7 +88,7 @@ namespace BTDB.ODBLayer
         public ReadOnlySpan<byte> GetKeyBytes()
         {
             SeekCurrent();
-            return _keyValueTr.GetKeyAsReadOnlySpan();
+            return _keyValueTr.GetKey();
         }
 
         void SeekCurrent()
@@ -308,7 +308,7 @@ namespace BTDB.ODBLayer
         {
             if (!keyValueTr.FindLastKey(endKeyBytes))
                 return endKeyBytes;
-            return keyValueTr.GetKeyAsReadOnlySpan();
+            return keyValueTr.GetKey();
         }
 
         public bool MoveNext()
@@ -361,19 +361,19 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 return CreateInstance(keyBytes);
             }
         }
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
+            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue());
         }
 
         public byte[] GetKeyBytes()
         {
-            return _keyValueTr.GetKeyAsReadOnlySpan().ToArray();
+            return _keyValueTr.GetKey().ToArray();
         }
 
         void Seek()
@@ -565,7 +565,7 @@ namespace BTDB.ODBLayer
 
         protected virtual TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValueAsReadOnlySpan());
+            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue());
         }
 
         public TValue CurrentValue
@@ -585,7 +585,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKeyAsReadOnlySpan();
+                var keyBytes = _keyValueTr.GetKey();
                 return CreateInstance(keyBytes);
             }
             set => throw new NotSupportedException();
@@ -643,7 +643,7 @@ namespace BTDB.ODBLayer
 
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
             //read key
-            var keyData = _keyValueTr.GetKeyAsReadOnlySpan().Slice(KeyBytes.Length);
+            var keyData = _keyValueTr.GetKey().Slice(KeyBytes.Length);
             var reader = new SpanReader(keyData);
             key = KeyReader!(ref reader, null);
             return true;

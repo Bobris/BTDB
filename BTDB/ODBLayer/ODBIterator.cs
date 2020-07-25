@@ -61,7 +61,7 @@ namespace BTDB.ODBLayer
             _singletons = new Dictionary<uint, ulong>();
             while (_trkv.FindNextKey(ObjectDB.TableSingletonsPrefix))
             {
-                _singletons.Add(new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice((int)ObjectDB.TableSingletonsPrefixLen)).ReadVUInt32(), new SpanReader(_trkv.GetValueAsReadOnlySpan()).ReadVUInt64());
+                _singletons.Add(new SpanReader(_trkv.GetKey().Slice((int)ObjectDB.TableSingletonsPrefixLen)).ReadVUInt32(), new SpanReader(_trkv.GetValue()).ReadVUInt64());
             }
 
             if (sortTableByNameAsc)
@@ -120,7 +120,7 @@ namespace BTDB.ODBLayer
             if (!_trkv.FindExactKey(Vuint2ByteBuffer(ObjectDB.AllObjectsPrefix, oid)))
                 return; // Object oid was deleted
             _fastVisitor.MarkCurrentKeyAsUsed(_trkv);
-            var reader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+            var reader = new SpanReader(_trkv.GetValue());
             var tableId = reader.ReadVUInt32();
             var version = reader.ReadVUInt32();
             MarkTableIdVersionFieldInfo(tableId, version);
@@ -151,7 +151,7 @@ namespace BTDB.ODBLayer
             var prevProtectionCounter = _trkv.CursorMovedCounter;
             if (_visitor == null || _visitor.StartRelationKey())
             {
-                var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
+                var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
                 var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
                 IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                 _visitor?.EndRelationKey();
@@ -162,7 +162,7 @@ namespace BTDB.ODBLayer
             }
             if (_visitor == null || _visitor.StartRelationValue())
             {
-                var valueReader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+                var valueReader = new SpanReader(_trkv.GetValue());
                 var version = valueReader.ReadVUInt32();
                 var relationInfo = relation.VersionInfos[version];
                 IterateFields(ref valueReader, relationInfo.Fields.Span, new HashSet<int>());
@@ -197,7 +197,7 @@ namespace BTDB.ODBLayer
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartRelationKey())
                 {
-                    var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
+                    var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
                     var relationInfo = relation.VersionInfos[relation.LastPersistedVersion];
                     IterateFields(ref keyReader, relationInfo.PrimaryKeyFields.Span, null);
                     _visitor?.EndRelationKey();
@@ -208,7 +208,7 @@ namespace BTDB.ODBLayer
                 }
                 if (_visitor == null || _visitor.StartRelationValue())
                 {
-                    var valueReader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+                    var valueReader = new SpanReader(_trkv.GetValue());
                     var version = valueReader.ReadVUInt32();
                     var relationInfo = relation.VersionInfos[version];
                     IterateFields(ref valueReader, relationInfo.Fields.Span, new HashSet<int>());
@@ -258,8 +258,8 @@ namespace BTDB.ODBLayer
             }
             do
             {
-                var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
-                var valueReader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+                var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
+                var valueReader = new SpanReader(_trkv.GetValue());
                 lastPersistedVersion = keyReader.ReadVUInt32();
                 var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, name);
                 relationVersionInfo.ResolveFieldHandlers(relationInfoResolver.FieldHandlerFactory);
@@ -300,7 +300,7 @@ namespace BTDB.ODBLayer
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartDictKey())
                 {
-                    var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
+                    var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }
@@ -310,7 +310,7 @@ namespace BTDB.ODBLayer
                 }
                 if (_visitor == null || _visitor.StartDictValue())
                 {
-                    var valueReader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+                    var valueReader = new SpanReader(_trkv.GetValue());
                     IterateHandler(ref valueReader, valueHandler, false, null);
                     _visitor?.EndDictValue();
                 }
@@ -350,7 +350,7 @@ namespace BTDB.ODBLayer
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartSetKey())
                 {
-                    var keyReader = new SpanReader(_trkv.GetKeyAsReadOnlySpan().Slice(prefix.Length));
+                    var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndSetKey();
                 }
@@ -644,7 +644,7 @@ namespace BTDB.ODBLayer
                 return res;
             if (_trkv.FindExactKey(TwiceVuint2ByteBuffer(ObjectDB.TableVersionsPrefix, tableId, version)))
             {
-                var reader = new SpanReader(_trkv.GetValueAsReadOnlySpan());
+                var reader = new SpanReader(_trkv.GetValue());
                 res = TableVersionInfo.Load(ref reader, _tr.Owner.FieldHandlerFactory, _tableId2Name[tableId]);
                 _tableVersionInfos.Add(new TableIdVersionId(tableId, version), res);
                 return res;

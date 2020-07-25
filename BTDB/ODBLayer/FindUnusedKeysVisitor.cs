@@ -48,7 +48,7 @@ namespace BTDB.ODBLayer
                 do
                 {
                     //create all keys, instead of value store only byte length of value
-                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKeyAsReadOnlySpan(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
+                    kvtr.CreateOrUpdateKeyValue(sourceKvTr.GetKey(), Vuint2ByteBuffer(sourceKvTr.GetStorageSizeOfCurrentKey().Value));
                 } while (sourceKvTr.FindNextKey(prefix));
                 kvtr.Commit();
             }
@@ -77,8 +77,8 @@ namespace BTDB.ODBLayer
                 {
                     yield return new UnseenKey
                     {
-                        Key = trkv.GetKeyAsReadOnlySpan().ToArray(),
-                        ValueSize = new SpanReader(trkv.GetValueAsReadOnlySpan()).ReadVUInt32()
+                        Key = trkv.GetKey().ToArray(),
+                        ValueSize = new SpanReader(trkv.GetValue()).ReadVUInt32()
                     };
                 } while (trkv.FindNextKey(prefix));
             }
@@ -111,7 +111,7 @@ namespace BTDB.ODBLayer
 
         void MarkKeyAsUsed(IKeyValueDBTransaction tr)
         {
-            _kvtr.EraseCurrent(tr.GetKeyAsReadOnlySpan());
+            _kvtr.EraseCurrent(tr.GetKey());
         }
 
         class VisitorForFindUnused : IODBFastVisitor

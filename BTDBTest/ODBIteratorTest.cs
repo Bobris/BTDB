@@ -69,9 +69,9 @@ namespace BTDBTest
 
             public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
             {
-                Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(tr.GetKeyAsReadOnlySpan()));
+                Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(tr.GetKey()));
                 Builder.Append("Used key: ");
-                Print(tr.GetKeyAsReadOnlySpan());
+                Print(tr.GetKey());
                 Builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
                 Builder.AppendLine();
             }

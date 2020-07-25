@@ -94,7 +94,7 @@ namespace SimpleTester
                         while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                         {
                             pureDataLengthCheck +=
-                                trCheck.GetKeyAsReadOnlySpan().Length + trCheck.GetValueAsReadOnlySpan().Length;
+                                trCheck.GetKey().Length + trCheck.GetValue().Length;
                         }
 
                         if (pureDataLengthCheck != pureDataLengthPrevTr)
@@ -146,7 +146,7 @@ namespace SimpleTester
                     long pureDataLengthCheck = 0;
                     while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                     {
-                        pureDataLengthCheck += trCheck.GetKeyAsReadOnlySpan().Length + trCheck.GetValueAsReadOnlySpan().Length;
+                        pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
                     }
 
                     if (pureDataLengthCheck != 396130000)
@@ -196,7 +196,7 @@ namespace SimpleTester
                     key[0] = (byte)(i / 100);
                     key[1] = (byte)(i % 100);
                     tr.FindExactKey(key);
-                    var value = tr.GetValueAsReadOnlySpan();
+                    var value = tr.GetValue();
                     if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
                     if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
@@ -219,7 +219,7 @@ namespace SimpleTester
                     key[0] = (byte)(i / 100);
                     key[1] = (byte)(i % 100);
                     tr.FindExactKey(key);
-                    var value = tr.GetValueAsReadOnlySpan();
+                    var value = tr.GetValue();
                     if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
                     if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
@@ -297,7 +297,7 @@ namespace SimpleTester
                 var value = new byte[rnd.Next(50, 500)];
                 rnd.NextBytes(value);
                 if (!tr.FindExactKey(key)) throw new Exception("Key not found");
-                var value2 = tr.GetValueAsReadOnlySpan();
+                var value2 = tr.GetValue();
                 if (value.Length != value2.Length) throw new Exception("value length different");
                 for (var j = 0; j < value.Length; j++)
                 {

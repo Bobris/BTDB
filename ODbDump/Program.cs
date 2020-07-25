@@ -200,8 +200,8 @@ namespace ODbDump
                         transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
                         for (long kv = 0; kv < keyValueCount; kv++)
                         {
-                            transaction.GetKeyAsReadOnlySpan();
-                            transaction.GetValueAsReadOnlySpan();
+                            transaction.GetKey();
+                            transaction.GetValue();
                             transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                         }
 

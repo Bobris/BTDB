@@ -118,7 +118,7 @@ namespace DBBenchmark
             using (var tr = db.StartTransaction())
             {
                 tr.FindExactKey(key);
-                tr.GetValueAsReadOnlySpan();
+                tr.GetValue();
             }
 
             stopwatch.Stop();
@@ -135,7 +135,7 @@ namespace DBBenchmark
                 foreach (var key in keys)
                 {
                     tr.FindExactKey(key);
-                    tr.GetValueAsReadOnlySpan();
+                    tr.GetValue();
                 }
             }
 
@@ -155,7 +155,7 @@ namespace DBBenchmark
                     var key = tr.FindExactKey(data.Key);
                     if (!key) throw new Exception("Key not found");
 
-                    var value = tr.GetValueAsReadOnlySpan();
+                    var value = tr.GetValue();
 
                     if (value.Length != data.Value.Length) throw new Exception("value length different");
 
@@ -231,8 +231,8 @@ namespace DBBenchmark
 
             do
             {
-                var key = tr.GetKeyAsReadOnlySpan().ToArray();
-                var value = tr.GetValueAsReadOnlySpan().ToArray();
+                var key = tr.GetKey().ToArray();
+                var value = tr.GetValue().ToArray();
 
                 data.Add(key, value);
 

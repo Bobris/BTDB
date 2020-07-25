@@ -290,7 +290,7 @@ namespace BTDB.ODBLayer
 
         void ReadObjStart(ulong oid, out TableInfo tableInfo, out SpanReader reader)
         {
-            reader = new SpanReader(_keyValueTr!.GetValueAsReadOnlySpan());
+            reader = new SpanReader(_keyValueTr!.GetValue());
             var tableId = reader.ReadVUInt32();
             tableInfo = _owner.TablesInfo.FindById(tableId) ??
                         throw new BTDBException($"Unknown TypeId {tableId} of Oid {oid}");
@@ -466,7 +466,7 @@ namespace BTDB.ODBLayer
                 {
                     if (_keyValueTr!.FindExactKey(BuildKeyFromOidWithAllObjectsPrefix(oid)))
                     {
-                        content = _keyValueTr.GetValueAsReadOnlySpan().ToArray();
+                        content = _keyValueTr.GetValue().ToArray();
                         tableInfo.CacheSingletonContent(_transactionNumber, content);
                     }
                 }
@@ -713,7 +713,7 @@ namespace BTDB.ODBLayer
 
         ulong ReadOidFromCurrentKeyInTransaction()
         {
-            var key = _keyValueTr!.GetKeyAsReadOnlySpan().Slice(1);
+            var key = _keyValueTr!.GetKey().Slice(1);
             ref var keyRef = ref MemoryMarshal.GetReference(key);
             var len = PackUnpack.LengthVUIntByFirstByte(key[0]);
             if (key.Length < len) PackUnpack.ThrowEndOfStreamException();

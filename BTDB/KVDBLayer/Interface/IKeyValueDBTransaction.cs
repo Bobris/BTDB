@@ -84,7 +84,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Return current key.
         /// </summary>
-        ReadOnlySpan<byte> GetKeyAsReadOnlySpan();
+        ReadOnlySpan<byte> GetKey();
 
         /// <summary>
         /// Return current value into fresh memory or provided buffer if it fits.
@@ -94,7 +94,7 @@ namespace BTDB.KVDBLayer
         /// <summary>
         /// Return current value.
         /// </summary>
-        ReadOnlySpan<byte> GetValueAsReadOnlySpan();
+        ReadOnlySpan<byte> GetValue();
 
         /// <summary>
         /// Overwrite current value with new content.

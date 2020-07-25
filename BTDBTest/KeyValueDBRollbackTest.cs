@@ -474,7 +474,7 @@ namespace BTDBTest
             tr.InvalidateCurrentKey();
             while (tr.FindNextKey(ReadOnlySpan<byte>.Empty))
             {
-                tr.GetValueAsReadOnlySpan();
+                tr.GetValue();
             }
         }
 

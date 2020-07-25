@@ -331,7 +331,7 @@ namespace BTDB.ODBLayer
                 if (!_kvtr.FindExactKey(key))
                     throw new BTDBException("Not found record to delete.");
 
-                var valueBytes = _kvtr.GetValueAsReadOnlySpan();
+                var valueBytes = _kvtr.GetValue();
 
                 if (_hasSecondaryIndexes)
                     RemoveSecondaryIndexes(key, valueBytes);
@@ -529,7 +529,7 @@ namespace BTDB.ODBLayer
                 return default;
             }
 
-            var valueBytes = _kvtr.GetValueAsReadOnlySpan();
+            var valueBytes = _kvtr.GetValue();
             return itemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
         }
 
@@ -570,7 +570,7 @@ namespace BTDB.ODBLayer
                 return default;
             }
 
-            var keyBytes = _kvtr.GetKeyAsReadOnlySpan();
+            var keyBytes = _kvtr.GetKey();
 
             if (_kvtr.FindNextKey(secKeyBytes))
                 throw new BTDBException("Ambiguous result.");

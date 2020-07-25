@@ -279,7 +279,7 @@ namespace BTDBTest
             using (var tr2 = db.StartTransaction())
             {
                 Assert.True(tr2.FindExactKey(key));
-                Assert.Equal(key.ToArray(), tr2.GetKeyAsReadOnlySpan().ToArray());
+                Assert.Equal(key.ToArray(), tr2.GetKey().ToArray());
             }
         }
 
@@ -377,7 +377,7 @@ namespace BTDBTest
             {
                 Assert.True(tr2.FindExactKey(_key3));
                 Assert.True(tr2.FindPreviousKey(ReadOnlySpan<byte>.Empty));
-                Assert.Equal(_key1, tr2.GetKeyAsReadOnlySpan().ToArray());
+                Assert.Equal(_key1, tr2.GetKey().ToArray());
                 Assert.False(tr2.FindPreviousKey(ReadOnlySpan<byte>.Empty));
             }
         }
@@ -450,7 +450,7 @@ namespace BTDBTest
             {
                 Assert.True(tr2.FindExactKey(_key3));
                 Assert.True(tr2.FindNextKey(ReadOnlySpan<byte>.Empty));
-                Assert.Equal(Key2, tr2.GetKeyAsReadOnlySpan().ToArray());
+                Assert.Equal(Key2, tr2.GetKey().ToArray());
                 Assert.False(tr2.FindNextKey(ReadOnlySpan<byte>.Empty));
             }
         }
@@ -517,7 +517,7 @@ namespace BTDBTest
                 for (var i = 0; i < keysCreated; i += 5)
                 {
                     Assert.True(tr.SetKeyIndex(i));
-                    key = tr.GetKeyAsReadOnlySpan().ToArray();
+                    key = tr.GetKey().ToArray();
                     Assert.Equal((byte)(i / 256), key[0]);
                     Assert.Equal((byte)(i % 256), key[1]);
                     Assert.Equal(i, tr.GetKeyIndex());
@@ -554,14 +554,14 @@ namespace BTDBTest
             using (var tr2 = db.StartTransaction())
             {
                 Assert.True(tr2.FindExactKey(_key1));
-                var valueBuf2 = tr2.GetValueAsReadOnlySpan().ToArray();
+                var valueBuf2 = tr2.GetValue().ToArray();
                 for (var i = 0; i < length; i++)
                 {
                     if (valueBuf[i] != valueBuf2[i])
                         Assert.Equal(valueBuf[i], valueBuf2[i]);
                 }
                 Assert.True(tr2.FindExactKey(Key2));
-                valueBuf2 = tr2.GetValueAsReadOnlySpan().ToArray();
+                valueBuf2 = tr2.GetValue().ToArray();
                 for (var i = 0; i < length; i++)
                 {
                     if (valueBuf[i] != valueBuf2[i])
@@ -581,7 +581,7 @@ namespace BTDBTest
             tr.CreateKey(Key2);
             tr.CreateKey(_key3);
             Assert.True(tr.FindFirstKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(_key1, tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(_key1, tr.GetKey().ToArray());
             tr.Commit();
         }
 
@@ -596,7 +596,7 @@ namespace BTDBTest
             tr.CreateKey(Key2);
             tr.CreateKey(_key3);
             Assert.True(tr.FindLastKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(Key2, tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(Key2, tr.GetKey().ToArray());
             tr.Commit();
         }
 
@@ -612,9 +612,9 @@ namespace BTDBTest
             Assert.Equal(3, tr.GetKeyValueCount());
             Assert.Equal(2, tr.GetKeyValueCount(_key1.AsSpan(0, 3)));
             tr.FindFirstKey(_key1.AsSpan(0, 3));
-            Assert.Equal(_key1.AsSpan(0, 3).ToArray(), tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(_key1.AsSpan(0, 3).ToArray(), tr.GetKey().ToArray());
             tr.FindLastKey(_key1.AsSpan(0, 3));
-            Assert.Equal(_key3, tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(_key3, tr.GetKey().ToArray());
             tr.Commit();
         }
 
@@ -656,9 +656,9 @@ namespace BTDBTest
             tr.CreateKey(_key3);
             tr.EraseCurrent();
             Assert.True(tr.FindFirstKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(_key1, tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(_key1, tr.GetKey().ToArray());
             Assert.True(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
-            Assert.Equal(Key2, tr.GetKeyAsReadOnlySpan().ToArray());
+            Assert.Equal(Key2, tr.GetKey().ToArray());
             Assert.False(tr.FindNextKey(ReadOnlySpan<byte>.Empty));
             Assert.Equal(2, tr.GetKeyValueCount());
         }
@@ -784,7 +784,7 @@ namespace BTDBTest
             using var db = NewKeyValueDB(fileCollection);
             using var tr = db.StartTransaction();
             tr.CreateOrUpdateKeyValue(_key1, new byte[1000]);
-            Assert.Equal(new byte[1000], tr.GetValueAsReadOnlySpan().ToArray());
+            Assert.Equal(new byte[1000], tr.GetValue().ToArray());
             tr.Commit();
         }
 
@@ -912,7 +912,7 @@ namespace BTDBTest
                     key[1] = 1;
                     Assert.True(tr.FindExactKey(key));
                     tr.FindNextKey(ReadOnlySpan<byte>.Empty);
-                    Assert.Equal(5, tr.GetKeyAsReadOnlySpan()[1]);
+                    Assert.Equal(5, tr.GetKey()[1]);
                     Assert.Equal(96, tr.GetKeyValueCount());
                 }
             }

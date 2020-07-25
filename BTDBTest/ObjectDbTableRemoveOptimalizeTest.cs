@@ -343,9 +343,9 @@ namespace BTDBTest
                 return _keyValueDBTransaction.IsValidKey();
             }
 
-            public ReadOnlySpan<byte> GetKeyAsReadOnlySpan()
+            public ReadOnlySpan<byte> GetKey()
             {
-                return _keyValueDBTransaction.GetKeyAsReadOnlySpan();
+                return _keyValueDBTransaction.GetKey();
             }
 
             public ReadOnlySpan<byte> GetClonedValue(ref byte buffer, int bufferLength)
@@ -353,9 +353,9 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetClonedValue(ref buffer, bufferLength);
             }
 
-            public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+            public ReadOnlySpan<byte> GetValue()
             {
-                return _keyValueDBTransaction.GetValueAsReadOnlySpan();
+                return _keyValueDBTransaction.GetValue();
             }
 
             public void SetValue(in ReadOnlySpan<byte> value)

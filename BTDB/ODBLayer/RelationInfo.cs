@@ -582,8 +582,8 @@ namespace BTDB.ODBLayer
             {
                 do
                 {
-                    var keyReader = new SpanReader(tr.GetKeyAsReadOnlySpan().Slice(prefix.Length));
-                    var valueReader = new SpanReader(tr.GetValueAsReadOnlySpan());
+                    var keyReader = new SpanReader(tr.GetKey().Slice(prefix.Length));
+                    var valueReader = new SpanReader(tr.GetValue());
                     LastPersistedVersion = keyReader.ReadVUInt32();
                     var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, _name);
                     relationVersions[LastPersistedVersion] = relationVersionInfo;
@@ -1430,7 +1430,7 @@ namespace BTDB.ODBLayer
             {
                 if (!Transaction.KeyValueDBTransaction.FindExactKey(ObjectDBTransaction.BuildKeyFromOidWithAllObjectsPrefix((ulong)id)))
                     return;
-                var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValueAsReadOnlySpan());
+                var reader = new SpanReader(Transaction.KeyValueDBTransaction.GetValue());
                 var tableId = reader.ReadVUInt32();
                 var tableInfo = ((ObjectDB)Transaction.Owner).TablesInfo.FindById(tableId);
                 if (tableInfo == null)

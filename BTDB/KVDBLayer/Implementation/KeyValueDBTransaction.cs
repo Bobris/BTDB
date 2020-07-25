@@ -199,7 +199,7 @@ namespace BTDB.KVDBLayer
             return _keyIndex >= 0;
         }
 
-        public ReadOnlySpan<byte> GetKeyAsReadOnlySpan()
+        public ReadOnlySpan<byte> GetKey()
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();
             return GetCurrentKeyFromStack();
@@ -223,7 +223,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
-        public ReadOnlySpan<byte> GetValueAsReadOnlySpan()
+        public ReadOnlySpan<byte> GetValue()
         {
             return GetClonedValue(ref Unsafe.AsRef((byte)0), 0);
         }

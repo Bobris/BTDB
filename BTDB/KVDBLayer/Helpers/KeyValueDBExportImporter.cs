@@ -31,11 +31,11 @@ namespace BTDB.KVDBLayer
             transaction.FindFirstKey(new ReadOnlySpan<byte>());
             for (long kv = 0; kv < keyValueCount; kv++)
             {
-                var key = transaction.GetKeyAsReadOnlySpan();
+                var key = transaction.GetKey();
                 PackUnpack.PackInt32LE(tempbuf, 0, key.Length);
                 stream.Write(tempbuf, 0, 4);
                 stream.Write(key);
-                var value = transaction.GetValueAsReadOnlySpan();
+                var value = transaction.GetValue();
                 PackUnpack.PackInt32LE(tempbuf, 0, value.Length);
                 stream.Write(tempbuf, 0, 4);
                 stream.Write(value);

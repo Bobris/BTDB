@@ -68,8 +68,8 @@ namespace SimpleTester
                     var keyValueCount = transaction.GetKeyValueCount();
                     for (long kv = 0; kv < keyValueCount; kv++)
                     {
-                        transaction.GetKeyAsReadOnlySpan();
-                        transaction.GetValueAsReadOnlySpan();
+                        transaction.GetKey();
+                        transaction.GetValue();
                         transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                         await Task.Delay(sleep, cancellationToken);
 
