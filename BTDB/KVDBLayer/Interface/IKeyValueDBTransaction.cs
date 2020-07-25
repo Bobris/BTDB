@@ -87,6 +87,11 @@ namespace BTDB.KVDBLayer
         ReadOnlySpan<byte> GetKey();
 
         /// <summary>
+        /// Return current key.
+        /// </summary>
+        byte[] GetKeyToArray();
+
+        /// <summary>
         /// Return current key. Can use prepared buffer.
         /// </summary>
         ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength);

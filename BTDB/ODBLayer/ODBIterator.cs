@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.IL;
@@ -279,6 +280,7 @@ namespace BTDB.ODBLayer
             PackUnpack.PackVUInt(prefix, ref o, dictId);
             long prevProtectionCounter = 0;
             long pos = 0;
+            Span<byte> keyBuffer = stackalloc byte[256];
             while (true)
             {
                 if (pos == 0)
@@ -300,7 +302,7 @@ namespace BTDB.ODBLayer
                 prevProtectionCounter = _trkv.CursorMovedCounter;
                 if (_visitor == null || _visitor.StartDictKey())
                 {
-                    var keyReader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
+                    var keyReader = new SpanReader(_trkv.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(prefix.Length));
                     IterateHandler(ref keyReader, keyHandler, false, null);
                     _visitor?.EndDictKey();
                 }

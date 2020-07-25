@@ -205,6 +205,12 @@ namespace BTDB.KVDBLayer
             return GetCurrentKeyFromStack();
         }
 
+        public byte[] GetKeyToArray()
+        {
+            var nodeIdxPair = _stack[^1];
+            return ((IBTreeLeafNode)nodeIdxPair.Node).GetKey(nodeIdxPair.Idx).ToArray();
+        }
+
         public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
             if (!IsValidKey()) return new ReadOnlySpan<byte>();

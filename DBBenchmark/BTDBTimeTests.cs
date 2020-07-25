@@ -231,7 +231,7 @@ namespace DBBenchmark
 
             do
             {
-                var key = tr.GetKey().ToArray();
+                var key = tr.GetKeyToArray();
                 var value = tr.GetValue().ToArray();
 
                 data.Add(key, value);

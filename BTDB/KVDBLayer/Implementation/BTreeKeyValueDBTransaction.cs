@@ -213,6 +213,11 @@ namespace BTDB.KVDBLayer
             return GetKey(ref b, 0);
         }
 
+        public byte[] GetKeyToArray()
+        {
+            return _cursor.GetKeyAsArray();
+        }
+
         public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
         {
             return _cursor.GetKey(ref buffer, bufferLength);

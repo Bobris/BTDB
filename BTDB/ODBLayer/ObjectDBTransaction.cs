@@ -713,11 +713,8 @@ namespace BTDB.ODBLayer
 
         ulong ReadOidFromCurrentKeyInTransaction()
         {
-            var key = _keyValueTr!.GetKey().Slice(1);
-            ref var keyRef = ref MemoryMarshal.GetReference(key);
-            var len = PackUnpack.LengthVUIntByFirstByte(key[0]);
-            if (key.Length < len) PackUnpack.ThrowEndOfStreamException();
-            return PackUnpack.UnsafeUnpackVUInt(ref keyRef, len);
+            Span<byte> buffer = stackalloc byte[16];
+            return PackUnpack.UnpackVUInt(_keyValueTr!.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(1));
         }
 
         internal static byte[] BuildKeyFromOidWithAllObjectsPrefix(ulong oid)

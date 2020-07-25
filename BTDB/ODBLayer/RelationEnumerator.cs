@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 // ReSharper disable MemberCanBeProtected.Global
@@ -79,16 +80,17 @@ namespace BTDB.ODBLayer
             get
             {
                 SeekCurrent();
-                var keyBytes = _keyValueTr.GetKey();
+                Span<byte> keyBuffer = stackalloc byte[128];
+                var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
                 var valueBytes = _keyValueTr.GetValue();
                 return CreateInstance(keyBytes, valueBytes);
             }
         }
 
-        public ReadOnlySpan<byte> GetKeyBytes()
+        public byte[] GetKeyBytes()
         {
             SeekCurrent();
-            return _keyValueTr.GetKey();
+            return _keyValueTr.GetKeyToArray();
         }
 
         void SeekCurrent()
@@ -361,7 +363,8 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKey();
+                Span<byte> buffer = stackalloc byte[128];
+                var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length);
                 return CreateInstance(keyBytes);
             }
         }
@@ -373,7 +376,7 @@ namespace BTDB.ODBLayer
 
         public byte[] GetKeyBytes()
         {
-            return _keyValueTr.GetKey().ToArray();
+            return _keyValueTr.GetKeyToArray();
         }
 
         void Seek()
@@ -642,9 +645,8 @@ namespace BTDB.ODBLayer
             }
 
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            //read key
-            var keyData = _keyValueTr.GetKey().Slice(KeyBytes.Length);
-            var reader = new SpanReader(keyData);
+            Span<byte> keyBuffer = stackalloc byte[256];
+            var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(KeyBytes.Length));
             key = KeyReader!(ref reader, null);
             return true;
         }

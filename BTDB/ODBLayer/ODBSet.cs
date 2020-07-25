@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
@@ -186,9 +187,10 @@ namespace BTDB.ODBLayer
             return writer.GetSpan();
         }
 
-        TKey ByteArrayToKey(ReadOnlySpan<byte> data)
+        TKey CurrentToKey()
         {
-            var reader = new SpanReader(data.Slice(_prefix.Length));
+            Span<byte> buffer = stackalloc byte[128];
+            var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length));
             IReaderCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
             return _keyReader(ref reader, ctx);
@@ -266,8 +268,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKey();
-                var key = ByteArrayToKey(keyBytes);
+                var key = CurrentToKey();
                 yield return key;
                 pos++;
             }
@@ -301,8 +302,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKey();
-                var key = ByteArrayToKey(keyBytes);
+                var key = CurrentToKey();
                 yield return key;
                 pos--;
             }
@@ -354,8 +354,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKey();
-                var key = ByteArrayToKey(keyBytes);
+                var key = CurrentToKey();
                 yield return key;
                 pos++;
             }
@@ -407,8 +406,7 @@ namespace BTDB.ODBLayer
                 }
 
                 prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                var keyBytes = _keyValueTr.GetKey();
-                var key = ByteArrayToKey(keyBytes);
+                var key = CurrentToKey();
                 yield return key;
                 pos--;
             }
@@ -680,7 +678,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                Current = _owner.ByteArrayToKey(_keyValueTr.GetKey());
+                Current = _owner.CurrentToKey();
                 return true;
             }
 

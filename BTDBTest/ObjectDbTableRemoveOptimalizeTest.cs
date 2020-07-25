@@ -348,6 +348,11 @@ namespace BTDBTest
                 return _keyValueDBTransaction.GetKey();
             }
 
+            public byte[] GetKeyToArray()
+            {
+                return _keyValueDBTransaction.GetKeyToArray();
+            }
+
             public ReadOnlySpan<byte> GetKey(ref byte buffer, int bufferLength)
             {
                 return _keyValueDBTransaction.GetKey(ref buffer, bufferLength);

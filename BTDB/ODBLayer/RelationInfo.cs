@@ -580,11 +580,11 @@ namespace BTDB.ODBLayer
             var relationVersions = new Dictionary<uint, RelationVersionInfo>();
             if (tr.FindFirstKey(prefix))
             {
+                Span<byte> keyBuffer = stackalloc byte[16];
                 do
                 {
-                    var keyReader = new SpanReader(tr.GetKey().Slice(prefix.Length));
                     var valueReader = new SpanReader(tr.GetValue());
-                    LastPersistedVersion = keyReader.ReadVUInt32();
+                    LastPersistedVersion = (uint)PackUnpack.UnpackVUInt(tr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(prefix.Length));
                     var relationVersionInfo = RelationVersionInfo.LoadUnresolved(ref valueReader, _name);
                     relationVersions[LastPersistedVersion] = relationVersionInfo;
                 } while (tr.FindNextKey(prefix));

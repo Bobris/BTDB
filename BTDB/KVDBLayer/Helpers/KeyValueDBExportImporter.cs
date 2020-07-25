@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
@@ -29,9 +30,10 @@ namespace BTDB.KVDBLayer
             PackUnpack.PackInt64LE(tempbuf, 8, keyValueCount);
             stream.Write(tempbuf, 0, 16);
             transaction.FindFirstKey(new ReadOnlySpan<byte>());
+            Span<byte> keyBuffer = stackalloc byte[256];
             for (long kv = 0; kv < keyValueCount; kv++)
             {
-                var key = transaction.GetKey();
+                var key = transaction.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
                 PackUnpack.PackInt32LE(tempbuf, 0, key.Length);
                 stream.Write(tempbuf, 0, 4);
                 stream.Write(key);
