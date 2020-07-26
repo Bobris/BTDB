@@ -1280,18 +1280,9 @@ namespace BTDB.KVDBLayer
             FileCollection.SetInfo(_fileIdWithTransactionLog, transactionLog);
         }
 
-        public void WriteCreateOrUpdateCommand(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value,
-            Span<byte> trueValue)
+        public void WriteCreateOrUpdateCommand(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value,
+            in Span<byte> trueValue)
         {
-            var command = KVCommandType.CreateOrUpdate;
-
-            var valueSize = value.Length;
-            if (_compression.CompressValue(ref value))
-            {
-                command |= KVCommandType.SecondParamCompressed;
-                valueSize = -value.Length;
-            }
-
             var trlPos = _writerWithTransactionLog!.GetCurrentPositionWithoutWriter();
             if (trlPos > 256 && trlPos + key.Length + 16 + value.Length > MaxTrLogFileSize)
             {
@@ -1299,13 +1290,13 @@ namespace BTDB.KVDBLayer
             }
 
             var writer = new SpanWriter(_writerWithTransactionLog!);
-            writer.WriteUInt8((byte)command);
+            writer.WriteUInt8((byte)KVCommandType.CreateOrUpdate);
             writer.WriteVInt32(key.Length);
             writer.WriteVInt32(value.Length);
             writer.WriteBlock(key);
-            if (valueSize != 0)
+            if (value.Length != 0)
             {
-                if (valueSize > 0 && valueSize <= MaxValueSizeInlineInMemory)
+                if (value.Length <= MaxValueSizeInlineInMemory)
                 {
                     trueValue[4] = (byte)value.Length;
                     Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(trueValue), 0);
@@ -1313,10 +1304,10 @@ namespace BTDB.KVDBLayer
                 }
                 else
                 {
-                    MemoryMarshal.Write(trueValue, ref _fileIdWithTransactionLog);
+                    Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(trueValue), _fileIdWithTransactionLog);
                     var valueOfs = (uint)writer.GetCurrentPosition();
-                    MemoryMarshal.Write(trueValue.Slice(4), ref valueOfs);
-                    MemoryMarshal.Write(trueValue.Slice(8), ref valueSize);
+                    Unsafe.WriteUnaligned(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(trueValue), (IntPtr)4), valueOfs);
+                    Unsafe.WriteUnaligned(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(trueValue), (IntPtr)8), value.Length);
                 }
 
                 writer.WriteBlock(value);
