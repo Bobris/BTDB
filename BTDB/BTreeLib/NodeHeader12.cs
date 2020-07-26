@@ -33,13 +33,13 @@ namespace BTDB.BTreeLib
         public bool IsNodeLeaf
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_nodeType & NodeType12.IsLeaf) == NodeType12.IsLeaf;
+            get => (_nodeType & NodeType12.IsLeaf) != 0;
         }
 
         public bool HasLongKeys
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_nodeType & NodeType12.HasLongKeys) == NodeType12.HasLongKeys;
+            get => (_nodeType & NodeType12.HasLongKeys) != 0;
         }
 
         public uint Size
