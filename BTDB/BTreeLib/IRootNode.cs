@@ -14,6 +14,8 @@ namespace BTDB.BTreeLib
         bool Dereference();
         bool ShouldBeDisposed { get; }
 
+        IRootNode? Next { get; set; }
+
         ulong CommitUlong { get; set; }
         long TransactionId { get; set; }
         uint TrLogFileId { get; set; }

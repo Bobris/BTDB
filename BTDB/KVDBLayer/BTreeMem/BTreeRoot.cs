@@ -149,6 +149,11 @@ namespace BTDB.KVDBLayer.BTreeMem
             throw new ArgumentException();
         }
 
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
+        {
+            throw new ArgumentException();
+        }
+
         public long TransactionId => _transactionId;
         public ulong CommitUlong { get; set; }
 
@@ -173,8 +178,16 @@ namespace BTDB.KVDBLayer.BTreeMem
                 _keyValueCount = 0;
                 return;
             }
-            _keyValueCount -= lastKeyIndex - firstKeyIndex + 1;
-            _rootNode = _rootNode!.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
+            if (firstKeyIndex == lastKeyIndex)
+            {
+                _keyValueCount--;
+                _rootNode = _rootNode!.EraseOne(TransactionId, firstKeyIndex);
+            }
+            else
+            {
+                _keyValueCount -= lastKeyIndex - firstKeyIndex + 1;
+                _rootNode = _rootNode!.EraseRange(TransactionId, firstKeyIndex, lastKeyIndex);
+            }
         }
 
         public bool FindNextKey(List<NodeIdxPair> stack)

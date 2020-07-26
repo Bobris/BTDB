@@ -16,5 +16,6 @@ namespace BTDB.KVDBLayer.BTreeMem
         void FillStackByRightMost(List<NodeIdxPair> stack, int i);
         int GetLastChildrenIdx();
         IBTreeNode EraseRange(long transactionId, long firstKeyIndex, long lastKeyIndex);
+        IBTreeNode EraseOne(long transactionId, long keyIndex);
     }
 }

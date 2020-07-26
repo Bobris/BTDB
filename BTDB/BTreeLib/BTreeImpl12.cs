@@ -219,14 +219,14 @@ namespace BTDB.BTreeLib
 
         internal void BuildTree(RootNode12 rootNode, long keyCount, ref SpanReader reader, BuildTreeCallback generator)
         {
-            Dereference(rootNode._root);
+            Dereference(rootNode.Root);
             if (keyCount == 0)
             {
-                rootNode._root = IntPtr.Zero;
+                rootNode.Root = IntPtr.Zero;
                 return;
             }
 
-            rootNode._root = BuildTreeNode(keyCount, ref reader, generator);
+            rootNode.Root = BuildTreeNode(keyCount, ref reader, generator);
         }
 
         internal IntPtr ValueReplacer(ref ValueReplacerCtx ctx, in Span<CursorItem> stack, int stackIdx)
@@ -477,12 +477,12 @@ namespace BTDB.BTreeLib
         finish:
             left.Clear();
             right.Clear();
-            while (rootNode._root != IntPtr.Zero && NodeUtils12.Ptr2NodeHeader(rootNode._root).IsDegenerated)
+            while (rootNode.Root != IntPtr.Zero && NodeUtils12.Ptr2NodeHeader(rootNode.Root).IsDegenerated)
             {
-                var newRoot = NodeUtils12.GetBranchValuePtr(rootNode._root, 0);
+                var newRoot = NodeUtils12.GetBranchValuePtr(rootNode.Root, 0);
                 NodeUtils12.Reference(newRoot);
-                Dereference(rootNode._root);
-                rootNode._root = newRoot;
+                Dereference(rootNode.Root);
+                rootNode.Root = newRoot;
             }
 
             return count;
@@ -911,8 +911,8 @@ namespace BTDB.BTreeLib
             stackItem._node = newNode;
             if (i == 0)
             {
-                Dereference(rootNode._root);
-                rootNode._root = newNode;
+                Dereference(rootNode.Root);
+                rootNode.Root = newNode;
             }
             else
             {
@@ -930,7 +930,7 @@ namespace BTDB.BTreeLib
         internal unsafe bool FindExact(RootNode12 rootNode, ref StructList<CursorItem> stack, ReadOnlySpan<byte> key)
         {
             stack.Clear();
-            var top = rootNode._root;
+            var top = rootNode.Root;
             if (top == IntPtr.Zero)
             {
                 return false;
@@ -1179,7 +1179,7 @@ namespace BTDB.BTreeLib
             ReadOnlySpan<byte> key)
         {
             stack.Clear();
-            var top = rootNode._root;
+            var top = rootNode.Root;
             if (top == IntPtr.Zero)
             {
                 return FindResult.NotFound;
@@ -1258,7 +1258,7 @@ namespace BTDB.BTreeLib
             ReadOnlySpan<byte> keyPrefix)
         {
             stack.Clear();
-            var top = rootNode._root;
+            var top = rootNode.Root;
             if (top == IntPtr.Zero)
             {
                 return false;
@@ -1340,7 +1340,7 @@ namespace BTDB.BTreeLib
 
         internal static unsafe long FindLastWithPrefix(RootNode12 rootNode, in ReadOnlySpan<byte> keyPrefix)
         {
-            var top = rootNode._root;
+            var top = rootNode.Root;
             if (top == IntPtr.Zero)
             {
                 return -1;
@@ -1418,7 +1418,7 @@ namespace BTDB.BTreeLib
         {
             CheckContent12(content);
             stack.Clear();
-            var top = rootNode._root;
+            var top = rootNode.Root;
             if (top == IntPtr.Zero)
             {
                 KeyPusher keyPusher;
@@ -1435,7 +1435,7 @@ namespace BTDB.BTreeLib
                 keyPusher.Finish();
                 content.CopyTo(NodeUtils12.GetLeafValues(top));
                 stack.AddRef().Set(top, 0);
-                rootNode._root = top;
+                rootNode.Root = top;
                 return true;
             }
 

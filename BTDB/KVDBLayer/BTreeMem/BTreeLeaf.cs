@@ -239,6 +239,19 @@ namespace BTDB.KVDBLayer.BTreeMem
             return new BTreeLeaf(transactionId, newKeyValues);
         }
 
+        public IBTreeNode EraseOne(long transactionId, long keyIndex)
+        {
+            var newKeyValues = new BTreeLeafMember[_keyValues.Length - 1];
+            Array.Copy(_keyValues, 0, newKeyValues, 0, (int)keyIndex);
+            Array.Copy(_keyValues, (int)keyIndex + 1, newKeyValues, (int)keyIndex, newKeyValues.Length - (int)keyIndex);
+            if (TransactionId == transactionId)
+            {
+                _keyValues = newKeyValues;
+                return this;
+            }
+            return new BTreeLeaf(transactionId, newKeyValues);
+        }
+
         public ReadOnlySpan<byte> GetKey(int idx)
         {
             return _keyValues[idx].Key;
