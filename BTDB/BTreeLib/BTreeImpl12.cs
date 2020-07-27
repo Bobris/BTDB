@@ -294,7 +294,7 @@ namespace BTDB.BTreeLib
                 var cloned = false;
                 var stackIdx1 = stackIdx + 1;
                 ref var stackItem1 = ref stack[stackIdx1];
-                for (int i = ctx._afterFirst ? 0 : stackItem._posInNode; i < children.Length; i++)
+                for (var i = ctx._afterFirst ? 0 : stackItem._posInNode; i < children.Length; i++)
                 {
                     stackItem1._node = children[i];
                     var newChildPtr = ValueReplacer(ref ctx, stack, stackIdx1);
@@ -922,7 +922,7 @@ namespace BTDB.BTreeLib
 
         void WritePtrInNode(in CursorItem stackItem, IntPtr newNode)
         {
-            ref var ptr = ref NodeUtils12.GetBranchValuePtrs(stackItem._node)[stackItem._posInNode];
+            ref var ptr = ref NodeUtils12.GetBranchValuePtr(stackItem._node, stackItem._posInNode);
             Dereference(ptr);
             ptr = newNode;
         }
@@ -2009,8 +2009,8 @@ namespace BTDB.BTreeLib
                     keyPusher.AddKey(keyPrefix, keySuffix);
                     keyPusher.Finish();
                     var branchValues = NodeUtils12.GetBranchValuePtrs(newRootNode);
-                    branchValues[0] = _newChildNode;
                     branchValues[1] = _newChildNode2;
+                    branchValues[0] = _newChildNode;
                     var leftC = NodeUtils12.Ptr2NodeHeader(_newChildNode).RecursiveChildCount;
                     var rightC = NodeUtils12.Ptr2NodeHeader(_newChildNode2).RecursiveChildCount;
                     NodeUtils12.Ptr2NodeHeader(newRootNode)._recursiveChildCount = leftC + rightC;
@@ -2067,8 +2067,8 @@ namespace BTDB.BTreeLib
                     var oldValues = NodeUtils12.GetBranchValuePtrs(top);
                     NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx), newValues);
                     newValues = newValues.Slice(idx);
-                    newValues[0] = _newChildNode;
                     newValues[1] = _newChildNode2;
+                    newValues[0] = _newChildNode;
                     newValues = newValues.Slice(2);
                     NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(idx + 1), newValues);
                     _owner.MakeUnique(_rootNode, stack.AsSpan().Slice(0, stackIdx));
@@ -2124,8 +2124,8 @@ namespace BTDB.BTreeLib
                         var oldValues = NodeUtils12.GetBranchValuePtrs(top);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx), newValues);
                         newValues = newValues.Slice(idx);
-                        newValues[0] = _newChildNode;
                         newValues[1] = _newChildNode2;
+                        newValues[0] = _newChildNode;
                         newValues = newValues.Slice(2);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(idx + 1, splitPos - idx - 1),
                             newValues);
@@ -2239,8 +2239,8 @@ namespace BTDB.BTreeLib
                         newValues = NodeUtils12.GetBranchValuePtrs(newNode2);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(0, idx - splitPos), newValues);
                         newValues = newValues.Slice(idx - splitPos);
-                        newValues[0] = _newChildNode;
                         newValues[1] = _newChildNode2;
+                        newValues[0] = _newChildNode;
                         newValues = newValues.Slice(2);
                         NodeUtils12.CopyAndReferenceBranchValues(oldValues.Slice(idx - splitPos + 1), newValues);
                         stack[(uint)stackIdx].Set(newNode, (byte)(idx - splitPos + (rightInsert ? 1 : 0)));

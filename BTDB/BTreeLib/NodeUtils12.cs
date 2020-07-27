@@ -118,14 +118,27 @@ namespace BTDB.BTreeLib
             return new Span<IntPtr>(ptr.ToPointer(), header._childCount);
         }
 
-        internal static IntPtr GetBranchValuePtr(IntPtr nodePtr, int index)
+        internal static unsafe ref IntPtr GetBranchValuePtr(IntPtr nodePtr, int index)
         {
-            return GetBranchValuePtrs(nodePtr)[index];
-        }
-
-        internal static void SetBranchValuePtr(IntPtr nodePtr, int index, IntPtr childNodePtr)
-        {
-            GetBranchValuePtrs(nodePtr)[index] = childNodePtr;
+            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            Debug.Assert(!header.IsNodeLeaf);
+            Debug.Assert((uint)index < (uint)header._childCount);
+            var ptr = nodePtr + 16;
+            ptr += header._keyPrefixLength;
+            if (header.HasLongKeys)
+            {
+                ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
+                ptr += 8 * (header._childCount - 1);
+            }
+            else
+            {
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                ptr += 2 * (header._childCount - 1);
+                ptr += 2 + *(ushort*)ptr;
+                ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
+            }
+            ptr += index * 8;
+            return ref Unsafe.AsRef<IntPtr>(ptr.ToPointer());
         }
 
         internal static unsafe int NodeSize(IntPtr nodePtr)
