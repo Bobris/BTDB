@@ -31,44 +31,71 @@ namespace BTDB.BTreeLib
 
         internal static unsafe Span<byte> GetPrefixSpan(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             var size = header._keyPrefixLength;
             if (size == 0) return new Span<byte>();
-            return new Span<byte>((nodePtr + (int)header.Size).ToPointer(), size);
+            return new Span<byte>((nodePtr + NodeHeader12.LeafHeaderSize).ToPointer(), size);
         }
 
         internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, out Span<byte> keys)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
-            var ptr = nodePtr + (int)header.Size;
-            ptr += header._keyPrefixLength;
-            Debug.Assert(!header.HasLongKeys);
-            ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-            var offsetsPtr = ptr;
-            var offsetsCount = header._childCount + (header.IsNodeLeaf ? 1 : 0);
-            ptr += 2 * offsetsCount;
-            var keysLen = *(ushort*)(ptr - 2);
-            keys = new Span<byte>(ptr.ToPointer(), keysLen);
-            return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
+            if (header.IsNodeLeaf)
+            {
+                var ptr = nodePtr + NodeHeader12.LeafHeaderSize;
+                ptr += header._keyPrefixLength;
+                Debug.Assert(!header.HasLongKeys);
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount + 1;
+                ptr += 2 * offsetsCount;
+                var keysLen = *(ushort*)(ptr - 2);
+                keys = new Span<byte>(ptr.ToPointer(), keysLen);
+                return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            }
+            else
+            {
+                var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
+                Debug.Assert(!header.HasLongKeys);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount;
+                ptr += 2 * offsetsCount;
+                var keysLen = *(ushort*)(ptr - 2);
+                keys = new Span<byte>(ptr.ToPointer(), keysLen);
+                return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            }
         }
 
         internal static unsafe Span<ushort> GetKeySpans(IntPtr nodePtr, uint totalSuffixLength, out Span<byte> keySuffixes)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
-            var ptr = nodePtr + (int)header.Size;
-            ptr += header._keyPrefixLength;
-            Debug.Assert(!header.HasLongKeys);
-            ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-            var offsetsPtr = ptr;
-            var offsetsCount = header._childCount + (header.IsNodeLeaf ? 1 : 0);
-            ptr += 2 * offsetsCount;
-            keySuffixes = new Span<byte>(ptr.ToPointer(), (int)totalSuffixLength);
-            return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
+            if (header.IsNodeLeaf)
+            {
+                var ptr = nodePtr + NodeHeader12.LeafHeaderSize;
+                ptr += header._keyPrefixLength;
+                Debug.Assert(!header.HasLongKeys);
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount + 1;
+                ptr += 2 * offsetsCount;
+                keySuffixes = new Span<byte>(ptr.ToPointer(), (int)totalSuffixLength);
+                return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            }
+            else
+            {
+                var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
+                Debug.Assert(!header.HasLongKeys);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount;
+                ptr += 2 * offsetsCount;
+                keySuffixes = new Span<byte>(ptr.ToPointer(), (int)totalSuffixLength);
+                return new Span<ushort>(offsetsPtr.ToPointer(), offsetsCount);
+            }
         }
 
         internal static unsafe Span<IntPtr> GetLongKeyPtrs(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             Debug.Assert(header.HasLongKeys);
             var ptr = nodePtr + (int)header.Size;
             ptr += header._keyPrefixLength;
@@ -78,9 +105,9 @@ namespace BTDB.BTreeLib
 
         internal static unsafe Span<byte> GetLeafValues(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             Debug.Assert(header.IsNodeLeaf);
-            var ptr = nodePtr + 8;
+            var ptr = nodePtr + NodeHeader12.LeafHeaderSize;
             ptr += header._keyPrefixLength;
             if (header.HasLongKeys)
             {
@@ -99,18 +126,15 @@ namespace BTDB.BTreeLib
 
         internal static unsafe Span<IntPtr> GetBranchValuePtrs(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             Debug.Assert(!header.IsNodeLeaf);
-            var ptr = nodePtr + 16;
-            ptr += header._keyPrefixLength;
+            var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
             if (header.HasLongKeys)
             {
-                ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
                 ptr += 8 * (header._childCount - 1);
             }
             else
             {
-                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 ptr += 2 * (header._childCount - 1);
                 ptr += 2 + *(ushort*)ptr;
                 ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
@@ -120,19 +144,16 @@ namespace BTDB.BTreeLib
 
         internal static unsafe ref IntPtr GetBranchValuePtr(IntPtr nodePtr, int index)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             Debug.Assert(!header.IsNodeLeaf);
-            Debug.Assert((uint)index < (uint)header._childCount);
-            var ptr = nodePtr + 16;
-            ptr += header._keyPrefixLength;
+            Debug.Assert((uint)index < header._childCount);
+            var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
             if (header.HasLongKeys)
             {
-                ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
                 ptr += 8 * (header._childCount - 1);
             }
             else
             {
-                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 ptr += 2 * (header._childCount - 1);
                 ptr += 2 + *(ushort*)ptr;
                 ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
@@ -143,40 +164,53 @@ namespace BTDB.BTreeLib
 
         internal static unsafe int NodeSize(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
-            var ptr = nodePtr + (int)header.Size;
-            ptr += header._keyPrefixLength;
-            if (header.HasLongKeys)
-            {
-                ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
-                ptr += 8 * header._childCount;
-            }
-            else
-            {
-                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-                ptr += 2 * header.KeyCount;
-                ptr += 2 + *(ushort*)ptr;
-                if (header.IsNodeLeaf)
-                    ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
-                else
-                    ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
-            }
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             if (header.IsNodeLeaf)
+            {
+                var ptr = nodePtr + NodeHeader12.LeafHeaderSize;
+                ptr += header._keyPrefixLength;
+                if (header.HasLongKeys)
+                {
+                    ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
+                    ptr += 8 * header._childCount;
+                }
+                else
+                {
+                    ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                    ptr += 2 * header.KeyCount;
+                    ptr += 2 + *(ushort*)ptr;
+                    ptr = TreeNodeUtils.AlignPtrUpInt32(ptr);
+                }
                 return (int)(ptr.ToInt64() - nodePtr.ToInt64() + 12 * header._childCount);
+            }
             else
+            {
+                var ptr = nodePtr + NodeHeader12.BranchHeaderSize;
+                if (header.HasLongKeys)
+                {
+                    ptr += 8 * header._childCount;
+                }
+                else
+                {
+                    ptr += 2 * header.KeyCount;
+                    ptr += 2 + *(ushort*)ptr;
+                    ptr = TreeNodeUtils.AlignPtrUpInt64(ptr);
+                }
                 return (int)(ptr.ToInt64() - nodePtr.ToInt64() + 8 * header._childCount);
+            }
+
         }
 
         internal static unsafe long GetTotalSuffixLen(IntPtr nodePtr)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
             if (header.HasLongKeys)
             {
                 var keys = GetLongKeyPtrs(nodePtr);
-                for (int i = 0; i < keys.Length; i++)
+                foreach (var key in keys)
                 {
-                    len += TreeNodeUtils.ReadInt32Aligned(keys[i]);
+                    len += TreeNodeUtils.ReadInt32Aligned(key);
                 }
             }
             else
@@ -184,7 +218,6 @@ namespace BTDB.BTreeLib
                 var ptr = nodePtr + (int)header.Size;
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
-                var offsetsPtr = ptr;
                 var offsetsCount = header._childCount + (header.IsNodeLeaf ? 1 : 0);
                 ptr += 2 * offsetsCount;
                 len = *(ushort*)(ptr - 2);
@@ -194,12 +227,12 @@ namespace BTDB.BTreeLib
 
         internal static unsafe long GetTotalSuffixLen(IntPtr nodePtr, int start, int end)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
             if (header.HasLongKeys)
             {
                 var keys = GetLongKeyPtrs(nodePtr);
-                for (int i = start; i < end; i++)
+                for (var i = start; i < end; i++)
                 {
                     len += TreeNodeUtils.ReadInt32Aligned(keys[i]);
                 }
@@ -210,19 +243,19 @@ namespace BTDB.BTreeLib
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 var offsetsPtr = (ushort*)ptr;
-                return offsetsPtr[end] - offsetsPtr[start];
+                return offsetsPtr![end] - offsetsPtr[start];
             }
             return len;
         }
 
         internal static unsafe long GetTotalSuffixLenExcept(IntPtr nodePtr, int start, int end)
         {
-            ref NodeHeader12 header = ref Ptr2NodeHeader(nodePtr);
+            ref var header = ref Ptr2NodeHeader(nodePtr);
             long len = 0;
             if (header.HasLongKeys)
             {
                 var keys = GetLongKeyPtrs(nodePtr);
-                for (int i = 0; i < keys.Length; i++)
+                for (var i = 0; i < keys.Length; i++)
                 {
                     if (i == start)
                     {
@@ -238,18 +271,18 @@ namespace BTDB.BTreeLib
                 ptr += header._keyPrefixLength;
                 ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
                 var offsetsPtr = (ushort*)ptr;
-                return offsetsPtr[header.KeyCount] - (offsetsPtr[end + 1] - offsetsPtr[start]);
+                return offsetsPtr![header.KeyCount] - (offsetsPtr[end + 1] - offsetsPtr[start]);
             }
             return len;
         }
 
-        internal unsafe static Span<byte> LongKeyPtrToSpan(IntPtr ptr)
+        internal static unsafe Span<byte> LongKeyPtrToSpan(IntPtr ptr)
         {
             var size = TreeNodeUtils.ReadInt32Aligned(ptr);
             return new Span<byte>((ptr + 4).ToPointer(), size);
         }
 
-        internal static Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySuffix)
+        internal static unsafe Span<byte> GetLeftestKey(IntPtr nodePtr, out Span<byte> keySuffix)
         {
             ref var header = ref Ptr2NodeHeader(nodePtr);
             while (!header.IsNodeLeaf)
@@ -260,22 +293,28 @@ namespace BTDB.BTreeLib
             if (header.HasLongKeys)
             {
                 keySuffix = LongKeyPtrToSpan(GetLongKeyPtrs(nodePtr)[0]);
+                return GetPrefixSpan(nodePtr);
             }
             else
             {
-                var keyOfs = GetKeySpans(nodePtr, out var keySuffixes);
-                keySuffix = keySuffixes.Slice(0, keyOfs[1]);
+                var ptr = nodePtr + NodeHeader12.LeafHeaderSize;
+                ptr += header._keyPrefixLength;
+                ptr = TreeNodeUtils.AlignPtrUpInt16(ptr);
+                var offsetsPtr = ptr;
+                var offsetsCount = header._childCount + 1;
+                ptr += 2 * offsetsCount;
+                keySuffix = new Span<byte>(ptr.ToPointer(), *(ushort *)(offsetsPtr + 2).ToPointer());
+                return new Span<byte>((nodePtr + NodeHeader12.LeafHeaderSize).ToPointer(), header._keyPrefixLength);
             }
-            return GetPrefixSpan(nodePtr);
         }
 
         internal static long RecalcRecursiveChildrenCount(IntPtr nodePtr)
         {
             var children = GetBranchValuePtrs(nodePtr);
             var res = 0UL;
-            for (var i = 0; i < children.Length; i++)
+            foreach (var child in children)
             {
-                res += Ptr2NodeHeader(children[i]).RecursiveChildCount;
+                res += Ptr2NodeHeader(child).RecursiveChildCount;
             }
             Ptr2NodeHeader(nodePtr)._recursiveChildCount = res;
             return (long)res;
