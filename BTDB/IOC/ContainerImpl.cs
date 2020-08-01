@@ -61,6 +61,29 @@ namespace BTDB.IOC
             return worker();
         }
 
+        public object? ResolveOptional(Type type)
+        {
+            return ResolveOptionalKeyed(null, type);
+        }
+
+        public object? ResolveOptionalNamed(string name, Type type)
+        {
+            return ResolveOptionalKeyed(name, type);
+        }
+
+        public object? ResolveOptionalKeyed(object key, Type type)
+        {
+            if (_workers.TryGetValue(new KeyAndType(key, type), out var worker))
+            {
+                return worker?.Invoke();
+            }
+            lock (_buildingLock)
+            {
+                worker = TryBuild(key, type);
+            }
+            return worker?.Invoke();
+        }
+
         [DoesNotReturn]
         static void ThrowNotResolvable(object? key, Type type)
         {

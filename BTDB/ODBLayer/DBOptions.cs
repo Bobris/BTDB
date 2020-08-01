@@ -1,4 +1,5 @@
 ﻿using BTDB.Encrypted;
+using BTDB.IOC;
 
 namespace BTDB.ODBLayer
 {
@@ -33,10 +34,17 @@ namespace BTDB.ODBLayer
             return this;
         }
 
-        public bool AutoRegisterType { get; private set; }
-        public IType2NameRegistry CustomType2NameRegistry { get; private set; }
-        public bool SelfHealing { get; private set; }
+        public DBOptions WithContainer(IContainer container)
+        {
+            Container = container;
+            return this;
+        }
 
-        public ISymmetricCipher SymmetricCipher { get; private set; }
+        public bool AutoRegisterType { get; private set; }
+        public IType2NameRegistry? CustomType2NameRegistry { get; private set; }
+        public bool SelfHealing { get; private set; }
+        public IContainer? Container { get; private set; }
+
+        public ISymmetricCipher? SymmetricCipher { get; private set; }
     }
 }

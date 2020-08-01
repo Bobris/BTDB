@@ -70,8 +70,7 @@ namespace BTDB.ODBLayer
 
         public void Open(IKeyValueDB keyValueDB, bool dispose, DBOptions options)
         {
-            if (keyValueDB == null) throw new ArgumentNullException(nameof(keyValueDB));
-            _keyValueDB = keyValueDB;
+            _keyValueDB = keyValueDB ?? throw new ArgumentNullException(nameof(keyValueDB));
             _dispose = dispose;
             _type2Name = options.CustomType2NameRegistry ?? new Type2NameRegistry();
             _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
@@ -84,27 +83,25 @@ namespace BTDB.ODBLayer
             _relationsInfoResolver = new RelationInfoResolver(this);
             _relationsInfo = new RelationsInfo(_relationsInfoResolver);
 
-            using (var tr = _keyValueDB.StartTransaction())
+            using var tr = _keyValueDB.StartTransaction();
+            _lastObjId = (long)tr.GetUlong(0);
+            _lastDictId = tr.GetUlong(1);
+            if (_lastObjId == 0)
             {
-                _lastObjId = (long)tr.GetUlong(0);
-                _lastDictId = tr.GetUlong(1);
-                if (_lastObjId == 0)
+                tr.SetKeyPrefix(AllObjectsPrefix);
+                if (tr.FindLastKey())
                 {
-                    tr.SetKeyPrefix(AllObjectsPrefix);
-                    if (tr.FindLastKey())
-                    {
-                        _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
-                    }
+                    _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
                 }
-                _tablesInfo.LoadTables(LoadTablesEnum(tr));
-                _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
-                if (_lastDictId == 0)
+            }
+            _tablesInfo.LoadTables(LoadTablesEnum(tr));
+            _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
+            if (_lastDictId == 0)
+            {
+                tr.SetKeyPrefix(null!);
+                if (tr.FindExactKey(LastDictIdKey))
                 {
-                    tr.SetKeyPrefix(null);
-                    if (tr.FindExactKey(LastDictIdKey))
-                    {
-                        _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
-                    }
+                    _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
                 }
             }
         }

@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.Collections;
@@ -74,14 +75,31 @@ namespace BTDB.ODBLayer
             Func<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreatePkLoader(Type instanceType,
                 ReadOnlySpan<TableFieldInfo> fields, string loaderName)
             {
+                var thatType = typeof(Func<>).MakeGenericType(instanceType);
                 var method =
-                    ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>>(
-                        loaderName);
+                    ILBuilder.Instance.NewMethod(
+                        loaderName, typeof(Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>), typeof(Func<object>));
                 var ilGenerator = method.Generator;
+                var container = _owner._relationInfoResolver.Container;
+                object that = null;
+                if (container != null)
+                {
+                    that = container.ResolveOptional(thatType);
+                }
                 ilGenerator.DeclareLocal(instanceType);
-                ilGenerator
-                    .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
-                    .Stloc(0);
+                if (that == null)
+                {
+                    ilGenerator
+                        .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
+                        .Stloc(0);
+                }
+                else
+                {
+                    ilGenerator
+                        .Ldarg(0)
+                        .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!)
+                        .Stloc(0);
+                }
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
                 var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -125,8 +143,8 @@ namespace BTDB.ODBLayer
                 {
                     ilGenerator.DeclareLocal(typeof(IReaderCtx));
                     ilGenerator
-                        .Ldarg(0)
                         .Ldarg(1)
+                        .Ldarg(2)
                         .Newobj(() => new DBReaderCtx(null, null))
                         .Stloc(1);
                 }
@@ -138,7 +156,7 @@ namespace BTDB.ODBLayer
                     if (loadInstruction.Item1.NeedsCtx())
                         readerOrCtx = il => il.Ldloc(1);
                     else
-                        readerOrCtx = il => il.Ldarg(1);
+                        readerOrCtx = il => il.Ldarg(2);
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
@@ -152,7 +170,7 @@ namespace BTDB.ODBLayer
                 }
 
                 ilGenerator.Ldloc(0).Ret();
-                return method.Create();
+                return (Func<IInternalObjectDBTransaction, AbstractBufferedReader, object>)method.Create(that);
             }
 
             Action<IInternalObjectDBTransaction, AbstractBufferedReader, object> CreateLoader(Type instanceType,

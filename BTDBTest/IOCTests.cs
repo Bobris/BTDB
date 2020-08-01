@@ -1113,5 +1113,35 @@ namespace BTDBTest
             Assert.NotNull(container.Resolve<IAsyncDisposable>());
         }
 
+        [Fact]
+        public void ResolveOptionalWorks()
+        {
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance(new ClassWithDispose()).AsImplementedInterfaces();
+            var container = containerBuilder.Build();
+            Assert.NotNull(container.ResolveOptional<ILogger>());
+            Assert.Null(container.ResolveOptional<IDatabase>());
+            Assert.Null(container.ResolveOptional<Func<IDatabase>>());
+        }
+
+        [Fact]
+        public void ResolveOptionalKeyedWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().Keyed<ILogger>(true);
+            var container = builder.Build();
+            Assert.NotNull(container.ResolveOptionalKeyed<ILogger>(true));
+            Assert.Null(container.ResolveOptionalKeyed<ILogger>(false));
+        }
+
+        [Fact]
+        public void ResolveOptionalNamedWorks()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().Named<ILogger>("A");
+            var container = builder.Build();
+            Assert.NotNull(container.ResolveOptionalNamed<ILogger>("A"));
+            Assert.Null(container.ResolveOptionalNamed<ILogger>("B"));
+        }
     }
 }
