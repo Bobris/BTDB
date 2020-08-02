@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.1.0
+
 ### Added
 
 IOC: `ResolveOptional` new method works like in Autofac.
