@@ -80,14 +80,30 @@ namespace BTDB.ODBLayer
 
             RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName)
             {
-                var method =
-                    ILBuilder.Instance.NewMethod<RelationLoaderFunc>(
-                        loaderName);
+                var thatType = typeof(Func<>).MakeGenericType(instanceType);
+                var method = ILBuilder.Instance.NewMethod(
+                        loaderName, typeof(RelationLoaderFunc), typeof(Func<object>));
                 var ilGenerator = method.Generator;
+                var container = _owner._relationInfoResolver.Container;
+                object that = null;
+                if (container != null)
+                {
+                    that = container.ResolveOptional(thatType);
+                }
                 ilGenerator.DeclareLocal(instanceType);
-                ilGenerator
-                    .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
-                    .Stloc(0);
+                if (that == null)
+                {
+                    ilGenerator
+                        .Newobj(instanceType.GetConstructor(Type.EmptyTypes)!)
+                        .Stloc(0);
+                }
+                else
+                {
+                    ilGenerator
+                        .Ldarg(0)
+                        .Callvirt(thatType.GetMethod(nameof(Func<object>.Invoke))!)
+                        .Stloc(0);
+                }
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
                 var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -131,7 +147,7 @@ namespace BTDB.ODBLayer
                 {
                     ilGenerator.DeclareLocal(typeof(IReaderCtx));
                     ilGenerator
-                        .Ldarg(0)
+                        .Ldarg(1)
                         .Newobj(() => new DBReaderCtx(null))
                         .Stloc(1);
                 }
@@ -143,17 +159,17 @@ namespace BTDB.ODBLayer
                     if (loadInstruction.Item2 != null)
                     {
                         ilGenerator.Ldloc(0);
-                        loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(1), readerOrCtx);
+                        loadInstruction.Item1.Load(ilGenerator, il => il.Ldarg(2), readerOrCtx);
                         loadInstruction.Item2(ilGenerator);
                         ilGenerator.Call(loadInstruction.Item3!);
                         continue;
                     }
 
-                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(1), readerOrCtx);
+                    loadInstruction.Item1.Skip(ilGenerator, il => il.Ldarg(2), readerOrCtx);
                 }
 
                 ilGenerator.Ldloc(0).Ret();
-                return method.Create();
+                return (RelationLoaderFunc)method.Create(that);
             }
 
             RelationLoader CreateLoader(Type instanceType,

@@ -65,7 +65,7 @@ namespace BTDB.ODBLayer
             RelationInfoResolver = relationInfoResolver;
             InterfaceType = interfaceType;
             ItemType = interfaceType.SpecializationOf(typeof(ICovariantRelation<>))!.GenericTypeArguments[0];
-            PristineItemInstance = Activator.CreateInstance(ItemType)!;
+            PristineItemInstance = CreatePristineInstance();
             _name = InterfaceType.ToSimpleName();
             ClientRelationVersionInfo = CreateVersionInfoByReflection();
             var methods = RelationInfo.GetMethods(InterfaceType).ToArray();
@@ -73,6 +73,13 @@ namespace BTDB.ODBLayer
             _relationDbManipulatorType = typeof(RelationDBManipulator<>).MakeGenericType(ItemType);
             LoadTypes.Add(ItemType);
             DelegateCreator = Build();
+        }
+
+        object CreatePristineInstance()
+        {
+            var container = RelationInfoResolver.Container;
+            var res = container?.ResolveOptional(ItemType);
+            return (res ?? Activator.CreateInstance(ItemType, nonPublic: true))!;
         }
 
         RelationVersionInfo CreateVersionInfoByReflection()

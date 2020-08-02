@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BTDB.FieldHandler;
+using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -8,18 +9,18 @@ namespace BTDB.ODBLayer
 {
     class RelationInfoResolver : IRelationInfoResolver
     {
-        readonly IFieldHandlerFactory _fieldHandlerFactory;
-        readonly ITypeConvertorGenerator _typeConvertorGenerator;
-
         public RelationInfoResolver(ObjectDB objectDB)
         {
-            _fieldHandlerFactory = objectDB.FieldHandlerFactory;
-            _typeConvertorGenerator = objectDB.TypeConvertorGenerator;
+            FieldHandlerFactory = objectDB.FieldHandlerFactory;
+            TypeConvertorGenerator = objectDB.TypeConvertorGenerator;
+            Container = objectDB.ActualOptions.Container;
         }
 
-        public IFieldHandlerFactory FieldHandlerFactory => _fieldHandlerFactory;
+        public IFieldHandlerFactory FieldHandlerFactory { get; }
 
-        public ITypeConvertorGenerator TypeConvertorGenerator => _typeConvertorGenerator;
+        public ITypeConvertorGenerator TypeConvertorGenerator { get; }
+
+        public IContainer Container { get; }
     }
 
     class RelationsInfo

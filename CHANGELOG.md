@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+## 24.1.0
+
+### Added
+
+IOC: `ResolveOptional` new method works like in Autofac.
+
+Relations: ObjectDB in DB options allow to specify IOC Container which is then used for creating items in relation with fallback to simple new if not registered.
+
 ## 24.0.2
 
 ### Fixed

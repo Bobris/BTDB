@@ -1,4 +1,5 @@
 using BTDB.FieldHandler;
+using BTDB.IOC;
 
 namespace BTDB.ODBLayer
 {
@@ -6,5 +7,6 @@ namespace BTDB.ODBLayer
     {
         IFieldHandlerFactory FieldHandlerFactory { get; }
         ITypeConvertorGenerator TypeConvertorGenerator { get; }
+        IContainer? Container { get; }
     }
 }
