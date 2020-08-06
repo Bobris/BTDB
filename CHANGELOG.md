@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.2.0
+
 ### Added
 
 ObjectDB: Classic DB objects and Singletons could be created by IOC.

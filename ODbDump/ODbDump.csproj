@@ -4,7 +4,7 @@
     <TargetFrameworks>netcoreapp3.1</TargetFrameworks>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <LangVersion>8</LangVersion>
-    <Version>24.1.0</Version>
+    <Version>24.2.0</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
     <Nullable>enable</Nullable>
   </PropertyGroup>
