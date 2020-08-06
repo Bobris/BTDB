@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
+using BTDB.IOC;
 using BTDB.KVDBLayer;
 using BTDB.StreamLayer;
 
@@ -280,6 +281,7 @@ namespace BTDB.ODBLayer
             public IFieldHandlerFactory FieldHandlerFactory => _objectDB.FieldHandlerFactory;
 
             public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
+            public IContainer? Container => _objectDB.ActualOptions.Container;
         }
 
         public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }

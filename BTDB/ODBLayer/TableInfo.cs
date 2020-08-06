@@ -7,6 +7,7 @@ using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using BTDB.Collections;
 using BTDB.KVDBLayer;
 using Extensions = BTDB.FieldHandler.Extensions;
@@ -101,14 +102,48 @@ namespace BTDB.ODBLayer
 
         void CreateCreator()
         {
-            var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
-                $"Creator_{Name}");
-            var ilGenerator = method.Generator;
-            ilGenerator
-                .Newobj(_clientType!.GetConstructor(Type.EmptyTypes)!)
-                .Ret();
-            var creator = method.Create();
-            Interlocked.CompareExchange(ref _creator, creator, null);
+            var factoryType = typeof(Func<>).MakeGenericType(_clientType!);
+            var container = _tableInfoResolver.Container;
+            object? factory = null;
+            if (container != null)
+            {
+                factory = container.ResolveOptional(factoryType);
+            }
+            if (factory != null)
+            {
+                var method = ILBuilder.Instance.NewMethod(
+                    $"Creator_{Name}", typeof(Func<IInternalObjectDBTransaction, DBObjectMetadata, object>), factoryType);
+                var ilGenerator = method.Generator;
+                ilGenerator
+                    .Ldarg(0)
+                    .Callvirt(factoryType.GetMethod(nameof(Func<object>.Invoke))!)
+                    .Ret();
+                var creator = (Func<IInternalObjectDBTransaction, DBObjectMetadata, object>)method.Create(factory);
+                Interlocked.CompareExchange(ref _creator, creator, null);
+            }
+            else
+            {
+                var method = ILBuilder.Instance.NewMethod<Func<IInternalObjectDBTransaction, DBObjectMetadata, object>>(
+                    $"Creator_{Name}");
+                var ilGenerator = method.Generator;
+                var defaultConstructor = _clientType.GetConstructor(Type.EmptyTypes);
+                if (defaultConstructor == null)
+                {
+                    ilGenerator
+                        .Ldtoken(_clientType)
+                        .Call(() => Type.GetTypeFromHandle(new RuntimeTypeHandle()))
+                        .Call(() => RuntimeHelpers.GetUninitializedObject(null));
+                }
+                else
+                {
+                    ilGenerator
+                        .Newobj(defaultConstructor);
+                }
+                ilGenerator
+                    .Ret();
+                var creator = method.Create();
+                Interlocked.CompareExchange(ref _creator, creator, null);
+            }
         }
 
         internal Action<IInternalObjectDBTransaction, DBObjectMetadata, object> Initializer

@@ -47,7 +47,7 @@ namespace BTDBTest
             }
 
             [PrimaryKey] public ulong Id { get; set; }
-            [NotStored] public string Param { get; set; }
+            [NotStored] public string Param { get; }
         }
 
         public interface IItems : IRelation<Item>
@@ -55,12 +55,29 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void ItemCreatedByIOCWorks()
+        public void ItemCreatedByIocWorks()
         {
             using var tr = _db.StartTransaction();
             var items = tr.GetRelation<IItems>();
             items.Upsert(_container.Resolve<Item>());
             Assert.Equal("Hello", items.First().Param);
+        }
+
+        [Fact]
+        public void SingletonCreatedByIocWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var item = tr.Singleton<Item>();
+            Assert.Equal("Hello", item.Param);
+        }
+
+        [Fact]
+        public void NewObjectCreatedByIocWorks()
+        {
+            using var tr = _db.StartTransaction();
+            _db.RegisterType(typeof(Item));
+            var item = tr.New<Item>();
+            Assert.Equal("Hello", item.Param);
         }
 
         public void Dispose()
