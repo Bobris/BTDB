@@ -506,12 +506,53 @@ namespace BTDB.ODBLayer
                     IterateHandler(reader, itemHandler, skipping, null);
                 }
             }
+            else if (handler is OrderedEncryptedStringHandler)
+            {
+                var cipher = _tr.Owner.GetSymmetricCipher();
+                if (cipher is InvalidSymmetricCipher)
+                {
+                    var length = reader.ReadVUInt32();
+                    _visitor?.ScalarAsText($"Encrypted[{length}]");
+                    if (length > 0)
+                        reader.SkipBlock(length - 1);
+                }
+                else
+                {
+                    var enc = reader.ReadByteArray();
+                    var size = cipher.CalcOrderedPlainSizeFor(enc);
+                    var dec = new byte[size];
+                    if (!cipher.OrderedDecrypt(enc, dec))
+                    {
+                        _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
+                    }
+
+                    var r = new ByteArrayReader(dec);
+                    _visitor?.ScalarAsText(r.ReadString()!);
+                }
+            }
             else if (handler is EncryptedStringHandler)
             {
-                var length = reader.ReadVUInt32();
-                _visitor?.ScalarAsText($"Encrypted[{length}]");
-                if (length>0)
-                    reader.SkipBlock(length - 1);
+                var cipher = _tr.Owner.GetSymmetricCipher();
+                if (cipher is InvalidSymmetricCipher)
+                {
+                    var length = reader.ReadVUInt32();
+                    _visitor?.ScalarAsText($"Encrypted[{length}]");
+                    if (length > 0)
+                        reader.SkipBlock(length - 1);
+                }
+                else
+                {
+                    var enc = reader.ReadByteArray();
+                    var size = cipher.CalcPlainSizeFor(enc);
+                    var dec = new byte[size];
+                    if (!cipher.Decrypt(enc, dec))
+                    {
+                        _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
+                    }
+
+                    var r = new ByteArrayReader(dec);
+                    _visitor?.ScalarAsText(r.ReadString()!);
+                }
             }
             else if (handler.NeedsCtx() || handler.HandledType() == null)
             {
@@ -521,8 +562,7 @@ namespace BTDB.ODBLayer
             {
                 if (skipping || _visitor == null)
                 {
-                    Action<AbstractBufferedReader> skipper;
-                    if (!_skippers.TryGetValue(handler, out skipper))
+                    if (!_skippers.TryGetValue(handler, out var skipper))
                     {
                         var meth =
                             ILBuilder.Instance.NewMethod<Action<AbstractBufferedReader>>("Skip" + handler.Name);

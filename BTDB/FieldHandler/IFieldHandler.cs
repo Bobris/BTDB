@@ -8,7 +8,7 @@ namespace BTDB.FieldHandler
         string Name { get; }
         byte[]? Configuration { get; }
         bool IsCompatibleWith(Type type, FieldHandlerOptions options);
-        Type HandledType();
+        Type? HandledType();
         bool NeedsCtx();
         void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);
         void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx);

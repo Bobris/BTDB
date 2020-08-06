@@ -10,7 +10,7 @@ namespace BTDB.FieldHandler
 
         public byte[]? Configuration => null;
 
-        public virtual bool IsCompatibleWith(Type type, FieldHandlerOptions options)
+        public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
         {
             return options.HasFlag(FieldHandlerOptions.Orderable) && typeof(EncryptedString) == type;
         }
