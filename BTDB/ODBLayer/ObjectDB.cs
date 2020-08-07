@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -180,6 +181,13 @@ namespace BTDB.ODBLayer
             if (name != null) return name;
             name = type.Name;
             if (type.IsInterface && name.StartsWith("I", StringComparison.Ordinal)) name = name.Substring(1);
+
+            if (type.IsGenericType)
+            {
+                var genericTypes = type.GenericTypeArguments;
+                name = $"{name.Substring(0, name.Length - 2)}[{string.Join(",", genericTypes.Select(t => t.Name))}]";
+            }
+            
             return RegisterType(type, name, manualRegistration);
         }
 

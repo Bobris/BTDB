@@ -2708,5 +2708,16 @@ namespace BTDBTest
                 Assert.False(tr.RollbackAdvised);
             }
         }
+
+        class GenericType<T, T2> { }
+        class Subtype1 { }
+        class Subtype2 { }
+
+        [Fact]
+        public void RegisterGenericTypeUseAlsoGenericTypesNames()
+        {
+            var objDbName = _db.RegisterType(typeof(GenericType<Subtype1, Subtype2>));
+            Assert.Equal("GenericType[Subtype1,Subtype2]", objDbName);
+        }
     }
 }
