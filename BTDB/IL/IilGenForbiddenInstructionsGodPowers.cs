@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 
 namespace BTDB.IL
 {
-    class ILGenForbidenInstructionsGodPowers : IILGenForbidenInstructions
+    class IilGenForbiddenInstructionsGodPowers : IILGenForbiddenInstructions
     {
         public void Emit(ILGenerator ilGen, OpCode opCode, MethodInfo methodInfo)
         {

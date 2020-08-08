@@ -9,10 +9,10 @@ namespace BTDB.IL
     {
         readonly Type _delegateType;
         int _expectedLength;
-        IILGen _gen;
+        IILGen? _gen;
         readonly DynamicMethod _dynamicMethod;
 
-        public ILDynamicMethodImpl(string name, Type delegateType, Type thisType)
+        public ILDynamicMethodImpl(string name, Type delegateType, Type? thisType)
         {
             _delegateType = delegateType;
             _expectedLength = 64;
@@ -20,11 +20,11 @@ namespace BTDB.IL
             Type[] parameterTypes;
             if (thisType == null)
             {
-                parameterTypes = mi.GetParameters().Select(pi => pi.ParameterType).ToArray();
+                parameterTypes = mi!.GetParameters().Select(pi => pi.ParameterType).ToArray();
             }
             else
             {
-                parameterTypes = new[] { thisType }.Concat(mi.GetParameters().Select(pi => pi.ParameterType)).ToArray();
+                parameterTypes = new[] { thisType }.Concat(mi!.GetParameters().Select(pi => pi.ParameterType)).ToArray();
             }
             _dynamicMethod = new DynamicMethod(name, mi.ReturnType, parameterTypes, true);
         }
@@ -34,7 +34,13 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new ILGenForbidenInstructionsGodPowers()));
+        public bool InitLocals
+        {
+            get => _dynamicMethod.InitLocals;
+            set => _dynamicMethod.InitLocals = value;
+        }
+
+        public IILGen Generator => _gen ??= new ILGenImpl(_dynamicMethod.GetILGenerator(_expectedLength), new IilGenForbiddenInstructionsGodPowers());
 
         public object Create()
         {
@@ -50,7 +56,7 @@ namespace BTDB.IL
             return _dynamicMethod.CreateDelegate(_delegateType, @this);
         }
 
-        public MethodInfo TrueMethodInfo => _delegateType.GetMethod("Invoke");
+        public MethodInfo TrueMethodInfo => _delegateType.GetMethod("Invoke")!;
     }
 
     class ILDynamicMethodImpl<TDelegate> : ILDynamicMethodImpl, IILDynamicMethod<TDelegate> where TDelegate : Delegate

@@ -7,7 +7,7 @@ using BTDB.KVDBLayer;
 
 namespace BTDB.IL
 {
-    class ILGenForbidenInstructionsCheating : IILGenForbidenInstructions
+    class IilGenForbiddenInstructionsCheating : IILGenForbiddenInstructions
     {
         class Call : IEquatable<Call>
         {
@@ -82,7 +82,7 @@ namespace BTDB.IL
                     _staticMethod = typeBuilder.DefineMethod(_name, MethodAttributes.Private | MethodAttributes.Static, accesibleConstructorType, paramTypesWithoutResult);
                 }
                 else throw new InvalidOperationException();
-                var ilGen = new ILGenImpl(_staticMethod.GetILGenerator(), new ILGenForbidenInstructionsGodPowers());
+                var ilGen = new ILGenImpl(_staticMethod.GetILGenerator(), new IilGenForbiddenInstructionsGodPowers());
                 ilGen.Ldsfld(_fieldBuilder);
                 _parametersCount = paramTypesWithoutResult.Length;
                 for (ushort i = 0; i < _parametersCount; i++)
@@ -130,7 +130,7 @@ namespace BTDB.IL
         readonly TypeBuilder _typeBuilder;
         readonly HashSet<Call> _calls = new HashSet<Call>();
 
-        public ILGenForbidenInstructionsCheating(TypeBuilder typeBuilder)
+        public IilGenForbiddenInstructionsCheating(TypeBuilder typeBuilder)
         {
             _typeBuilder = typeBuilder;
         }

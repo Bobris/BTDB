@@ -527,6 +527,33 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldind(this IILGen il, Type itemType)
+        {
+            if (itemType == typeof(int))
+                il.Emit(OpCodes.Ldind_I4);
+            else if (itemType == typeof(short))
+                il.Emit(OpCodes.Ldind_I2);
+            else if (itemType == typeof(sbyte))
+                il.Emit(OpCodes.Ldind_I1);
+            else if (itemType == typeof(long))
+                il.Emit(OpCodes.Ldind_I8);
+            else if (itemType == typeof(ushort))
+                il.Emit(OpCodes.Ldind_U2);
+            else if (itemType == typeof(byte))
+                il.Emit(OpCodes.Ldind_U1);
+            else if (itemType == typeof(uint))
+                il.Emit(OpCodes.Ldind_U4);
+            else if (itemType == typeof(float))
+                il.Emit(OpCodes.Ldind_R4);
+            else if (itemType == typeof(double))
+                il.Emit(OpCodes.Ldind_R8);
+            else if (!itemType.IsValueType)
+                il.Emit(OpCodes.Ldind_Ref);
+            else
+                throw new ArgumentOutOfRangeException(nameof(itemType));
+            return il;
+        }
+
         public static IILGen Add(this IILGen il)
         {
             il.Emit(OpCodes.Add);
@@ -646,6 +673,21 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Localloc(this IILGen il)
+        {
+            il.Emit(OpCodes.Localloc);
+            return il;
+        }
+
+        public static IILGen Localloc(this IILGen il, uint length)
+        {
+            il
+                .LdcI4((int)length)
+                .ConvU4()
+                .Emit(OpCodes.Localloc);
+            return il;
+        }
+
         public static IILGen Ld(this IILGen il, object? value)
         {
             switch (value)
@@ -659,22 +701,22 @@ namespace BTDB.IL
                 case bool b when b:
                     il.LdcI4(1);
                     break;
-                case Int16 i16:
+                case short i16:
                     il.LdcI4(i16); // there is no instruction for 16b int
                     break;
-                case Int32 i32:
+                case int i32:
                     il.LdcI4(i32);
                     break;
-                case Int64 i64:
+                case long i64:
                     il.LdcI8(i64);
                     break;
-                case Single f:
+                case float f:
                     il.LdcR4(f);
                     break;
-                case Double d:
+                case double d:
                     il.LdcR8(d);
                     break;
-                case String s:
+                case string s:
                     il.Ldstr(s);
                     break;
                 default:

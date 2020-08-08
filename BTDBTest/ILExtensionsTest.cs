@@ -41,11 +41,11 @@ namespace BTDBTest
             var method = new DynamicMethod("SampleCall", typeof(Nested), Type.EmptyTypes);
             var il = method.GetILGenerator();
             il.DeclareLocal(typeof(Nested));
-            il.Emit(OpCodes.Newobj, typeof(Nested).GetConstructor(Type.EmptyTypes));
+            il.Emit(OpCodes.Newobj, typeof(Nested).GetConstructor(Type.EmptyTypes)!);
             il.Emit(OpCodes.Stloc_0);
             il.Emit(OpCodes.Ldloc_0);
             il.Emit(OpCodes.Ldstr, "Test");
-            il.Emit(OpCodes.Call, typeof(Nested).GetMethod("Fun", new[] { typeof(string) }));
+            il.Emit(OpCodes.Call, typeof(Nested).GetMethod("Fun", new[] { typeof(string) })!);
             il.Emit(OpCodes.Ldloc_0);
             il.Emit(OpCodes.Ret);
             var action = (Func<Nested>)method.CreateDelegate(typeof(Func<Nested>));
@@ -104,9 +104,9 @@ namespace BTDBTest
                 .Dup()
                 .Stloc(local)
                 .LdcI4(42)
-                .Call(propertyInfo.GetSetMethod(true))
+                .Call(propertyInfo.GetSetMethod(true)!)
                 .Ldloc(local)
-                .Call(propertyInfo.GetGetMethod(true))
+                .Call(propertyInfo.GetGetMethod(true)!)
                 .Ret();
             var d = method.Create();
             Assert.Equal(42, d());
@@ -228,7 +228,7 @@ namespace BTDBTest
                 enumeratorType.GetProperties()
                     .Single(m => m.Name == "Current" && m.PropertyType.IsValueType)
                     .GetGetMethod();
-            var keyValuePairType = currentGetter.ReturnType;
+            var keyValuePairType = currentGetter!.ReturnType;
             var enumeratorLocal = il.DeclareLocal(enumeratorType);
             var keyValuePairLocal = il.DeclareLocal(keyValuePairType);
             var againLabel = il.DefineLabel("again");
@@ -241,18 +241,18 @@ namespace BTDBTest
                 .Stloc(enumeratorLocal)
                 .Mark(againLabel)
                 .Ldloca(enumeratorLocal)
-                .Call(moveNextMethod)
+                .Call(moveNextMethod!)
                 .BrfalseS(finishedLabel)
                 .Ldloca(enumeratorLocal)
                 .Call(currentGetter)
                 .Stloc(keyValuePairLocal)
                 .Ldloca(keyValuePairLocal)
-                .Call(keyValuePairType.GetProperty("Key").GetGetMethod())
+                .Call(keyValuePairType.GetProperty("Key")!.GetGetMethod()!)
                 .Ldloc(sumLocal)
                 .Add()
                 .Stloc(sumLocal)
                 .Ldloca(keyValuePairLocal)
-                .Call(keyValuePairType.GetProperty("Value").GetGetMethod())
+                .Call(keyValuePairType.GetProperty("Value")!.GetGetMethod()!)
                 .Ldloc(sumLocal)
                 .Add()
                 .Stloc(sumLocal)
@@ -265,5 +265,22 @@ namespace BTDBTest
                 .Ret();
             Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));
         }
+
+        [Fact]
+        public void UninitializedLocalsWorks()
+        {
+            var method = new ILBuilderRelease().NewMethod<Func<int>>("Uninitialized");
+            method.InitLocals = false;
+            var il = method.Generator;
+            il
+                .Localloc(128)
+                .LdcI4(4)
+                .Add()
+                .Ldind(typeof(int))
+                .Ret();
+
+            Assert.NotEqual(0, method.Create()());
+        }
+
     }
 }

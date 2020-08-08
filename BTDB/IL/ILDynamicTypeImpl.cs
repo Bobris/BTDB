@@ -9,7 +9,7 @@ namespace BTDB.IL
         readonly AssemblyBuilder _assemblyBuilder;
         readonly ModuleBuilder _moduleBuilder;
         readonly TypeBuilder _typeBuilder;
-        readonly IILGenForbidenInstructions _forbidenInstructions;
+        readonly IILGenForbiddenInstructions _forbiddenInstructions;
         readonly string _name;
         static int counter;
 
@@ -19,13 +19,13 @@ namespace BTDB.IL
             _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.RunAndCollect);
             _moduleBuilder = _assemblyBuilder.DefineDynamicModule(_name);
             _typeBuilder = _moduleBuilder.DefineType(name, TypeAttributes.Public, baseType, interfaces);
-            _forbidenInstructions = new ILGenForbidenInstructionsCheating(_typeBuilder);
+            _forbiddenInstructions = new IilGenForbiddenInstructionsCheating(_typeBuilder);
         }
 
         public IILMethod DefineMethod(string name, Type returns, Type[] parameters, MethodAttributes methodAttributes = MethodAttributes.Public)
         {
             var methodBuilder = _typeBuilder.DefineMethod(name, methodAttributes, returns, parameters);
-            return new ILMethodImpl(methodBuilder, _forbidenInstructions);
+            return new ILMethodImpl(methodBuilder, _forbiddenInstructions);
         }
 
         public IILField DefineField(string name, Type type, FieldAttributes fieldAttributes)
@@ -40,7 +40,7 @@ namespace BTDB.IL
 
         public IILMethod DefineConstructor(Type[] parameters)
         {
-            return new ILConstructorImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbidenInstructions);
+            return new ILConstructorImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbiddenInstructions);
         }
 
         public void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod)
@@ -51,7 +51,7 @@ namespace BTDB.IL
         public Type CreateType()
         {
             var finalType = _typeBuilder.CreateType();
-            _forbidenInstructions.FinishType(finalType);
+            _forbiddenInstructions.FinishType(finalType);
             //_assemblyBuilder.Save(_name);
             return finalType;
         }
