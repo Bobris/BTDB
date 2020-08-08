@@ -42,13 +42,8 @@ namespace BTDB.KVDBLayer
         public bool FindFirstKey(in ReadOnlySpan<byte> prefix)
         {
             _cursorMovedCounter++;
-            if (_cursor.FindFirst(prefix))
-            {
-                _keyIndex = _cursor.CalcIndex();
-                return true;
-            }
             _keyIndex = -1;
-            return false;
+            return _cursor.FindFirst(prefix);
         }
 
         public bool FindLastKey(in ReadOnlySpan<byte> prefix)
@@ -60,13 +55,13 @@ namespace BTDB.KVDBLayer
 
         public bool FindPreviousKey(in ReadOnlySpan<byte> prefix)
         {
-            if (_keyIndex == -1) return FindLastKey(prefix);
+            if (!_cursor.IsValid()) return FindLastKey(prefix);
             _cursorMovedCounter++;
+            _keyIndex = -1;
             if (_cursor.MovePrevious())
             {
                 if (_cursor.KeyHasPrefix(prefix))
                 {
-                    _keyIndex--;
                     return true;
                 }
             }
@@ -76,13 +71,13 @@ namespace BTDB.KVDBLayer
 
         public bool FindNextKey(in ReadOnlySpan<byte> prefix)
         {
-            if (_keyIndex == -1) return FindFirstKey(prefix);
+            if (!_cursor.IsValid()) return FindFirstKey(prefix);
             _cursorMovedCounter++;
+            _keyIndex = -1;
             if (_cursor.MoveNext())
             {
                 if (_cursor.KeyHasPrefix(prefix))
                 {
-                    _keyIndex++;
                     return true;
                 }
             }
@@ -94,7 +89,7 @@ namespace BTDB.KVDBLayer
         {
             _cursorMovedCounter++;
             var result = _cursor.Find(key);
-            _keyIndex = _cursor.CalcIndex();
+            _keyIndex = -1;
             if (prefixLen == 0) return result;
             switch (result)
             {
@@ -107,7 +102,6 @@ namespace BTDB.KVDBLayer
 
                         if (_cursor.KeyHasPrefix(key.Slice(0, (int)prefixLen)))
                         {
-                            _keyIndex++;
                             return FindResult.Next;
                         }
 
@@ -130,7 +124,7 @@ namespace BTDB.KVDBLayer
             Span<byte> trueValue = stackalloc byte[12];
             _keyValueDB.WriteCreateOrUpdateCommand(key, value, trueValue);
             var result = _cursor.Upsert(key, trueValue);
-            _keyIndex = _cursor.CalcIndex();
+            _keyIndex = -1;
             return result;
         }
 
@@ -163,6 +157,7 @@ namespace BTDB.KVDBLayer
 
         public long GetKeyIndex()
         {
+            if (_keyIndex == -1) _keyIndex = _cursor.CalcIndex();
             return _keyIndex;
         }
 
@@ -204,7 +199,7 @@ namespace BTDB.KVDBLayer
 
         public bool IsValidKey()
         {
-            return _keyIndex != -1;
+            return _cursor.IsValid();
         }
 
         public ReadOnlySpan<byte> GetKey()
@@ -273,7 +268,7 @@ namespace BTDB.KVDBLayer
 
         void EnsureValidKey()
         {
-            if (_keyIndex == -1)
+            if (!_cursor.IsValid())
             {
                 throw new InvalidOperationException("Current key is not valid");
             }
@@ -322,7 +317,6 @@ namespace BTDB.KVDBLayer
                 return false;
             }
 
-            _keyIndex = 0; // fake value key index is enough to pass IsValidKey test
             value = GetClonedValue(ref buffer, bufferLength);
             MakeWritable();
             _keyValueDB.WriteEraseOneCommand(exactKey);

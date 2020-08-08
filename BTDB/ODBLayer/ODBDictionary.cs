@@ -229,6 +229,23 @@ namespace BTDB.ODBLayer
             return writer.GetSpan();
         }
 
+        ReadOnlySpan<byte> KeyToByteArray(TKey key, ref SpanWriter writer)
+        {
+            writer.WriteBlock(_prefix);
+            IWriterCtx ctx = null;
+            if (_keyHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
+            _keyWriter(key, ref writer, ctx);
+            return writer.GetPersistentSpanAndReset();
+        }
+
+        ReadOnlySpan<byte> ValueToByteArray(TValue value, ref SpanWriter writer)
+        {
+            IWriterCtx ctx = null;
+            if (_valueHandler.NeedsCtx()) ctx = new DBWriterCtx(_tr);
+            _valueWriter(value, ref writer, ctx);
+            return writer.GetPersistentSpanAndReset();
+        }
+
         TKey CurrentToKey()
         {
             Span<byte> buffer = stackalloc byte[128];
@@ -248,14 +265,18 @@ namespace BTDB.ODBLayer
 
         public bool ContainsKey(TKey key)
         {
-            var keyBytes = KeyToByteArray(key);
+            Span<byte> buf = stackalloc byte[128];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyToByteArray(key, ref writer);
             return _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
         }
 
         public void Add(TKey key, TValue value)
         {
-            var keyBytes = KeyToByteArray(key);
-            var valueBytes = ValueToByteArray(value);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyToByteArray(key, ref writer);
+            var valueBytes = ValueToByteArray(value, ref writer);
             _modificationCounter++;
             if (_keyValueTr.Find(keyBytes, 0) == FindResult.Exact)
             {
@@ -268,7 +289,9 @@ namespace BTDB.ODBLayer
 
         public bool Remove(TKey key)
         {
-            var keyBytes = KeyToByteArray(key);
+            Span<byte> buf = stackalloc byte[128];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyToByteArray(key, ref writer);
             _modificationCounter++;
             var found = _keyValueTr.EraseCurrent(keyBytes);
             if (found)
@@ -281,8 +304,10 @@ namespace BTDB.ODBLayer
 
         public bool TryGetValue(TKey key, out TValue value)
         {
-            var keyBytes = KeyToByteArray(key);
-            var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
+            Span<byte> buf = stackalloc byte[128];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyToByteArray(key, ref writer);
+            var found = _keyValueTr.FindExactKey(keyBytes);
             if (!found)
             {
                 value = default;
@@ -298,20 +323,24 @@ namespace BTDB.ODBLayer
         {
             get
             {
-                var keyBytes = KeyToByteArray(key);
-                var found = _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
+                Span<byte> buf = stackalloc byte[256];
+                var writer = new SpanWriter(buf);
+                var keyBytes = KeyToByteArray(key, ref writer);
+                var found = _keyValueTr.FindExactKey(keyBytes);
                 if (!found)
                 {
                     throw new ArgumentException("Key not found in Dictionary");
                 }
 
-                var valueBytes = _keyValueTr.GetValue();
+                var valueBytes = _keyValueTr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
                 return ByteArrayToValue(valueBytes);
             }
             set
             {
-                var keyBytes = KeyToByteArray(key);
-                var valueBytes = ValueToByteArray(value);
+                Span<byte> buf = stackalloc byte[256];
+                var writer = new SpanWriter(buf);
+                var keyBytes = KeyToByteArray(key, ref writer);
+                var valueBytes = ValueToByteArray(value, ref writer);
                 if (_keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes))
                 {
                     _modificationCounter++;

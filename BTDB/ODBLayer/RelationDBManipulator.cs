@@ -59,21 +59,19 @@ namespace BTDB.ODBLayer
             _modificationCounter++;
         }
 
-        ReadOnlySpan<byte> ValueBytes(T obj)
+        ReadOnlySpan<byte> ValueBytes(T obj, ref SpanWriter writer)
         {
-            var valueWriter = new SpanWriter();
-            valueWriter.WriteVUInt32(_relationInfo.ClientTypeVersion);
-            _relationInfo.ValueSaver(_transaction, ref valueWriter, obj);
-            return valueWriter.GetSpan();
+            writer.WriteVUInt32(_relationInfo.ClientTypeVersion);
+            _relationInfo.ValueSaver(_transaction, ref writer, obj);
+            return writer.GetPersistentSpanAndReset();
         }
 
-        ReadOnlySpan<byte> KeyBytes(T obj)
+        ReadOnlySpan<byte> KeyBytes(T obj, ref SpanWriter writer)
         {
-            var keyWriter = new SpanWriter();
-            WriteRelationPKPrefix(ref keyWriter);
-            _relationInfo.PrimaryKeysSaver(_transaction, ref keyWriter, obj,
+            WriteRelationPKPrefix(ref writer);
+            _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj,
                 this); //this for relation interface which is same with manipulator
-            return keyWriter.GetSpan();
+            return writer.GetPersistentSpanAndReset();
         }
 
         public void WriteRelationPKPrefix(ref SpanWriter writer)
@@ -98,12 +96,14 @@ namespace BTDB.ODBLayer
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
 
             if (_kvtr.FindExactKey(keyBytes))
                 return false;
 
-            var valueBytes = ValueBytes(obj);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -118,13 +118,14 @@ namespace BTDB.ODBLayer
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             if (_kvtr.FindExactKey(keyBytes))
             {
-                Span<byte> buffer = stackalloc byte[256];
-                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
+                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -146,15 +147,16 @@ namespace BTDB.ODBLayer
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             if (_hasSecondaryIndexes)
             {
                 if (_kvtr.FindExactKey(keyBytes))
                 {
-                    Span<byte> buffer = stackalloc byte[256];
-                    var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
+                    var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
 
                     _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
@@ -182,14 +184,15 @@ namespace BTDB.ODBLayer
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
-            Span<byte> buffer = stackalloc byte[256];
-            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length);
+            var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
@@ -202,21 +205,28 @@ namespace BTDB.ODBLayer
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            var keyBytes = KeyBytes(obj);
-            var valueBytes = ValueBytes(obj);
+            Span<byte> buf = stackalloc byte[256];
+            var writer = new SpanWriter(buf);
+            var keyBytes = KeyBytes(obj, ref writer);
+            var valueBytes = ValueBytes(obj, ref writer);
 
             if (!_kvtr.FindExactKey(keyBytes))
                 throw new BTDBException("Not found record to update.");
 
-            Span<byte> buffer = stackalloc byte[256];
-            var oldValueBytes = _hasSecondaryIndexes
-                ? _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(buffer), buffer.Length)
-                : ReadOnlySpan<byte>.Empty;
-
-            _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-
             if (_hasSecondaryIndexes)
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+            {
+                var oldValueBytes = _kvtr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
+
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+
+                if (_hasSecondaryIndexes)
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+
+            }
+            else
+            {
+                _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            }
         }
 
         public bool Contains(in ReadOnlySpan<byte> keyBytes)
