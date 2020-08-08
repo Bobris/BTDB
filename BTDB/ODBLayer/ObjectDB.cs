@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -173,8 +174,20 @@ namespace BTDB.ODBLayer
             if (type == null) throw new ArgumentNullException(nameof(type));
             var name = Type2NameRegistry.FindNameByType(type);
             if (name != null) return name;
-            name = type.Name;
-            if (type.IsInterface && name.StartsWith("I", StringComparison.Ordinal)) name = name.Substring(1);
+
+            static string NiceName(Type type1)
+            {
+                var niceName = type1.Name;
+                if (type1.IsInterface && niceName.StartsWith("I", StringComparison.Ordinal)) niceName = niceName.Substring(1);
+
+                if (!type1.IsGenericType) return niceName;
+                var genericTypes = type1.GenericTypeArguments;
+                niceName = $"{niceName.Split('`')[0]}<{string.Join(",", genericTypes.Select(NiceName))}>";
+                return niceName;
+            }
+
+            name = NiceName(type);
+
             return RegisterType(type, name, manualRegistration);
         }
 
