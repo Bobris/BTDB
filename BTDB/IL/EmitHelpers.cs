@@ -115,7 +115,7 @@ namespace BTDB.IL
             return null;
         }
 
-        public static string ToSimpleName(this Type type)
+        public static string ToSimpleName(this Type? type)
         {
             if (type == null) return "";
             if (type.IsArray)
@@ -126,10 +126,10 @@ namespace BTDB.IL
                 var simpleName = type.Name;
                 var backTickPos = simpleName.IndexOf('`');
                 if (backTickPos > 0) simpleName = simpleName.Substring(0, backTickPos);
-                return String.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
+                return string.Format(type.Namespace == "System" ? "{1}<{2}>" : "{0}.{1}<{2}>",
                     type.Namespace,
                     simpleName,
-                    String.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
+                    string.Join(",", type.GetGenericArguments().Select(p => p.ToSimpleName())));
             }
 
             if (type == typeof(byte)) return "byte";
@@ -148,7 +148,7 @@ namespace BTDB.IL
             if (type == typeof(void)) return "void";
             if (type == typeof(object)) return "object";
             if (type == typeof(decimal)) return "decimal";
-            if (String.IsNullOrEmpty(type.Namespace)) return type.Name;
+            if (string.IsNullOrEmpty(type.Namespace)) return type.Name;
             return type.Namespace + "." + type.Name;
         }
 

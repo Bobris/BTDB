@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+ObjectDB: Generic classes supported as DB objects.
+
 ## 24.2.0
 
 ### Added

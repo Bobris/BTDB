@@ -180,15 +180,20 @@ namespace BTDB.ODBLayer
             if (type == null) throw new ArgumentNullException(nameof(type));
             var name = Type2NameRegistry.FindNameByType(type);
             if (name != null) return name;
-            name = type.Name;
-            if (type.IsInterface && name.StartsWith("I", StringComparison.Ordinal)) name = name.Substring(1);
 
-            if (type.IsGenericType)
+            static string NiceName(Type type1)
             {
-                var genericTypes = type.GenericTypeArguments;
-                name = $"{name.Substring(0, name.Length - 2)}[{string.Join(",", genericTypes.Select(t => t.Name))}]";
+                var niceName = type1.Name;
+                if (type1.IsInterface && niceName.StartsWith("I", StringComparison.Ordinal)) niceName = niceName.Substring(1);
+
+                if (!type1.IsGenericType) return niceName;
+                var genericTypes = type1.GenericTypeArguments;
+                niceName = $"{niceName.Split('`')[0]}<{string.Join(",", genericTypes.Select(NiceName))}>";
+                return niceName;
             }
-            
+
+            name = NiceName(type);
+
             return RegisterType(type, name, manualRegistration);
         }
 

@@ -2716,8 +2716,8 @@ namespace BTDBTest
         [Fact]
         public void RegisterGenericTypeUseAlsoGenericTypesNames()
         {
-            var objDbName = _db.RegisterType(typeof(GenericType<Subtype1, Subtype2>));
-            Assert.Equal("GenericType[Subtype1,Subtype2]", objDbName);
+            var objDbName = _db.RegisterType(typeof(GenericType<GenericType<Subtype1, Subtype1>, Subtype2>));
+            Assert.Equal("GenericType<GenericType<Subtype1,Subtype1>,Subtype2>", objDbName);
         }
     }
 }
