@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
+using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.IL;
 using BTDB.KVDBLayer;
@@ -23,7 +24,6 @@ namespace BTDB.ODBLayer
         readonly IKeyValueDBTransaction _trkv;
         Dictionary<uint, ulong> _singletons;
         readonly HashSet<uint> _usedTableIds;
-        readonly byte[] _tempBytes = new byte[32];
         readonly HashSet<ulong> _visitedOids;
         readonly HashSet<TableIdVersionId> _usedTableVersions;
         readonly Dictionary<TableIdVersionId, TableVersionInfo> _tableVersionInfos;
@@ -32,10 +32,10 @@ namespace BTDB.ODBLayer
         //relations
         Dictionary<uint, ODBIteratorRelationInfo> _relationId2Info;
 
-        public IDictionary<uint, string> TableId2Name { get => _tableId2Name; }
-        public IReadOnlyDictionary<uint, ulong> TableId2SingletonOid { get => _singletons; }
-        public IReadOnlyDictionary<uint, ODBIteratorRelationInfo> RelationId2Info { get => _relationId2Info; }
-        public IReadOnlyDictionary<TableIdVersionId, TableVersionInfo> TableVersionInfos { get => _tableVersionInfos; }
+        public IDictionary<uint, string> TableId2Name => _tableId2Name;
+        public IReadOnlyDictionary<uint, ulong> TableId2SingletonOid => _singletons;
+        public IReadOnlyDictionary<uint, ODBIteratorRelationInfo> RelationId2Info => _relationId2Info;
+        public IReadOnlyDictionary<TableIdVersionId, TableVersionInfo> TableVersionInfos => _tableVersionInfos;
         public bool SkipAlreadyVisitedOidChecks;
 
         public ODBIterator(IObjectDBTransaction tr, IODBFastVisitor visitor)
@@ -497,7 +497,7 @@ namespace BTDB.ODBLayer
                         _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
                     }
 
-                    var r = new ByteArrayReader(dec);
+                    var r = new SpanReader(dec);
                     _visitor?.ScalarAsText(r.ReadString()!);
                 }
             }
@@ -521,7 +521,7 @@ namespace BTDB.ODBLayer
                         _visitor?.ScalarAsText($"Encrypted[{enc!.Length}] failed to decrypt");
                     }
 
-                    var r = new ByteArrayReader(dec);
+                    var r = new SpanReader(dec);
                     _visitor?.ScalarAsText(r.ReadString()!);
                 }
             }
@@ -553,7 +553,7 @@ namespace BTDB.ODBLayer
                             ILBuilder.Instance.NewMethod<LoaderFun>("Load" + handler.Name);
                         var il = meth.Generator;
                         handler.Load(il, il2 => il2.Ldarg(0), null);
-                        il.Box(handler.HandledType()).Ret();
+                        il.Box(handler.HandledType()!).Ret();
                         loader = meth.Create();
                         _loaders.Add(handler, loader);
                     }
@@ -572,7 +572,7 @@ namespace BTDB.ODBLayer
             }
         }
 
-        void IterateInlineDict(ref SpanReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping, HashSet<int> knownInlineRefs)
+        void IterateInlineDict(ref SpanReader reader, IFieldHandler keyHandler, IFieldHandler valueHandler, bool skipping, HashSet<int>? knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartDictionary();
             var count = reader.ReadVUInt32();
@@ -588,7 +588,7 @@ namespace BTDB.ODBLayer
             if (!skip) _visitor?.EndDictionary();
         }
 
-        void IterateInlineList(ref SpanReader reader, IFieldHandler itemHandler, bool skipping, HashSet<int> knownInlineRefs)
+        void IterateInlineList(ref SpanReader reader, IFieldHandler itemHandler, bool skipping, HashSet<int>? knownInlineRefs)
         {
             var skip = skipping || _visitor != null && !_visitor.StartList();
             var count = reader.ReadVUInt32();

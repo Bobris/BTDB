@@ -13,7 +13,7 @@ namespace BTDB.ODBLayer
         bool StartObject(ulong oid, uint tableId, string? tableName, uint version);
         bool StartField(string name);
         bool NeedScalarAsObject(); // return true if needed as object
-        void ScalarAsObject(object content);
+        void ScalarAsObject(object? content);
         bool NeedScalarAsText(); // return true if needed as string
         void ScalarAsText(string content);
         void OidReference(ulong oid);

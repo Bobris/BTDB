@@ -191,7 +191,7 @@ namespace BTDB.ODBLayer
             return RegisterType(type, name, manualRegistration);
         }
 
-        internal string RegisterType(Type type, string asName, bool manualRegistration)
+        string RegisterType(Type type, string asName, bool manualRegistration)
         {
             if (manualRegistration)
                 _polymorphicTypesRegistry.RegisterPolymorphicType(type);

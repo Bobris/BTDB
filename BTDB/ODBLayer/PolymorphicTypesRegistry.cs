@@ -18,7 +18,6 @@ namespace BTDB.ODBLayer
 
         public IEnumerable<Type> GetPolymorphicTypes(Type baseType)
         {
-            var res = new List<Type>();
             lock (_lock)
             {
                 foreach (var t in _types)
