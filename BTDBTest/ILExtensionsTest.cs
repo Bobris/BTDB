@@ -266,7 +266,7 @@ namespace BTDBTest
             Assert.Equal(10, method.Create()(new Dictionary<int, int> { { 1, 2 }, { 3, 4 } }));
         }
 
-        [Fact]
+        [SkipWhen(SkipWhenAttribute.Is.Debug, "Debug looks like ignoring InitLocals = false")]
         public void UninitializedLocalsWorks()
         {
             var method = new ILBuilderRelease().NewMethod<Func<int>>("Uninitialized");

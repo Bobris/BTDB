@@ -178,6 +178,7 @@ namespace BTDB.ODBLayer
                 var reqMethod = classImpl.DefineMethod("_R_" + method.Name, method.ReturnType,
                     method.GetParameters().Select(pi => pi.ParameterType).ToArray(),
                     MethodAttributes.Virtual | MethodAttributes.Public);
+                reqMethod.InitLocals = false;
                 if (method.Name.StartsWith("RemoveBy") || method.Name.StartsWith("ShallowRemoveBy"))
                 {
                     var methodParameters = method.GetParameters();

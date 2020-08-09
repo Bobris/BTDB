@@ -17,6 +17,14 @@ namespace BTDB.StreamLayer
             Controller = null;
         }
 
+        public unsafe SpanWriter(void* buf, int size)
+        {
+            Buf = MemoryMarshal.CreateSpan(ref Unsafe.AsRef<byte>(buf), size);
+            InitialBuffer = Buf;
+            HeapBuffer = null;
+            Controller = null;
+        }
+
         public SpanWriter(ISpanWriter controller)
         {
             Controller = controller;
