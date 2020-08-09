@@ -108,7 +108,10 @@ namespace BTDB.ODBLayer
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
-                AddIntoSecondaryIndexes(obj);
+            {
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
+            }
 
             MarkModification();
             return true;
@@ -130,7 +133,11 @@ namespace BTDB.ODBLayer
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                 if (_hasSecondaryIndexes)
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+                {
+                    Span<byte> buf2 = stackalloc byte[256];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                }
 
                 FreeContentInUpdate(oldValueBytes, valueBytes);
                 return false;
@@ -138,7 +145,10 @@ namespace BTDB.ODBLayer
 
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             if (_hasSecondaryIndexes)
-                AddIntoSecondaryIndexes(obj);
+            {
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
+            }
             MarkModification();
             return true;
         }
@@ -160,13 +170,16 @@ namespace BTDB.ODBLayer
 
                     _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+                    Span<byte> buf2 = stackalloc byte[256];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
 
                     return false;
                 }
 
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
-                AddIntoSecondaryIndexes(obj);
+                writer = new SpanWriter(buf);
+                AddIntoSecondaryIndexes(obj, ref writer);
             }
             else
             {
@@ -196,7 +209,11 @@ namespace BTDB.ODBLayer
             _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
             if (_hasSecondaryIndexes)
-                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+            {
+                Span<byte> buf2 = stackalloc byte[256];
+                var writer2 = new SpanWriter(buf2);
+                UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+            }
 
             FreeContentInUpdate(oldValueBytes, valueBytes);
         }
@@ -220,7 +237,11 @@ namespace BTDB.ODBLayer
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
                 if (_hasSecondaryIndexes)
-                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes);
+                {
+                    Span<byte> buf2 = stackalloc byte[256];
+                    var writer2 = new SpanWriter(buf2);
+                    UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
+                }
 
             }
             else
@@ -589,13 +610,12 @@ namespace BTDB.ODBLayer
                 prefixParametersCount, secKeyBytes, keyBytes.Slice(secKeyBytes.Length));
         }
 
-        ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj)
+        ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, T obj, ref SpanWriter writer)
         {
-            var keyWriter = new SpanWriter();
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
-            WriteRelationSKPrefix(ref keyWriter, secondaryKeyIndex);
-            keySaver(_transaction, ref keyWriter, obj, this); //secondary key
-            return keyWriter.GetSpan();
+            WriteRelationSKPrefix(ref writer, secondaryKeyIndex);
+            keySaver(_transaction, ref writer, obj, this); //secondary key
+            return writer.GetSpan();
         }
 
         ReadOnlySpan<byte> WriteSecondaryKeyKey(uint secondaryKeyIndex, in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
@@ -612,20 +632,22 @@ namespace BTDB.ODBLayer
             return keyWriter.GetSpan();
         }
 
-        void AddIntoSecondaryIndexes(T obj)
+        void AddIntoSecondaryIndexes(T obj, ref SpanWriter writer)
         {
             foreach (var sk in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var keyBytes = WriteSecondaryKeyKey(sk.Key, obj);
+                var keyBytes = WriteSecondaryKeyKey(sk.Key, obj, ref writer);
                 _kvtr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
+                writer.Reset();
             }
         }
 
-        void UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue)
+        void UpdateSecondaryIndexes(T newValue, in ReadOnlySpan<byte> oldKey, in ReadOnlySpan<byte> oldValue, ref SpanWriter writer)
         {
             foreach (var (key, _) in _relationInfo.ClientRelationVersionInfo.SecondaryKeys)
             {
-                var newKeyBytes = WriteSecondaryKeyKey(key, newValue);
+                writer.Reset();
+                var newKeyBytes = WriteSecondaryKeyKey(key, newValue, ref writer);
                 var oldKeyBytes = WriteSecondaryKeyKey(key, oldKey, oldValue);
                 if (oldKeyBytes.SequenceEqual(newKeyBytes))
                     continue;
