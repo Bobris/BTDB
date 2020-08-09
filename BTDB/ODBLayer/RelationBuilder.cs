@@ -366,6 +366,8 @@ namespace BTDB.ODBLayer
             if (method.ReturnType != typeof(int))
                 throw new BTDBException($"Return value in {method.Name} must be int.");
 
+            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+
             var advEnumParamOrder = (ushort)parameters.Length;
             var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
             var advEnumParamType = advEnumParam.GenericTypeArguments[0];
@@ -379,7 +381,7 @@ namespace BTDB.ODBLayer
             reqMethod.Generator.Ldarg(0); //manipulator for call RemoveByIdAdvancedParam
 
             WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
-                advEnumParamOrder, advEnumParam, field);
+                advEnumParamOrder, advEnumParam, field, pushWriter, ctxLocFactory);
             reqMethod.Generator.Call(
                 _relationDbManipulatorType.GetMethod(nameof(RelationDBManipulator<IRelation>
                     .RemoveByIdAdvancedParam))!);
@@ -388,9 +390,8 @@ namespace BTDB.ODBLayer
         void WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(MethodInfo method,
             ReadOnlySpan<ParameterInfo> parameters,
             IILMethod reqMethod, int prefixParamCount, ushort advEnumParamOrder, Type advEnumParam,
-            TableFieldInfo field)
+            TableFieldInfo field, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
-            var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
             reqMethod.Generator
                 .LdcI4(prefixParamCount + ApartFields.Count)
                 .Ldarg(advEnumParamOrder).Ldfld(advEnumParam.GetField(nameof(AdvancedEnumeratorParam<int>.Order))!);
@@ -408,8 +409,8 @@ namespace BTDB.ODBLayer
             ReadOnlySpan<ParameterInfo> parameters,
             IILMethod reqMethod, ushort advEnumParamOrder, Type advEnumParam, TableFieldInfo field)
         {
-            reqMethod.Generator.Ldarg(0);
             var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+            reqMethod.Generator.Ldarg(0);
             KeyPropositionStartBefore(advEnumParamOrder, reqMethod.Generator, advEnumParam);
             SerializePKListPrefixBytes(reqMethod.Generator, method.Name,
                 parameters[..^1], ApartFields, pushWriter, ctxLocFactory);
@@ -479,6 +480,8 @@ namespace BTDB.ODBLayer
             var parameters = method.GetParameters();
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+
                 var advEnumParamOrder = (ushort)parameters.Length;
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
@@ -492,7 +495,7 @@ namespace BTDB.ODBLayer
                 reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
 
                 WritePrimaryKeyPrefixFinishedByAdvancedEnumerator(method, parameters, reqMethod, prefixParamCount,
-                    advEnumParamOrder, advEnumParam, field);
+                    advEnumParamOrder, advEnumParam, field, pushWriter, ctxLocFactory);
 
                 if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
                 {
@@ -534,8 +537,9 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
-                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields);
+                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields, pushWriter, ctxLocFactory);
                 reqMethod.Generator.LdcI4(parameters.Length + ApartFields.Count);
 
                 if (ReturnTypeIsEnumeratorOrEnumerable(method, out var itemType))
@@ -611,8 +615,9 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 reqMethod.Generator.Ldarg(0);
-                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields);
+                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields, pushWriter, ctxLocFactory);
 
                 //return relationManipulator.CountWithPrefix(prefixBytes);
                 var calcCountMethod =
@@ -639,8 +644,9 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 reqMethod.Generator.Ldarg(0);
-                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields);
+                SavePKListPrefixBytes(reqMethod.Generator, method.Name, parameters, ApartFields, pushWriter, ctxLocFactory);
 
                 //return relationManipulator.AnyWithPrefix(prefixBytes);
                 var calcCountMethod =
@@ -670,6 +676,7 @@ namespace BTDB.ODBLayer
             var parameters = method.GetParameters();
             if (ParametersEndsWithAdvancedEnumeratorParam(parameters))
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 var advEnumParamOrder = (ushort)parameters.Length;
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
@@ -683,7 +690,6 @@ namespace BTDB.ODBLayer
                 var field = skFields[ApartFields.Count + prefixParamCount];
                 ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
-                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 reqMethod.Generator
                     .Ldarg(0).Castclass(typeof(IRelationDbManipulator));
 
@@ -743,6 +749,7 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 var secondaryKeyIndex =
                     ClientRelationVersionInfo.GetSecondaryKeyIndex(
                         StripVariant(method.Name.Substring(6), false));
@@ -750,7 +757,7 @@ namespace BTDB.ODBLayer
                 reqMethod.Generator
                     .Ldarg(0).Castclass(typeof(IRelationDbManipulator));
                 var localRemapped = SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                    parameters, ApartFields);
+                    parameters, ApartFields, pushWriter, ctxLocFactory);
                 reqMethod.Generator
                     .LdcI4(parameters.Length + ApartFields.Count)
                     .Ldloc(localRemapped);
@@ -793,10 +800,12 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
+
                 reqMethod.Generator
                     .Ldarg(0);
                 var _ = SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                    parameters, ApartFields);
+                    parameters, ApartFields, pushWriter, ctxLocFactory);
 
                 //return relationManipulator.CountWithPrefix(prefixBytes);
                 var calcCountMethod =
@@ -826,10 +835,11 @@ namespace BTDB.ODBLayer
             }
             else
             {
+                var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
                 reqMethod.Generator
                     .Ldarg(0);
                 var _ = SaveListPrefixBytes(secondaryKeyIndex, reqMethod.Generator, method.Name,
-                    parameters, ApartFields);
+                    parameters, ApartFields, pushWriter, ctxLocFactory);
 
                 //return relationManipulator.AnyWithPrefix(prefixBytes);
                 var calcAnyMethod =
@@ -1199,9 +1209,8 @@ namespace BTDB.ODBLayer
 
         IILLocal SaveListPrefixBytes(uint secondaryKeyIndex, IILGen ilGenerator, string methodName,
             ReadOnlySpan<ParameterInfo> methodParameters,
-            IDictionary<string, MethodInfo> apartFields)
+            IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
-            var (pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
             var localRemapped = RemapSecondaryKeyIndex(ilGenerator, secondaryKeyIndex);
 
             SerializeListPrefixBytes(secondaryKeyIndex, ilGenerator, methodName, methodParameters, apartFields, pushWriter, ctxLocFactory, localRemapped);
@@ -1228,10 +1237,16 @@ namespace BTDB.ODBLayer
 
         static (Action<IILGen>, Func<IILLocal>) WriterPushers(IILGen ilGenerator)
         {
+            var bufPtrLoc = ilGenerator.DeclareLocal(typeof(byte*));
             var writerLoc = ilGenerator.DeclareLocal(typeof(SpanWriter));
+
             ilGenerator
+                .Localloc(512)
+                .Stloc(bufPtrLoc)
                 .Ldloca(writerLoc)
-                .InitObj(typeof(SpanWriter));
+                .Ldloc(bufPtrLoc)
+                .LdcI4(512)
+                .Call(typeof(SpanWriter).GetConstructor(new [] { typeof(void *), typeof(int) })!);
 
             void PushWriter(IILGen il) => il.Ldloca(writerLoc);
 
@@ -1256,9 +1271,8 @@ namespace BTDB.ODBLayer
         }
 
         void SavePKListPrefixBytes(IILGen ilGenerator, string methodName, ReadOnlySpan<ParameterInfo> methodParameters,
-            IDictionary<string, MethodInfo> apartFields)
+            IDictionary<string, MethodInfo> apartFields, Action<IILGen> pushWriter, Func<IILLocal> ctxLocFactory)
         {
-            var (pushWriter, ctxLocFactory) = WriterPushers(ilGenerator);
             SerializePKListPrefixBytes(ilGenerator, methodName, methodParameters, apartFields, pushWriter, ctxLocFactory);
 
             var localSpan = ilGenerator.DeclareLocal(typeof(ReadOnlySpan<byte>));

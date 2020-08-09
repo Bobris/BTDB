@@ -281,6 +281,5 @@ namespace BTDBTest
 
             Assert.NotEqual(0, method.Create()());
         }
-
     }
 }

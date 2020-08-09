@@ -683,7 +683,8 @@ namespace BTDB.IL
         {
             il
                 .LdcI4((int)length)
-                .ConvU4()
+                .Emit(OpCodes.Conv_U);
+            il
                 .Emit(OpCodes.Localloc);
             return il;
         }
