@@ -37,6 +37,7 @@ namespace BTDB.ODBLayer
         internal static readonly byte[] AllObjectsPrefix = { 1 }; // oid => Index Table, version number, Value
         internal const int AllObjectsPrefixLen = 1;
         internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
+        internal const int AllDictionariesPrefixLen = 1;
         internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
         internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
         internal const byte AllObjectsPrefixByte = 1;
