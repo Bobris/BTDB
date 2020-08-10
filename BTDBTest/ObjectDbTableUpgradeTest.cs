@@ -134,61 +134,10 @@ namespace BTDBTest
             public string Name { get; set; }
         }
 
-        public interface ICarTableApart : IRelation<Car>
-        {
-            ulong CompanyId { get; set; }
-            void Insert(Car car);
-            Car FindById(ulong id);
-        }
-
         public interface ICarTable : IRelation<Car>
         {
             void Insert(Car car);
             Car FindById(ulong companyId, ulong id);
-        }
-
-        [Fact]
-        public void ApartFieldCanBeRemoved()
-        {
-            using (var tr = _db.StartTransaction())
-            {
-                var creator = tr.InitRelation<ICarTableApart>("Car");
-                var carTable = creator(tr);
-                carTable.CompanyId = 10;
-                var car = new Car { Id = 11, Name = "Ferrari" };
-                carTable.Insert(car);
-                tr.Commit();
-            }
-
-            ReopenDb();
-            using (var tr = _db.StartTransaction())
-            {
-                var creator = tr.InitRelation<ICarTable>("Car");
-                var carTable = creator(tr);
-                Assert.Equal("Ferrari", carTable.FindById(10, 11).Name);
-            }
-        }
-
-        [Fact]
-        public void ApartFieldCanBeAdded()
-        {
-            using (var tr = _db.StartTransaction())
-            {
-                var creator = tr.InitRelation<ICarTable>("Car");
-                var carTable = creator(tr);
-                var car = new Car { CompanyId = 10, Id = 11, Name = "Ferrari" };
-                carTable.Insert(car);
-                tr.Commit();
-            }
-
-            ReopenDb();
-            using (var tr = _db.StartTransaction())
-            {
-                var creator = tr.InitRelation<ICarTableApart>("Car");
-                var carTable = creator(tr);
-                carTable.CompanyId = 10;
-                Assert.Equal("Ferrari", carTable.FindById(11).Name);
-            }
         }
 
         public enum SimpleEnum

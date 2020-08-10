@@ -69,8 +69,7 @@ namespace BTDB.ODBLayer
         ReadOnlySpan<byte> KeyBytes(T obj, ref SpanWriter writer)
         {
             WriteRelationPKPrefix(ref writer);
-            _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj,
-                this); //this for relation interface which is same with manipulator
+            _relationInfo.PrimaryKeysSaver(_transaction, ref writer, obj);
             return writer.GetPersistentSpanAndReset();
         }
 
@@ -614,7 +613,7 @@ namespace BTDB.ODBLayer
         {
             var keySaver = _relationInfo.GetSecondaryKeysKeySaver(secondaryKeyIndex);
             WriteRelationSKPrefix(ref writer, secondaryKeyIndex);
-            keySaver(_transaction, ref writer, obj, this); //secondary key
+            keySaver(_transaction, ref writer, obj); //secondary key
             return writer.GetSpan();
         }
 
