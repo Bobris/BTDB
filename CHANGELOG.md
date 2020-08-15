@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+## 24.4.0
+
+### Added
+
+Relations: Skip already implemented methods in Relation interface.
+
 ## 24.3.0
 
 ### Added

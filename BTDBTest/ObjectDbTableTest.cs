@@ -2394,5 +2394,62 @@ namespace BTDBTest
             Assert.Contains("unsupported",
                 Assert.Throws<BTDBException>(() => tr.GetRelation<IContactGroupRelationTable>()).Message);
         }
+
+        public class MyContactGroupRelationDb : IEquatable<MyContactGroupRelationDb>
+        {
+            [PrimaryKey(1)] 
+            public ulong CompanyId { get; set; }
+            [PrimaryKey(2)] 
+            public ulong GroupId { get; set; }
+
+            [PrimaryKey(3)]
+            public ulong ContactId { get; set; }
+
+            public bool Equals(MyContactGroupRelationDb? other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return CompanyId == other.CompanyId && GroupId == other.GroupId && ContactId == other.ContactId;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((MyContactGroupRelationDb) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(CompanyId, GroupId, ContactId);
+            }
+        }
+        
+        public interface IMyContactGroupRelationTable : IRelation<MyContactGroupRelationDb>
+        {
+            IEnumerable<MyContactGroupRelationDb> FindById(ulong companyId, ulong groupId);
+            bool RemoveById(ulong companyId, ulong groupId, ulong contactId);
+            
+            bool RemoveByIdGlobal(ulong groupId, ulong contactId) => RemoveById(0UL, groupId, contactId);
+
+            MyContactGroupRelationDb FindByIdGlobal(ulong groupId) => FindById(1UL, groupId).First();
+
+            string Hello(string name) => $"Hello {name}";
+        }
+
+        [Fact]
+        public void SupportsDefaultInterfaceMethods()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IMyContactGroupRelationTable>();
+            Assert.Equal("Hello Boris", table.Hello("Boris"));
+
+            const ulong groupId = 2UL;
+            const ulong contactId = 3UL;
+                
+            table.Upsert(new MyContactGroupRelationDb {CompanyId = 1UL, GroupId = groupId, ContactId = contactId});
+            Assert.Equal(new MyContactGroupRelationDb {CompanyId = 1UL, ContactId = contactId, GroupId = groupId}, table.FindByIdGlobal(groupId));
+        }
     }
 }
