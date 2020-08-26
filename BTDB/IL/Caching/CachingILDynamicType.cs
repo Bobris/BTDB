@@ -320,7 +320,7 @@ namespace BTDB.IL.Caching
             public bool Equals(IReplay? other)
             {
                 if (!(other is Constructor v)) return false;
-                return _id == v._id && _parameters.SequenceEqual(v._parameters) && _ilGen.Equals(v._ilGen);
+                return _id == v._id && _parameters.SequenceEqual(v._parameters) && _ilGen.Equals(v._ilGen) && _parametersNames.SequenceEqual(v._parametersNames);
             }
 
             public override bool Equals(object obj)

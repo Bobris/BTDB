@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Added
+
+IL: Allow to define parameter names on constructor so it is usable in IOC.
+
+### Fixed
+
+IOC: Do not crash on constructors without defined parameter names.
+
 ## 24.4.0
 
 ### Added

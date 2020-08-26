@@ -47,7 +47,7 @@ namespace BTDB.IL.Caching
             readonly string _name;
             readonly Type _delegate;
             readonly CachingILGen _ilGen;
-            internal object Object;
+            internal object? Object;
 
             public CacheItem(string name, Type @delegate, CachingILGen ilGen)
             {

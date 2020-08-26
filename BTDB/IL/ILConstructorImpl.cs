@@ -7,7 +7,7 @@ namespace BTDB.IL
     {
         readonly ConstructorBuilder _constructor;
         int _expectedLength;
-        IILGen _gen;
+        IILGen? _gen;
         readonly IILGenForbidenInstructions _forbidenInstructions;
 
         public ILConstructorImpl(ConstructorBuilder constructor, IILGenForbidenInstructions forbidenInstructions,
@@ -22,7 +22,7 @@ namespace BTDB.IL
 
         void DefineParameterNames(string[] parameterNames)
         {
-            for (int i = 0; i < parameterNames.Length; i++)
+            for (var i = 0; i < parameterNames.Length; i++)
             {
                 _constructor.DefineParameter(i + 1, ParameterAttributes.None, parameterNames[i]);
             }
@@ -33,6 +33,6 @@ namespace BTDB.IL
             _expectedLength = length;
         }
 
-        public IILGen Generator => _gen ?? (_gen = new ILGenImpl(_constructor.GetILGenerator(_expectedLength), _forbidenInstructions));
+        public IILGen Generator => _gen ??= new ILGenImpl(_constructor.GetILGenerator(_expectedLength), _forbidenInstructions);
     }
 }
