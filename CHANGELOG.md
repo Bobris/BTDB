@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.5.0
+
 ### Added
 
 IL: Allow to define parameter names on constructor so it is usable in IOC.
