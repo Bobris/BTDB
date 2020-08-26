@@ -40,7 +40,12 @@ namespace BTDB.IL
 
         public IILMethod DefineConstructor(Type[] parameters)
         {
-            return new ILConstructorImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbidenInstructions);
+            return DefineConstructor(parameters, Array.Empty<string>());
+        }
+
+        public IILMethod DefineConstructor(Type[] parameters, string[] parametersNames)
+        {
+            return new ILConstructorImpl(_typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, parameters), _forbidenInstructions, parametersNames);
         }
 
         public void DefineMethodOverride(IILMethod methodBuilder, MethodInfo baseMethod)

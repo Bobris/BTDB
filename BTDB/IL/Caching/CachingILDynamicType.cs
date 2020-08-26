@@ -274,7 +274,12 @@ namespace BTDB.IL.Caching
 
         public IILMethod DefineConstructor(Type[] parameters)
         {
-            var res = new Constructor((int)_instructions.Count, parameters);
+            return DefineConstructor(parameters, Array.Empty<string>());
+        }
+
+        public IILMethod DefineConstructor(Type[] parameters, string[] parametersNames)
+        {
+            var res = new Constructor((int)_instructions.Count, parameters, parametersNames);
             _instructions.Add(res);
             return res;
         }
@@ -283,19 +288,21 @@ namespace BTDB.IL.Caching
         {
             readonly int _id;
             readonly Type[] _parameters;
+            readonly string[] _parametersNames;
             readonly CachingILGen _ilGen = new CachingILGen();
             int _expectedLength = -1;
             IILMethod? _trueContent;
 
-            public Constructor(int id, Type[] parameters)
+            public Constructor(int id, Type[] parameters, string[] parametersNames)
             {
                 _id = id;
                 _parameters = parameters;
+                _parametersNames = parametersNames;
             }
 
             public void ReplayTo(IILDynamicType target)
             {
-                _trueContent = target.DefineConstructor(_parameters);
+                _trueContent = target.DefineConstructor(_parameters, _parametersNames);
                 if (_expectedLength >= 0) _trueContent.ExpectedLength(_expectedLength);
             }
 
