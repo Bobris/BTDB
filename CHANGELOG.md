@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.6.0
+
 ### Added
 
 Support for `DateTimeOffset` type in serialization.
