@@ -207,6 +207,12 @@ namespace BTDB.StreamLayer
             WriteDateTime(value);
         }
 
+        public void WriteDateTimeOffset(DateTimeOffset value)
+        {
+            WriteVInt64(value.Ticks);
+            WriteTimeSpan(value.Offset);
+        }
+
         public void WriteTimeSpan(TimeSpan value)
         {
             WriteVInt64(value.Ticks);

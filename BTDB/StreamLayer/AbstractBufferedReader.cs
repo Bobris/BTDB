@@ -324,6 +324,19 @@ namespace BTDB.StreamLayer
             SkipInt64();
         }
 
+        public DateTimeOffset ReadDateTimeOffset()
+        {
+            var ticks = ReadVInt64();
+            var offset = ReadTimeSpan();
+            return new DateTimeOffset(ticks, offset);
+        }
+
+        public void SkipDateTimeOffset()
+        {
+            SkipVInt64();
+            SkipTimeSpan();
+        }
+
         public TimeSpan ReadTimeSpan()
         {
             return new TimeSpan(ReadVInt64());
