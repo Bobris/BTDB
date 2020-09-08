@@ -11,6 +11,7 @@
 - `string`
 - `EncryptedString`
 - `DateTime`
+- `DateTimeOffset` (ordering is correct only for identical time offsets, better to use `DateTime` if you need ordering because only UTC is allowed)
 - `TimeSpan`
 - `Guid`
 - `IPAddress`
