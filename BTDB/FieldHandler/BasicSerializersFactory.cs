@@ -106,6 +106,10 @@ namespace BTDB.FieldHandler
             fh.Add(new OrderedEncryptedStringHandler());
             fh.Add(new EncryptedStringHandler());
             des.Add(new EncryptedStringDescriptor());
+            Add(fh, des, "DateTimeOffset",
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDateTimeOffset()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDateTimeOffset()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDateTimeOffset(new DateTimeOffset())));
             FieldHandlers = fh.ToArray();
             TypeDescriptors = des.ToArray();
         }
