@@ -333,7 +333,7 @@ namespace BTDB.StreamLayer
 
         public void SkipDateTimeOffset()
         {
-            ReadVInt64();
+            SkipVInt64();
             SkipTimeSpan();
         }
 
