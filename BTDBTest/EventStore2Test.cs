@@ -1018,5 +1018,51 @@ namespace BTDBTest
             Store(new Dictionary<int, IList<bool>> {{1, new List<bool> {true}}});
             Store(new Dictionary<int, IList<bool>> {{1, new[] {true}}});
         }
+
+        [Fact]
+        public void DictionaryWithSomeNullListAsValue()
+        {
+            var serializer = new EventSerializer();
+            var obj = new Dictionary<ulong, IList<ulong>>
+            {
+                {1, null},
+                {2, new List<ulong> {21, 22}},
+                {3, null},
+                {4, new List<ulong> {41, 42}}
+            };
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, obj);
+
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out var obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+
+            Assert.Equal(obj, obj2);
+        }
+
+        [Fact]
+        public void DictionaryWithSomeNullArrayAsValue()
+        {
+            var serializer = new EventSerializer();
+            var obj = new Dictionary<ulong, ulong[]>
+            {
+                {1, null},
+                {2, new ulong[] {21, 22}},
+                {3, null},
+                {4, new ulong[] {41, 42}}
+            };
+            var meta = serializer.Serialize(out _, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, obj);
+
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out var obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+
+            Assert.Equal(obj, obj2);
+        }
     }
 }
