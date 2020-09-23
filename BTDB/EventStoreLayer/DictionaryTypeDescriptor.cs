@@ -140,6 +140,8 @@ namespace BTDB.EventStoreLayer
             var loadFinished = ilGenerator.DefineLabel();
             var next = ilGenerator.DefineLabel();
             ilGenerator
+                .Ldnull()
+                .Stloc(localDict)
                 .Do(pushReader)
                 .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
                 .ConvI4()
