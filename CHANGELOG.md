@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.6.1
+
 ### Fixed
 
 EventLayer Dictionary, List deserialization didn't reset variable, so instead of null there could be previous reference when nested in another List or Dictionary.
