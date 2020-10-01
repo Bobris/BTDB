@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.7.0
+
 ### Added
 
 Support for serialization of type `StringValues` from Microsoft.Extensions.Primitives.
