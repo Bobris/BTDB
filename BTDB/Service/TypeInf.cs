@@ -48,8 +48,8 @@ namespace BTDB.Service
                     if (!property.CanRead || !property.CanWrite) continue;
                     if (property.GetCustomAttributes(typeof(NotStoredAttribute), true).Length != 0) continue;
                     if (property.GetIndexParameters().Length != 0) continue;
-                    if (property.GetGetMethod()==null) continue;
-                    if (property.GetSetMethod()==null) continue;
+                    if (property.GetAnyGetMethod()==null) continue;
+                    if (property.GetAnySetMethod()==null) continue;
                     if (!fieldHandlerFactory.TypeSupported(property.PropertyType)) continue;
                     propertyInfs.Add(new PropertyInf(property, fieldHandlerFactory));
                 }

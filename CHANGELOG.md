@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Support for serialization of properties with private setter in base class.
+
 ## 24.6.1
 
 ### Fixed

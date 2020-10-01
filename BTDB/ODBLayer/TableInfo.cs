@@ -192,7 +192,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetAnySetMethod();
                     var converterGenerator =
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
                             setterMethod!.GetParameters()[0].ParameterType);
@@ -283,7 +283,7 @@ namespace BTDB.ODBLayer
             for (var i = 0; i < ClientTableVersionInfo.FieldCount; i++)
             {
                 var field = ClientTableVersionInfo[i];
-                var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
+                var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
                 Action<IILGen> writerOrCtx;
                 var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
                 if (handler.NeedsCtx())
@@ -405,7 +405,7 @@ namespace BTDB.ODBLayer
                 var destFieldInfo = clientTableVersionInfo![srcFieldInfo.Name];
                 if (destFieldInfo != null)
                 {
-                    var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetSetMethod(true);
+                    var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetAnySetMethod();
                     var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
                     var specializedSrcHandler =
                         srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
@@ -440,7 +440,7 @@ namespace BTDB.ODBLayer
                         readerOrCtx = il => il.Ldnull();
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
-                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetSetMethod(true);
+                    var setterMethod = props.First(p => GetPersistentName(p) == srcFieldInfo.Name).GetAnySetMethod();
                     var converterGenerator =
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad,
                             setterMethod!.GetParameters()[0].ParameterType);

@@ -78,7 +78,7 @@ namespace BTDB.IOC
         {
             foreach (var propertyInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (propertyInfo.GetSetMethod(true) == null) continue;
+                if (propertyInfo.GetAnySetMethod() == null) continue;
                 var dependencyAttribute = propertyInfo.GetCustomAttribute<DependencyAttribute>();
                 if (dependencyAttribute == null && !autowired) continue;
                 yield return new Need

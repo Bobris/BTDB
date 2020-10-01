@@ -75,7 +75,7 @@ namespace BTDB.IOC.CRegs
                         }
                     }
 
-                    il.Call(need.PropertyInfo!.GetSetMethod(true)!);
+                    il.Call(need.PropertyInfo!.GetAnySetMethod()!);
                 }
 
                 return result;
