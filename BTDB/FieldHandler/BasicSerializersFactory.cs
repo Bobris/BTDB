@@ -110,6 +110,10 @@ namespace BTDB.FieldHandler
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadDateTimeOffset()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipDateTimeOffset()),
                 EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteDateTimeOffset(new DateTimeOffset())));
+            Add(fh, des, "StringValues",
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadStringValues()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipStringValues()),
+                EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteStringValues(new Microsoft.Extensions.Primitives.StringValues())));
             FieldHandlers = fh.ToArray();
             TypeDescriptors = des.ToArray();
         }

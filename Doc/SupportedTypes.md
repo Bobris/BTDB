@@ -17,6 +17,7 @@
 - `IPAddress`
 - `Version`
 - `byte[]` (if it is last field in ordering it is lexicographically sorted)
+- `StringValues` from Microsoft.Extensions.Primitives
 
 ## Complex types
 

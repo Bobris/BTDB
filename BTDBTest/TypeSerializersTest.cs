@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using BTDB.Encrypted;
+using Microsoft.Extensions.Primitives;
 using Xunit;
 
 namespace BTDBTest
@@ -62,6 +63,7 @@ namespace BTDBTest
             CanSerializeSimpleValue(-123456789012L);
             CanSerializeSimpleValue(123456789012UL);
             CanSerializeSimpleValue(new Version(4,3,2,1));
+            CanSerializeSimpleValue(new StringValues(new [] { "a", "b" }));
         }
 
         void CanSerializeSimpleValue(object value)

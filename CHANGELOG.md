@@ -4,6 +4,8 @@
 
 ### Added
 
+Support for serialization of type `StringValues` from Microsoft.Extensions.Primitives.
+
 Support for serialization of properties with private setter in base class.
 
 ## 24.6.1

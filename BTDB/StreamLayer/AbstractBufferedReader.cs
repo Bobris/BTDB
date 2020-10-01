@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
+using Microsoft.Extensions.Primitives;
 
 namespace BTDB.StreamLayer
 {
@@ -748,6 +749,26 @@ namespace BTDB.StreamLayer
             var build = ReadVUInt32();
             if (build == 0) return;
             SkipVUInt32();
+        }
+
+        public StringValues ReadStringValues()
+        {
+            var count = ReadVUInt32();
+            var a = new string[count];
+            for (var i = 0u; i < count; i++)
+            {
+                a[i] = ReadString()!;
+            }
+            return new StringValues(a);
+        }
+
+        public void SkipStringValues()
+        {
+            var count = ReadVUInt32();
+            for (var i = 0u; i < count; i++)
+            {
+                SkipString();
+            }
         }
     }
 }
