@@ -1064,5 +1064,65 @@ namespace BTDBTest
 
             Assert.Equal(obj, obj2);
         }
+
+        [Fact]
+        public void SerializationOfStruct_Succeeds()
+        {
+            var testStruct = new TestStruct { TestData = new TestStruct.TestStructData { Data = "TestData" } };
+
+            var result = SerializationInternal<TestStruct>(testStruct);
+
+            Assert.NotNull(result);
+            Assert.Equal(testStruct.TestData.Data, result.TestData.Data);
+        }
+
+        [Fact]
+        public void SerializationOfBaseClassWithPrivateSet_Succeeds()
+        {
+            var testBaseClass = new TestClassWithBaseClass();
+            var result = SerializationInternal<TestClassWithBaseClass>(testBaseClass);
+
+            Assert.NotNull(result);
+            Assert.Equal(testBaseClass.TestData, result.TestData);
+        }
+
+        private T SerializationInternal<T>(object input)
+        {
+            var serializer = new EventSerializer();
+            var meta = serializer.Serialize(out _, input).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out _, input);
+
+            var deserializer = new EventDeserializer();
+            deserializer.ProcessMetadataLog(meta);
+            deserializer.Deserialize(out var deserializedObj, data);
+
+            return (T)deserializedObj;
+        }
+
+        class TestStruct
+        {
+            public TestStructData TestData { get; set; }
+
+            internal struct TestStructData
+            {
+                public string Data { get; set; }
+            }
+        }
+
+        class TestClassWithBaseClass : TestBaseClass
+        {
+            [NotStored]
+            public string TestData => Data;
+        }
+
+        class TestBaseClass
+        {
+            public string Data { get; private set; }
+            public TestBaseClass()
+            {
+                Data = "TestData";
+            }
+        }
     }
 }
