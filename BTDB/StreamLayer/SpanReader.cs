@@ -4,6 +4,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
+using Microsoft.Extensions.Primitives;
 
 namespace BTDB.StreamLayer
 {
@@ -358,6 +359,19 @@ namespace BTDB.StreamLayer
         public void SkipDateTime()
         {
             SkipInt64();
+        }
+
+        public DateTimeOffset ReadDateTimeOffset()
+        {
+            var ticks = ReadVInt64();
+            var offset = ReadTimeSpan();
+            return new DateTimeOffset(ticks, offset);
+        }
+
+        public void SkipDateTimeOffset()
+        {
+            SkipVInt64();
+            SkipTimeSpan();
         }
 
         public TimeSpan ReadTimeSpan()
@@ -757,6 +771,26 @@ namespace BTDB.StreamLayer
             var build = ReadVUInt32();
             if (build == 0) return;
             SkipVUInt32();
+        }
+
+        public StringValues ReadStringValues()
+        {
+            var count = ReadVUInt32();
+            var a = new string[count];
+            for (var i = 0u; i < count; i++)
+            {
+                a[i] = ReadString()!;
+            }
+            return new StringValues(a);
+        }
+
+        public void SkipStringValues()
+        {
+            var count = ReadVUInt32();
+            for (var i = 0u; i < count; i++)
+            {
+                SkipString();
+            }
         }
     }
 }

@@ -64,11 +64,11 @@ namespace BTDB.EventStoreLayer
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
                 if (ShouldNotBeStored(propertyInfo)) continue;
-                if (propertyInfo.GetGetMethod(true) == null)
+                if (propertyInfo.GetAnyGetMethod() == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
                                                         " and property " + propertyInfo.Name +
                                                         " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
-                if (!isInterface && propertyInfo.GetSetMethod(true) == null)
+                if (!isInterface && propertyInfo.GetAnySetMethod() == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
                                                         " and property " + propertyInfo.Name +
                                                         " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
@@ -278,7 +278,7 @@ namespace BTDB.EventStoreLayer
                         il => il.Do(pushDescriptor).LdcI4(idxForCapture)
                             .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
                         prop.PropertyType, _typeSerializers.ConvertorGenerator);
-                    ilGenerator.Callvirt(prop.GetSetMethod(true)!);
+                    ilGenerator.Callvirt(prop.GetAnySetMethod()!);
                 }
 
                 ilGenerator.Ldloc(resultLoc);
@@ -452,7 +452,7 @@ namespace BTDB.EventStoreLayer
                         .Do(pushCtx)
                         .Do(pushObj)
                         .Castclass(_objectTypeDescriptor._type!)
-                        .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetGetMethod()!)
+                        .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetAnyGetMethod()!)
                         .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
                 }
             }
@@ -518,7 +518,7 @@ namespace BTDB.EventStoreLayer
                 .Stloc(locValue);
             foreach (var (name, typeDescriptor) in _fields)
             {
-                var methodInfo = _type.GetProperties().First(p => GetPersistentName(p) == name).GetGetMethod(true);
+                var methodInfo = _type.GetProperties().First(p => GetPersistentName(p) == name).GetAnyGetMethod();
                 typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                     il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);
             }

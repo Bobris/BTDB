@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
+using Microsoft.Extensions.Primitives;
 
 namespace BTDB.StreamLayer
 {
@@ -372,6 +373,12 @@ namespace BTDB.StreamLayer
             WriteDateTime(value);
         }
 
+        public void WriteDateTimeOffset(DateTimeOffset value)
+        {
+            WriteVInt64(value.Ticks);
+            WriteTimeSpan(value.Offset);
+        }
+
         public void WriteTimeSpan(TimeSpan value)
         {
             WriteVInt64(value.Ticks);
@@ -659,6 +666,15 @@ namespace BTDB.StreamLayer
             WriteVUInt32((uint)value.Build + 1);
             if (value.Build == -1) return;
             WriteVUInt32((uint)value.Revision + 1);
+        }
+
+        public void WriteStringValues(StringValues value)
+        {
+            WriteVUInt32((uint)value.Count);
+            foreach (var s in value)
+            {
+                WriteString(s);
+            }
         }
     }
 }

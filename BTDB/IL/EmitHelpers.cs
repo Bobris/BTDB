@@ -330,5 +330,23 @@ namespace BTDB.IL
 
             return false;
         }
+
+        public static MethodInfo? GetAnyGetMethod(this PropertyInfo pi)
+        {
+            var res = pi.GetGetMethod(true);
+
+            if (res == null)
+                res = pi.DeclaringType?.GetProperty(pi.Name)?.GetGetMethod(true);
+            return res;
+        }
+
+        public static MethodInfo? GetAnySetMethod(this PropertyInfo pi)
+        {
+            var res = pi.GetSetMethod(true);
+
+            if (res == null)
+                res = pi.DeclaringType?.GetProperty(pi.Name)?.GetSetMethod(true);
+            return res;
+        }
     }
 }

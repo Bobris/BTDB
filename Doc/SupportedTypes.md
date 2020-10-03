@@ -11,11 +11,13 @@
 - `string`
 - `EncryptedString`
 - `DateTime`
+- `DateTimeOffset` (ordering is correct only for identical time offsets, better to use `DateTime` if you need ordering because only UTC is allowed)
 - `TimeSpan`
 - `Guid`
 - `IPAddress`
 - `Version`
 - `byte[]` (if it is last field in ordering it is lexicographically sorted)
+- `StringValues` from Microsoft.Extensions.Primitives
 
 ## Complex types
 

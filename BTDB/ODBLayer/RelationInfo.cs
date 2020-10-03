@@ -117,7 +117,7 @@ namespace BTDB.ODBLayer
                     var fieldInfo = props.FirstOrDefault(p => GetPersistentName(p) == srcFieldInfo.Name);
                     if (fieldInfo != null)
                     {
-                        var setterMethod = fieldInfo.GetSetMethod(true);
+                        var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
                             srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
@@ -218,7 +218,7 @@ namespace BTDB.ODBLayer
                     var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
                     if (fieldInfo != null)
                     {
-                        var setterMethod = fieldInfo.GetSetMethod(true);
+                        var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
                             srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
@@ -255,7 +255,7 @@ namespace BTDB.ODBLayer
                     var specializedSrcHandler = srcFieldInfo.Handler;
                     var willLoad = specializedSrcHandler.HandledType();
                     var fieldInfo = persistentNameToPropertyInfo.GetOrFakeValueRef(srcFieldInfo.Name);
-                    var setterMethod = fieldInfo.GetSetMethod(true);
+                    var setterMethod = fieldInfo.GetAnySetMethod();
                     var converterGenerator =
                         _owner._relationInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad!,
                             setterMethod!.GetParameters()[0].ParameterType);
@@ -677,7 +677,7 @@ namespace BTDB.ODBLayer
             var props = ClientType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             foreach (var field in fields)
             {
-                var getter = props.First(p => GetPersistentName(p) == field.Name).GetGetMethod(true);
+                var getter = props.First(p => GetPersistentName(p) == field.Name).GetAnyGetMethod();
                 var handler = field.Handler!.SpecializeSaveForType(getter!.ReturnType);
                 handler.Save(ilGen, pushWriter, il => il.Ldloc(writerCtxLocal!), il =>
                 {

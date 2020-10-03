@@ -65,6 +65,25 @@ namespace BTDBTest
         }
 
         [Fact]
+        public void DateTimeOffsetTest()
+        {
+            var date = new DateTime(1976, 2, 2, 2, 2, 2, DateTimeKind.Utc);
+            TestDateOffsetTime(new DateTimeOffset(date), new byte[] { 0xff, 0x8, 0xa6, 0x52, 0xde, 0x50, 0x40, 0x49, 0x0, 0x80 });
+            var dateWithOffset = new DateTimeOffset(date).ToOffset(TimeSpan.FromHours(4));
+            TestDateOffsetTime(dateWithOffset, new byte[] { 0xff, 0x8, 0xa6, 0x52, 0xff, 0xd7, 0x51, 0xe9, 0x0, 0xfc, 0x21, 0x87, 0x11, 0xa0, 0x0 });
+        }
+
+        static void TestDateOffsetTime(DateTimeOffset value, byte[] checkResult)
+        {
+            TestWriteRead((ref SpanWriter w) => w.WriteDateTimeOffset(value), checkResult, (ref SpanReader r) =>
+            {
+                var readValue = r.ReadDateTimeOffset();
+                Assert.Equal(value, readValue);
+                Assert.Equal(value.Offset, readValue.Offset);
+            }, (ref SpanReader s) => s.SkipDateTimeOffset());
+        }
+
+        [Fact]
         public void TimeSpanTest()
         {
             TestTimeSpan(new TimeSpan(1), new byte[] { 0x81 });

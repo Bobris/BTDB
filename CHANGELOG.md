@@ -2,6 +2,36 @@
 
 ## [unreleased]
 
+## 24.7.0
+
+### Added
+
+Support for serialization of type `StringValues` from Microsoft.Extensions.Primitives.
+
+Support for serialization of properties with private setter in base class.
+
+## 24.6.1
+
+### Fixed
+
+EventLayer Dictionary, List deserialization didn't reset variable, so instead of null there could be previous reference when nested in another List or Dictionary.
+
+## 24.6.0
+
+### Added
+
+Support for `DateTimeOffset` type in serialization.
+
+## 24.5.0
+
+### Added
+
+IL: Allow to define parameter names on constructor so it is usable in IOC.
+
+### Fixed
+
+IOC: Do not crash on constructors without defined parameter names.
+
 ## 24.4.0
 
 ### Added

@@ -600,7 +600,7 @@ namespace BTDB.IL
         {
             if (expression.Body is MemberExpression newExpression)
             {
-                return il.Callvirt(((PropertyInfo)newExpression.Member).GetGetMethod(true)!);
+                return il.Callvirt(((PropertyInfo)newExpression.Member).GetAnyGetMethod()!);
             }
             var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Callvirt(methodInfo);
@@ -620,7 +620,7 @@ namespace BTDB.IL
         {
             if (expression.Body is MemberExpression memberExpression)
             {
-                return il.Call(((PropertyInfo)memberExpression.Member).GetGetMethod(true)!);
+                return il.Call(((PropertyInfo)memberExpression.Member).GetAnyGetMethod()!);
             }
 
             if (expression.Body is NewExpression newExpression)

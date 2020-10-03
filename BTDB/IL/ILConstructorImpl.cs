@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Reflection.Emit;
 
 namespace BTDB.IL
@@ -7,13 +8,25 @@ namespace BTDB.IL
         readonly ConstructorBuilder _constructor;
         int _expectedLength;
         IILGen? _gen;
+
         readonly IILGenForbiddenInstructions _forbiddenInstructions;
 
-        public ILConstructorImpl(ConstructorBuilder constructor, IILGenForbiddenInstructions forbiddenInstructions)
+        public ILConstructorImpl(ConstructorBuilder constructor, IILGenForbiddenInstructions forbiddenInstructions,
+            string[] parameterNames)
         {
             _constructor = constructor;
             _forbiddenInstructions = forbiddenInstructions;
             _expectedLength = 64;
+
+            DefineParameterNames(parameterNames);
+        }
+
+        void DefineParameterNames(string[] parameterNames)
+        {
+            for (var i = 0; i < parameterNames.Length; i++)
+            {
+                _constructor.DefineParameter(i + 1, ParameterAttributes.None, parameterNames[i]);
+            }
         }
 
         public void ExpectedLength(int length)

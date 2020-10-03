@@ -133,6 +133,8 @@ namespace BTDB.EventStoreLayer
                 var localIndex = ilGenerator.DeclareLocal(typeof(int));
                 var next = ilGenerator.DefineLabel();
                 ilGenerator
+                    .Ldnull()
+                    .Stloc(localArray)
                     .LdcI4(0)
                     .Stloc(localIndex)
                     .Do(pushReader)
@@ -178,6 +180,8 @@ namespace BTDB.EventStoreLayer
                 var loadFinished = ilGenerator.DefineLabel();
                 var next = ilGenerator.DefineLabel();
                 ilGenerator
+                    .Ldnull()
+                    .Stloc(localList)
                     .Do(pushReader)
                     .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                     .ConvI4()
