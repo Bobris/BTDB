@@ -60,5 +60,29 @@ namespace BTDBTest
                 // ignored
             }
         }
+
+        [Fact]
+        public void ContinuousMemoryBlockWriterBasicsWorks()
+        {
+            var byteArrayWriter = new ContinuousMemoryBlockWriter();
+            Assert.Equal(0, byteArrayWriter.GetCurrentPositionWithoutWriter());
+            Assert.Equal(Array.Empty<byte>(), byteArrayWriter.GetSpan().ToArray());
+            Assert.Equal(Array.Empty<byte>(), byteArrayWriter.GetByteBuffer().ToByteArray());
+            var writer = new SpanWriter(byteArrayWriter);
+            writer.WriteInt8(42);
+            writer.Sync();
+            Assert.Equal(1, byteArrayWriter.GetCurrentPositionWithoutWriter());
+            Assert.Equal(new byte[] { 42 }, byteArrayWriter.GetSpan().ToArray());
+            Assert.Equal(new byte[] { 42 }, byteArrayWriter.GetByteBuffer().ToByteArray());
+            writer.WriteInt8(1);
+            Assert.Equal(2, writer.GetCurrentPosition());
+            writer.SetCurrentPosition(1);
+            writer.WriteBlock(new byte[] { 43, 44 });
+            writer.Sync();
+            Assert.Equal(3, byteArrayWriter.GetCurrentPositionWithoutWriter());
+            Assert.Equal(new byte[] { 42, 43, 44 }, byteArrayWriter.GetSpan().ToArray());
+            Assert.Equal(new byte[] { 42, 43, 44 }, byteArrayWriter.GetByteBuffer().ToByteArray());
+        }
     }
 }
+
