@@ -83,6 +83,22 @@ namespace BTDBTest
             Assert.Equal(new byte[] { 42, 43, 44 }, byteArrayWriter.GetSpan().ToArray());
             Assert.Equal(new byte[] { 42, 43, 44 }, byteArrayWriter.GetByteBuffer().ToByteArray());
         }
+
+        [Fact]
+        public void SpanReaderSyncingWorks()
+        {
+            var memFile = new MemoryPositionLessStream();
+            memFile.Write(new byte[] { 1,2 }, 0);
+            var controller = new PositionLessStreamReader(memFile);
+            var reader = new SpanReader(controller);
+            Assert.Equal(1, reader.ReadInt8());
+            reader.Sync();
+            reader = new SpanReader(controller);
+            Assert.Equal(2, reader.ReadInt8());
+            reader.Sync();
+            reader = new SpanReader(controller);
+            Assert.True(reader.Eof);
+        }
     }
 }
 

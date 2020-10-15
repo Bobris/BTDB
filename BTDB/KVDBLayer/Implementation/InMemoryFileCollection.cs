@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Buffer;
 using BTDB.StreamLayer;
@@ -98,6 +97,11 @@ namespace BTDB.KVDBLayer
                 {
                     _ofs = (ulong)position;
                     spanReader.Buf = new ReadOnlySpan<byte>();
+                }
+
+                public void Sync(ref SpanReader spanReader)
+                {
+                    _ofs -= (uint)spanReader.Buf.Length;
                 }
             }
 

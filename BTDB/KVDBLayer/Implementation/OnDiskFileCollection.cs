@@ -63,6 +63,8 @@ namespace BTDB.KVDBLayer
                 readonly ulong _valueSize;
                 ulong _ofs;
                 readonly byte[] _buf;
+                uint _usedOfs;
+                uint _usedLen;
                 const int BufLength = 32768;
 
                 public Reader(File owner)
@@ -71,16 +73,25 @@ namespace BTDB.KVDBLayer
                     _valueSize = _owner.GetSize();
                     _ofs = 0;
                     _buf = new byte[BufLength];
+                    _usedOfs = 0;
+                    _usedLen = 0;
                 }
 
                 public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
                     if (0 != spanReader.Buf.Length)
                         return false;
-                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
-                    spanReader.Buf = _buf.AsSpan(0, (int)read);
-                    _ofs += read;
-                    return read == 0;
+                    if (_usedLen == 0)
+                    {
+                        var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
+                        spanReader.Buf = _buf.AsSpan(0, (int)read);
+                        _usedOfs = 0;
+                        _usedLen = read;
+                        _ofs += read;
+                        return read == 0;
+                    }
+                    spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
+                    return false;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
@@ -116,6 +127,13 @@ namespace BTDB.KVDBLayer
                 {
                     spanReader.Buf = new ReadOnlySpan<byte>();
                     _ofs = (ulong)position;
+                }
+
+                public void Sync(ref SpanReader spanReader)
+                {
+                    var curLen = (uint)spanReader.Buf.Length;
+                    _usedOfs += _usedLen - curLen;
+                    _usedLen = curLen;
                 }
             }
 

@@ -142,6 +142,11 @@ namespace BTDB.KVDBLayer
                 {
                     throw new NotSupportedException();
                 }
+
+                public void Sync(ref SpanReader spanReader)
+                {
+                    _ofs += (uint)(spanReader.Original.Length - spanReader.Buf.Length);
+                }
             }
 
             sealed class Writer : ISpanWriter

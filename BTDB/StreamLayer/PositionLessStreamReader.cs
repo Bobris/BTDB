@@ -11,6 +11,8 @@ namespace BTDB.StreamLayer
         readonly ulong _valueSize;
         ulong _ofs;
         readonly byte[] _buf;
+        uint _usedOfs;
+        uint _usedLen;
 
         public PositionLessStreamReader(IPositionLessStream stream, int bufferSize = 8192)
         {
@@ -21,15 +23,24 @@ namespace BTDB.StreamLayer
             _valueSize = _stream.GetSize();
             _ofs = 0;
             _buf = new byte[bufferSize];
+            _usedOfs = 0;
+            _usedLen = 0;
         }
 
         public bool FillBufAndCheckForEof(ref SpanReader spanReader)
         {
             if (spanReader.Buf.Length != 0) return false;
-            var read = _stream.Read(_buf, _ofs);
-            spanReader.Buf = _buf.AsSpan(0, read);
-            _ofs += (uint)read;
-            return spanReader.Buf.Length == 0;
+            if (_usedLen == 0)
+            {
+                var read = _stream.Read(_buf, _ofs);
+                spanReader.Buf = _buf.AsSpan(0, read);
+                _usedOfs = 0;
+                _usedLen = (uint)read;
+                _ofs += (uint)read;
+                return spanReader.Buf.Length == 0;
+            }
+            spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
+            return false;
         }
 
         public long GetCurrentPosition(in SpanReader spanReader)
@@ -64,6 +75,13 @@ namespace BTDB.StreamLayer
         {
             spanReader.Buf = new ReadOnlySpan<byte>();
             _ofs = (ulong)position;
+        }
+
+        public void Sync(ref SpanReader spanReader)
+        {
+            var curLen = (uint)spanReader.Buf.Length;
+            _usedOfs += _usedLen - curLen;
+            _usedLen = curLen;
         }
     }
 }

@@ -156,7 +156,7 @@ namespace BTDB.StreamLayer
         public void Sync()
         {
             if (Controller == null) ThrowCanBeUsedOnlyWithController();
-            Controller?.Sync(ref this);
+            Controller!.Sync(ref this);
         }
 
         static void ThrowCanBeUsedOnlyWithController()

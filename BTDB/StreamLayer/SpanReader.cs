@@ -34,7 +34,22 @@ namespace BTDB.StreamLayer
 
         public ReadOnlySpan<byte> Buf;
         public ReadOnlySpan<byte> Original;
-        public ISpanReader? Controller;
+        public readonly ISpanReader? Controller;
+
+        /// <summary>
+        /// Remembers actual position into controller. Useful for continuing reading across async calls.
+        /// This method could be called only once and only as last called method on SpanReader instance.
+        /// </summary>
+        public void Sync()
+        {
+            if (Controller == null) ThrowCanBeUsedOnlyWithController();
+            Controller!.Sync(ref this);
+        }
+
+        static void ThrowCanBeUsedOnlyWithController()
+        {
+            throw new InvalidOperationException("Need controller");
+        }
 
         public long GetCurrentPosition()
         {

@@ -35,5 +35,11 @@ namespace BTDB.StreamLayer
         /// <param name="spanReader">owning SpanReader</param>
         /// <param name="position">new position to set</param>
         void SetCurrentPosition(ref SpanReader spanReader, long position);
+
+        /// <summary>
+        /// Called from SpanReader.Sync() to signal that current position needs to be remembered in this object.
+        /// </summary>
+        /// <param name="spanReader">owning SpanReader</param>
+        void Sync(ref SpanReader spanReader);
     }
 }
