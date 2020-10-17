@@ -499,6 +499,41 @@ namespace BTDBTest
             bool AnyByAge(ulong tenantId, AdvancedEnumeratorParam<uint> param);
             bool AnyByAge(ulong tenantId, uint age);
         }
+        
+        public interface INestedEventMetaDataTable : IRelation<NestedEventMetaData>
+        {
+            void Insert(NestedEventMetaData data);
+            IEnumerable<NestedEventMetaData> ListById(AdvancedEnumeratorParam<ulong> param);
+        }
+
+        public class NestedEventMetaData
+        {
+            [PrimaryKey(1)]
+            public ulong SequenceNumber { get; set; }
+            public ByteBuffer MetaData { get; set; }
+        }
+
+        [Fact]
+        public void ListByIdOnEmptyDbWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<INestedEventMetaDataTable>();;
+            var enumerable = table.ListById(new AdvancedEnumeratorParam<ulong>(
+                EnumerationOrder.Ascending,
+                0,
+                KeyProposition.Included,
+                ulong.MaxValue,
+                KeyProposition.Ignored
+            ));
+            var enumerator = enumerable.GetEnumerator();
+            Assert.False(enumerator.MoveNext());
+            
+
+            foreach (var item in enumerable)
+            {
+                
+            }
+        }
 
         [Fact]
         public void AdvancedIteratingWorks()
