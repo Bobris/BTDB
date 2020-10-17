@@ -491,6 +491,21 @@ namespace BTDBTest.BTreeLibTests
         }
 
         [Fact]
+        public void FindLastPrefixSpecialCaseFixed()
+        {
+            var val = GetSampleValue().ToArray();
+            var key = new byte[10];
+            for (var i = 0; i < 4; i++)
+            {
+                key[1] = (byte)i;
+                _cursor.Upsert(key, val);
+            }
+
+            key[0] = 1;
+            Assert.Equal(-1, _cursor.FindLastWithPrefix(key.AsSpan(0, 2)));
+        }
+
+        [Fact]
         public void FindExactSpecialCases()
         {
             var val = GetSampleValue().ToArray();

@@ -211,6 +211,15 @@ namespace BTDB.ODBLayer
             _keyValueTr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _keyValueTr.GetKeyIndex();
 
+            if (prefixIndex == -1)
+            {
+                _count = 0;
+                _startPos = 0;
+                _pos = 0;
+                _seekNeeded = true;
+                return;
+            }
+
             _prevModificationCounter = manipulator.ModificationCounter;
 
             long startIndex;
@@ -484,6 +493,15 @@ namespace BTDB.ODBLayer
 
             _keyValueTr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
             var prefixIndex = _keyValueTr.GetKeyIndex();
+
+            if (prefixIndex == -1)
+            {
+                _count = 0;
+                _startPos = 0;
+                _pos = 0;
+                _seekState = SeekState.Undefined;
+                return;
+            }
 
             long startIndex;
             long endIndex;

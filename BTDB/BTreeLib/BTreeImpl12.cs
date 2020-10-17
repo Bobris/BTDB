@@ -1399,7 +1399,14 @@ namespace BTDB.BTreeLib
 
                     if (comp < 0 || prefix.Length >= keyPrefix.Length)
                     {
-                        if (header.IsNodeLeaf) return res + header._childCount - 1;
+                        if (header.IsNodeLeaf)
+                        {
+                            if (comp < 0)
+                            {
+                                return -1;
+                            }
+                            return res + header._childCount - 1;
+                        }
                         // Trick here is to calculate children from back
                         res += (long)header._recursiveChildCount;
                         top = NodeUtils12.GetBranchValuePtr(top, header._childCount - 1);

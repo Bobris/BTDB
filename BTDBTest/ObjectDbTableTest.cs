@@ -499,7 +499,7 @@ namespace BTDBTest
             bool AnyByAge(ulong tenantId, AdvancedEnumeratorParam<uint> param);
             bool AnyByAge(ulong tenantId, uint age);
         }
-        
+
         public interface INestedEventMetaDataTable : IRelation<NestedEventMetaData>
         {
             void Insert(NestedEventMetaData data);
@@ -527,12 +527,6 @@ namespace BTDBTest
             ));
             var enumerator = enumerable.GetEnumerator();
             Assert.False(enumerator.MoveNext());
-            
-
-            foreach (var item in enumerable)
-            {
-                
-            }
         }
 
         [Fact]
@@ -541,6 +535,11 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IPersonTableComplexFuture>("PersonComplex");
             var personTable = creator(tr);
+
+            var ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+                KeyProposition.Included,
+                0, KeyProposition.Ignored));
+            Assert.False(ena2.NextKey(out var age));
 
             var firstPerson = new Person { TenantId = 1, Id = 2, Name = "Lubos", Age = 28 };
             personTable.Insert(firstPerson);
@@ -557,7 +556,7 @@ namespace BTDBTest
             Assert.Equal(2u, personTable.CountByAge(2, new AdvancedEnumeratorParam<uint>()));
             Assert.True(personTable.AnyByAge(2, new AdvancedEnumeratorParam<uint>()));
 
-            Assert.True(orderedEnumerator.NextKey(out var age));
+            Assert.True(orderedEnumerator.NextKey(out age));
             Assert.Equal(128u, age);
             Assert.Equal("Lubos", orderedEnumerator.CurrentValue.Name);
             Assert.True(orderedEnumerator.NextKey(out age));
@@ -600,7 +599,7 @@ namespace BTDBTest
             Assert.Equal(29u, age);
             Assert.False(ena.NextKey(out _));
 
-            var ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
+            ena2 = personTable.ListByAgePartial(1, new AdvancedEnumeratorParam<uint>(EnumerationOrder.Ascending, 29,
                 KeyProposition.Included,
                 29, KeyProposition.Included));
             Assert.True(ena2.NextKey(out age));
@@ -2432,9 +2431,9 @@ namespace BTDBTest
 
         public class MyContactGroupRelationDb : IEquatable<MyContactGroupRelationDb>
         {
-            [PrimaryKey(1)] 
+            [PrimaryKey(1)]
             public ulong CompanyId { get; set; }
-            [PrimaryKey(2)] 
+            [PrimaryKey(2)]
             public ulong GroupId { get; set; }
 
             [PrimaryKey(3)]
@@ -2460,12 +2459,12 @@ namespace BTDBTest
                 return HashCode.Combine(CompanyId, GroupId, ContactId);
             }
         }
-        
+
         public interface IMyContactGroupRelationTable : IRelation<MyContactGroupRelationDb>
         {
             IEnumerable<MyContactGroupRelationDb> FindById(ulong companyId, ulong groupId);
             bool RemoveById(ulong companyId, ulong groupId, ulong contactId);
-            
+
             bool RemoveByIdGlobal(ulong groupId, ulong contactId) => RemoveById(0UL, groupId, contactId);
 
             MyContactGroupRelationDb FindByIdGlobal(ulong groupId) => FindById(1UL, groupId).First();
@@ -2482,7 +2481,7 @@ namespace BTDBTest
 
             const ulong groupId = 2UL;
             const ulong contactId = 3UL;
-                
+
             table.Upsert(new MyContactGroupRelationDb {CompanyId = 1UL, GroupId = groupId, ContactId = contactId});
             Assert.Equal(new MyContactGroupRelationDb {CompanyId = 1UL, ContactId = contactId, GroupId = groupId}, table.FindByIdGlobal(groupId));
         }
