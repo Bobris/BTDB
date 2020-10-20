@@ -77,10 +77,8 @@ namespace BTDB.KVDBLayer
                     _usedLen = 0;
                 }
 
-                public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+                public void Init(ref SpanReader spanReader)
                 {
-                    if (0 != spanReader.Buf.Length)
-                        return false;
                     if (_usedLen == 0)
                     {
                         var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
@@ -88,10 +86,21 @@ namespace BTDB.KVDBLayer
                         _usedOfs = 0;
                         _usedLen = read;
                         _ofs += read;
-                        return read == 0;
+                        return;
                     }
                     spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
-                    return false;
+                }
+
+                public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+                {
+                    if (0 != spanReader.Buf.Length)
+                        return false;
+                    var read = PlatformMethods.Instance.PRead(_owner._handle, _buf, _ofs);
+                    spanReader.Buf = _buf.AsSpan(0, (int)read);
+                    _usedOfs = 0;
+                    _usedLen = read;
+                    _ofs += read;
+                    return read == 0;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)
@@ -126,6 +135,8 @@ namespace BTDB.KVDBLayer
                 public void SetCurrentPosition(ref SpanReader spanReader, long position)
                 {
                     spanReader.Buf = new ReadOnlySpan<byte>();
+                    _usedOfs = 0;
+                    _usedLen = 0;
                     _ofs = (ulong)position;
                 }
 

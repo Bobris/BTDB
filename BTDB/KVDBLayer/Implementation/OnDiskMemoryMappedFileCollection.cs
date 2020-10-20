@@ -99,6 +99,13 @@ namespace BTDB.KVDBLayer
                     _ofs = 0;
                 }
 
+                public void Init(ref SpanReader spanReader)
+                {
+                    spanReader.Buf = new Span<byte>(_owner._pointer + _ofs,
+                        (int)Math.Min(_valueSize - _ofs, int.MaxValue));
+                    spanReader.Original = spanReader.Buf;
+                }
+
                 public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
                     _ofs += (ulong)(spanReader.Original.Length - spanReader.Buf.Length);

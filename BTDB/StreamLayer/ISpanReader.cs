@@ -3,6 +3,11 @@ namespace BTDB.StreamLayer
     public interface ISpanReader
     {
         /// <summary>
+        /// Fill Buf at creation of SpanReader.
+        /// </summary>
+        /// <param name="spanReader">owning SpanReader</param>
+        void Init(ref SpanReader spanReader);
+        /// <summary>
         /// Fill Buf at least 1 byte of data or return true if there at end of stream.
         /// </summary>
         /// <param name="spanReader">owning SpanReader</param>

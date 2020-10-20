@@ -51,19 +51,19 @@ namespace BTDB.KVDBLayer
                     _ofs = 0;
                 }
 
+                public void Init(ref SpanReader spanReader)
+                {
+                    var bufOfs = (int)(_ofs % OneBufSize);
+                    spanReader.Buf = _file._data[(int)(_ofs / OneBufSize)]
+                        .AsSpan(bufOfs, (int)Math.Min(_totalSize - _ofs, (ulong)(OneBufSize - bufOfs)));
+                    _ofs += (uint)spanReader.Buf.Length;
+                }
+
                 public bool FillBufAndCheckForEof(ref SpanReader spanReader)
                 {
-                    var startSize = spanReader.Buf.Length;
-                    if (startSize == 0)
-                    {
-                        var bufOfs = (int)(_ofs % OneBufSize);
-                        spanReader.Buf = _file._data[(int)(_ofs / OneBufSize)]
-                            .AsSpan(bufOfs, (int)Math.Min(_totalSize - _ofs, (ulong)(OneBufSize - bufOfs)));
-                        startSize = spanReader.Buf.Length;
-                        _ofs += (uint)startSize;
-                    }
-
-                    return 0 == startSize;
+                    if (spanReader.Buf.Length != 0) return false;
+                    Init(ref spanReader);
+                    return 0 == spanReader.Buf.Length;
                 }
 
                 public long GetCurrentPosition(in SpanReader spanReader)

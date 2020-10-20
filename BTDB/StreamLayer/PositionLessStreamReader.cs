@@ -27,9 +27,8 @@ namespace BTDB.StreamLayer
             _usedLen = 0;
         }
 
-        public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+        public void Init(ref SpanReader spanReader)
         {
-            if (spanReader.Buf.Length != 0) return false;
             if (_usedLen == 0)
             {
                 var read = _stream.Read(_buf, _ofs);
@@ -37,10 +36,20 @@ namespace BTDB.StreamLayer
                 _usedOfs = 0;
                 _usedLen = (uint)read;
                 _ofs += (uint)read;
-                return spanReader.Buf.Length == 0;
+                return;
             }
             spanReader.Buf = _buf.AsSpan((int)_usedOfs, (int)_usedLen);
-            return false;
+        }
+
+        public bool FillBufAndCheckForEof(ref SpanReader spanReader)
+        {
+            if (spanReader.Buf.Length != 0) return false;
+            var read = _stream.Read(_buf, _ofs);
+            spanReader.Buf = _buf.AsSpan(0, read);
+            _usedOfs = 0;
+            _usedLen = (uint)read;
+            _ofs += (uint)read;
+            return spanReader.Buf.Length == 0;
         }
 
         public long GetCurrentPosition(in SpanReader spanReader)
@@ -74,6 +83,8 @@ namespace BTDB.StreamLayer
         public void SetCurrentPosition(ref SpanReader spanReader, long position)
         {
             spanReader.Buf = new ReadOnlySpan<byte>();
+            _usedOfs = 0;
+            _usedLen = 0;
             _ofs = (ulong)position;
         }
 

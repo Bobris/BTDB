@@ -29,7 +29,7 @@ namespace BTDB.StreamLayer
             Controller = controller;
             Buf = new ReadOnlySpan<byte>();
             Original = new ReadOnlySpan<byte>();
-            controller.FillBufAndCheckForEof(ref this);
+            controller.Init(ref this);
         }
 
         public ReadOnlySpan<byte> Buf;
@@ -580,13 +580,11 @@ namespace BTDB.StreamLayer
                 {
                     length -= (uint)Buf.Length;
                     Buf = new ReadOnlySpan<byte>();
-                    if (Controller.SkipBlock(ref this, length))
-                        PackUnpack.ThrowEndOfStreamException();
+                    if (!Controller.SkipBlock(ref this, length))
+                        return;
                 }
-                else
-                {
-                    PackUnpack.ThrowEndOfStreamException();
-                }
+                Buf = new ReadOnlySpan<byte>();
+                PackUnpack.ThrowEndOfStreamException();
             }
 
             PackUnpack.UnsafeAdvance(ref Buf, (int)length);
