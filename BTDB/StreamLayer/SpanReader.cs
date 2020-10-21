@@ -547,16 +547,11 @@ namespace BTDB.StreamLayer
                         Buf = new ReadOnlySpan<byte>();
                     }
 
-                    if (Controller.ReadBlock(ref this, ref buffer, length))
-                        PackUnpack.ThrowEndOfStreamException();
-                }
-                else
-                {
-                    PackUnpack.ThrowEndOfStreamException();
+                    if (!Controller.ReadBlock(ref this, ref buffer, length)) return;
                 }
 
-                if (Controller?.ReadBlock(ref this, ref buffer, length) ?? true)
-                    PackUnpack.ThrowEndOfStreamException();
+                Buf = new ReadOnlySpan<byte>();
+                PackUnpack.ThrowEndOfStreamException();
             }
 
             Unsafe.CopyBlockUnaligned(ref buffer, ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)length), length);
