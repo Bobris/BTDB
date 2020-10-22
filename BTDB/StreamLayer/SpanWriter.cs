@@ -487,7 +487,7 @@ namespace BTDB.StreamLayer
                         {
                             Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer,
                                 (uint)Buf.Length);
-                            buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
+                            buffer = ref Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
                             length -= (uint)Buf.Length;
                             Buf = new Span<byte>();
                             Controller.Flush(ref this); // must return true because Buf is empty

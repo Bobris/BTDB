@@ -541,8 +541,8 @@ namespace BTDB.StreamLayer
                 {
                     if (Buf.Length > 0)
                     {
-                        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(Buf), ref buffer, (uint)Buf.Length);
-                        buffer = Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
+                        Unsafe.CopyBlockUnaligned(ref buffer, ref MemoryMarshal.GetReference(Buf), (uint)Buf.Length);
+                        buffer = ref Unsafe.AddByteOffset(ref buffer, (IntPtr)Buf.Length);
                         length -= (uint)Buf.Length;
                         Buf = new ReadOnlySpan<byte>();
                     }
