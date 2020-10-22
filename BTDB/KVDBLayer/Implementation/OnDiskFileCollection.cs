@@ -127,6 +127,7 @@ namespace BTDB.KVDBLayer
                 public bool SkipBlock(ref SpanReader spanReader, uint length)
                 {
                     _ofs += length;
+                    _usedLen = 0;
                     if (_ofs <= _valueSize) return false;
                     _ofs = _valueSize;
                     return true;
