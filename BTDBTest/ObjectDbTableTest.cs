@@ -2485,5 +2485,74 @@ namespace BTDBTest
             table.Upsert(new MyContactGroupRelationDb {CompanyId = 1UL, GroupId = groupId, ContactId = contactId});
             Assert.Equal(new MyContactGroupRelationDb {CompanyId = 1UL, ContactId = contactId, GroupId = groupId}, table.FindByIdGlobal(groupId));
         }
+
+        [BinaryCompatibilityOnly]
+        [Flags]
+        public enum BatchType
+        {
+            Undefined = 0,
+            Email = 1,
+            Sms = 1 << 1,
+            Notification = 1 << 2,
+            DocumentUpdate = 1 << 3,
+            AppTemplateUpdate = 1 << 4,
+            WhatsApp = 1 << 5
+        }
+
+        public class Batch
+        {
+            [PrimaryKey(1)] public ulong CompanyId { get; set; }
+
+            [PrimaryKey(2)]
+            [SecondaryKey("BatchId")]
+            public ulong BatchId { get; set; }
+
+            [SecondaryKey("UploadTime", IncludePrimaryKeyOrder = 1)]
+            public BatchType Type { get; set; }
+            [SecondaryKey("UploadTime", Order = 2)]
+            public DateTime LastSplitUploadTime { get; set; }
+        }
+
+        public interface IBatchTable : IRelation<Batch>
+        {
+            uint CountByUploadTime(ulong companyId, BatchType type, AdvancedEnumeratorParam<DateTime> param);
+        }
+
+        [Fact]
+        public void CountByIdWorks()
+        {
+            using var tr = _db.StartTransaction();
+            var table = tr.GetRelation<IBatchTable>();
+
+            table.Upsert(new Batch()
+            {
+                CompanyId = 1,
+                BatchId = 1,
+                Type = BatchType.Email,
+                LastSplitUploadTime = DateTime.SpecifyKind(new DateTime(2018, 12, 15), DateTimeKind.Utc)
+            });
+            
+            table.Upsert(new Batch()
+            {
+                CompanyId = 1,
+                BatchId = 2,
+                Type = BatchType.Email,
+                LastSplitUploadTime = DateTime.SpecifyKind(new DateTime(2019, 1, 15), DateTimeKind.Utc)
+            });
+            
+            table.Upsert(new Batch()
+            {
+                CompanyId = 1,
+                BatchId = 3,
+                Type = BatchType.Email,
+                LastSplitUploadTime = DateTime.SpecifyKind(new DateTime(2019, 1, 25), DateTimeKind.Utc)
+            });
+
+            var from = DateTime.SpecifyKind(new DateTime(2019, 1, 1), DateTimeKind.Utc);
+            var to = DateTime.SpecifyKind(new DateTime(2019, 2, 1), DateTimeKind.Utc);
+            var param = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Descending, from, KeyProposition.Included, to, KeyProposition.Included);
+            
+            Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
+        }
     }
 }
