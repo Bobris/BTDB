@@ -442,13 +442,15 @@ namespace BTDB.ODBLayer
         public long CountWithProposition(KeyProposition startKeyProposition, int prefixLen, in ReadOnlySpan<byte> startKeyBytes,
             KeyProposition endKeyProposition, in ReadOnlySpan<byte> endKeyBytes)
         {
+            if (!_kvtr.FindFirstKey(startKeyBytes.Slice(0, prefixLen)))
+                return 0;
+
+            var prefixIndex = _kvtr.GetKeyIndex();
+
             var realEndKeyBytes = endKeyBytes;
             if (endKeyProposition == KeyProposition.Included)
                 realEndKeyBytes =
                     RelationAdvancedEnumerator<T>.FindLastKeyWithPrefix(endKeyBytes, _kvtr);
-
-            _kvtr.FindFirstKey(startKeyBytes.Slice(0, prefixLen));
-            var prefixIndex = _kvtr.GetKeyIndex();
 
             long startIndex;
             long endIndex;
