@@ -6,7 +6,7 @@ namespace BTDB.StreamLayer
     {
         static PlatformMethods()
         {
-#if NETCOREAPP
+#if NET5_0
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 Instance = new WindowsPlatformMethods();

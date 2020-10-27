@@ -47,7 +47,7 @@ namespace BTDB.StreamLayer
 
                 try
                 {
-#if NETCOREAPP
+#if NET5_0
                     var res = _stream.Read(data);
 #else
                     var tempBuf = new byte[data.Length];
@@ -128,7 +128,7 @@ namespace BTDB.StreamLayer
 
                 try
                 {
-#if NETCOREAPP
+#if NET5_0
                     _stream.Write(data);
 #else
                     _stream.Write(data.ToArray(), 0, data.Length);

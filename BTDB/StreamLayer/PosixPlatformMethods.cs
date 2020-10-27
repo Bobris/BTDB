@@ -1,4 +1,4 @@
-#if NETCOREAPP
+#if NET5_0
 using System;
 using System.Runtime.InteropServices;
 using BTDB.KVDBLayer;

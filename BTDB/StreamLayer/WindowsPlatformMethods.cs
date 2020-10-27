@@ -18,6 +18,7 @@ namespace BTDB.StreamLayer
         internal static extern unsafe int WriteFile(SafeFileHandle handle, byte* bytes, int numBytesToWrite,
             IntPtr numBytesWritten_mustBeZero, NativeOverlapped* lpOverlapped);
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416:Validate platform compatibility", Justification = "Used only on windows in PlatformMethods.")]
         public unsafe uint PRead(SafeFileHandle handle, Span<byte> data, ulong position)
         {
             fixed (byte* dataptr = data)
@@ -36,6 +37,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416:Validate platform compatibility", Justification = "Used only on windows in PlatformMethods.")]
         public unsafe void PWrite(SafeFileHandle handle, ReadOnlySpan<byte> data, ulong position)
         {
             fixed (byte* dataptr = data)

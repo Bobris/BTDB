@@ -8,7 +8,7 @@ using BenchmarkDotNet.Jobs;
 namespace SimpleTester
 {
     [DisassemblyDiagnoser(printSource: true, maxDepth: 2)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31, warmupCount: 1, targetCount: 1, launchCount: 1)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50, warmupCount: 1, targetCount: 1, launchCount: 1)]
     public class BenchTest
     {
         [Params(0x80, 0xf0, 0)] public int N;

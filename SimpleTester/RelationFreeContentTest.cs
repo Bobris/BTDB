@@ -48,7 +48,7 @@ namespace SimpleTester
         IndirectComplex
     }
 
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp50)]
     [RPlotExporter, RankColumn]
     public class RelationFreeContentTest
     {
