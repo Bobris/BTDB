@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Threading;
 using BTDB.KVDBLayer;
@@ -8,6 +9,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace BTDB.StreamLayer
 {
+    [SupportedOSPlatform("windows")]
     public class WindowsPlatformMethods : IPlatformMethods
     {
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -18,7 +20,6 @@ namespace BTDB.StreamLayer
         internal static extern unsafe int WriteFile(SafeFileHandle handle, byte* bytes, int numBytesToWrite,
             IntPtr numBytesWritten_mustBeZero, NativeOverlapped* lpOverlapped);
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416:Validate platform compatibility", Justification = "Used only on windows in PlatformMethods.")]
         public unsafe uint PRead(SafeFileHandle handle, Span<byte> data, ulong position)
         {
             fixed (byte* dataptr = data)
@@ -37,7 +38,6 @@ namespace BTDB.StreamLayer
             }
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416:Validate platform compatibility", Justification = "Used only on windows in PlatformMethods.")]
         public unsafe void PWrite(SafeFileHandle handle, ReadOnlySpan<byte> data, ulong position)
         {
             fixed (byte* dataptr = data)
