@@ -47,13 +47,7 @@ namespace BTDB.StreamLayer
 
                 try
                 {
-#if NET5_0
                     var res = _stream.Read(data);
-#else
-                    var tempBuf = new byte[data.Length];
-                    var res = _stream.Read(tempBuf, 0, tempBuf.Length);
-                    tempBuf.AsSpan().CopyTo(data);
-#endif
                     _position += (ulong)res;
                     return res;
                 }
@@ -128,11 +122,7 @@ namespace BTDB.StreamLayer
 
                 try
                 {
-#if NET5_0
                     _stream.Write(data);
-#else
-                    _stream.Write(data.ToArray(), 0, data.Length);
-#endif
                     _position += (ulong)data.Length;
                 }
                 catch (Exception)

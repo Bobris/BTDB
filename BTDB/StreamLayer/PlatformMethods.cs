@@ -6,7 +6,6 @@ namespace BTDB.StreamLayer
     {
         static PlatformMethods()
         {
-#if NET5_0
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 Instance = new WindowsPlatformMethods();
@@ -15,9 +14,6 @@ namespace BTDB.StreamLayer
             {
                 Instance = new PosixPlatformMethods();
             }
-#else
-            Instance = new WindowsPlatformMethods();
-#endif
         }
 
         public static readonly IPlatformMethods Instance;
