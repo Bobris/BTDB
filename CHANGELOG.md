@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 24.8.0
+
 ### Added
 
 Some missing IL Helpers.
