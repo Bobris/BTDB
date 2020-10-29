@@ -250,6 +250,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen BleUnS(this IILGen il, IILLabel targetLabel)
+        {
+            il.Emit(OpCodes.Ble_Un_S, targetLabel);
+            return il;
+        }
+
         public static IILGen Blt(this IILGen il, IILLabel targetLabel)
         {
             il.Emit(OpCodes.Blt, targetLabel);
@@ -723,6 +729,24 @@ namespace BTDB.IL
                 default:
                     throw new ArgumentException($"{value} is not supported.", nameof(value));
             }
+            return il;
+        }
+
+        public static IILGen Ceq(this IILGen il)
+        {
+            il.Emit(OpCodes.Ceq);
+            return il;
+        }
+
+        public static IILGen Cgt(this IILGen il)
+        {
+            il.Emit(OpCodes.Cgt);
+            return il;
+        }
+
+        public static IILGen CgtUn(this IILGen il)
+        {
+            il.Emit(OpCodes.Cgt_Un);
             return il;
         }
     }

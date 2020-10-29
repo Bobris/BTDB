@@ -4,7 +4,7 @@
     <TargetFrameworks>net5.0</TargetFrameworks>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <LangVersion>8</LangVersion>
-    <Version>24.7.0</Version>
+    <Version>24.8.0</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
     <Nullable>enable</Nullable>
   </PropertyGroup>
