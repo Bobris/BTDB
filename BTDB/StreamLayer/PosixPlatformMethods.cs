@@ -1,4 +1,3 @@
-#if NETCOREAPP
 using System;
 using System.Runtime.InteropServices;
 using BTDB.KVDBLayer;
@@ -68,4 +67,3 @@ namespace BTDB.StreamLayer
         }
     }
 }
-#endif
