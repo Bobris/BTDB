@@ -1,9 +1,10 @@
 using System;
+using BTDB.ODBLayer;
 
 namespace BTDB.IOC
 {
     [AttributeUsage(AttributeTargets.Property)]
-    public class DependencyAttribute : Attribute
+    public class DependencyAttribute : NotStoredAttribute
     {
         public readonly string? Name;
 

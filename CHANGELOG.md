@@ -2,6 +2,12 @@
 
 ## [unreleased]
 
+### Added
+
+Some missing IL Helpers.
+
+`Dependency` attribute inheriting from `NotStored` attribute.
+
 ## 24.7.0
 
 ### Added
