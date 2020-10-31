@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+IOC Container Build can verify that Singletons does not depend on transient objects.
+
 ## 24.8.0
 
 ### Added

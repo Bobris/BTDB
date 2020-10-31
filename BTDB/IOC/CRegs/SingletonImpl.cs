@@ -199,5 +199,19 @@ namespace BTDB.IOC.CRegs
             yield return Need.ContainerNeed;
             context.BuildContext = backupCtx;
         }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+            if (options.HasFlag(ContainerVerification.SingletonsUsingOnlySingletons))
+            {
+                var context = new GenerationContext(container, _wrapping, new BuildContext(container));
+                context.VerifySingletonUsingOnlySingletons(_implementationType);
+            }
+        }
     }
 }

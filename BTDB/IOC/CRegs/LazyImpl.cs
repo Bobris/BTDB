@@ -49,6 +49,11 @@ namespace BTDB.IOC.CRegs
             yield return _myNeed;
         }
 
+        public bool IsSingletonSafe()
+        {
+            return true;
+        }
+
         public interface IObjectBuilder
         {
             object Build(Func<object> builder);
@@ -62,5 +67,8 @@ namespace BTDB.IOC.CRegs
             }
         }
 
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+        }
     }
 }

@@ -90,5 +90,14 @@ namespace BTDB.IOC.CRegs
         {
             return context.NeedsForConstructor(_constructorInfo).Concat(context.NeedsForProperties(_implementationType, _arePropertiesAutowired));
         }
+
+        public bool IsSingletonSafe()
+        {
+            return false;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+        }
     }
 }

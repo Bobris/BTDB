@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTDB.Collections;
+using BTDB.KVDBLayer;
 
 namespace BTDB.IOC
 {
@@ -368,6 +369,11 @@ namespace BTDB.IOC
             {
                 yield break;
             }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
+            }
         }
 
         ICRegILGen AddConstant(object? obj, Type type)
@@ -429,6 +435,11 @@ namespace BTDB.IOC
             {
                 yield break;
             }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
+            }
         }
 
         class SimpleParamImpl : ICRegILGen
@@ -464,6 +475,11 @@ namespace BTDB.IOC
             public IEnumerable<INeed> GetNeeds(IGenerationContext context)
             {
                 yield break;
+            }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
             }
         }
 
@@ -522,6 +538,26 @@ namespace BTDB.IOC
             }
 
             IL!.Ret();
+        }
+
+        public void VerifySingletonUsingOnlySingletons(Type singletonType)
+        {
+            GatherNeeds(_registration,
+                new HashSet<Tuple<IBuildContext, ICRegILGen>>(ComparerProcessingContext.Instance));
+            foreach (var need in _registration.GetNeeds(this))
+            {
+                if (need.Kind == NeedKind.CReg)
+                {
+                    continue;
+                }
+
+                var k = new Tuple<IBuildContext, INeed>(_buildContext, need);
+                if (!_resolvers[k].IsSingletonSafe())
+                {
+                    throw new BTDBException("Singleton " + singletonType.ToSimpleName() + " dependency " +
+                                            need.ClrType.ToSimpleName() + " is not singleton");
+                }
+            }
         }
     }
 }

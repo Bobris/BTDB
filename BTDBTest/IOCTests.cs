@@ -20,7 +20,7 @@ namespace BTDBTest
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<Logger>().As<ILogger>();
-            var container = builder.Build();
+            var container = builder.BuildAndVerify();
             var log1 = container.Resolve<ILogger>();
             Assert.NotNull(log1);
             var log2 = container.Resolve<ILogger>();
@@ -33,7 +33,7 @@ namespace BTDBTest
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
-            var container = builder.Build();
+            var container = builder.BuildAndVerify();
             var log1 = container.Resolve<ILogger>();
             Assert.NotNull(log1);
             var log2 = container.Resolve<ILogger>();
@@ -141,7 +141,7 @@ namespace BTDBTest
             builder.RegisterType<Logger>().As<ILogger>().SingleInstance();
             builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
             builder.RegisterType<Database>().As<IDatabase>();
-            var container = builder.Build();
+            var container = builder.BuildAndVerify();
             var obj = container.Resolve<IDatabase>();
             Assert.NotNull(obj);
             Assert.NotNull(obj.ErrorHandler);
@@ -350,7 +350,8 @@ namespace BTDBTest
         {
             var builder = new ContainerBuilder();
             builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
-                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces().PropertiesAutowired();
+                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
+                .PropertiesAutowired();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -362,8 +363,9 @@ namespace BTDBTest
         public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps")).
-                AsImplementedInterfaces().SingleInstance();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && !t.Name.Contains("WithProps"))
+                .AsImplementedInterfaces().SingleInstance();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -375,8 +377,9 @@ namespace BTDBTest
         public void RegisterAssemblyTypesWithWhereAndAsImplementedInterfacesAsSingleton2()
         {
             var builder = new ContainerBuilder();
-            builder.RegisterAssemblyTypes(typeof(Logger).Assembly).Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").
-                AsImplementedInterfaces().SingleInstance().PropertiesAutowired();
+            builder.RegisterAssemblyTypes(typeof(Logger).Assembly)
+                .Where(t => t.Namespace == "BTDBTest.IOCDomain" && t.Name != "Database").AsImplementedInterfaces()
+                .SingleInstance().PropertiesAutowired();
             var container = builder.Build();
             var root = container.Resolve<IWebService>();
             Assert.NotNull(root);
@@ -433,7 +436,7 @@ namespace BTDBTest
             builder.RegisterInstance("two").Keyed<string>(true);
             var container = builder.Build();
             var result = container.ResolveKeyed<IEnumerable<string>>(true);
-            Assert.Equal(new[] { "one", "two" }, result.ToArray());
+            Assert.Equal(new[] {"one", "two"}, result.ToArray());
         }
 
         [Fact]
@@ -515,10 +518,8 @@ namespace BTDBTest
 
         public class DatabaseWithDependencyProps : IDatabase
         {
-            [Dependency]
-            public ILogger Logger { get; private set; }
-            [Dependency]
-            public IErrorHandler? ErrorHandler { get; private set; }
+            [Dependency] public ILogger Logger { get; private set; }
+            [Dependency] public IErrorHandler? ErrorHandler { get; private set; }
         }
 
         [Fact]
@@ -536,10 +537,8 @@ namespace BTDBTest
 
         public class ClassWithRenamedDependencyProps
         {
-            [Dependency]
-            public ILogger Logger { get; set; }
-            [Dependency("SuperLogger")]
-            public ILogger Logger2 { get; set; }
+            [Dependency] public ILogger Logger { get; set; }
+            [Dependency("SuperLogger")] public ILogger Logger2 { get; set; }
         }
 
         [Fact]
@@ -601,7 +600,7 @@ namespace BTDBTest
 
         static void AssertTwoLoggers(IEnumerable<string> enumTypes)
         {
-            Assert.Equal(new[] { "Logger1", "Logger2" }, enumTypes);
+            Assert.Equal(new[] {"Logger1", "Logger2"}, enumTypes);
         }
 
         [Fact]
@@ -678,7 +677,7 @@ namespace BTDBTest
             var container = BuildContainerWithTwoLoggersAndTwoStrings();
             var tuples = container.Resolve<IEnumerable<Tuple<ILogger, string>>>();
             var names = tuples.Select(t => t.Item1.GetType().Name + t.Item2);
-            Assert.Equal(new[] { "Logger1A", "Logger1B", "Logger2A", "Logger2B" }, names);
+            Assert.Equal(new[] {"Logger1A", "Logger1B", "Logger2A", "Logger2B"}, names);
         }
 
         [Fact]
@@ -689,7 +688,7 @@ namespace BTDBTest
             var enumTypes = tuples.Select(t => t.Item1.GetType().Name);
             AssertTwoLoggers(enumTypes);
             var names = tuples.SelectMany(t => t.Item2);
-            Assert.Equal(new[] { "A", "B", "A", "B" }, names);
+            Assert.Equal(new[] {"A", "B", "A", "B"}, names);
         }
 
         class PrivateLogger : ILogger
@@ -804,8 +803,10 @@ namespace BTDBTest
             builder.RegisterType<MultipleConstructors>().Keyed<MultipleConstructors>(1);
             builder.RegisterType<MultipleConstructors>().UsingConstructor().Keyed<MultipleConstructors>(2);
             builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int)).Keyed<MultipleConstructors>(3);
-            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(string)).Keyed<MultipleConstructors>(4);
-            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int), typeof(int)).Keyed<MultipleConstructors>(5);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(string))
+                .Keyed<MultipleConstructors>(4);
+            builder.RegisterType<MultipleConstructors>().UsingConstructor(typeof(int), typeof(int))
+                .Keyed<MultipleConstructors>(5);
             var container = builder.Build();
             Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(1).Desc);
             Assert.Equal("", container.ResolveKeyed<MultipleConstructors>(2).Desc);
@@ -814,12 +815,18 @@ namespace BTDBTest
             Assert.Equal("Int 7, Int 3", container.ResolveKeyed<MultipleConstructors>(5).Desc);
         }
 
-        public interface ISupport { }
+        public interface ISupport
+        {
+        }
+
         public class Support : ISupport
         {
         }
 
-        public interface INotify { }
+        public interface INotify
+        {
+        }
+
         public class Notification : INotify
         {
             public Notification(ISupport support)
@@ -835,7 +842,10 @@ namespace BTDBTest
         }
 
 
-        public interface IRefinable { }
+        public interface IRefinable
+        {
+        }
+
         public class RefinePreview : IRefinable
         {
             public RefinePreview(Lazy<IWorld> world, INotify notify)
@@ -844,7 +854,10 @@ namespace BTDBTest
             }
         }
 
-        public interface IOwinServer { }
+        public interface IOwinServer
+        {
+        }
+
         public class WorldHttpHandler : IOwinServer
         {
             public WorldHttpHandler(Lazy<IWorld> world, IEnumerable<IRefinable> refinables)
@@ -853,7 +866,10 @@ namespace BTDBTest
             }
         }
 
-        public interface IWorld { }
+        public interface IWorld
+        {
+        }
+
         public class World : IWorld
         {
             public World(IOwinServer server, ISupport support, INotify notifyChanges)
@@ -879,7 +895,9 @@ namespace BTDBTest
             var world = container.Resolve<IWorld>();
         }
 
-        public interface IHandler { }
+        public interface IHandler
+        {
+        }
 
         public class Handler : IHandler
         {
@@ -924,7 +942,7 @@ namespace BTDBTest
             var container = containerBuilder.Build();
             var handler = container.Resolve<ILogger>();
             Assert.IsType<EnhancedLogger>(handler);
-            Assert.IsType<Logger>(((EnhancedLogger)handler).Parent);
+            Assert.IsType<Logger>(((EnhancedLogger) handler).Parent);
         }
 
         class GreedyNonPublicClass
@@ -939,7 +957,7 @@ namespace BTDBTest
         {
             var containerBuilder = new ContainerBuilder();
             containerBuilder.RegisterType<GreedyNonPublicClass>().AsImplementedInterfaces();
-            foreach (var name in new[] { "a", "b", "c", "d", "e", "f" })
+            foreach (var name in new[] {"a", "b", "c", "d", "e", "f"})
                 containerBuilder.RegisterType<Logger>().AsImplementedInterfaces().Named<ILogger>(name);
             var container = containerBuilder.Build();
             if (Debugger.IsAttached)
@@ -967,14 +985,26 @@ namespace BTDBTest
         public void RegisterInstanceWithObjectParamUsesRealObjectType()
         {
             var containerBuilder = new ContainerBuilder();
-            containerBuilder.RegisterInstance((object)new Logger());
+            containerBuilder.RegisterInstance((object) new Logger());
             var container = containerBuilder.Build();
             Assert.NotNull(container.Resolve<Logger>());
         }
 
-        class ClassDependency { }
-        struct StructDependency { }
-        enum EnumDependency { Foo, Bar, FooBar = Foo | Bar }
+        class ClassDependency
+        {
+        }
+
+        struct StructDependency
+        {
+        }
+
+        enum EnumDependency
+        {
+            Foo,
+            Bar,
+            FooBar = Foo | Bar
+        }
+
         abstract class OptionalClass<T>
         {
             public T Value { get; }
@@ -995,25 +1025,139 @@ namespace BTDBTest
 
             public override string ToString() => $"{Value}";
         }
-        class ClassWithTrueBool : OptionalClass<bool> { public ClassWithTrueBool(bool foo = true) : base(foo) { } }
-        class ClassWithFalseBool : OptionalClass<bool> { public ClassWithFalseBool(bool foo = false) : base(foo) { } }
-        class ClassWithInt16 : OptionalClass<Int16> { public ClassWithInt16(Int16 foo = 11111) : base(foo) { } }
-        class ClassWithInt32 : OptionalClass<Int32> { public ClassWithInt32(Int32 foo = Int32.MaxValue) : base(foo) { } }
-        class ClassWithInt64 : OptionalClass<Int64> { public ClassWithInt64(Int64 foo = Int64.MaxValue) : base(foo) { } }
-        class ClassWithFloat : OptionalClass<float> { public ClassWithFloat(float foo = 1.1f) : base(foo) { } }
-        class ClassWithDouble : OptionalClass<double> { public ClassWithDouble(double foo = 2.2d) : base(foo) { } }
-        class ClassWithDoubleCastedFromFloat : OptionalClass<double> { public ClassWithDoubleCastedFromFloat(double foo = 2.2f) : base(foo) { } }
-        class ClassWithDecimal : OptionalClass<decimal> { public ClassWithDecimal(decimal foo = 3.3m) : base(foo) { } }
-        class ClassWithString : OptionalClass<string> { public ClassWithString(string foo = "str") : base(foo) { } }
-        class ClassWithClass : OptionalClass<ClassDependency> { public ClassWithClass(ClassDependency foo = default) : base(foo) { } }
-        class ClassWithStruct : OptionalClass<StructDependency> { public ClassWithStruct(StructDependency foo = default) : base(foo) { } }
-        class ClassWithEnum : OptionalClass<EnumDependency> { public ClassWithEnum(EnumDependency foo = EnumDependency.Foo) : base(foo) { } }
-        class ClassWithEnum2 : OptionalClass<EnumDependency> { public ClassWithEnum2(EnumDependency foo = EnumDependency.FooBar) : base(foo) { } }
-        class ClassWithNullable : OptionalClass<int?> { public ClassWithNullable(int? foo = default) : base(foo) { } }
-        class ClassWithNullable2 : OptionalClass<int?> { public ClassWithNullable2(int? foo = 10) : base(foo) { } }
-        class ClassWithNullableStruct : OptionalClass<StructDependency?> { public ClassWithNullableStruct(StructDependency? foo = default) : base(foo) { } }
-        class ClassWithDateTime : OptionalClass<DateTime> { public ClassWithDateTime(DateTime foo = default) : base(foo) { } }
-        class ClassWithNullableDateTime : OptionalClass<DateTime?> { public ClassWithNullableDateTime(DateTime? foo = default) : base(foo) { } }
+
+        class ClassWithTrueBool : OptionalClass<bool>
+        {
+            public ClassWithTrueBool(bool foo = true) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithFalseBool : OptionalClass<bool>
+        {
+            public ClassWithFalseBool(bool foo = false) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithInt16 : OptionalClass<Int16>
+        {
+            public ClassWithInt16(Int16 foo = 11111) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithInt32 : OptionalClass<Int32>
+        {
+            public ClassWithInt32(Int32 foo = Int32.MaxValue) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithInt64 : OptionalClass<Int64>
+        {
+            public ClassWithInt64(Int64 foo = Int64.MaxValue) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithFloat : OptionalClass<float>
+        {
+            public ClassWithFloat(float foo = 1.1f) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithDouble : OptionalClass<double>
+        {
+            public ClassWithDouble(double foo = 2.2d) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithDoubleCastedFromFloat : OptionalClass<double>
+        {
+            public ClassWithDoubleCastedFromFloat(double foo = 2.2f) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithDecimal : OptionalClass<decimal>
+        {
+            public ClassWithDecimal(decimal foo = 3.3m) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithString : OptionalClass<string>
+        {
+            public ClassWithString(string foo = "str") : base(foo)
+            {
+            }
+        }
+
+        class ClassWithClass : OptionalClass<ClassDependency>
+        {
+            public ClassWithClass(ClassDependency foo = default) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithStruct : OptionalClass<StructDependency>
+        {
+            public ClassWithStruct(StructDependency foo = default) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithEnum : OptionalClass<EnumDependency>
+        {
+            public ClassWithEnum(EnumDependency foo = EnumDependency.Foo) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithEnum2 : OptionalClass<EnumDependency>
+        {
+            public ClassWithEnum2(EnumDependency foo = EnumDependency.FooBar) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithNullable : OptionalClass<int?>
+        {
+            public ClassWithNullable(int? foo = default) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithNullable2 : OptionalClass<int?>
+        {
+            public ClassWithNullable2(int? foo = 10) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithNullableStruct : OptionalClass<StructDependency?>
+        {
+            public ClassWithNullableStruct(StructDependency? foo = default) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithDateTime : OptionalClass<DateTime>
+        {
+            public ClassWithDateTime(DateTime foo = default) : base(foo)
+            {
+            }
+        }
+
+        class ClassWithNullableDateTime : OptionalClass<DateTime?>
+        {
+            public ClassWithNullableDateTime(DateTime? foo = default) : base(foo)
+            {
+            }
+        }
 
         [Theory]
         [InlineData(typeof(ClassWithTrueBool))]
@@ -1037,7 +1181,9 @@ namespace BTDBTest
         [InlineData(typeof(ClassWithNullableDateTime))]
         public void ResolveWithOptionalParameterWithoutRegister(Type type)
         {
-            object Create(Type t) => Activator.CreateInstance(t, BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance | BindingFlags.OptionalParamBinding, null, new object[] { Type.Missing }, CultureInfo.CurrentCulture);
+            object Create(Type t) => Activator.CreateInstance(t,
+                BindingFlags.CreateInstance | BindingFlags.Public | BindingFlags.Instance |
+                BindingFlags.OptionalParamBinding, null, new object[] {Type.Missing}, CultureInfo.CurrentCulture);
 
             var expected = Create(type);
 
@@ -1052,7 +1198,9 @@ namespace BTDBTest
 
         class ClassWithRegisteredOptionalParam : OptionalClass<ClassWithInt32>
         {
-            public ClassWithRegisteredOptionalParam(ClassWithInt32 t = null) : base(t) { }
+            public ClassWithRegisteredOptionalParam(ClassWithInt32 t = null) : base(t)
+            {
+            }
         }
 
         [Fact]
@@ -1142,6 +1290,15 @@ namespace BTDBTest
             var container = builder.Build();
             Assert.NotNull(container.ResolveOptionalNamed<ILogger>("A"));
             Assert.Null(container.ResolveOptionalNamed<ILogger>("B"));
+        }
+
+        [Fact]
+        public void VerificationFailsWhenSingletonUsesTransient()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterType<Logger>().As<ILogger>();
+            builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
+            Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
         }
     }
 }

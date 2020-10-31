@@ -6,10 +6,10 @@ namespace BTDB.IOC.CRegs
 {
     class InstanceImpl : ICReg, ICRegILGen, ICRegFuncOptimized
     {
-        readonly object _instance;
+        readonly object? _instance;
         readonly int _instanceIndex;
 
-        public InstanceImpl(object instance, int instanceIndex)
+        public InstanceImpl(object? instance, int instanceIndex)
         {
             _instance = instance;
             _instanceIndex = instanceIndex;
@@ -65,6 +65,15 @@ namespace BTDB.IOC.CRegs
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
             yield return Need.ContainerNeed;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
         }
     }
 }

@@ -49,7 +49,7 @@ namespace BTDB.IOC.CRegs
             return result;
         }
 
-        public IILLocal GenMain(IGenerationContext context)
+        public IILLocal? GenMain(IGenerationContext context)
         {
             var il = context.IL;
             var resultLocal = il.DeclareLocal(_resultType.MakeArrayType());
@@ -99,6 +99,20 @@ namespace BTDB.IOC.CRegs
                 nextCtx = nextCtx.IncrementEnumerable();
             }
             context.BuildContext = backupCtx;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            foreach (var (_, reg) in _list)
+            {
+                if (!reg.IsSingletonSafe()) return false;
+            }
+
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
         }
     }
 }

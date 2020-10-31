@@ -42,5 +42,14 @@ namespace BTDB.IOC.CRegs
         {
             yield break;
         }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+        }
     }
 }
