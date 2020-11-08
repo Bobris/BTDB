@@ -11,7 +11,7 @@ Currently this project these parts:
 - Snappy Compression
 - Event Storage
 
-All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting only .NetCore 3.0 or better, main code has just one dependency (Mono.Posix.NETStandard). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
+All code written in C# and licensed under very permissive [MIT license](http://www.opensource.org/licenses/mit-license.html). Targeting .Net 5.0, main code has just 2 dependencies (Mono.Posix.NETStandard, Microsoft.Extensions.Primitives). Code is tested using xUnit Framework. Used in production on Windows and Linux, on OSX works as well.
 Please is you find it useful or have questions, write me e-mail <boris.letocha@gmail.com> so I know that it is used.
 It is available in Nuget <http://www.nuget.org/packages/BTDB>. Source code drops are Github releases.
 
@@ -121,8 +121,7 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 ### Roadmap:
 
 - Support more types of properties
-- Performance tests
-- Free text search (far future)
+- Free text search (far future if ever)
 
 ---
 
@@ -149,7 +148,7 @@ Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ### Roadmap:
 
-- Slower but better compressors options
+- Some speed optimizations around Spans would help
 
 [acid]: http://en.wikipedia.org/wiki/ACID
 [mvcc]: http://en.wikipedia.org/wiki/Multiversion_concurrency_control

@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Breaking change
+
+Whole code was spanificated and cleaned from old unused in production parts.
+
 ### Added
 
 IOC Container Build can verify that Singletons does not depend on transient objects.
