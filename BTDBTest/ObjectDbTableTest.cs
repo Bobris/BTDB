@@ -7,6 +7,7 @@ using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDBTest;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -2554,5 +2555,52 @@ namespace BTDBTest
             
             Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
         }
+
+        [Fact]
+        public void ClassesWithSameNameInAnotherNamespaceThrowsBecauseTheyHaveSameMappedName()
+        {
+            _db.RegisterType(typeof(Imp1.InnerImplementation));
+            _db.RegisterType(typeof(Imp2.InnerImplementation));
+
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
+            var innerInterfaceTable = creator(tr);
+            innerInterfaceTable.Insert(new BaseClass {Id = 1, Inner = new Imp1.InnerImplementation()});
+            Assert.Throws<BTDBException>(() =>
+            {
+                innerInterfaceTable.Insert(new BaseClass {Id = 2, Inner = new Imp2.InnerImplementation()});
+            });
+            tr.Commit();
+        }
+
+        public interface IInnerInterfaceTable : IRelation<BaseClass>
+        {
+            void Insert(BaseClass person);
+        }
+
+        public class BaseClass
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public IInnerInterface Inner { get; set; }
+        }
+
+        public interface IInnerInterface
+        {
+        }
+    }
+}
+
+namespace Imp1
+{
+    public class InnerImplementation : ObjectDbTableTest.IInnerInterface
+    {
+    }
+}
+
+namespace Imp2
+{
+    public class InnerImplementation : ObjectDbTableTest.IInnerInterface
+    {
     }
 }
