@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 25.0.0
+
 ### Breaking change
 
 Whole code was spanificated and cleaned from old unused in production parts.
