@@ -65,8 +65,8 @@ namespace BTDB.ODBLayer
             {
                 if (_clientType != null && _clientType != value)
                 {
-                    throw new BTDBException("ClientType could be changed only once " + _clientType.ToSimpleName() +
-                                            " vs " + value!.ToSimpleName());
+                    throw new BTDBException("Name "+Name+" has already assigned type " + _clientType.ToSimpleName() +
+                                            ", but "+value!.ToSimpleName()+" want to be stored under same name");
                 }
 
                 _clientType = value;

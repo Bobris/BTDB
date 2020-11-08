@@ -2833,7 +2833,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void ClassesWithSameNameInAnotherNamespaceIsSupported()
+        public void ClassesWithSameNameInAnotherNamespaceThrowsBecauseTheyHaveSameMappedName()
         {
             _db.RegisterType(typeof(Imp1.InnerImplementation));
             _db.RegisterType(typeof(Imp2.InnerImplementation));
@@ -2842,8 +2842,10 @@ namespace BTDBTest
             var creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
             var innerInterfaceTable = creator(tr);
             innerInterfaceTable.Insert(new BaseClass {Id = 1, Inner = new Imp1.InnerImplementation()});
-            innerInterfaceTable.Insert(new BaseClass {Id = 2, Inner = new Imp2.InnerImplementation()});
-
+            Assert.Throws<BTDBException>(() =>
+            {
+                innerInterfaceTable.Insert(new BaseClass {Id = 2, Inner = new Imp2.InnerImplementation()});
+            });
             tr.Commit();
         }
 
