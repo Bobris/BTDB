@@ -706,10 +706,23 @@ namespace BTDB.StreamLayer
 
         public bool CheckMagic(byte[] magic)
         {
-            if (Buf.Length < magic.Length) return false;
-            if (!Buf.Slice(0, magic.Length).SequenceEqual(magic)) return false;
-            PackUnpack.UnsafeAdvance(ref Buf, magic.Length);
-            return true;
+            if (Buf.Length >= magic.Length)
+            {
+                if (!Buf.Slice(0, magic.Length).SequenceEqual(magic)) return false;
+                PackUnpack.UnsafeAdvance(ref Buf, magic.Length);
+                return true;
+            }
+
+            Span<byte> buf = stackalloc byte[magic.Length];
+            try
+            {
+                ReadBlock(ref MemoryMarshal.GetReference(buf), (uint)buf.Length);
+                return buf.SequenceEqual(magic);
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
         }
 
         public IPAddress? ReadIPAddress()
