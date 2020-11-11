@@ -6,6 +6,8 @@
 
 Regression in SpanReader.CheckMagic which caused incomplete DB open in some cases.
 
+Detect transaction leaks for writing transactions as well.
+
 ## 25.0.0
 
 ### Breaking change

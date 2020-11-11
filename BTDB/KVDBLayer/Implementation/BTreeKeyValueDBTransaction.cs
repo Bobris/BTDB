@@ -18,21 +18,21 @@ namespace BTDB.KVDBLayer
         long _keyIndex;
         long _cursorMovedCounter;
 
-        public BTreeKeyValueDBTransaction(BTreeKeyValueDB keyValueDB, IRootNode artRoot, bool writing, bool readOnly)
+        public BTreeKeyValueDBTransaction(BTreeKeyValueDB keyValueDB, IRootNode root, bool writing, bool readOnly)
         {
             _preapprovedWriting = writing;
             _readOnly = readOnly;
             _keyValueDB = keyValueDB;
             _keyIndex = -1;
-            _cursor = artRoot.CreateCursor();
+            _cursor = root.CreateCursor();
             _cursor2 = null;
-            BTreeRoot = artRoot;
+            BTreeRoot = root;
             _cursorMovedCounter = 0;
         }
 
         ~BTreeKeyValueDBTransaction()
         {
-            if (BTreeRoot != null)
+            if (BTreeRoot != null || _writing || _preapprovedWriting)
             {
                 Dispose();
                 _keyValueDB.Logger?.ReportTransactionLeak(this);
@@ -390,47 +390,47 @@ namespace BTDB.KVDBLayer
         internal void CommitFromCompactor()
         {
             if (BTreeRoot == null) throw new BTDBException("Transaction already committed or disposed");
-            var currentArtRoot = BTreeRoot;
+            var currentRoot = BTreeRoot;
             BTreeRoot = null;
             _preapprovedWriting = false;
-            _keyValueDB.CommitFromCompactor(currentArtRoot);
+            _keyValueDB.CommitFromCompactor(currentRoot);
         }
 
         public void Commit()
         {
             if (BTreeRoot == null) throw new BTDBException("Transaction already committed or disposed");
             InvalidateCurrentKey();
-            var currentArtRoot = BTreeRoot;
+            var currentRoot = BTreeRoot;
             BTreeRoot = null;
             if (_preapprovedWriting)
             {
                 _preapprovedWriting = false;
-                _keyValueDB.RevertWritingTransaction(currentArtRoot!, true);
+                _keyValueDB.RevertWritingTransaction(currentRoot!, true);
             }
             else if (_writing)
             {
-                _keyValueDB.CommitWritingTransaction(currentArtRoot!, _temporaryCloseTransactionLog);
+                _keyValueDB.CommitWritingTransaction(currentRoot!, _temporaryCloseTransactionLog);
                 _writing = false;
             }
             else
             {
-                _keyValueDB.DereferenceRoot(currentArtRoot!);
+                _keyValueDB.DereferenceRoot(currentRoot!);
             }
         }
 
         public void Dispose()
         {
-            var currentArtRoot = BTreeRoot;
+            var currentRoot = BTreeRoot;
             BTreeRoot = null;
             if (_writing || _preapprovedWriting)
             {
-                _keyValueDB.RevertWritingTransaction(currentArtRoot!, _preapprovedWriting);
+                _keyValueDB.RevertWritingTransaction(currentRoot!, _preapprovedWriting);
                 _writing = false;
                 _preapprovedWriting = false;
             }
-            else if (currentArtRoot != null)
+            else if (currentRoot != null)
             {
-                _keyValueDB.DereferenceRoot(currentArtRoot);
+                _keyValueDB.DereferenceRoot(currentRoot);
             }
             GC.SuppressFinalize(this);
         }

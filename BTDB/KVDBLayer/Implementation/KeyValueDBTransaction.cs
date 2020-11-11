@@ -30,7 +30,7 @@ namespace BTDB.KVDBLayer
 
         ~KeyValueDBTransaction()
         {
-            if (_btreeRoot != null)
+            if (_btreeRoot != null || _writing || _preapprovedWriting)
             {
                 Dispose();
                 _keyValueDB.Logger?.ReportTransactionLeak(this);
