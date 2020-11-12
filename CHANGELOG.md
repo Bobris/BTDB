@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 25.0.1
+
 ### Fixed
 
 Regression in SpanReader.CheckMagic which caused incomplete DB open in some cases.
