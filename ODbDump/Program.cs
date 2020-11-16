@@ -212,7 +212,7 @@ namespace ODbDump
                         var sw = new Stopwatch();
                         sw.Start();
                         using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new BTreeKeyValueDB(new KeyValueDBOptions
+                        using var kdb = new KeyValueDB(new KeyValueDBOptions
                         {
                             FileCollection = dfc,
                             ReadOnly = true,
@@ -565,6 +565,11 @@ namespace ODbDump
             public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
             {
                 Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1}");
+            }
+
+            public void LogWarning(string message)
+            {
+                Console.WriteLine("Warning: "+message);
             }
         }
     }

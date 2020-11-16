@@ -133,6 +133,11 @@ namespace SimpleTester
                 $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size} duration: {duration.TotalSeconds:F2}s");
         }
 
+        public void LogWarning(string message)
+        {
+            Console.WriteLine("Warning: "+message);
+        }
+
         public void Run()
         {
             Initialize();

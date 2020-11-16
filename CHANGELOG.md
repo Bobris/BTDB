@@ -2,6 +2,11 @@
 
 ## [unreleased]
 
+### Added
+
+`LenientOpen` to `KeyValueDBOptions` (default false), in strict mode it does not try to recover as much as possible data, but starts with empty DB. When such problem is detected it will call new method `LogWarning` from `IKeyValueDBLogger`.
+Also you can newly pass implementation of `IKeyValueDBLogger` into `Logger` field in `KeyValueDBOptions`.
+
 ## 25.0.1
 
 ### Fixed

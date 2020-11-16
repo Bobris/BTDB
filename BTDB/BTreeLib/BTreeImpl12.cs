@@ -498,6 +498,8 @@ namespace BTDB.BTreeLib
             {
                 ref var leftItem = ref left[idx];
                 ref var rightItem = ref right[idx];
+                if (rightItem._posInNode < leftItem._posInNode) 
+                    return 0;
                 if (idx + 1 == left.Count)
                 {
                     (node, count) = EraseFromLeaf(leftItem._node, leftItem._posInNode, rightItem._posInNode);
