@@ -15,13 +15,13 @@ jobs:
       - task: DotNetCoreCLI@2
         inputs:
           command: build
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test
           projects: "**/*Test/*.csproj"
           testRunTitle: Linux
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
 
   - job: "netcore_win"
     pool:
@@ -36,10 +36,10 @@ jobs:
       - task: DotNetCoreCLI@2
         inputs:
           command: build
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test
           projects: "**/*Test/*.csproj"
           testRunTitle: Windows
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
