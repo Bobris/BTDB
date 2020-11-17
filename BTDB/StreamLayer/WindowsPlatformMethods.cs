@@ -9,7 +9,9 @@ using Microsoft.Win32.SafeHandles;
 
 namespace BTDB.StreamLayer
 {
+#if !NETCOREAPP3_1
     [SupportedOSPlatform("windows")]
+#endif
     public class WindowsPlatformMethods : IPlatformMethods
     {
         [DllImport("kernel32.dll", SetLastError = true)]
