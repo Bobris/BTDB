@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 25.2.0
+
 ### Added
 
 netcoreapp3.1 framework could be targeted again.
