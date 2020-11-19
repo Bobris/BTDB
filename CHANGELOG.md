@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 25.3.0
+
 ### Fixed
 
 Regression with Kvi file contain garbage at end. Enable `LenientOpen` to allow open DB with this corruption.
