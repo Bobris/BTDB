@@ -201,7 +201,7 @@ namespace BTDB.KVDBLayer
                 if (_lenientOpen)
                 {
                     Logger?.LogWarning("No valid Kvi and lowest Trl in chain is not first. Missing " +
-                                       _missingSomeTrlFiles.Value+". LenientOpen is true, recovering data.");
+                                       _missingSomeTrlFiles.Value + ". LenientOpen is true, recovering data.");
                     LoadTransactionLogs(firstTrLogId, firstTrLogOffset, openUpToCommitUlong);
                 }
                 else
@@ -216,6 +216,7 @@ namespace BTDB.KVDBLayer
                             if (trLog == null) continue;
                             _fileCollection.MakeIdxUnknown(fileInfo.Key);
                         }
+
                         _fileCollection.DeleteAllUnknownFiles();
                         _fileIdWithTransactionLog = 0;
                         firstTrLogId = 0;
@@ -1274,6 +1275,7 @@ namespace BTDB.KVDBLayer
 
             writer.Sync();
             file.HardFlush();
+            writer = new SpanWriter(writerController);
             writer.WriteInt32(EndOfIndexFileMarker);
             writer.Sync();
             file.HardFlushTruncateSwitchToDisposedMode();

@@ -153,6 +153,9 @@ namespace BTDB.StreamLayer
             Buf = InitialBuffer.Slice((int)pos);
         }
 
+        /// <summary>
+        /// DANGER: This can be called only as last method on this `SpanWriter`!
+        /// </summary>
         public void Sync()
         {
             if (Controller == null) ThrowCanBeUsedOnlyWithController();

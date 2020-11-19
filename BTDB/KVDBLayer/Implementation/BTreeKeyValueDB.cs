@@ -1608,6 +1608,7 @@ namespace BTDB.KVDBLayer
 
             writer.Sync();
             file.HardFlush();
+            writer = new SpanWriter(writerController);
             writer.WriteInt32(EndOfIndexFileMarker);
             writer.Sync();
             file.HardFlush();
