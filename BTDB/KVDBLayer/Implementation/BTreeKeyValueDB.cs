@@ -398,7 +398,8 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                var reader = new SpanReader(FileCollection.GetFile(fileId)!.GetExclusiveReader());
+                var file = FileCollection.GetFile(fileId);
+                var reader = new SpanReader(file!.GetExclusiveReader());
                 FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = info.KeyValueCount;
                 var usedFileIds = new HashSet<uint>();
@@ -434,9 +435,7 @@ namespace BTDB.KVDBLayer
                 info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
                     .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
 
-                if (reader.Eof) return true;
-                if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
-                return false;
+                return TestKviMagicEndMarker(fileId, ref reader, file);
             }
             catch (Exception)
             {
@@ -448,8 +447,8 @@ namespace BTDB.KVDBLayer
         {
             try
             {
-                var readerController = FileCollection.GetFile(fileId)!.GetExclusiveReader();
-                var reader = new SpanReader(readerController);
+                var file = FileCollection.GetFile(fileId);
+                var reader = new SpanReader(file!.GetExclusiveReader());
                 FileKeyIndex.SkipHeader(ref reader);
                 var keyCount = info.KeyValueCount;
                 _nextRoot!.TrLogFileId = info.TrLogFileId;
@@ -588,14 +587,27 @@ namespace BTDB.KVDBLayer
                 info.UsedFilesInOlderGenerations = usedFileIds.Select(GetGenerationIgnoreMissing)
                     .Where(gen => gen < trlGeneration).OrderBy(a => a).ToArray();
 
-                if (reader.Eof) return true;
-                if (reader.ReadInt32() == EndOfIndexFileMarker) return true;
-                return false;
+                return TestKviMagicEndMarker(fileId, ref reader, file);
             }
             catch (Exception)
             {
                 return false;
             }
+        }
+
+        bool TestKviMagicEndMarker(uint fileId, ref SpanReader reader, IFileCollectionFile file)
+        {
+            if (reader.Eof) return true;
+            if ((ulong) reader.GetCurrentPosition() + 4 == file.GetSize() &&
+                reader.ReadInt32() == EndOfIndexFileMarker) return true;
+            if (_lenientOpen)
+            {
+                Logger?.LogWarning("End of Kvi " + fileId + " had some garbage at " + (reader.GetCurrentPosition() - 4) +
+                                   " ignoring that because of LenientOpen");
+                return true;
+            }
+
+            return false;
         }
 
         void LoadTransactionLogs(uint firstTrLogId, uint firstTrLogOffset, ulong? openUpToCommitUlong)

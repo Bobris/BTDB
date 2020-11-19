@@ -8,7 +8,7 @@ namespace BTDB.StreamLayer
         /// <param name="spanWriter">owning SpanWriter</param>
         void Init(ref SpanWriter spanWriter);
         /// <summary>
-        /// Remember actual position from _buf into controller. SpanWriter could go out of scope.
+        /// Remember actual position from _buf into controller. SpanWriter will go out of scope.
         /// </summary>
         /// <param name="spanWriter">owning SpanWriter</param>
         void Sync(ref SpanWriter spanWriter);
