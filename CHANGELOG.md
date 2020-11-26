@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+Default conversion from `T` to `IList<T>`.
+
 ## 25.3.0
 
 ### Fixed

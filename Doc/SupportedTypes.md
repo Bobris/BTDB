@@ -27,3 +27,7 @@
 - `Dictionary<TKey,TValue>` (Inline map useful only for smaller amount of items)
 - `IDictionary<TKey,TValue>`, `IOrderedDictionary<TKey,TValue>` (Lazy loaded, ordered by TKey map, good for bigger number of items, and can be iterated in order)
 - `IOrderedSet<T>` (Lazy loaded, ordered by T set, good for bigger number of items, and can be iterated in order, don't use in Event serialization)
+
+## Default conversions on load
+
+- T to IList<T> when T is ValueType then List<T> has always 1 item, when T is null then List<T> has zero length.

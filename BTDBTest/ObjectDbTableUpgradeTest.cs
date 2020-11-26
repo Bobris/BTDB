@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
 using Xunit;
@@ -342,7 +344,7 @@ namespace BTDBTest
         {
             void Insert(JobV31 job);
             void RemoveById(ulong id);
-            JobV31 FindByExpiredStatusOrDefault(bool isExpired, int status);
+            JobV31? FindByExpiredStatusOrDefault(bool isExpired, int status);
         }
 
         [Fact]
@@ -377,6 +379,47 @@ namespace BTDBTest
                 Assert.Equal(12ul, item.Id);
 
                 tr.Commit();
+            }
+        }
+            
+        public class JobV1s
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            [PersistedName("Name")]
+            public List<string> Names { get; set; }
+        }
+
+        public interface IJobTable1s : IRelation<JobV1s>
+        {
+        }
+
+        [Fact]
+        public void ConvertsSingularToList()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable1>("Job");
+                var jobTable = creator(tr);
+                var job1 = new JobV1 { Id = 11, Name = "A" };
+                jobTable.Insert(job1);
+
+                var job2 = new JobV1 { Id = 12, Name = null };
+                jobTable.Insert(job2);
+
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IJobTable1s>("Job");
+                var jobTable = creator(tr);
+                Assert.Equal(2, jobTable.Count);
+
+                Assert.Equal(new [] { "A"}, jobTable.First().Names);
+                Assert.Equal(new string[0], jobTable.Last().Names);
             }
         }
     }
