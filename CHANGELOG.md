@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 25.4.0
+
 ### Added
 
 Default conversion from `T` to `IList<T>`.
