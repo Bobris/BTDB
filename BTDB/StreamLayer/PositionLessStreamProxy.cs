@@ -47,9 +47,18 @@ namespace BTDB.StreamLayer
 
                 try
                 {
-                    var res = _stream.Read(data);
-                    _position += (ulong)res;
-                    return res;
+                    var totalRead = 0;
+                    var read = 0;
+
+                    do
+                    {
+                        read = _stream.Read(data);
+                        totalRead += read;
+                        _position += (ulong)read;
+                        data = data.Slice(read);
+                    } while (read > 0 && !data.IsEmpty);
+                    
+                    return totalRead;
                 }
                 catch (Exception)
                 {
