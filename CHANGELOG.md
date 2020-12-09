@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+PositionLessStreamProxy supports also stream which does not read all bytes, but are not at the end.
+
 ## 25.4.0
 
 ### Added
