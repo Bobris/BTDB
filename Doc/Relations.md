@@ -2,7 +2,7 @@
 
 Relations provides easy way how to store "table" like data in object db.
 
-Let's first define data entity we want to store (note that it is not ne defined as [StoredInline] but it is still inlined)
+Let's first define data entity we want to store (note that it is not defined as [StoredInline] but it is still inlined)
 
     public class Person
     {
@@ -13,7 +13,7 @@ Let's first define data entity we want to store (note that it is not ne defined 
         public ulong Age { get; set; }
     }
 
-    public interface IPersonTable
+    public interface IPersonTable : IRelation<Person>
     {
         void Insert(Person person);
         bool RemoveById(ulong id);
@@ -43,6 +43,17 @@ next time we reuse creator:
 
 `InitRelation` can be called only once.
 
+But this was "old school" way easier to just always use `GetRelation<T>`:
+
+    using (var tr = _db.StartTransaction())
+    {
+        var personTable = tr.GetRelation<IPersonTable>();
+        personTable.Insert(new Person { Id = 2, Name = "admin", Age = 100 });
+        tr.Commit();
+    }
+
+It is still good to do first GetRelation for all your relations in first independent transaction. To control name of relation by `PersistedNameAttribute` on your `IRelation` interface.
+
 ## Basic operations
 
 When defined in interface following methods are automatically implemented by BTDB when defined in relation interface
@@ -65,7 +76,9 @@ will throw if does not exist
 
     var inserted = personTable.Upsert(new Person { Id = 2, Name = "superadmin", Age = 100 });
 
-return true if inserted
+returns true if inserted, false if updated
+
+Note: `Upsert` is automatically always available if you inherit from `IRelation<T>`
 
 ### ShallowUpdate
 

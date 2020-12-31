@@ -96,6 +96,7 @@ This help you to write fluent code which generates IL code in runtime. It is use
 - By default objects are stored inline in parent object, use IIndirect for objects with Oid which will load lazily
 
 Documentation: [https://github.com/Bobris/BTDB/blob/master/Doc/ODBDictionary.md]
+
 Relations doc: [https://github.com/Bobris/BTDB/blob/master/Doc/Relations.md]
 
 ### Sample code:
