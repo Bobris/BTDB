@@ -185,7 +185,7 @@ namespace BTDB.KVDBLayer
                 }
 
                 // Corrupted kvi - could be removed
-                _fileCollection.MakeIdxUnknown(keyIndex.Key);
+                MarkFileForRemoval(keyIndex.Key);
             }
 
             while (keyIndexes.Length > 0)
@@ -193,7 +193,7 @@ namespace BTDB.KVDBLayer
                 var keyIndex = keyIndexes[^1];
                 keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                 if (keyIndex.Key != preserveKeyIndexKey)
-                    _fileCollection.MakeIdxUnknown(keyIndex.Key);
+                    MarkFileForRemoval(keyIndex.Key);
             }
 
             if (!hasKeyIndex && _missingSomeTrlFiles.HasValue)
@@ -214,7 +214,7 @@ namespace BTDB.KVDBLayer
                         {
                             var trLog = fileInfo.Value as IFileTransactionLog;
                             if (trLog == null) continue;
-                            _fileCollection.MakeIdxUnknown(fileInfo.Key);
+                            MarkFileForRemoval(fileInfo.Key);
                         }
 
                         _fileCollection.DeleteAllUnknownFiles();
@@ -468,7 +468,8 @@ namespace BTDB.KVDBLayer
                 reader.ReadInt32() == EndOfIndexFileMarker) return true;
             if (_lenientOpen)
             {
-                Logger?.LogWarning("End of Kvi " + fileId + " had some garbage at " + (reader.GetCurrentPosition() - 4) +
+                Logger?.LogWarning("End of Kvi " + fileId + " had some garbage at " +
+                                   (reader.GetCurrentPosition() - 4) +
                                    " ignoring that because of LenientOpen");
                 return true;
             }
@@ -1091,6 +1092,7 @@ namespace BTDB.KVDBLayer
             }
 
             _fileWithTransactionLog = FileCollection.AddFile("trl");
+            Logger?.TransactionLogCreated(_fileWithTransactionLog.Index);
             _fileIdWithTransactionLog = _fileWithTransactionLog.Index;
             var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid,
                 _fileIdWithPreviousTransactionLog);
@@ -1363,8 +1365,18 @@ namespace BTDB.KVDBLayer
         {
             foreach (var fileId in fileIds)
             {
-                _fileCollection.MakeIdxUnknown(fileId);
+                MarkFileForRemoval(fileId);
             }
+        }
+
+        void MarkFileForRemoval(uint fileId)
+        {
+            var file = _fileCollection.GetFile(fileId);
+            if (file != null)
+                Logger?.FileMarkedForDelete(file.Index);
+            else
+                Logger?.LogWarning($"Marking for delete file id {fileId} unknown in file collection.");
+            _fileCollection.MakeIdxUnknown(fileId);
         }
 
         public long GetGeneration(uint fileId)

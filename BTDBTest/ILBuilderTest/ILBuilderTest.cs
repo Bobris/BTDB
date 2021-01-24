@@ -17,9 +17,9 @@ namespace BTDBTest.ILBuilderTest
 
             Assert.NotNull(Activator.CreateInstance(type, 42));
             var generatedCtors = type.GetConstructors();
-            Assert.Equal(1, generatedCtors.Length);
+            Assert.Single(generatedCtors);
             var parameters = generatedCtors[0].GetParameters();
-            Assert.Equal(1, parameters.Length);
+            Assert.Single(parameters);
             Assert.Equal("answer", parameters[0].Name);
         }
     }

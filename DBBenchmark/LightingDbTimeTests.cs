@@ -28,35 +28,35 @@ namespace DBBenchmark
             MapSize = 10L * 1024 * 1024 * 1024
         };
 
-        LightningEnvironment _enviroment;
+        LightningEnvironment? _environment;
 
-        LightningEnvironment Enviroment => _enviroment ?? (_enviroment = new LightningEnvironment(DbDBpath, _environmentConfiguration));
+        LightningEnvironment Environment => _environment ??= new LightningEnvironment(DbDBpath, _environmentConfiguration);
 
 
         public LightingDbTimeTests()
         {
-            Enviroment.Open();
+            Environment.Open();
         }
 
         public void Dispose()
         {
-            Enviroment.Dispose();
+            Environment.Dispose();
             Directory.Delete(DbDBpath, true);
         }
 
         public (TimeSpan openTime, long memorySize) Open()
         {
-            Enviroment.Dispose();
-            _enviroment = null;
+            Environment.Dispose();
+            _environment = null;
 
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             var memStart = GC.GetTotalMemory(true);
 
             var stopwatch = Stopwatch.StartNew();
 
-            Enviroment.Open();
+            Environment.Open();
 
-            using (var tx = Enviroment.BeginTransaction())
+            using (var tx = Environment.BeginTransaction())
             using (tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.None }))
             {
                 stopwatch.Stop();
@@ -73,7 +73,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.NoSync))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.NoSync))
             using (var db = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.Create }))
             {
                 tx.Put(db, key, value);
@@ -89,7 +89,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.NoSync))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.NoSync))
             using (var db = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.Create }))
             {
                 foreach (var keyValue in data)
@@ -111,7 +111,7 @@ namespace DBBenchmark
 
             foreach (var keyValue in data)
             {
-                using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.NoSync)) // Transaction is closed after commit
+                using (var tx = Environment.BeginTransaction(TransactionBeginFlags.NoSync)) // Transaction is closed after commit
                 using (var db = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.Create }))
                 {
                     tx.Put(db, keyValue.Key, keyValue.Value);
@@ -128,7 +128,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.ReadOnly))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.ReadOnly))
             using (var db = tx.OpenDatabase())
             {
                 tx.Get(db, key);
@@ -143,7 +143,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.ReadOnly))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.ReadOnly))
             using (var db = tx.OpenDatabase())
             {
                 foreach (var key in keys)
@@ -160,7 +160,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.ReadOnly))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.ReadOnly))
             using (var db = tx.OpenDatabase())
             {
                 var cursor = tx.CreateCursor(db);
@@ -190,7 +190,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.NoSync))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.NoSync))
             using (var db = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.None }))
             {
                 tx.Delete(db, key);
@@ -206,7 +206,7 @@ namespace DBBenchmark
         {
             var stopwatch = Stopwatch.StartNew();
 
-            using (var tx = Enviroment.BeginTransaction(TransactionBeginFlags.NoSync))
+            using (var tx = Environment.BeginTransaction(TransactionBeginFlags.NoSync))
             using (var db = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.None }))
             {
                 tx.TruncateDatabase(db);

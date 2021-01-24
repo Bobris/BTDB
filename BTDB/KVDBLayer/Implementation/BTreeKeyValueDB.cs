@@ -224,7 +224,7 @@ namespace BTDB.KVDBLayer
                     }
 
                     // Corrupted kvi - could be removed
-                    _fileCollection.MakeIdxUnknown(keyIndex.Key);
+                    MarkFileForRemoval(keyIndex.Key);
                 }
 
                 while (keyIndexes.Length > 0)
@@ -232,7 +232,7 @@ namespace BTDB.KVDBLayer
                     var keyIndex = keyIndexes[^1];
                     keyIndexes = keyIndexes.Slice(0, keyIndexes.Length - 1);
                     if (keyIndex.Key != preserveKeyIndexKey)
-                        _fileCollection.MakeIdxUnknown(keyIndex.Key);
+                        MarkFileForRemoval(keyIndex.Key);
                 }
 
                 if (!hasKeyIndex && _missingSomeTrlFiles.HasValue)
@@ -253,7 +253,7 @@ namespace BTDB.KVDBLayer
                             {
                                 var trLog = fileInfo.Value as IFileTransactionLog;
                                 if (trLog == null) continue;
-                                _fileCollection.MakeIdxUnknown(fileInfo.Key);
+                                MarkFileForRemoval(fileInfo.Key);
                             }
                             _fileCollection.DeleteAllUnknownFiles();
                             _fileIdWithTransactionLog = 0;
@@ -323,6 +323,16 @@ namespace BTDB.KVDBLayer
                     _nextRoot = null;
                 }
             }
+        }
+
+        void MarkFileForRemoval(uint fileId)
+        {
+            var file = _fileCollection.GetFile(fileId);
+            if (file != null)
+                Logger?.FileMarkedForDelete(file.Index);
+            else
+                Logger?.LogWarning($"Marking for delete file id {fileId} unknown in file collection.");
+            _fileCollection.MakeIdxUnknown(fileId);
         }
 
         bool IKeyValueDBInternal.LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info)
@@ -1351,6 +1361,7 @@ namespace BTDB.KVDBLayer
             }
 
             _fileWithTransactionLog = FileCollection.AddFile("trl");
+            Logger?.TransactionLogCreated(_fileWithTransactionLog.Index);
             _fileIdWithTransactionLog = _fileWithTransactionLog.Index;
             var transactionLog = new FileTransactionLog(FileCollection.NextGeneration(), FileCollection.Guid,
                 _fileIdWithPreviousTransactionLog);
@@ -1704,7 +1715,7 @@ namespace BTDB.KVDBLayer
         {
             foreach (var fileId in fileIds)
             {
-                _fileCollection.MakeIdxUnknown(fileId);
+                MarkFileForRemoval(fileId);
             }
         }
 

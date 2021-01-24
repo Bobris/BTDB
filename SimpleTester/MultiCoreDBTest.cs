@@ -133,6 +133,14 @@ namespace SimpleTester
                 $"KeyValueIndexCreated file id: {fileId} kvcount: {keyValueCount} size: {size} duration: {duration.TotalSeconds:F2}s");
         }
 
+        public void TransactionLogCreated(uint fileId)
+        {
+        }
+
+        public void FileMarkedForDelete(uint fileId)
+        {
+        }
+
         public void LogWarning(string message)
         {
             Console.WriteLine("Warning: "+message);

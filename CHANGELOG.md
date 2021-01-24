@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+New methods`TransactionLogCreated` and `FileMarkedForDelete` in `IKeyValueDBLogger` for logging file collection operations
+
 ## 25.5.0
 
 ### Fixed

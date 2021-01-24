@@ -8,14 +8,14 @@
             return true;
         }
 
-        public override bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+        public override bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
         {
             _indent++;
             Print($"Object {tableName ?? "?Unknown?"}");
             return true;
         }
 
-        public override bool StartInlineObject(uint tableId, string tableName, uint version)
+        public override bool StartInlineObject(uint tableId, string? tableName, uint version)
         {
             Print($"{CurrentFieldName}: InlineObject {tableName} ref#{_iid}");
             _indent++;

@@ -1188,7 +1188,7 @@ namespace BTDBTest
                 tr.CreateOrUpdateKeyValue(_key1, new byte[1]);
                 tr.Commit();
             }
-
+            Assert.Equal(fileCollection.GetCount(), logger.TrlCreatedCount);
             StartLeakingTransaction(db);
             GC.Collect(GC.MaxGeneration);
             GC.WaitForPendingFinalizers();
@@ -1206,6 +1206,8 @@ namespace BTDBTest
             public IKeyValueDBTransaction? Leaked;
             public TimeSpan KviTime;
             public string? LastWarning;
+            public uint TrlCreatedCount;
+            public uint MarkedForDeleteCount;
 
             public void ReportTransactionLeak(IKeyValueDBTransaction transaction)
             {
@@ -1225,6 +1227,16 @@ namespace BTDBTest
                 KviTime = duration;
             }
 
+            public void TransactionLogCreated(uint fileId)
+            {
+                TrlCreatedCount++;
+            }
+
+            public void FileMarkedForDelete(uint fileId)
+            {
+                MarkedForDeleteCount ++;
+            }
+            
             public void LogWarning(string message)
             {
                 LastWarning = message;
@@ -1235,16 +1247,16 @@ namespace BTDBTest
         public void CompactionLimitsKviWriteSpeed()
         {
             using var fileCollection = new InMemoryFileCollection();
+            var logger = new LoggerMock();
             using var db = NewKeyValueDB(new KeyValueDBOptions
             {
                 FileCollection = fileCollection,
                 Compression = new NoCompressionStrategy(),
                 CompactorScheduler = null,
                 CompactorWriteBytesPerSecondLimit = 20000,
-                FileSplitSize = 60000
+                FileSplitSize = 60000,
+                Logger = logger
             });
-            var logger = new LoggerMock();
-            db.Logger = logger;
             using (var tr = db.StartTransaction())
             {
                 var key = new byte[100];
@@ -1266,12 +1278,14 @@ namespace BTDBTest
         public void BigCompaction()
         {
             using var fileCollection = new InMemoryFileCollection();
+            var logger = new LoggerMock();
             using var db = NewKeyValueDB(new KeyValueDBOptions
             {
                 FileCollection = fileCollection,
                 Compression = new NoCompressionStrategy(),
                 CompactorScheduler = null,
-                FileSplitSize = 10000
+                FileSplitSize = 10000,
+                Logger = logger
             });
             using (var tr = db.StartTransaction())
             {
@@ -1308,6 +1322,7 @@ namespace BTDBTest
             }
 
             db.Compact(CancellationToken.None);
+            Assert.Equal(513u, logger.MarkedForDeleteCount);
         }
 
         [Fact]
