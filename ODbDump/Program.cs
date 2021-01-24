@@ -442,6 +442,7 @@ namespace ODbDump
             while (true)
             {
                 var line = Console.ReadLine();
+                if (line == null) break;
                 var words = line.Split(' ');
                 switch (words[0])
                 {
@@ -565,6 +566,16 @@ namespace ODbDump
             public void KeyValueIndexCreated(uint fileId, long keyValueCount, ulong size, TimeSpan duration)
             {
                 Console.WriteLine($"Kvi created {keyValueCount} keys with size {size} in {duration.TotalSeconds:F1}");
+            }
+
+            public void TransactionLogCreated(uint fileId)
+            {
+                Console.WriteLine($"Trl file {fileId} added to collection.");
+            }
+
+            public void FileMarkedForDelete(uint fileId)
+            {
+                Console.WriteLine($"File {fileId} marked for delete.");
             }
 
             public void LogWarning(string message)

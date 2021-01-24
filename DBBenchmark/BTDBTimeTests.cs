@@ -10,7 +10,7 @@ namespace DBBenchmark
     {
         readonly bool _inMemory;
         readonly bool _memoryMapped;
-        IFileCollection _fileCollection;
+        IFileCollection? _fileCollection;
         readonly bool _fastInMemory;
 
         public BtdbTimeTests()
@@ -200,7 +200,7 @@ namespace DBBenchmark
             return stopwatch.Elapsed;
         }
 
-        IFileCollection CreateTestFileCollection()
+        IFileCollection? CreateTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -252,7 +252,7 @@ namespace DBBenchmark
             return new OnDiskFileCollection(dbfilename);
         }
 
-        static IKeyValueDB CreateKeyValueDb(IFileCollection fileCollection, ICompressionStrategy? compressionStrategy = null)
+        static IKeyValueDB CreateKeyValueDb(IFileCollection? fileCollection, ICompressionStrategy? compressionStrategy = null)
         {
             if (fileCollection == null)
                 return new InMemoryKeyValueDB();

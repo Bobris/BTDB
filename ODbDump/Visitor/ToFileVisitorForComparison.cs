@@ -62,7 +62,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public override void ScalarAsObject(object content)
+        public override void ScalarAsObject(object? content)
         {
             if (_hashStrings && content is string str)
             {
