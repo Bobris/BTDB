@@ -2,6 +2,14 @@
 
 ## [unreleased]
 
+### Fixed
+
+Compactor sometimes removed unused files too late.
+
+### Removed
+
+`ReadOnlyListArrayWrapper` not used internally anymore and it is too confusing.
+
 ### Added
 
 New methods`TransactionLogCreated` and `FileMarkedForDelete` in `IKeyValueDBLogger` for logging file collection operations

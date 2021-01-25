@@ -11,7 +11,7 @@ namespace BTDB.KVDBLayer
     class Compactor
     {
         readonly IKeyValueDBInternal _keyValueDB;
-        IRootNodeInternal _root;
+        IRootNodeInternal? _root;
         RefDictionary<uint, FileStat> _fileStats;
 
         Dictionary<ulong, ulong> _newPositionMap;
@@ -163,6 +163,8 @@ namespace BTDB.KVDBLayer
                 } while (!IsWasteSmall(totalWaste));
 
                 _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                _keyValueDB.DereferenceRootNodeInternal(_root);
+                _root = null;
                 if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
                 {
                     _keyValueDB.MarkAsUnknown(toRemoveFileIds);
@@ -173,7 +175,7 @@ namespace BTDB.KVDBLayer
             }
             finally
             {
-                _keyValueDB.DereferenceRootNodeInternal(_root);
+                if (_root != null) _keyValueDB.DereferenceRootNodeInternal(_root);
                 _root = null;
             }
         }

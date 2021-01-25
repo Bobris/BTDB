@@ -8,7 +8,7 @@ namespace DBBenchmark
 {
     public class LightingDbTimeTests : IDbTimeTests
     {
-        readonly string _dBpath = Path.Combine(Directory.GetParent(Directory.GetCurrentDirectory()).FullName, "TestDb", Guid.NewGuid().ToString());
+        readonly string _dBpath = Path.Combine(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName, "TestDb", Guid.NewGuid().ToString());
 
         string DbDBpath
         {
