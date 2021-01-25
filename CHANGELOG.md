@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.0.0
+
 ### Fixed
 
 Compactor sometimes removed unused files too late.
