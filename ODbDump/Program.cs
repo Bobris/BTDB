@@ -18,7 +18,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain");
                 return;
             }
 
@@ -116,7 +116,7 @@ namespace ODbDump
                         odb.Open(kdb, false);
                         using var trkv = kdb.StartReadOnlyTransaction();
                         using var tr = odb.StartTransaction();
-                        var visitor = new ToFilesVisitorForComparison(HashType.Crc32);
+                        using var visitor = new ToFilesVisitorForComparison(HashType.Crc32);
                         var iterator = new ODBIterator(tr, visitor);
                         iterator.Iterate(sortTableByNameAsc: true);
 
@@ -124,25 +124,11 @@ namespace ODbDump
                     }
                 case "diskdump":
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        using var tst = File.CreateText(Path.Combine(args[0], "dump.txt"));
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        tst.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                        tst.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                        tst.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                        var visitor = new ToFileVisitorNice(tst);
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
+                        var dbDir = args[0];
+                        var openUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null;
+                        var fileName = Path.Combine(dbDir, "dump.txt");
 
+                        DiskDump(dbDir, fileName, openUpToCommitUlong);
                         break;
                     }
                 case "dump":
@@ -427,12 +413,121 @@ namespace ODbDump
                         iterator.Iterate();
                     }
                     break;
+                case "findsplitbrain":
+                    {
+                        if (args.Length != 6)
+                        {
+                            Console.WriteLine(
+                                "usage: ODBDump Eagle_0 findsplitbrain Eagle_1 1000 100000 INestedEventTable");
+                            return;
+                        }
+
+                        var startEvent = ulong.Parse(args[3]);
+                        var endEvent = ulong.Parse(args[4]);
+                        var relationName = args[5];
+
+                        var (found, lastGood, firstBad) = FindSplitBrain(args[0], args[2], relationName, startEvent, endEvent);
+                        if (found)
+                        {
+                            Console.WriteLine($"Split occured between {lastGood} and {firstBad}");
+                            DiskDump(args[0], $"dump_{lastGood}_0.txt", lastGood);
+                            DiskDump(args[2], $"dump_{lastGood}_1.txt", lastGood);
+                            DiskDump(args[0], $"dump_{firstBad}_0.txt", firstBad);
+                            DiskDump(args[2], $"dump_{firstBad}_1.txt", firstBad);
+                        }
+                    }
+                    break;
                 default:
                     {
                         Console.WriteLine($"Unknown action: {action}");
                         break;
                     }
             }
+        }
+
+        static (bool found, ulong lastGood, ulong firstBad) FindSplitBrain(string dir1, string dir2, string relationName, ulong startEvent, ulong endEvent)
+        {
+            if (!CheckStartEquals()) return (false, 0, 0);
+            bool CheckStartEquals()
+            {
+                var startContent0 = DumpRelationContent(dir1, relationName, startEvent);
+                var startContent1 = DumpRelationContent(dir2, relationName, startEvent);
+                if (startContent0 == startContent1) return true;
+                Console.WriteLine("DBs differs already on start event.");
+                return false;
+            }
+
+            if (!CheckEndDiffers()) return (false, 0, 0);
+            bool CheckEndDiffers()
+            {
+                var endContent0 = DumpRelationContent(dir1, relationName, endEvent);
+                var endContent1 = DumpRelationContent(dir2, relationName, endEvent);
+                if (endContent0 != endContent1) return true;
+                Console.WriteLine("DBs are same on end event.");
+                return false;
+            }
+
+            var l = startEvent;
+            var r = endEvent;
+
+            while (l + 1 < r)
+            {
+                var m = (r + l) / 2;
+                var content0 = DumpRelationContent(dir1, relationName, m);
+                var content1 = DumpRelationContent(dir2, relationName, m);
+                if (content0 == content1)
+                    l = m;
+                else
+                    r = m;
+                Console.WriteLine($"Narrowing to {l} .. {r}");
+            }
+
+            return (true, l, r);
+        }
+
+        static string DumpRelationContent(string dbDir, string relationName, ulong? openUpToCommitUlong)
+        {
+            using var dfc = new OnDiskFileCollection(dbDir);
+            using var kdb = new KeyValueDB(new KeyValueDBOptions
+            {
+                FileCollection = dfc,
+                ReadOnly = true,
+                OpenUpToCommitUlong = openUpToCommitUlong
+            });
+            using var odb = new ObjectDB();
+            odb.Open(kdb, false);
+            using var trkv = kdb.StartReadOnlyTransaction();
+            using var tr = odb.StartTransaction();
+
+            var visitor = new ToStringFastVisitor();
+            var iterator = new ODBIterator(tr, visitor);
+            iterator.LoadGlobalInfo();
+            var relationIdInfo = iterator.RelationId2Info.FirstOrDefault(kvp => kvp.Value.Name.EndsWith(relationName));
+            if (relationIdInfo.Value == null) return "";
+            iterator.IterateRelation(relationIdInfo.Value);
+            return visitor.ToString();
+        }
+
+        static void DiskDump(string dbDir, string fileName, ulong? openUpToCommitUlong)
+        {
+            using var dfc = new OnDiskFileCollection(dbDir);
+            using var kdb = new KeyValueDB(new KeyValueDBOptions
+            {
+                FileCollection = dfc,
+                ReadOnly = true,
+                OpenUpToCommitUlong = openUpToCommitUlong
+            });
+            using var odb = new ObjectDB();
+            using var tst = File.CreateText(fileName);
+            odb.Open(kdb, false);
+            using var trkv = kdb.StartReadOnlyTransaction();
+            using var tr = odb.StartTransaction();
+            tst.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+            tst.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+            tst.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+            var visitor = new ToFileVisitorNice(tst);
+            var iterator = new ODBIterator(tr, visitor);
+            iterator.Iterate();
         }
 
         static void Interactive(ODBIterator iterator, ToConsoleVisitorNice visitor)
@@ -580,7 +675,7 @@ namespace ODbDump
 
             public void LogWarning(string message)
             {
-                Console.WriteLine("Warning: "+message);
+                Console.WriteLine("Warning: " + message);
             }
         }
     }

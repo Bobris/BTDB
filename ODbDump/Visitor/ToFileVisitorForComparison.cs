@@ -15,7 +15,7 @@ namespace ODbDump.Visitor
         Crc32
     }
 
-    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison
+    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison, IDisposable
     {
         readonly bool _hashStrings;
         readonly HashAlgorithm? _hashAlgorithm;
