@@ -202,7 +202,7 @@ namespace BTDB.ODBLayer
         {
             var keyBytes = KeyToByteArray(key);
             _modificationCounter++;
-            var created = _keyValueTr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
+            var created = _tr.CreateOrUpdateKeyValue(keyBytes, new ReadOnlySpan<byte>());
             if (created) NotifyAdded();
             return created;
         }

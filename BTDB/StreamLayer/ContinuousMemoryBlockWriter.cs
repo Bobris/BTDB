@@ -26,6 +26,17 @@ namespace BTDB.StreamLayer
             return ByteBuffer.NewSync(_bytes, 0, _ofs);
         }
 
+        public void Reset()
+        {
+            _ofs = 0;
+        }
+
+        public void ResetAndFreeMemory()
+        {
+            _bytes = Array.Empty<byte>();
+            _ofs = 0;
+        }
+
         void ISpanWriter.Init(ref SpanWriter spanWriter)
         {
             spanWriter.Buf = _bytes.AsSpan(_ofs);
@@ -38,12 +49,12 @@ namespace BTDB.StreamLayer
 
         bool ISpanWriter.Flush(ref SpanWriter spanWriter)
         {
-            ((ISpanWriter)this).Sync(ref spanWriter);
+            ((ISpanWriter) this).Sync(ref spanWriter);
             var newLength = Math.Min(Math.Max(_bytes.Length * 2, 32), int.MaxValue);
             if (_bytes.Length == newLength)
                 throw new BTDBException("ContinuousMemoryBlockWriter reached maximum size of " + int.MaxValue);
             Array.Resize(ref _bytes, newLength);
-            ((ISpanWriter)this).Init(ref spanWriter);
+            ((ISpanWriter) this).Init(ref spanWriter);
             return true;
         }
 
@@ -59,13 +70,13 @@ namespace BTDB.StreamLayer
 
         void ISpanWriter.WriteBlock(ref SpanWriter spanWriter, ref byte buffer, uint length)
         {
-            ((ISpanWriter)this).Sync(ref spanWriter);
-            var newLength = (int)Math.Min(Math.Max(_bytes.Length * 2, _ofs + length), int.MaxValue);
+            ((ISpanWriter) this).Sync(ref spanWriter);
+            var newLength = (int) Math.Min(Math.Max(_bytes.Length * 2, _ofs + length), int.MaxValue);
             if (_bytes.Length == newLength)
                 throw new BTDBException("ContinuousMemoryBlockWriter reached maximum size of " + int.MaxValue);
             Array.Resize(ref _bytes, newLength);
-            ((ISpanWriter)this).Init(ref spanWriter);
-            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int)length),
+            ((ISpanWriter) this).Init(ref spanWriter);
+            Unsafe.CopyBlockUnaligned(ref PackUnpack.UnsafeGetAndAdvance(ref spanWriter.Buf, (int) length),
                 ref buffer, length);
         }
 
@@ -78,7 +89,7 @@ namespace BTDB.StreamLayer
 
         void ISpanWriter.SetCurrentPosition(ref SpanWriter spanWriter, long position)
         {
-            _ofs = (int)position;
+            _ofs = (int) position;
             spanWriter.Buf = _bytes.AsSpan(_ofs);
         }
     }

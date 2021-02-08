@@ -690,6 +690,15 @@ namespace BTDB.StreamLayer
             SkipBlock(length - 1);
         }
 
+        public ReadOnlySpan<byte> ReadByteArrayAsSpan()
+        {
+            var length = ReadVUInt32();
+            if (length-- == 0) return new ReadOnlySpan<byte>();
+            var res = Buf.Slice(0, (int)length);
+            PackUnpack.UnsafeAdvance(ref Buf, (int)length);
+            return res;
+        }
+        
         public byte[] ReadByteArrayRawTillEof()
         {
             var res = Buf.ToArray();

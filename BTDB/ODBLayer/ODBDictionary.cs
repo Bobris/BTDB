@@ -285,7 +285,7 @@ namespace BTDB.ODBLayer
                 throw new ArgumentException("Cannot Add duplicate key to Dictionary");
             }
 
-            _keyValueTr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
+            _tr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
             NotifyAdded();
         }
 

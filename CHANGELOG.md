@@ -6,6 +6,8 @@
 
 ODbDump has new command `findsplitbrain` which can find first commit when content of relation in two instances of DB diverted - DBs needs to contain enough preserved history
 
+`IRelation` has new `SerializeInsert` method which allows speed up DB insert by preparing simple CreateKeyValue commands ahead of writing transaction.
+
 ## 26.0.0
 
 ### Fixed

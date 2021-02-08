@@ -29,14 +29,12 @@ namespace BTDB.ODBLayer
 
         Dictionary<ulong, object>? _dirtyObjSet;
         HashSet<TableInfo>? _updatedTables;
-        long _lastDictId;
 
         public ObjectDBTransaction(ObjectDB owner, IKeyValueDBTransaction keyValueTr, bool readOnly)
         {
             _owner = owner;
             _keyValueTr = keyValueTr;
             _readOnly = readOnly;
-            _lastDictId = (long)_owner.LastDictId;
             _transactionNumber = keyValueTr.GetTransactionNumber();
         }
 
@@ -59,7 +57,7 @@ namespace BTDB.ODBLayer
 
         public ulong AllocateDictionaryId()
         {
-            return (ulong)(Interlocked.Increment(ref _lastDictId) - 1);
+            return _owner.AllocateNewDictId();
         }
 
         public object ReadInlineObject(ref SpanReader reader, IReaderCtx readerCtx)
@@ -87,6 +85,35 @@ namespace BTDB.ODBLayer
             freeContentTuple.Item2(this, null, ref reader, readerWithFree.DictIds);
         }
 
+        public void SetSerializationCallbacks(IInternalSerializationCallbacks? callbacks)
+        {
+            if (callbacks == null)
+            {
+                // Commit all dirty indirect objects
+                while (_dirtyObjSet != null)
+                {
+                    var curObjsToStore = _dirtyObjSet;
+                    _dirtyObjSet = null;
+                    foreach (var o in curObjsToStore)
+                    {
+                        StoreObject(o.Value);
+                    }
+                }
+            }
+            _serializationCallbacks = callbacks;
+        }
+
+        public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+            if (_serializationCallbacks != null)
+            {
+                _serializationCallbacks.CreateKeyValue(key, value);
+                return true;
+            }
+
+            return _keyValueTr!.CreateOrUpdateKeyValue(key, value);
+        }
+
         public void WriteInlineObject(ref SpanWriter writer, object @object, IWriterCtx writerCtx)
         {
             var ti = GetTableInfoFromType(@object.GetType());
@@ -105,6 +132,17 @@ namespace BTDB.ODBLayer
 
         void IfNeededPersistTableInfo(TableInfo tableInfo)
         {
+            if (_serializationCallbacks != null)
+            {
+                if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
+                {
+                    SerializeTableInfo(tableInfo);
+                    tableInfo.LastPersistedVersion = tableInfo.ClientTypeVersion;
+                    tableInfo.ResetNeedStoreSingletonOid();
+                }
+
+                return;
+            }
             if (_readOnly) return;
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion || tableInfo.NeedStoreSingletonOid)
             {
@@ -377,6 +415,7 @@ namespace BTDB.ODBLayer
 
         IRelation? _relationInstances;
         Dictionary<Type, IRelation>? _relationsInstanceCache;
+        IInternalSerializationCallbacks? _serializationCallbacks;
         const int LinearSearchLimit = 4;
 
         public IRelation GetRelation(Type type)
@@ -905,7 +944,7 @@ namespace BTDB.ODBLayer
                     }
                 }
 
-                _owner.CommitLastObjIdAndDictId((ulong)_lastDictId, _keyValueTr!);
+                _owner.CommitLastObjIdAndDictId(_keyValueTr!);
                 _keyValueTr.Commit();
                 if (_updatedTables != null)
                     foreach (var updatedTable in _updatedTables)
@@ -942,12 +981,43 @@ namespace BTDB.ODBLayer
             writer.WriteVUInt32(tableInfo.Id);
             writer.WriteVUInt32(tableInfo.ClientTypeVersion);
             tableInfo.Saver(this, metadata, ref writer, o);
+            if (_serializationCallbacks != null)
+            {
+                _serializationCallbacks.CreateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id), writer.GetSpan());
+            }
             if (tableInfo.IsSingletonOid(metadata.Id))
             {
                 tableInfo.CacheSingletonContent(_transactionNumber + 1, null);
             }
-
             _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id), writer.GetSpan());
+        }
+
+        void SerializeTableInfo(TableInfo tableInfo)
+        {
+            if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
+            {
+                Span<byte> buf = stackalloc byte[256];
+                var writer = new SpanWriter(buf);
+
+                if (tableInfo.LastPersistedVersion <= 0)
+                {
+                    var keyTableId = BuildKeyFromOid(ObjectDB.TableNamesPrefix, tableInfo.Id);
+                    writer.WriteString(tableInfo.Name);
+                    _serializationCallbacks!.MetadataCreateKeyValue(keyTableId, writer.GetSpanAndReset());
+                }
+
+                var tableVersionInfo = tableInfo.ClientTableVersionInfo;
+                tableVersionInfo!.Save(ref writer);
+                _serializationCallbacks!.MetadataCreateKeyValue(
+                    TableInfo.BuildKeyForTableVersions(tableInfo.Id, tableInfo.ClientTypeVersion),
+                    writer.GetSpan());
+            }
+
+            if (tableInfo.NeedStoreSingletonOid)
+            {
+                _serializationCallbacks!.MetadataCreateKeyValue(BuildKeyFromOid(ObjectDB.TableSingletonsPrefix, tableInfo.Id),
+                    BuildKeyFromOid(new ReadOnlySpan<byte>(), (ulong)tableInfo.SingletonOid));
+            }
         }
 
         void PersistTableInfo(TableInfo tableInfo)
@@ -1000,8 +1070,7 @@ namespace BTDB.ODBLayer
 
         public void DeleteAllData()
         {
-            _lastDictId = 0;
-            // Resetting last oid is risky due to singletons. So better to waste something.
+            // Resetting last oid is risky due to singletons. Resetting lastDictId is risky due to parallelism. So better to waste something.
             _keyValueTr!.EraseAll(ObjectDB.AllObjectsPrefix);
             _keyValueTr.EraseAll(ObjectDB.AllDictionariesPrefix);
             _keyValueTr.EraseAll(ObjectDB.AllRelationsPKPrefix);

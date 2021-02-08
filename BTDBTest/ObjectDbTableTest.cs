@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using BTDB.StreamLayer;
 using BTDBTest;
 using Xunit;
 using Xunit.Abstractions;
@@ -2587,6 +2589,92 @@ namespace BTDBTest
 
         public interface IInnerInterface
         {
+        }
+        
+        [Fact]
+        public async Task SerializeInsertWorksWithNestedClasses()
+        {
+            _db.RegisterType(typeof(Imp1.InnerImplementation));
+
+            Func<IObjectDBTransaction,IInnerInterfaceTable> creator;
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
+                tr.Commit();
+            }
+
+            ByteBuffer serialized;
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+
+                ByteBuffer SerializeSample()
+                {
+                    var writer = new SpanWriter();
+                    table.SerializeInsert(ref writer, new BaseClass {Id = 1, Inner = new Imp1.InnerImplementation()});
+                    serialized = writer.GetByteBufferAndReset();
+                    return serialized;
+                }
+
+                serialized = SerializeSample();
+            }
+            
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                void ConsumeEvent()
+                {
+                    var reader = new SpanReader(serialized);
+                    while (!reader.Eof)
+                    {
+                        switch ((SerializationCommand) reader.ReadUInt8())
+                        {
+                            case SerializationCommand.CreateKeyValue:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                var value = reader.ReadByteArrayAsSpan();
+                                Assert.True(tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, value));
+                                break;
+                            }
+                            case SerializationCommand.CreateKey:
+                            {
+                                var key = reader.ReadByteArrayAsSpan();
+                                Assert.True(tr.KeyValueDBTransaction.CreateOrUpdateKeyValue(key, new ReadOnlySpan<byte>()));
+                                break;
+                            }
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+                    }
+
+                    tr.Commit();
+                }
+
+                ConsumeEvent();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(1ul, table.First().Id);
+                Assert.NotNull(table.First().Inner);
+            }
+
+            ReopenDb();
+
+            _db.RegisterType(typeof(Imp1.InnerImplementation));
+
+            using (var tr = await _db.StartWritingTransaction())
+            {
+                creator = tr.InitRelation<IInnerInterfaceTable>("InnerInterface");
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartReadOnlyTransaction())
+            {
+                var table = creator(tr);
+                Assert.Equal(1ul, table.First().Id);
+                Assert.NotNull(table.First().Inner);
+            }
         }
     }
 }

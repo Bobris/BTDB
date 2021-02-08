@@ -679,5 +679,58 @@ namespace BTDB.StreamLayer
                 WriteString(s);
             }
         }
+
+        uint NoControllerGetCurrentPosition()
+        {
+            if (HeapBuffer != null)
+            {
+                return (uint)(HeapBuffer.Length - Buf.Length);
+            }
+
+            return (uint)(InitialBuffer.Length - Buf.Length);
+        }
+        
+        public uint StartWriteByteArray()
+        {
+            if (Controller != null) ThrowCannotBeUsedWithController();
+            WriteByteZero();
+            return NoControllerGetCurrentPosition();
+        }
+
+        public void FinishWriteByteArray(uint start)
+        {
+            var end = NoControllerGetCurrentPosition();
+            var len = end - start + 1;
+            var lenOfLen = PackUnpack.LengthVUInt(len);
+            if (lenOfLen == 1)
+            {
+                if (HeapBuffer != null)
+                {
+                    HeapBuffer[start-1] = (byte)len;
+                    return;
+                }
+
+                InitialBuffer[(int) (start - 1)] = (byte) len;
+                return;
+            }
+
+            // Reserve space at end
+            Resize(lenOfLen - 1);
+            PackUnpack.UnsafeAdvance(ref Buf, (int)lenOfLen - 1);
+            // Make Space By Moving Memory
+            InternalGetSpan(start, len - 1).CopyTo(InternalGetSpan(start + lenOfLen - 1, len - 1));
+            // Update Length at start            
+            PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(InternalGetSpan(start - 1, lenOfLen)), len, lenOfLen);
+        }
+
+        Span<byte> InternalGetSpan(uint start, uint len)
+        {
+            if (HeapBuffer != null)
+            {
+                return HeapBuffer.AsSpan((int)start, (int)len);
+            }
+
+            return InitialBuffer.Slice((int) start, (int) len);
+        }
     }
 }
