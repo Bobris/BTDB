@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.1.0
+
 ### Added
 
 ODbDump has new command `findsplitbrain` which can find first commit when content of relation in two instances of DB diverted - DBs needs to contain enough preserved history
