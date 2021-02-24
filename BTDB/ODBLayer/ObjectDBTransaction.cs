@@ -822,12 +822,9 @@ namespace BTDB.ODBLayer
             if (@object is IIndirect indirect)
             {
                 if (indirect.Oid != 0)
-                {
                     Delete(indirect.Oid);
-                    return;
-                }
-
-                Delete(indirect.ValueAsObject);
+                else if (indirect.ValueAsObject != null)
+                    Delete(indirect.ValueAsObject);
                 return;
             }
 
