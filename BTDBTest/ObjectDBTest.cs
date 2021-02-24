@@ -1742,6 +1742,53 @@ namespace BTDBTest
             }
         }
 
+        class WithIndirect
+        {
+            public IIndirect<Person> Indirect { get; set; }
+        }
+
+        [Fact]
+        public void DeleteIndirectInTheSameTransaction()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<WithIndirect>();
+                d.Indirect = new DBIndirect<Person>(new Person());
+                tr.Delete(d.Indirect);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<WithIndirect>();
+                Assert.Null(d.Indirect.Value);
+            }
+        }
+
+        [Fact]
+        public void DeleteIndirectWithNullValueDoesNotThrow()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<WithIndirect>();
+                d.Indirect = new DBIndirect<Person>(null);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<WithIndirect>();
+                tr.Delete(d.Indirect);
+                tr.Commit();
+            }
+
+            using (var tr = _db.StartTransaction())
+            {
+                var d = tr.Singleton<WithIndirect>();
+                Assert.Null(d.Indirect.Value);
+            }
+        }
+
         [Fact]
         public void DeleteIndirectWithoutMaterialization()
         {
