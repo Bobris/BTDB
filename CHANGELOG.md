@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Deleting indirect will not throw when value is null.
+
 ## 26.1.0
 
 ### Added
