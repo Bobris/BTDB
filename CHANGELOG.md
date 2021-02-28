@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.1.1
+
 ### Fixed
 
 Deleting indirect will not throw when value is null.
