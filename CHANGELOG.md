@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+IOC Nullable values as instance dependencies.
+
 ## 26.1.1
 
 ### Fixed

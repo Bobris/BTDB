@@ -109,7 +109,7 @@ namespace BTDB.IOC
         {
             var needs = needsEnumerable.ToArray();
             var regs = needs.Select(ResolveNeed).ToArray();
-            var parsLocals = new StructList<IILLocal>();
+            var parsLocals = new StructList<IILLocal?>();
             parsLocals.Reserve((uint)regs.Length);
             var index = 0;
             foreach (var reg in regs)

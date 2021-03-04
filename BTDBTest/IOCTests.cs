@@ -1319,7 +1319,17 @@ namespace BTDBTest
             builder.RegisterInstance<TimeSpan?>(timeSpan);
             builder.RegisterType<Foo>();
             var container = builder.Build();
-            container.Resolve<Foo>();
+            Assert.Equal(TimeSpan.FromHours(1), container.Resolve<Foo>().Bar);
+        }
+
+        [Fact]
+        public void InjectNullableStructWithoutValueDoesNotCrash()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance<TimeSpan?>(null!);
+            builder.RegisterType<Foo>();
+            var container = builder.Build();
+            Assert.False(container.Resolve<Foo>().Bar.HasValue);
         }
 
         [Fact]
