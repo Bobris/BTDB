@@ -1300,5 +1300,36 @@ namespace BTDBTest
             builder.RegisterType<ErrorHandler>().As<IErrorHandler>().SingleInstance();
             Assert.Throws<BTDBException>(() => builder.BuildAndVerify());
         }
+
+        class Foo
+        {
+            internal TimeSpan? Bar;
+
+            public Foo(TimeSpan? param)
+            {
+                Bar = param;
+            }
+        }
+
+        [Fact]
+        public void InjectNullableStructDoesNotCrash()
+        {
+            var builder = new ContainerBuilder();
+            TimeSpan? timeSpan = TimeSpan.FromHours(1);
+            builder.RegisterInstance<TimeSpan?>(timeSpan);
+            builder.RegisterType<Foo>();
+            var container = builder.Build();
+            container.Resolve<Foo>();
+        }
+
+        [Fact]
+        public void InjectStructByFactory()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterFactory(c => new Foo(TimeSpan.FromHours(1)));
+            var container = builder.Build();
+            var foo = container.Resolve<Foo>();
+            Assert.Equal(TimeSpan.FromHours(1), foo.Bar);
+        }
     }
 }
