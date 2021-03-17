@@ -1389,6 +1389,8 @@ namespace BTDBTest
 
             IEnumerator<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId,
                 AdvancedEnumeratorParam<DateTime> productionDate);
+            
+            IEnumerator<ProductionTrackingDaily> ListByProductionDate(AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
         [Fact]
@@ -1423,6 +1425,32 @@ namespace BTDBTest
 
             tr.Commit();
         }
+        
+        [Fact]
+        public void ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IProductionTrackingDailyTable>("ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem");
+            var table = creator(tr);
+
+            var dateTimeValue = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+            // var dateTimeValue = default(DateTime);
+
+            table.Insert(new ProductionTrackingDaily {CompanyId = 123, ProductionDate = dateTimeValue, ProductionsCount = 12});
+
+            var companyProduction = table.FindByProductionDate(dateTimeValue);
+            Assert.True(companyProduction.MoveNext());
+            Assert.Equal(12u, companyProduction.Current.ProductionsCount);
+
+            var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, 
+                dateTimeValue, KeyProposition.Excluded,
+                DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), KeyProposition.Excluded);
+            var en = table.ListByProductionDate(dateParam);
+            Assert.False(en.MoveNext());
+
+            tr.Commit();
+        }
+
 
         public interface IProductionInvalidTable : IRelation<ProductionTrackingDaily>
         {
