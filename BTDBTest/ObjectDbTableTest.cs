@@ -793,7 +793,35 @@ namespace BTDBTest
             Assert.Equal("Bicycle", GetNext(en).Name);
             Assert.False(en.MoveNext());
         }
+        
+        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
+        public void NotifyForPossiblyWrongUsageOfExcludedListing()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IJobTable>("Job");
+            var jobTable = creator(tr);
+            jobTable.Insert(new Job {Id = 11, Name = "Code"});
+            Assert.Throws<InvalidOperationException>(() => jobTable.ListByName(new AdvancedEnumeratorParam<string>(
+                EnumerationOrder.Descending, "Code",
+                KeyProposition.Excluded, "Z", KeyProposition.Included)));
+            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+                KeyProposition.Included, "Z", KeyProposition.Included));
+            Assert.True(en.MoveNext());
+        }
 
+        [SkipWhen(SkipWhenAttribute.Is.Debug, "Preventing exclude in secondary key is checked only in debug")]
+        public void InReleaseIsPossibleUseExcludedListing()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IJobTable>("Job");
+            var jobTable = creator(tr);
+            jobTable.Insert(new Job {Id = 11, Name = "Code"});
+            var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Descending, "Code",
+                KeyProposition.Excluded, "Z", KeyProposition.Included));
+            Assert.True(en.MoveNext());
+        }
+
+        
         public class Lic
         {
             [PrimaryKey(1)]
@@ -1025,7 +1053,7 @@ namespace BTDBTest
                 var table = tr.GetRelation<IUserNoticeTable>();
                 table.Insert(new UserNotice {UserId = 1, NoticeId = 2});
                 var en = table.ListByNoticeId(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
-                    1, KeyProposition.Excluded, 3, KeyProposition.Excluded));
+                    1, KeyProposition.Included, 3, KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal(2u, en.Current!.NoticeId);
                 foreach (var row in table)
@@ -1239,16 +1267,16 @@ namespace BTDBTest
                     E1 = "eee"
                 });
                 var en = table.ListBySec(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal("aa", en.Current.A);
                 en = table.ListBySec("a", new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending,
-                    "a", KeyProposition.Excluded, "b", KeyProposition.Excluded));
+                    "a", KeyProposition.Included, "b", KeyProposition.Excluded));
                 Assert.True(en.MoveNext());
                 Assert.Equal("bb", en.Current.B);
                 en = table.ListBySec("a", "aa", "aaa", "dd", "ddd", new AdvancedEnumeratorParam<string>(
                     EnumerationOrder.Ascending,
-                    "c", KeyProposition.Excluded, "d", KeyProposition.Included));
+                    "c", KeyProposition.Included, "d", KeyProposition.Included));
                 Assert.True(en.MoveNext());
                 Assert.Equal("eee", en.Current.E1);
                 tr.Commit();

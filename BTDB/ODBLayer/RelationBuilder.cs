@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -674,6 +675,8 @@ namespace BTDB.ODBLayer
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
+                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
+
                 var secondaryKeyIndex =
                     ClientRelationVersionInfo.GetSecondaryKeyIndex(
                         StripVariant(method.Name.Substring(6), false));
@@ -774,6 +777,22 @@ namespace BTDB.ODBLayer
             }
         }
 
+        [Conditional("DEBUG")]
+        void ForbidExcludePropositionInDebug(IILGen ilGenerator, ushort advEnumParamOrder, Type advEnumParamType)
+        {
+            var propositionCheckFinished = ilGenerator.DefineLabel();
+            ilGenerator
+                .LdcI4((int)KeyProposition.Excluded)
+                .Ldarg(advEnumParamOrder)
+                .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!)
+                .Ceq()
+                .Brfalse(propositionCheckFinished)
+                .Ldstr("Not supported Excluded proposition when listing by secondary key.")
+                .Newobj(() => new InvalidOperationException(null))
+                .Throw()
+                .Mark(propositionCheckFinished);
+        }
+        
         void BuildCountByMethod(MethodInfo method, IILMethod reqMethod)
         {
             var parameters = method.GetParameters();
