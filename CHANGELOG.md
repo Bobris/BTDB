@@ -2,15 +2,15 @@
 
 ## [unreleased]
 
+### Added
+
+In debug mode throws when using in listing by secondary key excluded start proposition. In release mode kept current behavior.
+
 ### Fixed
 
 IOC Nullable values as instance dependencies.
 
 ## 26.1.1
-
-### Added
-
-In debug mode throws when using in listing by secondary key excluded start proposition. In release mode kept current behavior. 
 
 ### Fixed
 
