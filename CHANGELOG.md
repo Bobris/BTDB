@@ -4,7 +4,7 @@
 
 ### Added
 
-In debug mode throws when using in listing by secondary key excluded start proposition. In release mode kept current behavior.
+In debug mode throws when using in listing by partial key excluded start proposition. In release mode kept current behavior.
 
 ### Fixed
 

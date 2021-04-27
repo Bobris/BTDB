@@ -371,6 +371,9 @@ namespace BTDB.ODBLayer
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
             var field = primaryKeyFields[prefixParamCount];
+
+            if (parameters.Length != primaryKeyFields.Length)
+                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             reqMethod.Generator.Ldarg(0); //manipulator for call RemoveByIdAdvancedParam
@@ -484,6 +487,9 @@ namespace BTDB.ODBLayer
 
                 var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
                 var field = primaryKeyFields[prefixParamCount];
+                
+                if (parameters.Length != primaryKeyFields.Length)
+                    ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
                 ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
                 reqMethod.Generator.Ldarg(0).Castclass(typeof(IRelationDbManipulator));
@@ -659,6 +665,9 @@ namespace BTDB.ODBLayer
 
             var primaryKeyFields = ClientRelationVersionInfo.PrimaryKeyFields.Span;
             var field = primaryKeyFields[prefixParamCount];
+
+            if (parameters.Length != primaryKeyFields.Length)
+                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             WritePrimaryKeyPrefixFinishedByAdvancedEnumeratorWithoutOrder(method, parameters, reqMethod,
@@ -675,8 +684,6 @@ namespace BTDB.ODBLayer
                 var advEnumParam = parameters[advEnumParamOrder - 1].ParameterType;
                 var advEnumParamType = advEnumParam.GenericTypeArguments[0];
 
-                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
-
                 var secondaryKeyIndex =
                     ClientRelationVersionInfo.GetSecondaryKeyIndex(
                         StripVariant(method.Name.Substring(6), false));
@@ -684,6 +691,9 @@ namespace BTDB.ODBLayer
 
                 var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
                 var field = skFields[prefixParamCount];
+
+                if (parameters.Length != skFields.Length)
+                    ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
                 ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
                 reqMethod.Generator
@@ -782,17 +792,17 @@ namespace BTDB.ODBLayer
         {
             var propositionCheckFinished = ilGenerator.DefineLabel();
             ilGenerator
-                .LdcI4((int)KeyProposition.Excluded)
+                .LdcI4((int) KeyProposition.Excluded)
                 .Ldarg(advEnumParamOrder)
                 .Ldfld(advEnumParamType.GetField(nameof(AdvancedEnumeratorParam<int>.StartProposition))!)
                 .Ceq()
                 .Brfalse(propositionCheckFinished)
-                .Ldstr("Not supported Excluded proposition when listing by secondary key.")
+                .Ldstr("Not supported Excluded proposition when listing by partial key.")
                 .Newobj(() => new InvalidOperationException(null))
                 .Throw()
                 .Mark(propositionCheckFinished);
         }
-        
+
         void BuildCountByMethod(MethodInfo method, IILMethod reqMethod)
         {
             var parameters = method.GetParameters();
@@ -871,6 +881,9 @@ namespace BTDB.ODBLayer
 
             var skFields = ClientRelationVersionInfo.GetSecondaryKeyFields(secondaryKeyIndex);
             var field = skFields[prefixParamCount];
+
+            if (parameters.Length != skFields.Length)
+                ForbidExcludePropositionInDebug(reqMethod.Generator, advEnumParamOrder, advEnumParam);
             ValidateAdvancedEnumParameter(field, advEnumParamType, method.Name);
 
             var (pushWriter, ctxLocFactory) = WriterPushers(reqMethod.Generator);
