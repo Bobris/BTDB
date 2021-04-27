@@ -518,7 +518,7 @@ namespace BTDB.EventStoreLayer
                 .Stloc(locValue);
             foreach (var (name, typeDescriptor) in _fields)
             {
-                var methodInfo = _type.GetProperties().First(p => GetPersistentName(p) == name).GetAnyGetMethod();
+                var methodInfo = _type.GetProperties(BindingFlags.Instance | BindingFlags.Public).First(p => GetPersistentName(p) == name).GetAnyGetMethod();
                 typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                     il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);
             }
