@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.2.0
+
 ### Added
 
 In debug mode throws when using in listing by partial key excluded start proposition. In release mode kept current behavior.
