@@ -833,7 +833,6 @@ namespace BTDBTest
 
         public interface IUserTable : IRelation<User>
         {
-            bool Upsert(User user);
             IEnumerable<User> ListByEmail(ulong companyId, AdvancedEnumeratorParam<string> email);
             IEnumerable<User> ListById(ulong companyId, AdvancedEnumeratorParam<string> email);
             IEnumerable<User> ListById(AdvancedEnumeratorParam<ulong> companyId);
