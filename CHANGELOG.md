@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.2.1
+
 ### Fixed
 
 Random crash in IsFreeContentNeeded due to multiple threads could run this in parallel.
