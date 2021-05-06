@@ -41,7 +41,7 @@ namespace BTDB.ODBLayer
         readonly ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>> _freeContent =
             new ConcurrentDictionary<uint, Tuple<NeedsFreeContent, ObjectFreeContent>>();
 
-        readonly Dictionary<uint, bool> _freeContentNeedDetectionInProgress = new Dictionary<uint, bool>();
+        readonly ConcurrentDictionary<uint, bool> _freeContentNeedDetectionInProgress = new ConcurrentDictionary<uint, bool>();
         long _singletonOid;
         long _cachedSingletonTrNum;
         byte[]? _cachedSingletonContent;
@@ -452,10 +452,10 @@ namespace BTDB.ODBLayer
             if (_freeContent.TryGetValue(version, out var freeContent))
                 return freeContent.Item1;
             if (_freeContentNeedDetectionInProgress.ContainsKey(version))
-                return NeedsFreeContent.No; //when needed then is reported by the other detection in progress
+                return NeedsFreeContent.No; //if needed is reported by the other detection in progress
             _freeContentNeedDetectionInProgress[version] = true;
             var result = GetFreeContent(version).Item1;
-            _freeContentNeedDetectionInProgress.Remove(version);
+            _freeContentNeedDetectionInProgress.TryRemove(version);
             return result;
         }
 
