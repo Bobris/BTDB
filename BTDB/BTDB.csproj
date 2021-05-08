@@ -9,7 +9,7 @@
     <Version>26.2.1</Version>
     <Authors>Boris Letocha, Lubos Karasek</Authors>
     <PackageProjectUrl>http://github.com/Bobris/BTDB</PackageProjectUrl>
-    <PackageLicenseUrl>http://www.opensource.org/licenses/mit-license.php</PackageLicenseUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Description>Key Value Database, Wrapped Dynamic IL generation with debugging + extensions, IOC Container, Object Database, RPC Library, Snappy Compression, Event Storage</Description>
     <PackageTags>KeyValue database objectDB BTDB IOC RPC Compression</PackageTags>
