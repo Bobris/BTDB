@@ -1,6 +1,6 @@
+using BTDB.ODBLayer;
 using System.Collections.Generic;
 using System.Linq;
-using BTDB.ODBLayer;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -65,6 +65,34 @@ namespace BTDBTest
             Assert.Equal(2, en.Count());
             Assert.Equal(2, en.Count());
             Assert.Equal(en.Select(a => a.ApplicationId), new ulong[] { 100, 101 });
+            tr.Commit();
+        }
+
+        [Fact]
+        public void CanEnumerateRelationAdvancedEnumeratorAfterMoveNext()
+        {
+            using var tr = _db.StartTransaction();
+            var creator = tr.InitRelation<IApplicationTable>("ApplicationTable");
+            var table = creator(tr);
+            var application1 = new Application { CompanyId = 1, ApplicationId = 100 };
+            var application2 = new Application { CompanyId = 1, ApplicationId = 101 };
+            var application3 = new Application { CompanyId = 2, ApplicationId = 102 };
+
+            table.Upsert(application2);
+            table.Upsert(application1);
+            table.Upsert(application3);
+
+            var result = table.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
+                1, KeyProposition.Included, 2, KeyProposition.Included));
+
+            var resultEnum = result.GetEnumerator();
+            Assert.True(resultEnum.MoveNext());
+            var val1 = resultEnum.Current;
+            Assert.Equal(100U, val1.ApplicationId);
+
+            var values = result.ToList();
+            Assert.Equal(3, values.Count());
+
             tr.Commit();
         }
     }
