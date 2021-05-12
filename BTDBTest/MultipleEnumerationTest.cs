@@ -87,6 +87,7 @@ namespace BTDBTest
 
             var resultEnum = result.GetEnumerator();
             Assert.True(resultEnum.MoveNext());
+
             var val1 = resultEnum.Current;
             Assert.Equal(100U, val1.ApplicationId);
 
