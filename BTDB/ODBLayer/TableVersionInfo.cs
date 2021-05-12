@@ -30,22 +30,23 @@ namespace BTDB.ODBLayer
             }
         }
 
-        internal void Save(AbstractBufferedWriter writer)
+        internal void Save(ref SpanWriter writer)
         {
-            writer.WriteVUInt32((uint)FieldCount);
-            for (var i = 0; i < FieldCount; i++)
+            var f = _tableFields;
+            writer.WriteVUInt32((uint)f.Length);
+            foreach (var t in f)
             {
-                this[i].Save(writer);
+                t.Save(ref writer);
             }
         }
 
-        internal static TableVersionInfo Load(AbstractBufferedReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
+        internal static TableVersionInfo Load(ref SpanReader reader, IFieldHandlerFactory fieldHandlerFactory, string tableName)
         {
             var fieldCount = reader.ReadVUInt32();
             var fieldInfos = new TableFieldInfo[fieldCount];
-            for (int i = 0; i < fieldCount; i++)
+            for (var i = 0; i < fieldCount; i++)
             {
-                fieldInfos[i] = TableFieldInfo.Load(reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
+                fieldInfos[i] = TableFieldInfo.Load(ref reader, fieldHandlerFactory, tableName, FieldHandlerOptions.None);
             }
             return new TableVersionInfo(fieldInfos);
         }

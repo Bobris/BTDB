@@ -12,7 +12,7 @@ namespace BTDB.FieldHandler
     {
         readonly byte[] _configuration;
         readonly bool _signed;
-        Type _enumType;
+        Type? _enumType;
 
         public class EnumConfiguration
         {
@@ -49,21 +49,21 @@ namespace BTDB.FieldHandler
 
             public EnumConfiguration(byte[] configuration)
             {
-                var reader = new ByteArrayReader(configuration);
+                var reader = new SpanReader(configuration);
                 var header = reader.ReadVUInt32();
                 _signed = (header & 1) != 0;
                 _flags = (header & 2) != 0;
                 var count = header >> 2;
                 _names = new string[count];
                 _values = new ulong[count];
-                for (int i = 0; i < count; i++) Names[i] = reader.ReadString();
+                for (var i = 0; i < count; i++) Names[i] = reader.ReadString()!;
                 if (_signed)
                 {
-                    for (int i = 0; i < count; i++) Values[i] = (ulong)reader.ReadVInt64();
+                    for (var i = 0; i < count; i++) Values[i] = (ulong)reader.ReadVInt64();
                 }
                 else
                 {
-                    for (int i = 0; i < count; i++) Values[i] = reader.ReadVUInt64();
+                    for (var i = 0; i < count; i++) Values[i] = reader.ReadVUInt64();
                 }
             }
 
@@ -77,7 +77,7 @@ namespace BTDB.FieldHandler
 
             public byte[] ToConfiguration()
             {
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 writer.WriteVUInt32((_signed ? 1u : 0) + (Flags ? 2u : 0) + 4u * (uint)Names.Length);
                 foreach (var name in Names)
                 {
@@ -88,7 +88,7 @@ namespace BTDB.FieldHandler
                     if (_signed) writer.WriteVInt64((long)value);
                     else writer.WriteVUInt64(value);
                 }
-                return writer.Data.ToByteArray();
+                return writer.GetSpan().ToArray();
             }
 
             public Type ToType()
@@ -109,19 +109,19 @@ namespace BTDB.FieldHandler
                 return builder.NewEnum("EnumByFieldHandler", _signed ? typeof(long) : typeof(ulong), literals);
             }
 
-            public static bool operator ==(EnumConfiguration left, EnumConfiguration right)
+            public static bool operator ==(EnumConfiguration? left, EnumConfiguration? right)
             {
                 if (ReferenceEquals(left, right)) return true;
                 if (ReferenceEquals(left, null)) return false;
                 return left.Equals(right);
             }
 
-            public static bool operator !=(EnumConfiguration left, EnumConfiguration right)
+            public static bool operator !=(EnumConfiguration? left, EnumConfiguration? right)
             {
                 return !(left == right);
             }
 
-            public bool Equals(EnumConfiguration other)
+            public bool Equals(EnumConfiguration? other)
             {
                 if (ReferenceEquals(null, other)) return false;
                 if (ReferenceEquals(this, other)) return true;
@@ -130,7 +130,7 @@ namespace BTDB.FieldHandler
                     && _values.SequenceEqual(other._values);
             }
 
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
@@ -142,7 +142,7 @@ namespace BTDB.FieldHandler
             {
                 unchecked
                 {
-                    int result = _flags.GetHashCode();
+                    var result = _flags.GetHashCode();
                     result = (result * 397) ^ _names.GetHashCode();
                     result = (result * 397) ^ _values.GetHashCode();
                     return result;
@@ -155,10 +155,9 @@ namespace BTDB.FieldHandler
                 var targetDict =
                     targetCfg.Names.Zip(targetCfg.Values, (k, v) => new KeyValuePair<string, ulong>(k, v))
                     .ToDictionary(p => p.Key, p => p.Value);
-                for (int i = 0; i < _names.Length; i++)
+                for (var i = 0; i < _names.Length; i++)
                 {
-                    ulong targetValue;
-                    if (!targetDict.TryGetValue(_names[i], out targetValue)) return false;
+                    if (!targetDict.TryGetValue(_names[i], out var targetValue)) return false;
                     if (_values[i] != targetValue) return false;
                 }
                 return true;
@@ -212,7 +211,7 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _enumType ?? (_enumType = new EnumConfiguration(_configuration).ToType());
+            return _enumType ??= new EnumConfiguration(_configuration).ToType();
         }
 
         public bool NeedsCtx()
@@ -220,51 +219,51 @@ namespace BTDB.FieldHandler
             return false;
         }
 
-        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
+            pushReader(ilGenerator);
             Type typeRead;
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVInt64))!);
                 typeRead = typeof(long);
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).ReadVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!);
                 typeRead = typeof(ulong);
             }
-            DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeRead, _enumType.GetEnumUnderlyingType())(ilGenerator);
+            DefaultTypeConvertorGenerator.Instance.GenerateConversion(typeRead, _enumType!.GetEnumUnderlyingType())!(ilGenerator);
         }
 
-        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            pushReaderOrCtx(ilGenerator);
+            pushReader(ilGenerator);
             if (_signed)
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVInt64))!);
             }
             else
             {
-                ilGenerator.Call(() => default(AbstractBufferedReader).SkipVUInt64());
+                ilGenerator.Call(typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!);
             }
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            pushWriterOrCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
             if (_signed)
             {
                 ilGenerator
                     .ConvI8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVInt64))!);
             }
             else
             {
                 ilGenerator
                     .ConvU8()
-                    .Call(() => default(AbstractBufferedWriter).WriteVUInt64(0));
+                    .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!);
             }
         }
 
@@ -279,7 +278,7 @@ namespace BTDB.FieldHandler
             }
             if (enumTypeHandler != null && _signed == enumTypeHandler._signed)
             {
-                if (type.GetCustomAttributes(typeof (BinaryCompatibilityOnlyAttribute), false).Length != 0)
+                if (type.GetCustomAttributes(typeof(BinaryCompatibilityOnlyAttribute), false).Length != 0)
                 {
                     if (new EnumConfiguration(Configuration).IsBinaryRepresentationSubsetOf(new EnumConfiguration(enumTypeHandler.Configuration)))
                         return typeHandler;
@@ -303,9 +302,9 @@ namespace BTDB.FieldHandler
             return IsCompatibleWith(type);
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            Skip(ilGenerator, pushReaderOrCtx);
+            Skip(ilGenerator, pushReader, pushCtx);
             return NeedsFreeContent.No;
         }
     }

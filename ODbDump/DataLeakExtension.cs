@@ -11,40 +11,38 @@ namespace ODbDump
     {
         public static void DumpLeaks(this IObjectDB db)
         {
-            using (var tr = db.StartReadOnlyTransaction())
-            using (var visitor = new FindUnusedKeysVisitor())
+            using var tr = db.StartReadOnlyTransaction();
+            using var visitor = new FindUnusedKeysVisitor();
+            visitor.ImportAllKeys(tr);
+            var iterator = visitor.Iterate(tr);
+            visitor.DumpUnseenKeys();
+            var leakedObjects = new List<ulong>();
+            foreach (var unseenKey in visitor.UnseenKeys())
             {
-                visitor.ImportAllKeys(tr);
-                var iterator = visitor.Iterate(tr);
-                visitor.DumpUnseenKeys();
-                var leakedObjects = new List<ulong>();
-                foreach (var unseenKey in visitor.UnseenKeys())
+                if (unseenKey.Key[0] == 1)
                 {
-                    if (unseenKey.Key[0] == 1)
+                    try
                     {
-                        try
-                        {
-                            var r = new ByteArrayReader(unseenKey.Key);
-                            r.SkipUInt8();
-                            var oid = r.ReadVUInt64();
-                            leakedObjects.Add(oid);
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Leak found but error has occured while reading: {ex.Message}");
-                        }
+                        var r = new SpanReader(unseenKey.Key);
+                        r.SkipUInt8();
+                        var oid = r.ReadVUInt64();
+                        leakedObjects.Add(oid);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Leak found but error has occured while reading: {ex.Message}");
                     }
                 }
+            }
 
-                if (leakedObjects.Count > 0)
+            if (leakedObjects.Count > 0)
+            {
+                Console.WriteLine("--- OBJECTS ---");
+                var consoleVisitor = new ToConsoleVisitorNice();
+                foreach (var oid in leakedObjects)
                 {
-                    Console.WriteLine("--- OBJECTS ---");
-                    var consoleVisitor = new ToConsoleVisitorNice();
-                    foreach (var oid in leakedObjects)
-                    {
-                        iterator.IterateUnseenOid(oid, consoleVisitor);
-                        Console.WriteLine("------");
-                    }
+                    iterator.IterateUnseenOid(oid, consoleVisitor);
+                    Console.WriteLine("------");
                 }
             }
         }
@@ -63,12 +61,12 @@ namespace ODbDump
                 Console.WriteLine(unseenKey.ValueSize);
             }
         }
-        
+
         public static void DumpLeaksCode(this IObjectDB db)
         {
             var leakedObjects = new Dictionary<ulong, bool>();
             var leakedDictionaries = new Dictionary<ulong, bool>();
-            
+
             using var tr = db.StartReadOnlyTransaction();
             using var visitor = new FindUnusedKeysVisitor();
             visitor.ImportAllKeys(tr);
@@ -78,7 +76,7 @@ namespace ODbDump
                 var isDict = unseenKey.Key[0] == 2;
                 var isObject = unseenKey.Key[0] == 1;
 
-                var r = new ByteArrayReader(unseenKey.Key);
+                var r = new SpanReader(unseenKey.Key);
                 r.SkipUInt8();
                 var oid = r.ReadVUInt64();
 
@@ -87,7 +85,7 @@ namespace ODbDump
                 else if (isObject)
                     leakedObjects.TryAdd(oid, false);
             }
-            
+
             WriteSplitIdList(leakedDictionaries.Keys, "dicts", 1000);
             WriteSplitIdList(leakedObjects.Keys, "objs", 1000);
         }

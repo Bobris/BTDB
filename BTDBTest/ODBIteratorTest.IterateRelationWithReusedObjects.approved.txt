@@ -1,5 +1,5 @@
 Relation IRelationWithReusedObjects
-Used key: 03 01|01 Value len:10
+Used key: 03 01 01 Value len:10
 BeginKey
 StartField Id
 ScalarObj 1
@@ -11,8 +11,8 @@ StartField Blobs
 StartList
 StartItem
 Inline ref -2
-Used key: 00 00|01 Value len:5
-Used key: 00 01|01 01 Value len:14
+Used key: 00 00 01 Value len:5
+Used key: 00 01 01 01 Value len:14
 StartInlineObject 1-Blob-1
 StartField Name
 ScalarObj 
@@ -33,7 +33,7 @@ StartField BlobsDict
 OidReference 0
 EndField
 EndValue
-Used key: 03 01|02 Value len:4
+Used key: 03 01 02 Value len:4
 BeginKey
 StartField Id
 ScalarObj 2
@@ -46,7 +46,7 @@ OidReference 0
 EndField
 StartField BlobsIDict
 StartDictionary
-Used key: 02 01|7F 01 01 00 Value len:4
+Used key: 02 01 7F 01 01 00 Value len:4
 StartDictKey
 StartInlineObject 1-Blob-1
 StartField Name
@@ -63,7 +63,7 @@ ScalarStr null
 EndField
 EndInlineObject
 EndDictValue
-Used key: 02 01|7F 01 01 02 41 Value len:4
+Used key: 02 01 7F 01 01 02 41 Value len:4
 StartDictKey
 StartInlineObject 1-Blob-1
 StartField Name
@@ -86,7 +86,7 @@ StartField BlobsDict
 OidReference 0
 EndField
 EndValue
-Used key: 03 01|03 Value len:16
+Used key: 03 01 03 Value len:16
 BeginKey
 StartField Id
 ScalarObj 3

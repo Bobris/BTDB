@@ -67,7 +67,8 @@ namespace BTDB.EventStoreLayer
             Action<IILGen> pushDescriptor, Type targetType)
         {
             pushCtx(ilGenerator);
-            ilGenerator.Callvirt(() => ((ITypeBinaryDeserializerContext) null).LoadEncryptedString());
+            pushReader(ilGenerator);
+            ilGenerator.Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.LoadEncryptedString))!);
             if (targetType != typeof(object))
             {
                 if (targetType != GetPreferredType())
@@ -81,15 +82,17 @@ namespace BTDB.EventStoreLayer
         public void GenerateSkip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen> pushCtx)
         {
             pushCtx(ilGenerator);
-            ilGenerator.Callvirt(() => ((ITypeBinaryDeserializerContext) null).SkipEncryptedString());
+            pushReader(ilGenerator);
+            ilGenerator.Callvirt(typeof(ITypeBinaryDeserializerContext).GetMethod(nameof(ITypeBinaryDeserializerContext.SkipEncryptedString))!);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
             Action<IILGen> pushValue, Type valueType)
         {
             pushCtx(ilGenerator);
+            pushWriter(ilGenerator);
             pushValue(ilGenerator);
-            ilGenerator.Callvirt(() => ((ITypeBinarySerializerContext) null).StoreEncryptedString(default));
+            ilGenerator.Callvirt(typeof(ITypeBinarySerializerContext).GetMethod(nameof(ITypeBinarySerializerContext.StoreEncryptedString))!);
         }
 
         public bool Equals(ITypeDescriptor other)

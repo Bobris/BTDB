@@ -27,94 +27,59 @@ namespace BTDB.Buffer
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe byte ReadByte(IntPtr ptr)
-        {
-            return *(byte*) ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteByte(IntPtr ptr, byte value)
-        {
-            *(byte*) ptr = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteByte(IntPtr ptr, int offset, byte value)
-        {
-            *(byte*) (ptr + offset) = value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void WriteInt32Aligned(IntPtr ptr, int value)
         {
-            *(int*) ptr = value;
+            *(int*)ptr = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe int ReadInt32Aligned(IntPtr ptr)
         {
-            return *(int*) ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe IntPtr ReadIntPtrUnaligned(IntPtr ptr)
-        {
-            return *(IntPtr*) ptr;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe void WriteIntPtrUnaligned(IntPtr ptr, IntPtr value)
-        {
-            *(IntPtr*) ptr = value;
+            return *(int*)ptr;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt16(IntPtr ptr)
         {
-            return ptr + ((int) ptr.ToInt64() & 1);
+            return (IntPtr)(ptr.ToInt64() + 1 & ~1L);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint AlignUIntUpInt16(uint ptr)
         {
-            return ptr + (ptr & 1);
+            return ptr + 1u & ~1u;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt32(IntPtr ptr)
         {
-            return ptr + (~(int) ptr.ToInt64() + 1 & 3);
+            return (IntPtr)(ptr.ToInt64() + 3 & ~3L);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint AlignUIntUpInt32(uint ptr)
         {
-            return ptr + (~ptr + 1 & 3);
+            return ptr + 3u & ~3u;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static IntPtr AlignPtrUpInt64(IntPtr ptr)
         {
-            return ptr + (~(int) ptr.ToInt64() + 1 & 7);
+            return (IntPtr)(ptr.ToInt64() + 7 & ~7L);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static uint AlignUIntUpInt64(uint ptr)
         {
-            return ptr + (~ptr + 1 & 7);
+            return ptr + 7u & ~7u;
         }
 
         internal static unsafe void CopyMemory(IntPtr src, IntPtr dst, int size)
         {
-            Unsafe.CopyBlockUnaligned(dst.ToPointer(), src.ToPointer(), (uint) size);
+            Unsafe.CopyBlockUnaligned(dst.ToPointer(), src.ToPointer(), (uint)size);
         }
 
-        internal static unsafe void MoveMemory(IntPtr src, IntPtr dst, int size)
-        {
-            new Span<byte>(src.ToPointer(), size).CopyTo(new Span<byte>(dst.ToPointer(), size));
-        }
-
-        internal static bool IsPrefix(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prefix)
+        internal static bool IsPrefix(in ReadOnlySpan<byte> data, in ReadOnlySpan<byte> prefix)
         {
             if (data.Length < prefix.Length)
                 return false;
@@ -188,7 +153,7 @@ namespace BTDB.Buffer
             return pos + FindFirstDifference(buf1b, buf2b.Slice(pos - buf2a.Length));
         }
 
-        internal static uint CalcCommonPrefix(Span<ByteBuffer> keys)
+        internal static uint CalcCommonPrefix(in Span<ByteBuffer> keys)
         {
             var first = keys[0].AsSyncReadOnlySpan();
             var res = first.Length;
@@ -199,7 +164,7 @@ namespace BTDB.Buffer
                 first = first.Slice(0, res);
             }
 
-            return (uint) res;
+            return (uint)res;
         }
     }
 }

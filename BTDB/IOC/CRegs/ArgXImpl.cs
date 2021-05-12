@@ -19,7 +19,7 @@ namespace BTDB.IOC.CRegs
 
         public string GenFuncName(IGenerationContext context)
         {
-            return "Arg"+_x;
+            return "Arg" + _x;
         }
 
         public void GenInitialization(IGenerationContext context)
@@ -40,6 +40,11 @@ namespace BTDB.IOC.CRegs
         public IEnumerable<INeed> GetNeeds(IGenerationContext context)
         {
             yield break;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
         }
     }
 }

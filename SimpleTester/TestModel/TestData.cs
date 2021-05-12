@@ -144,12 +144,12 @@ Morbi non turpis a ante placerat dapibus.Vestibulum purus tortor,
                         ["1"] = new Option { Value = "1" },
                         ["2"] = new Option { Value = "2" }
                     },
-                    TermsAndConditions = 
+                    TermsAndConditions =
                         new TermsAndConditions
                         {
                             Message = "OK?",
                             Use = true
-                        } 
+                        }
                 }
             }
         };

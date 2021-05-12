@@ -31,16 +31,16 @@ namespace BTDB.KVDBLayer.Implementation
             if (bytesTillNow < _newCorrectionAfter)
                 return;
             var msTillNow = _stopwatch.ElapsedMilliseconds;
-            var shouldTakeMs = (long) (bytesTillNow * 1000.0 / _bytesPerSecond);
+            var shouldTakeMs = (long)(bytesTillNow * 1000.0 / _bytesPerSecond);
             if (shouldTakeMs > msTillNow)
             {
                 // wait max 2 minutes to not slow it down too much (Limit function was not called often enough)
-                Thread.Sleep((int) Math.Min(shouldTakeMs - msTillNow, 120000));
+                Thread.Sleep((int)Math.Min(shouldTakeMs - msTillNow, 120000));
             }
 
             _newCorrectionAfter = bytesTillNow + _delta;
         }
 
-        public ulong TotalTimeInMs => (ulong) _stopwatch.ElapsedMilliseconds;
+        public ulong TotalTimeInMs => (ulong)_stopwatch.ElapsedMilliseconds;
     }
 }

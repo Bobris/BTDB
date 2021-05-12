@@ -24,7 +24,7 @@ namespace BTDB.ChunkCache
         readonly ConcurrentDictionary<uint, IFileInfo> _fileInfos = new ConcurrentDictionary<uint, IFileInfo>();
         uint _cacheValueFileId;
         IFileCollectionFile? _cacheValueFile;
-        AbstractBufferedWriter? _cacheValueWriter;
+        ISpanWriter? _cacheValueWriter;
         long _fileGeneration;
         Task? _compactionTask;
         internal Task? CurrentCompactionTask() => _compactionTask;
@@ -79,16 +79,16 @@ namespace BTDB.ChunkCache
 
         void LoadContent()
         {
-            AbstractBufferedReader reader;
+            SpanReader reader;
             foreach (var collectionFile in _fileCollection.Enumerate())
             {
-                reader = collectionFile.GetExclusiveReader();
+                reader = new SpanReader(collectionFile.GetExclusiveReader());
                 if (!reader.CheckMagic(MagicStartOfFile)) continue; // Don't touch files alien files
                 var fileType = (DiskChunkFileType)reader.ReadUInt8();
                 var fileInfo = fileType switch
                 {
-                    DiskChunkFileType.HashIndex => new FileHashIndex(reader),
-                    DiskChunkFileType.PureValues => new FilePureValues(reader),
+                    DiskChunkFileType.HashIndex => new FileHashIndex(ref reader),
+                    DiskChunkFileType.PureValues => new FilePureValues(ref reader),
                     _ => UnknownFile.Instance
                 };
                 if (_fileGeneration < fileInfo.Generation) _fileGeneration = fileInfo.Generation;
@@ -98,8 +98,8 @@ namespace BTDB.ChunkCache
                 _fileInfos.Where(f => f.Value.FileType == DiskChunkFileType.HashIndex).OrderByDescending(
                     f => f.Value.Generation).FirstOrDefault();
             if (hashFilePair.Value == null) return;
-            reader = _fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader();
-            FileHashIndex.SkipHeader(reader);
+            reader = new SpanReader(_fileCollection.GetFile(hashFilePair.Key).GetExclusiveReader());
+            FileHashIndex.SkipHeader(ref reader);
             if (((FileHashIndex)hashFilePair.Value).KeySize != _keySize) return;
             var keyBuf = ByteBuffer.NewSync(new byte[_keySize]);
             while (true)
@@ -127,7 +127,7 @@ namespace BTDB.ChunkCache
             cacheValue.AccessRate = 1;
         again:
             var writer = _cacheValueWriter;
-            while (writer == null || writer.GetCurrentPosition() + content.Length > _sizeLimitOfOneValueFile)
+            while (writer == null || writer.GetCurrentPositionWithoutWriter() + content.Length > _sizeLimitOfOneValueFile)
             {
                 StartNewValueFile();
                 writer = _cacheValueWriter;
@@ -136,8 +136,10 @@ namespace BTDB.ChunkCache
             {
                 if (writer != _cacheValueWriter) goto again;
                 cacheValue.FileId = _cacheValueFileId;
-                cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
-                _cacheValueWriter.WriteBlock(content);
+                cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
+                var trueWriter = new SpanWriter(writer);
+                trueWriter.WriteBlock(content);
+                trueWriter.Sync();
                 _cacheValueFile!.Flush();
             }
             cacheValue.ContentLength = (uint)content.Length;
@@ -162,7 +164,9 @@ namespace BTDB.ChunkCache
                 {
                     SetNewValueFile();
                 }
-                fileInfo.WriteHeader(_cacheValueWriter!);
+                var writer = new SpanWriter(_cacheValueWriter!);
+                fileInfo.WriteHeader(ref writer);
+                writer.Sync();
                 _fileInfos.TryAdd(_cacheValueFileId, fileInfo);
                 _compactionCts = new CancellationTokenSource();
                 _compactionTask = Task.Factory.StartNew(CompactionCore, _compactionCts!.Token,
@@ -284,18 +288,20 @@ namespace BTDB.ChunkCache
                             {
                                 goto remove;
                             }
-                            if (writer.GetCurrentPosition() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
+                            if (writer.GetCurrentPositionWithoutWriter() + cacheValue.ContentLength > _sizeLimitOfOneValueFile)
                             {
                                 goto remove;
                             }
                             cacheValue.FileId = _cacheValueFileId;
-                            cacheValue.FileOfs = (uint)_cacheValueWriter.GetCurrentPosition();
-                            _cacheValueWriter.WriteBlock(content);
+                            cacheValue.FileOfs = (uint)writer.GetCurrentPositionWithoutWriter();
+                            var trueWriter = new SpanWriter(writer);
+                            trueWriter.WriteBlock(content);
+                            trueWriter.Sync();
                         }
                         _cache.TryUpdate(itemPair.Key, cacheValue, itemPair.Value);
                         continue;
                     }
-                    remove:
+                remove:
                     _cache.TryRemove(itemPair.Key);
                 }
             }
@@ -342,7 +348,7 @@ namespace BTDB.ChunkCache
                     // It is not problem if update fails, it will have just lower access rate then real
                     var result = new byte[cacheValue.ContentLength];
                     _fileCollection.GetFile(cacheValue.FileId).RandomRead(
-                        result.AsSpan(0, (int) cacheValue.ContentLength),
+                        result.AsSpan(0, (int)cacheValue.ContentLength),
                         cacheValue.FileOfs, false);
                     tcs.SetResult(ByteBuffer.NewAsync(result));
                     return tcs.Task;
@@ -400,11 +406,12 @@ namespace BTDB.ChunkCache
         {
             RemoveAllHashIndexAndUnknownFiles();
             var file = _fileCollection.AddFile("chi");
-            var writer = file.GetExclusiveAppenderWriter();
+            var writerController = file.GetExclusiveAppenderWriter();
+            var writer = new SpanWriter(writerController);
             var keyCount = _cache.Count;
             var fileInfo = new FileHashIndex(AllocNewFileGeneration(), _keySize, keyCount);
             _fileInfos.TryAdd(file.Index, fileInfo);
-            fileInfo.WriteHeader(writer);
+            fileInfo.WriteHeader(ref writer);
             var keyBuf = ByteBuffer.NewSync(new byte[_keySize]);
             foreach (var cachePair in _cache)
             {
@@ -416,6 +423,7 @@ namespace BTDB.ChunkCache
                 writer.WriteBlock(keyBuf);
             }
             writer.WriteVUInt32(0); // Zero FileOfs as End of file mark
+            writer.Sync();
             file.HardFlushTruncateSwitchToDisposedMode();
         }
 

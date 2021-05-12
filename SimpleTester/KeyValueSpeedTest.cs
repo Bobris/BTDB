@@ -19,7 +19,7 @@ namespace SimpleTester
         readonly Stopwatch _sw = new Stopwatch();
         readonly bool _inMemory;
         readonly bool _memoryMapped;
-        IFileCollection _fileCollection;
+        IFileCollection? _fileCollection;
         readonly bool _fastInMemory;
         readonly KVType _kvType;
 
@@ -36,7 +36,7 @@ namespace SimpleTester
             _fastInMemory = true;
         }
 
-        IFileCollection CreateTestFileCollection()
+        IFileCollection? CreateTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -55,7 +55,7 @@ namespace SimpleTester
             return new OnDiskFileCollection(dbfilename);
         }
 
-        IFileCollection OpenTestFileCollection()
+        IFileCollection? OpenTestFileCollection()
         {
             if (_fastInMemory)
                 return null;
@@ -77,35 +77,33 @@ namespace SimpleTester
             using (var fileCollection = CreateTestFileCollection())
             using (var db = CreateKeyValueDB(fileCollection))
             {
-                for (int i = 0; i < 200; i++)
+                for (var i = 0; i < 200; i++)
                 {
-                    long pureDataLengthPrevTr = pureDataLength;
-                    using (var tr = db.StartTransaction())
+                    var pureDataLengthPrevTr = pureDataLength;
+                    using var tr = db.StartTransaction();
+                    for (var j = 0; j < 200; j++)
                     {
-                        for (int j = 0; j < 200; j++)
+                        tr.CreateOrUpdateKeyValue(new[] { (byte)j, (byte)i }, new byte[1 + i * j]);
+                        pureDataLength += 2 + 1 + i * j;
+                    }
+
+                    if (alsoDoReads)
+                    {
+                        using var trCheck = db.StartTransaction();
+                        long pureDataLengthCheck = 0;
+                        while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                         {
-                            tr.CreateOrUpdateKeyValue(new[] {(byte) j, (byte) i}, new byte[1 + i * j]);
-                            pureDataLength += 2 + 1 + i * j;
+                            pureDataLengthCheck +=
+                                trCheck.GetKey().Length + trCheck.GetValue().Length;
                         }
 
-                        if (alsoDoReads)
-                            using (var trCheck = db.StartTransaction())
-                            {
-                                long pureDataLengthCheck = 0;
-                                while (trCheck.FindNextKey())
-                                {
-                                    pureDataLengthCheck +=
-                                        trCheck.GetKey().Length + trCheck.GetValueAsReadOnlySpan().Length;
-                                }
-
-                                if (pureDataLengthCheck != pureDataLengthPrevTr)
-                                {
-                                    throw new Exception("Transactions are not in serializable mode");
-                                }
-                            }
-
-                        tr.Commit();
+                        if (pureDataLengthCheck != pureDataLengthPrevTr)
+                        {
+                            throw new Exception("Transactions are not in serializable mode");
+                        }
                     }
+
+                    tr.Commit();
                 }
             }
 
@@ -114,32 +112,27 @@ namespace SimpleTester
             Console.WriteLine("Time: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
         }
 
-        IKeyValueDB CreateKeyValueDB(IFileCollection fileCollection, ICompressionStrategy compressionStrategy = null)
+        IKeyValueDB CreateKeyValueDB(IFileCollection? fileCollection, ICompressionStrategy? compressionStrategy = null)
         {
             if (fileCollection == null)
             {
-                switch (_kvType)
+                return _kvType switch
                 {
-                    case KVType.Managed:
-                        return new InMemoryKeyValueDB();
-                    default:
-                        throw new NotImplementedException();
-                }
+                    KVType.Managed => new InMemoryKeyValueDB(),
+                    _ => throw new NotImplementedException()
+                };
             }
 
-            switch (_kvType)
+            return _kvType switch
             {
-                case KVType.Managed:
-                    if (compressionStrategy == null)
-                        return new KeyValueDB(fileCollection);
-                    return new KeyValueDB(fileCollection, compressionStrategy);
-                case KVType.BTree:
-                    if (compressionStrategy == null)
-                        return new BTreeKeyValueDB(fileCollection);
-                    return new BTreeKeyValueDB(fileCollection, compressionStrategy);
-                default:
-                    throw new NotImplementedException();
-            }
+                KVType.Managed => compressionStrategy == null
+                    ? new KeyValueDB(fileCollection)
+                    : new KeyValueDB(fileCollection, compressionStrategy),
+                KVType.BTree => compressionStrategy == null
+                    ? new BTreeKeyValueDB(fileCollection)
+                    : new BTreeKeyValueDB(fileCollection, compressionStrategy),
+                _ => throw new NotImplementedException()
+            };
         }
 
         void DoWork5ReadCheck()
@@ -151,7 +144,7 @@ namespace SimpleTester
                 using (var trCheck = db.StartTransaction())
                 {
                     long pureDataLengthCheck = 0;
-                    while (trCheck.FindNextKey())
+                    while (trCheck.FindNextKey(ReadOnlySpan<byte>.Empty))
                     {
                         pureDataLengthCheck += trCheck.GetKey().Length + trCheck.GetValue().Length;
                     }
@@ -170,106 +163,96 @@ namespace SimpleTester
         public void HugeTest()
         {
             const int keyCount = 100;
-            using (var fileCollection = CreateTestFileCollection())
+            using var fileCollection = CreateTestFileCollection();
+            _sw.Start();
+            using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
             {
-                _sw.Start();
-                using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
+                var key = new byte[100];
+                var value = new byte[100000000];
+                for (var i = 0; i < keyCount; i++)
                 {
-                    var key = new byte[100];
-                    var value = new byte[100000000];
-                    for (int i = 0; i < keyCount; i++)
-                    {
-                        using (var tr = db.StartTransaction())
-                        {
-                            key[0] = (byte) (i / 100);
-                            key[1] = (byte) (i % 100);
-                            value[100] = (byte) (i / 100);
-                            value[200] = (byte) (i % 100);
-                            tr.CreateOrUpdateKeyValue(key, value);
-                            tr.Commit();
-                        }
-                    }
+                    using var tr = db.StartTransaction();
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
+                    value[100] = (byte)(i / 100);
+                    value[200] = (byte)(i % 100);
+                    tr.CreateOrUpdateKeyValue(key, value);
+                    tr.Commit();
+                }
+            }
+
+            _sw.Stop();
+            Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+            _sw.Restart();
+            using (IKeyValueDB db = new KeyValueDB(fileCollection!))
+            {
+                _sw.Stop();
+                Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                _sw.Restart();
+                var key = new byte[100];
+                for (var i = 0; i < keyCount; i++)
+                {
+                    using var tr = db.StartTransaction();
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
+                    tr.FindExactKey(key);
+                    var value = tr.GetValue();
+                    if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                    if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
 
                 _sw.Stop();
-                Console.WriteLine("Time to create 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                _sw.Restart();
-                using (IKeyValueDB db = new KeyValueDB(fileCollection))
-                {
-                    _sw.Stop();
-                    Console.WriteLine("Time to open 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                    _sw.Restart();
-                    var key = new byte[100];
-                    for (int i = 0; i < keyCount; i++)
-                    {
-                        using (var tr = db.StartTransaction())
-                        {
-                            key[0] = (byte) (i / 100);
-                            key[1] = (byte) (i % 100);
-                            tr.FindExactKey(key);
-                            var value = tr.GetValueAsByteArray();
-                            if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
-                            if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
-                        }
-                    }
+                Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                Console.WriteLine(db.CalcStats());
+            }
 
-                    _sw.Stop();
-                    Console.WriteLine("Time to read all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                    Console.WriteLine(db.CalcStats());
+            _sw.Restart();
+            using (var db = CreateKeyValueDB(fileCollection))
+            {
+                _sw.Stop();
+                Console.WriteLine("Time to open2 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                _sw.Restart();
+                var key = new byte[100];
+                for (var i = 0; i < keyCount; i++)
+                {
+                    using var tr = db.StartTransaction();
+                    key[0] = (byte)(i / 100);
+                    key[1] = (byte)(i % 100);
+                    tr.FindExactKey(key);
+                    var value = tr.GetValue();
+                    if (value[100] != (byte)(i / 100)) throw new InvalidDataException();
+                    if (value[200] != (byte)(i % 100)) throw new InvalidDataException();
                 }
 
-                _sw.Restart();
-                using (var db = CreateKeyValueDB(fileCollection))
-                {
-                    _sw.Stop();
-                    Console.WriteLine("Time to open2 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                    _sw.Restart();
-                    var key = new byte[100];
-                    for (int i = 0; i < keyCount; i++)
-                    {
-                        using (var tr = db.StartTransaction())
-                        {
-                            key[0] = (byte) (i / 100);
-                            key[1] = (byte) (i % 100);
-                            tr.FindExactKey(key);
-                            var value = tr.GetValueAsByteArray();
-                            if (value[100] != (byte) (i / 100)) throw new InvalidDataException();
-                            if (value[200] != (byte) (i % 100)) throw new InvalidDataException();
-                        }
-                    }
-
-                    _sw.Stop();
-                    Console.WriteLine("Time to read2 all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
-                    Console.WriteLine(db.CalcStats());
-                }
+                _sw.Stop();
+                Console.WriteLine("Time to read2 all values 10GB DB: {0,15}ms", _sw.Elapsed.TotalMilliseconds);
+                Console.WriteLine(db.CalcStats());
             }
         }
 
         void CreateTestDB(int keys)
         {
             var rnd = new Random(1234);
-            using (var fileCollection = CreateTestFileCollection())
+            using var fileCollection = CreateTestFileCollection();
+            using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
             {
-                using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
+                using (var tr = db.StartTransaction())
                 {
-                    using (var tr = db.StartTransaction())
+                    for (var i = 0; i < keys; i++)
                     {
-                        for (int i = 0; i < keys; i++)
-                        {
-                            var key = new byte[rnd.Next(10, 50)];
-                            rnd.NextBytes(key);
-                            var value = new byte[rnd.Next(50, 500)];
-                            rnd.NextBytes(value);
-                            tr.CreateOrUpdateKeyValueUnsafe(key, value);
-                        }
-
-                        tr.Commit();
+                        var key = new byte[rnd.Next(10, 50)];
+                        rnd.NextBytes(key);
+                        var value = new byte[rnd.Next(50, 500)];
+                        rnd.NextBytes(value);
+                        tr.CreateOrUpdateKeyValue(key, value);
                     }
-                }
 
-                using (var db = CreateKeyValueDB(fileCollection))
-                {
+                    tr.Commit();
                 }
+            }
+
+            using (var db = CreateKeyValueDB(fileCollection))
+            {
             }
         }
 
@@ -303,28 +286,22 @@ namespace SimpleTester
         void CheckDBTest(int keys)
         {
             var rnd = new Random(1234);
-            using (var fileCollection = OpenTestFileCollection())
+            using var fileCollection = OpenTestFileCollection();
+            using var db = CreateKeyValueDB(fileCollection);
+            using var tr = db.StartTransaction();
+            if (tr.GetKeyValueCount() != keys) throw new Exception("KeyCount does not match");
+            for (var i = 0; i < keys; i++)
             {
-                using (var db = CreateKeyValueDB(fileCollection))
+                var key = new byte[rnd.Next(10, 50)];
+                rnd.NextBytes(key);
+                var value = new byte[rnd.Next(50, 500)];
+                rnd.NextBytes(value);
+                if (!tr.FindExactKey(key)) throw new Exception("Key not found");
+                var value2 = tr.GetValue();
+                if (value.Length != value2.Length) throw new Exception("value length different");
+                for (var j = 0; j < value.Length; j++)
                 {
-                    using (var tr = db.StartTransaction())
-                    {
-                        if (tr.GetKeyValueCount() != keys) throw new Exception("KeyCount does not match");
-                        for (var i = 0; i < keys; i++)
-                        {
-                            var key = new byte[rnd.Next(10, 50)];
-                            rnd.NextBytes(key);
-                            var value = new byte[rnd.Next(50, 500)];
-                            rnd.NextBytes(value);
-                            if (!tr.FindExactKey(key)) throw new Exception("Key not found");
-                            var value2 = tr.GetValueAsByteArray();
-                            if (value.Length != value2.Length) throw new Exception("value length different");
-                            for (var j = 0; j < value.Length; j++)
-                            {
-                                if (value[j] != value2[j]) throw new Exception("value different");
-                            }
-                        }
-                    }
+                    if (value[j] != value2[j]) throw new Exception("value different");
                 }
             }
         }
@@ -341,11 +318,11 @@ namespace SimpleTester
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        for (int i = 0; i < keys; i++)
+                        for (var i = 0; i < keys; i++)
                         {
-                            int o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint) i);
-                            tr.CreateOrUpdateKeyValue(ByteBuffer.NewSync(key, 0, o), ByteBuffer.NewSync(value));
+                            var o = 0;
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            tr.CreateOrUpdateKeyValue(key.AsSpan(0, o), value);
                         }
 
                         tr.Commit();
@@ -367,11 +344,11 @@ namespace SimpleTester
                 {
                     using (var tr = db.StartTransaction())
                     {
-                        for (int i = 0; i < keys; i++)
+                        for (var i = 0; i < keys; i++)
                         {
-                            int o = 0;
-                            PackUnpack.PackVUInt(key, ref o, (uint) i);
-                            tr.Find(ByteBuffer.NewSync(key, 0, o));
+                            var o = 0;
+                            PackUnpack.PackVUInt(key, ref o, (uint)i);
+                            tr.Find(key.AsSpan(0, o), 0);
                         }
 
                         tr.Commit();
@@ -388,28 +365,24 @@ namespace SimpleTester
             var rnd = new Random(1234);
             var key = new byte[50];
             var value = new byte[500];
-            using (var fileCollection = CreateTestFileCollection())
+            using var fileCollection = CreateTestFileCollection();
+            using var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy());
+            using (var tr = db.StartTransaction())
             {
-                using (var db = CreateKeyValueDB(fileCollection, new NoCompressionStrategy()))
+                for (var i = 0; i < keys; i++)
                 {
-                    using (var tr = db.StartTransaction())
-                    {
-                        for (int i = 0; i < keys; i++)
-                        {
-                            var keyLen = rnd.Next(10, 50);
-                            rnd.NextBytes(key.AsSpan(0, keyLen));
-                            var valueLen = rnd.Next(50, 500);
-                            rnd.NextBytes(value.AsSpan(0, valueLen));
-                            tr.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
-                        }
-
-                        tr.Commit();
-                    }
-
-                    Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" +
-                                      Process.GetCurrentProcess().WorkingSet64 / 1024);
+                    var keyLen = rnd.Next(10, 50);
+                    rnd.NextBytes(key.AsSpan(0, keyLen));
+                    var valueLen = rnd.Next(50, 500);
+                    rnd.NextBytes(value.AsSpan(0, valueLen));
+                    tr.CreateOrUpdateKeyValue(key.AsSpan(0, keyLen), value.AsSpan(0, valueLen));
                 }
+
+                tr.Commit();
             }
+
+            Console.WriteLine("CreateSequence:" + sw.Elapsed.TotalMilliseconds + " Mem kb:" +
+                              Process.GetCurrentProcess().WorkingSet64 / 1024);
         }
 
         public class BtdbTest
@@ -418,11 +391,11 @@ namespace SimpleTester
             [PrimaryKey(2)] public ulong TestId { get; set; }
 
             [SecondaryKey("Name", IncludePrimaryKeyOrder = 1)]
-            public string TestName { get; set; }
+            public string? TestName { get; set; }
 
-            public string Data1 { get; set; }
-            public string Data2 { get; set; }
-            public string Data3 { get; set; }
+            public string? Data1 { get; set; }
+            public string? Data2 { get; set; }
+            public string? Data3 { get; set; }
         }
 
         public interface IBtdbTestTable : IRelation<BtdbTest>
@@ -437,18 +410,18 @@ namespace SimpleTester
             using var fileCollection = CreateTestFileCollection();
             using var db = CreateKeyValueDB(fileCollection);
             using var odb = new ObjectDB();
-            odb.Open(db,false);
+            odb.Open(db, false);
             Func<IObjectDBTransaction, IBtdbTestTable> table;
             using (var tr = odb.StartTransaction())
             {
-                 table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
-                 tr.Commit();
+                table = tr.InitRelation<IBtdbTestTable>("BtdbTest");
+                tr.Commit();
             }
             for (var i = 0; i < count; i++)
             {
                 using var tr = odb.StartTransaction();
                 var tbl = table(tr);
-                tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name "+i, Data1 = "data1 "+i, Data2 = "data2 "+i, Data3="data3 "+i});
+                tbl.Upsert(new BtdbTest { CompanyId = 123456, TestId = (ulong)i, TestName = "test name " + i, Data1 = "data1 " + i, Data2 = "data2 " + i, Data3 = "data3 " + i });
                 tr.Commit();
             }
 
@@ -459,7 +432,7 @@ namespace SimpleTester
 
         public void Run()
         {
-            Console.WriteLine("Type: {3} InMemory: {0} TrullyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory,
+            Console.WriteLine("Type: {3} InMemory: {0} TrulyInMemory: {1} MemoryMapped: {2}", _inMemory, _fastInMemory,
                 _memoryMapped, _kvType);
             //CreateTestDB(9999999);
             //CreateRandomKeySequence(10000000);

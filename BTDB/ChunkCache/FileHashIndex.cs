@@ -16,10 +16,10 @@ namespace BTDB.ChunkCache
 
         internal long KeyValueCount => _keyValueCount;
 
-        public FileHashIndex(AbstractBufferedReader reader)
+        public FileHashIndex(ref SpanReader reader)
         {
             _generation = reader.ReadVInt64();
-            _keySize = (int) reader.ReadVUInt32();
+            _keySize = (int)reader.ReadVUInt32();
             _keyValueCount = (long)reader.ReadVUInt64();
         }
 
@@ -30,7 +30,7 @@ namespace BTDB.ChunkCache
             _keyValueCount = keyCount;
         }
 
-        internal static void SkipHeader(AbstractBufferedReader reader)
+        internal static void SkipHeader(ref SpanReader reader)
         {
             reader.SkipBlock(DiskChunkCache.MagicStartOfFile.Length + 1); // magic + type of file
             reader.SkipVInt64(); // generation
@@ -38,7 +38,7 @@ namespace BTDB.ChunkCache
             reader.SkipVUInt64(); // keyValueCount
         }
 
-        internal void WriteHeader(AbstractBufferedWriter writer)
+        internal void WriteHeader(ref SpanWriter writer)
         {
             writer.WriteByteArrayRaw(DiskChunkCache.MagicStartOfFile);
             writer.WriteUInt8((byte)DiskChunkFileType.HashIndex);

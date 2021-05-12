@@ -19,3 +19,4 @@ IPAddress
 Version
 EncryptedString
 DateTimeOffset
+StringValues

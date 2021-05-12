@@ -46,7 +46,7 @@ namespace BTDB.EventStoreLayer
             while (_id2DescriptorMap.Count < ReservedBuiltInTypes) _id2DescriptorMap.Add(null);
         }
 
-        public void LoadTypeDescriptors(AbstractBufferedReader reader)
+        public void LoadTypeDescriptors(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             var firstTypeId = typeId;
@@ -60,26 +60,26 @@ namespace BTDB.EventStoreLayer
                     case TypeCategory.BuildIn:
                         throw new ArgumentOutOfRangeException();
                     case TypeCategory.Class:
-                        descriptor = new ObjectTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new ObjectTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.List:
-                        descriptor = new ListTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new ListTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Dictionary:
-                        descriptor = new DictionaryTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new DictionaryTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     case TypeCategory.Enum:
-                        descriptor = new EnumTypeDescriptor(_typeSerializers, reader);
+                        descriptor = new EnumTypeDescriptor(_typeSerializers, ref reader);
                         break;
                     case TypeCategory.Nullable:
-                        descriptor = new NullableTypeDescriptor(_typeSerializers, reader, NestedDescriptorReader);
+                        descriptor = new NullableTypeDescriptor(_typeSerializers, ref reader, NestedDescriptorReader);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
                 while (typeId >= _id2DescriptorMap.Count)
                     _id2DescriptorMap.Add(null);
-                _id2DescriptorMap[(int) typeId] ??= new InfoForType {Id = (int) typeId, Descriptor = descriptor};
+                _id2DescriptorMap[(int)typeId] ??= new InfoForType { Id = (int)typeId, Descriptor = descriptor };
                 typeId = reader.ReadVUInt32();
             }
             for (var i = firstTypeId; i < _id2DescriptorMap.Count; i++)
@@ -100,7 +100,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        ITypeDescriptor NestedDescriptorReader(AbstractBufferedReader reader)
+        ITypeDescriptor NestedDescriptorReader(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId < _id2DescriptorMap.Count)
@@ -210,7 +210,7 @@ namespace BTDB.EventStoreLayer
             }
         }
 
-        public object? LoadObject(AbstractBufferedReader reader)
+        public object? LoadObject(ref SpanReader reader)
         {
             var typeId = reader.ReadVUInt32();
             if (typeId == 0)
@@ -219,26 +219,26 @@ namespace BTDB.EventStoreLayer
             }
             if (typeId == 1)
             {
-                throw new InvalidDataException("Backreference cannot be first object");
+                throw new InvalidDataException("Back reference cannot be first object");
             }
-            return Load(typeId, reader, null);
+            return Load(typeId, ref reader, null);
         }
 
-        public object Load(uint typeId, AbstractBufferedReader reader, ITypeBinaryDeserializerContext? context)
+        public object Load(uint typeId, ref SpanReader reader, ITypeBinaryDeserializerContext? context)
         {
             var infoForType = _id2DescriptorMap[typeId];
             if (infoForType!.Loader == null)
             {
                 infoForType.Loader = _typeSerializers.GetLoader(infoForType.Descriptor);
             }
-            return infoForType.Loader(reader, context, this, infoForType.Descriptor);
+            return infoForType.Loader(ref reader, context, this, infoForType.Descriptor);
         }
 
         public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
 
         public bool SomeTypeStored => false;
 
-        public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object? obj)
+        public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
         {
             if (obj == null) return this;
             InfoForType infoForType;
@@ -269,7 +269,7 @@ namespace BTDB.EventStoreLayer
             DescriptorSerializerContext ctx = null;
             if (infoForType.Id == 0)
             {
-                ctx = new DescriptorSerializerContext(this, writer);
+                ctx = new DescriptorSerializerContext(this);
                 ctx.AddDescriptor(infoForType);
             }
 
@@ -282,7 +282,7 @@ namespace BTDB.EventStoreLayer
             var action = actions.NewTypeDiscoverer;
             if (action != null)
             {
-                ctx ??= new DescriptorSerializerContext(this, writer);
+                ctx ??= new DescriptorSerializerContext(this);
                 action(obj, ctx);
             }
             if (ctx != null && ctx.SomeTypeStored)
@@ -299,15 +299,13 @@ namespace BTDB.EventStoreLayer
         class DescriptorSerializerContext : IDescriptorSerializerContext, IDescriptorSerializerLiteContext, ITypeSerializersLightMapping
         {
             readonly TypeSerializersMapping _typeSerializersMapping;
-            readonly AbstractBufferedWriter _writer;
             readonly TypeSerializers _typeSerializers;
             StructList<InfoForType> _id2InfoMap;
             readonly Dictionary<object, InfoForType> _typeOrDescriptor2InfoMap = new Dictionary<object, InfoForType>(ReferenceEqualityComparer<object>.Instance);
 
-            public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping, AbstractBufferedWriter writer)
+            public DescriptorSerializerContext(TypeSerializersMapping typeSerializersMapping)
             {
                 _typeSerializersMapping = typeSerializersMapping;
-                _writer = writer;
                 _typeSerializers = _typeSerializersMapping._typeSerializers;
             }
 
@@ -350,7 +348,7 @@ namespace BTDB.EventStoreLayer
 
             public bool SomeTypeStored => _id2InfoMap.Count != 0;
 
-            public IDescriptorSerializerContext StoreNewDescriptors(AbstractBufferedWriter writer, object? obj)
+            public IDescriptorSerializerContext StoreNewDescriptors(object? obj)
             {
                 if (obj == null) return this;
                 InfoForType infoForType;
@@ -410,7 +408,7 @@ namespace BTDB.EventStoreLayer
                 }
             }
 
-            public void StoreObject(AbstractBufferedWriter writer, object? obj)
+            public void StoreObject(ref SpanWriter writer, object? obj)
             {
                 if (obj == null)
                 {
@@ -419,25 +417,20 @@ namespace BTDB.EventStoreLayer
                 }
 
                 var infoForType = GetInfoFromObject(obj, out _);
-                StoreObjectCore(_typeSerializers, writer, obj, infoForType, this);
+                StoreObjectCore(_typeSerializers, ref writer, obj, infoForType, this);
             }
 
-            public void FinishNewDescriptors(AbstractBufferedWriter writer)
+            public void FinishNewDescriptors(ref SpanWriter writer)
             {
                 if (SomeTypeStored)
                 {
                     for (var i = (int)_id2InfoMap.Count - 1; i >= 0; i--)
                     {
                         writer.WriteVUInt32((uint)(i + _typeSerializersMapping._id2DescriptorMap.Count));
-                        _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, writer, Descriptor2Id);
+                        _typeSerializers.StoreDescriptor(_id2InfoMap[i].Descriptor, ref writer, Descriptor2Id);
                     }
                     writer.WriteUInt8(0);
                 }
-            }
-
-            public void StoreNewDescriptors(object obj)
-            {
-                StoreNewDescriptors(_writer, obj);
             }
 
             public InfoForType GetInfoFromObject(object obj, out TypeSerializers typeSerializers)
@@ -475,9 +468,14 @@ namespace BTDB.EventStoreLayer
             }
 
             public ISymmetricCipher GetSymmetricCipher() => _typeSerializers.GetSymmetricCipher();
+
+            void IDescriptorSerializerLiteContext.StoreNewDescriptors(object obj)
+            {
+                StoreNewDescriptors(obj);
+            }
         }
 
-        public void StoreObject(AbstractBufferedWriter writer, object? obj)
+        public void StoreObject(ref SpanWriter writer, object? obj)
         {
             if (obj == null)
             {
@@ -486,10 +484,10 @@ namespace BTDB.EventStoreLayer
             }
 
             var infoForType = GetInfoFromObject(obj, out var typeSerializers);
-            StoreObjectCore(typeSerializers, writer, obj, infoForType, this);
+            StoreObjectCore(typeSerializers, ref writer, obj, infoForType, this);
         }
 
-        static void StoreObjectCore(TypeSerializers typeSerializers, AbstractBufferedWriter writer, object obj, InfoForType infoForType, ITypeSerializersLightMapping mapping)
+        static void StoreObjectCore(TypeSerializers typeSerializers, ref SpanWriter writer, object obj, InfoForType infoForType, ITypeSerializersLightMapping mapping)
         {
             writer.WriteVUInt32((uint)infoForType.Id);
             var objType = obj.GetType();
@@ -502,7 +500,7 @@ namespace BTDB.EventStoreLayer
             var simpleSaver = actions.SimpleSaver;
             if (simpleSaver != null)
             {
-                simpleSaver(writer, obj);
+                simpleSaver(ref writer, obj);
                 return;
             }
             if (!actions.KnownComplexSaver)
@@ -511,40 +509,38 @@ namespace BTDB.EventStoreLayer
                 actions.KnownComplexSaver = true;
             }
             var complexSaver = actions.ComplexSaver;
-            var ctx = new TypeBinarySerializerContext(mapping, writer, obj);
-            complexSaver(writer, ctx, obj);
+            var ctx = new TypeBinarySerializerContext(mapping, obj);
+            complexSaver(ref writer, ctx, obj);
         }
 
         class TypeBinarySerializerContext : ITypeBinarySerializerContext
         {
             readonly ITypeSerializersLightMapping _mapping;
-            readonly AbstractBufferedWriter _writer;
             readonly Dictionary<object, uint> _backRefs = new Dictionary<object, uint>(ReferenceEqualityComparer<object>.Instance);
 
-            public TypeBinarySerializerContext(ITypeSerializersLightMapping mapping, AbstractBufferedWriter writer, object obj)
+            public TypeBinarySerializerContext(ITypeSerializersLightMapping mapping, object obj)
             {
                 _mapping = mapping;
-                _writer = writer;
                 _backRefs.Add(obj, 0);
             }
 
-            public void StoreObject(object? obj)
+            public void StoreObject(ref SpanWriter writer, object? obj)
             {
                 if (obj == null)
                 {
-                    _writer.WriteUInt8(0);
+                    writer.WriteByteZero();
                     return;
                 }
 
                 if (_backRefs.TryGetValue(obj, out var backRefId))
                 {
-                    _writer.WriteUInt8(1);
-                    _writer.WriteVUInt32(backRefId);
+                    writer.WriteUInt8(1);
+                    writer.WriteVUInt32(backRefId);
                     return;
                 }
                 _backRefs.Add(obj, (uint)_backRefs.Count);
                 var infoForType = _mapping.GetInfoFromObject(obj, out var typeSerializers);
-                _writer.WriteVUInt32((uint)infoForType.Id);
+                writer.WriteVUInt32((uint)infoForType.Id);
                 var objType = obj.GetType();
                 ref var actions = ref infoForType.Type2Actions.GetOrAddValueRef(objType);
                 if (!actions.KnownSimpleSaver)
@@ -555,7 +551,7 @@ namespace BTDB.EventStoreLayer
                 var simpleSaver = actions.SimpleSaver;
                 if (simpleSaver != null)
                 {
-                    simpleSaver(_writer, obj);
+                    simpleSaver(ref writer, obj);
                     return;
                 }
                 if (!actions.KnownComplexSaver)
@@ -564,23 +560,23 @@ namespace BTDB.EventStoreLayer
                     actions.KnownComplexSaver = true;
                 }
                 var complexSaver = actions.ComplexSaver;
-                complexSaver(_writer, this, obj);
+                complexSaver(ref writer, this, obj);
             }
 
-            public void StoreEncryptedString(EncryptedString value)
+            public void StoreEncryptedString(ref SpanWriter outsideWriter, EncryptedString value)
             {
-                var writer = new ByteBufferWriter();
+                var writer = new SpanWriter();
                 writer.WriteString(value);
                 var cipher = _mapping.GetSymmetricCipher();
-                var plain = writer.Data.AsSyncReadOnlySpan();
+                var plain = writer.GetSpan();
                 var encSize = cipher.CalcEncryptedSizeFor(plain);
                 var enc = new byte[encSize];
                 cipher.Encrypt(plain, enc);
-                _writer.WriteByteArray(enc);
+                outsideWriter.WriteByteArray(enc);
             }
         }
 
-        public void FinishNewDescriptors(AbstractBufferedWriter writer)
+        public void FinishNewDescriptors(ref SpanWriter writer)
         {
         }
 

@@ -24,5 +24,13 @@ namespace BTDB.IOC
             if (!preserveExistingDefaults || _regs.Count == 0) _chosenOne = reg;
             _regs.Add(reg);
         }
+        
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+            foreach (var reg in _regs)
+            {
+                reg.Verify(options, container);
+            }
+        }
     }
 }

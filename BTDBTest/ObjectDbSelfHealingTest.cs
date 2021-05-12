@@ -43,7 +43,7 @@ namespace BTDBTest
         void OpenDb()
         {
             _logger = new LoggerMock();
-            _db = new ObjectDB {Logger = _logger};
+            _db = new ObjectDB { Logger = _logger };
             _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration().WithSelfHealing());
         }
 
@@ -77,7 +77,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IJobTable1>("Job");
                 var jobTable = creator(tr);
-                var job = new JobV1 {Id = 11, Name = "Code"};
+                var job = new JobV1 { Id = 11, Name = "Code" };
                 jobTable.Insert(job);
                 tr.Commit();
             }
@@ -93,7 +93,7 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 Assert.Empty(jobTable);
 
-                var job = new JobIncompatible() {Id = Guid.NewGuid(), Name = "Code"};
+                var job = new JobIncompatible() { Id = Guid.NewGuid(), Name = "Code" };
                 jobTable.Insert(job);
 
                 var en = jobTable.ListByName(new AdvancedEnumeratorParam<string>(EnumerationOrder.Ascending));

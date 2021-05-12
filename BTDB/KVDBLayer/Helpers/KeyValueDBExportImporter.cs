@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.KVDBLayer
@@ -28,18 +29,19 @@ namespace BTDB.KVDBLayer
             tempbuf[7] = (byte)'2';
             PackUnpack.PackInt64LE(tempbuf, 8, keyValueCount);
             stream.Write(tempbuf, 0, 16);
-            transaction.FindFirstKey();
+            transaction.FindFirstKey(new ReadOnlySpan<byte>());
+            Span<byte> keyBuffer = stackalloc byte[256];
             for (long kv = 0; kv < keyValueCount; kv++)
             {
-                var key = transaction.GetKey();
+                var key = transaction.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
                 PackUnpack.PackInt32LE(tempbuf, 0, key.Length);
                 stream.Write(tempbuf, 0, 4);
-                stream.Write(key.Buffer, key.Offset, key.Length);
+                stream.Write(key);
                 var value = transaction.GetValue();
                 PackUnpack.PackInt32LE(tempbuf, 0, value.Length);
                 stream.Write(tempbuf, 0, 4);
-                stream.Write(value.Buffer, value.Offset, value.Length);
-                transaction.FindNextKey();
+                stream.Write(value);
+                transaction.FindNextKey(new ReadOnlySpan<byte>());
             }
             var ulongCount = transaction.GetUlongCount();
             if (transaction.GetCommitUlong() != 0 || ulongCount != 0)
@@ -90,7 +92,7 @@ namespace BTDB.KVDBLayer
                 if (valueSize < 0) throw new BTDBException("Negative value size");
                 if (valueSize > tempbuf2.Length) tempbuf2 = new byte[valueSize];
                 if (stream.Read(tempbuf2, 0, valueSize) != valueSize) throw new EndOfStreamException();
-                transaction.CreateOrUpdateKeyValue(ByteBuffer.NewSync(tempbuf, 0, keySize), ByteBuffer.NewSync(tempbuf2, 0, valueSize));
+                transaction.CreateOrUpdateKeyValue(tempbuf.AsSpan(0, keySize), tempbuf2.AsSpan(0, valueSize));
             }
             if (stream.Read(tempbuf, 0, 8) == 8)
             {

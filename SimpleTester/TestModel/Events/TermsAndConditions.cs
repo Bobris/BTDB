@@ -10,6 +10,6 @@ namespace SimpleTester.TestModel.Events
         public bool Use { get; set; }
 
         [DataMember(Order = 2)]
-        public string Message { get; set; }
+        public string? Message { get; set; }
     }
 }

@@ -5,7 +5,7 @@ namespace BTDB.IOC
     interface IBuildContext
     {
         ICRegILGen? ResolveNeedBy(Type type, object? key);
-        IBuildContext IncrementEnumerable();
+        IBuildContext? IncrementEnumerable();
         IBuildContext FreezeMulti();
     }
 }

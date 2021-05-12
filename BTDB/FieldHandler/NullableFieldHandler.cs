@@ -10,9 +10,8 @@ namespace BTDB.FieldHandler
     {
         readonly IFieldHandlerFactory _fieldHandlerFactory;
         readonly ITypeConvertorGenerator _typeConvertorGenerator;
-        readonly byte[] _configuration;
         readonly IFieldHandler _itemHandler;
-        Type _type;
+        Type? _type;
 
         public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type)
         {
@@ -22,18 +21,18 @@ namespace BTDB.FieldHandler
             _itemHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
             if (_itemHandler.NeedsCtx())
                 throw new NotSupportedException("Nullable complex types are not supported.");
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteFieldHandler(_itemHandler);
-            _configuration = writer.Data.ToByteArray();
+            Configuration = writer.GetSpan().ToArray();
         }
 
         public NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, byte[] configuration)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertorGenerator = typeConvertorGenerator;
-            _configuration = configuration;
-            var reader = new ByteArrayReader(configuration);
-            _itemHandler = _fieldHandlerFactory.CreateFromReader(reader, FieldHandlerOptions.None);
+            Configuration = configuration;
+            var reader = new SpanReader(configuration);
+            _itemHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
         }
 
         NullableFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertorGenerator, Type type, IFieldHandler itemSpecialized)
@@ -48,7 +47,7 @@ namespace BTDB.FieldHandler
 
         public string Name => HandlerName;
 
-        public byte[] Configuration => _configuration;
+        public byte[]? Configuration { get; }
 
         public static bool IsCompatibleWith(Type type)
         {
@@ -63,7 +62,7 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _type ?? (_type = typeof(Nullable<>).MakeGenericType(_itemHandler.HandledType()));
+            return _type ??= typeof(Nullable<>).MakeGenericType(_itemHandler.HandledType());
         }
 
         public bool NeedsCtx()
@@ -71,22 +70,22 @@ namespace BTDB.FieldHandler
             return _itemHandler.NeedsCtx();
         }
 
-        public void Load(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Load(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             var localResult = ilGenerator.DeclareLocal(HandledType());
             var finish = ilGenerator.DefineLabel();
             var noValue = ilGenerator.DefineLabel();
-            var itemType = _type.GetGenericArguments()[0];
+            var itemType = _type!.GetGenericArguments()[0];
             var nullableType = typeof(Nullable<>).MakeGenericType(itemType);
 
             ilGenerator
-                .Do(pushReaderOrCtx)
-                .Callvirt(() => default(AbstractBufferedReader).ReadBool())
+                .Do(pushReader)
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
                 .Brfalse(noValue);
-            _itemHandler.Load(ilGenerator, pushReaderOrCtx);
-            _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)(ilGenerator);
+            _itemHandler.Load(ilGenerator, pushReader, pushCtx);
+            _typeConvertorGenerator.GenerateConversion(_itemHandler.HandledType(), itemType)!(ilGenerator);
             ilGenerator
-                .Newobj(nullableType.GetConstructor(new[] { itemType }))
+                .Newobj(nullableType.GetConstructor(new[] { itemType })!)
                 .Stloc(localResult)
                 .BrS(finish)
                 .Mark(noValue)
@@ -96,39 +95,38 @@ namespace BTDB.FieldHandler
                 .Ldloc(localResult);
         }
 
-        public void Skip(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public void Skip(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
             var finish = ilGenerator.DefineLabel();
             ilGenerator
-                .Do(pushReaderOrCtx)
-                .Callvirt(() => default(AbstractBufferedReader).ReadBool())
-                .Brfalse(finish);
-            _itemHandler.Skip(ilGenerator, pushReaderOrCtx);
-            ilGenerator
+                .Do(pushReader)
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadBool))!)
+                .Brfalse(finish)
+                .GenerateSkip(_itemHandler, pushReader, pushCtx)
                 .Mark(finish);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriterOrCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen>? pushCtx, Action<IILGen> pushValue)
         {
-            var nullableType = typeof(Nullable<>).MakeGenericType(_type.GetGenericArguments()[0]);
+            var nullableType = typeof(Nullable<>).MakeGenericType(_type!.GetGenericArguments()[0]);
             var localValue = ilGenerator.DeclareLocal(nullableType);
             var localHasValue = ilGenerator.DeclareLocal(typeof(bool));
             var finish = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushValue)
                 .Stloc(localValue)
-                .Do(pushWriterOrCtx)
-                .Ldloca(localValue) //Ldloca for struct!
-                .Call(nullableType.GetMethod("get_HasValue"))
+                .Do(pushWriter)
+                .Ldloca(localValue) //ref for struct!
+                .Call(nullableType.GetMethod("get_HasValue")!)
                 .Dup()
                 .Stloc(localHasValue)
-                .Callvirt(() => default(AbstractBufferedWriter).WriteBool(false))
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteBool))!)
                 .Ldloc(localHasValue)
                 .Brfalse(finish);
-            _itemHandler.Save(ilGenerator, pushWriterOrCtx,
+            _itemHandler.Save(ilGenerator, pushWriter, pushCtx,
                 il => il
-                    .Ldloca(localValue).Call(_type.GetMethod("get_Value"))
-                    .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemHandler.HandledType())));
+                    .Ldloca(localValue).Call(_type.GetMethod("get_Value")!)
+                    .Do(_typeConvertorGenerator.GenerateConversion(_type.GetGenericArguments()[0], _itemHandler.HandledType())!));
             ilGenerator.Mark(finish);
         }
 
@@ -142,8 +140,7 @@ namespace BTDB.FieldHandler
             }
             var wantedItemType = type.GetGenericArguments()[0];
             var wantedItemHandler = default(IFieldHandler);
-            var nullableFieldHandler = typeHandler as NullableFieldHandler;
-            if (nullableFieldHandler != null)
+            if (typeHandler is NullableFieldHandler nullableFieldHandler)
             {
                 wantedItemHandler = nullableFieldHandler._itemHandler;
             }
@@ -183,9 +180,9 @@ namespace BTDB.FieldHandler
             yield return _itemHandler;
         }
 
-        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReaderOrCtx)
+        public NeedsFreeContent FreeContent(IILGen ilGenerator, Action<IILGen> pushReader, Action<IILGen>? pushCtx)
         {
-            Skip(ilGenerator, pushReaderOrCtx);
+            Skip(ilGenerator, pushReader, pushCtx);
             return NeedsFreeContent.No;
         }
     }

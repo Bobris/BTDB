@@ -10,30 +10,42 @@ namespace BTDB.IOC
 {
     public class ContainerImpl : IContainer
     {
-        readonly ConcurrentDictionary<KeyAndType, Func<object>> _workers = new ConcurrentDictionary<KeyAndType, Func<object>>();
+        readonly ConcurrentDictionary<KeyAndType, Func<object>> _workers =
+            new ConcurrentDictionary<KeyAndType, Func<object>>();
+
         readonly object _buildingLock = new object();
         internal readonly Dictionary<KeyAndType, ICReg> Registrations = new Dictionary<KeyAndType, ICReg>();
+
         // ReSharper disable MemberCanBePrivate.Global
         public readonly object[] SingletonLocks;
         public readonly object?[] Singletons;
+
         public object[] Instances;
         // ReSharper restore MemberCanBePrivate.Global
 
-        internal ContainerImpl(ReadOnlySpan<IRegistration> registrations)
+        internal ContainerImpl(ReadOnlySpan<IRegistration> registrations, ContainerVerification containerVerification)
         {
             var context = new ContainerRegistrationContext(this, Registrations);
             foreach (var registration in registrations)
             {
-                ((IContanerRegistration)registration).Register(context);
+                ((IContanerRegistration) registration).Register(context);
             }
+
             SingletonLocks = new object[context.SingletonCount];
             for (var i = 0; i < context.SingletonCount; i++)
             {
                 SingletonLocks[i] = new object();
             }
+
             Singletons = new object[context.SingletonCount];
             Instances = context.Instances;
-            context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true, new ContainerInjectImpl());
+            context.AddCReg(Enumerable.Repeat(new KeyAndType(null, typeof(IContainer)), 1), true,
+                new ContainerInjectImpl());
+            if (containerVerification == ContainerVerification.None) return;
+            foreach (var (_, reg) in Registrations)
+            {
+                reg.Verify(containerVerification, this);
+            }
         }
 
         public object Resolve(Type type)
@@ -53,10 +65,12 @@ namespace BTDB.IOC
             {
                 return worker();
             }
+
             lock (_buildingLock)
             {
                 worker = TryBuild(key, type);
             }
+
             if (worker == null) ThrowNotResolvable(key, type);
             return worker();
         }
@@ -77,10 +91,12 @@ namespace BTDB.IOC
             {
                 return worker?.Invoke();
             }
+
             lock (_buildingLock)
             {
                 worker = TryBuild(key, type);
             }
+
             return worker?.Invoke();
         }
 
@@ -91,6 +107,7 @@ namespace BTDB.IOC
             {
                 throw new ArgumentException($"Type {type.ToSimpleName()} cannot be resolved");
             }
+
             throw new ArgumentException($"Type {type.ToSimpleName()} with key {key} cannot be resolved");
         }
 
@@ -102,6 +119,7 @@ namespace BTDB.IOC
                 if (worker == null) return null;
                 _workers.TryAdd(new KeyAndType(key, type), worker);
             }
+
             return worker;
         }
 
@@ -109,14 +127,15 @@ namespace BTDB.IOC
         {
             if (registration is ICRegFuncOptimized regOpt)
             {
-                var result = (Func<object>)regOpt.BuildFuncOfT(this, typeof(Func<object>));
+                var result = (Func<object>) regOpt.BuildFuncOfT(this, typeof(Func<object>));
                 if (result != null)
                 {
                     return result;
                 }
             }
+
             var context = new GenerationContext(this, registration, buildContext);
-            return (Func<object>)context.GenerateFunc(typeof(Func<object>));
+            return (Func<object>) context.GenerateFunc(typeof(Func<object>));
         }
 
         Func<object>? Build(object? key, Type type)

@@ -1,8 +1,8 @@
-using BTDB.Allocators;
 using System;
+using BTDB.Allocators;
 using Xunit;
 
-namespace ARTLibTest
+namespace BTDBTest.BTreeLibTests
 {
     public class OffHeapAllocatorTests
     {
@@ -19,7 +19,7 @@ namespace ARTLibTest
             allocator.Deallocate(ptr);
         }
 
-        [Fact]
+        [Fact(Skip = "Using HGlobalAllocator instead")]
         public void MallocAllocatorReturnsPointerCanWriteInto()
         {
             var allocator = new MallocAllocator();

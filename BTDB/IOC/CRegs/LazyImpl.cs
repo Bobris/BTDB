@@ -43,10 +43,15 @@ namespace BTDB.IOC.CRegs
             {
                 var resultType = _type.GetGenericArguments()[0];
                 _myNeed.Key = ((IObjectBuilder)
-                        typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build(()=>
+                        typeof(ClosureOfLazy<>).MakeGenericType(resultType).GetConstructors()[0].Invoke(new object[0])).Build(() =>
                             context.Container.BuildFromRegistration(_nestedRegistration, context.BuildContext)());
             }
             yield return _myNeed;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            return true;
         }
 
         public interface IObjectBuilder
@@ -58,9 +63,12 @@ namespace BTDB.IOC.CRegs
         {
             public object Build(Func<object> builder)
             {
-                return new Lazy<T>(()=>(T)builder());
+                return new Lazy<T>(() => (T)builder());
             }
         }
 
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
+        }
     }
 }

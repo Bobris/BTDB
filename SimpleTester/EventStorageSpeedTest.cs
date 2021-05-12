@@ -18,11 +18,11 @@ namespace SimpleTester
         {
             public ulong Id { get; set; }
             public DateTime Time { get; set; }
-            public string Payload { get; set; }
+            public string? Payload { get; set; }
         }
 
         readonly Stopwatch _sw = new Stopwatch();
-        IWriteEventStore _writeStore;
+        IWriteEventStore? _writeStore;
         readonly BlockingCollection<ValueEvent> _bc = new BlockingCollection<ValueEvent>(2048);
 
         public Task PublishEvent(object obj)
@@ -55,10 +55,10 @@ namespace SimpleTester
                     wait = 0;
                 }
                 if (l.Count == 0) continue;
-                _writeStore.Store(null, l);
+                _writeStore!.Store(null, l);
                 foreach (var tcs in t)
                 {
-                    Task.Factory.StartNew(o => ((TaskCompletionSource<bool>)o).SetResult(true), tcs, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+                    Task.Factory.StartNew(o => ((TaskCompletionSource<bool>)o!).SetResult(true), tcs, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
                 }
             }
         }
@@ -95,7 +95,7 @@ namespace SimpleTester
         {
             ulong _count;
 
-            public bool ObservedMetadata(object metadata, uint eventCount)
+            public bool ObservedMetadata(object? metadata, uint eventCount)
             {
                 return true;
             }
@@ -105,7 +105,7 @@ namespace SimpleTester
                 return false;
             }
 
-            public void ObservedEvents(object[] events)
+            public void ObservedEvents(object[]? events)
             {
                 if (events != null) _count += (ulong)events.Length;
             }

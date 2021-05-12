@@ -30,8 +30,7 @@ namespace BTDB.EventStoreLayer
             Name = typeSerializers.TypeNameMapper.ToName(type);
         }
 
-        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader,
-            Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
+        public ObjectTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
         {
             _typeSerializers = typeSerializers;
             Sealed = false;
@@ -40,7 +39,7 @@ namespace BTDB.EventStoreLayer
             while (fieldCount-- > 0)
             {
                 _fields.Add(
-                    new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(reader)));
+                    new KeyValuePair<string, ITypeDescriptor>(reader.ReadString(), nestedDescriptorReader(ref reader)));
             }
         }
 
@@ -65,11 +64,11 @@ namespace BTDB.EventStoreLayer
             {
                 if (propertyInfo.GetIndexParameters().Length != 0) continue;
                 if (ShouldNotBeStored(propertyInfo)) continue;
-                if (propertyInfo.GetGetMethod(true) == null)
+                if (propertyInfo.GetAnyGetMethod() == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
                                                         " and property " + propertyInfo.Name +
                                                         " does not have getter. If you don't want to serialize this property add [NotStored] attribute.");
-                if (!isInterface && propertyInfo.GetSetMethod(true) == null)
+                if (!isInterface && propertyInfo.GetAnySetMethod() == null)
                     throw new InvalidOperationException("Trying to serialize type " + type.ToSimpleName() +
                                                         " and property " + propertyInfo.Name +
                                                         " does not have setter. If you don't want to serialize this property add [NotStored] attribute.");
@@ -149,7 +148,7 @@ namespace BTDB.EventStoreLayer
 
         static void AppendIndent(StringBuilder text, uint indent)
         {
-            text.Append(' ', (int) (indent * 4));
+            text.Append(' ', (int)(indent * 4));
         }
 
         public bool Equals(ITypeDescriptor other, HashSet<ITypeDescriptor> stack)
@@ -207,7 +206,7 @@ namespace BTDB.EventStoreLayer
                 ilGenerator
                     .Do(pushDescriptor)
                     .Castclass(typeof(ObjectTypeDescriptor))
-                    .Newobj(typeof(DynamicObject).GetConstructor(new[] {typeof(ObjectTypeDescriptor)})!)
+                    .Newobj(typeof(DynamicObject).GetConstructor(new[] { typeof(ObjectTypeDescriptor) })!)
                     .Stloc(resultLoc)
                     .Do(pushCtx)
                     .BrfalseS(labelNoCtx)
@@ -279,7 +278,7 @@ namespace BTDB.EventStoreLayer
                         il => il.Do(pushDescriptor).LdcI4(idxForCapture)
                             .Callvirt(() => default(ITypeDescriptor).NestedType(0)),
                         prop.PropertyType, _typeSerializers.ConvertorGenerator);
-                    ilGenerator.Callvirt(prop.GetSetMethod(true)!);
+                    ilGenerator.Callvirt(prop.GetAnySetMethod()!);
                 }
 
                 ilGenerator.Ldloc(resultLoc);
@@ -375,7 +374,7 @@ namespace BTDB.EventStoreLayer
 
                 public override DynamicMetaObject BindSetMember(SetMemberBinder binder, DynamicMetaObject value)
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     var idx = descriptor.FindFieldIndex(binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
                             typeof(DynamicObject).GetMethod(nameof(SetFieldByIdx))!,
@@ -388,7 +387,7 @@ namespace BTDB.EventStoreLayer
 
                 public override DynamicMetaObject BindGetMember(GetMemberBinder binder)
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     var idx = descriptor.FindFieldIndex(binder.Name);
                     return new DynamicMetaObject(Expression.Call(Expression.Convert(Expression, LimitType),
                             typeof(DynamicObject).GetMethod(nameof(GetFieldByIdx))!,
@@ -400,7 +399,7 @@ namespace BTDB.EventStoreLayer
 
                 public override IEnumerable<string> GetDynamicMemberNames()
                 {
-                    var descriptor = ((DynamicObject) Value)._ownerDescriptor;
+                    var descriptor = ((DynamicObject)Value)._ownerDescriptor;
                     return descriptor._fields.Select(p => p.Key);
                 }
             }
@@ -453,8 +452,8 @@ namespace BTDB.EventStoreLayer
                         .Do(pushCtx)
                         .Do(pushObj)
                         .Castclass(_objectTypeDescriptor._type!)
-                        .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetGetMethod()!)
-                        .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
+                        .Callvirt(allProps.First(p => GetPersistentName(p) == pair.Key).GetAnyGetMethod()!)
+                        .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
                 }
             }
         }
@@ -497,15 +496,14 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer,
-            Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
             writer.WriteString(Name);
             writer.WriteVUInt32(_fields.Count);
             foreach (var pair in _fields)
             {
                 writer.WriteString(pair.Key);
-                nestedDescriptorWriter(writer, pair.Value);
+                nestedDescriptorWriter(ref writer, pair.Value);
             }
         }
 
@@ -520,7 +518,7 @@ namespace BTDB.EventStoreLayer
                 .Stloc(locValue);
             foreach (var (name, typeDescriptor) in _fields)
             {
-                var methodInfo = _type.GetProperties().First(p => GetPersistentName(p) == name).GetGetMethod(true);
+                var methodInfo = _type.GetProperties(BindingFlags.Instance | BindingFlags.Public).First(p => GetPersistentName(p) == name).GetAnyGetMethod();
                 typeDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx,
                     il => il.Ldloc(locValue).Callvirt(methodInfo), methodInfo!.ReturnType);
             }

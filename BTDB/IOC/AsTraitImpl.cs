@@ -49,8 +49,8 @@ namespace BTDB.IOC
             {
                 foreach (var type in implementationType.GetInterfaces())
                 {
-                    if (type == typeof (IDisposable)) continue;
-                    if (type == typeof (IAsyncDisposable)) continue;
+                    if (type == typeof(IDisposable)) continue;
+                    if (type == typeof(IAsyncDisposable)) continue;
                     yield return new KeyAndType(null, type);
                     defaultNeeded = false;
                 }

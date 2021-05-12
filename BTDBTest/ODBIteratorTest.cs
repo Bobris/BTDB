@@ -69,18 +69,16 @@ namespace BTDBTest
 
             public void MarkCurrentKeyAsUsed(IKeyValueDBTransaction tr)
             {
-                Keys = Keys.ResizingAppend(ByteBuffer.NewSync(tr.GetKeyPrefix())).ResizingAppend(tr.GetKey());
+                Keys = Keys.ResizingAppend(ByteBuffer.NewAsync(tr.GetKey()));
                 Builder.Append("Used key: ");
-                Print(ByteBuffer.NewSync(tr.GetKeyPrefix()));
-                Builder.Append('|');
                 Print(tr.GetKey());
                 Builder.AppendFormat(" Value len:{0}", tr.GetStorageSizeOfCurrentKey().Value);
                 Builder.AppendLine();
             }
 
-            void Print(ByteBuffer b)
+            void Print(in ReadOnlySpan<byte> b)
             {
-                for (int i = 0; i < b.Length; i++)
+                for (var i = 0; i < b.Length; i++)
                 {
                     if (i > 0) Builder.Append(' ');
                     Builder.Append(b[i].ToString("X2"));
@@ -90,14 +88,14 @@ namespace BTDBTest
 
         internal class ToStringVisitor : ToStringFastVisitor, IODBVisitor
         {
-            public bool VisitSingleton(uint tableId, string tableName, ulong oid)
+            public bool VisitSingleton(uint tableId, string? tableName, ulong oid)
             {
                 Builder.AppendFormat("Singleton {0}-{1} oid:{2}", tableId, tableName ?? "?Unknown?", oid);
                 Builder.AppendLine();
                 return true;
             }
 
-            public bool StartObject(ulong oid, uint tableId, string tableName, uint version)
+            public bool StartObject(ulong oid, uint tableId, string? tableName, uint version)
             {
                 Builder.AppendFormat("Object oid:{0} {1}-{2} version:{3}", oid, tableId, tableName ?? "?Unknown?",
                     version);
@@ -285,9 +283,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var jobs = tr.Singleton<JobMap>();
-                jobs.Jobs[1] = new Job {Duty = new Duty {Name = "HardCore Code"}};
-                jobs.Duties.Add(new Duty {Name = "Tester"});
-                jobs.Duties.Add(new Duty {Name = "Developer"});
+                jobs.Jobs[1] = new Job { Duty = new Duty { Name = "HardCore Code" } };
+                jobs.Duties.Add(new Duty { Name = "Tester" });
+                jobs.Duties.Add(new Duty { Name = "Developer" });
                 tr.Commit();
             }
 
@@ -314,7 +312,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<ISimpleDutyRelation>("SimpleDutyRelation");
                 var personSimpleTable = creator(tr);
-                var duty = new DutyWithKey {Id = 1, Name = "HardCore Code"};
+                var duty = new DutyWithKey { Id = 1, Name = "HardCore Code" };
                 personSimpleTable.Insert(duty);
                 tr.Commit();
             }
@@ -378,8 +376,8 @@ namespace BTDBTest
                 o.TimeSpanField = new TimeSpan(1, 2, 3, 4);
                 o.GuidField = new Guid("39aabab2-9971-4113-9998-a30fc7d5606a");
                 o.EnumField = TestEnum.Item2;
-                o.ByteArrayField = new byte[] {0, 1, 2};
-                o.ByteBufferField = ByteBuffer.NewAsync(new byte[] {0, 1, 2}, 1, 1);
+                o.ByteArrayField = new byte[] { 0, 1, 2 };
+                o.ByteBufferField = ByteBuffer.NewAsync(new byte[] { 0, 1, 2 }, 1, 1);
                 tr.Commit();
             }
 
@@ -415,9 +413,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<VariousLists>();
-                root.IntList = new List<int> {5, 10, 2000};
-                root.StringList = new List<string> {"A", null, "AB!"};
-                root.ByteList = new List<byte> {0, 255};
+                root.IntList = new List<int> { 5, 10, 2000 };
+                root.StringList = new List<string> { "A", null, "AB!" };
+                root.ByteList = new List<byte> { 0, 255 };
                 tr.Commit();
             }
 
@@ -435,7 +433,7 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var root = tr.Singleton<InlineDictionary>();
-                root.Int2String = new Dictionary<int, string> {{1, "one"}, {0, null}};
+                root.Int2String = new Dictionary<int, string> { { 1, "one" }, { 0, null } };
                 tr.Commit();
             }
 
@@ -478,9 +476,9 @@ namespace BTDBTest
             using (var tr = _db.StartTransaction())
             {
                 var wfd = tr.Singleton<ObjectWfd1>();
-                wfd.A = new Rule1 {Name = "A"};
-                wfd.B = new Rule1 {Name = "B"};
-                wfd.C = new Rule1 {Name = "C"};
+                wfd.A = new Rule1 { Name = "A" };
+                wfd.B = new Rule1 { Name = "B" };
+                wfd.C = new Rule1 { Name = "C" };
                 tr.Commit();
             }
 
@@ -519,7 +517,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IDuoRefsRelation>("DoubleRefsRelation");
                 var duoRefsRelation = creator(tr);
-                var value = new DuoRefs {Id = 1, R1 = new Rule1()};
+                var value = new DuoRefs { Id = 1, R1 = new Rule1() };
                 value.R2 = value.R1;
                 duoRefsRelation.Insert(value);
                 value.Id = 2;
@@ -560,8 +558,9 @@ namespace BTDBTest
                 var duoRefsRelation = creator(tr);
                 var value = new DuoDuoRefs
                 {
-                    Id = 1, R1 = new DuoRule1 {R1 = new Rule1(), R2 = new Rule1()},
-                    R2 = new DuoRule1 {R1 = new Rule1(), R2 = new Rule1()}
+                    Id = 1,
+                    R1 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() },
+                    R2 = new DuoRule1 { R1 = new Rule1(), R2 = new Rule1() }
                 };
                 duoRefsRelation.Insert(value);
                 value.Id = 2;
@@ -601,7 +600,7 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IRelationWithNullable>("IterateNullableValues");
                 var table = creator(tr);
-                table.Insert(new WithNullable {FieldInt = 10});
+                table.Insert(new WithNullable { FieldInt = 10 });
                 tr.Commit();
             }
 
@@ -610,19 +609,19 @@ namespace BTDBTest
 
         public class Blob
         {
-            public string Name { get; set; }
+            public string? Name { get; set; }
 
             protected bool Equals(Blob other)
             {
                 return string.Equals(Name, other.Name);
             }
 
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
             {
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
-                return Equals((Blob) obj);
+                return Equals((Blob)obj);
             }
 
             public override int GetHashCode()
@@ -651,18 +650,18 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IRelationWithReusedObjects>("IRelationWithReusedObjects");
                 var table = creator(tr);
-                table.Insert(new WithReusedObjects {Id = 1, Blobs = new List<Blob> {new Blob(), new Blob()}});
+                table.Insert(new WithReusedObjects { Id = 1, Blobs = new List<Blob> { new Blob(), new Blob() } });
                 table.Insert(new WithReusedObjects
                 {
                     Id = 2,
                     BlobsIDict = new Dictionary<Blob, Blob>
-                        {[new Blob()] = new Blob(), [new Blob {Name = "A"}] = new Blob()}
+                    { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() }
                 });
                 table.Insert(new WithReusedObjects
                 {
                     Id = 3,
                     BlobsDict = new Dictionary<Blob, Blob>
-                        {[new Blob()] = new Blob(), [new Blob {Name = "A"}] = new Blob()}
+                    { [new Blob()] = new Blob(), [new Blob { Name = "A" }] = new Blob() }
                 });
                 tr.Commit();
             }
@@ -681,9 +680,9 @@ namespace BTDBTest
                 table.Insert(new WithReusedObjects
                 {
                     Id = 1,
-                    Blobs = new List<Blob> {blob, blob},
-                    BlobsIDict = new Dictionary<Blob, Blob> {[blob] = blob, [new Blob {Name = "A"}] = blob},
-                    BlobsDict = new Dictionary<Blob, Blob> {[blob] = blob, [new Blob {Name = "A"}] = blob}
+                    Blobs = new List<Blob> { blob, blob },
+                    BlobsIDict = new Dictionary<Blob, Blob> { [blob] = blob, [new Blob { Name = "A" }] = blob },
+                    BlobsDict = new Dictionary<Blob, Blob> { [blob] = blob, [new Blob { Name = "A" }] = blob }
                 });
                 tr.Commit();
             }

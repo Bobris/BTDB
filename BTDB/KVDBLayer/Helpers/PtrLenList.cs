@@ -20,7 +20,7 @@ namespace BTDB.KVDBLayer
             KeyValuePair<ulong, ulong> cur;
             while (l < r)
             {
-                uint m = (l + r)/2;
+                uint m = (l + r) / 2;
                 cur = _list[m];
                 if (pos < cur.Key)
                 {

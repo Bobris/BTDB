@@ -7,12 +7,12 @@ namespace BTDB.IL
     class ILGenImpl : IILGen
     {
         readonly ILGenerator _ilGenerator;
-        readonly IILGenForbidenInstructions _forbidenInstructions;
+        readonly IILGenForbiddenInstructions _forbiddenInstructions;
 
-        public ILGenImpl(ILGenerator ilGenerator, IILGenForbidenInstructions forbidenInstructions)
+        public ILGenImpl(ILGenerator ilGenerator, IILGenForbiddenInstructions forbiddenInstructions)
         {
             _ilGenerator = ilGenerator;
-            _forbidenInstructions = forbidenInstructions;
+            _forbiddenInstructions = forbiddenInstructions;
         }
 
         public IILLabel DefineLabel(string name)
@@ -97,7 +97,7 @@ namespace BTDB.IL
 
         public void Emit(OpCode opCode, MethodInfo param)
         {
-            _forbidenInstructions.Emit(_ilGenerator, opCode, param);
+            _forbiddenInstructions.Emit(_ilGenerator, opCode, param);
         }
 
         public void Emit(OpCode opCode, Type type)

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Threading;
 using BTDB.KVDBLayer;
@@ -8,6 +9,9 @@ using Microsoft.Win32.SafeHandles;
 
 namespace BTDB.StreamLayer
 {
+#if !NETCOREAPP3_1
+    [SupportedOSPlatform("windows")]
+#endif
     public class WindowsPlatformMethods : IPlatformMethods
     {
         [DllImport("kernel32.dll", SetLastError = true)]

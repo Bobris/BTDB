@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -46,10 +47,10 @@ namespace BTDB.KVDBLayer
         volatile int _keyLen;
         readonly ConcurrentDictionary<ByteStructs.Key20, StorageValue> _dict20 = new ConcurrentDictionary<ByteStructs.Key20, StorageValue>(new ByteStructs.Key20EqualityComparer());
         readonly object _pureValueFileLock = new object();
-        IFileCollectionFile _pureValueFile;
-        AbstractBufferedWriter _pureValueFileWriter;
-        IFileCollectionFile _hashIndexFile;
-        AbstractBufferedWriter _hashIndexWriter;
+        IFileCollectionFile? _pureValueFile;
+        ISpanWriter? _pureValueFileWriter;
+        IFileCollectionFile? _hashIndexFile;
+        ISpanWriter? _hashIndexWriter;
 
         public ChunkStorageInKV(long subDBId, IFileCollectionWithFileInfos fileCollection, long maxFileSize)
         {
@@ -79,9 +80,9 @@ namespace BTDB.KVDBLayer
 
         void LoadHashKeyIndex(uint hashKeyIndexFileId)
         {
-            var reader = _fileCollection.GetFile(hashKeyIndexFileId).GetExclusiveReader();
-            _keyLen = (int) ((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
-            HashKeyIndex.SkipHeader(reader);
+            var reader = new SpanReader(_fileCollection.GetFile(hashKeyIndexFileId).GetExclusiveReader());
+            _keyLen = (int)((IHashKeyIndex)_fileCollection.FileInfoByIdx(hashKeyIndexFileId)).KeyLen;
+            HashKeyIndex.SkipHeader(ref reader);
             var keyBuf = ByteBuffer.NewSync(new byte[_keyLen]);
             while (!reader.Eof)
             {
@@ -205,11 +206,11 @@ namespace BTDB.KVDBLayer
             result.ContentLength = (uint)content.Length;
             if (_pureValueFile == null)
                 StartNewPureValueFile();
-            result.FileId = _pureValueFile.Index;
-            result.FileOfs = (uint)_pureValueFileWriter.GetCurrentPosition();
-            _pureValueFileWriter.WriteBlock(content);
+            result.FileId = _pureValueFile!.Index;
+            result.FileOfs = (uint)_pureValueFileWriter!.GetCurrentPositionWithoutWriter();
+            _pureValueFileWriter.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(content.AsSyncReadOnlySpan()), (uint)content.Length);
             _pureValueFile.Flush();
-            if (_pureValueFileWriter.GetCurrentPosition() >= _maxFileSize)
+            if (_pureValueFileWriter.GetCurrentPositionWithoutWriter() >= _maxFileSize)
             {
                 _pureValueFile.HardFlushTruncateSwitchToReadOnlyMode();
                 StartNewPureValueFile();
@@ -222,7 +223,9 @@ namespace BTDB.KVDBLayer
             _pureValueFile = _fileCollection.AddFile("hpv");
             _pureValueFileWriter = _pureValueFile.GetAppenderWriter();
             var fileInfo = new FilePureValuesWithId(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid);
-            fileInfo.WriteHeader(_pureValueFileWriter);
+            var writer = new SpanWriter(_pureValueFileWriter);
+            fileInfo.WriteHeader(ref writer);
+            writer.Sync();
             _pureValueFile.Flush();
             _fileCollection.SetInfo(_pureValueFile.Index, fileInfo);
         }
@@ -233,10 +236,12 @@ namespace BTDB.KVDBLayer
             {
                 StartNewHashIndexFile();
             }
-            _hashIndexWriter.WriteVUInt32(storageValue.FileId);
-            _hashIndexWriter.WriteVUInt32(storageValue.FileOfs);
-            _hashIndexWriter.WriteVUInt32(storageValue.ContentLengthCompressedIsLeaf);
-            _hashIndexWriter.WriteBlock(key);
+            var writer = new SpanWriter(_hashIndexWriter!);
+            writer.WriteVUInt32(storageValue.FileId);
+            writer.WriteVUInt32(storageValue.FileOfs);
+            writer.WriteVUInt32(storageValue.ContentLengthCompressedIsLeaf);
+            writer.WriteBlock(key);
+            writer.Sync();
         }
 
         void StartNewHashIndexFile()
@@ -244,7 +249,9 @@ namespace BTDB.KVDBLayer
             _hashIndexFile = _fileCollection.AddFile("hid");
             _hashIndexWriter = _hashIndexFile.GetExclusiveAppenderWriter();
             var fileInfo = new HashKeyIndex(_subDBId, _fileCollection.NextGeneration(), _fileCollection.Guid, (uint)_keyLen);
-            fileInfo.WriteHeader(_hashIndexWriter);
+            var writer = new SpanWriter(_hashIndexWriter);
+            fileInfo.WriteHeader(ref writer);
+            writer.Sync();
             _fileCollection.SetInfo(_hashIndexFile.Index, fileInfo);
         }
     }

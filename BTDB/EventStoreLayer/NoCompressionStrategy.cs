@@ -1,4 +1,4 @@
-using BTDB.Buffer;
+using System;
 using BTDB.SnappyCompression;
 
 namespace BTDB.EventStoreLayer
@@ -10,12 +10,12 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public bool Compress(ref ByteBuffer data)
+        public bool Compress(ref ReadOnlySpan<byte> data)
         {
             return false;
         }
 
-        public void Decompress(ref ByteBuffer data)
+        public void Decompress(ref ReadOnlySpan<byte> data)
         {
             data = SnappyDecompress.Decompress(data);
         }

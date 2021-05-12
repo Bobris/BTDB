@@ -39,8 +39,8 @@ namespace BTDB.StreamLayer
 
         public void Flush()
         {
-                _stream.Flush();
-            }
+            _stream.Flush();
+        }
 
         public void HardFlush()
         {

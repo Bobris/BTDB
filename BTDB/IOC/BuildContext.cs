@@ -43,7 +43,8 @@ namespace BTDB.IOC
         {
             return new BuildContext(_container)
             {
-                _parent = this, _multiBinds = new List<KeyValuePair<ICRegMulti, int>>()
+                _parent = this,
+                _multiBinds = new List<KeyValuePair<ICRegMulti, int>>()
             };
         }
 

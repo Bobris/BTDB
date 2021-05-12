@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -15,30 +17,54 @@ namespace BTDB.ODBLayer
     public class ObjectDB : IObjectDB
     {
         IKeyValueDB _keyValueDB;
-        internal ISymmetricCipher _symmetricCipher;
+        internal ISymmetricCipher SymmetricCipher;
         IType2NameRegistry _type2Name;
         IPolymorphicTypesRegistry _polymorphicTypesRegistry;
         TablesInfo _tablesInfo;
         RelationsInfo _relationsInfo;
-        internal Dictionary<Type, Func<IObjectDBTransaction, IRelation>> RelationFactories = new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>();
+
+        internal Dictionary<Type, Func<IObjectDBTransaction, IRelation>> RelationFactories =
+            new Dictionary<Type, Func<IObjectDBTransaction, IRelation>>();
+
         bool _dispose;
-        internal static readonly byte[] TableNamesPrefix = { 0, 0 }; // Index Table => Name
-        internal static readonly byte[] TableVersionsPrefix = { 0, 1 }; // Index Table, Version => TableVersionInfo
-        internal static readonly byte[] TableSingletonsPrefix = { 0, 2 }; // Index Table => singleton oid
-        internal static readonly byte[] LastDictIdKey = { 0, 3 }; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
-        internal static readonly byte[] RelationNamesPrefix = { 0, 4 }; // Name => Index Relation
-        internal static readonly byte[] RelationVersionsPrefix = { 0, 5 }; // Index Relation, version number => metadata
-        internal static readonly byte[] AllObjectsPrefix = { 1 }; // oid => Index Table, version number, Value
-        internal static readonly byte[] AllDictionariesPrefix = { 2 }; // Index Dictionary, Key => Value
-        internal static readonly byte[] AllRelationsPKPrefix = { 3 }; // Index Relation, Primary Key => version number, Value (without primary key)
-        internal static readonly byte[] AllRelationsSKPrefix = { 4 }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
+        internal static readonly byte[] TableNamesPrefix = {0, 0}; // Index Table => Name
+        const int TableNamesPrefixLen = 2;
+        internal static readonly byte[] TableVersionsPrefix = {0, 1}; // Index Table, Version => TableVersionInfo
+        const uint TableVersionsPrefixLen = 2;
+        internal static readonly byte[] TableSingletonsPrefix = {0, 2}; // Index Table => singleton oid
+        internal const uint TableSingletonsPrefixLen = 2;
+
+        internal static readonly byte[]
+            LastDictIdKey =
+                {0, 3}; //  => Last Dictionary Index - only for backward compatibility newly stored in Ulong[1]
+
+        internal static readonly byte[] RelationNamesPrefix = {0, 4}; // Name => Index Relation
+        const int RelationNamesPrefixLen = 2;
+        internal static readonly byte[] RelationVersionsPrefix = {0, 5}; // Index Relation, version number => metadata
+        internal static readonly byte[] AllObjectsPrefix = {1}; // oid => Index Table, version number, Value
+        internal const int AllObjectsPrefixLen = 1;
+        internal static readonly byte[] AllDictionariesPrefix = {2}; // Index Dictionary, Key => Value
+        internal const int AllDictionariesPrefixLen = 1;
+
+        internal static readonly byte[]
+            AllRelationsPKPrefix = {3}; // Index Relation, Primary Key => version number, Value (without primary key)
+
+        internal static readonly byte[]
+            AllRelationsSKPrefix =
+            {
+                4
+            }; // Index Relation, Secondary Key Index, Secondary Key, primary key fields not present in secondary key => {}
+
+        internal const byte AllObjectsPrefixByte = 1;
+        internal const byte AllDictionariesPrefixByte = 2;
         internal const byte AllRelationsPKPrefixByte = 3;
         internal const byte AllRelationsSKPrefixByte = 4;
         ITableInfoResolver _tableInfoResolver;
         IRelationInfoResolver _relationsInfoResolver;
         long _lastObjId;
-        ulong _lastDictId;
+        long _lastDictId;
 
+        // ReSharper disable once NotNullMemberIsNotInitialized
         public ObjectDB()
         {
             FieldHandlerFactory = new DefaultODBFieldHandlerFactory(this);
@@ -51,8 +77,6 @@ namespace BTDB.ODBLayer
             RelationBuilder.Reset();
             ODBDictionaryConfiguration.Reset();
         }
-
-        internal ulong LastDictId => _lastDictId;
 
         internal IType2NameRegistry Type2NameRegistry => _type2Name;
 
@@ -78,7 +102,7 @@ namespace BTDB.ODBLayer
             _polymorphicTypesRegistry = new PolymorphicTypesRegistry();
             AutoRegisterTypes = options.AutoRegisterType;
             ActualOptions = options;
-            _symmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
+            SymmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
 
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
@@ -86,61 +110,60 @@ namespace BTDB.ODBLayer
             _relationsInfo = new RelationsInfo(_relationsInfoResolver);
 
             using var tr = _keyValueDB.StartTransaction();
-            _lastObjId = (long)tr.GetUlong(0);
-            _lastDictId = tr.GetUlong(1);
+            _lastObjId = (long) tr.GetUlong(0);
+            _lastDictId = (long) tr.GetUlong(1);
             if (_lastObjId == 0)
             {
-                tr.SetKeyPrefix(AllObjectsPrefix);
-                if (tr.FindLastKey())
+                if (tr.FindLastKey(AllObjectsPrefix))
                 {
-                    _lastObjId = (long)new KeyValueDBKeyReader(tr).ReadVUInt64();
+                    _lastObjId = (long) PackUnpack.UnpackVUInt(tr.GetKey().Slice(AllObjectsPrefixLen));
                 }
             }
+
             _tablesInfo.LoadTables(LoadTablesEnum(tr));
             _relationsInfo.LoadRelations(LoadRelationNamesEnum(tr));
             if (_lastDictId == 0)
             {
-                tr.SetKeyPrefix(null!);
                 if (tr.FindExactKey(LastDictIdKey))
                 {
-                    _lastDictId = new ByteArrayReader(tr.GetValueAsByteArray()).ReadVUInt64();
+                    _lastDictId = (long) PackUnpack.UnpackVUInt(tr.GetValue());
                 }
             }
         }
 
-        internal void CommitLastObjIdAndDictId(ulong newLastDictId, IKeyValueDBTransaction tr)
+        internal void CommitLastObjIdAndDictId(IKeyValueDBTransaction tr)
         {
-            tr.SetUlong(0, (ulong)_lastObjId);
-            if (_lastDictId != newLastDictId)
+            var lastOid = GetLastAllocatedOid();
+            if (tr.GetUlong(0) < lastOid)
             {
-                tr.SetUlong(1, newLastDictId);
-                _lastDictId = newLastDictId;
+                tr.SetUlong(0, lastOid);
+            }
+
+            var lastDistId = GetLastAllocatedDictId();
+            if (tr.GetUlong(1) < lastDistId)
+            {
+                tr.SetUlong(1, lastDistId);
             }
         }
 
         internal static IEnumerable<KeyValuePair<uint, string>> LoadTablesEnum(IKeyValueDBTransaction tr)
         {
-            tr.SetKeyPrefixUnsafe(TableNamesPrefix);
-            var keyReader = new KeyValueDBKeyReader(tr);
-            var valueReader = new KeyValueDBValueReader(tr);
-            while (tr.FindNextKey())
+            tr.InvalidateCurrentKey();
+            while (tr.FindNextKey(TableNamesPrefix))
             {
-                keyReader.Restart();
-                valueReader.Restart();
-                yield return new KeyValuePair<uint, string>(keyReader.ReadVUInt32(), valueReader.ReadString());
+                yield return new KeyValuePair<uint, string>(
+                    (uint) PackUnpack.UnpackVUInt(tr.GetKey().Slice(TableNamesPrefixLen)),
+                    new SpanReader(tr.GetValue()).ReadString());
             }
         }
 
         internal static IEnumerable<KeyValuePair<uint, string>> LoadRelationNamesEnum(IKeyValueDBTransaction tr)
         {
-            tr.SetKeyPrefixUnsafe(RelationNamesPrefix);
-            var keyReader = new KeyValueDBKeyReader(tr);
-            var valueReader = new KeyValueDBValueReader(tr);
-            while (tr.FindNextKey())
+            tr.InvalidateCurrentKey();
+            while (tr.FindNextKey(RelationNamesPrefix))
             {
-                keyReader.Restart();
-                valueReader.Restart();
-                yield return new KeyValuePair<uint, string>(valueReader.ReadVUInt32(), keyReader.ReadString());
+                yield return new KeyValuePair<uint, string>((uint) PackUnpack.UnpackVUInt(tr.GetValue()),
+                    new SpanReader(tr.GetKey().Slice(RelationNamesPrefixLen)).ReadString());
             }
         }
 
@@ -154,15 +177,9 @@ namespace BTDB.ODBLayer
             return new ObjectDBTransaction(this, _keyValueDB.StartReadOnlyTransaction(), true);
         }
 
-        public ValueTask<IObjectDBTransaction> StartWritingTransaction()
+        public async ValueTask<IObjectDBTransaction> StartWritingTransaction()
         {
-            var tr = _keyValueDB.StartWritingTransaction();
-            if(tr.IsCompletedSuccessfully)
-                return new ValueTask<IObjectDBTransaction>(new ObjectDBTransaction(this, tr.Result, false));
-
-            return new ValueTask<IObjectDBTransaction>(tr.AsTask()
-                .ContinueWith<IObjectDBTransaction>(t => new ObjectDBTransaction(this, t.Result, false),
-                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+            return new ObjectDBTransaction(this, await _keyValueDB.StartWritingTransaction(), false);
         }
 
         public string RegisterType(Type type)
@@ -184,7 +201,8 @@ namespace BTDB.ODBLayer
             static string NiceName(Type type1)
             {
                 var niceName = type1.Name;
-                if (type1.IsInterface && niceName.StartsWith("I", StringComparison.Ordinal)) niceName = niceName.Substring(1);
+                if (type1.IsInterface && niceName.StartsWith("I", StringComparison.Ordinal))
+                    niceName = niceName.Substring(1);
 
                 if (!type1.IsGenericType) return niceName;
                 var genericTypes = type1.GenericTypeArguments;
@@ -197,7 +215,7 @@ namespace BTDB.ODBLayer
             return RegisterType(type, name, manualRegistration);
         }
 
-        internal string RegisterType(Type type, string asName, bool manualRegistration)
+        string RegisterType(Type type, string asName, bool manualRegistration)
         {
             if (manualRegistration)
                 _polymorphicTypesRegistry.RegisterPolymorphicType(type);
@@ -216,7 +234,7 @@ namespace BTDB.ODBLayer
 
         public IObjectDBLogger Logger { get; set; }
 
-        public ISymmetricCipher GetSymmetricCipher() => _symmetricCipher;
+        public ISymmetricCipher GetSymmetricCipher() => SymmetricCipher;
 
         public void RegisterCustomRelation(Type type, Func<IObjectDBTransaction, IRelation> factory)
         {
@@ -259,46 +277,40 @@ namespace BTDB.ODBLayer
 
             uint ITableInfoResolver.GetLastPersistedVersion(uint id)
             {
-                using (var tr = _keyValueDB.StartTransaction())
-                {
-                    tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
-                    if (tr.Find(ByteBuffer.NewSync(key)) == FindResult.NotFound)
-                        return 0;
-                    var key2 = tr.GetKeyAsByteArray();
-                    var ofs = PackUnpack.LengthVUInt(id);
-                    if (key2.Length < ofs) return 0;
-                    if (BitArrayManipulation.CompareByteArray(key, ofs, key2, ofs) != 0) return 0;
-                    return checked((uint)PackUnpack.UnpackVUInt(key2, ref ofs));
-                }
+                using var tr = _keyValueDB.StartTransaction();
+                var key = TableInfo.BuildKeyForTableVersions(id, uint.MaxValue);
+                var ofs = PackUnpack.LengthVUInt(id);
+                if (tr.Find(key, TableVersionsPrefixLen + ofs) == FindResult.NotFound)
+                    return 0;
+                var key2 = tr.GetKey().Slice((int) (TableVersionsPrefixLen + ofs));
+                return checked((uint) PackUnpack.UnpackVUInt(key2));
             }
 
             TableVersionInfo ITableInfoResolver.LoadTableVersionInfo(uint id, uint version, string tableName)
             {
-                using (var tr = _keyValueDB.StartTransaction())
-                {
-                    tr.SetKeyPrefix(TableVersionsPrefix);
-                    var key = TableInfo.BuildKeyForTableVersions(id, version);
-                    if (!tr.FindExactKey(key))
-                        throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
-                    return TableVersionInfo.Load(new KeyValueDBValueReader(tr), _objectDB.FieldHandlerFactory, tableName);
-                }
+                using var tr = _keyValueDB.StartReadOnlyTransaction();
+                var key = TableInfo.BuildKeyForTableVersions(id, version);
+                if (!tr.FindExactKey(key))
+                    throw new BTDBException($"Missing TableVersionInfo Id:{id} Version:{version}");
+                var reader = new SpanReader(tr.GetValue());
+                return TableVersionInfo.Load(ref reader, _objectDB.FieldHandlerFactory, tableName);
             }
 
             public long GetSingletonOid(uint id)
             {
-                using (var tr = _keyValueDB.StartTransaction())
+                using var tr = _keyValueDB.StartTransaction();
+                var len = PackUnpack.LengthVUInt(id);
+                Span<byte> key = stackalloc byte[(int) (TableSingletonsPrefixLen + len)];
+                TableSingletonsPrefix.CopyTo(key);
+                PackUnpack.UnsafePackVUInt(
+                    ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(key), (IntPtr) TableSingletonsPrefixLen),
+                    id, len);
+                if (tr.FindExactKey(key))
                 {
-                    tr.SetKeyPrefix(TableSingletonsPrefix);
-                    var key = new byte[PackUnpack.LengthVUInt(id)];
-                    var ofs = 0;
-                    PackUnpack.PackVUInt(key, ref ofs, id);
-                    if (tr.FindExactKey(key))
-                    {
-                        return (long)new KeyValueDBValueReader(tr).ReadVUInt64();
-                    }
-                    return 0;
+                    return (long) PackUnpack.UnpackVUInt(tr.GetValue());
                 }
+
+                return 0;
             }
 
             public ulong AllocateNewOid()
@@ -317,12 +329,22 @@ namespace BTDB.ODBLayer
 
         internal ulong AllocateNewOid()
         {
-            return (ulong)Interlocked.Increment(ref _lastObjId);
+            return (ulong) Interlocked.Increment(ref _lastObjId);
         }
 
         internal ulong GetLastAllocatedOid()
         {
-            return (ulong)Interlocked.Read(ref _lastObjId);
+            return (ulong) Interlocked.Read(ref _lastObjId);
+        }
+
+        internal ulong AllocateNewDictId()
+        {
+            return (ulong) Interlocked.Increment(ref _lastDictId) - 1; // It should start at 0
+        }
+
+        internal ulong GetLastAllocatedDictId()
+        {
+            return (ulong) Interlocked.Read(ref _lastDictId);
         }
     }
 }

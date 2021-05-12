@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace SimpleTester
 {
 
-    #nullable disable 
+#nullable disable
     public class TestKlass0
     {
         public List<string> Prop0_1 { get; set; }
@@ -20074,6 +20074,6 @@ namespace SimpleTester
             };
         }
     }
-    #nullable restore
+#nullable restore
 }
 

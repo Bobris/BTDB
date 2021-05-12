@@ -250,6 +250,12 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen BleUnS(this IILGen il, IILLabel targetLabel)
+        {
+            il.Emit(OpCodes.Ble_Un_S, targetLabel);
+            return il;
+        }
+
         public static IILGen Blt(this IILGen il, IILLabel targetLabel)
         {
             il.Emit(OpCodes.Blt, targetLabel);
@@ -527,6 +533,33 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Ldind(this IILGen il, Type itemType)
+        {
+            if (itemType == typeof(int))
+                il.Emit(OpCodes.Ldind_I4);
+            else if (itemType == typeof(short))
+                il.Emit(OpCodes.Ldind_I2);
+            else if (itemType == typeof(sbyte))
+                il.Emit(OpCodes.Ldind_I1);
+            else if (itemType == typeof(long))
+                il.Emit(OpCodes.Ldind_I8);
+            else if (itemType == typeof(ushort))
+                il.Emit(OpCodes.Ldind_U2);
+            else if (itemType == typeof(byte))
+                il.Emit(OpCodes.Ldind_U1);
+            else if (itemType == typeof(uint))
+                il.Emit(OpCodes.Ldind_U4);
+            else if (itemType == typeof(float))
+                il.Emit(OpCodes.Ldind_R4);
+            else if (itemType == typeof(double))
+                il.Emit(OpCodes.Ldind_R8);
+            else if (!itemType.IsValueType)
+                il.Emit(OpCodes.Ldind_Ref);
+            else
+                throw new ArgumentOutOfRangeException(nameof(itemType));
+            return il;
+        }
+
         public static IILGen Add(this IILGen il)
         {
             il.Emit(OpCodes.Add);
@@ -565,7 +598,7 @@ namespace BTDB.IL
 
         public static IILGen Callvirt(this IILGen il, Expression<Action> expression)
         {
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
@@ -573,9 +606,9 @@ namespace BTDB.IL
         {
             if (expression.Body is MemberExpression newExpression)
             {
-                return il.Callvirt(((PropertyInfo)newExpression.Member).GetGetMethod(true)!);
+                return il.Callvirt(((PropertyInfo)newExpression.Member).GetAnyGetMethod()!);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Callvirt(methodInfo);
         }
 
@@ -585,7 +618,7 @@ namespace BTDB.IL
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Call(methodInfo);
         }
 
@@ -593,26 +626,26 @@ namespace BTDB.IL
         {
             if (expression.Body is MemberExpression memberExpression)
             {
-                return il.Call(((PropertyInfo)memberExpression.Member).GetGetMethod(true)!);
+                return il.Call(((PropertyInfo)memberExpression.Member).GetAnyGetMethod()!);
             }
 
             if (expression.Body is NewExpression newExpression)
             {
                 return il.Call(newExpression.Constructor);
             }
-            var methodInfo = ((MethodCallExpression) expression.Body).Method;
+            var methodInfo = ((MethodCallExpression)expression.Body).Method;
             return il.Call(methodInfo);
         }
 
         public static IILGen Newobj<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            var constructorInfo = ((NewExpression) expression.Body).Constructor;
+            var constructorInfo = ((NewExpression)expression.Body).Constructor;
             return il.Newobj(constructorInfo);
         }
 
         public static IILGen Ldfld<T>(this IILGen il, Expression<Func<T>> expression)
         {
-            return il.Ldfld((FieldInfo)((MemberExpression) expression.Body).Member);
+            return il.Ldfld((FieldInfo)((MemberExpression)expression.Body).Member);
         }
 
         public static IILGen Newarr(this IILGen il, Type arrayMemberType)
@@ -646,6 +679,22 @@ namespace BTDB.IL
             return il;
         }
 
+        public static IILGen Localloc(this IILGen il)
+        {
+            il.Emit(OpCodes.Localloc);
+            return il;
+        }
+
+        public static IILGen Localloc(this IILGen il, uint length)
+        {
+            il
+                .LdcI4((int)length)
+                .Emit(OpCodes.Conv_U);
+            il
+                .Emit(OpCodes.Localloc);
+            return il;
+        }
+
         public static IILGen Ld(this IILGen il, object? value)
         {
             switch (value)
@@ -659,27 +708,45 @@ namespace BTDB.IL
                 case bool b when b:
                     il.LdcI4(1);
                     break;
-                case Int16 i16:
+                case short i16:
                     il.LdcI4(i16); // there is no instruction for 16b int
                     break;
-                case Int32 i32:
+                case int i32:
                     il.LdcI4(i32);
                     break;
-                case Int64 i64:
+                case long i64:
                     il.LdcI8(i64);
                     break;
-                case Single f:
+                case float f:
                     il.LdcR4(f);
                     break;
-                case Double d:
+                case double d:
                     il.LdcR8(d);
                     break;
-                case String s:
+                case string s:
                     il.Ldstr(s);
                     break;
                 default:
                     throw new ArgumentException($"{value} is not supported.", nameof(value));
             }
+            return il;
+        }
+
+        public static IILGen Ceq(this IILGen il)
+        {
+            il.Emit(OpCodes.Ceq);
+            return il;
+        }
+
+        public static IILGen Cgt(this IILGen il)
+        {
+            il.Emit(OpCodes.Cgt);
+            return il;
+        }
+
+        public static IILGen CgtUn(this IILGen il)
+        {
+            il.Emit(OpCodes.Cgt_Un);
             return il;
         }
     }

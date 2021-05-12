@@ -11,8 +11,8 @@ namespace BTDB.EventStoreLayer
         public StreamEventFileStorage(Stream stream)
         {
             _stream = stream;
-            MaxBlockSize = 4*1024*1024;
-            MaxFileSize = (ulong) (long.MaxValue / MaxBlockSize * MaxBlockSize);
+            MaxBlockSize = 4 * 1024 * 1024;
+            MaxFileSize = (ulong)(long.MaxValue / MaxBlockSize * MaxBlockSize);
         }
 
         public uint MaxBlockSize { get; set; }
@@ -39,7 +39,7 @@ namespace BTDB.EventStoreLayer
 
         public void Dispose()
         {
-            ((IDisposable) _stream).Dispose();
+            ((IDisposable)_stream).Dispose();
         }
     }
 }

@@ -22,7 +22,7 @@ namespace BTDBTest
                 Directory.CreateDirectory("data");
         }
 
-        [Fact(Skip="Takes too long time")]
+        [Fact(Skip = "Takes too long time")]
         public void Reader()
         {
             IEnumerable<KeyValuePair<long, Tick>> flow = TicksGenerator.GetFlow(1000000, KeysType.Random);
@@ -59,8 +59,8 @@ namespace BTDBTest
 
                             if (find)
                             {
-                                var id = Reverse(tr.GetKeyAsByteArray());
-                                var tick = ToTick(tr.GetValueAsByteArray());
+                                var id = Reverse(tr.GetKeyToArray());
+                                var tick = ToTick(tr.GetValue().ToArray());
                                 Assert.Equal(item.Key, id);
                             }
                         }

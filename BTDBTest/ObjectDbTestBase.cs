@@ -6,10 +6,10 @@ using Xunit.Abstractions;
 
 namespace BTDBTest
 {
-    public abstract class ObjectDbTestBase: IDisposable
+    public abstract class ObjectDbTestBase : IDisposable
     {
         protected readonly ITestOutputHelper _output;
-        protected readonly IKeyValueDB _lowDb;
+        protected IKeyValueDB _lowDb;
         protected IObjectDB _db;
 
         protected ObjectDbTestBase(ITestOutputHelper output)
@@ -33,6 +33,19 @@ namespace BTDBTest
         protected void ReopenDb()
         {
             _db.Dispose();
+            OpenDb();
+        }
+
+        protected void ReopenEmptyDb()
+        {
+            _db.Dispose();
+            _lowDb.Dispose();
+            _lowDb = new BTreeKeyValueDB(new KeyValueDBOptions()
+            {
+                CompactorScheduler = null,
+                Compression = new NoCompressionStrategy(),
+                FileCollection = new InMemoryFileCollection()
+            });
             OpenDb();
         }
 

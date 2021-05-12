@@ -71,7 +71,7 @@ namespace BTDB.IL.Caching
             {
                 var v = obj as EnumKey;
                 if (v == null) return false;
-                return _name == v._name && _baseType==v._baseType && _literals.SequenceEqual(v._literals);
+                return _name == v._name && _baseType == v._baseType && _literals.SequenceEqual(v._literals);
             }
         }
 

@@ -7,85 +7,78 @@ namespace BTDB.ODBLayer
     public class DBWriterCtx : IDBWriterCtx
     {
         readonly IInternalObjectDBTransaction _transaction;
-        readonly AbstractBufferedWriter _writer;
         Dictionary<object, int>? _objectIdMap;
         int _lastId;
 
-        public DBWriterCtx(IInternalObjectDBTransaction transaction, AbstractBufferedWriter writer)
+        public DBWriterCtx(IInternalObjectDBTransaction transaction)
         {
             _transaction = transaction;
-            _writer = writer;
         }
 
-        public bool WriteObject(object @object)
+        public bool WriteObject(ref SpanWriter writer, object @object)
         {
-            return CommonWriteObject(@object, false, true);
+            return CommonWriteObject(ref writer, @object, false, true);
         }
 
-        bool CommonWriteObject(object? @object, bool autoRegister, bool forceInline)
+        bool CommonWriteObject(ref SpanWriter writer, object? @object, bool autoRegister, bool forceInline)
         {
             if (@object == null)
             {
-                _writer.WriteVInt64(0);
+                writer.WriteVInt64(0);
                 return false;
             }
             var oid = _transaction.StoreIfNotInlined(@object, autoRegister, forceInline);
             if (oid != ulong.MaxValue)
             {
-                _writer.WriteVInt64((long)oid);
+                writer.WriteVInt64((long)oid);
                 return false;
             }
             if (_objectIdMap == null) _objectIdMap = new Dictionary<object, int>();
             if (_objectIdMap.TryGetValue(@object, out var cid))
             {
-                _writer.WriteVInt64(-cid);
+                writer.WriteVInt64(-cid);
                 return false;
             }
             _lastId++;
             _objectIdMap.Add(@object, _lastId);
-            _writer.WriteVInt64(-_lastId);
+            writer.WriteVInt64(-_lastId);
             return true;
         }
 
-        public void WriteNativeObject(object @object)
+        public void WriteNativeObject(ref SpanWriter writer, object @object)
         {
-            if (!CommonWriteObject(@object, true, true)) return;
-            _transaction.WriteInlineObject(@object, this);
+            if (!CommonWriteObject(ref writer, @object, true, true)) return;
+            _transaction.WriteInlineObject(ref writer, @object, this);
         }
 
-        public void WriteNativeObjectPreventInline(object @object)
+        public void WriteNativeObjectPreventInline(ref SpanWriter writer, object @object)
         {
-            if (!CommonWriteObject(@object, true, false)) return;
-            _transaction.WriteInlineObject(@object, this);
+            if (!CommonWriteObject(ref writer, @object, true, false)) return;
+            _transaction.WriteInlineObject(ref writer, @object, this);
         }
 
-        public AbstractBufferedWriter Writer()
+        public void WriteEncryptedString(ref SpanWriter outerWriter, EncryptedString value)
         {
-            return _writer;
-        }
-
-        public void WriteEncryptedString(EncryptedString value)
-        {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteString(value);
             var cipher = _transaction.Owner.GetSymmetricCipher();
-            var plain = writer.Data.AsSyncReadOnlySpan();
+            var plain = writer.GetSpan();
             var encSize = cipher.CalcEncryptedSizeFor(plain);
             var enc = new byte[encSize];
             cipher.Encrypt(plain, enc);
-            _writer.WriteByteArray(enc);
+            outerWriter.WriteByteArray(enc);
         }
 
-        public void WriteOrderedEncryptedString(EncryptedString value)
+        public void WriteOrderedEncryptedString(ref SpanWriter outerWriter, EncryptedString value)
         {
-            var writer = new ByteBufferWriter();
+            var writer = new SpanWriter();
             writer.WriteString(value);
             var cipher = _transaction.Owner.GetSymmetricCipher();
-            var plain = writer.Data.AsSyncReadOnlySpan();
+            var plain = writer.GetSpan();
             var encSize = cipher.CalcOrderedEncryptedSizeFor(plain);
             var enc = new byte[encSize];
             cipher.OrderedEncrypt(plain, enc);
-            _writer.WriteByteArray(enc);
+            outerWriter.WriteByteArray(enc);
         }
 
         public IInternalObjectDBTransaction GetTransaction()

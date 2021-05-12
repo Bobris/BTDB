@@ -2,6 +2,115 @@
 
 ## [unreleased]
 
+## 26.2.1
+
+### Fixed
+
+Random crash in IsFreeContentNeeded due to multiple threads could run this in parallel.
+
+## 26.2.0
+
+### Added
+
+In debug mode throws when using in listing by partial key excluded start proposition. In release mode kept current behavior.
+
+### Fixed
+
+IOC Nullable values as instance dependencies.
+
+## 26.1.1
+
+### Fixed
+
+Deleting indirect will not throw when value is null.
+
+## 26.1.0
+
+### Added
+
+ODbDump has new command `findsplitbrain` which can find first commit when content of relation in two instances of DB diverted - DBs needs to contain enough preserved history
+
+`IRelation` has new `SerializeInsert` method which allows speed up DB insert by preparing simple CreateKeyValue commands ahead of writing transaction.
+
+## 26.0.0
+
+### Fixed
+
+Compactor sometimes removed unused files too late.
+
+### Removed
+
+`ReadOnlyListArrayWrapper` not used internally anymore and it is too confusing.
+
+### Added
+
+New methods`TransactionLogCreated` and `FileMarkedForDelete` in `IKeyValueDBLogger` for logging file collection operations
+
+## 25.5.0
+
+### Fixed
+
+PositionLessStreamProxy supports also stream which does not read all bytes, but are not at the end.
+
+## 25.4.0
+
+### Added
+
+Default conversion from `T` to `IList<T>`.
+
+## 25.3.0
+
+### Fixed
+
+Regression with Kvi file contain garbage at end. Enable `LenientOpen` to allow open DB with this corruption.
+
+## 25.2.0
+
+### Added
+
+netcoreapp3.1 framework could be targeted again.
+
+## 25.1.0
+
+### Added
+
+`LenientOpen` to `KeyValueDBOptions` (default false), in strict mode it does not try to recover as much as possible data, but starts with empty DB. When such problem is detected it will call new method `LogWarning` from `IKeyValueDBLogger`.
+Also you can newly pass implementation of `IKeyValueDBLogger` into `Logger` field in `KeyValueDBOptions`.
+
+## 25.0.1
+
+### Fixed
+
+Regression in SpanReader.CheckMagic which caused incomplete DB open in some cases.
+
+Detect transaction leaks for writing transactions as well.
+
+## 25.0.0
+
+### Breaking change
+
+Whole code was spanificated and cleaned from old unused in production parts.
+
+### Added
+
+IOC Container Build can verify that Singletons does not depend on transient objects.
+
+## 24.8.0
+
+### Added
+
+Some missing IL Helpers.
+
+`Dependency` attribute inheriting from `NotStored` attribute.
+
+## 24.7.0
+
+### Added
+
+Support for serialization of type `StringValues` from Microsoft.Extensions.Primitives.
+
+Support for serialization of properties with private setter in base class.
+
 ## 24.6.1
 
 ### Fixed

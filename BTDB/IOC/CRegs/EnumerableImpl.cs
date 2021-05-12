@@ -43,13 +43,13 @@ namespace BTDB.IOC.CRegs
             foreach (var pair in _list)
             {
                 context.BuildContext = pair.Key;
-                result|=pair.Value.IsCorruptingILStack(context);
+                result |= pair.Value.IsCorruptingILStack(context);
             }
             context.BuildContext = backupCtx;
             return result;
         }
 
-        public IILLocal GenMain(IGenerationContext context)
+        public IILLocal? GenMain(IGenerationContext context)
         {
             var il = context.IL;
             var resultLocal = il.DeclareLocal(_resultType.MakeArrayType());
@@ -99,6 +99,20 @@ namespace BTDB.IOC.CRegs
                 nextCtx = nextCtx.IncrementEnumerable();
             }
             context.BuildContext = backupCtx;
+        }
+
+        public bool IsSingletonSafe()
+        {
+            foreach (var (_, reg) in _list)
+            {
+                if (!reg.IsSingletonSafe()) return false;
+            }
+
+            return true;
+        }
+
+        public void Verify(ContainerVerification options, ContainerImpl container)
+        {
         }
     }
 }

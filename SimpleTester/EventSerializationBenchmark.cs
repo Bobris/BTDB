@@ -6,7 +6,6 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.ConsoleArguments;
 using BenchmarkDotNet.Loggers;
-using BenchmarkDotNet.Order;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BTDB.Buffer;
@@ -69,9 +68,9 @@ namespace SimpleTester
             var target = benchmark.Descriptor.Type;
             var instance = Activator.CreateInstance(benchmark.Descriptor.Type);
             var param = benchmark.Parameters[0];
-            target.GetProperty(param.Definition.Name).SetMethod.Invoke(instance, new[] { param.Value });
+            target.GetProperty(param.Definition.Name)!.SetMethod!.Invoke(instance, new[] { param.Value });
             var propName = benchmark.DisplayInfo.Replace("Serialization", "").Replace("Deserialization", "") + "ByteSize";
-            return target.GetProperty(propName).GetMethod.Invoke(instance, new object[0]).ToString();
+            return target.GetProperty(propName)!.GetMethod!.Invoke(instance, new object[0])!.ToString()!;
         }
 
         public bool IsAvailable(Summary summary)
@@ -113,32 +112,32 @@ namespace SimpleTester
             {
                 Add(ConfigParser.Parse(new[] { "diagnosers=Memory" }, new ConsoleLogger()).config);
                 UnionRule = ConfigUnionRule.AlwaysUseLocal;
-                Add(DefaultConfig.Instance.GetJobs().ToArray());
-                Add(DefaultConfig.Instance.GetAnalysers().ToArray());
-                Add(DefaultConfig.Instance.GetExporters().ToArray());
-                Add(DefaultConfig.Instance.GetDiagnosers().ToArray());
-                Add(DefaultConfig.Instance.GetLoggers().ToArray());
-                Add(DefaultConfig.Instance.GetValidators().ToArray());
+                AddJob(DefaultConfig.Instance.GetJobs().ToArray());
+                AddAnalyser(DefaultConfig.Instance.GetAnalysers().ToArray());
+                AddExporter(DefaultConfig.Instance.GetExporters().ToArray());
+                AddDiagnoser(DefaultConfig.Instance.GetDiagnosers().ToArray());
+                AddLogger(DefaultConfig.Instance.GetLoggers().ToArray());
+                AddValidator(DefaultConfig.Instance.GetValidators().ToArray());
 
-                Add(new ColumnOrderFirst(new TagColumn("Implementation", name => name.Replace("Serialization", "").Replace("Deserialization", ""))));
-                Add(new ColumnOrderFirst(new TagColumn("Direction", name => name.Contains("Serialization") ? "Serialization" : "Deserialization")));
-                Add(new ByteSizeColumn());
-                Add(StatisticColumn.Median);
-                Add(StatisticColumn.StdDev);
-                Add(StatisticColumn.OperationsPerSecond);
+                AddColumn(new ColumnOrderFirst(new TagColumn("Implementation", name => name.Replace("Serialization", "").Replace("Deserialization", ""))));
+                AddColumn(new ColumnOrderFirst(new TagColumn("Direction", name => name.Contains("Serialization") ? "Serialization" : "Deserialization")));
+                AddColumn(new ByteSizeColumn());
+                AddColumn(StatisticColumn.Median);
+                AddColumn(StatisticColumn.StdDev);
+                AddColumn(StatisticColumn.OperationsPerSecond);
             }
         }
 
-        IEventSerializer _eventSerializer;
-        IEventDeserializer _eventDeserializer;
-        Event _ev;
+        IEventSerializer? _eventSerializer;
+        IEventDeserializer? _eventDeserializer;
+        Event? _ev;
         ByteBuffer _btdbSerializedData;
-        MemoryStream _memStream;
-        RuntimeTypeModel Serializer;
-        Type _eventType;
+        MemoryStream? _memStream;
+        RuntimeTypeModel? _serializer;
+        Type? _eventType;
 
         [Params("Simple", "Complex")]
-        public string Complexity { get; set; }
+        public string? Complexity { get; set; }
 
         [GlobalSetup]
         public void Setup()
@@ -151,24 +150,22 @@ namespace SimpleTester
             // BTDB Setup
             _eventSerializer = new EventSerializer();
             _eventDeserializer = new EventDeserializer();
-            bool hasMedataData;
-            var meta = _eventSerializer.Serialize(out hasMedataData, _ev).ToAsyncSafe();
+            var meta = _eventSerializer.Serialize(out _, _ev).ToAsyncSafe();
             _eventSerializer.ProcessMetadataLog(meta);
             _eventDeserializer.ProcessMetadataLog(meta);
-            _btdbSerializedData = _eventSerializer.Serialize(out hasMedataData, _ev).ToAsyncSafe();
+            _btdbSerializedData = _eventSerializer.Serialize(out _, _ev).ToAsyncSafe();
             BtdbByteSize = _btdbSerializedData.Length;
-            object obj;
-            _eventDeserializer.Deserialize(out obj, _btdbSerializedData);
+            _eventDeserializer.Deserialize(out object obj, _btdbSerializedData);
             obj.Should().BeEquivalentTo(_ev);
 
             // ProtoBuf Setup
-            Serializer = ModelFactory.CreateModel();
+            _serializer = ModelFactory.CreateModel();
             _eventType = typeof(Event);
             _memStream = new MemoryStream();
-            Serializer.Serialize(_memStream, _ev);
+            _serializer.Serialize(_memStream, _ev);
             ProtoBufByteSize = (int)_memStream.Length;
             _memStream.Position = 0;
-            Serializer.Deserialize(_memStream, null, _eventType).Should().BeEquivalentTo(_ev);
+            _serializer.Deserialize(_memStream, null, _eventType).Should().BeEquivalentTo(_ev);
 
             BtdbSerialization();
             BtdbDeserialization();
@@ -182,29 +179,27 @@ namespace SimpleTester
         [Benchmark]
         public void BtdbSerialization()
         {
-            bool hasMetaData;
-            _eventSerializer.Serialize(out hasMetaData, _ev);
+            _eventSerializer!.Serialize(out _, _ev!);
         }
 
         [Benchmark]
         public void BtdbDeserialization()
         {
-            object obj;
-            _eventDeserializer.Deserialize(out obj, _btdbSerializedData);
+            _eventDeserializer!.Deserialize(out object _, _btdbSerializedData);
         }
 
         [Benchmark]
         public void ProtoBufSerialization()
         {
-            _memStream.Position = 0;
-            Serializer.Serialize(_memStream, _ev);
+            _memStream!.Position = 0;
+            _serializer!.Serialize(_memStream, _ev);
         }
 
         [Benchmark]
         public void ProtoBufDeserialization()
         {
-            _memStream.Position = 0;
-            Serializer.Deserialize(_memStream, null, _eventType);
+            _memStream!.Position = 0;
+            _serializer!.Deserialize(_memStream, null, _eventType);
         }
     }
 }

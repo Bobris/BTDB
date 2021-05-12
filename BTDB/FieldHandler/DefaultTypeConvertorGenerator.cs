@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using BTDB.Buffer;
 using BTDB.Encrypted;
 using BTDB.IL;
@@ -69,6 +70,58 @@ namespace BTDB.FieldHandler
                 return generator;
             }
             if (from.IsEnum && to.IsEnum) return GenerateEnum2EnumConversion(from, to);
+            var toIList = to.SpecializationOf(typeof(IList<>));
+            if (toIList is { } && GenerateConversion(from, toIList.GenericTypeArguments[0]) is { } itemConversion)
+            {
+                var itemType = toIList.GenericTypeArguments[0];
+                return il =>
+                {
+                    itemConversion.Invoke(il);
+                    var listType = typeof(List<>).MakeGenericType(itemType);
+                    if (itemType.IsValueType)
+                    {
+                        var local = il.DeclareLocal(itemType);
+                        var localList = il.DeclareLocal(listType);
+                        il
+                            .Stloc(local)
+                            .LdcI4(1)
+                            .Newobj(listType.GetConstructors().First(c =>
+                                c.GetParameters() is {Length: 1} p && p[0].ParameterType == typeof(int)))
+                            .Stloc(localList)
+                            .Ldloc(localList)
+                            .Ldloc(local)
+                            .Call(listType.GetMethod(nameof(List<int>.Add), new[] {itemType})!)
+                            .Ldloc(localList)
+                            .Castclass(to);
+                    }
+                    else
+                    {
+                        var local = il.DeclareLocal(itemType);
+                        var localList = il.DeclareLocal(listType);
+                        var finishLabel = il.DefineLabel();
+                        var emptyListLabel = il.DefineLabel();
+                        il
+                            .Stloc(local)
+                            .Ldloc(local)
+                            .BrfalseS(emptyListLabel)
+                            .LdcI4(1)
+                            .Newobj(listType.GetConstructors().First(c =>
+                                c.GetParameters() is {Length: 1} p && p[0].ParameterType == typeof(int)))
+                            .Stloc(localList)
+                            .Ldloc(localList)
+                            .Ldloc(local)
+                            .Call(listType.GetMethod(nameof(List<int>.Add), new[] {itemType})!)
+                            .Ldloc(localList)
+                            .Br(finishLabel)
+                            .Mark(emptyListLabel)
+                            .LdcI4(0)
+                            .Newobj(listType.GetConstructors().First(c =>
+                                c.GetParameters() is {Length: 1} p && p[0].ParameterType == typeof(int)))
+                            .Mark(finishLabel)
+                            .Castclass(to);
+                    }
+                };
+            }
             return null;
         }
 

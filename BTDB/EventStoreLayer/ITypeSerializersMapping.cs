@@ -4,8 +4,8 @@ namespace BTDB.EventStoreLayer
 {
     public interface ITypeSerializersMapping : IDescriptorSerializerContext
     {
-        void LoadTypeDescriptors(AbstractBufferedReader reader);
-        object LoadObject(AbstractBufferedReader reader);
+        void LoadTypeDescriptors(ref SpanReader reader);
+        object? LoadObject(ref SpanReader reader);
         void Reset();
     }
 }

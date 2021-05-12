@@ -1,10 +1,17 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Reflection;
 using BTDB.Collections;
 
 namespace BTDB.IOC
 {
+    [Flags]
+    public enum ContainerVerification
+    {
+        SingletonsUsingOnlySingletons = 1,
+        None = 0,
+        All = Int32.MaxValue
+    }
+    
     public class ContainerBuilder
     {
         StructList<IRegistration> _registrations;
@@ -53,8 +60,12 @@ namespace BTDB.IOC
 
         public IContainer Build()
         {
-            return new ContainerImpl(_registrations.AsReadOnlySpan());
+            return new ContainerImpl(_registrations.AsReadOnlySpan(), ContainerVerification.None);
         }
 
+        public IContainer BuildAndVerify(ContainerVerification options = ContainerVerification.All)
+        {
+            return new ContainerImpl(_registrations.AsReadOnlySpan(), options);
+        }
     }
 }

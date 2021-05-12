@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
 namespace BTDB.SnappyCompression
@@ -9,10 +11,8 @@ namespace BTDB.SnappyCompression
 
         static bool Equal4(in ReadOnlySpan<byte> buf, int o1, int o2)
         {
-            return buf[o1] == buf[o2] &&
-                   buf[o1 + 1] == buf[o2 + 1] &&
-                   buf[o1 + 2] == buf[o2 + 2] &&
-                   buf[o1 + 3] == buf[o2 + 3];
+            ref var b = ref MemoryMarshal.GetReference(buf);
+            return Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o1)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.AddByteOffset(ref b, (IntPtr)o2));
         }
 
         static bool EmitLiteral(Span<byte> dst, ref int d, ref int dL, ReadOnlySpan<byte> src, int s, int sL)
@@ -62,7 +62,7 @@ namespace BTDB.SnappyCompression
                 d += 5;
                 dL -= 5;
             }
-            src.Slice(s,sL).CopyTo(dst.Slice(d));
+            src.Slice(s, sL).CopyTo(dst.Slice(d));
             d += sL;
             dL -= sL;
             return true;
@@ -165,7 +165,7 @@ namespace BTDB.SnappyCompression
                 tableSize *= 2;
             }
             var table = new int[tableSize];
-            for (int i = 0; i < tableSize; i++)
+            for (var i = 0; i < tableSize; i++)
             {
                 table[i] = -1;
             }
@@ -181,7 +181,7 @@ namespace BTDB.SnappyCompression
                 {
                     s++;
                     sL--;
-                    if (sL>3)
+                    if (sL > 3)
                     {
                         v = (v >> 8) | ((uint)src[s + 3]) << 24;
                         goto nextfast;

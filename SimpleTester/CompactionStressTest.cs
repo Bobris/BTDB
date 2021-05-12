@@ -64,13 +64,13 @@ namespace SimpleTester
                 while (true)
                 {
                     var transaction = lowDb.StartReadOnlyTransaction();
-                    transaction.FindFirstKey();
+                    transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
                     var keyValueCount = transaction.GetKeyValueCount();
                     for (long kv = 0; kv < keyValueCount; kv++)
                     {
                         transaction.GetKey();
                         transaction.GetValue();
-                        transaction.FindNextKey();
+                        transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                         await Task.Delay(sleep, cancellationToken);
 
                         if (cancellationToken.IsCancellationRequested)

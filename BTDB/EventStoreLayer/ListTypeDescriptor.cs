@@ -27,8 +27,8 @@ namespace BTDB.EventStoreLayer
             _itemType = GetItemType(type);
         }
 
-        public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
-            :this(typeSerializers, nestedDescriptorReader(reader))
+        public ListTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+            : this(typeSerializers, nestedDescriptorReader(ref reader))
         {
         }
 
@@ -57,7 +57,7 @@ namespace BTDB.EventStoreLayer
         {
 #pragma warning disable RECS0025 // Non-readonly field referenced in 'GetHashCode()'
             // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return 33 *_itemDescriptor!.GetHashCode();
+            return 33 * _itemDescriptor!.GetHashCode();
 #pragma warning restore RECS0025 // Non-readonly field referenced in 'GetHashCode()'
         }
 
@@ -138,7 +138,7 @@ namespace BTDB.EventStoreLayer
                     .LdcI4(0)
                     .Stloc(localIndex)
                     .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                     .ConvI4()
                     .Dup()
                     .Stloc(localCount)
@@ -171,8 +171,8 @@ namespace BTDB.EventStoreLayer
             }
             else
             {
-                var isSet = targetType.InheritsOrImplements( typeof(ISet<>));
-                var listType = (isSet?typeof(HashSetWithDescriptor<>):typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
+                var isSet = targetType.InheritsOrImplements(typeof(ISet<>));
+                var listType = (isSet ? typeof(HashSetWithDescriptor<>) : typeof(ListWithDescriptor<>)).MakeGenericType(itemType);
 
                 if (!targetType.IsAssignableFrom(listType))
                     throw new NotSupportedException($"List type {listType.ToSimpleName()} is not assignable to {targetType.ToSimpleName()}.");
@@ -183,7 +183,7 @@ namespace BTDB.EventStoreLayer
                     .Ldnull()
                     .Stloc(localList)
                     .Do(pushReader)
-                    .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                    .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                     .ConvI4()
                     .Dup()
                     .Stloc(localCount)
@@ -289,7 +289,7 @@ namespace BTDB.EventStoreLayer
                                 .Callvirt(currentGetter!);
                         }
                     })
-                    .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null))
+                    .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!)
                     .Br(next)
                     .Mark(finish)
                     .Finally()
@@ -336,9 +336,9 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
-            nestedDescriptorWriter(writer, _itemDescriptor);
+            nestedDescriptorWriter(ref writer, _itemDescriptor!);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue, Type valueType)
@@ -357,7 +357,7 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localCollection)
                 .Brtrue(notnull)
                 .Do(pushWriter)
-                .Callvirt(() => default(AbstractBufferedWriter).WriteByteZero())
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
                 .Br(completeFinish)
                 .Mark(notnull)
                 .Do(pushWriter)
@@ -365,7 +365,7 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
-                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
             {
                 var typeAsList = typeof(List<>).MakeGenericType(itemType);
                 var getEnumeratorMethod = typeAsList.GetMethods()
@@ -482,7 +482,7 @@ namespace BTDB.EventStoreLayer
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .Stloc(localCount)

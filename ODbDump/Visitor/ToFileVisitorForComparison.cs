@@ -15,7 +15,7 @@ namespace ODbDump.Visitor
         Crc32
     }
 
-    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison
+    class ToFilesVisitorForComparison : ToConsoleVisitorForComparison, IDisposable
     {
         readonly bool _hashStrings;
         readonly HashAlgorithm? _hashAlgorithm;
@@ -62,7 +62,7 @@ namespace ODbDump.Visitor
             return true;
         }
 
-        public override void ScalarAsObject(object content)
+        public override void ScalarAsObject(object? content)
         {
             if (_hashStrings && content is string str)
             {

@@ -7,39 +7,39 @@ jobs:
       vmImage: "ubuntu-latest"
     steps:
       - task: UseDotNet@2
-        displayName: "Use .NET Core sdk 3.1"
+        displayName: "Use .NET sdk 5.0"
         inputs:
           packageType: sdk
-          version: 3.1.x
+          version: 5.0.x
           includePreviewVersions: true
       - task: DotNetCoreCLI@2
         inputs:
           command: build
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test
           projects: "**/*Test/*.csproj"
           testRunTitle: Linux
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
 
   - job: "netcore_win"
     pool:
       vmImage: "windows-latest"
     steps:
       - task: UseDotNet@2
-        displayName: "Use .NET Core sdk 3.1"
+        displayName: "Use .NET sdk 5.0"
         inputs:
           packageType: sdk
-          version: 3.1.x
+          version: 5.0.x
           includePreviewVersions: true
       - task: DotNetCoreCLI@2
         inputs:
           command: build
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"
       - task: DotNetCoreCLI@2
         inputs:
           command: test
           projects: "**/*Test/*.csproj"
           testRunTitle: Windows
-          arguments: "--configuration $(buildConfiguration)"
+          arguments: "-f net5.0 -c $(buildConfiguration)"

@@ -6,24 +6,22 @@ namespace BTDB.FieldHandler
     public interface IReaderCtx
     {
         // Returns true if actual content needs to be deserialized
-        bool ReadObject(out object @object);
+        bool ReadObject(ref SpanReader reader, out object @object);
         // Register last deserialized object
         void RegisterObject(object @object);
-        void ReadObjectDone();
-        object ReadNativeObject();
+        void ReadObjectDone(ref SpanReader reader);
+        object ReadNativeObject(ref SpanReader reader);
         // Returns true if actual content needs to be deserialized
-        bool SkipObject();
-        void SkipNativeObject();
+        bool SkipObject(ref SpanReader reader);
+        void SkipNativeObject(ref SpanReader reader);
 
-        void FreeContentInNativeObject();
+        void FreeContentInNativeObject(ref SpanReader reader);
         void RegisterDict(ulong dictId);
         void RegisterOid(ulong oid);
 
-        AbstractBufferedReader Reader();
-
-        EncryptedString ReadEncryptedString();
-        void SkipEncryptedString();
-        EncryptedString ReadOrderedEncryptedString();
-        void SkipOrderedEncryptedString();
+        EncryptedString ReadEncryptedString(ref SpanReader reader);
+        void SkipEncryptedString(ref SpanReader reader);
+        EncryptedString ReadOrderedEncryptedString(ref SpanReader reader);
+        void SkipOrderedEncryptedString(ref SpanReader reader);
     }
 }

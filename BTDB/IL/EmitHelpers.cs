@@ -14,12 +14,12 @@ namespace BTDB.IL
     {
         public static MethodInfo GetMethodInfo(Expression<Action> expression)
         {
-            return ((MethodCallExpression) expression.Body).Method;
+            return ((MethodCallExpression)expression.Body).Method;
         }
 
         public static T CreateDelegate<T>(this MethodInfo mi) where T : class
         {
-            return (T) (object) Delegate.CreateDelegate(typeof(T), mi);
+            return (T)(object)Delegate.CreateDelegate(typeof(T), mi);
         }
 
         [return: NotNullIfNotNull("type")]
@@ -160,7 +160,7 @@ namespace BTDB.IL
                 typeof(PropertyChangedEventHandler));
             eventBuilder.SetAddOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, true));
             eventBuilder.SetRemoveOnMethod(GenerateAddRemoveEvent(typeBuilder, fieldBuilder, false));
-            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", null, new[] {typeof(string)},
+            var methodBuilder = typeBuilder.DefineMethod("RaisePropertyChanged", null, new[] { typeof(string) },
                 MethodAttributes.Family);
             var ilGenerator = methodBuilder.Generator;
             ilGenerator.DeclareLocal(typeof(PropertyChangedEventHandler));
@@ -186,7 +186,7 @@ namespace BTDB.IL
             Type typePropertyChangedEventHandler = typeof(PropertyChangedEventHandler);
             EventInfo eventPropertyChanged = typeof(INotifyPropertyChanged).GetEvent("PropertyChanged");
             var methodBuilder = typeBuilder.DefineMethod((add ? "add" : "remove") + "_PropertyChanged",
-                typeof(void), new[] {typePropertyChangedEventHandler},
+                typeof(void), new[] { typePropertyChangedEventHandler },
                 MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName |
                 MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Final);
             var ilGenerator = methodBuilder.Generator;
@@ -277,8 +277,8 @@ namespace BTDB.IL
                 }
             }
 
-            var equalsMethod = type.GetMethod("Equals", new[] {type, type})
-                               ?? type.GetMethod("op_Equality", new[] {type, type});
+            var equalsMethod = type.GetMethod("Equals", new[] { type, type })
+                               ?? type.GetMethod("op_Equality", new[] { type, type });
             if (equalsMethod != null)
             {
                 loadLeft(ilGenerator);
@@ -306,15 +306,15 @@ namespace BTDB.IL
                 var attributeArgument = nullable.ConstructorArguments[0];
                 if (attributeArgument.ArgumentType == typeof(byte[]))
                 {
-                    var args = (ReadOnlyCollection<CustomAttributeTypedArgument>) attributeArgument.Value;
+                    var args = (ReadOnlyCollection<CustomAttributeTypedArgument>)attributeArgument.Value;
                     if (args!.Count > 0 && args[0].ArgumentType == typeof(byte))
                     {
-                        return (byte) args[0].Value! == 2;
+                        return (byte)args[0].Value! == 2;
                     }
                 }
                 else if (attributeArgument.ArgumentType == typeof(byte))
                 {
-                    return (byte) attributeArgument.Value! == 2;
+                    return (byte)attributeArgument.Value! == 2;
                 }
             }
 
@@ -325,10 +325,28 @@ namespace BTDB.IL
                 context.ConstructorArguments.Count == 1 &&
                 context.ConstructorArguments[0].ArgumentType == typeof(byte))
             {
-                return (byte) context.ConstructorArguments[0].Value! == 2;
+                return (byte)context.ConstructorArguments[0].Value! == 2;
             }
 
             return false;
+        }
+
+        public static MethodInfo? GetAnyGetMethod(this PropertyInfo pi)
+        {
+            var res = pi.GetGetMethod(true);
+
+            if (res == null)
+                res = pi.DeclaringType?.GetProperty(pi.Name)?.GetGetMethod(true);
+            return res;
+        }
+
+        public static MethodInfo? GetAnySetMethod(this PropertyInfo pi)
+        {
+            var res = pi.GetSetMethod(true);
+
+            if (res == null)
+                res = pi.DeclaringType?.GetProperty(pi.Name)?.GetSetMethod(true);
+            return res;
         }
     }
 }

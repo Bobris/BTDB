@@ -11,12 +11,15 @@ namespace BTDB.BTreeLib
         [FieldOffset(1)]
         internal byte _childCount;
         [FieldOffset(2)]
-        internal ushort _keyPrefixLength;
+        internal ushort _keyPrefixLength; // must be zero for branches
         [FieldOffset(4)]
         internal int _referenceCount;
         // Next field is only for Branches because for Leafs it is equal to _childCount
         [FieldOffset(8)]
         internal ulong _recursiveChildCount;
+
+        public const int LeafHeaderSize = 8;
+        public const int BranchHeaderSize = 16;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void Reference()
@@ -33,13 +36,13 @@ namespace BTDB.BTreeLib
         public bool IsNodeLeaf
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_nodeType & NodeType12.IsLeaf) == NodeType12.IsLeaf;
+            get => (_nodeType & NodeType12.IsLeaf) != 0;
         }
 
         public bool HasLongKeys
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_nodeType & NodeType12.HasLongKeys) == NodeType12.HasLongKeys;
+            get => (_nodeType & NodeType12.HasLongKeys) != 0;
         }
 
         public uint Size

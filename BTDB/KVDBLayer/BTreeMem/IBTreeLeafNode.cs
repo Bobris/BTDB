@@ -1,11 +1,11 @@
-using BTDB.Buffer;
+using System;
 
 namespace BTDB.KVDBLayer.BTreeMem
 {
     interface IBTreeLeafNode
     {
-        ByteBuffer GetKey(int idx);
-        ByteBuffer GetMemberValue(int idx);
-        void SetMemberValue(int idx, ByteBuffer value);
+        ReadOnlySpan<byte> GetKey(int idx);
+        ReadOnlySpan<byte> GetMemberValue(int idx);
+        void SetMemberValue(int idx, in ReadOnlySpan<byte> value);
     }
 }

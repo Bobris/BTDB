@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BTDB.Collections;
+using BTDB.KVDBLayer;
 
 namespace BTDB.IOC
 {
@@ -54,7 +55,7 @@ namespace BTDB.IOC
                 _specifics.Add(typeof(T), specific);
             }
 
-            return (T) specific;
+            return (T)specific;
         }
 
         public IEnumerable<INeed> NeedsForConstructor(ConstructorInfo constructor)
@@ -78,7 +79,7 @@ namespace BTDB.IOC
         {
             foreach (var propertyInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (propertyInfo.GetSetMethod(true) == null) continue;
+                if (propertyInfo.GetAnySetMethod() == null) continue;
                 var dependencyAttribute = propertyInfo.GetCustomAttribute<DependencyAttribute>();
                 if (dependencyAttribute == null && !autowired) continue;
                 yield return new Need
@@ -108,7 +109,7 @@ namespace BTDB.IOC
         {
             var needs = needsEnumerable.ToArray();
             var regs = needs.Select(ResolveNeed).ToArray();
-            var parsLocals = new StructList<IILLocal>();
+            var parsLocals = new StructList<IILLocal?>();
             parsLocals.Reserve((uint)regs.Length);
             var index = 0;
             foreach (var reg in regs)
@@ -258,7 +259,7 @@ namespace BTDB.IOC
             {
                 if (need.Kind == NeedKind.CReg)
                 {
-                    GatherNeeds(((ICRegILGen) need.Key)!, processed);
+                    GatherNeeds(((ICRegILGen)need.Key)!, processed);
                     continue;
                 }
 
@@ -368,6 +369,11 @@ namespace BTDB.IOC
             {
                 yield break;
             }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
+            }
         }
 
         ICRegILGen AddConstant(object? obj, Type type)
@@ -384,7 +390,7 @@ namespace BTDB.IOC
             }
 
             _constants.Add(tuple);
-            found:
+        found:
             return new ConstantImpl(tuple);
         }
 
@@ -413,7 +419,7 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var constants = ((GenerationContext) context)._constants;
+                var constants = ((GenerationContext)context)._constants;
                 if (constants.Count == 1)
                 {
                     context.IL.Ldarg(0);
@@ -428,6 +434,11 @@ namespace BTDB.IOC
             public IEnumerable<INeed> GetNeeds(IGenerationContext context)
             {
                 yield break;
+            }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
             }
         }
 
@@ -456,14 +467,19 @@ namespace BTDB.IOC
 
             public IILLocal? GenMain(IGenerationContext context)
             {
-                var constants = ((GenerationContext) context)._constants;
-                context.IL.Ldarg((ushort) (_idx + (constants.Count > 0 ? 1 : 0)));
+                var constants = ((GenerationContext)context)._constants;
+                context.IL.Ldarg((ushort)(_idx + (constants.Count > 0 ? 1 : 0)));
                 return null;
             }
 
             public IEnumerable<INeed> GetNeeds(IGenerationContext context)
             {
                 yield break;
+            }
+
+            public bool IsSingletonSafe()
+            {
+                return true;
             }
         }
 
@@ -522,6 +538,26 @@ namespace BTDB.IOC
             }
 
             IL!.Ret();
+        }
+
+        public void VerifySingletonUsingOnlySingletons(Type singletonType)
+        {
+            GatherNeeds(_registration,
+                new HashSet<Tuple<IBuildContext, ICRegILGen>>(ComparerProcessingContext.Instance));
+            foreach (var need in _registration.GetNeeds(this))
+            {
+                if (need.Kind == NeedKind.CReg)
+                {
+                    continue;
+                }
+
+                var k = new Tuple<IBuildContext, INeed>(_buildContext, need);
+                if (!_resolvers[k].IsSingletonSafe())
+                {
+                    throw new BTDBException("Singleton " + singletonType.ToSimpleName() + " dependency " +
+                                            need.ClrType.ToSimpleName() + " is not singleton");
+                }
+            }
         }
     }
 }

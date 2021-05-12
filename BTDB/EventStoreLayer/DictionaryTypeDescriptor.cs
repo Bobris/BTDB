@@ -31,8 +31,8 @@ namespace BTDB.EventStoreLayer
             _valueType = genericArguments[1];
         }
 
-        public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, AbstractBufferedReader reader, Func<AbstractBufferedReader, ITypeDescriptor> nestedDescriptorReader)
-            : this(typeSerializers, nestedDescriptorReader(reader), nestedDescriptorReader(reader))
+        public DictionaryTypeDescriptor(ITypeDescriptorCallbacks typeSerializers, ref SpanReader reader, DescriptorReader nestedDescriptorReader)
+            : this(typeSerializers, nestedDescriptorReader(ref reader), nestedDescriptorReader(ref reader))
         {
         }
 
@@ -143,7 +143,7 @@ namespace BTDB.EventStoreLayer
                 .Ldnull()
                 .Stloc(localDict)
                 .Do(pushReader)
-                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .ConvI4()
                 .Dup()
                 .LdcI4(1)
@@ -256,7 +256,7 @@ namespace BTDB.EventStoreLayer
                         .Do(pushCtx)
                         .Ldloca(localPair)
                         .Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!)
-                        .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
+                        .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
                 }
                 if (!_owner._valueDescriptor.Sealed)
                 {
@@ -264,7 +264,7 @@ namespace BTDB.EventStoreLayer
                         .Do(pushCtx)
                         .Ldloca(localPair)
                         .Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!)
-                        .Callvirt(() => default(IDescriptorSerializerLiteContext).StoreNewDescriptors(null));
+                        .Callvirt(typeof(IDescriptorSerializerLiteContext).GetMethod(nameof(IDescriptorSerializerLiteContext.StoreNewDescriptors))!);
                 }
                 ilGenerator
                     .Br(next)
@@ -319,10 +319,10 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
-        public void Persist(AbstractBufferedWriter writer, Action<AbstractBufferedWriter, ITypeDescriptor> nestedDescriptorWriter)
+        public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
-            nestedDescriptorWriter(writer, _keyDescriptor);
-            nestedDescriptorWriter(writer, _valueDescriptor);
+            nestedDescriptorWriter(ref writer, _keyDescriptor!);
+            nestedDescriptorWriter(ref writer, _valueDescriptor!);
         }
 
         public void GenerateSave(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
@@ -343,7 +343,7 @@ namespace BTDB.EventStoreLayer
                 .Ldloc(localDict)
                 .Brtrue(notnull)
                 .Do(pushWriter)
-                .Callvirt(() => default(AbstractBufferedWriter).WriteByteZero())
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteZero))!)
                 .Br(completeFinish)
                 .Mark(notnull)
                 .Do(pushWriter)
@@ -351,7 +351,7 @@ namespace BTDB.EventStoreLayer
                 .Callvirt(typeAsICollection!.GetProperty(nameof(ICollection.Count))!.GetGetMethod()!)
                 .LdcI4(1)
                 .Add()
-                .Callvirt(() => default(AbstractBufferedWriter).WriteVUInt32(0));
+                .Call(typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt32))!);
             {
                 var typeAsDictionary = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
                 var getEnumeratorMethod = typeAsDictionary.GetMethods()
@@ -415,8 +415,8 @@ namespace BTDB.EventStoreLayer
                     .Ldloc(localEnumerator)
                     .Callvirt(currentGetter)
                     .Stloc(localPair);
-                _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key").GetGetMethod()), keyType);
-                _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value").GetGetMethod()), valueType);
+                _keyDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Key")!.GetGetMethod()!), keyType);
+                _valueDescriptor.GenerateSaveEx(ilGenerator, pushWriter, pushCtx, il => il.Ldloca(localPair).Call(typeKeyValuePair.GetProperty("Value")!.GetGetMethod()!), valueType);
                 ilGenerator
                     .Br(next)
                     .Mark(finish)
@@ -435,7 +435,7 @@ namespace BTDB.EventStoreLayer
             var next = ilGenerator.DefineLabel();
             ilGenerator
                 .Do(pushReader)
-                .Callvirt(() => default(AbstractBufferedReader).ReadVUInt32())
+                .Call(typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt32))!)
                 .Stloc(localCount)
                 .Ldloc(localCount)
                 .Brfalse(skipFinished)
@@ -446,8 +446,8 @@ namespace BTDB.EventStoreLayer
                 .Stloc(localCount)
                 .Ldloc(localCount)
                 .Brfalse(skipFinished);
-            _keyDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
-            _valueDescriptor.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            _keyDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
+            _valueDescriptor!.GenerateSkipEx(ilGenerator, pushReader, pushCtx);
             ilGenerator
                 .Br(next)
                 .Mark(skipFinished);

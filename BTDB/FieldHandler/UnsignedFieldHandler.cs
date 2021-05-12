@@ -1,15 +1,14 @@
 ﻿using System;
-using BTDB.IL;
 using BTDB.StreamLayer;
 
 namespace BTDB.FieldHandler
 {
-    public class UnsignedFieldHandler : SimpleFieldHandlerBase, IFieldHandler
+    public class UnsignedFieldHandler : SimpleFieldHandlerBase
     {
-        public UnsignedFieldHandler(): base("Unsigned",
-            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).ReadVUInt64()),
-            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedReader).SkipVUInt64()),
-            EmitHelpers.GetMethodInfo(() => default(AbstractBufferedWriter).WriteVUInt64(0)))
+        public UnsignedFieldHandler() : base("Unsigned",
+            typeof(SpanReader).GetMethod(nameof(SpanReader.ReadVUInt64))!,
+            typeof(SpanReader).GetMethod(nameof(SpanReader.SkipVUInt64))!,
+            typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteVUInt64))!)
         {
         }
 
