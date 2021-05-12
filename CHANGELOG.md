@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Relations GetEnumerator didn't reset enumerator correctly in all cases.
+
 ## 26.2.1
 
 ### Fixed
