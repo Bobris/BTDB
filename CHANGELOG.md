@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.2.2
+
 ### Fixed
 
 Relations GetEnumerator didn't reset enumerator correctly in all cases.
