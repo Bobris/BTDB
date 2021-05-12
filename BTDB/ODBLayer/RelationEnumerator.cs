@@ -1,9 +1,9 @@
+using BTDB.KVDBLayer;
+using BTDB.StreamLayer;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using BTDB.KVDBLayer;
-using BTDB.StreamLayer;
 // ReSharper disable MemberCanBeProtected.Global
 
 namespace BTDB.ODBLayer
@@ -124,11 +124,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            if (_pos > 0)
-            {
-                Reset();
-            }
-
+            Reset();
             return this;
         }
 
@@ -405,11 +401,7 @@ namespace BTDB.ODBLayer
 
         public IEnumerator<T> GetEnumerator()
         {
-            if (_pos > 0)
-            {
-                Reset();
-            }
-
+            Reset();
             return this;
         }
 
