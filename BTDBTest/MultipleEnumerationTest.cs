@@ -74,13 +74,10 @@ namespace BTDBTest
             using var tr = _db.StartTransaction();
             var creator = tr.InitRelation<IApplicationTable>("ApplicationTable");
             var table = creator(tr);
-            var application1 = new Application { CompanyId = 1, ApplicationId = 100 };
-            var application2 = new Application { CompanyId = 1, ApplicationId = 101 };
-            var application3 = new Application { CompanyId = 2, ApplicationId = 102 };
 
-            table.Upsert(application2);
-            table.Upsert(application1);
-            table.Upsert(application3);
+            table.Upsert(new Application { CompanyId = 1, ApplicationId = 101 });
+            table.Upsert(new Application { CompanyId = 1, ApplicationId = 100 });
+            table.Upsert(new Application { CompanyId = 2, ApplicationId = 102 });
 
             var result = table.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
                 1, KeyProposition.Included, 2, KeyProposition.Included));
