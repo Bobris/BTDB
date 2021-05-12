@@ -85,10 +85,10 @@ namespace BTDBTest
             var result = table.ListById(new AdvancedEnumeratorParam<ulong>(EnumerationOrder.Ascending,
                 1, KeyProposition.Included, 2, KeyProposition.Included));
 
-            var resultEnum = result.GetEnumerator();
-            Assert.True(resultEnum.MoveNext());
+            var resultEnumerator = result.GetEnumerator();
+            Assert.True(resultEnumerator.MoveNext());
 
-            var val1 = resultEnum.Current;
+            var val1 = resultEnumerator.Current;
             Assert.Equal(100U, val1.ApplicationId);
 
             var values = result.ToList();
