@@ -274,6 +274,22 @@ namespace BTDBTest
             {
                 Builder.AppendLine($"Inline ref {iid}");
             }
+
+            public bool StartSecondaryIndex(string name)
+            {
+                Builder.AppendLine($"SK {name}");
+                return true;
+            }
+
+            public void NextSecondaryKey()
+            {
+                Builder.AppendLine("");
+            }
+
+            public void EndSecondaryIndex()
+            {
+                Builder.AppendLine("");
+            }
         }
 
         [Fact]
@@ -709,7 +725,6 @@ namespace BTDBTest
             {
                 var creator = tr.InitRelation<IRelationWithSecrets>("IRelationWithSecrets");
                 var table = creator(tr);
-                var blob = new Blob();
                 table.Insert(new WithSecretString
                 {
                     Id = 1,

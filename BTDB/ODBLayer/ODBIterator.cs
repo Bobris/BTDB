@@ -173,6 +173,7 @@ namespace BTDB.ODBLayer
 
         public void IterateRelation(ODBIteratorRelationInfo relation)
         {
+            IterateSecondaryIndexes(relation);
             var prefix = BuildRelationPrefix(relation.Id);
 
             long prevProtectionCounter = 0;
@@ -217,6 +218,59 @@ namespace BTDB.ODBLayer
                 }
                 pos++;
             }
+        }
+
+        void IterateSecondaryIndexes(ODBIteratorRelationInfo relation)
+        {
+            var version = relation.VersionInfos[relation.LastPersistedVersion];
+            foreach (var (secKeyName, secKeyIdx) in version.SecondaryKeysNames)
+            {
+                var secondaryKeyFields = version.GetSecondaryKeyFields(secKeyIdx);
+                if (_visitor == null || _visitor.StartSecondaryIndex(secKeyName))
+                {
+                    var prefix = BuildRelationSecondaryKeyPrefix(relation.Id, secKeyIdx);
+                    long prevProtectionCounter = 0;
+                    long pos = 0;
+                    while (true)
+                    {
+                        if (pos == 0)
+                        {
+                            if (!_trkv.FindFirstKey(prefix)) break;
+                        }
+                        else
+                        {
+                            if (_trkv.CursorMovedCounter != prevProtectionCounter)
+                            {
+                                if (!_trkv.SetKeyIndex(prefix, pos)) break;
+                            }
+                            else
+                            {
+                                if (!_trkv.FindNextKey(prefix)) break;
+                            }
+                        }
+
+                        var reader = new SpanReader(_trkv.GetKey().Slice(prefix.Length));
+                        foreach (var fi in secondaryKeyFields)
+                        {
+                            if (_visitor == null || !_visitor.StartField(fi.Name)) continue;
+                            IterateHandler(ref reader, fi.Handler!, false, null);
+                        }
+                        _visitor?.NextSecondaryKey();
+                        pos++;
+                    }
+                    _visitor?.EndSecondaryIndex();
+                }
+            }
+        }
+
+        static byte[] BuildRelationSecondaryKeyPrefix(uint relationIndex, uint secondaryKeyIndex)
+        {
+            var prefix = new byte[1 + PackUnpack.LengthVUInt(relationIndex) + PackUnpack.LengthVUInt(secondaryKeyIndex)];
+            prefix[0] = ObjectDB.AllRelationsSKPrefixByte;
+            int pos = 1;
+            PackUnpack.PackVUInt(prefix, ref pos, relationIndex);
+            PackUnpack.PackVUInt(prefix, ref pos, secondaryKeyIndex);
+            return prefix;
         }
 
         static byte[] BuildRelationPrefix(uint relationIndex)

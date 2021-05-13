@@ -45,5 +45,15 @@ namespace BTDB.ODBLayer
 
         void InlineBackRef(int iid);
         void InlineRef(int iid);
+
+        bool StartSecondaryIndex(string name) => false;
+
+        void NextSecondaryKey()
+        {
+        }
+
+        void EndSecondaryIndex()
+        {
+        }
     }
 }

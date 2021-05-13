@@ -18,7 +18,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump");
                 return;
             }
 
@@ -117,6 +117,25 @@ namespace ODbDump
                         using var trkv = kdb.StartReadOnlyTransaction();
                         using var tr = odb.StartTransaction();
                         using var visitor = new ToFilesVisitorForComparison(HashType.Crc32);
+                        var iterator = new ODBIterator(tr, visitor);
+                        iterator.Iterate(sortTableByNameAsc: true);
+
+                        break;
+                    }
+                case "fulldiskdump":
+                    {
+                        using var dfc = new OnDiskFileCollection(args[0]);
+                        using var kdb = new KeyValueDB(new KeyValueDBOptions
+                        {
+                            FileCollection = dfc,
+                            ReadOnly = true,
+                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                        });
+                        using var odb = new ObjectDB();
+                        odb.Open(kdb, false);
+                        using var trkv = kdb.StartReadOnlyTransaction();
+                        using var tr = odb.StartTransaction();
+                        using var visitor = new ToFilesVisitorWithSecondaryKeys();
                         var iterator = new ODBIterator(tr, visitor);
                         iterator.Iterate(sortTableByNameAsc: true);
 

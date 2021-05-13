@@ -1,6 +1,8 @@
 # Changelog
 
 ## [unreleased]
+### Added
+ODbDump has new command `fulldiskdump` containing also content of secondary keys
 
 ## 26.2.2
 

@@ -211,5 +211,18 @@ namespace ODbDump.Visitor
         {
             _iid = iid;
         }
+
+        public virtual bool StartSecondaryIndex(string name)
+        {
+            return false;
+        }
+
+        public virtual void NextSecondaryKey()
+        {
+        }
+
+        public virtual void EndSecondaryIndex()
+        {
+        }
     }
 }
