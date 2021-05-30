@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using BTDB.Buffer;
@@ -179,11 +180,12 @@ namespace BTDB.ODBLayer
             _serializationCallbacks.Data.Reset();
         }
 
+        [SkipLocalsInit]
         public bool Insert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyBytes(obj, ref writer);
 
@@ -204,11 +206,12 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        [SkipLocalsInit]
         public bool Upsert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyBytes(obj, ref writer);
             var valueBytes = ValueBytes(obj, ref writer);
@@ -221,7 +224,7 @@ namespace BTDB.ODBLayer
 
                 if (_hasSecondaryIndexes)
                 {
-                    Span<byte> buf2 = stackalloc byte[256];
+                    Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
                 }
@@ -241,11 +244,12 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        [SkipLocalsInit]
         public bool ShallowUpsert(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyBytes(obj, ref writer);
             var valueBytes = ValueBytes(obj, ref writer);
@@ -259,7 +263,7 @@ namespace BTDB.ODBLayer
 
                     _kvtr.CreateOrUpdateKeyValue(keyBytes, valueBytes);
 
-                    Span<byte> buf2 = stackalloc byte[256];
+                    Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
 
@@ -282,11 +286,12 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        [SkipLocalsInit]
         public void Update(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyBytes(obj, ref writer);
             var valueBytes = ValueBytes(obj, ref writer);
@@ -299,7 +304,7 @@ namespace BTDB.ODBLayer
 
             if (_hasSecondaryIndexes)
             {
-                Span<byte> buf2 = stackalloc byte[256];
+                Span<byte> buf2 = stackalloc byte[512];
                 var writer2 = new SpanWriter(buf2);
                 UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
             }
@@ -307,11 +312,12 @@ namespace BTDB.ODBLayer
             FreeContentInUpdate(oldValueBytes, valueBytes);
         }
 
+        [SkipLocalsInit]
         public void ShallowUpdate(T obj)
         {
             Debug.Assert(typeof(T) == obj.GetType(), AssertNotDerivedTypesMsg);
 
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyBytes(obj, ref writer);
             var valueBytes = ValueBytes(obj, ref writer);
@@ -327,7 +333,7 @@ namespace BTDB.ODBLayer
 
                 if (_hasSecondaryIndexes)
                 {
-                    Span<byte> buf2 = stackalloc byte[256];
+                    Span<byte> buf2 = stackalloc byte[512];
                     var writer2 = new SpanWriter(buf2);
                     UpdateSecondaryIndexes(obj, keyBytes, oldValueBytes, ref writer2);
                 }
@@ -385,9 +391,10 @@ namespace BTDB.ODBLayer
             CompareAndRelease(oldDicts, newDicts, RelationInfo.FreeIDictionary);
         }
 
+        [SkipLocalsInit]
         public bool RemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
-            Span<byte> valueBuffer = stackalloc byte[256];
+            Span<byte> valueBuffer = stackalloc byte[512];
 
             if (!_kvtr.EraseCurrent(keyBytes, ref MemoryMarshal.GetReference(valueBuffer), valueBuffer.Length,
                 out var value))
@@ -408,11 +415,12 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        [SkipLocalsInit]
         public bool ShallowRemoveById(in ReadOnlySpan<byte> keyBytes, bool throwWhenNotFound)
         {
             if (_hasSecondaryIndexes)
             {
-                Span<byte> valueBuffer = stackalloc byte[256];
+                Span<byte> valueBuffer = stackalloc byte[512];
 
                 if (!_kvtr.EraseCurrent(keyBytes, ref valueBuffer.GetPinnableReference(), valueBuffer.Length,
                     out var value))

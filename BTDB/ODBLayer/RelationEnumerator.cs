@@ -3,6 +3,7 @@ using BTDB.StreamLayer;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 // ReSharper disable MemberCanBeProtected.Global
 
@@ -77,10 +78,11 @@ namespace BTDB.ODBLayer
 
         public T Current
         {
+            [SkipLocalsInit]
             get
             {
                 SeekCurrent();
-                Span<byte> keyBuffer = stackalloc byte[128];
+                Span<byte> keyBuffer = stackalloc byte[512];
                 var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
                 var valueBytes = _keyValueTr.GetValue();
                 return CreateInstance(keyBytes, valueBytes);
@@ -357,6 +359,7 @@ namespace BTDB.ODBLayer
 
         public T Current
         {
+            [SkipLocalsInit]
             get
             {
                 if (_pos >= _count) throw new IndexOutOfRangeException();
@@ -368,7 +371,7 @@ namespace BTDB.ODBLayer
                 }
 
                 _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-                Span<byte> buffer = stackalloc byte[128];
+                Span<byte> buffer = stackalloc byte[512];
                 var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length);
                 return CreateInstance(keyBytes);
             }
@@ -624,6 +627,7 @@ namespace BTDB.ODBLayer
             }
         }
 
+        [SkipLocalsInit]
         public bool NextKey(out TKey key)
         {
             if (_seekState == SeekState.Ready)
@@ -655,7 +659,7 @@ namespace BTDB.ODBLayer
             }
 
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
-            Span<byte> keyBuffer = stackalloc byte[256];
+            Span<byte> keyBuffer = stackalloc byte[512];
             var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length).Slice(KeyBytes.Length));
             key = KeyReader!(ref reader, null);
             return true;

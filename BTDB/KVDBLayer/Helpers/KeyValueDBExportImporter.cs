@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
 
@@ -12,6 +13,7 @@ namespace BTDB.KVDBLayer
         /// </summary>
         /// <param name="transaction">transaction from where export all data</param>
         /// <param name="stream">where to write it to</param>
+        [SkipLocalsInit]
         public static void Export(IKeyValueDBTransaction transaction, Stream stream)
         {
             if (transaction == null) throw new ArgumentNullException(nameof(transaction));
@@ -30,7 +32,7 @@ namespace BTDB.KVDBLayer
             PackUnpack.PackInt64LE(tempbuf, 8, keyValueCount);
             stream.Write(tempbuf, 0, 16);
             transaction.FindFirstKey(new ReadOnlySpan<byte>());
-            Span<byte> keyBuffer = stackalloc byte[256];
+            Span<byte> keyBuffer = stackalloc byte[512];
             for (long kv = 0; kv < keyValueCount; kv++)
             {
                 var key = transaction.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);

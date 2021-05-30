@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.BTreeLib;
 
@@ -117,6 +118,7 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        [SkipLocalsInit]
         public bool CreateOrUpdateKeyValue(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             _cursorMovedCounter++;
@@ -274,21 +276,23 @@ namespace BTDB.KVDBLayer
             }
         }
 
+        [SkipLocalsInit]
         public void SetValue(in ReadOnlySpan<byte> value)
         {
             EnsureValidKey();
             MakeWritable();
             Span<byte> trueValue = stackalloc byte[12];
-            Span<byte> buffer = stackalloc byte[256];
+            Span<byte> buffer = stackalloc byte[512];
             _keyValueDB.WriteCreateOrUpdateCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length), value, trueValue);
             _cursor.WriteValue(trueValue);
         }
 
+        [SkipLocalsInit]
         public void EraseCurrent()
         {
             EnsureValidKey();
             MakeWritable();
-            Span<byte> buffer = stackalloc byte[256];
+            Span<byte> buffer = stackalloc byte[512];
             _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
             _cursor.Erase();
             InvalidateCurrentKey();
@@ -330,6 +334,7 @@ namespace BTDB.KVDBLayer
             EraseRange(0, GetKeyValueCount() - 1);
         }
 
+        [SkipLocalsInit]
         public void EraseRange(long firstKeyIndex, long lastKeyIndex)
         {
             if (firstKeyIndex < 0) firstKeyIndex = 0;
@@ -341,8 +346,8 @@ namespace BTDB.KVDBLayer
             {
                 _cursor2 ??= BTreeRoot!.CreateCursor();
                 _cursor2.SeekIndex(lastKeyIndex);
-                Span<byte> buffer = stackalloc byte[256];
-                Span<byte> buffer2 = stackalloc byte[256];
+                Span<byte> buffer = stackalloc byte[512];
+                Span<byte> buffer2 = stackalloc byte[512];
                 var firstKey = _cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length);
                 var secondKey = _cursor2.GetKey(ref MemoryMarshal.GetReference(buffer2), buffer2.Length);
                 _keyValueDB.WriteEraseRangeCommand(firstKey, secondKey);
@@ -350,7 +355,7 @@ namespace BTDB.KVDBLayer
             }
             else
             {
-                Span<byte> buffer = stackalloc byte[256];
+                Span<byte> buffer = stackalloc byte[512];
                 _keyValueDB.WriteEraseOneCommand(_cursor.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length));
                 _cursor.Erase();
             }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BTDB.Buffer;
 using BTDB.Encrypted;
@@ -324,6 +325,7 @@ namespace BTDB.ODBLayer
             return lastPersistedVersion;
         }
 
+        [SkipLocalsInit]
         void IterateDict(ulong dictId, IFieldHandler keyHandler, IFieldHandler valueHandler)
         {
             if (_visitor != null && !_visitor.StartDictionary())
@@ -334,7 +336,7 @@ namespace BTDB.ODBLayer
             PackUnpack.PackVUInt(prefix, ref o, dictId);
             long prevProtectionCounter = 0;
             long pos = 0;
-            Span<byte> keyBuffer = stackalloc byte[256];
+            Span<byte> keyBuffer = stackalloc byte[512];
             while (true)
             {
                 if (pos == 0)

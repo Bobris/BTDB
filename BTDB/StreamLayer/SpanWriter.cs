@@ -265,6 +265,7 @@ namespace BTDB.StreamLayer
             WriteVUInt64(value);
         }
 
+        [SkipLocalsInit]
         public void WriteVInt64(long value)
         {
             var len = PackUnpack.LengthVInt(value);
@@ -283,6 +284,7 @@ namespace BTDB.StreamLayer
             PackUnpack.UnsafePackVInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)len), value, len);
         }
 
+        [SkipLocalsInit]
         public void WriteVUInt64(ulong value)
         {
             var len = PackUnpack.LengthVUInt(value);
@@ -301,6 +303,7 @@ namespace BTDB.StreamLayer
             PackUnpack.UnsafePackVUInt(ref PackUnpack.UnsafeGetAndAdvance(ref Buf, (int)len), value, len);
         }
 
+        [SkipLocalsInit]
         public void WriteInt64(long value)
         {
             if ((uint)Buf.Length < 8u)
@@ -319,6 +322,7 @@ namespace BTDB.StreamLayer
                 PackUnpack.AsBigEndian((ulong)value);
         }
 
+        [SkipLocalsInit]
         public void WriteInt32(int value)
         {
             if ((uint)Buf.Length < 4u)
@@ -337,6 +341,7 @@ namespace BTDB.StreamLayer
                 PackUnpack.AsBigEndian((uint)value);
         }
 
+        [SkipLocalsInit]
         public void WriteInt32LE(int value)
         {
             if ((uint)Buf.Length < 4u)
@@ -618,6 +623,7 @@ namespace BTDB.StreamLayer
             WriteBlock(data.AsSyncReadOnlySpan());
         }
 
+        [SkipLocalsInit]
         public void WriteIPAddress(IPAddress? value)
         {
             if (value == null)
@@ -689,7 +695,7 @@ namespace BTDB.StreamLayer
 
             return (uint)(InitialBuffer.Length - Buf.Length);
         }
-        
+
         public uint StartWriteByteArray()
         {
             if (Controller != null) ThrowCannotBeUsedWithController();
@@ -719,7 +725,7 @@ namespace BTDB.StreamLayer
             PackUnpack.UnsafeAdvance(ref Buf, (int)lenOfLen - 1);
             // Make Space By Moving Memory
             InternalGetSpan(start, len - 1).CopyTo(InternalGetSpan(start + lenOfLen - 1, len - 1));
-            // Update Length at start            
+            // Update Length at start
             PackUnpack.UnsafePackVUInt(ref MemoryMarshal.GetReference(InternalGetSpan(start - 1, lenOfLen)), len, lenOfLen);
         }
 

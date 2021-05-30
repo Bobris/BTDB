@@ -750,6 +750,7 @@ namespace BTDB.ODBLayer
             return true;
         }
 
+        [SkipLocalsInit]
         ulong ReadOidFromCurrentKeyInTransaction()
         {
             Span<byte> buffer = stackalloc byte[16];
@@ -989,11 +990,12 @@ namespace BTDB.ODBLayer
             _keyValueTr!.CreateOrUpdateKeyValue(BuildKeyFromOidWithAllObjectsPrefix(metadata.Id), writer.GetSpan());
         }
 
+        [SkipLocalsInit]
         void SerializeTableInfo(TableInfo tableInfo)
         {
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)
             {
-                Span<byte> buf = stackalloc byte[256];
+                Span<byte> buf = stackalloc byte[512];
                 var writer = new SpanWriter(buf);
 
                 if (tableInfo.LastPersistedVersion <= 0)
@@ -1017,6 +1019,7 @@ namespace BTDB.ODBLayer
             }
         }
 
+        [SkipLocalsInit]
         void PersistTableInfo(TableInfo tableInfo)
         {
             if (tableInfo.LastPersistedVersion != tableInfo.ClientTypeVersion)

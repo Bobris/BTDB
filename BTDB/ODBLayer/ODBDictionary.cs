@@ -248,9 +248,10 @@ namespace BTDB.ODBLayer
             return writer.GetPersistentSpanAndReset();
         }
 
+        [SkipLocalsInit]
         TKey CurrentToKey()
         {
-            Span<byte> buffer = stackalloc byte[128];
+            Span<byte> buffer = stackalloc byte[512];
             var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length));
             IReaderCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);
@@ -265,17 +266,19 @@ namespace BTDB.ODBLayer
             return _valueReader(ref reader, ctx);
         }
 
+        [SkipLocalsInit]
         public bool ContainsKey(TKey key)
         {
-            Span<byte> buf = stackalloc byte[128];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             return _keyValueTr.Find(keyBytes, 0) == FindResult.Exact;
         }
 
+        [SkipLocalsInit]
         public void Add(TKey key, TValue value)
         {
-            Span<byte> buf = stackalloc byte[256];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             var valueBytes = ValueToByteArray(value, ref writer);
@@ -289,9 +292,10 @@ namespace BTDB.ODBLayer
             NotifyAdded();
         }
 
+        [SkipLocalsInit]
         public bool Remove(TKey key)
         {
-            Span<byte> buf = stackalloc byte[128];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             _modificationCounter++;
@@ -304,9 +308,10 @@ namespace BTDB.ODBLayer
             return found;
         }
 
+        [SkipLocalsInit]
         public bool TryGetValue(TKey key, out TValue value)
         {
-            Span<byte> buf = stackalloc byte[128];
+            Span<byte> buf = stackalloc byte[512];
             var writer = new SpanWriter(buf);
             var keyBytes = KeyToByteArray(key, ref writer);
             var found = _keyValueTr.FindExactKey(keyBytes);
@@ -323,9 +328,10 @@ namespace BTDB.ODBLayer
 
         public TValue this[TKey key]
         {
+            [SkipLocalsInit]
             get
             {
-                Span<byte> buf = stackalloc byte[256];
+                Span<byte> buf = stackalloc byte[512];
                 var writer = new SpanWriter(buf);
                 var keyBytes = KeyToByteArray(key, ref writer);
                 var found = _keyValueTr.FindExactKey(keyBytes);
@@ -337,9 +343,10 @@ namespace BTDB.ODBLayer
                 var valueBytes = _keyValueTr.GetClonedValue(ref MemoryMarshal.GetReference(writer.Buf), writer.Buf.Length);
                 return ByteArrayToValue(valueBytes);
             }
+            [SkipLocalsInit]
             set
             {
-                Span<byte> buf = stackalloc byte[256];
+                Span<byte> buf = stackalloc byte[512];
                 var writer = new SpanWriter(buf);
                 var keyBytes = KeyToByteArray(key, ref writer);
                 var valueBytes = ValueToByteArray(value, ref writer);

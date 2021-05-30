@@ -189,9 +189,10 @@ namespace BTDB.ODBLayer
             return writer.GetSpan();
         }
 
+        [SkipLocalsInit]
         TKey CurrentToKey()
         {
-            Span<byte> buffer = stackalloc byte[128];
+            Span<byte> buffer = stackalloc byte[512];
             var reader = new SpanReader(_keyValueTr.GetKey(ref MemoryMarshal.GetReference(buffer), buffer.Length).Slice(_prefix.Length));
             IReaderCtx ctx = null;
             if (_keyHandler.NeedsCtx()) ctx = new DBReaderCtx(_tr);

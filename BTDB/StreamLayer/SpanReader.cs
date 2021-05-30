@@ -232,6 +232,7 @@ namespace BTDB.StreamLayer
             if (res > uint.MaxValue) throw new InvalidDataException($"Skipping VUInt32 overflowed with {res}");
         }
 
+        [SkipLocalsInit]
         public long ReadVInt64()
         {
             NeedOneByteInBuffer();
@@ -264,6 +265,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [SkipLocalsInit]
         public ulong ReadVUInt64()
         {
             NeedOneByteInBuffer();
@@ -297,6 +299,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [SkipLocalsInit]
         public long ReadInt64()
         {
             if (8 <= (uint)Buf.Length)
@@ -324,6 +327,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [SkipLocalsInit]
         public int ReadInt32()
         {
             if (4 <= (uint)Buf.Length)
@@ -339,6 +343,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [SkipLocalsInit]
         public int ReadInt32LE()
         {
             if (4 <= (uint)Buf.Length)
@@ -441,10 +446,11 @@ namespace BTDB.StreamLayer
             return result;
         }
 
+        [SkipLocalsInit]
         public string? ReadStringOrdered()
         {
             var len = 0;
-            Span<char> charStackBuf = stackalloc char[32];
+            Span<char> charStackBuf = stackalloc char[256];
             var charBuf = charStackBuf;
 
             while (true)
@@ -595,6 +601,7 @@ namespace BTDB.StreamLayer
             ReadBlock(buffer.AsSyncSpan());
         }
 
+        [SkipLocalsInit]
         public Guid ReadGuid()
         {
             Span<byte> buffer = stackalloc byte[16];
@@ -698,7 +705,7 @@ namespace BTDB.StreamLayer
             PackUnpack.UnsafeAdvance(ref Buf, (int)length);
             return res;
         }
-        
+
         public byte[] ReadByteArrayRawTillEof()
         {
             var res = Buf.ToArray();
@@ -713,6 +720,7 @@ namespace BTDB.StreamLayer
             return res;
         }
 
+        [SkipLocalsInit]
         public bool CheckMagic(byte[] magic)
         {
             if (Buf.Length >= magic.Length)
@@ -734,6 +742,7 @@ namespace BTDB.StreamLayer
             }
         }
 
+        [SkipLocalsInit]
         public IPAddress? ReadIPAddress()
         {
             switch (ReadUInt8())
