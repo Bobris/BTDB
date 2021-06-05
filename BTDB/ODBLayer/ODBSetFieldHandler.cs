@@ -179,7 +179,7 @@ namespace BTDB.ODBLayer
                 .Call(instanceType.GetMethod(nameof(ODBSet<int>.DoSave))!);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (_type != type)
                 GenerateType(type);
@@ -192,7 +192,7 @@ namespace BTDB.ODBLayer
                 wantedKeyHandler = dictTypeHandler._keysHandler;
             }
 
-            var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler);
+            var specializedKeyHandler = _keysHandler.SpecializeLoadForType(arguments[0], wantedKeyHandler, logger);
             if (wantedKeyHandler == specializedKeyHandler)
             {
                 return typeHandler;

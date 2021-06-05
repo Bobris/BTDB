@@ -1483,7 +1483,7 @@ namespace BTDBTest
 
             IEnumerator<ProductionTrackingDaily> ListByProductionDateWithCompanyId(ulong companyId,
                 AdvancedEnumeratorParam<DateTime> productionDate);
-            
+
             IEnumerator<ProductionTrackingDaily> ListByProductionDate(AdvancedEnumeratorParam<DateTime> productionDate);
         }
 
@@ -1519,8 +1519,8 @@ namespace BTDBTest
 
             tr.Commit();
         }
-        
-        [Fact]
+
+        [SkipWhen(SkipWhenAttribute.Is.Release, "Preventing exclude in secondary key is checked only in debug")]
         public void ListBySecondaryKey_ForDateTimeKey_StartKeyPropositionExcluded_ShouldNotContainThatItem()
         {
             using var tr = _db.StartTransaction();
@@ -1536,11 +1536,14 @@ namespace BTDBTest
             Assert.True(companyProduction.MoveNext());
             Assert.Equal(12u, companyProduction.Current.ProductionsCount);
 
-            var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending, 
+            var dateParam = new AdvancedEnumeratorParam<DateTime>(EnumerationOrder.Ascending,
                 dateTimeValue, KeyProposition.Excluded,
                 DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), KeyProposition.Excluded);
-            var en = table.ListByProductionDate(dateParam);
-            Assert.False(en.MoveNext());
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                var en = table.ListByProductionDate(dateParam);
+                Assert.False(en.MoveNext());
+            });
 
             tr.Commit();
         }

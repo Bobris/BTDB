@@ -130,7 +130,7 @@ namespace BTDB.FieldHandler
             ilGenerator.Mark(finish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
@@ -144,7 +144,7 @@ namespace BTDB.FieldHandler
             {
                 wantedItemHandler = nullableFieldHandler._itemHandler;
             }
-            var itemSpecialized = _itemHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler);
+            var itemSpecialized = _itemHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler, logger);
             if (itemSpecialized == wantedItemHandler)
             {
                 return typeHandler;

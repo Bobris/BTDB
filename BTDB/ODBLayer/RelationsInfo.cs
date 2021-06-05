@@ -14,6 +14,7 @@ namespace BTDB.ODBLayer
             FieldHandlerFactory = objectDB.FieldHandlerFactory;
             TypeConvertorGenerator = objectDB.TypeConvertorGenerator;
             Container = objectDB.ActualOptions.Container;
+            FieldHandlerLogger = objectDB.FieldHandlerLogger;
         }
 
         public IFieldHandlerFactory FieldHandlerFactory { get; }
@@ -21,6 +22,7 @@ namespace BTDB.ODBLayer
         public ITypeConvertorGenerator TypeConvertorGenerator { get; }
 
         public IContainer Container { get; }
+        public IFieldHandlerLogger? FieldHandlerLogger { get; }
     }
 
     class RelationsInfo

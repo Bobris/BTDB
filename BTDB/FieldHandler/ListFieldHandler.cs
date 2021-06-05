@@ -200,12 +200,12 @@ namespace BTDB.FieldHandler
                 .Mark(realFinish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
             {
-                Debug.Fail("strange");
+                logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
                 return this;
             }
             var wantedItemType = type.GetGenericArguments()[0];
@@ -214,14 +214,14 @@ namespace BTDB.FieldHandler
             {
                 wantedItemHandler = listFieldHandler._itemsHandler;
             }
-            var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler);
+            var itemSpecialized = _itemsHandler.SpecializeLoadForType(wantedItemType, wantedItemHandler, logger);
             if (itemSpecialized == wantedItemHandler)
             {
                 return typeHandler;
             }
             if (_typeConvertGenerator.GenerateConversion(itemSpecialized.HandledType(), wantedItemType) == null)
             {
-                Debug.Fail("even more strange");
+                logger?.ReportTypeIncompatibility(itemSpecialized.HandledType(), itemSpecialized, wantedItemType, null);
                 return this;
             }
             return new ListFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, itemSpecialized);

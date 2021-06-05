@@ -121,7 +121,7 @@ namespace BTDB.ODBLayer
                         var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
-                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null, _owner._relationInfoResolver.FieldHandlerLogger);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
                             _owner._relationInfoResolver.TypeConvertorGenerator
@@ -222,7 +222,7 @@ namespace BTDB.ODBLayer
                         var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
-                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null);
+                            srcFieldInfo.Handler!.SpecializeLoadForType(fieldType, null, _owner._relationInfoResolver.FieldHandlerLogger);
                         var willLoad = specializedSrcHandler.HandledType();
                         var converterGenerator =
                             _owner._relationInfoResolver.TypeConvertorGenerator

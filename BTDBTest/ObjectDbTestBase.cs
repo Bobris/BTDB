@@ -1,7 +1,10 @@
 using System;
+using BTDB.Collections;
 using BTDB.Encrypted;
+using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
+using Xunit;
 using Xunit.Abstractions;
 
 namespace BTDBTest
@@ -11,6 +14,7 @@ namespace BTDBTest
         protected readonly ITestOutputHelper _output;
         protected IKeyValueDB _lowDb;
         protected IObjectDB _db;
+        StructList<string> _fieldHandlerLoggerMessages;
 
         protected ObjectDbTestBase(ITestOutputHelper output)
         {
@@ -26,6 +30,7 @@ namespace BTDBTest
 
         public void Dispose()
         {
+            Assert.Empty(_fieldHandlerLoggerMessages);
             _db.Dispose();
             _lowDb.Dispose();
         }
@@ -54,6 +59,7 @@ namespace BTDBTest
             _db = new ObjectDB();
             _db.Open(_lowDb, false, new DBOptions()
                 .WithoutAutoRegistration()
+                .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s=>_fieldHandlerLoggerMessages.Add(s)))
                 .WithSymmetricCipher(new AesGcmSymmetricCipher(new byte[]
                 {
                     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,

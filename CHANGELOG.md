@@ -12,6 +12,8 @@ ODbDump has new command `fulldiskdump` containing also content of secondary keys
 
 ODbDump has new command `trldump` listing operations in .trl files
 
+New interface `IFieldHandlerLogger` for logging type incompatibilities. Sample usage `new DBOptions().WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => Console.WriteLine(s)))`.
+
 ## 26.2.2
 
 ### Fixed

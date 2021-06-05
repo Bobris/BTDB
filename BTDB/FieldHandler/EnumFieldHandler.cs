@@ -5,6 +5,8 @@ using System.Reflection;
 using BTDB.IL;
 using BTDB.StreamLayer;
 using System.Diagnostics;
+using System.Text;
+using Microsoft.Extensions.Primitives;
 
 namespace BTDB.FieldHandler
 {
@@ -267,7 +269,7 @@ namespace BTDB.FieldHandler
             }
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (typeHandler == this) return this;
             var enumTypeHandler = typeHandler as EnumFieldHandler;
@@ -289,12 +291,13 @@ namespace BTDB.FieldHandler
                         return typeHandler;
                 }
             }
+            logger?.ReportTypeIncompatibility(_enumType, this, type, typeHandler);
             return this;
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
         {
-            return SpecializeLoadForType(type, null);
+            return SpecializeLoadForType(type, null, null);
         }
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -306,6 +309,30 @@ namespace BTDB.FieldHandler
         {
             Skip(ilGenerator, pushReader, pushCtx);
             return NeedsFreeContent.No;
+        }
+
+        public override string ToString()
+        {
+            var ec = new EnumConfiguration(Configuration);
+            var sb = new StringBuilder();
+            sb.Append("Enum");
+            if (_enumType != null)
+            {
+                sb.Append(' ');
+                sb.Append(_enumType.ToSimpleName());
+            }
+            if (ec.Flags) sb.Append("[Flags]");
+            if (!ec.Signed) sb.Append("[Unsigned]");
+            sb.Append('{');
+            for (var i = 0; i < ec.Names.Length; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append(ec.Names[i]);
+                sb.Append('=');
+                sb.Append(ec.Values[i]);
+            }
+            sb.Append('}');
+            return sb.ToString();
         }
     }
 }

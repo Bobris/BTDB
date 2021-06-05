@@ -54,7 +54,7 @@ namespace BTDB.FieldHandler
                 typeof(SpanWriter).GetMethod(nameof(SpanWriter.WriteByteArray), new[] { typeof(ByteBuffer) })!);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (typeof(ByteBuffer) == type)
             {
@@ -114,7 +114,7 @@ namespace BTDB.FieldHandler
                 _fieldHandler.SaveByteBuffer(ilGenerator, pushWriter, pushValue);
             }
 
-            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+            public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
             {
                 throw new InvalidOperationException();
             }

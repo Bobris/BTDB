@@ -103,6 +103,7 @@ namespace BTDB.ODBLayer
             AutoRegisterTypes = options.AutoRegisterType;
             ActualOptions = options;
             SymmetricCipher = options.SymmetricCipher ?? new InvalidSymmetricCipher();
+            FieldHandlerLogger = options.FieldHandlerLogger;
 
             _tableInfoResolver = new TableInfoResolver(keyValueDB, this);
             _tablesInfo = new TablesInfo(_tableInfoResolver);
@@ -322,10 +323,12 @@ namespace BTDB.ODBLayer
 
             public ITypeConvertorGenerator TypeConvertorGenerator => _objectDB.TypeConvertorGenerator;
             public IContainer? Container => _objectDB.ActualOptions.Container;
+            public IFieldHandlerLogger? FieldHandlerLogger => _objectDB.FieldHandlerLogger;
         }
 
         public ITypeConvertorGenerator TypeConvertorGenerator { get; set; }
         public IFieldHandlerFactory FieldHandlerFactory { get; set; }
+        public IFieldHandlerLogger? FieldHandlerLogger { get; set; }
 
         internal ulong AllocateNewOid()
         {

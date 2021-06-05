@@ -398,7 +398,7 @@ namespace BTDB.ODBLayer
                     var fieldInfo = props.First(p => GetPersistentName(p) == destFieldInfo.Name).GetAnySetMethod();
                     var fieldType = fieldInfo!.GetParameters()[0].ParameterType;
                     var specializedSrcHandler =
-                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler);
+                        srcFieldInfo.Handler.SpecializeLoadForType(fieldType, destFieldInfo.Handler, _tableInfoResolver.FieldHandlerLogger);
                     var willLoad = specializedSrcHandler.HandledType();
                     var converterGenerator =
                         _tableInfoResolver.TypeConvertorGenerator.GenerateConversion(willLoad, fieldType);

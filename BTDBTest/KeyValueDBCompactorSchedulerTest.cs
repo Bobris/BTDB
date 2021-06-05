@@ -89,7 +89,7 @@ namespace BTDBTest
         }
 
         [Fact]
-        public void AdvideRunningWorksWellForSharedInstance()
+        public void AdviceRunningWorksWellForSharedInstance()
         {
             var e = new AutoResetEvent(false);
             using (var s = new CompactorScheduler())

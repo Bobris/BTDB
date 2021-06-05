@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using BTDB.Collections;
 using BTDB.FieldHandler;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -12,6 +14,7 @@ namespace BTDBTest
     {
         readonly IKeyValueDB _lowDb;
         IObjectDB _db;
+        StructList<string> _fieldHandlerLoggerMessages;
 
         public ObjectDbTableUpgradeTest()
         {
@@ -21,8 +24,15 @@ namespace BTDBTest
 
         public void Dispose()
         {
+            Assert.Empty(_fieldHandlerLoggerMessages);
             _db.Dispose();
             _lowDb.Dispose();
+        }
+
+        public void ApproveFieldHandlerLoggerMessages([CallerMemberName] string? testName = null)
+        {
+            Assent.Extensions.Assent(this, string.Join('\n', _fieldHandlerLoggerMessages) + "\n", null, testName);
+            _fieldHandlerLoggerMessages.Clear();
         }
 
         void ReopenDb()
@@ -34,14 +44,16 @@ namespace BTDBTest
         void OpenDb()
         {
             _db = new ObjectDB();
-            _db.Open(_lowDb, false, new DBOptions().WithoutAutoRegistration());
+            _db.Open(_lowDb, false,
+                new DBOptions().WithoutAutoRegistration()
+                    .WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => _fieldHandlerLoggerMessages.Add(s))));
         }
 
         public class JobV1
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            public string Name { get; set; }
+            public string? Name { get; set; }
         }
 
         public interface IJobTable1 : IRelation<JobV1>
@@ -381,13 +393,12 @@ namespace BTDBTest
                 tr.Commit();
             }
         }
-            
+
         public class JobV1s
         {
             [PrimaryKey(1)] public ulong Id { get; set; }
 
-            [PersistedName("Name")]
-            public List<string> Names { get; set; }
+            [PersistedName("Name")] public List<string> Names { get; set; }
         }
 
         public interface IJobTable1s : IRelation<JobV1s>
@@ -418,9 +429,68 @@ namespace BTDBTest
                 var jobTable = creator(tr);
                 Assert.Equal(2, jobTable.Count);
 
-                Assert.Equal(new [] { "A"}, jobTable.First().Names);
-                Assert.Equal(new string[0], jobTable.Last().Names);
+                Assert.Equal(new[] { "A" }, jobTable.First().Names);
+                Assert.Equal(Array.Empty<string>(), jobTable.Last().Names);
             }
+        }
+
+        public class EnumsInKeys1
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public Dictionary<SimpleEnum, int>? E { get; set; }
+        }
+
+        public interface IEnumsInKeys1Table : IRelation<EnumsInKeys1>
+        {
+        }
+
+        public class EnumsInKeys2
+        {
+            [PrimaryKey(1)] public ulong Id { get; set; }
+
+            public Dictionary<SimpleEnumV2, int>? E { get; set; }
+        }
+
+        public interface IEnumsInKeys2Table : IRelation<EnumsInKeys2>
+        {
+        }
+
+        [Fact]
+        public void EnumsInDictionaryKeysIncompatibleUpgradeDoesNotWorkButAtLeastReportProblem()
+        {
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IEnumsInKeys1Table>("Enums");
+                var eTable = creator(tr);
+                var e = new EnumsInKeys1 { Id = 1, E = new Dictionary<SimpleEnum, int> { { SimpleEnum.One, 1 } } };
+                eTable.Upsert(e);
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IEnumsInKeys2Table>("Enums");
+                var eTable = creator(tr);
+                Assert.Null(eTable.First().E);
+                Assert.Equal(1, eTable.Count);
+                var e = new EnumsInKeys2 { Id = 1, E = new Dictionary<SimpleEnumV2, int> { { SimpleEnumV2.Drei, 1 } } };
+                eTable.Upsert(e);
+                tr.Commit();
+            }
+
+            ReopenDb();
+
+            using (var tr = _db.StartTransaction())
+            {
+                var creator = tr.InitRelation<IEnumsInKeys1Table>("Enums");
+                var eTable = creator(tr);
+                Assert.Equal(1, eTable.Count);
+            }
+
+            ApproveFieldHandlerLoggerMessages();
         }
     }
 }

@@ -15,20 +15,23 @@ namespace BTDB.FieldHandler
         readonly IFieldHandler _valuesHandler;
         Type? _type;
 
-        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type)
+        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+            ITypeConvertorGenerator typeConvertGenerator, Type type)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertGenerator = typeConvertGenerator;
             _type = type;
             _keysHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[0], FieldHandlerOptions.None);
-            _valuesHandler = _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
+            _valuesHandler =
+                _fieldHandlerFactory.CreateFromType(type.GetGenericArguments()[1], FieldHandlerOptions.None);
             var writer = new SpanWriter();
             writer.WriteFieldHandler(_keysHandler);
             writer.WriteFieldHandler(_valuesHandler);
             Configuration = writer.GetSpan().ToArray();
         }
 
-        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
+        public DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory,
+            ITypeConvertorGenerator typeConvertGenerator, byte[] configuration)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertGenerator = typeConvertGenerator;
@@ -38,7 +41,8 @@ namespace BTDB.FieldHandler
             _valuesHandler = _fieldHandlerFactory.CreateFromReader(ref reader, FieldHandlerOptions.None);
         }
 
-        DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator, Type type, IFieldHandler keySpecialized, IFieldHandler valueSpecialized)
+        DictionaryFieldHandler(IFieldHandlerFactory fieldHandlerFactory, ITypeConvertorGenerator typeConvertGenerator,
+            Type type, IFieldHandler keySpecialized, IFieldHandler valueSpecialized)
         {
             _fieldHandlerFactory = fieldHandlerFactory;
             _typeConvertGenerator = typeConvertGenerator;
@@ -57,7 +61,8 @@ namespace BTDB.FieldHandler
         public static bool IsCompatibleWith(Type type)
         {
             if (!type.IsGenericType) return false;
-            return type.GetGenericTypeDefinition() == typeof(IDictionary<,>) || type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
+            return type.GetGenericTypeDefinition() == typeof(IDictionary<,>) ||
+                   type.GetGenericTypeDefinition() == typeof(Dictionary<,>);
         }
 
         public bool IsCompatibleWith(Type type, FieldHandlerOptions options)
@@ -67,7 +72,8 @@ namespace BTDB.FieldHandler
 
         public Type HandledType()
         {
-            return _type ??= typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
+            return _type ??=
+                typeof(IDictionary<,>).MakeGenericType(_keysHandler.HandledType(), _valuesHandler.HandledType());
         }
 
         public bool NeedsCtx()
@@ -154,7 +160,8 @@ namespace BTDB.FieldHandler
                 .Mark(finish);
         }
 
-        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx, Action<IILGen> pushValue)
+        public void Save(IILGen ilGenerator, Action<IILGen> pushWriter, Action<IILGen> pushCtx,
+            Action<IILGen> pushValue)
         {
             var realFinish = ilGenerator.DefineLabel();
             var finish = ilGenerator.DefineLabel();
@@ -211,14 +218,15 @@ namespace BTDB.FieldHandler
                 .Mark(realFinish);
         }
 
-        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler)
+        public IFieldHandler SpecializeLoadForType(Type type, IFieldHandler? typeHandler, IFieldHandlerLogger? logger)
         {
             if (_type == type) return this;
             if (!IsCompatibleWith(type))
             {
-                Debug.Fail("strange");
+                logger?.ReportTypeIncompatibility(_type, this, type, typeHandler);
                 return this;
             }
+
             var wantedKeyType = type.GetGenericArguments()[0];
             var wantedValueType = type.GetGenericArguments()[1];
             var wantedKeyHandler = default(IFieldHandler);
@@ -228,23 +236,30 @@ namespace BTDB.FieldHandler
                 wantedKeyHandler = dictTypeHandler._keysHandler;
                 wantedValueHandler = dictTypeHandler._valuesHandler;
             }
-            var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType, wantedKeyHandler);
+
+            var keySpecialized = _keysHandler.SpecializeLoadForType(wantedKeyType, wantedKeyHandler, logger);
             if (_typeConvertGenerator.GenerateConversion(keySpecialized.HandledType(), wantedKeyType) == null)
             {
-                Debug.Fail("even more strange key");
+                logger?.ReportTypeIncompatibility(keySpecialized.HandledType(), keySpecialized, wantedKeyType,
+                    wantedKeyHandler);
                 return this;
             }
-            var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType, wantedValueHandler);
+
+            var valueSpecialized = _valuesHandler.SpecializeLoadForType(wantedValueType, wantedValueHandler, logger);
             if (_typeConvertGenerator.GenerateConversion(valueSpecialized.HandledType(), wantedValueType) == null)
             {
-                Debug.Fail("even more strange value");
+                logger?.ReportTypeIncompatibility(valueSpecialized.HandledType(), valueSpecialized, wantedValueType,
+                    wantedValueHandler);
                 return this;
             }
+
             if (wantedKeyHandler == keySpecialized && wantedValueHandler == valueSpecialized)
             {
                 return typeHandler;
             }
-            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized, valueSpecialized);
+
+            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized,
+                valueSpecialized);
         }
 
         public IFieldHandler SpecializeSaveForType(Type type)
@@ -255,6 +270,7 @@ namespace BTDB.FieldHandler
                 Debug.Fail("strange");
                 return this;
             }
+
             var wantedKeyType = type.GetGenericArguments()[0];
             var wantedValueType = type.GetGenericArguments()[1];
             var keySpecialized = _keysHandler.SpecializeSaveForType(wantedKeyType);
@@ -263,13 +279,16 @@ namespace BTDB.FieldHandler
                 Debug.Fail("even more strange key");
                 return this;
             }
+
             var valueSpecialized = _valuesHandler.SpecializeSaveForType(wantedValueType);
             if (_typeConvertGenerator.GenerateConversion(wantedValueType, valueSpecialized.HandledType()) == null)
             {
                 Debug.Fail("even more strange value");
                 return this;
             }
-            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized, valueSpecialized);
+
+            return new DictionaryFieldHandler(_fieldHandlerFactory, _typeConvertGenerator, type, keySpecialized,
+                valueSpecialized);
         }
 
         public IEnumerable<IFieldHandler> EnumerateNestedFieldHandlers()
