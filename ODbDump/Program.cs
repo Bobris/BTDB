@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -7,6 +7,7 @@ using ODbDump.Visitor;
 using BTDB.StreamLayer;
 using System.Linq;
 using System.Threading;
+using ODbDump.TrlDump;
 
 namespace ODbDump
 {
@@ -18,7 +19,7 @@ namespace ODbDump
             {
                 Console.WriteLine("Need to have just one parameter with directory of ObjectDB");
                 Console.WriteLine(
-                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump");
+                    "Optional second parameter: nicedump, comparedump, diskdump, dump, dumpnull, stat, fileheaders, compact, export, import, leaks, leakscode, size, frequency, interactive, check, findsplitbrain, fulldiskdump, trldump");
                 return;
             }
 
@@ -456,6 +457,26 @@ namespace ODbDump
                         }
                     }
                     break;
+                case "trldump":
+                    {
+                        ITrlVisitor visitor = new ConsoleTrlVisitor();
+                        using var dfc = new OnDiskFileCollection(args[0]);
+                        foreach (var file in dfc.Enumerate())
+                        {
+                            try
+                            {
+                                visitor.StartFile(file.Index, file.GetSize());
+                                var reader = new TrlFileReader(file);
+                                reader.Iterate(visitor);
+                            }
+                            catch (Exception e)
+                            {
+                                visitor.OperationDetail("Failure " + e.Message);
+                            }
+                            visitor.EndOperation();
+                        }
+                    }
+                    break;
                 default:
                     {
                         Console.WriteLine($"Unknown action: {action}");
@@ -570,6 +591,21 @@ namespace ODbDump
                         Console.WriteLine("l list");
                         Console.WriteLine("e exit");
                         continue;
+                    case "o":
+                    case "oid":
+                        if (words.Length == 2)
+                        {
+                            if (uint.TryParse(words[1], out var oid))
+                                iterator.IterateOid(oid);
+                        }
+                        else
+                        {
+                            Console.WriteLine("oid command help:");
+                            Console.WriteLine("oid id");
+                            continue;
+                        }
+
+                        break;
                     case "s":
                     case "select":
                         if (words.Length == 1)
@@ -583,7 +619,7 @@ namespace ODbDump
                         {
                             if (currentRelationId >= 0)
                             {
-                                iterator.IterateRelationRow(iterator.RelationId2Info[(uint)currentRelationId],
+                                iterator.IterateRelationRow(iterator.RelationId2Info[(uint) currentRelationId],
                                     selectId);
                             }
 
@@ -598,10 +634,8 @@ namespace ODbDump
                                 {
                                     if (uint.TryParse(words[2], out var id) && iterator.RelationId2Info.ContainsKey(id))
                                     {
-                                        currentRelationId = (int)id;
+                                        currentRelationId = (int) id;
                                     }
-
-                                    break;
                                 }
 
                                 break;
@@ -646,6 +680,17 @@ namespace ODbDump
                                             }
 
                                             break;
+                                    }
+                                }
+
+                                break;
+                            case "t":
+                            case "table":
+                                if (words.Length == 2)
+                                {
+                                    foreach (var (id, name) in iterator.TableId2Name)
+                                    {
+                                        Console.WriteLine(id + " " + name);
                                     }
                                 }
 

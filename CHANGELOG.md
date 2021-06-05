@@ -10,6 +10,8 @@ Support for .NetCore 3.1. Only .Net 5.0 is supported now.
 
 ODbDump has new command `fulldiskdump` containing also content of secondary keys
 
+ODbDump has new command `trldump` listing operations in .trl files
+
 ## 26.2.2
 
 ### Fixed
