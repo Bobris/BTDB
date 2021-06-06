@@ -14,6 +14,8 @@ ODbDump has new command `trldump` listing operations in .trl files
 
 New interface `IFieldHandlerLogger` for logging type incompatibilities. Sample usage `new DBOptions().WithFieldHandlerLogger(new DefaultFieldHandlerLogger(s => Console.WriteLine(s)))`.
 
+Possibility to iterate all transactions. Each transaction also has new getter `CreatedTime` and `IsDisposed()`.
+
 ## 26.2.2
 
 ### Fixed
