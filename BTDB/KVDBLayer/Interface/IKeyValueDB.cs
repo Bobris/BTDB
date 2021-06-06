@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,5 +33,7 @@ namespace BTDB.KVDBLayer
 
         // Transaction Log files will try to be split at this size, can be modified during running (maximum size is int.MaxValue)
         long MaxTrLogFileSize { get; set; }
+
+        IEnumerable<IKeyValueDBTransaction> Transactions();
     }
 }

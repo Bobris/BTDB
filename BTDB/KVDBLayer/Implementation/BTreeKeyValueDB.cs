@@ -41,6 +41,14 @@ namespace BTDB.KVDBLayer
         ISpanWriter? _writerWithTransactionLog;
         static readonly byte[] MagicStartOfTransaction = {(byte) 't', (byte) 'R'};
         public long MaxTrLogFileSize { get; set; }
+        public IEnumerable<IKeyValueDBTransaction> Transactions()
+        {
+            foreach (var keyValuePair in _transactions)
+            {
+                yield return keyValuePair.Key;
+            }
+        }
+
         public ulong CompactorReadBytesPerSecondLimit { get; }
         public ulong CompactorWriteBytesPerSecondLimit { get; }
 
@@ -993,10 +1001,15 @@ namespace BTDB.KVDBLayer
                 // Memory barrier inside next statement
                 if (!node.Reference())
                 {
-                    return new BTreeKeyValueDBTransaction(this, node, false, false);
+                    var tr = new BTreeKeyValueDBTransaction(this, node, false, false);
+                    _transactions.Add(tr, null);
+                    return tr;
                 }
             }
         }
+
+        readonly ConditionalWeakTable<IKeyValueDBTransaction, object?> _transactions =
+            new ConditionalWeakTable<IKeyValueDBTransaction, object?>();
 
         public IKeyValueDBTransaction StartReadOnlyTransaction()
         {
@@ -1006,7 +1019,9 @@ namespace BTDB.KVDBLayer
                 // Memory barrier inside next statement
                 if (!node.Reference())
                 {
-                    return new BTreeKeyValueDBTransaction(this, node, false, true);
+                    var tr = new BTreeKeyValueDBTransaction(this, node, false, true);
+                    _transactions.Add(tr, null);
+                    return tr;
                 }
             }
         }
@@ -1017,7 +1032,9 @@ namespace BTDB.KVDBLayer
             {
                 if (_writingTransaction == null)
                 {
-                    return new ValueTask<IKeyValueDBTransaction>(NewWritingTransactionUnsafe());
+                    var tr = NewWritingTransactionUnsafe();
+                    _transactions.Add(tr, null);
+                    return new ValueTask<IKeyValueDBTransaction>(tr);
                 }
 
                 var tcs = new TaskCompletionSource<IKeyValueDBTransaction>();
@@ -1231,15 +1248,17 @@ namespace BTDB.KVDBLayer
             FreeWaitingToDisposeUnsafe();
             if (_writeWaitingQueue.Count == 0) return;
             var tcs = _writeWaitingQueue.Dequeue();
-            tcs.SetResult(NewWritingTransactionUnsafe());
+            var tr = NewWritingTransactionUnsafe();
+            _transactions.Add(tr, null);
+            tcs.SetResult(tr);
         }
 
         void TryFreeWaitingToDispose()
         {
             var taken = false;
-            Monitor.TryEnter(_writeLock, ref taken);
             try
             {
+                Monitor.TryEnter(_writeLock, ref taken);
                 if (taken)
                 {
                     FreeWaitingToDisposeUnsafe();
@@ -1272,7 +1291,7 @@ namespace BTDB.KVDBLayer
 
         void FreeWaitingToDisposeUnsafe()
         {
-            while (_listHead != null && _listHead.ShouldBeDisposed)
+            while (_listHead is { ShouldBeDisposed: true })
             {
                 _listHead.Dispose();
                 _listHead = _listHead.Next;
@@ -1471,9 +1490,9 @@ namespace BTDB.KVDBLayer
                 return res.ToArray();
             }
 
-            var valueSize = MemoryMarshal.Read<int>(trueValue.Slice(8));
+            var valueSize = MemoryMarshal.Read<int>(trueValue[8..]);
             if (valueSize == 0) return new ReadOnlySpan<byte>();
-            var valueOfs = MemoryMarshal.Read<uint>(trueValue.Slice(4));
+            var valueOfs = MemoryMarshal.Read<uint>(trueValue[4..]);
 
             var compressed = false;
             if (valueSize < 0)
@@ -1566,7 +1585,7 @@ namespace BTDB.KVDBLayer
                     {
                         uint valueOfs;
                         int valueSize;
-                        var inlineValueBuf = memberValue.Slice(5);
+                        var inlineValueBuf = memberValue[5..];
                         var valueLen = memberValue[4];
                         switch (valueLen)
                         {
@@ -1777,8 +1796,8 @@ namespace BTDB.KVDBLayer
         {
             if (_subDBs.TryGetValue(id, out var subDB))
             {
-                if (!(subDB is T)) throw new ArgumentException($"SubDB of id {id} is not type {typeof(T).FullName}");
-                return (T) subDB;
+                if (!(subDB is T db)) throw new ArgumentException($"SubDB of id {id} is not type {typeof(T).FullName}");
+                return db;
             }
 
             if (typeof(T) == typeof(IChunkStorage))

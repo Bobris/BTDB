@@ -7,6 +7,8 @@ namespace BTDB.KVDBLayer
     {
         IKeyValueDB Owner { get; }
 
+        DateTime CreatedTime { get; }
+
         /// <summary>
         /// Set for with some description for this transaction purpose to find reason for Transaction leak
         /// </summary>
@@ -151,6 +153,8 @@ namespace BTDB.KVDBLayer
         bool IsWriting();
 
         bool IsReadOnly();
+
+        bool IsDisposed();
 
         /// <summary>
         /// Each KeyValueDB has special ulong value which could be modified - it is much faster than regular key

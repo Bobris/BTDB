@@ -259,6 +259,10 @@ namespace BTDBTest
 
             public uint CompactorRamLimitInMb { get; set; }
             public long MaxTrLogFileSize { get; set; }
+            public IEnumerable<IKeyValueDBTransaction> Transactions()
+            {
+                return _keyValueDB.Transactions();
+            }
 
             public void Dispose()
             {
@@ -276,6 +280,7 @@ namespace BTDBTest
             }
 
             public IKeyValueDB Owner => _keyValueDBTransaction.Owner;
+            public DateTime CreatedTime => _keyValueDBTransaction.CreatedTime;
 
             public string? DescriptionForLeaks
             {
@@ -425,6 +430,11 @@ namespace BTDBTest
             public bool IsReadOnly()
             {
                 return _keyValueDBTransaction.IsReadOnly();
+            }
+
+            public bool IsDisposed()
+            {
+                return _keyValueDBTransaction.IsDisposed();
             }
 
             public ulong GetCommitUlong()

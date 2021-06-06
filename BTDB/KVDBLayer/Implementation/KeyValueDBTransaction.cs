@@ -17,6 +17,8 @@ namespace BTDB.KVDBLayer
         long _keyIndex;
         long _cursorMovedCounter;
 
+        public DateTime CreatedTime { get; } = DateTime.UtcNow;
+
         public KeyValueDBTransaction(KeyValueDB keyValueDB, IBTreeRootNode btreeRoot, bool writing, bool readOnly)
         {
             _preapprovedWriting = writing;
@@ -350,6 +352,11 @@ namespace BTDB.KVDBLayer
         public bool IsReadOnly()
         {
             return _readOnly;
+        }
+
+        public bool IsDisposed()
+        {
+            return BtreeRoot == null;
         }
 
         public ulong GetCommitUlong()

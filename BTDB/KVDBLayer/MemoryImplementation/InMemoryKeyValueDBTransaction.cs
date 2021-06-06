@@ -315,6 +315,11 @@ namespace BTDB.KVDBLayer
             return _readOnly;
         }
 
+        public bool IsDisposed()
+        {
+            return _btreeRoot == null;
+        }
+
         public ulong GetCommitUlong()
         {
             return _btreeRoot!.CommitUlong;
@@ -398,6 +403,8 @@ namespace BTDB.KVDBLayer
         }
 
         string? _descriptionForLeaks;
+
+        public DateTime CreatedTime { get; } = DateTime.UtcNow;
 
         public string? DescriptionForLeaks
         {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BTDB.BTreeLib;
 
 namespace BTDB.KVDBLayer
@@ -9,7 +10,7 @@ namespace BTDB.KVDBLayer
     class BTreeKeyValueDBTransaction : IKeyValueDBTransaction
     {
         readonly BTreeKeyValueDB _keyValueDB;
-        internal IRootNode? BTreeRoot { get; private set; }
+        internal IRootNode? BTreeRoot;
         readonly ICursor _cursor;
         ICursor? _cursor2;
         readonly bool _readOnly;
@@ -18,6 +19,8 @@ namespace BTDB.KVDBLayer
         bool _temporaryCloseTransactionLog;
         long _keyIndex;
         long _cursorMovedCounter;
+
+        public DateTime CreatedTime { get; } = DateTime.UtcNow;
 
         public BTreeKeyValueDBTransaction(BTreeKeyValueDB keyValueDB, IRootNode root, bool writing, bool readOnly)
         {
@@ -372,6 +375,11 @@ namespace BTDB.KVDBLayer
             return _readOnly;
         }
 
+        public bool IsDisposed()
+        {
+            return BTreeRoot == null;
+        }
+
         public ulong GetCommitUlong()
         {
             return BTreeRoot!.CommitUlong;
@@ -425,8 +433,7 @@ namespace BTDB.KVDBLayer
 
         public void Dispose()
         {
-            var currentRoot = BTreeRoot;
-            BTreeRoot = null;
+            var currentRoot = Interlocked.Exchange(ref BTreeRoot, null);
             if (_writing || _preapprovedWriting)
             {
                 _keyValueDB.RevertWritingTransaction(currentRoot!, _preapprovedWriting);
