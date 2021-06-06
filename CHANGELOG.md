@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.3.0
+
 ### Removed
 
 Support for .NetCore 3.1. Only .Net 5.0 is supported now.
