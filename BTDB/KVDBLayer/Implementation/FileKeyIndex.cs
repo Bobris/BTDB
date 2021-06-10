@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BTDB.KVDBLayer
 {
-    class FileKeyIndex : IKeyIndex
+    public class FileKeyIndex : IKeyIndex
     {
         readonly long _generation;
         readonly Guid? _guid;
@@ -69,7 +69,7 @@ namespace BTDB.KVDBLayer
             _ulongs = ulongs?.ToArray();
         }
 
-        internal static void SkipHeader(ref SpanReader reader)
+        public static void SkipHeader(ref SpanReader reader)
         {
             FileCollectionWithFileInfos.SkipHeader(ref reader);
             var type = (KVFileType)reader.ReadUInt8();

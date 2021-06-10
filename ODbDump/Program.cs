@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BTDB.KVDBLayer;
 using BTDB.ODBLayer;
@@ -6,7 +7,10 @@ using System.Diagnostics;
 using ODbDump.Visitor;
 using BTDB.StreamLayer;
 using System.Linq;
+using System.Text;
 using System.Threading;
+using BTDB.Collections;
+using Microsoft.Extensions.Primitives;
 using ODbDump.TrlDump;
 
 namespace ODbDump
@@ -32,462 +36,518 @@ namespace ODbDump
             switch (action)
             {
                 case "realpath":
-                    {
-                        var res = PlatformMethods.Instance.RealPath(args[0]);
-                        if (res == null)
-                            Console.WriteLine("Error resolving real path for " + args[0]);
-                        else
-                            Console.WriteLine(res);
-                        break;
-                    }
+                {
+                    var res = PlatformMethods.Instance.RealPath(args[0]);
+                    if (res == null)
+                        Console.WriteLine("Error resolving real path for " + args[0]);
+                    else
+                        Console.WriteLine(res);
+                    break;
+                }
                 case "nicedump":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                        Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                        Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                        var visitor = new ToConsoleVisitorNice();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                    Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                    Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                    var visitor = new ToConsoleVisitorNice();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate();
 
-                        break;
-                    }
+                    break;
+                }
                 case "interactive":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                        Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                        Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                        var visitor = new ToConsoleVisitorNice();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.LoadGlobalInfo(true);
-                        Interactive(iterator, visitor);
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                    Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                    Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                    var visitor = new ToConsoleVisitorNice();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.LoadGlobalInfo(true);
+                    Interactive(iterator, visitor);
 
-                        break;
-                    }
+                    break;
+                }
                 case "comparedump":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        var visitor = new ToConsoleVisitorForComparison();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate(sortTableByNameAsc: true);
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    var visitor = new ToConsoleVisitorForComparison();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate(sortTableByNameAsc: true);
 
-                        break;
-                    }
+                    break;
+                }
                 case "comparesplitdump":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        using var visitor = new ToFilesVisitorForComparison(HashType.Crc32);
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate(sortTableByNameAsc: true);
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    using var visitor = new ToFilesVisitorForComparison(HashType.Crc32);
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate(sortTableByNameAsc: true);
 
-                        break;
-                    }
+                    break;
+                }
                 case "fulldiskdump":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        using var visitor = new ToFilesVisitorWithSecondaryKeys();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate(sortTableByNameAsc: true);
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    using var visitor = new ToFilesVisitorWithSecondaryKeys();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate(sortTableByNameAsc: true);
 
-                        break;
-                    }
+                    break;
+                }
                 case "diskdump":
-                    {
-                        var dbDir = args[0];
-                        var openUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null;
-                        var fileName = Path.Combine(dbDir, "dump.txt");
+                {
+                    var dbDir = args[0];
+                    var openUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null;
+                    var fileName = Path.Combine(dbDir, "dump.txt");
 
-                        DiskDump(dbDir, fileName, openUpToCommitUlong);
-                        break;
-                    }
+                    DiskDump(dbDir, fileName, openUpToCommitUlong);
+                    break;
+                }
                 case "dump":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var trkv = kdb.StartReadOnlyTransaction();
-                        using var tr = odb.StartTransaction();
-                        Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
-                        Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
-                        Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
-                        var visitor = new ToConsoleVisitor();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var trkv = kdb.StartReadOnlyTransaction();
+                    using var tr = odb.StartTransaction();
+                    Console.WriteLine("CommitUlong: " + tr.GetCommitUlong());
+                    Console.WriteLine("Ulong[0] oid: " + trkv.GetUlong(0));
+                    Console.WriteLine("Ulong[1] dictid: " + trkv.GetUlong(1));
+                    var visitor = new ToConsoleVisitor();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate();
 
-                        break;
-                    }
+                    break;
+                }
                 case "dumpnull":
                 case "null":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var tr = odb.StartTransaction();
-                        var visitor = new ToNullVisitor();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var tr = odb.StartTransaction();
+                    var visitor = new ToNullVisitor();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate();
 
-                        break;
-                    }
+                    break;
+                }
                 case "check":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var transaction = kdb.StartReadOnlyTransaction();
-                        var keyValueCount = transaction.GetKeyValueCount();
-                        transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
-                        for (long kv = 0; kv < keyValueCount; kv++)
-                        {
-                            transaction.GetKey();
-                            transaction.GetValue();
-                            transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
-                        }
-
-                        break;
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var transaction = kdb.StartReadOnlyTransaction();
+                    var keyValueCount = transaction.GetKeyValueCount();
+                    transaction.FindFirstKey(ReadOnlySpan<byte>.Empty);
+                    for (long kv = 0; kv < keyValueCount; kv++)
+                    {
+                        transaction.GetKey();
+                        transaction.GetValue();
+                        transaction.FindNextKey(ReadOnlySpan<byte>.Empty);
                     }
+
+                    break;
+                }
                 case "stat":
+                {
+                    var sw = new Stopwatch();
+                    sw.Start();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        var sw = new Stopwatch();
-                        sw.Start();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        sw.Stop();
-                        Console.WriteLine(
-                            $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                        Console.WriteLine(kdb.CalcStats());
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    sw.Stop();
+                    Console.WriteLine(
+                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    Console.WriteLine(kdb.CalcStats());
 
-                        break;
-                    }
+                    break;
+                }
                 case "statm": // Stat but by old managed implementation
+                {
+                    var sw = new Stopwatch();
+                    sw.Start();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        var sw = new Stopwatch();
-                        sw.Start();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        sw.Stop();
-                        Console.WriteLine(
-                            $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                        Console.WriteLine(kdb.CalcStats());
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    sw.Stop();
+                    Console.WriteLine(
+                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    Console.WriteLine(kdb.CalcStats());
 
-                        break;
-                    }
+                    break;
+                }
                 case "kvi":
-                    {
-                        var sw = Stopwatch.StartNew();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
-                        Console.WriteLine(
-                            $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                        sw.Restart();
-                        kdb.CreateKvi(CancellationToken.None);
-                        Console.WriteLine(
-                            $"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                {
+                    var sw = Stopwatch.StartNew();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new BTreeKeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
+                    Console.WriteLine(
+                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    sw.Restart();
+                    kdb.CreateKvi(CancellationToken.None);
+                    Console.WriteLine(
+                        $"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
 
-                        break;
-                    }
+                    break;
+                }
                 case "kvim": // Kvi but by old managed implementation
-                    {
-                        var sw = Stopwatch.StartNew();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
-                        Console.WriteLine(
-                            $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                        sw.Restart();
-                        kdb.CreateKvi(CancellationToken.None);
-                        Console.WriteLine(
-                            $"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                {
+                    var sw = Stopwatch.StartNew();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
+                    Console.WriteLine(
+                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    sw.Restart();
+                    kdb.CreateKvi(CancellationToken.None);
+                    Console.WriteLine(
+                        $"Created kvi in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
 
-                        break;
-                    }
+                    break;
+                }
                 case "fileheaders":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    var fcfi = new FileCollectionWithFileInfos(dfc);
+                    foreach (var fi in fcfi.FileInfos)
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        var fcfi = new FileCollectionWithFileInfos(dfc);
-                        foreach (var fi in fcfi.FileInfos)
+                        var details = "";
+                        switch (fi.Value)
                         {
-                            var details = "";
-                            switch (fi.Value)
+                            case IKeyIndex keyIndex:
                             {
-                                case IKeyIndex keyIndex:
-                                    {
-                                        details =
-                                            $"KVCount:{keyIndex.KeyValueCount} CommitUlong:{keyIndex.CommitUlong} TrLogFileId:{keyIndex.TrLogFileId} TrLogOffset:{keyIndex.TrLogOffset}";
-                                        var usedFiles = keyIndex.UsedFilesInOlderGenerations;
-                                        if (usedFiles != null)
-                                        {
-                                            details += " UsedFiles:" + string.Join(",", usedFiles);
-                                        }
-
-                                        break;
-                                    }
-                                case IFileTransactionLog trlog:
-                                    details = $"Previous File Id: {trlog.PreviousFileId}";
-                                    break;
+                                details =
+                                    $"KVCount:{keyIndex.KeyValueCount} CommitUlong:{keyIndex.CommitUlong} TrLogFileId:{keyIndex.TrLogFileId} TrLogOffset:{keyIndex.TrLogOffset}\n";
+                                details += LoadUsedFilesFromKvi(keyIndex, fcfi, fi.Key);
+                                break;
                             }
-
-                            Console.WriteLine("File {0} Guid:{3} Gen:{2} Type:{1} {4}", fi.Key,
-                                fi.Value.FileType.ToString(), fi.Value.Generation, fi.Value.Guid, details);
+                            case IFileTransactionLog trlog:
+                                details = $"Previous File Id: {trlog.PreviousFileId}";
+                                break;
                         }
 
-                        break;
+                        Console.WriteLine("File {0} Guid:{3} Gen:{2} Type:{1} {4}", fi.Key,
+                            fi.Value.FileType.ToString(), fi.Value.Generation, fi.Value.Guid, details);
                     }
+
+                    break;
+                }
                 case "compact":
+                {
+                    var sw = new Stopwatch();
+                    sw.Start();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
+                    kdb.Logger = new ConsoleKvdbLogger();
+                    sw.Stop();
+                    Console.WriteLine(
+                        $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    sw.Restart();
+                    while (kdb.Compact(new CancellationToken()))
                     {
-                        var sw = new Stopwatch();
-                        sw.Start();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(dfc, new SnappyCompressionStrategy(), 100 * 1024 * 1024, null);
-                        kdb.Logger = new ConsoleKvdbLogger();
                         sw.Stop();
-                        Console.WriteLine(
-                            $"Opened in {sw.Elapsed.TotalSeconds:F1}s Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                        Console.WriteLine($"Compaction iteration in {sw.Elapsed.TotalSeconds:F1}");
                         sw.Restart();
-                        while (kdb.Compact(new CancellationToken()))
-                        {
-                            sw.Stop();
-                            Console.WriteLine($"Compaction iteration in {sw.Elapsed.TotalSeconds:F1}");
-                            sw.Restart();
-                        }
-
-                        sw.Stop();
-                        Console.WriteLine(
-                            $"Final compaction in {sw.Elapsed.TotalSeconds:F1} Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
-                        Console.WriteLine(kdb.CalcStats());
-
-                        break;
                     }
+
+                    sw.Stop();
+                    Console.WriteLine(
+                        $"Final compaction in {sw.Elapsed.TotalSeconds:F1} Using {Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024}MB RAM");
+                    Console.WriteLine(kdb.CalcStats());
+
+                    break;
+                }
                 case "export":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var tr = kdb.StartReadOnlyTransaction();
-                        using var st = File.Create(Path.Combine(args[0], "snapshot.dat"));
-                        KeyValueDBExportImporter.Export(tr, st);
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var tr = kdb.StartReadOnlyTransaction();
+                    using var st = File.Create(Path.Combine(args[0], "snapshot.dat"));
+                    KeyValueDBExportImporter.Export(tr, st);
 
-                        break;
-                    }
+                    break;
+                }
                 case "import":
-                    {
-                        using var st = File.OpenRead(Path.Combine(args[0], "snapshot.dat"));
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(dfc);
-                        using var tr = kdb.StartTransaction();
-                        KeyValueDBExportImporter.Import(tr, st);
-                        tr.Commit();
+                {
+                    using var st = File.OpenRead(Path.Combine(args[0], "snapshot.dat"));
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(dfc);
+                    using var tr = kdb.StartTransaction();
+                    KeyValueDBExportImporter.Import(tr, st);
+                    tr.Commit();
 
-                        break;
-                    }
+                    break;
+                }
                 case "leaks":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        Console.WriteLine("Leaks: ");
-                        odb.Open(kdb, false);
-                        odb.DumpLeaks();
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    Console.WriteLine("Leaks: ");
+                    odb.Open(kdb, false);
+                    odb.DumpLeaks();
 
-                        break;
-                    }
+                    break;
+                }
                 case "leakscode":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        odb.DumpLeaksCode();
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    odb.DumpLeaksCode();
 
-                        break;
-                    }
+                    break;
+                }
                 case "frequency":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var tr = odb.StartTransaction();
-                        var visitor = new ToConsoleFrequencyVisitor();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
-                        visitor.OutputStatistic();
-                    }
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var tr = odb.StartTransaction();
+                    var visitor = new ToConsoleFrequencyVisitor();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate();
+                    visitor.OutputStatistic();
+                }
                     break;
                 case "size":
+                {
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    using var kdb = new KeyValueDB(new KeyValueDBOptions
                     {
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        using var kdb = new KeyValueDB(new KeyValueDBOptions
-                        {
-                            FileCollection = dfc,
-                            ReadOnly = true,
-                            Compression = new SnappyCompressionStrategy(),
-                            OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
-                        });
-                        using var odb = new ObjectDB();
-                        odb.Open(kdb, false);
-                        using var tr = odb.StartTransaction();
-                        var visitor = new ToConsoleSizeVisitor();
-                        var iterator = new ODBIterator(tr, visitor);
-                        iterator.Iterate();
-                    }
+                        FileCollection = dfc,
+                        ReadOnly = true,
+                        Compression = new SnappyCompressionStrategy(),
+                        OpenUpToCommitUlong = args.Length >= 3 ? (ulong?)ulong.Parse(args[2]) : null
+                    });
+                    using var odb = new ObjectDB();
+                    odb.Open(kdb, false);
+                    using var tr = odb.StartTransaction();
+                    var visitor = new ToConsoleSizeVisitor();
+                    var iterator = new ODBIterator(tr, visitor);
+                    iterator.Iterate();
+                }
                     break;
                 case "findsplitbrain":
+                {
+                    if (args.Length != 6)
                     {
-                        if (args.Length != 6)
-                        {
-                            Console.WriteLine(
-                                "usage: ODBDump Eagle_0 findsplitbrain Eagle_1 1000 100000 INestedEventTable");
-                            return;
-                        }
-
-                        var startEvent = ulong.Parse(args[3]);
-                        var endEvent = ulong.Parse(args[4]);
-                        var relationName = args[5];
-
-                        var (found, lastGood, firstBad) = FindSplitBrain(args[0], args[2], relationName, startEvent, endEvent);
-                        if (found)
-                        {
-                            Console.WriteLine($"Split occured between {lastGood} and {firstBad}");
-                            DiskDump(args[0], $"dump_{lastGood}_0.txt", lastGood);
-                            DiskDump(args[2], $"dump_{lastGood}_1.txt", lastGood);
-                            DiskDump(args[0], $"dump_{firstBad}_0.txt", firstBad);
-                            DiskDump(args[2], $"dump_{firstBad}_1.txt", firstBad);
-                        }
+                        Console.WriteLine(
+                            "usage: ODBDump Eagle_0 findsplitbrain Eagle_1 1000 100000 INestedEventTable");
+                        return;
                     }
+
+                    var startEvent = ulong.Parse(args[3]);
+                    var endEvent = ulong.Parse(args[4]);
+                    var relationName = args[5];
+
+                    var (found, lastGood, firstBad) =
+                        FindSplitBrain(args[0], args[2], relationName, startEvent, endEvent);
+                    if (found)
+                    {
+                        Console.WriteLine($"Split occured between {lastGood} and {firstBad}");
+                        DiskDump(args[0], $"dump_{lastGood}_0.txt", lastGood);
+                        DiskDump(args[2], $"dump_{lastGood}_1.txt", lastGood);
+                        DiskDump(args[0], $"dump_{firstBad}_0.txt", firstBad);
+                        DiskDump(args[2], $"dump_{firstBad}_1.txt", firstBad);
+                    }
+                }
                     break;
                 case "trldump":
+                {
+                    ITrlVisitor visitor = new ConsoleTrlVisitor();
+                    using var dfc = new OnDiskFileCollection(args[0]);
+                    foreach (var file in dfc.Enumerate())
                     {
-                        ITrlVisitor visitor = new ConsoleTrlVisitor();
-                        using var dfc = new OnDiskFileCollection(args[0]);
-                        foreach (var file in dfc.Enumerate())
+                        try
                         {
-                            try
-                            {
-                                visitor.StartFile(file.Index, file.GetSize());
-                                var reader = new TrlFileReader(file);
-                                reader.Iterate(visitor);
-                            }
-                            catch (Exception e)
-                            {
-                                visitor.OperationDetail("Failure " + e.Message);
-                            }
-                            visitor.EndOperation();
+                            visitor.StartFile(file.Index, file.GetSize());
+                            var reader = new TrlFileReader(file);
+                            reader.Iterate(visitor);
                         }
+                        catch (Exception e)
+                        {
+                            visitor.OperationDetail("Failure " + e.Message);
+                        }
+
+                        visitor.EndOperation();
                     }
+                }
                     break;
                 default:
-                    {
-                        Console.WriteLine($"Unknown action: {action}");
-                        break;
-                    }
+                {
+                    Console.WriteLine($"Unknown action: {action}");
+                    break;
+                }
             }
         }
 
-        static (bool found, ulong lastGood, ulong firstBad) FindSplitBrain(string dir1, string dir2, string relationName, ulong startEvent, ulong endEvent)
+        static string LoadUsedFilesFromKvi(IKeyIndex keyIndex, FileCollectionWithFileInfos fcfi, uint fileId)
+        {
+            try
+            {
+                var file = fcfi.GetFile(fileId);
+                var reader = new SpanReader(file.GetExclusiveReader());
+                FileKeyIndex.SkipHeader(ref reader);
+                var keyCount = keyIndex.KeyValueCount;
+                var usedFileIds = new RefDictionary<uint, ulong>();
+                if (keyIndex.Compression == KeyIndexCompression.Old)
+                {
+                    for (var i = 0; i < keyCount; i++)
+                    {
+                        var keyLength = reader.ReadVInt32();
+                        reader.SkipBlock(keyLength);
+                        var vFileId = reader.ReadVUInt32();
+                        reader.SkipVUInt32();
+                        var len = reader.ReadVInt32();
+                        if (vFileId > 0) usedFileIds.GetOrAddValueRef(vFileId) += (ulong)Math.Abs(len);
+                    }
+                }
+                else
+                {
+                    if (keyIndex.Compression != KeyIndexCompression.None)
+                        return "";
+                    for (var i = 0; i < keyCount; i++)
+                    {
+                        reader.SkipVUInt32();
+                        var keyLengthWithoutPrefix = (int)reader.ReadVUInt32();
+                        reader.SkipBlock(keyLengthWithoutPrefix);
+                        var vFileId = reader.ReadVUInt32();
+                        reader.SkipVUInt32();
+                        var len = reader.ReadVInt32();
+                        if (vFileId > 0) usedFileIds.GetOrAddValueRef(vFileId) += (ulong)Math.Abs(len);
+                    }
+                }
+
+                var used = usedFileIds.OrderBy(a => a.Key).ToArray();
+                var sb = new StringBuilder();
+                foreach (var keyValuePair in used)
+                {
+                    sb.Append("    in ");
+                    sb.Append(keyValuePair.Key);
+                    sb.Append(" used ");
+                    sb.Append(keyValuePair.Value);
+                    sb.Append('\n');
+                }
+                return sb.ToString();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return "";
+        }
+
+        static (bool found, ulong lastGood, ulong firstBad) FindSplitBrain(string dir1, string dir2,
+            string relationName, ulong startEvent, ulong endEvent)
         {
             if (!CheckStartEquals()) return (false, 0, 0);
+
             bool CheckStartEquals()
             {
                 var startContent0 = DumpRelationContent(dir1, relationName, startEvent);
@@ -498,6 +558,7 @@ namespace ODbDump
             }
 
             if (!CheckEndDiffers()) return (false, 0, 0);
+
             bool CheckEndDiffers()
             {
                 var endContent0 = DumpRelationContent(dir1, relationName, endEvent);
@@ -619,7 +680,7 @@ namespace ODbDump
                         {
                             if (currentRelationId >= 0)
                             {
-                                iterator.IterateRelationRow(iterator.RelationId2Info[(uint) currentRelationId],
+                                iterator.IterateRelationRow(iterator.RelationId2Info[(uint)currentRelationId],
                                     selectId);
                             }
 
@@ -634,7 +695,7 @@ namespace ODbDump
                                 {
                                     if (uint.TryParse(words[2], out var id) && iterator.RelationId2Info.ContainsKey(id))
                                     {
-                                        currentRelationId = (int) id;
+                                        currentRelationId = (int)id;
                                     }
                                 }
 
