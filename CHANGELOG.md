@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.3.1
+
 ### Fixed
 
 Tried to workaround rare problem with compactor corrupting DB.
