@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Fixed
+
+Tried to workaround rare problem with compactor corrupting DB.
+
 ## 26.3.0
 
 ### Removed

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BTDB.Collections;
@@ -129,7 +130,7 @@ namespace BTDB.KVDBLayer
                 {
                     if (_root != lastCommitted) ForbidDeleteOfFilesUsedByStillRunningOldTransaction();
                     ForbidDeletePreservingHistory(dontTouchGeneration, usedFilesFromOldGenerations);
-                    CalculateFileUsefullness(lastCommitted);
+                    CalculateFileUsefulness(lastCommitted);
                 }
                 finally
                 {
@@ -162,7 +163,19 @@ namespace BTDB.KVDBLayer
                     btreesCorrectInTransactionId = _keyValueDB.ReplaceBTreeValues(_cancellation, _newPositionMap);
                 } while (!IsWasteSmall(totalWaste));
 
-                _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                var usedFileGens = _keyValueDB.CreateIndexFile(_cancellation, preserveKeyIndexGeneration);
+                for (var i = (int)toRemoveFileIds.Count - 1; i >= 0; i--)
+                {
+                    if (usedFileGens.IndexOf(_keyValueDB.FileCollection.FileInfoByIdx(toRemoveFileIds[i])?.Generation ??
+                                             0) >= 0)
+                    {
+                        _keyValueDB.Logger?.LogWarning("Disaster prevented by skipping delete of " +
+                                                       toRemoveFileIds[i] + " file which is used by new kvi");
+                        Debug.Fail("Should not get here");
+                        toRemoveFileIds.RemoveAt(i);
+                    }
+                }
+
                 _keyValueDB.DereferenceRootNodeInternal(_root);
                 _root = null;
                 if (_keyValueDB.AreAllTransactionsBeforeFinished(btreesCorrectInTransactionId))
@@ -170,7 +183,8 @@ namespace BTDB.KVDBLayer
                     _keyValueDB.MarkAsUnknown(toRemoveFileIds);
                 }
 
-                _keyValueDB.FileCollection.DeleteAllUnknownFiles();
+                if (!_cancellation.IsCancellationRequested)
+                    _keyValueDB.FileCollection.DeleteAllUnknownFiles();
                 return true;
             }
             finally
@@ -255,7 +269,9 @@ namespace BTDB.KVDBLayer
                     var blockStart = pos % blockSize;
                     var writeSize = (uint)(blockSize - blockStart);
                     if (writeSize > size) writeSize = size;
-                    writer.WriteBlockWithoutWriter(ref MemoryMarshal.GetReference(wasteInMemory[blockId].AsSpan((int)blockStart, (int)writeSize)), writeSize);
+                    writer.WriteBlockWithoutWriter(
+                        ref MemoryMarshal.GetReference(wasteInMemory[blockId].AsSpan((int)blockStart, (int)writeSize)),
+                        writeSize);
                     size -= writeSize;
                     pos += writeSize;
                     _writerBytesPerSecondLimiter.Limit((ulong)writer.GetCurrentPositionWithoutWriter());
@@ -294,20 +310,20 @@ namespace BTDB.KVDBLayer
         void InitFileStats(long dontTouchGeneration)
         {
             _fileStats = new RefDictionary<uint, FileStat>();
-            foreach (var file in _keyValueDB.FileCollection.FileInfos)
+            foreach (var (key, value) in _keyValueDB.FileCollection.FileInfos)
             {
-                if (file.Value.SubDBId != 0) continue;
-                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(file.Key, dontTouchGeneration))
+                if (value.SubDBId != 0) continue;
+                if (!_keyValueDB.ContainsValuesAndDoesNotTouchGeneration(key, dontTouchGeneration))
                 {
                     continue;
                 }
 
-                _fileStats.GetOrAddValueRef(file.Key) =
-                    new FileStat((uint)_keyValueDB.FileCollection.GetSize(file.Key));
+                _fileStats.GetOrAddValueRef(key) =
+                    new FileStat((uint)_keyValueDB.FileCollection.GetSize(key));
             }
         }
 
-        void CalculateFileUsefullness(IRootNodeInternal root)
+        void CalculateFileUsefulness(IRootNodeInternal root)
         {
             _keyValueDB.IterateRoot(root, (valueFileId, valueOfs, valueSize) =>
             {

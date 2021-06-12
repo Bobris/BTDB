@@ -385,9 +385,9 @@ namespace BTDB.KVDBLayer
             return ReplaceBTreeValues(cancellation, newPositionMap);
         }
 
-        void IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
+        long[] IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
         {
-            CreateIndexFile(cancellation, preserveKeyIndexGeneration);
+            return CreateIndexFile(cancellation, preserveKeyIndexGeneration);
         }
 
         ISpanWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
@@ -395,7 +395,7 @@ namespace BTDB.KVDBLayer
             return StartPureValuesFile(out fileId);
         }
 
-        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
+        long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
             bool fullSpeed = false)
         {
             var root = ReferenceAndGetLastCommitted();
@@ -405,6 +405,7 @@ namespace BTDB.KVDBLayer
                 MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
                     p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
                     p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
+                return ((FileKeyIndex)_fileCollection.FileInfoByIdx(idxFileId))!.UsedFilesInOlderGenerations!;
             }
             finally
             {

@@ -21,7 +21,7 @@ namespace BTDB.KVDBLayer
         ulong CompactorWriteBytesPerSecondLimit { get; }
         ulong CompactorReadBytesPerSecondLimit { get; }
         long ReplaceBTreeValues(CancellationToken cancellation, Dictionary<ulong, ulong> newPositionMap);
-        void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
+        long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration);
         ISpanWriter StartPureValuesFile(out uint fileId);
         bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info);
         long CalculatePreserveKeyIndexGeneration(uint preserveKeyIndexKey);

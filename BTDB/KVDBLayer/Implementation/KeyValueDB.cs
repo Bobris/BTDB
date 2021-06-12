@@ -332,13 +332,14 @@ namespace BTDB.KVDBLayer
             ((IBTreeRootNode)root).Iterate(visit);
         }
 
-        internal void CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
+        long[] CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration,
             bool fullSpeed = false)
         {
             var idxFileId = CreateKeyIndexFile(_lastCommited, cancellation, fullSpeed);
             MarkAsUnknown(_fileCollection.FileInfos.Where(p =>
                 p.Value.FileType == KVFileType.KeyIndex && p.Key != idxFileId &&
                 p.Value.Generation != preserveKeyIndexGeneration).Select(p => p.Key));
+            return ((FileKeyIndex)_fileCollection.FileInfoByIdx(idxFileId))!.UsedFilesInOlderGenerations!;
         }
 
         internal bool LoadUsedFilesFromKeyIndex(uint fileId, IKeyIndex info)
@@ -1332,9 +1333,9 @@ namespace BTDB.KVDBLayer
             return info.FileType == KVFileType.TransactionLog || info.FileType == KVFileType.PureValues;
         }
 
-        void IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
+        long[] IKeyValueDBInternal.CreateIndexFile(CancellationToken cancellation, long preserveKeyIndexGeneration)
         {
-            CreateIndexFile(cancellation, preserveKeyIndexGeneration);
+            return CreateIndexFile(cancellation, preserveKeyIndexGeneration);
         }
 
         ISpanWriter IKeyValueDBInternal.StartPureValuesFile(out uint fileId)
