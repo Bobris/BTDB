@@ -665,8 +665,7 @@ namespace BTDB.ODBLayer
                 return default;
             }
 
-            var valueBytes = _kvtr.GetValue();
-            return itemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
+            return itemLoader.CreateInstance(_transaction, keyBytes, _kvtr);
         }
 
         public IEnumerator<TItem> FindByPrimaryKeyPrefix<TItem>(in ReadOnlySpan<byte> keyBytesPrefix, int loaderIndex)

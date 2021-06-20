@@ -84,8 +84,7 @@ namespace BTDB.ODBLayer
                 SeekCurrent();
                 Span<byte> keyBuffer = stackalloc byte[512];
                 var keyBytes = _keyValueTr.GetKey(ref MemoryMarshal.GetReference(keyBuffer), keyBuffer.Length);
-                var valueBytes = _keyValueTr.GetValue();
-                return CreateInstance(keyBytes, valueBytes);
+                return CreateInstance(keyBytes, _keyValueTr);
             }
         }
 
@@ -107,9 +106,9 @@ namespace BTDB.ODBLayer
             _prevProtectionCounter = _keyValueTr.CursorMovedCounter;
         }
 
-        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
+        protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction kvtr)
         {
-            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, valueBytes);
+            return (T)ItemLoader.CreateInstance(_transaction, keyBytes, kvtr);
         }
 
         object IEnumerator.Current => Current!;
@@ -161,7 +160,7 @@ namespace BTDB.ODBLayer
             _manipulator = manipulator;
         }
 
-        protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes, in ReadOnlySpan<byte> valueBytes)
+        protected override T CreateInstance(in ReadOnlySpan<byte> keyBytes, in IKeyValueDBTransaction valueBytes)
         {
             return (T)_manipulator.CreateInstanceFromSecondaryKey(ItemLoader, _secondaryKeyIndex, _fieldCountInKey,
                 KeyBytes, keyBytes.Slice(KeyBytes.Length));
@@ -379,7 +378,7 @@ namespace BTDB.ODBLayer
 
         protected virtual T CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue());
+            return (T)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr);
         }
 
         public byte[] GetKeyBytes()
@@ -581,7 +580,7 @@ namespace BTDB.ODBLayer
 
         protected virtual TValue CreateInstance(in ReadOnlySpan<byte> keyBytes)
         {
-            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr.GetValue());
+            return (TValue)ItemLoader.CreateInstance(_tr, keyBytes, _keyValueTr);
         }
 
         public TValue CurrentValue

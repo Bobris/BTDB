@@ -7,7 +7,7 @@ namespace SimpleTester.TestModel
     {
         public static RuntimeTypeModel CreateModel()
         {
-            var model = TypeModel.Create();
+            var model = RuntimeTypeModel.Create();
 
             model.Add(typeof(Events.Event), true)
                 .AddSubType(100, typeof(ActionFinishedBase<string>))

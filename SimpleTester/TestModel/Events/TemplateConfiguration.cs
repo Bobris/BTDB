@@ -25,7 +25,7 @@ namespace SimpleTester.TestModel.Events
         [DataMember(Order = 6)]
         public Dictionary<string, CompanyBrand>? DifferentCompanyBrands { get; set; }
 
-        [ProtoMember(7, DynamicType = true)]
+        [ProtoMember(7)] // Dynamic Object not supported
         public object? ExtraData { get; set; }
 
         [DataMember(Order = 8)]

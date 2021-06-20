@@ -2628,6 +2628,12 @@ namespace BTDBTest
             WhatsApp = 1 << 5
         }
 
+        public class BatchOnlyPk
+        {
+            public ulong CompanyId { get; set; }
+            public ulong BatchId { get; set; }
+        }
+
         public class Batch
         {
             [PrimaryKey(1)] public ulong CompanyId { get; set; }
@@ -2645,6 +2651,7 @@ namespace BTDBTest
 
         public interface IBatchTable : IRelation<Batch>
         {
+            IEnumerable<BatchOnlyPk> FindByIdOnlyPk(ulong companyId);
             uint CountByUploadTime(ulong companyId, BatchType type, AdvancedEnumeratorParam<DateTime> param);
         }
 
@@ -2684,6 +2691,7 @@ namespace BTDBTest
                 KeyProposition.Included, to, KeyProposition.Included);
 
             Assert.Equal((uint)0, table.CountByUploadTime(1, BatchType.Notification, param));
+            Assert.Equal(new[] { 1ul, 2ul, 3ul }, table.FindByIdOnlyPk(1).Select(v => v.BatchId).ToList());
         }
 
         [Fact]

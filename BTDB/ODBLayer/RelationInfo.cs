@@ -49,16 +49,18 @@ namespace BTDB.ODBLayer
                 _itemType = itemType;
                 _valueLoaders = new RelationLoader?[_owner._relationVersions.Length];
                 _primaryKeysLoader = CreatePkLoader(itemType, _owner.ClientRelationVersionInfo.PrimaryKeyFields.Span,
-                    $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}");
+                    $"RelationKeyLoader_{_owner.Name}_{itemType.ToSimpleName()}", out _primaryKeyIsEnough);
             }
 
             internal object CreateInstance(IInternalObjectDBTransaction tr, in ReadOnlySpan<byte> keyBytes,
-                in ReadOnlySpan<byte> valueBytes)
+                in IKeyValueDBTransaction kvtr)
             {
                 var reader = new SpanReader(keyBytes);
                 reader.SkipInt8(); // 3
                 reader.SkipVUInt64(); // RelationId
                 var obj = _primaryKeysLoader(tr, ref reader);
+                if (_primaryKeyIsEnough) return obj;
+                var valueBytes = kvtr.GetValue();
                 reader = new SpanReader(valueBytes);
                 var version = reader.ReadVUInt32();
                 GetValueLoader(version)(tr, ref reader, obj);
@@ -66,6 +68,7 @@ namespace BTDB.ODBLayer
             }
 
             readonly RelationLoaderFunc _primaryKeysLoader;
+            readonly bool _primaryKeyIsEnough;
             readonly RelationLoader?[] _valueLoaders;
 
             RelationLoader GetValueLoader(uint version)
@@ -83,7 +86,7 @@ namespace BTDB.ODBLayer
                 return res;
             }
 
-            RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName)
+            RelationLoaderFunc CreatePkLoader(Type instanceType, ReadOnlySpan<TableFieldInfo> fields, string loaderName, out bool primaryKeyIsEnough)
             {
                 var thatType = typeof(Func<>).MakeGenericType(instanceType);
                 var method = ILBuilder.Instance.NewMethod(
@@ -112,12 +115,15 @@ namespace BTDB.ODBLayer
 
                 var loadInstructions = new StructList<(IFieldHandler, Action<IILGen>?, MethodInfo?)>();
                 var props = instanceType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                                       BindingFlags.Instance);
+                                                       BindingFlags.Instance).Where(pi => pi.GetCustomAttribute<NotStoredAttribute>(true) == null &&
+                    pi.GetIndexParameters().Length == 0).ToList();
+                var usedFields = 0;
                 foreach (var srcFieldInfo in fields)
                 {
                     var fieldInfo = props.FirstOrDefault(p => GetPersistentName(p) == srcFieldInfo.Name);
                     if (fieldInfo != null)
                     {
+                        usedFields++;
                         var setterMethod = fieldInfo.GetAnySetMethod();
                         var fieldType = setterMethod!.GetParameters()[0].ParameterType;
                         var specializedSrcHandler =
@@ -136,6 +142,7 @@ namespace BTDB.ODBLayer
                     loadInstructions.Add((srcFieldInfo.Handler!, null, null));
                 }
 
+                primaryKeyIsEnough = props.Count == usedFields;
                 // Remove useless skips from end
                 while (loadInstructions.Count > 0 && loadInstructions.Last.Item2 == null)
                 {
