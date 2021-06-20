@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.4.0
+
 ### Added
 
 Optimization to skip reading value in relations when partial view is subset of primary key.
