@@ -32,5 +32,6 @@ namespace BTDB.EventStoreLayer
         bool LoadNeedsHelpWithConversion { get; }
         void ClearMappingToType();
         bool ContainsField(string name);
+        IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields { get; }
     }
 }

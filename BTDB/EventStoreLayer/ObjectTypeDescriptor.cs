@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
@@ -312,7 +313,7 @@ namespace BTDB.EventStoreLayer
             return index;
         }
 
-        public class DynamicObject : IDynamicMetaObjectProvider, IKnowDescriptor
+        public class DynamicObject : IDynamicMetaObjectProvider, IKnowDescriptor, IEnumerable<KeyValuePair<string, object>>
         {
             readonly ObjectTypeDescriptor _ownerDescriptor;
             readonly object[] _fieldValues;
@@ -404,6 +405,16 @@ namespace BTDB.EventStoreLayer
                 }
             }
 
+            public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
+            {
+                var idx = 0;
+                foreach (var item in _ownerDescriptor._fields)
+                {
+                    yield return new KeyValuePair<string, object>(item.Key, _fieldValues[idx]);
+                    idx++;
+                }
+            }
+
             public override string ToString()
             {
                 var sb = new StringBuilder();
@@ -418,6 +429,11 @@ namespace BTDB.EventStoreLayer
 
                 sb.Append(" }");
                 return sb.ToString();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
             }
 
             public ITypeDescriptor GetDescriptor()
@@ -495,6 +511,8 @@ namespace BTDB.EventStoreLayer
 
             return false;
         }
+
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => _fields;
 
         public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {

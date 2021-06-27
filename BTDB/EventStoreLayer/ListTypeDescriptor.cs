@@ -336,6 +336,8 @@ namespace BTDB.EventStoreLayer
             return false;
         }
 
+        public IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields => Array.Empty<KeyValuePair<string, ITypeDescriptor>>();
+
         public void Persist(ref SpanWriter writer, DescriptorWriter nestedDescriptorWriter)
         {
             nestedDescriptorWriter(ref writer, _itemDescriptor!);

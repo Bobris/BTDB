@@ -2,6 +2,10 @@
 
 ## [unreleased]
 
+### Added
+
+`dynamic` deserialization of object now implements `IEnumerable<KeyValuePair<string, object>>` for easy iteration of over all values and fields. `ITypeDescriptor` has new property `IEnumerable<KeyValuePair<string, ITypeDescriptor>> Fields { get; }` which returns list of all fields on Object descriptor, for all other descriptors it returns empty list.
+
 ## 26.4.0
 
 ### Added
