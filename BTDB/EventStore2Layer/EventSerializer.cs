@@ -392,6 +392,10 @@ namespace BTDB.EventStore2Layer
                                 desc = new NullableTypeDescriptor(this, typeAlternative);
                             }
                         }
+                        else
+                        {
+                            desc = new ObjectTypeDescriptor(this, type);
+                        }
                     }
                 }
                 else if (type.IsArray)
