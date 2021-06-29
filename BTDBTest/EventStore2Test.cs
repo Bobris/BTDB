@@ -1086,6 +1086,22 @@ namespace BTDBTest
             Assert.Equal(testBaseClass.TestData, result.TestData);
         }
 
+        public class GenClass<T>
+        {
+            public T Member { get; set; }
+        }
+
+        [Fact]
+        public void GenericClassSerializationSucceeds()
+        {
+            var test = new GenClass<int>();
+            test.Member = 42;
+            var result = SerializationInternal<GenClass<int>>(test);
+
+            Assert.NotNull(result);
+            Assert.Equal(test.Member, result.Member);
+        }
+
         private T SerializationInternal<T>(object input)
         {
             var serializer = new EventSerializer();
