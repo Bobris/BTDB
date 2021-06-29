@@ -1102,6 +1102,153 @@ namespace BTDBTest
             Assert.Equal(test.Member, result.Member);
         }
 
+        [Fact]
+        public void DeserializesClassWithGenericType()
+        {
+            var serializer = new EventSerializer();
+            var obj = new ObjectWithGenericType
+            {
+                TypeA = new GenericType<SomeTypeA>
+                {
+                    Type = new SomeTypeA
+                    {
+                        A = "A",
+                        Name = "Name A"
+                    }
+                },
+                TypeB = new GenericType<SomeTypeB>
+                {
+                    Type = new SomeTypeB
+                    {
+                        B = "B",
+                        Name = "Name B"
+                    }
+                }
+            };
+            var meta = serializer.Serialize(out var hasMetadata, obj).ToAsyncSafe();
+            serializer.ProcessMetadataLog(meta);
+            var data = serializer.Serialize(out hasMetadata, obj);
+
+            var deserializer = new EventDeserializer();
+            Assert.False(deserializer.Deserialize(out var obj2, data));
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+
+            deserializer = new EventDeserializer();
+            deserializer.ProcessMetadataLog(meta);
+            Assert.True(deserializer.Deserialize(out obj2, data));
+            Assert.Equal(obj, obj2);
+        }
+
+        public class ObjectWithGenericType : IEquatable<ObjectWithGenericType>
+        {
+            public GenericType<SomeTypeA> TypeA { get; set; }
+            public GenericType<SomeTypeB> TypeB { get; set; }
+
+            public bool Equals(ObjectWithGenericType? other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return TypeA.Equals(other.TypeA) && TypeB.Equals(other.TypeB);
+            }
+
+            public override bool Equals(object? obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((ObjectWithGenericType) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(TypeA, TypeB);
+            }
+        }
+
+        public class GenericType<T> : IEquatable<GenericType<T>> where T : ISomeType, new()
+        {
+            public T Type { get; set; }
+
+            public bool Equals(GenericType<T>? other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return EqualityComparer<T>.Default.Equals(Type, other.Type);
+            }
+
+            public override bool Equals(object? obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((GenericType<T>) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return EqualityComparer<T>.Default.GetHashCode(Type);
+            }
+        }
+
+        public interface ISomeType
+        {
+            public string Name { get; set; }
+        }
+
+        public class SomeTypeA : ISomeType, IEquatable<SomeTypeA>
+        {
+            public string Name { get; set; }
+            public string A { get; set; }
+
+            public bool Equals(SomeTypeA? other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return Name == other.Name && A == other.A;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((SomeTypeA) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Name, A);
+            }
+        }
+
+        public class SomeTypeB : ISomeType, IEquatable<SomeTypeB>
+        {
+            public string Name { get; set; }
+            public string B { get; set; }
+
+            public bool Equals(SomeTypeB? other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return Name == other.Name && B == other.B;
+            }
+
+            public override bool Equals(object? obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((SomeTypeB) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Name, B);
+            }
+        }
+
         private T SerializationInternal<T>(object input)
         {
             var serializer = new EventSerializer();
