@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## 26.5.0
+
 ### Added
 
 EventStore2Layer now correctly serializes generic classes.
